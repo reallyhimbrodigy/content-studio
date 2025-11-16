@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="72" viewBox="0 0 420 72" role="img" aria-labelledby="title">
+  <title id="title">Promptly — logo</title>
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#7f5af0"/>
+      <stop offset="1" stop-color="#2cb1bc"/>
+    </linearGradient>
+  </defs>
+  <!-- icon (left): rounded square with lightning bolt -->
+  <rect x="8" y="8" width="56" height="56" rx="12" fill="url(#g)"/>
+  <path d="M36 18 L28 38 L42 38 L24 54 L34 34 L22 34 Z" fill="#fff" transform="translate(0,0)"/>
+
+  <!-- wordmark -->
+  <text x="80" y="46" font-family="Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial" font-weight="700" font-size="36" fill="url(#g)">Promptly</text>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Promptly — icon</title>
+  <defs>
+    <linearGradient id="gi" x1="0" x2="1">
+      <stop offset="0" stop-color="#7f5af0"/>
+      <stop offset="1" stop-color="#2cb1bc"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="18" fill="url(#gi)"/>
+  <!-- simple bolt symbol centered -->
+  <path d="M48 22 L36 50 L50 50 L34 74 L62 38 L48 38 Z" fill="#fff"/>
+</svg>

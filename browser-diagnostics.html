@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promptly – Browser Diagnostics</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, rgba(127, 90, 240, 0.12), transparent 55%), rgba(20, 20, 28, 0.68);
+      color: #f5f6f8;
+      min-height: 100vh;
+      margin: 0;
+      padding: 2rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card {
+      background: rgba(28, 28, 34, 0.84);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(14px);
+    }
+    .status { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; }
+    .status.ok { background: rgba(50, 200, 100, 0.2); color: rgba(100, 255, 150, 0.95); }
+    .status.error { background: rgba(255, 100, 100, 0.2); color: rgba(255, 150, 150, 0.95); }
+    .log-box {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: "Monaco", "Courier New", monospace;
+      font-size: 0.85rem;
+      max-height: 400px;
+      overflow-y: auto;
+      color: rgba(200, 255, 150, 0.95);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 1rem;
+    }
+    .log-line { margin: 0.25rem 0; }
+    .log-line.error { color: rgba(255, 150, 150, 0.95); }
+    .log-line.success { color: rgba(100, 255, 150, 0.95); }
+    button {
+      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+      color: #06060a;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-top: 1rem;
+      box-shadow: 0 14px 30px rgba(127, 90, 240, 0.2);
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 18px 34px rgba(127, 90, 240, 0.28); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Promptly – Browser Diagnostics</h1>
+    
+    <div class="card">
+      <h2>🔍 System Check</h2>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>📋 Debug Log</h2>
+      <div class="log-box" id="log"></div>
+      <button onclick="location.href='http://localhost:8000/auth.html'">Try Auth Page Again</button>
+      <button onclick="location.href='http://localhost:8000/'">Try Main App</button>
+      <button onclick="location.reload()">Refresh This Page</button>
+    </div>
+  </div>
+
+  <script>
+    const logBox = document.getElementById('log');
+    const statusBox = document.getElementById('status');
+    const logs = [];
+
+    function addLog(msg, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const logMsg = `[${timestamp}] ${msg}`;
+      logs.push(logMsg);
+      
+      const line = document.createElement('div');
+      line.className = `log-line ${type}`;
+      line.textContent = logMsg;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+      
+      console.log(msg);
+    }
+
+    function addStatus(title, ok, detail = '') {
+      const statusDiv = document.createElement('div');
+      statusDiv.style.marginBottom = '1rem';
+      statusDiv.innerHTML = `
+        <span class="status ${ok ? 'ok' : 'error'}">${ok ? '✓' : '✗'} ${title}</span>
+        ${detail ? `<p style="margin: 0.5rem 0; font-size: 0.9rem; color: rgba(245, 246, 248, 0.7);">${detail}</p>` : ''}
+      `;
+      statusBox.appendChild(statusDiv);
+    }
+
+    // Run diagnostics
+    async function runDiag() {
+      addLog('🧪 Starting browser diagnostics...', 'info');
+      
+      // Check 1: localStorage
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+        addLog('✓ localStorage is available', 'success');
+        addStatus('localStorage', true);
+      } catch (e) {
+        addLog('✗ localStorage NOT available: ' + e.message, 'error');
+        addStatus('localStorage', false, 'Private browsing or storage disabled');
+      }
+
+      // Check 2: Server connectivity
+      try {
+        const res = await fetch('http://localhost:8000/');
+        addLog(`✓ Server responding (HTTP ${res.status})`, 'success');
+        addStatus('Server Connectivity', true, `HTTP ${res.status}`);
+      } catch (e) {
+        addLog(`✗ Server not responding: ${e.message}`, 'error');
+        addStatus('Server Connectivity', false, 'Cannot connect to localhost:8000');
+        return;
+      }
+
+      // Check 3: Auth page loads
+      try {
+        const res = await fetch('http://localhost:8000/auth.html');
+        const html = await res.text();
+        const hasForm = html.includes('auth-form');
+        const hasScript = html.includes('auth.js');
+        addLog(`✓ Auth.html loads (form: ${hasForm ? 'yes' : 'no'}, script: ${hasScript ? 'yes' : 'no'})`, 'success');
+        addStatus('Auth Page', hasForm && hasScript, 'Form and script tags present');
+      } catch (e) {
+        addLog(`✗ Auth page error: ${e.message}`, 'error');
+        addStatus('Auth Page', false, e.message);
+      }
+
+      // Check 4: Script files load
+      try {
+        const authJs = await fetch('http://localhost:8000/auth.js');
+        const scriptJs = await fetch('http://localhost:8000/script.js');
+        addLog(`✓ JavaScript files loading (auth.js: ${authJs.ok}, script.js: ${scriptJs.ok})`, 'success');
+        addStatus('JavaScript Files', authJs.ok && scriptJs.ok);
+      } catch (e) {
+        addLog(`✗ JavaScript loading failed: ${e.message}`, 'error');
+        addStatus('JavaScript Files', false, e.message);
+      }
+
+      // Check 5: API endpoint
+      try {
+        const res = await fetch('http://localhost:8000/api/generate-calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nicheStyle: 'test' }),
+        });
+        const data = await res.json();
+        const hasPosts = data.posts && Array.isArray(data.posts);
+        addLog(`✓ API endpoint working (posts: ${hasPosts ? data.posts.length : 'error'})`, 'success');
+        addStatus('API Endpoint', hasPosts, hasPosts ? `Generated ${data.posts.length} posts` : 'No posts returned');
+      } catch (e) {
+        addLog(`✗ API error: ${e.message}`, 'error');
+        addStatus('API Endpoint', false, e.message);
+      }
+
+      addLog('\n✅ Diagnostics complete!', 'success');
+      addLog('If all checks pass, try: 1) Clear browser cache (Cmd+Shift+Delete), 2) Use private/incognito window, 3) Refresh', 'info');
+    }
+
+    // Run on load
+    window.addEventListener('load', runDiag);
+    addLog('📖 Diagnostics page loaded. Checking system...', 'info');
+  </script>
+</body>
+</html>

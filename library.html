@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Promptly – Saved Calendars</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .library-container {
+        padding: 2rem 0;
+      }
+      
+      .library-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        gap: 1rem;
+      }
+      
+      .library-header h2 {
+        margin: 0;
+        font-size: 2rem;
+      }
+      
+      .nav-buttons {
+        display: flex;
+        gap: 0.75rem;
+      }
+      
+      .calendar-item {
+        background: rgba(28, 28, 34, 0.84);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      
+      .calendar-item-info h3 {
+        margin: 0 0 0.4rem;
+        font-size: 1.1rem;
+      }
+      
+      .calendar-item-info p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: rgba(245, 246, 248, 0.64);
+      }
+      
+      .calendar-item-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      
+      .calendar-item-actions button {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: #f5f6f8;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      
+      .calendar-item-actions button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      
+      .delete-btn {
+        color: rgba(255, 120, 120, 0.95) !important;
+        border-color: rgba(255, 120, 120, 0.3) !important;
+      }
+      
+      .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        color: rgba(245, 246, 248, 0.64);
+      }
+      
+      .empty-state h3 {
+        font-size: 1.3rem;
+        margin-bottom: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero-top">
+          <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+          <div class="user-menu">
+            <span id="user-email" class="user-email"></span>
+            <button id="sign-out-btn" class="ghost" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Sign Out</button>
+          </div>
+        </div>
+        <h1>AI Content Studio</h1>
+        <p>A 30-day content calendar engineered for creators who move fast.</p>
+      </header>
+
+      <main>
+        <section class="library-container">
+          <div class="library-header">
+            <h2>Saved Calendars</h2>
+            <div class="nav-buttons">
+              <button id="new-calendar-btn" class="primary">+ New Calendar</button>
+            </div>
+          </div>
+          <div id="calendars-list"></div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>Built with intention. Turn this MVP into your studio's always-on idea engine.</p>
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha256-Kh1S1xNwR4Y2sT+8wQH9LiyJBjdk0u1J5M5mSTK0xNo=" crossorigin="anonymous"></script>
+    <script type="module" src="./library.js"></script>
+    <script type="module" src="./footer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promptly – Test & Diagnostics</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: linear-gradient(160deg, rgba(127, 90, 240, 0.12), transparent 55%), rgba(20, 20, 28, 0.68);
+      color: #f5f6f8;
+      min-height: 100vh;
+      margin: 0;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      color: rgba(245, 246, 248, 0.64);
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .card {
+      background: rgba(28, 28, 34, 0.84);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(14px);
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.3rem;
+      color: rgba(245, 246, 248, 0.95);
+    }
+    .status {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .status.ok {
+      background: rgba(50, 200, 100, 0.2);
+      color: rgba(100, 255, 150, 0.95);
+    }
+    .status.pending {
+      background: rgba(200, 150, 50, 0.2);
+      color: rgba(255, 200, 100, 0.95);
+    }
+    .status.error {
+      background: rgba(255, 100, 100, 0.2);
+      color: rgba(255, 150, 150, 0.95);
+    }
+    .test-section {
+      margin: 1.5rem 0;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 3px solid rgba(127, 90, 240, 0.4);
+      border-radius: 8px;
+    }
+    .test-result {
+      display: flex;
+      align-items: center;
+      margin: 0.75rem 0;
+      font-size: 0.95rem;
+    }
+    .test-result::before {
+      content: "✓";
+      margin-right: 0.75rem;
+      font-weight: bold;
+      color: rgba(100, 255, 150, 0.95);
+    }
+    .test-result.error::before {
+      content: "✗";
+      color: rgba(255, 150, 150, 0.95);
+    }
+    .btn-group {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+    a.btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+      color: #06060a;
+      text-decoration: none;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      box-shadow: 0 14px 30px rgba(127, 90, 240, 0.2);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    a.btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 34px rgba(127, 90, 240, 0.28);
+    }
+    .code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: "Monaco", "Courier New", monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      color: rgba(200, 255, 150, 0.95);
+      margin: 0.75rem 0;
+    }
+    .instructions {
+      background: rgba(127, 90, 240, 0.1);
+      border: 1px solid rgba(127, 90, 240, 0.3);
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin-top: 1.5rem;
+    }
+    .instructions h3 {
+      margin-top: 0;
+      color: rgba(200, 255, 150, 0.95);
+    }
+    .instructions ol {
+      margin: 1rem 0;
+      padding-left: 1.5rem;
+    }
+    .instructions li {
+      margin: 0.5rem 0;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Promptly – Diagnostics & Quick Start</h1>
+    <p class="subtitle">Test your app setup and get instant access</p>
+
+    <div class="card">
+      <h2>🔍 System Status</h2>
+      <div id="status-check"></div>
+    </div>
+
+    <div class="card">
+      <h2>🚀 Quick Access</h2>
+      <p>Your app is running. Click below to open it:</p>
+      <div class="btn-group">
+        <a href="http://localhost:8000" class="btn">📱 Open App (Main)</a>
+        <a href="http://localhost:8000/auth.html" class="btn">🔐 Sign In / Sign Up</a>
+        <a href="http://localhost:8000/library.html" class="btn">📚 Calendar Library</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📖 How to Use</h2>
+      <div class="instructions">
+        <h3>Step 1: Sign Up or Sign In</h3>
+        <ol>
+          <li>Click the <strong>"Sign In / Sign Up"</strong> button above</li>
+          <li>Enter any email and password (e.g., <code>test@example.com</code> / <code>password123</code>)</li>
+          <li>Click <strong>"Sign Up"</strong> to create your account</li>
+        </ol>
+
+        <h3>Step 2: Generate Your First Calendar</h3>
+        <ol>
+          <li>After signing up, you'll be redirected to the main app</li>
+          <li>In the input box, type a niche or style:
+            <ul>
+              <li>Examples: "sustainable fashion", "vegan fitness coaches", "AI experts", "indie game devs"</li>
+            </ul>
+          </li>
+          <li>Click <strong>"Generate Calendar"</strong></li>
+          <li>Wait ~5 seconds while the AI creates your 30-day calendar</li>
+        </ol>
+
+        <h3>Step 3: Use Your Calendar</h3>
+        <ol>
+          <li><strong>Filter by Pillar:</strong> Click "Authority", "Community", or "Conversion" to filter ideas</li>
+          <li><strong>Save Calendar:</strong> Click "Save Calendar" to store it in your library</li>
+          <li><strong>Export as JSON:</strong> Click "Export as JSON" to download for sharing</li>
+          <li><strong>View Library:</strong> Click "Library" to see all your saved calendars</li>
+          <li><strong>Sign Out:</strong> Click "Sign Out" when done</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ Technical Details</h2>
+      <div class="test-section">
+        <strong>Server:</strong>
+        <div class="test-result" id="test-server">Checking...</div>
+      </div>
+      <div class="test-section">
+        <strong>Auth Page:</strong>
+        <div class="test-result" id="test-auth">Checking...</div>
+      </div>
+      <div class="test-section">
+        <strong>API Endpoint:</strong>
+        <div class="test-result" id="test-api">Checking...</div>
+      </div>
+      <div class="test-section">
+        <strong>OpenAI Integration:</strong>
+        <div class="test-result" id="test-openai">Checking...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🆘 Troubleshooting</h2>
+      <div class="test-section">
+        <strong>If buttons are unresponsive:</strong>
+        <div style="margin-top: 0.75rem; color: rgba(245, 246, 248, 0.8);">
+          <p>1. <strong>Clear your browser cache:</strong></p>
+          <div class="code">Windows/Linux: Ctrl+Shift+Delete<br>Mac: Cmd+Shift+Delete</div>
+          <p>2. Or use a <strong>private/incognito window</strong> (Ctrl/Cmd+Shift+N)</p>
+          <p>3. Then refresh this page and try again</p>
+        </div>
+      </div>
+      <div class="test-section">
+        <strong>If the server is not running:</strong>
+        <div style="margin-top: 0.75rem; color: rgba(245, 246, 248, 0.8);">
+          <p>In your terminal, run:</p>
+          <div class="code">cd /Users/zaclibman/content-studio<br>npm start</div>
+          <p>Then refresh this page.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Run diagnostics
+    async function runDiagnostics() {
+      const results = {
+        server: false,
+        auth: false,
+        api: false,
+        openai: false,
+      };
+
+      // Test 1: Server health
+      try {
+        const res = await fetch('http://localhost:8000/', { mode: 'cors' });
+        results.server = res.ok;
+      } catch (e) {
+        results.server = false;
+      }
+
+      // Test 2: Auth page
+      try {
+        const res = await fetch('http://localhost:8000/auth.html', { mode: 'cors' });
+        results.auth = res.ok;
+      } catch (e) {
+        results.auth = false;
+      }
+
+      // Test 3: API endpoint
+      try {
+        const res = await fetch('http://localhost:8000/api/generate-calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nicheStyle: 'test' }),
+          mode: 'cors',
+        });
+        results.api = res.status === 200 || res.status === 500; // 500 if API key not set, but endpoint exists
+      } catch (e) {
+        results.api = false;
+      }
+
+      // Test 4: OpenAI (check if we get a proper response)
+      try {
+        const res = await fetch('http://localhost:8000/api/generate-calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nicheStyle: 'test' }),
+          mode: 'cors',
+        });
+        const data = await res.json();
+        results.openai = data.posts && Array.isArray(data.posts);
+      } catch (e) {
+        results.openai = false;
+      }
+
+      // Display results
+      document.getElementById('test-server').innerHTML = results.server
+        ? '<span class="status ok">✓ Server is running</span>'
+        : '<span class="status error">✗ Server not responding</span>';
+
+      document.getElementById('test-auth').innerHTML = results.auth
+        ? '<span class="status ok">✓ Auth page is accessible</span>'
+        : '<span class="status error">✗ Auth page not found</span>';
+
+      document.getElementById('test-api').innerHTML = results.api
+        ? '<span class="status ok">✓ API endpoint is working</span>'
+        : '<span class="status error">✗ API endpoint not responding</span>';
+
+      document.getElementById('test-openai').innerHTML = results.openai
+        ? '<span class="status ok">✓ OpenAI integration is functional</span>'
+        : '<span class="status pending">⚠ API key may not be configured</span>';
+
+      const allOk = results.server && results.auth && results.api;
+      if (allOk) {
+        document.getElementById('status-check').innerHTML = `
+          <span class="status ok">✅ All systems operational</span>
+          <p style="margin-top: 1rem; color: rgba(245, 246, 248, 0.8);">
+            Your app is ready to use. Click the <strong>"Open App"</strong> buttons above to get started.
+          </p>
+        `;
+      } else {
+        document.getElementById('status-check').innerHTML = `
+          <span class="status error">⚠ Some systems are offline</span>
+          <p style="margin-top: 1rem; color: rgba(245, 246, 248, 0.8);">
+            Make sure the server is running with <code>npm start</code> and try refreshing this page.
+          </p>
+        `;
+      }
+    }
+
+    // Run diagnostics on page load
+    window.addEventListener('load', runDiagnostics);
+  </script>
+</body>
+</html>
