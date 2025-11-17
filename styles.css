@@ -983,53 +983,67 @@ button.ghost:hover {
 }
 
 /* Modal */
+/* Brand Brain Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
-  display: grid;
-  place-items: center;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 1000;
+  padding: 1rem;
 }
 
-.modal {
-  width: min(680px, 92vw);
+.modal-overlay .modal {
+  width: min(560px, 90vw);
   background: var(--surface);
   border: 1px solid var(--card-border);
   border-radius: 16px;
-  padding: 1.25rem;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+  padding: 1.5rem;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
 }
 
-.modal h3 {
+.modal-overlay .modal h3 {
   margin: 0 0 0.5rem;
+  font-size: 1.25rem;
 }
 
-.modal-sub {
-  margin: 0 0 0.75rem;
+.modal-overlay .modal .modal-sub {
+  margin: 0 0 1rem;
   color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
-.modal textarea {
+.modal-overlay .modal textarea {
   width: 100%;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04);
   color: var(--text-primary);
   padding: 0.75rem;
-  font: inherit;
+  font-family: inherit;
+  font-size: 0.95rem;
   resize: vertical;
+  min-height: 200px;
+}
+
+.modal-overlay .modal textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  background: rgba(255,255,255,0.06);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 /* Upgrade Modal Styles */
-.modal {
+#upgrade-modal {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.85);
