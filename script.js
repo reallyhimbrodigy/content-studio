@@ -1496,10 +1496,11 @@ function incrementGenerationCount() {
   }));
 }
 
-function canGenerate() {
-  const user = getCurrentUser();
+async function canGenerate() {
+  const user = await getCurrentUser();
   if (!user) return false;
-  if (isPro(user)) return true; // Pro users have unlimited
+  const pro = await isPro(user);
+  if (pro) return true; // Pro users have unlimited
   return getGenerationCount() < 1; // Free users get 1 per month
 }
 
@@ -1523,7 +1524,7 @@ if (generateBtn) {
     }
 
     // Check generation limit for free users
-    if (!canGenerate()) {
+    if (!(await canGenerate())) {
       showUpgradeModal();
       if (feedbackEl) {
         feedbackEl.textContent = "🔒 You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
