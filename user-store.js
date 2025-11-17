@@ -32,12 +32,21 @@ export async function signUp(email, password) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        // Skip email confirmation for development
+        emailRedirectTo: window.location.origin,
+      }
     });
     
     if (error) throw error;
     
+    // Check if email confirmation is required
+    if (data?.user && !data.session) {
+      return { ok: true, msg: "Check your email to confirm your account!" };
+    }
+    
     // Profile is automatically created via database trigger
-    return { ok: true, msg: "Signed up successfully! Check your email to confirm." };
+    return { ok: true, msg: "Signed up successfully!" };
   } catch (error) {
     console.error('signUp error:', error);
     return { ok: false, msg: error.message || "Sign up failed" };
