@@ -51,7 +51,7 @@ function chunkText(input, maxLen = 800) {
   return chunks;
 }
 
-function openAIRequest(options, payload) {
+function openAIRequest(options, payload, retryCount = 0) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
@@ -61,14 +61,34 @@ function openAIRequest(options, payload) {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             resolve(JSON.parse(data));
           } else {
-            reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
+            // Retry on 502, 503, 504 (server errors) up to 3 times
+            if ((res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) && retryCount < 3) {
+              const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+              console.log(`OpenAI ${res.statusCode} error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+              setTimeout(() => {
+                openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+              }, delay);
+            } else {
+              reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
+            }
           }
         } catch (err) {
           reject(err);
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      // Retry on network errors up to 3 times
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(`OpenAI network error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`, err.message);
+        setTimeout(() => {
+          openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+        }, delay);
+      } else {
+        reject(err);
+      }
+    });
     if (payload) req.write(payload);
     req.end();
   });
@@ -300,8 +320,19 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ posts }));
       } catch (err) {
         console.error('API error:', err);
+        let errorMessage = String(err);
+        // Provide more helpful error messages for common issues
+        if (errorMessage.includes('502')) {
+          errorMessage = 'OpenAI servers are temporarily unavailable. Please try again in a moment.';
+        } else if (errorMessage.includes('503')) {
+          errorMessage = 'OpenAI service is overloaded. Please try again in a few seconds.';
+        } else if (errorMessage.includes('504')) {
+          errorMessage = 'Request timed out. Please try again.';
+        } else if (errorMessage.includes('429')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
+        }
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        res.end(JSON.stringify({ error: errorMessage }));
       }
     });
     return;
