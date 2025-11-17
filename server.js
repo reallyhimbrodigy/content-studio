@@ -435,8 +435,9 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  const safePath = parsed.pathname === '/' ? '/index.html' : parsed.pathname;
-  const filePath = path.join(__dirname, path.normalize(safePath));
+  // Handle clean URLs (e.g., /success -> /success.html)
+  let safePath = parsed.pathname === '/' ? '/index.html' : parsed.pathname;
+  let filePath = path.join(__dirname, path.normalize(safePath));
 
   if (!filePath.startsWith(__dirname)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -444,11 +445,32 @@ const server = http.createServer((req, res) => {
   }
 
   fs.stat(filePath, (err, stats) => {
+    // If file not found and no extension, try adding .html
+    if (err && !path.extname(safePath)) {
+      safePath = safePath + '.html';
+      filePath = path.join(__dirname, path.normalize(safePath));
+      
+      if (!filePath.startsWith(__dirname)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Forbidden' }));
+      }
+      
+      fs.stat(filePath, (err2, stats2) => {
+        if (err2 || !stats2.isFile()) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Not found' }));
+        }
+        serveFile(filePath, res);
+      });
+      return;
+    }
+    
     if (err || !stats.isFile()) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Not found' }));
     }
 
+    // Serve the file
     const ext = path.extname(filePath).toLowerCase();
     const mimeTypes = {
       '.html': 'text/html; charset=utf-8',
@@ -468,6 +490,26 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(filePath).pipe(res);
   });
 });
+
+function serveFile(filePath, res) {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css',
+    '.js': 'text/javascript',
+    '.json': 'application/json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.ico': 'image/x-icon',
+  };
+
+  const contentType = mimeTypes[ext] || 'application/octet-stream';
+  res.writeHead(200, { 'Content-Type': contentType });
+  fs.createReadStream(filePath).pipe(res);
+}
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
