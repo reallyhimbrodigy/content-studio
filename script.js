@@ -204,32 +204,43 @@ if (tabLibrary) {
   console.error("❌ Library tab not found - this could prevent navigation");
 }
 
-// Sign out handler
+// Sign out handler - make it globally accessible
+window.handleSignOut = function() {
+  console.log("Sign out triggered");
+  storeSignOut();
+  window.location.href = "/auth.html";
+};
+
+// Attach to button with multiple methods
+function attachSignOutHandler() {
+  const btn = document.getElementById("sign-out-btn");
+  if (btn) {
+    console.log("✓ Sign out button found, attaching event listener");
+    
+    // Remove any existing listeners by cloning
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    
+    // Attach the handler
+    newBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("Sign out button clicked!");
+      window.handleSignOut();
+    });
+    
+    console.log("✓ Sign out handler attached successfully");
+  } else {
+    console.error("❌ Sign out button not found");
+  }
+}
+
+// Try immediately
 if (signOutBtn) {
-  console.log("✓ Sign out button found, attaching event listener");
-  signOutBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log("Sign out button clicked");
-    storeSignOut();
-    window.location.href = "/auth.html";
-  });
+  attachSignOutHandler();
 } else {
-  console.error("❌ Sign out button not found");
-  // Try to query it again in case of timing issue
-  setTimeout(() => {
-    const btn = document.getElementById("sign-out-btn");
-    if (btn) {
-      console.log("✓ Sign out button found on retry");
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log("Sign out button clicked (retry handler)");
-        storeSignOut();
-        window.location.href = "/auth.html";
-      });
-    }
-  }, 100);
+  // Try again after a short delay
+  setTimeout(attachSignOutHandler, 100);
 }
 
 // Brand Brain modal handlers
