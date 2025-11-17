@@ -486,7 +486,11 @@ const server = http.createServer((req, res) => {
     };
 
     const contentType = mimeTypes[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType });
+    const headers = { 'Content-Type': contentType };
+    if (ext === '.html') headers['Cache-Control'] = 'no-store';
+    else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
+    else headers['Cache-Control'] = 'public, max-age=86400';
+    res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   });
 });
@@ -507,7 +511,11 @@ function serveFile(filePath, res) {
   };
 
   const contentType = mimeTypes[ext] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': contentType });
+  const headers = { 'Content-Type': contentType };
+  if (ext === '.html') headers['Cache-Control'] = 'no-store';
+  else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
+  else headers['Cache-Control'] = 'public, max-age=86400';
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
