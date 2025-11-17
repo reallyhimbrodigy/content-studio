@@ -134,14 +134,35 @@ const grid = document.getElementById("calendar-grid");
 const currentUser = getCurrentUser();
 if (currentUser) {
   if (userEmailEl) userEmailEl.textContent = currentUser;
-  if (signOutBtn) signOutBtn.style.display = "inline-block";
   
   // Show Pro badge if user is Pro
   const userIsPro = isPro(currentUser);
   if (userTierBadge && userIsPro) {
-    userTierBadge.innerHTML = '<span class="user-tier-badge"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L7.545 4.13L11 4.635L8.5 7.07L9.09 10.51L6 8.885L2.91 10.51L3.5 7.07L1 4.635L4.455 4.13L6 1Z" fill="white"/></svg> PRO</span>';
+    userTierBadge.textContent = 'PRO';
     userTierBadge.style.display = 'inline-block';
   }
+}
+
+// Profile dropdown toggle
+const profileTrigger = document.getElementById('profile-trigger');
+const profileMenu = document.getElementById('profile-menu');
+const profileDropdown = document.getElementById('profile-dropdown');
+
+if (profileTrigger && profileMenu) {
+  profileTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = profileMenu.style.display === 'block';
+    profileMenu.style.display = isOpen ? 'none' : 'block';
+    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (profileDropdown && !profileDropdown.contains(e.target)) {
+      profileMenu.style.display = 'none';
+      profileTrigger.setAttribute('aria-expanded', 'false');
+    }
+  });
 }
 
 // Upgrade modal handlers
