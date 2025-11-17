@@ -1,4 +1,4 @@
-import { getCurrentUser } from './user-store.js';
+import { getCurrentUser, isPro } from './user-store.js';
 
 // JSZip loader
 let __zipLoaderPromise = null;
@@ -143,16 +143,58 @@ if (!currentUser) {
 
 const userEmailEl = document.getElementById('user-email');
 const signOutBtn = document.getElementById('sign-out-btn');
+const profileTrigger = document.getElementById('profile-trigger');
+const profileMenu = document.getElementById('profile-menu');
+const profileDropdown = document.getElementById('profile-dropdown');
+const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
 const calendarsList = document.getElementById('calendars-list');
 
 if (userEmailEl) userEmailEl.textContent = currentUser;
 
+// Global sign-out handler (matches index.html usage)
+window.handleSignOut = function() {
+  localStorage.removeItem('promptly_current_user');
+  window.location.href = '/auth.html';
+};
+
+// Delegate clicks for robustness
+document.addEventListener('click', (e) => {
+  const btn = e.target && e.target.closest && e.target.closest('#sign-out-btn');
+  if (btn) {
+    e.preventDefault();
+    window.handleSignOut();
+  }
+});
+
+// Also attach direct listener if present
 if (signOutBtn) {
-  signOutBtn.addEventListener('click', () => {
-    localStorage.removeItem('promptly_current_user');
-    window.location.href = '/auth.html';
+  signOutBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.handleSignOut();
   });
+}
+
+// Profile dropdown behavior (minimal version)
+if (profileTrigger && profileMenu) {
+  profileTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = profileMenu.style.display === 'block';
+    profileMenu.style.display = isOpen ? 'none' : 'block';
+    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  document.addEventListener('click', (e) => {
+    if (profileDropdown && !profileDropdown.contains(e.target)) {
+      profileMenu.style.display = 'none';
+      profileTrigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+// Show PRO badge if applicable
+if (userTierBadge && isPro(currentUser)) {
+  userTierBadge.textContent = 'PRO';
+  userTierBadge.style.display = 'inline-block';
 }
 
 if (newCalendarBtn) {

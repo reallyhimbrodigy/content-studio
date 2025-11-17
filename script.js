@@ -243,6 +243,15 @@ if (signOutBtn) {
   setTimeout(attachSignOutHandler, 100);
 }
 
+// Delegated handler as a safety net (covers dynamic DOM/swaps)
+document.addEventListener('click', (e) => {
+  const btn = e.target && e.target.closest && e.target.closest('#sign-out-btn');
+  if (btn) {
+    e.preventDefault();
+    window.handleSignOut();
+  }
+});
+
 // Brand Brain modal handlers
 function openBrandModal() {
   if (brandModal) brandModal.style.display = 'grid';
