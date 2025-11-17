@@ -7,7 +7,26 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('⚠️ Supabase credentials not configured.');
 }
 
-// Import from CDN
-const { createClient } = window.supabase;
+// Lazy initialization to ensure CDN is loaded
+let _supabase = null;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function getSupabaseClient() {
+  if (!_supabase) {
+    if (!window.supabase) {
+      console.error('⚠️ Supabase CDN not loaded. Make sure <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> is in <head>');
+      throw new Error('Supabase CDN not loaded');
+    }
+    const { createClient } = window.supabase;
+    _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return _supabase;
+}
+
+// Export a proxy that lazily initializes
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    const client = getSupabaseClient();
+    const value = client[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  }
+});
