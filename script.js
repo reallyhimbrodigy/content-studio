@@ -167,6 +167,21 @@ if (profileTrigger && profileMenu) {
   });
 }
 
+// Sign-out button handler
+if (signOutBtn) {
+  signOutBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      await storeSignOut();
+      window.location.href = '/auth.html';
+    } catch (error) {
+      console.error('Sign-out failed:', error);
+      // Redirect anyway
+      window.location.href = '/auth.html';
+    }
+  });
+}
+
 // Upgrade modal handlers
 function showUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'flex';
