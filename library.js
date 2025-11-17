@@ -143,6 +143,11 @@ const profileMenu = document.getElementById('profile-menu');
 const profileDropdown = document.getElementById('profile-dropdown');
 const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
+// Upgrade modal elements (library page)
+const upgradeModal = document.getElementById('upgrade-modal');
+const upgradeClose = document.getElementById('upgrade-close');
+const upgradeBtn = document.getElementById('upgrade-btn');
+const brandBtn = document.getElementById('brand-brain-btn');
 const calendarsList = document.getElementById('calendars-list');
 
 let currentUser = null;
@@ -182,6 +187,29 @@ window.handleSignOut = async function() {
   loadCalendars();
 })();
 
+// Upgrade modal handlers (library page)
+function showUpgradeModal() {
+  if (upgradeModal) upgradeModal.style.display = 'flex';
+}
+function hideUpgradeModal() {
+  if (upgradeModal) upgradeModal.style.display = 'none';
+}
+if (upgradeClose) upgradeClose.addEventListener('click', hideUpgradeModal);
+if (upgradeModal) {
+  upgradeModal.addEventListener('click', (e) => { if (e.target === upgradeModal) hideUpgradeModal(); });
+}
+if (upgradeBtn) {
+  upgradeBtn.addEventListener('click', () => {
+    const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) { window.location.href = url; } else { hideUpgradeModal(); }
+    } catch (_) { window.location.href = url; }
+  });
+}
+// Expose for other handlers
+window.showUpgradeModal = showUpgradeModal;
+
 // Delegate clicks for robustness
 document.addEventListener('click', (e) => {
   const btn = e.target && e.target.closest && e.target.closest('#sign-out-btn');
@@ -216,7 +244,19 @@ if (profileTrigger && profileMenu) {
 }
 
 if (newCalendarBtn) {
-  newCalendarBtn.addEventListener('click', () => {
+  newCalendarBtn.addEventListener('click', async () => {
+    const userIsPro = await isPro(currentUser);
+    if (!userIsPro) { showUpgradeModal(); return; }
+    window.location.href = '/';
+  });
+}
+
+// Brand Brain gating on library page
+if (brandBtn) {
+  brandBtn.addEventListener('click', async () => {
+    const userIsPro = await isPro(currentUser);
+    if (!userIsPro) { showUpgradeModal(); return; }
+    // Pro users: navigate to home (Brand Brain lives on main page)
     window.location.href = '/';
   });
 }
@@ -268,6 +308,8 @@ async function loadCalendars() {
 
   document.querySelectorAll('.download-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
+      const userIsPro = await isPro(currentUser);
+      if (!userIsPro) { showUpgradeModal(); return; }
       const idx = btn.dataset.idx;
       const cal = userCalendars[idx];
       
@@ -307,8 +349,7 @@ async function loadCalendars() {
       const idx = btn.dataset.idx;
       if (confirm(`Delete calendar "${userCalendars[idx].nicheStyle}"?`)) {
         userCalendars.splice(idx, 1);
-        allCalendars[currentUser] = userCalendars;
-        localStorage.setItem('promptly_calendars', JSON.stringify(allCalendars));
+        // TODO: Persist deletion to Supabase; for now reload UI
         loadCalendars();
       }
     });
