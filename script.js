@@ -229,8 +229,21 @@ if (upgradeModal) {
 
 if (upgradeBtn) {
   upgradeBtn.addEventListener('click', () => {
-    // Redirect to Stripe payment link
-    window.location.href = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00';
+    // Open Stripe Payment Link in a new, clean tab to avoid any page-script interference
+    const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00';
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        // Popup blocked: fall back to same-tab navigation
+        window.location.href = url;
+      } else {
+        // Close the upgrade modal if it’s open
+        if (typeof hideUpgradeModal === 'function') hideUpgradeModal();
+      }
+    } catch (e) {
+      // Absolute fallback
+      window.location.href = url;
+    }
   });
 }
 
