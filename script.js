@@ -142,6 +142,12 @@ const grid = document.getElementById("calendar-grid");
       userTierBadge.textContent = 'PRO';
       userTierBadge.style.display = 'inline-block';
     }
+    
+    // Show Pro badge in profile menu
+    const userProBadge = document.getElementById('user-pro-badge');
+    if (userProBadge && userIsPro) {
+      userProBadge.style.display = 'inline-block';
+    }
   }
 })();
 

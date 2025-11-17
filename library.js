@@ -166,9 +166,16 @@ window.handleSignOut = async function() {
   if (userEmailEl) userEmailEl.textContent = currentUser;
   
   // Show PRO badge if applicable
-  if (userTierBadge && await isPro(currentUser)) {
+  const userIsPro = await isPro(currentUser);
+  if (userTierBadge && userIsPro) {
     userTierBadge.textContent = 'PRO';
     userTierBadge.style.display = 'inline-block';
+  }
+  
+  // Show Pro badge in profile menu
+  const userProBadge = document.getElementById('user-pro-badge');
+  if (userProBadge && userIsPro) {
+    userProBadge.style.display = 'inline-block';
   }
   
   // Load calendars after user is confirmed

@@ -473,6 +473,18 @@ button.ghost:hover {
   word-break: break-word;
 }
 
+.pro-badge {
+  background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+  color: #06060a;
+  font-size: 0.625rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
 .profile-menu-item {
   display: flex;
   align-items: center;
