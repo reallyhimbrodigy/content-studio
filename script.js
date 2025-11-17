@@ -130,18 +130,20 @@ const grid = document.getElementById("calendar-grid");
   console.log("signOutBtn:", signOutBtn ? "✓ found" : "✗ MISSING");
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
-// Display user email and tier badge
-const currentUser = getCurrentUser();
-if (currentUser) {
-  if (userEmailEl) userEmailEl.textContent = currentUser;
-  
-  // Show Pro badge if user is Pro
-  const userIsPro = isPro(currentUser);
-  if (userTierBadge && userIsPro) {
-    userTierBadge.textContent = 'PRO';
-    userTierBadge.style.display = 'inline-block';
+// Display user email and tier badge (now async with Supabase)
+(async () => {
+  const currentUser = await getCurrentUser();
+  if (currentUser) {
+    if (userEmailEl) userEmailEl.textContent = currentUser;
+    
+    // Show Pro badge if user is Pro
+    const userIsPro = await isPro(currentUser);
+    if (userTierBadge && userIsPro) {
+      userTierBadge.textContent = 'PRO';
+      userTierBadge.style.display = 'inline-block';
+    }
   }
-}
+})();
 
 // Profile dropdown toggle
 const profileTrigger = document.getElementById('profile-trigger');

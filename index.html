@@ -231,13 +231,16 @@
       </div>
     </div>
 
-    <script>
-      // Check if user is logged in BEFORE loading the app.
-      // Avoid declaring `currentUser` here to prevent redeclaration
-      // collisions with other scripts that also declare the same const.
-      if (!localStorage.getItem("promptly_current_user")) {
-        window.location.href = "/auth.html";
-      }
+    <script type="module">
+      // Check if user is logged in with Supabase BEFORE loading the app
+      import { supabase } from './supabase-client.js';
+      
+      (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          window.location.href = "/auth.html";
+        }
+      })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha256-Kh1S1xNwR4Y2sT+8wQH9LiyJBjdk0u1J5M5mSTK0xNo=" crossorigin="anonymous"></script>
     <script type="module" src="./script.js"></script>

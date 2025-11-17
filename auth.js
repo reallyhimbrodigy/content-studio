@@ -1,21 +1,23 @@
 import { signUp, signIn, getCurrentUser, signOut } from './user-store.js';
 
 // Handle sign-out redirect (e.g., /auth.html?signout=1)
-try {
-  const params = new URLSearchParams(window.location.search || '');
-  if (params.get('signout') === '1') {
-    // Clear session and optionally show a small message
-    signOut();
-    // Also clear legacy key if any lingering
-    try { localStorage.removeItem('promptly_current_user'); } catch {}
-    // Remove the query param from the URL without reloading
-    const url = new URL(window.location.href);
-    url.searchParams.delete('signout');
-    window.history.replaceState({}, '', url.pathname + (url.search ? '?' + url.search : ''));
+(async () => {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('signout') === '1') {
+      // Clear session (now async with Supabase)
+      await signOut();
+      // Also clear legacy key if any lingering
+      try { localStorage.removeItem('promptly_current_user'); } catch {}
+      // Remove the query param from the URL without reloading
+      const url = new URL(window.location.href);
+      url.searchParams.delete('signout');
+      window.history.replaceState({}, '', url.pathname + (url.search ? '?' + url.search : ''));
+    }
+  } catch (e) {
+    console.warn('auth.js: signout query handling failed', e);
   }
-} catch (e) {
-  console.warn('auth.js: signout query handling failed', e);
-}
+})();
 
 // Auth modal UI bindings. Storage helpers are provided by `user-store.js`.
 const emailInput = document.getElementById("email");
@@ -61,7 +63,14 @@ const emailInput = document.getElementById("email");
           return;
         }
 
-        const result = isSignUp ? signUp(email, password) : signIn(email, password);
+        // Show loading state
+        if (authBtn) authBtn.textContent = "...";
+        
+        const result = isSignUp ? await signUp(email, password) : await signIn(email, password);
+        
+        // Restore button text
+        if (authBtn) authBtn.textContent = isSignUp ? "Sign Up" : "Sign In";
+        
         if (authFeedbackEl) {
           authFeedbackEl.textContent = result.msg;
           authFeedbackEl.className = result.ok ? "success" : "error";
@@ -86,10 +95,13 @@ const emailInput = document.getElementById("email");
     }
   }
 
-// If user is already logged in, redirect to app
-if (getCurrentUser()) {
-  // If we're on auth page, redirect. On other pages this will noop.
-  if (window.location.pathname !== '/') {
-    window.location.href = "/";
+// If user is already logged in, redirect to app (now async)
+(async () => {
+  const user = await getCurrentUser();
+  if (user) {
+    // If we're on auth page, redirect. On other pages this will noop.
+    if (window.location.pathname.includes('/auth.html')) {
+      window.location.href = "/";
+    }
   }
-}
+})();

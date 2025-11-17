@@ -135,12 +135,7 @@ function buildPostHTML(post) {
 </html>`;
 }
 
-// Library page behavior
-const currentUser = getCurrentUser();
-if (!currentUser) {
-  window.location.href = '/auth.html';
-}
-
+// Library page behavior (now async with Supabase)
 const userEmailEl = document.getElementById('user-email');
 const signOutBtn = document.getElementById('sign-out-btn');
 const profileTrigger = document.getElementById('profile-trigger');
@@ -150,13 +145,35 @@ const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
 const calendarsList = document.getElementById('calendars-list');
 
-if (userEmailEl) userEmailEl.textContent = currentUser;
+let currentUser = null;
 
-// Global sign-out handler (matches index.html usage)
-window.handleSignOut = function() {
-  localStorage.removeItem('promptly_current_user');
+// Global sign-out handler (now async with Supabase)
+window.handleSignOut = async function() {
+  const { signOut } = await import('./user-store.js');
+  await signOut();
+  localStorage.removeItem('promptly_current_user'); // Legacy cleanup
   window.location.href = '/auth.html';
 };
+
+// Initialize user and check auth
+(async () => {
+  currentUser = await getCurrentUser();
+  if (!currentUser) {
+    window.location.href = '/auth.html';
+    return;
+  }
+
+  if (userEmailEl) userEmailEl.textContent = currentUser;
+  
+  // Show PRO badge if applicable
+  if (userTierBadge && await isPro(currentUser)) {
+    userTierBadge.textContent = 'PRO';
+    userTierBadge.style.display = 'inline-block';
+  }
+  
+  // Load calendars after user is confirmed
+  loadCalendars();
+})();
 
 // Delegate clicks for robustness
 document.addEventListener('click', (e) => {
@@ -191,22 +208,15 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Show PRO badge if applicable
-if (userTierBadge && isPro(currentUser)) {
-  userTierBadge.textContent = 'PRO';
-  userTierBadge.style.display = 'inline-block';
-}
-
 if (newCalendarBtn) {
   newCalendarBtn.addEventListener('click', () => {
     window.location.href = '/';
   });
 }
 
-function loadCalendars() {
-  const stored = localStorage.getItem('promptly_calendars');
-  const allCalendars = stored ? JSON.parse(stored) : {};
-  const userCalendars = allCalendars[currentUser] || [];
+async function loadCalendars() {
+  const { getUserCalendars } = await import('./user-store.js');
+  const userCalendars = await getUserCalendars(currentUser);
 
   if (!calendarsList) return;
   calendarsList.innerHTML = '';

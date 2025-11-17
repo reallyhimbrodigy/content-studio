@@ -1,80 +1,203 @@
-// Lightweight user & calendar storage helpers (pure data layer).
-// Included on pages that need access to user/calendar storage.
+// Supabase-powered user & calendar storage (replaces localStorage)
+import { supabase } from './supabase-client.js';
 
-const USERS_KEY = "promptly_users";
-const CURRENT_USER_KEY = "promptly_current_user";
-const CALENDARS_KEY = "promptly_calendars";
-const USER_TIER_KEY = "promptly_user_tier"; // Store subscription tier
+// ============================================================================
+// Authentication
+// ============================================================================
 
-export function getAllUsers() {
-  const stored = localStorage.getItem(USERS_KEY);
-  return stored ? JSON.parse(stored) : {};
+export async function getCurrentUser() {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user?.email || null;
+  } catch (error) {
+    console.error('getCurrentUser error:', error);
+    return null;
+  }
 }
 
-export function getCurrentUser() {
-  return localStorage.getItem(CURRENT_USER_KEY);
+export async function getCurrentUserId() {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user?.id || null;
+  } catch (error) {
+    console.error('getCurrentUserId error:', error);
+    return null;
+  }
+}
+
+export async function signUp(email, password) {
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    
+    if (error) throw error;
+    
+    // Profile is automatically created via database trigger
+    return { ok: true, msg: "Signed up successfully! Check your email to confirm." };
+  } catch (error) {
+    console.error('signUp error:', error);
+    return { ok: false, msg: error.message || "Sign up failed" };
+  }
+}
+
+export async function signIn(email, password) {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) throw error;
+    
+    return { ok: true, msg: "Signed in successfully" };
+  } catch (error) {
+    console.error('signIn error:', error);
+    return { ok: false, msg: error.message || "Sign in failed" };
+  }
+}
+
+export async function signOut() {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  } catch (error) {
+    console.error('signOut error:', error);
+  }
+}
+
+// ============================================================================
+// User Profile & Tier Management
+// ============================================================================
+
+export async function getUserTier(email) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return 'free';
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('tier')
+      .eq('id', userId)
+      .single();
+    
+    if (error) throw error;
+    return data?.tier || 'free';
+  } catch (error) {
+    console.error('getUserTier error:', error);
+    return 'free';
+  }
+}
+
+export async function setUserTier(email, tier) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('No user logged in');
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update({ tier, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    
+    if (error) throw error;
+    return { ok: true };
+  } catch (error) {
+    console.error('setUserTier error:', error);
+    return { ok: false, msg: error.message };
+  }
+}
+
+export async function isPro(email) {
+  const tier = await getUserTier(email);
+  return tier === 'pro';
+}
+
+// ============================================================================
+// Calendar Management
+// ============================================================================
+
+export async function getUserCalendars(email) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+    
+    const { data, error } = await supabase
+      .from('calendars')
+      .select('*')
+      .eq('user_id', userId)
+      .order('saved_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('getUserCalendars error:', error);
+    return [];
+  }
+}
+
+export async function saveUserCalendar(email, calendar) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('No user logged in');
+    
+    const { data, error } = await supabase
+      .from('calendars')
+      .insert({
+        user_id: userId,
+        niche_style: calendar.nicheStyle || calendar.niche || 'Untitled',
+        posts: calendar.posts || calendar,
+        saved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('saveUserCalendar error:', error);
+    throw error;
+  }
+}
+
+export async function deleteUserCalendar(calendarId) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('No user logged in');
+    
+    const { error } = await supabase
+      .from('calendars')
+      .delete()
+      .eq('id', calendarId)
+      .eq('user_id', userId); // Extra security check
+    
+    if (error) throw error;
+    return { ok: true };
+  } catch (error) {
+    console.error('deleteUserCalendar error:', error);
+    return { ok: false, msg: error.message };
+  }
+}
+
+// ============================================================================
+// Legacy compatibility helpers (for gradual migration)
+// ============================================================================
+
+// For now, keep a synchronous fallback that returns null if not loaded
+export function getCurrentUserSync() {
+  // This will only work if auth state is already loaded
+  console.warn('getCurrentUserSync is deprecated, use getCurrentUser() instead');
+  return null;
+}
+
+export function getAllUsers() {
+  console.warn('getAllUsers is not supported with Supabase');
+  return {};
 }
 
 export function setCurrentUser(email) {
-  localStorage.setItem(CURRENT_USER_KEY, email);
-}
-
-export function signUp(email, password) {
-  const users = getAllUsers();
-  if (users[email]) return { ok: false, msg: "User already exists" };
-  users[email] = { email, passwordHash: btoa(password) };
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  setCurrentUser(email);
-  // New users start on free tier
-  setUserTier(email, 'free');
-  return { ok: true, msg: "Signed up successfully" };
-}
-
-export function signIn(email, password) {
-  const users = getAllUsers();
-  if (!users[email]) return { ok: false, msg: "User not found" };
-  if (users[email].passwordHash !== btoa(password)) return { ok: false, msg: "Incorrect password" };
-  setCurrentUser(email);
-  return { ok: true, msg: "Signed in successfully" };
-}
-
-export function signOut() {
-  localStorage.removeItem(CURRENT_USER_KEY);
-}
-
-export function getUserCalendars(email) {
-  const stored = localStorage.getItem(CALENDARS_KEY);
-  const allCalendars = stored ? JSON.parse(stored) : {};
-  return allCalendars[email] || [];
-}
-
-export function saveUserCalendar(email, calendar) {
-  const stored = localStorage.getItem(CALENDARS_KEY);
-  const allCalendars = stored ? JSON.parse(stored) : {};
-  if (!allCalendars[email]) allCalendars[email] = [];
-
-  if (!calendar.id) calendar.id = Date.now() + Math.random();
-  if (!calendar.savedAt) calendar.savedAt = new Date().toISOString();
-
-  allCalendars[email].push(calendar);
-  localStorage.setItem(CALENDARS_KEY, JSON.stringify(allCalendars));
-  return calendar;
-}
-
-// Subscription tier management
-export function getUserTier(email) {
-  const stored = localStorage.getItem(USER_TIER_KEY);
-  const tiers = stored ? JSON.parse(stored) : {};
-  return tiers[email] || 'free'; // Default to free tier
-}
-
-export function setUserTier(email, tier) {
-  const stored = localStorage.getItem(USER_TIER_KEY);
-  const tiers = stored ? JSON.parse(stored) : {};
-  tiers[email] = tier; // 'free' or 'pro'
-  localStorage.setItem(USER_TIER_KEY, JSON.stringify(tiers));
-}
-
-export function isPro(email) {
-  return getUserTier(email || getCurrentUser()) === 'pro';
+  console.warn('setCurrentUser is not needed with Supabase (handled automatically)');
 }
