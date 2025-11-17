@@ -8,7 +8,9 @@
     "export-logos": "node tools/export-logos.js",
     "test:e2e": "npx playwright test tests/e2e.spec.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@supabase/supabase-js": "^2.81.1"
+  },
   "devDependencies": {
     "sharp": "^0.32.4"
   },
