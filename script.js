@@ -305,12 +305,17 @@ function closeBrandModal() {
 
 if (brandBtn && brandModal) {
   brandBtn.addEventListener('click', async () => {
+    console.log('🧠 Brand Brain clicked');
     const user = await getCurrentUser();
+    console.log('🧠 Current user:', user);
     const userIsPro = await isPro(user);
+    console.log('🧠 User is Pro:', userIsPro);
     if (!userIsPro) {
+      console.log('🧠 Showing upgrade modal');
       showUpgradeModal();
       return;
     }
+    console.log('🧠 Opening brand modal');
     openBrandModal();
   });
 }
@@ -783,9 +788,13 @@ function hideGeneratingState(originalText) {
 // Export button handler
 if (exportBtn) {
   exportBtn.addEventListener("click", async () => {
+    console.log('📦 Export clicked');
     const user = await getCurrentUser();
+    console.log('📦 Current user:', user);
     const userIsPro = await isPro(user);
+    console.log('📦 User is Pro:', userIsPro);
     if (!userIsPro) {
+      console.log('📦 Showing upgrade modal');
       showUpgradeModal();
       return;
     }
