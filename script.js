@@ -230,7 +230,8 @@ if (upgradeModal) {
 if (upgradeBtn) {
   upgradeBtn.addEventListener('click', () => {
     // Open Stripe Payment Link in a new, clean tab to avoid any page-script interference
-    const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00';
+  // Force English locale to avoid dynamic import issues (Cannot find module './en') on some setups
+  const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
     try {
       const win = window.open(url, '_blank', 'noopener,noreferrer');
       if (!win) {
