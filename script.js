@@ -8,7 +8,7 @@ const grid = document.getElementById("calendar-grid");
   const userEmailEl = document.getElementById("user-email");
   const userTierBadge = document.getElementById("user-tier-badge");
   const signOutBtn = document.getElementById("sign-out-btn");
-  const libraryBtn = document.getElementById("library-btn");
+  const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
   const upgradeClose = document.getElementById("upgrade-close");
@@ -126,7 +126,7 @@ const grid = document.getElementById("calendar-grid");
   console.log("exportBtn:", exportBtn ? "✓ found" : "✗ MISSING");
   console.log("saveBtn:", saveBtn ? "✓ found" : "✗ MISSING");
   console.log("grid:", grid ? "✓ found" : "✗ MISSING");
-  console.log("libraryBtn:", libraryBtn ? "✓ found" : "✗ MISSING");
+  console.log("tabLibrary:", tabLibrary ? "✓ found" : "✗ MISSING");
   console.log("signOutBtn:", signOutBtn ? "✓ found" : "✗ MISSING");
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
@@ -173,14 +173,14 @@ if (upgradeBtn) {
 // Export function for other parts of the app to trigger upgrade modal
 window.showUpgradeModal = showUpgradeModal;
 
-// Library button handler
-if (libraryBtn) {
-  libraryBtn.addEventListener("click", () => {
-    console.log("Library button clicked");
+// Library tab handler
+if (tabLibrary) {
+  tabLibrary.addEventListener("click", () => {
+    console.log("Library tab clicked");
     window.location.href = "/library.html";
   });
 } else {
-  console.error("❌ Library button not found - this could prevent navigation");
+  console.error("❌ Library tab not found - this could prevent navigation");
 }
 
 // Sign out handler
@@ -1478,7 +1478,7 @@ console.log("✓ Script.js loaded successfully");
 if (generateBtn) console.log("✓ Generate button has event listener");
 if (saveBtn) console.log("✓ Save button has event listener");
 if (exportBtn) console.log("✓ Export button has event listener");
-if (libraryBtn) console.log("✓ Library button has event listener");
+if (tabLibrary) console.log("✓ Library tab has event listener");
 if (signOutBtn) console.log("✓ Sign out button has event listener");
 
 console.log("All buttons are ready to use!");
