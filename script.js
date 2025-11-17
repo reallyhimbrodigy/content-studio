@@ -834,12 +834,12 @@ if (exportBtn) {
 
 // Export CSV button handler
 if (exportCsvBtn) {
-  exportCsvBtn.addEventListener('click', () => {
-    const user = getCurrentUser();
+  exportCsvBtn.addEventListener('click', async () => {
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
-      alert('🔒 CSV exports are a Pro feature. Upgrade to export for schedulers!');
       return;
     }
     
@@ -867,12 +867,12 @@ if (exportCsvBtn) {
 
 // Export ICS (calendar reminders)
 if (exportIcsBtn) {
-  exportIcsBtn.addEventListener('click', () => {
-    const user = getCurrentUser();
+  exportIcsBtn.addEventListener('click', async () => {
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
-      alert('🔒 Calendar exports are a Pro feature. Upgrade to export to your calendar!');
       return;
     }
     
