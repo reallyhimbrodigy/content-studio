@@ -499,11 +499,15 @@ button.ghost:hover {
 
 /* Danger variant for destructive actions like Sign Out */
 .profile-menu-item.danger {
-  color: #ff6b6b; /* soft red */
+  background: #e5484d; /* solid red */
+  color: #ffffff;      /* white text */
 }
 .profile-menu-item.danger:hover {
-  background: rgba(255, 107, 107, 0.15);
-  color: #ffdede;
+  background: #d13a40; /* darker red on hover */
+  color: #ffffff;
+}
+.profile-menu-item.danger svg {
+  opacity: 1; /* ensure icon is fully visible on red */
 }
 
 .profile-menu-item svg {
