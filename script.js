@@ -158,8 +158,14 @@ if (profileTrigger && profileMenu) {
     profileTrigger.setAttribute('aria-expanded', String(!isOpen));
   });
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (but not when clicking sign-out)
   document.addEventListener('click', (e) => {
+    // Check if click is on sign-out button
+    const isSignOutClick = e.target.closest('#sign-out-btn');
+    if (isSignOutClick) {
+      return; // Let the sign-out handler deal with it
+    }
+    
     if (profileDropdown && !profileDropdown.contains(e.target)) {
       profileMenu.style.display = 'none';
       profileTrigger.setAttribute('aria-expanded', 'false');
@@ -167,10 +173,10 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Sign-out button handler
-if (signOutBtn) {
-  console.log('✓ Sign-out button found, attaching listener');
-  signOutBtn.addEventListener('click', async (e) => {
+// Sign-out button handler - using event delegation for reliability
+document.addEventListener('click', async (e) => {
+  const signOutButton = e.target.closest('#sign-out-btn');
+  if (signOutButton) {
     console.log('Sign-out button clicked!');
     e.stopPropagation();
     e.preventDefault();
@@ -184,6 +190,16 @@ if (signOutBtn) {
       // Redirect anyway
       window.location.href = '/auth.html';
     }
+  }
+});
+
+// Also add direct listener as backup
+if (signOutBtn) {
+  console.log('✓ Sign-out button found, attaching direct listener');
+  signOutBtn.addEventListener('click', async (e) => {
+    console.log('Direct sign-out listener triggered!');
+    e.stopPropagation();
+    e.preventDefault();
   });
 } else {
   console.warn('⚠️ Sign-out button not found in DOM');
@@ -630,7 +646,7 @@ try {
 
 // Check if there's a calendar to load from library
 const loadCalendarData = sessionStorage.getItem("promptly_load_calendar");
-if (loadCalendarData) {
+if (loadCalendarData && loadCalendarData !== 'undefined') {
   try {
     const cal = JSON.parse(loadCalendarData);
     // Ensure every post has a videoScript object
