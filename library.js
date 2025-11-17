@@ -279,14 +279,16 @@ async function loadCalendars() {
   }
 
   userCalendars.forEach((cal, idx) => {
-    const date = new Date(cal.generatedAt);
+    const date = new Date(cal.saved_at || cal.updated_at || cal.created_at || Date.now());
     const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nicheTitle = cal.niche_style || cal.nicheStyle || 'Untitled';
+    const posts = Array.isArray(cal.posts) ? cal.posts : [];
 
     const html = `
-      <div class="calendar-item">
+      <div class="calendar-item" data-id="${cal.id}">
         <div class="calendar-item-info">
-          <h3>${cal.nicheStyle || 'Untitled'}</h3>
-          <p>${cal.posts.length} posts • ${dateStr}</p>
+          <h3>${nicheTitle}</h3>
+          <p>${posts.length} posts • ${dateStr}</p>
         </div>
         <div class="calendar-item-actions">
           <button class="load-btn" data-idx="${idx}">Load & Edit</button>
@@ -345,12 +347,19 @@ async function loadCalendars() {
   });
 
   document.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const idx = btn.dataset.idx;
-      if (confirm(`Delete calendar "${userCalendars[idx].nicheStyle}"?`)) {
-        userCalendars.splice(idx, 1);
-        // TODO: Persist deletion to Supabase; for now reload UI
-        loadCalendars();
+      const cal = userCalendars[idx];
+      const title = cal.niche_style || cal.nicheStyle || 'Untitled';
+      if (!cal?.id) { alert('Missing calendar id.'); return; }
+      if (confirm(`Delete calendar "${title}"?`)) {
+        const { deleteUserCalendar } = await import('./user-store.js');
+        const res = await deleteUserCalendar(cal.id);
+        if (!res.ok) {
+          alert('Failed to delete calendar: ' + (res.msg || 'Unknown error'));
+          return;
+        }
+        await loadCalendars();
       }
     });
   });
