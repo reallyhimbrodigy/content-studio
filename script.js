@@ -173,54 +173,26 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Debug: Log all clicks to see what's being clicked
-document.addEventListener('click', (e) => {
-  if (e.target.closest('#sign-out-btn')) {
-    console.log('🎯 Click detected on sign-out button area!', {
-      target: e.target,
-      closest: e.target.closest('#sign-out-btn'),
-      eventPhase: e.eventPhase
-    });
-  }
-}, true);
-
-// Sign-out button handler - using event delegation for reliability
-document.addEventListener('click', async (e) => {
-  const signOutButton = e.target.closest('#sign-out-btn');
-  if (signOutButton) {
-    console.log('🔴 Sign-out button clicked via event delegation!');
-    e.stopPropagation();
-    e.preventDefault();
-    try {
-      console.log('📞 Calling signOut...');
-      await storeSignOut();
-      console.log('✅ Sign-out successful, redirecting...');
-      window.location.href = '/auth.html';
-    } catch (error) {
-      console.error('❌ Sign-out failed:', error);
-      // Redirect anyway
-      window.location.href = '/auth.html';
-    }
-  }
-}, true); // Use capture phase to catch it first
-
-// Also add direct listener
+// Simple sign-out handler - intercept the link click
 if (signOutBtn) {
-  console.log('✓ Sign-out button found, attaching direct listener');
+  console.log('✓ Sign-out link found, attaching handler');
   signOutBtn.addEventListener('click', async (e) => {
-    console.log('🔴 Direct sign-out listener triggered!');
-    e.stopPropagation();
+    console.log('🔴 SIGN OUT CLICKED!');
     e.preventDefault();
+    e.stopPropagation();
+    
     try {
-      console.log('📞 Calling signOut from direct listener...');
+      console.log('📞 Calling Supabase signOut...');
       await storeSignOut();
-      console.log('✅ Sign-out successful, redirecting...');
-      window.location.href = '/auth.html';
+      console.log('✅ Signed out successfully!');
     } catch (error) {
-      console.error('❌ Sign-out failed:', error);
-      window.location.href = '/auth.html';
+      console.error('❌ Sign-out error:', error);
     }
-  }, true); // Use capture phase
+    
+    // Always redirect to auth page
+    console.log('� Redirecting to auth page...');
+    window.location.href = '/auth.html';
+  });
 } else {
   console.warn('⚠️ Sign-out button not found in DOM');
 }
