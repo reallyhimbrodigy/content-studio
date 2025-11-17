@@ -133,20 +133,26 @@ const grid = document.getElementById("calendar-grid");
 // Display user email and tier badge (now async with Supabase)
 (async () => {
   const currentUser = await getCurrentUser();
+  console.log('Current user:', currentUser);
   if (currentUser) {
     if (userEmailEl) userEmailEl.textContent = currentUser;
     
     // Show Pro badge if user is Pro
     const userIsPro = await isPro(currentUser);
+    console.log('User is Pro:', userIsPro);
+    
     if (userTierBadge && userIsPro) {
       userTierBadge.textContent = 'PRO';
       userTierBadge.style.display = 'inline-block';
+      console.log('Profile trigger badge shown');
     }
     
     // Show Pro badge in profile menu
     const userProBadge = document.getElementById('user-pro-badge');
+    console.log('Profile menu badge element:', userProBadge);
     if (userProBadge && userIsPro) {
       userProBadge.style.display = 'inline-block';
+      console.log('Profile menu badge shown');
     }
   }
 })();

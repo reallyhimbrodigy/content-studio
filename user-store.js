@@ -85,6 +85,7 @@ export async function signOut() {
 export async function getUserTier(email) {
   try {
     const userId = await getCurrentUserId();
+    console.log('getUserTier - userId:', userId);
     if (!userId) return 'free';
     
     const { data, error } = await supabase
@@ -93,8 +94,11 @@ export async function getUserTier(email) {
       .eq('id', userId)
       .single();
     
+    console.log('getUserTier - data:', data, 'error:', error);
     if (error) throw error;
-    return data?.tier || 'free';
+    const tier = data?.tier || 'free';
+    console.log('getUserTier - returning tier:', tier);
+    return tier;
   } catch (error) {
     console.error('getUserTier error:', error);
     return 'free';
