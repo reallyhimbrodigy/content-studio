@@ -1,4 +1,21 @@
-import { signUp, signIn, getCurrentUser } from './user-store.js';
+import { signUp, signIn, getCurrentUser, signOut } from './user-store.js';
+
+// Handle sign-out redirect (e.g., /auth.html?signout=1)
+try {
+  const params = new URLSearchParams(window.location.search || '');
+  if (params.get('signout') === '1') {
+    // Clear session and optionally show a small message
+    signOut();
+    // Also clear legacy key if any lingering
+    try { localStorage.removeItem('promptly_current_user'); } catch {}
+    // Remove the query param from the URL without reloading
+    const url = new URL(window.location.href);
+    url.searchParams.delete('signout');
+    window.history.replaceState({}, '', url.pathname + (url.search ? '?' + url.search : ''));
+  }
+} catch (e) {
+  console.warn('auth.js: signout query handling failed', e);
+}
 
 // Auth modal UI bindings. Storage helpers are provided by `user-store.js`.
 const emailInput = document.getElementById("email");
