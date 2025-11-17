@@ -203,6 +203,7 @@ button {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Pro feature buttons - Promptly purple gradient */
 button.primary {
   background: linear-gradient(135deg, #7f5af0, #2cb1bc);
   color: #06060a;
@@ -212,6 +213,21 @@ button.primary {
 button.primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 34px rgba(127, 90, 240, 0.28);
+}
+
+/* Regular buttons - grey */
+button.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+button.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
 button.ghost {

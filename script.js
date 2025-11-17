@@ -165,15 +165,8 @@ if (upgradeModal) {
 
 if (upgradeBtn) {
   upgradeBtn.addEventListener('click', () => {
-    // For now, just upgrade the user to Pro (placeholder for payment)
-    const user = getCurrentUser();
-    if (user) {
-      setUserTier(user, 'pro');
-      alert('🎉 Upgraded to Pro! Refresh the page to see your new features.');
-      hideUpgradeModal();
-      // Refresh to show Pro badge
-      window.location.reload();
-    }
+    // Redirect to Stripe payment link
+    window.location.href = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00';
   });
 }
 

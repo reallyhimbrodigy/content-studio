@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Successful - Promptly</title>
+  <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .success-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+      text-align: center;
+      padding: 2rem;
+    }
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 1.5rem;
+      animation: scaleIn 0.5s ease-out;
+    }
+    @keyframes scaleIn {
+      from {
+        transform: scale(0);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+    .success-title {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+    .success-message {
+      font-size: 1.125rem;
+      color: var(--text-secondary);
+      margin-bottom: 2rem;
+      max-width: 500px;
+    }
+    .success-redirect {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    .success-features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+    .feature-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: left;
+    }
+    .feature-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--accent-primary);
+    }
+    .feature-card p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="success-container">
+    <svg class="success-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="10" fill="var(--accent-primary)" opacity="0.2"/>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="var(--accent-primary)"/>
+    </svg>
+    
+    <h1 class="success-title">Welcome to Promptly Pro! 🎉</h1>
+    <p class="success-message">
+      Your payment was successful. We're upgrading your account now...
+    </p>
+
+    <div class="success-features">
+      <div class="feature-card">
+        <h3>✨ Unlimited Calendars</h3>
+        <p>Generate as many content calendars as you need</p>
+      </div>
+      <div class="feature-card">
+        <h3>🌐 All Platforms</h3>
+        <p>Instagram, Twitter, LinkedIn, TikTok, YouTube</p>
+      </div>
+      <div class="feature-card">
+        <h3>🧠 Brand Brain AI</h3>
+        <p>Learns your voice for consistent content</p>
+      </div>
+      <div class="feature-card">
+        <h3>📦 ZIP Downloads</h3>
+        <p>Download entire calendars with all variants</p>
+      </div>
+    </div>
+
+    <p class="success-redirect" id="redirect-message">
+      Redirecting you to the dashboard in <span id="countdown">3</span> seconds...
+    </p>
+  </div>
+
+  <script type="module">
+    import { getCurrentUser, setUserTier } from './user-store.js';
+
+    // Upgrade user to Pro
+    const user = getCurrentUser();
+    if (user) {
+      setUserTier(user, 'pro');
+      console.log('✅ User upgraded to Pro:', user);
+    } else {
+      console.warn('⚠️ No user logged in. Payment succeeded but cannot upgrade.');
+    }
+
+    // Countdown and redirect
+    let countdown = 3;
+    const countdownEl = document.getElementById('countdown');
+    const interval = setInterval(() => {
+      countdown--;
+      countdownEl.textContent = countdown;
+      if (countdown <= 0) {
+        clearInterval(interval);
+        window.location.href = '/';
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
