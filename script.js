@@ -206,13 +206,30 @@ if (tabLibrary) {
 
 // Sign out handler
 if (signOutBtn) {
-  signOutBtn.addEventListener("click", () => {
+  console.log("✓ Sign out button found, attaching event listener");
+  signOutBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     console.log("Sign out button clicked");
     storeSignOut();
     window.location.href = "/auth.html";
   });
 } else {
   console.error("❌ Sign out button not found");
+  // Try to query it again in case of timing issue
+  setTimeout(() => {
+    const btn = document.getElementById("sign-out-btn");
+    if (btn) {
+      console.log("✓ Sign out button found on retry");
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("Sign out button clicked (retry handler)");
+        storeSignOut();
+        window.location.href = "/auth.html";
+      });
+    }
+  }, 100);
 }
 
 // Brand Brain modal handlers
