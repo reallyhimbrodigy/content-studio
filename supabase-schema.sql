@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable Row Level Security
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+
 -- Policies: Users can only read/update their own profile
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
@@ -34,6 +38,12 @@ CREATE TABLE IF NOT EXISTS public.calendars (
 
 -- Enable Row Level Security
 ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view own calendars" ON public.calendars;
+DROP POLICY IF EXISTS "Users can insert own calendars" ON public.calendars;
+DROP POLICY IF EXISTS "Users can update own calendars" ON public.calendars;
+DROP POLICY IF EXISTS "Users can delete own calendars" ON public.calendars;
 
 -- Policies: Users can only access their own calendars
 CREATE POLICY "Users can view own calendars"
