@@ -497,6 +497,15 @@ button.ghost:hover {
   transform: none;
 }
 
+/* Danger variant for destructive actions like Sign Out */
+.profile-menu-item.danger {
+  color: #ff6b6b; /* soft red */
+}
+.profile-menu-item.danger:hover {
+  background: rgba(255, 107, 107, 0.15);
+  color: #ffdede;
+}
+
 .profile-menu-item svg {
   width: 16px;
   height: 16px;
