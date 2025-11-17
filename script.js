@@ -169,10 +169,15 @@ if (profileTrigger && profileMenu) {
 
 // Sign-out button handler
 if (signOutBtn) {
+  console.log('✓ Sign-out button found, attaching listener');
   signOutBtn.addEventListener('click', async (e) => {
+    console.log('Sign-out button clicked!');
     e.stopPropagation();
+    e.preventDefault();
     try {
+      console.log('Calling signOut...');
       await storeSignOut();
+      console.log('Sign-out successful, redirecting...');
       window.location.href = '/auth.html';
     } catch (error) {
       console.error('Sign-out failed:', error);
@@ -180,6 +185,8 @@ if (signOutBtn) {
       window.location.href = '/auth.html';
     }
   });
+} else {
+  console.warn('⚠️ Sign-out button not found in DOM');
 }
 
 // Upgrade modal handlers
