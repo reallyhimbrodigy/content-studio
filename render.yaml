@@ -3,7 +3,7 @@ services:
     name: promptly
     env: node
     rootDir: .
-  buildCommand: npm install --omit=dev
+    buildCommand: npm install --omit=dev
     startCommand: npm start
     autoDeploy: true
     envVars:
