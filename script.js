@@ -304,9 +304,10 @@ function closeBrandModal() {
 }
 
 if (brandBtn && brandModal) {
-  brandBtn.addEventListener('click', () => {
-    const user = getCurrentUser();
-    if (!isPro(user)) {
+  brandBtn.addEventListener('click', async () => {
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
+    if (!userIsPro) {
       showUpgradeModal();
       return;
     }
@@ -507,9 +508,10 @@ const createCard = (post) => {
 
   btnCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); btnCopyFull.textContent='Copied!'; setTimeout(()=>btnCopyFull.textContent='Copy Full',1000);} catch(e){} });
   btnDownloadDoc.addEventListener('click', async ()=>{
-    const user = getCurrentUser();
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
       return;
     }
@@ -780,7 +782,14 @@ function hideGeneratingState(originalText) {
 
 // Export button handler
 if (exportBtn) {
-  exportBtn.addEventListener("click", () => {
+  exportBtn.addEventListener("click", async () => {
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
+    if (!userIsPro) {
+      showUpgradeModal();
+      return;
+    }
+    
     const niche = nicheInput ? nicheInput.value.trim() : "";
     if (!currentCalendar || currentCalendar.length === 0) {
       alert("No calendar to export. Generate a calendar first.");
@@ -863,11 +872,11 @@ if (exportIcsBtn) {
 // ZIP export
 if (downloadZipBtn) {
   downloadZipBtn.addEventListener('click', async () => {
-    const user = getCurrentUser();
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
-      alert('🔒 Downloads are a Pro feature. Upgrade to download your calendars!');
       return;
     }
     
@@ -980,6 +989,13 @@ if (exportVariantsCsvBtn) {
 // Variants ZIP export
 if (downloadVariantsZipBtn) {
   downloadVariantsZipBtn.addEventListener('click', async ()=>{
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
+    if (!userIsPro) {
+      showUpgradeModal();
+      return;
+    }
+    
     if (!currentCalendar || currentCalendar.length===0) { alert('Generate calendar first.'); return; }
   const JSZipLib = await ensureZip().catch(()=>null);
   if (!JSZipLib) { alert('Failed to load Zip library. Please check your connection and try again.'); return; }
@@ -1000,11 +1016,11 @@ if (downloadVariantsZipBtn) {
 // Download Calendar Folder (30 HTML files)
 if (downloadCalendarFolderBtn) {
   downloadCalendarFolderBtn.addEventListener('click', async ()=>{
-    const user = getCurrentUser();
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
-      alert('🔒 Calendar downloads are a Pro feature. Upgrade to download your full calendar!');
       return;
     }
     
