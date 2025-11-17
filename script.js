@@ -952,11 +952,11 @@ if (copyAllFullBtn) {
 // Generate platform variants
 if (genVariantsBtn) {
   genVariantsBtn.addEventListener('click', async ()=>{
-    const user = getCurrentUser();
+    const user = await getCurrentUser();
+    const userIsPro = await isPro(user);
     // Gate: Pro feature
-    if (!isPro(user)) {
+    if (!userIsPro) {
       showUpgradeModal();
-      alert('🔒 Platform variants are a Pro feature. Upgrade to get Instagram, TikTok, and LinkedIn versions!');
       return;
     }
     
@@ -1309,11 +1309,12 @@ function buildPostHTML(post){
 
 // Save Calendar button handler
 if (saveBtn) {
-  saveBtn.addEventListener("click", () => {
-    const currentUser = getCurrentUser();
+  saveBtn.addEventListener("click", async () => {
+    const currentUser = await getCurrentUser();
     
     // Gate: Pro feature
-    if (!isPro(currentUser)) {
+    const userIsPro = await isPro(currentUser);
+    if (!userIsPro) {
       showUpgradeModal();
       if (feedbackEl) {
         feedbackEl.textContent = "🔒 Save to Library is a Pro feature. Upgrade to save unlimited calendars!";
