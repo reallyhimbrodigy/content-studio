@@ -204,27 +204,40 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Sign-out handler
-document.addEventListener('click', async (e) => {
-  if (e.target.closest('#sign-out-btn')) {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('🔴 Sign out clicked!');
+// Sign-out handler - attach directly to button once it exists
+setTimeout(() => {
+  const signOutButton = document.getElementById('sign-out-btn');
+  console.log('Looking for sign-out button:', signOutButton);
+  
+  if (signOutButton) {
+    console.log('✓ Sign-out button found, attaching handler');
     
-    // Close the dropdown first
-    if (profileMenu) profileMenu.style.display = 'none';
+    signOutButton.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      
+      console.log('🔴 SIGN OUT BUTTON CLICKED!');
+      
+      // Close the dropdown
+      const menu = document.getElementById('profile-menu');
+      if (menu) menu.style.display = 'none';
+      
+      try {
+        console.log('Calling storeSignOut...');
+        await storeSignOut();
+        console.log('✓ Signed out successfully, redirecting...');
+        window.location.href = '/auth.html';
+      } catch (error) {
+        console.error('❌ Sign-out error:', error);
+        alert('Error signing out: ' + error.message);
+      }
+    });
     
-    try {
-      console.log('Calling signOut...');
-      await storeSignOut();
-      console.log('✓ Signed out, redirecting...');
-      window.location.href = '/auth.html';
-    } catch (error) {
-      console.error('Sign-out error:', error);
-      alert('Error signing out. Please try again.');
-    }
+    console.log('✓ Sign-out handler attached successfully');
+  } else {
+    console.error('❌ Sign-out button not found!');
   }
-});
+}, 500);
 
 // Upgrade modal handlers
 function showUpgradeModal() {
