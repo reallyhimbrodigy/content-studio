@@ -94,7 +94,7 @@ const emailInput = document.getElementById("email");
         // Handle "user already exists" by flipping to Sign In mode automatically
         if (!result.ok && result.code === 'USER_EXISTS') {
           if (authFeedbackEl) {
-            authFeedbackEl.textContent = 'An account already exists for this email. Redirecting to Sign In…';
+            authFeedbackEl.textContent = result.msg; // Use the message from signUp
             authFeedbackEl.className = 'error';
           }
           // Switch UI to Sign In and keep the email filled in

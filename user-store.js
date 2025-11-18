@@ -55,13 +55,24 @@ export async function signUp(email, password) {
       // Normalize common "already exists" cases from Supabase/Auth
       const alreadyExists = msg.includes('already') || msg.includes('exists') || msg.includes('registered');
       if (alreadyExists) {
-        return { ok: false, code: 'USER_EXISTS', msg: 'An account already exists for this email. Please sign in.' };
+        return { ok: false, code: 'USER_EXISTS', msg: 'This email is already registered. Sign in now!' };
       }
       throw error;
     }
     
-    // Check if email confirmation is required
+    // Supabase often returns success for existing users (with no session) to prevent email enumeration
+    // We need to detect this case and treat it as "user exists"
     if (data?.user && !data.session) {
+      // Check if this is actually an existing user by examining the user object
+      // Supabase returns identities array only for existing users in some configs
+      const hasIdentities = data.user.identities && data.user.identities.length > 0;
+      
+      // If no identities, it's likely an existing user (Supabase security feature)
+      if (!hasIdentities) {
+        return { ok: false, code: 'USER_EXISTS', msg: 'This email is already registered. Sign in now!' };
+      }
+      
+      // Otherwise, email confirmation is genuinely required
       return { ok: true, msg: "Check your email to confirm your account!" };
     }
     
@@ -71,7 +82,7 @@ export async function signUp(email, password) {
     console.error('signUp error:', error);
     const msg = String(error?.message || '').toLowerCase();
     if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
-      return { ok: false, code: 'USER_EXISTS', msg: 'An account already exists for this email. Please sign in.' };
+      return { ok: false, code: 'USER_EXISTS', msg: 'This email is already registered. Sign in now!' };
     }
     return { ok: false, msg: error?.message || "Sign up failed" };
   }
