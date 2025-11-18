@@ -86,6 +86,26 @@ const emailInput = document.getElementById("email");
         // Restore button text
         if (authBtn) authBtn.textContent = isSignUp ? "Sign Up" : "Sign In";
         
+        // Handle "user already exists" by flipping to Sign In mode automatically
+        if (!result.ok && result.code === 'USER_EXISTS') {
+          if (authFeedbackEl) {
+            authFeedbackEl.textContent = 'An account already exists for this email. Redirecting to Sign In…';
+            authFeedbackEl.className = 'error';
+          }
+          // Switch UI to Sign In and keep the email filled in
+          isSignUp = false;
+          applyModeUI();
+          // Focus password for a quicker sign-in
+          if (passwordInput) passwordInput.focus();
+          // Optionally update URL to reflect mode
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('mode', 'login');
+            window.history.replaceState({}, '', url.pathname + '?' + url.searchParams.toString());
+          } catch {}
+          return;
+        }
+
         if (authFeedbackEl) {
           authFeedbackEl.textContent = result.msg;
           authFeedbackEl.className = result.ok ? "success" : "error";

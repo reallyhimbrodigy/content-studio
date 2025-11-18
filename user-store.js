@@ -38,7 +38,15 @@ export async function signUp(email, password) {
       }
     });
     
-    if (error) throw error;
+    if (error) {
+      const msg = String(error.message || '').toLowerCase();
+      // Normalize common "already exists" cases from Supabase/Auth
+      const alreadyExists = msg.includes('already') || msg.includes('exists') || msg.includes('registered');
+      if (alreadyExists) {
+        return { ok: false, code: 'USER_EXISTS', msg: 'An account already exists for this email. Please sign in.' };
+      }
+      throw error;
+    }
     
     // Check if email confirmation is required
     if (data?.user && !data.session) {
@@ -49,7 +57,11 @@ export async function signUp(email, password) {
     return { ok: true, msg: "Signed up successfully!" };
   } catch (error) {
     console.error('signUp error:', error);
-    return { ok: false, msg: error.message || "Sign up failed" };
+    const msg = String(error?.message || '').toLowerCase();
+    if (msg.includes('already') || msg.includes('exists') || msg.includes('registered')) {
+      return { ok: false, code: 'USER_EXISTS', msg: 'An account already exists for this email. Please sign in.' };
+    }
+    return { ok: false, msg: error?.message || "Sign up failed" };
   }
 }
 
