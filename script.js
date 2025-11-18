@@ -193,13 +193,23 @@ if (profileTrigger && profileMenu) {
     const clickedInsideDropdown = profileDropdown && profileDropdown.contains(e.target);
     const clickedSignOut = e.target.id === 'sign-out-btn' || e.target.closest('#sign-out-btn');
     
+    console.log('Document click handler:', {
+      target: e.target,
+      targetId: e.target.id,
+      clickedInsideDropdown,
+      clickedSignOut,
+      menuVisible: profileMenu.style.display === 'block'
+    });
+    
     // Don't close if clicked sign-out button - let its handler run
     if (clickedSignOut) {
+      console.log('Detected sign-out click, returning early');
       return;
     }
     
     // Close if clicked outside dropdown
     if (!clickedInsideDropdown && profileMenu.style.display === 'block') {
+      console.log('Closing dropdown - clicked outside');
       profileMenu.style.display = 'none';
       profileTrigger.setAttribute('aria-expanded', 'false');
     }
