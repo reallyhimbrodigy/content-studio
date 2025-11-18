@@ -30,6 +30,20 @@ const emailInput = document.getElementById("email");
 
   let isSignUp = true;
 
+  // Initialize mode from URL (?mode=login|signup)
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const mode = (params.get('mode') || '').toLowerCase();
+    if (mode === 'login') isSignUp = false;
+    if (mode === 'signup') isSignUp = true;
+  } catch {}
+
+  const applyModeUI = () => {
+    if (authBtn) authBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+    if (toggleBtn) toggleBtn.textContent = isSignUp ? 'Sign In' : 'Sign Up';
+    if (authFeedbackEl) authFeedbackEl.textContent = '';
+  };
+
   // If this script is loaded on a page without the auth form (e.g., index.html),
   // skip binding to avoid errors.
   if (!authForm) {
@@ -41,13 +55,14 @@ const emailInput = document.getElementById("email");
       toggleBtn.addEventListener("click", (e) => {
         e.preventDefault();
         isSignUp = !isSignUp;
-        if (authBtn) authBtn.textContent = isSignUp ? "Sign Up" : "Sign In";
-        toggleBtn.textContent = isSignUp ? "Sign In" : "Sign Up";
-        if (authFeedbackEl) authFeedbackEl.textContent = "";
+        applyModeUI();
       });
     } else {
       console.warn('auth.js: toggle button not found');
     }
+
+    // Apply initial mode UI
+    applyModeUI();
 
     if (authForm) {
       authForm.addEventListener("submit", async (e) => {

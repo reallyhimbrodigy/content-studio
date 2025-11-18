@@ -130,84 +130,6 @@ const grid = document.getElementById("calendar-grid");
   console.log("signOutBtn:", signOutBtn ? "✓ found" : "✗ MISSING");
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
-// Display user email and tier badge (now async with Supabase)
-(async () => {
-  const currentUser = await getCurrentUser();
-  console.log('Current user:', currentUser);
-  if (currentUser) {
-    if (userEmailEl) userEmailEl.textContent = currentUser;
-    
-    // Show Pro badge if user is Pro
-    const userIsPro = await isPro(currentUser);
-    console.log('User is Pro:', userIsPro);
-    
-    if (userTierBadge && userIsPro) {
-      userTierBadge.textContent = 'PRO';
-      userTierBadge.style.display = 'inline-block';
-      console.log('Profile trigger badge shown');
-    }
-    
-    // Show Pro badge in profile menu
-    const userProBadge = document.getElementById('user-pro-badge');
-    console.log('Profile menu badge element:', userProBadge);
-    if (userProBadge && userIsPro) {
-      userProBadge.style.display = 'inline-block';
-      console.log('Profile menu badge shown');
-    }
-  }
-})();
-
-// Profile dropdown toggle
-const profileTrigger = document.getElementById('profile-trigger');
-const profileMenu = document.getElementById('profile-menu');
-const profileDropdown = document.getElementById('profile-dropdown');
-
-if (profileTrigger && profileMenu) {
-  profileTrigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = profileMenu.style.display === 'block';
-    profileMenu.style.display = isOpen ? 'none' : 'block';
-    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
-  });
-
-  // Close dropdown when clicking outside (but not when clicking sign-out)
-  document.addEventListener('click', (e) => {
-    // Check if click is on sign-out button
-    const isSignOutClick = e.target.closest('#sign-out-btn');
-    if (isSignOutClick) {
-      return; // Let the sign-out handler deal with it
-    }
-    
-    if (profileDropdown && !profileDropdown.contains(e.target)) {
-      profileMenu.style.display = 'none';
-      profileTrigger.setAttribute('aria-expanded', 'false');
-    }
-  });
-}
-
-// Sign-out handler using event delegation
-console.log('Setting up sign-out event delegation...');
-document.addEventListener('click', async (e) => {
-  const signOutLink = e.target.closest('#sign-out-btn');
-  if (signOutLink) {
-    console.log('SIGN OUT CLICKED!');
-    e.preventDefault();
-    e.stopPropagation();
-    
-    try {
-      console.log('Calling Supabase signOut...');
-      await storeSignOut();
-      console.log('Signed out successfully!');
-    } catch (error) {
-      console.error('Sign-out error:', error);
-    }
-    
-    console.log('Redirecting to auth page...');
-    window.location.href = '/auth.html';
-  }
-});
-console.log('Sign-out handler ready!');
-
 // Upgrade modal handlers
 function showUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'flex';
@@ -260,54 +182,6 @@ if (tabLibrary) {
 } else {
   console.error("❌ Library tab not found - this could prevent navigation");
 }
-
-// Sign out handler - make it globally accessible
-window.handleSignOut = function() {
-  console.log("Sign out triggered");
-  storeSignOut();
-  window.location.href = "/auth.html";
-};
-
-// Attach to button with multiple methods
-function attachSignOutHandler() {
-  const btn = document.getElementById("sign-out-btn");
-  if (btn) {
-    console.log("✓ Sign out button found, attaching event listener");
-    
-    // Remove any existing listeners by cloning
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-    
-    // Attach the handler
-    newBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log("Sign out button clicked!");
-      window.handleSignOut();
-    });
-    
-    console.log("✓ Sign out handler attached successfully");
-  } else {
-    console.error("❌ Sign out button not found");
-  }
-}
-
-// Try immediately
-if (signOutBtn) {
-  attachSignOutHandler();
-} else {
-  // Try again after a short delay
-  setTimeout(attachSignOutHandler, 100);
-}
-
-// Delegated handler as a safety net (covers dynamic DOM/swaps)
-document.addEventListener('click', (e) => {
-  const btn = e.target && e.target.closest && e.target.closest('#sign-out-btn');
-  if (btn) {
-    e.preventDefault();
-    window.handleSignOut();
-  }
-});
 
 // Brand Brain modal handlers
 function openBrandModal() {

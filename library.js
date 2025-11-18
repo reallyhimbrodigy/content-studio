@@ -244,9 +244,7 @@ if (profileTrigger && profileMenu) {
 }
 
 if (newCalendarBtn) {
-  newCalendarBtn.addEventListener('click', async () => {
-    const userIsPro = await isPro(currentUser);
-    if (!userIsPro) { showUpgradeModal(); return; }
+  newCalendarBtn.addEventListener('click', () => {
     window.location.href = '/';
   });
 }
