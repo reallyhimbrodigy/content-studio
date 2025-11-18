@@ -188,27 +188,43 @@ if (profileTrigger && profileMenu) {
     profileTrigger.setAttribute('aria-expanded', String(!isOpen));
   });
 
+  // Close dropdown when clicking outside (but NOT when clicking inside the menu)
   document.addEventListener('click', (e) => {
-    if (profileDropdown && !profileDropdown.contains(e.target)) {
-      profileMenu.style.display = 'none';
-      profileTrigger.setAttribute('aria-expanded', 'false');
+    const clickedInsideDropdown = profileDropdown && profileDropdown.contains(e.target);
+    const clickedSignOut = e.target.closest('#sign-out-btn');
+    
+    // Only close if clicked outside AND not the sign-out button
+    if (!clickedInsideDropdown || clickedSignOut) {
+      // Don't close here if it's sign-out - let the sign-out handler handle it
+      if (!clickedSignOut && profileMenu.style.display === 'block') {
+        profileMenu.style.display = 'none';
+        profileTrigger.setAttribute('aria-expanded', 'false');
+      }
     }
   });
 }
 
 // Sign-out handler
-if (signOutBtn) {
-  signOutBtn.addEventListener('click', async (e) => {
+document.addEventListener('click', async (e) => {
+  if (e.target.closest('#sign-out-btn')) {
     e.preventDefault();
-    console.log('Sign out clicked');
+    e.stopPropagation();
+    console.log('🔴 Sign out clicked!');
+    
+    // Close the dropdown first
+    if (profileMenu) profileMenu.style.display = 'none';
+    
     try {
+      console.log('Calling signOut...');
       await storeSignOut();
+      console.log('✓ Signed out, redirecting...');
       window.location.href = '/auth.html';
     } catch (error) {
       console.error('Sign-out error:', error);
+      alert('Error signing out. Please try again.');
     }
-  });
-}
+  }
+});
 
 // Upgrade modal handlers
 function showUpgradeModal() {
