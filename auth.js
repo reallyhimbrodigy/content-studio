@@ -117,9 +117,23 @@ const emailInput = document.getElementById("email");
         }
 
         if (result.ok) {
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 1000);
+          // Verify session is established before redirecting
+          const verifyAndRedirect = async () => {
+            try {
+              const user = await getCurrentUser();
+              if (user) {
+                window.location.href = "/";
+              } else {
+                // Session not ready yet, try again
+                setTimeout(verifyAndRedirect, 300);
+              }
+            } catch (err) {
+              console.error('Session verification error:', err);
+              setTimeout(verifyAndRedirect, 300);
+            }
+          };
+          // Start verification after a brief delay
+          setTimeout(verifyAndRedirect, 500);
         }
       });
     }

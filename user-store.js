@@ -29,6 +29,18 @@ export async function getCurrentUserId() {
 
 export async function signUp(email, password) {
   try {
+    // Check if user is already logged in
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      // User is already logged in - check if it's the same email
+      const currentEmail = session.user?.email;
+      if (currentEmail && currentEmail.toLowerCase() === email.toLowerCase()) {
+        return { ok: false, code: 'USER_EXISTS', msg: 'You are already signed in with this account.' };
+      } else {
+        return { ok: false, code: 'USER_EXISTS', msg: 'Please sign out of your current account first.' };
+      }
+    }
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
