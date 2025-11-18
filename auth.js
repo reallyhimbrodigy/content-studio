@@ -40,13 +40,67 @@ const emailInput = document.getElementById("email");
 
   const forgotPasswordLink = document.getElementById('forgot-password-link');
   const forgotPasswordBtn = document.getElementById('forgot-password-btn');
+  const termsAgreement = document.getElementById('terms-agreement');
+  const passwordStrength = document.getElementById('password-strength');
+  const authBtnText = document.getElementById('auth-btn-text');
+  const authBtnSpinner = document.getElementById('auth-btn-spinner');
+  const googleAuthBtn = document.getElementById('google-auth-btn');
+
+  // Password strength checker
+  const checkPasswordStrength = (password) => {
+    let strength = 0;
+    if (password.length >= 6) strength++;
+    if (password.length >= 10) strength++;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password) && /[^a-zA-Z0-9]/.test(password)) strength++;
+    
+    return strength; // 0-4
+  };
+
+  const updatePasswordStrength = () => {
+    if (!isSignUp || !passwordInput || !passwordStrength) return;
+    
+    const password = passwordInput.value;
+    const strength = checkPasswordStrength(password);
+    
+    const bars = [
+      document.getElementById('strength-bar-1'),
+      document.getElementById('strength-bar-2'),
+      document.getElementById('strength-bar-3'),
+      document.getElementById('strength-bar-4')
+    ];
+    
+    const strengthText = document.getElementById('strength-text');
+    
+    // Reset all bars
+    bars.forEach(bar => bar.style.background = 'rgba(255, 255, 255, 0.1)');
+    
+    if (password.length === 0) {
+      strengthText.textContent = '';
+      return;
+    }
+    
+    const colors = ['#ff7878', '#ffb347', '#ffd93d', '#6bcf7f'];
+    const labels = ['Weak password', 'Fair password', 'Good password', 'Strong password'];
+    
+    for (let i = 0; i < strength; i++) {
+      bars[i].style.background = colors[strength - 1];
+    }
+    
+    strengthText.textContent = labels[strength - 1] || 'Too short';
+    strengthText.style.color = colors[strength - 1] || '#ff7878';
+  };
 
   const applyModeUI = () => {
-    if (authBtn) authBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+    if (authBtnText) authBtnText.textContent = isSignUp ? 'Sign Up' : 'Sign In';
     if (toggleBtn) toggleBtn.textContent = isSignUp ? 'Sign In' : 'Sign Up';
     if (authFeedbackEl) authFeedbackEl.textContent = '';
     // Show "Forgot password?" only in Sign In mode
     if (forgotPasswordLink) forgotPasswordLink.style.display = isSignUp ? 'none' : 'block';
+    // Show terms agreement and password strength only in Sign Up mode
+    if (termsAgreement) termsAgreement.style.display = isSignUp ? 'block' : 'none';
+    if (passwordStrength) passwordStrength.style.display = isSignUp ? 'block' : 'none';
+    if (isSignUp && passwordInput) updatePasswordStrength();
   };
 
   // If this script is loaded on a page without the auth form (e.g., index.html),
@@ -84,12 +138,19 @@ const emailInput = document.getElementById("email");
         }
 
         // Show loading state
-        if (authBtn) authBtn.textContent = "...";
+        if (authBtnText) authBtnText.style.display = 'none';
+        if (authBtnSpinner) authBtnSpinner.style.display = 'inline-block';
+        if (authBtn) authBtn.disabled = true;
         
         const result = isSignUp ? await signUp(email, password) : await signIn(email, password);
         
         // Restore button text
-        if (authBtn) authBtn.textContent = isSignUp ? "Sign Up" : "Sign In";
+        if (authBtnText) {
+          authBtnText.style.display = 'inline';
+          authBtnText.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+        }
+        if (authBtnSpinner) authBtnSpinner.style.display = 'none';
+        if (authBtn) authBtn.disabled = false;
         
         // Handle "user already exists" by flipping to Sign In mode automatically
         if (!result.ok && result.code === 'USER_EXISTS') {
@@ -145,6 +206,42 @@ const emailInput = document.getElementById("email");
         passwordInput.type = isHidden ? 'text' : 'password';
         pwToggle.setAttribute('aria-pressed', String(isHidden));
         pwToggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+      });
+    }
+
+    // Password strength checker (only during sign up)
+    if (passwordInput) {
+      passwordInput.addEventListener('input', updatePasswordStrength);
+    }
+
+    // Google OAuth
+    if (googleAuthBtn) {
+      googleAuthBtn.addEventListener('click', async () => {
+        try {
+          const { getSupabaseClient } = await import('./supabase-client.js');
+          const supabase = await getSupabaseClient();
+          
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: `${window.location.origin}/`
+            }
+          });
+          
+          if (error) {
+            console.error('Google auth error:', error);
+            if (authFeedbackEl) {
+              authFeedbackEl.textContent = 'Failed to sign in with Google';
+              authFeedbackEl.className = 'error';
+            }
+          }
+        } catch (err) {
+          console.error('Google auth setup error:', err);
+          if (authFeedbackEl) {
+            authFeedbackEl.textContent = 'Failed to initialize Google sign-in';
+            authFeedbackEl.className = 'error';
+          }
+        }
       });
     }
 
