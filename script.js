@@ -136,30 +136,41 @@ const grid = document.getElementById("calendar-grid");
   const publicNav = document.getElementById('public-nav');
   const userMenu = document.getElementById('user-menu');
   
+  console.log('Auth check - currentUser:', currentUser);
+  console.log('publicNav element:', publicNav);
+  console.log('userMenu element:', userMenu);
+  
   if (currentUser) {
     // User is logged in - show profile menu
-    console.log('User logged in:', currentUser);
+    console.log('✓ User logged in:', currentUser);
     if (publicNav) publicNav.style.display = 'none';
-    if (userMenu) userMenu.style.display = 'flex';
+    if (userMenu) {
+      userMenu.style.display = 'block';
+      console.log('✓ User menu displayed');
+    }
     
     // Populate user email
-    if (userEmailEl) userEmailEl.textContent = currentUser;
+    if (userEmailEl) {
+      userEmailEl.textContent = currentUser;
+      console.log('✓ Email set:', currentUser);
+    }
     
     // Show Pro badge if applicable
     const userIsPro = await isPro(currentUser);
-    if (userTierBadge && userIsPro) {
-      userTierBadge.textContent = 'PRO';
-      userTierBadge.style.display = 'inline-block';
-    }
+    console.log('User is Pro:', userIsPro);
     
     const userProBadge = document.getElementById('user-pro-badge');
     if (userProBadge && userIsPro) {
       userProBadge.style.display = 'inline-block';
+      console.log('✓ Pro badge shown');
     }
   } else {
     // User is not logged in - show public nav
-    console.log('No user logged in - showing public nav');
-    if (publicNav) publicNav.style.display = 'flex';
+    console.log('✗ No user logged in - showing public nav');
+    if (publicNav) {
+      publicNav.style.display = 'flex';
+      console.log('✓ Public nav displayed');
+    }
     if (userMenu) userMenu.style.display = 'none';
   }
 })();

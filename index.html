@@ -28,28 +28,24 @@
           
           <!-- User menu (shown when logged in) -->
           <div id="user-menu" class="user-menu" style="display: none;">
-            <button id="brand-brain-btn" class="primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Brand Brain</button>
             <div class="profile-dropdown" id="profile-dropdown">
               <button class="profile-trigger" id="profile-trigger" aria-label="User menu" aria-expanded="false">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/>
                   <path d="M4 20c0-4 3.5-6 8-6s8 2 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-                <span id="user-tier-badge" class="tier-badge" style="display: none;"></span>
               </button>
               <div class="profile-menu" id="profile-menu" style="display: none;">
-                <div class="profile-menu-header">
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span id="user-email" class="profile-email"></span>
-                    <span id="user-pro-badge" class="pro-badge" style="display: none;">PRO</span>
-                  </div>
+                <div class="profile-menu-header" style="padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.5rem;">
+                  <span id="user-email" style="color: rgba(245, 246, 248, 0.72); font-size: 0.9rem;"></span>
+                  <span id="user-pro-badge" class="pro-badge" style="display: none;">PRO</span>
                 </div>
-                <a href="#" id="sign-out-btn" class="profile-menu-item danger" style="text-decoration: none; display: flex; align-items: center; gap: 0.5rem;">
+                <button id="sign-out-btn" class="profile-menu-item" style="width: 100%; text-align: left; background: rgba(255, 255, 255, 0.05); color: rgba(245, 246, 248, 0.72); border: none; padding: 0.75rem 1rem; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   Sign Out
-                </a>
+                </button>
               </div>
             </div>
           </div>
