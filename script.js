@@ -230,14 +230,13 @@ setTimeout(() => {
       e.preventDefault();
       e.stopPropagation();
       
-      // Close the dropdown
-      const menu = document.getElementById('profile-menu');
-      if (menu) menu.style.display = 'none';
+      // DON'T close the dropdown here - it causes the click event to think we're outside
       
       try {
         console.log('Calling storeSignOut...');
         await storeSignOut();
         console.log('✓ Signed out successfully, redirecting...');
+        // Redirect will happen, no need to close dropdown
         window.location.href = '/auth.html';
       } catch (error) {
         console.error('❌ Sign-out error:', error);
