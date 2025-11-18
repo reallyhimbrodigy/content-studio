@@ -200,35 +200,65 @@ function callOpenAI(nicheStyle, brandContext, opts = {}) {
           if (!content) return reject(new Error('No content'));
 
           // Sanitize common wrappers (markdown fences) and try several parse strategies
-          let text = String(content).trim();
-          // remove ```json or ``` code fences
-          text = text.replace(/```\s*json\s*/i, '');
-          text = text.replace(/```/g, '').trim();
+          let raw = String(content).trim();
+          // remove code fences if any leaked
+          raw = raw.replace(/```\s*json\s*/gi, '').replace(/```/g, '').trim();
+          // Occasionally the model prepends or appends stray guidance text; extract first JSON array
+          const extractJsonArray = (txt) => {
+            const start = txt.indexOf('[');
+            const end = txt.lastIndexOf(']');
+            if (start === -1 || end === -1 || end <= start) return txt; // fallback
+            return txt.substring(start, end + 1);
+          };
+          // Strip leading BOM or zero-width chars
+          raw = raw.replace(/[\u200B\uFEFF]/g, '');
+          let candidate = extractJsonArray(raw);
+          // Remove trailing commas before ] or }
+          candidate = candidate.replace(/,\s*(\]|\})/g, '$1');
+          // Remove duplicate commas (,,) which can appear
+          candidate = candidate.replace(/,,+/g, ',');
+          // Basic key cleanup: ensure property names are quoted (rare if model misbehaves)
+          // (Conservative: only fix unquoted keys followed by colon and value starting with quote/number/true/false/[/{)
+          candidate = candidate.replace(/([,{]\s*)([a-zA-Z0-9_]+)\s*:(?=\s*["0-9tfn\[{])/g, '$1"$2":');
 
-          // 1) try direct JSON parse
-          try {
-            const parsed = JSON.parse(text);
-            return resolve(parsed);
-          } catch (err1) {
-            // 2) attempt to extract first JSON object/array from the text
-            const firstObj = text.indexOf('{');
-            const firstArr = text.indexOf('[');
-            const start = (firstObj === -1) ? firstArr : (firstArr === -1 ? firstObj : Math.min(firstObj, firstArr));
-            const lastObj = text.lastIndexOf('}');
-            const lastArr = text.lastIndexOf(']');
-            const end = Math.max(lastObj, lastArr);
-            if (start !== -1 && end !== -1 && end > start) {
-              const candidate = text.substring(start, end + 1);
-              try {
-                const parsed = JSON.parse(candidate);
-                return resolve(parsed);
-              } catch (err2) {
-                // fall through to error
-              }
-            }
-
-            return reject(new Error('Failed to parse JSON from OpenAI response: ' + (err1 && err1.message)));
+          const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+          if (debugEnabled) {
+            console.log('[AI PARSE] Raw content length:', raw.length);
+            console.log('[AI PARSE] Candidate snippet (first 400 chars):', candidate.slice(0, 400));
           }
+
+          // Attempt parse chain
+          const attempts = [];
+          attempts.push(candidate);
+          // Fallback 2: try raw (maybe already pure JSON)
+          if (candidate !== raw) attempts.push(raw);
+          // Fallback 3: wrap in [] if looks like object list without brackets
+          if (!/^\s*\[/.test(candidate) && /"day"\s*:/.test(candidate)) {
+            attempts.push('[\n' + candidate.split(/\n+/).filter(l => l.trim()).join(',\n') + '\n]');
+          }
+
+          let lastErr;
+          for (const attempt of attempts) {
+            try {
+              const parsed = JSON.parse(attempt);
+              if (!Array.isArray(parsed)) {
+                // If object with posts array
+                if (parsed.posts && Array.isArray(parsed.posts)) return resolve(parsed.posts);
+                // If single object, wrap
+                return resolve([parsed]);
+              }
+              // Minimal schema validation: each item must have day & idea
+              const valid = parsed.every(p => p && typeof p.day === 'number' && p.idea);
+              if (!valid && debugEnabled) console.warn('[AI PARSE] Some items missing required fields');
+              return resolve(parsed);
+            } catch (e) {
+              lastErr = e;
+              if (debugEnabled) console.warn('[AI PARSE] Attempt failed:', e.message);
+            }
+          }
+          // Provide truncated raw for easier debugging
+          const truncated = raw.slice(0, 500);
+          return reject(new Error('Failed to parse JSON from OpenAI response after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated));
         } catch (err) {
           return reject(err);
         }
