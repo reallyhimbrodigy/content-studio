@@ -242,17 +242,6 @@
       </div>
     </div>
 
-    <script type="module">
-      // Check if user is logged in with Supabase BEFORE loading the app
-      import { supabase } from './supabase-client.js';
-      
-      (async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          window.location.href = "/auth.html";
-        }
-      })();
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
     <script type="module" src="./script.js?t=1763412925"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
