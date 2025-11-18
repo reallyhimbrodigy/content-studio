@@ -188,18 +188,20 @@ if (profileTrigger && profileMenu) {
     profileTrigger.setAttribute('aria-expanded', String(!isOpen));
   });
 
-  // Close dropdown when clicking outside (but NOT when clicking inside the menu)
+  // Close dropdown when clicking outside
   document.addEventListener('click', (e) => {
     const clickedInsideDropdown = profileDropdown && profileDropdown.contains(e.target);
-    const clickedSignOut = e.target.closest('#sign-out-btn');
+    const clickedSignOut = e.target.id === 'sign-out-btn' || e.target.closest('#sign-out-btn');
     
-    // Only close if clicked outside AND not the sign-out button
-    if (!clickedInsideDropdown || clickedSignOut) {
-      // Don't close here if it's sign-out - let the sign-out handler handle it
-      if (!clickedSignOut && profileMenu.style.display === 'block') {
-        profileMenu.style.display = 'none';
-        profileTrigger.setAttribute('aria-expanded', 'false');
-      }
+    // Don't close if clicked sign-out button - let its handler run
+    if (clickedSignOut) {
+      return;
+    }
+    
+    // Close if clicked outside dropdown
+    if (!clickedInsideDropdown && profileMenu.style.display === 'block') {
+      profileMenu.style.display = 'none';
+      profileTrigger.setAttribute('aria-expanded', 'false');
     }
   });
 }
@@ -213,10 +215,10 @@ setTimeout(() => {
     console.log('✓ Sign-out button found, attaching handler');
     
     signOutButton.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      
       console.log('🔴 SIGN OUT BUTTON CLICKED!');
+      
+      e.preventDefault();
+      e.stopPropagation();
       
       // Close the dropdown
       const menu = document.getElementById('profile-menu');
@@ -231,7 +233,7 @@ setTimeout(() => {
         console.error('❌ Sign-out error:', error);
         alert('Error signing out: ' + error.message);
       }
-    });
+    }, true); // Use capture phase to run BEFORE the document click handler
     
     console.log('✓ Sign-out handler attached successfully');
   } else {
