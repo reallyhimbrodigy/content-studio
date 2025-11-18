@@ -109,14 +109,3 @@ const emailInput = document.getElementById("email");
       });
     }
   }
-
-// If user is already logged in, redirect to app (now async)
-(async () => {
-  const user = await getCurrentUser();
-  if (user) {
-    // If we're on auth page, redirect. On other pages this will noop.
-    if (window.location.pathname.includes('/auth.html')) {
-      window.location.href = "/";
-    }
-  }
-})();
