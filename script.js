@@ -130,6 +130,75 @@ const grid = document.getElementById("calendar-grid");
   console.log("signOutBtn:", signOutBtn ? "✓ found" : "✗ MISSING");
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
+// Show/hide nav based on auth state
+(async () => {
+  const currentUser = await getCurrentUser();
+  const publicNav = document.getElementById('public-nav');
+  const userMenu = document.getElementById('user-menu');
+  
+  if (currentUser) {
+    // User is logged in - show profile menu
+    console.log('User logged in:', currentUser);
+    if (publicNav) publicNav.style.display = 'none';
+    if (userMenu) userMenu.style.display = 'flex';
+    
+    // Populate user email
+    if (userEmailEl) userEmailEl.textContent = currentUser;
+    
+    // Show Pro badge if applicable
+    const userIsPro = await isPro(currentUser);
+    if (userTierBadge && userIsPro) {
+      userTierBadge.textContent = 'PRO';
+      userTierBadge.style.display = 'inline-block';
+    }
+    
+    const userProBadge = document.getElementById('user-pro-badge');
+    if (userProBadge && userIsPro) {
+      userProBadge.style.display = 'inline-block';
+    }
+  } else {
+    // User is not logged in - show public nav
+    console.log('No user logged in - showing public nav');
+    if (publicNav) publicNav.style.display = 'flex';
+    if (userMenu) userMenu.style.display = 'none';
+  }
+})();
+
+// Profile dropdown toggle
+const profileTrigger = document.getElementById('profile-trigger');
+const profileMenu = document.getElementById('profile-menu');
+const profileDropdown = document.getElementById('profile-dropdown');
+
+if (profileTrigger && profileMenu) {
+  profileTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = profileMenu.style.display === 'block';
+    profileMenu.style.display = isOpen ? 'none' : 'block';
+    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  document.addEventListener('click', (e) => {
+    if (profileDropdown && !profileDropdown.contains(e.target)) {
+      profileMenu.style.display = 'none';
+      profileTrigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+// Sign-out handler
+if (signOutBtn) {
+  signOutBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    console.log('Sign out clicked');
+    try {
+      await storeSignOut();
+      window.location.href = '/auth.html';
+    } catch (error) {
+      console.error('Sign-out error:', error);
+    }
+  });
+}
+
 // Upgrade modal handlers
 function showUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'flex';
