@@ -90,6 +90,19 @@ export async function signOut() {
   }
 }
 
+export async function resetPassword(email) {
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password.html`,
+    });
+    if (error) throw error;
+    return { ok: true, msg: 'Password reset email sent. Check your inbox.' };
+  } catch (error) {
+    console.error('resetPassword error:', error);
+    return { ok: false, msg: error.message || 'Failed to send reset email' };
+  }
+}
+
 // ============================================================================
 // User Profile & Tier Management
 // ============================================================================

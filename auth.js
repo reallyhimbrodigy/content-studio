@@ -1,4 +1,4 @@
-import { signUp, signIn, getCurrentUser, signOut } from './user-store.js';
+import { signUp, signIn, getCurrentUser, signOut, resetPassword } from './user-store.js';
 
 // Handle sign-out redirect (e.g., /auth.html?signout=1)
 (async () => {
@@ -38,10 +38,15 @@ const emailInput = document.getElementById("email");
     if (mode === 'signup') isSignUp = true;
   } catch {}
 
+  const forgotPasswordLink = document.getElementById('forgot-password-link');
+  const forgotPasswordBtn = document.getElementById('forgot-password-btn');
+
   const applyModeUI = () => {
     if (authBtn) authBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In';
     if (toggleBtn) toggleBtn.textContent = isSignUp ? 'Sign In' : 'Sign Up';
     if (authFeedbackEl) authFeedbackEl.textContent = '';
+    // Show "Forgot password?" only in Sign In mode
+    if (forgotPasswordLink) forgotPasswordLink.style.display = isSignUp ? 'none' : 'block';
   };
 
   // If this script is loaded on a page without the auth form (e.g., index.html),
@@ -126,6 +131,28 @@ const emailInput = document.getElementById("email");
         passwordInput.type = isHidden ? 'text' : 'password';
         pwToggle.setAttribute('aria-pressed', String(isHidden));
         pwToggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+      });
+    }
+
+    // Forgot password handler
+    if (forgotPasswordBtn) {
+      forgotPasswordBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const email = emailInput ? emailInput.value.trim() : '';
+        if (!email) {
+          if (authFeedbackEl) {
+            authFeedbackEl.textContent = 'Please enter your email first';
+            authFeedbackEl.className = 'error';
+          }
+          return;
+        }
+        if (forgotPasswordBtn) forgotPasswordBtn.textContent = '...';
+        const result = await resetPassword(email);
+        if (forgotPasswordBtn) forgotPasswordBtn.textContent = 'Forgot password?';
+        if (authFeedbackEl) {
+          authFeedbackEl.textContent = result.msg;
+          authFeedbackEl.className = result.ok ? 'success' : 'error';
+        }
       });
     }
   }
