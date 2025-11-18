@@ -206,16 +206,16 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Sign-out handler - attach directly to button once it exists
+// Sign-out handler - use mousedown to fire before click handlers
 setTimeout(() => {
   const signOutButton = document.getElementById('sign-out-btn');
   console.log('Looking for sign-out button:', signOutButton);
   
   if (signOutButton) {
-    console.log('✓ Sign-out button found, attaching handler');
+    console.log('✓ Sign-out button found, attaching mousedown handler');
     
-    signOutButton.addEventListener('click', async (e) => {
-      console.log('🔴 SIGN OUT BUTTON CLICKED!');
+    signOutButton.addEventListener('mousedown', async (e) => {
+      console.log('🔴 SIGN OUT MOUSEDOWN!');
       
       e.preventDefault();
       e.stopPropagation();
@@ -233,7 +233,13 @@ setTimeout(() => {
         console.error('❌ Sign-out error:', error);
         alert('Error signing out: ' + error.message);
       }
-    }, true); // Use capture phase to run BEFORE the document click handler
+    });
+    
+    // Prevent click event from firing at all
+    signOutButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
     
     console.log('✓ Sign-out handler attached successfully');
   } else {
