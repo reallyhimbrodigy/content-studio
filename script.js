@@ -160,9 +160,21 @@ const grid = document.getElementById("calendar-grid");
     console.log('User is Pro:', userIsPro);
     
     const userProBadge = document.getElementById('user-pro-badge');
-    if (userProBadge && userIsPro) {
-      userProBadge.style.display = 'inline-block';
-      console.log('✓ Pro badge shown');
+    if (userProBadge) {
+      userProBadge.style.display = userIsPro ? 'inline-block' : 'none';
+      if (userIsPro) console.log('✓ Pro badge shown');
+    }
+
+    // Attach sign out handler now that the button is visible
+    const signOutBtnNow = document.getElementById('sign-out-btn');
+    if (signOutBtnNow && !signOutBtnNow.dataset.bound) {
+      signOutBtnNow.dataset.bound = '1';
+      signOutBtnNow.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try { await storeSignOut(); } catch(err){ console.error('signOut error:', err); }
+        window.location.replace('auth.html');
+      });
     }
   } else {
     // User is not logged in - show public nav
@@ -175,43 +187,9 @@ const grid = document.getElementById("calendar-grid");
   }
 })();
 
-// Profile dropdown toggle
-const profileTrigger = document.getElementById('profile-trigger');
-const profileMenu = document.getElementById('profile-menu');
-const profileDropdown = document.getElementById('profile-dropdown');
+// (Profile dropdown removed) – simple inline user menu remains
 
-if (profileTrigger && profileMenu) {
-  profileTrigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = profileMenu.style.display === 'block';
-    profileMenu.style.display = isOpen ? 'none' : 'block';
-    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
-  });
-
-  // Close dropdown when clicking outside (use closest for reliability)
-  document.addEventListener('click', (e) => {
-    const inside = e.target.closest('#profile-dropdown');
-    if (!inside && profileMenu.style.display === 'block') {
-      profileMenu.style.display = 'none';
-      profileTrigger.setAttribute('aria-expanded', 'false');
-    }
-  });
-}
-
-// Sign out button handler (direct)
-if (signOutBtn) {
-  signOutBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      await storeSignOut();
-    } catch (err) {
-      console.error('signOut error:', err);
-    } finally {
-      window.location.replace('auth.html');
-    }
-  });
-}
+// Sign out handler is attached after auth check when user-menu is shown
 
 // Upgrade modal handlers
 function showUpgradeModal() {
