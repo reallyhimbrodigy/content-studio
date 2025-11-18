@@ -216,45 +216,28 @@ if (profileTrigger && profileMenu) {
   });
 }
 
-// Sign-out handler - use mousedown to fire before click handlers
-setTimeout(() => {
-  const signOutButton = document.getElementById('sign-out-btn');
-  console.log('Looking for sign-out button:', signOutButton);
-  
-  if (signOutButton) {
-    console.log('✓ Sign-out button found, attaching mousedown handler');
-    
-    signOutButton.addEventListener('mousedown', async (e) => {
-      console.log('🔴 SIGN OUT MOUSEDOWN!');
-      
-      e.preventDefault();
-      e.stopPropagation();
-      
-      // DON'T close the dropdown here - it causes the click event to think we're outside
-      
-      try {
-        console.log('Calling storeSignOut...');
-        await storeSignOut();
-        console.log('✓ Signed out successfully, redirecting...');
-        // Redirect will happen, no need to close dropdown
-        window.location.href = '/auth.html';
-      } catch (error) {
-        console.error('❌ Sign-out error:', error);
-        alert('Error signing out: ' + error.message);
-      }
-    });
-    
-    // Prevent click event from firing at all
-    signOutButton.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    
-    console.log('✓ Sign-out handler attached successfully');
-  } else {
-    console.error('❌ Sign-out button not found!');
+// Global sign-out handler (delegated, capture phase, pointerdown)
+document.addEventListener('pointerdown', async (e) => {
+  const signOutEl = e.target && e.target.closest('[data-action="sign-out"]');
+  if (!signOutEl) return;
+  console.log('🔴 SIGN OUT (pointerdown delegated)');
+  try {
+    e.preventDefault();
+    // Stop other handlers from reacting (like dropdown outside click)
+    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    e.stopPropagation();
+
+    console.log('Calling storeSignOut...');
+    await storeSignOut();
+    console.log('✓ Signed out successfully, redirecting...');
+  } catch (error) {
+    console.error('❌ Sign-out error:', error);
+    // Proceed to redirect anyway to auth page where session will be checked
+  } finally {
+    // Use relative path to work on all hosts
+    window.location.replace('auth.html');
   }
-}, 500);
+}, true);
 
 // Upgrade modal handlers
 function showUpgradeModal() {
