@@ -285,6 +285,18 @@ const server = http.createServer((req, res) => {
   }
 
   const parsed = url.parse(req.url, true);
+  // Serve favicon from SVG asset to avoid 404s
+  if (parsed.pathname === '/favicon.ico') {
+    const fav = path.join(__dirname, 'assets', 'promptly-icon.svg');
+    try {
+      if (fs.existsSync(fav)) {
+        return serveFile(fav, res);
+      }
+    } catch {}
+    // If not found, return 204 No Content instead of 404
+    res.writeHead(204);
+    return res.end();
+  }
 
   // Optional canonical host redirect to enforce a single domain (e.g., promptlyapp.com)
   if (CANONICAL_HOST) {
