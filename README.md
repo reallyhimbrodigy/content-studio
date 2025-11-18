@@ -64,7 +64,7 @@ Notes
 
 If you'd like, I can wire Playwright into GitHub Actions so every push runs the smoke test.
 
-## Go live on your own domain (e.g., promptly.com)
+## Go live on your own domain (e.g., usepromptly.app)
 
 The simplest path is to deploy the Node server (serves the frontend and API) to a managed host and attach a custom domain.
 
@@ -92,22 +92,22 @@ Option B — Your own VM with Nginx (manual)
 1) Buy a VPS (e.g., DigitalOcean droplet)
 2) SSH to the box and install Node 18+, `pm2`, and Nginx
 3) Clone this repo and run `npm install` then `pm2 start npm --name promptly -- start`
-4) Configure Nginx as a reverse proxy for `promptly.com` → `http://127.0.0.1:8000`
+4) Configure Nginx as a reverse proxy for `usepromptly.app` → `http://127.0.0.1:8000`
 5) Issue a TLS cert with Let’s Encrypt (Certbot) and enable HTTP→HTTPS redirect
 
 DNS checklist (regardless of host)
 
 - registrar: add the records your host provides (don’t guess IPs)
-- root domain (apex) `promptly.com`: likely an A record → host’s IP
-- `www.promptly.com`: usually a CNAME to the host-provided target
+- root domain (apex) `usepromptly.app`: likely an A record → host’s IP
+- `www.usepromptly.app`: usually a CNAME to the host-provided target
 - TTL: keep default; propagation can take up to 24h (often minutes)
 
 Stripe updates once live
 
-- Business website URL: `https://promptly.com`
-- Checkout success URL: `https://promptly.com/checkout/success`
-- Checkout cancel URL: `https://promptly.com/checkout/cancel`
-- Webhook endpoint (when implemented): `https://promptly.com/webhooks/stripe`
+- Business website URL: `https://usepromptly.app`
+- Checkout success URL: `https://usepromptly.app/checkout/success`
+- Checkout cancel URL: `https://usepromptly.app/checkout/cancel`
+- Webhook endpoint (when implemented): `https://usepromptly.app/webhooks/stripe`
 
 Notes
 
