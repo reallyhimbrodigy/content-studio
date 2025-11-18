@@ -298,6 +298,18 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
+  // Serve apple touch icon path if requested by iOS (fallback to SVG)
+  if (parsed.pathname === '/apple-touch-icon.png') {
+    const apple = path.join(__dirname, 'assets', 'promptly-icon.svg');
+    try {
+      if (fs.existsSync(apple)) {
+        return serveFile(apple, res);
+      }
+    } catch {}
+    res.writeHead(204);
+    return res.end();
+  }
+
   // Optional canonical host redirect to enforce a single domain (e.g., promptlyapp.com)
   if (CANONICAL_HOST) {
     const reqHost = (req.headers && req.headers.host) ? String(req.headers.host) : '';
