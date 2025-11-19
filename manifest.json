@@ -1,0 +1,16 @@
+{
+  "name": "Promptly – AI Content Studio",
+  "short_name": "Promptly",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "description": "Generate a complete 30-day social content calendar in seconds.",
+  "icons": [
+    { "src": "assets/promptly-icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "assets/png/promptly-icon-128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "assets/png/promptly-icon-256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "assets/png/promptly-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

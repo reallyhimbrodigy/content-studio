@@ -55,12 +55,92 @@ Notes
   - `POST /api/brand/ingest` with `{"userId":"...", "text":"..."}`
   - `GET /api/brand/profile?userId=...`
 
+## LLM Response Parsing & Reliability
+
+Generating structured JSON from an LLM can be brittle. We harden this layer with:
+
+1. Network + transient retries: `openAIRequest` retries 502/503/504 and network errors with exponential backoff (1s, 2s, 4s).
+2. Parse-level retry: For calendar and variants endpoints we request a second completion if the first cannot be parsed.
+3. Sanitization pipeline (`parseLLMArray`):
+  - Strip code fences / markdown
+  - Remove zero‑width characters
+  - Extract first JSON array region
+  - Remove trailing commas and duplicate commas
+  - Quote bare keys if the model omitted quotes
+  - Multiple parse attempts (candidate, raw, wrapped)
+  - Wrap single object / object with `posts` into array
+4. Validation: Each item must include minimal required fields (`day` for calendar; `day` + `variants` object for variants). Failure triggers parse-level retry.
+5. Diagnostics: Enable `DEBUG_AI_PARSE=1` to log attempt metadata (length, ok/error) for quick triage.
+6. Partial success UI: Calendar generation runs 6 parallel 5‑day batches; failures surface in a collapsible error details panel while successful batches still render.
+
+### Environment Flags
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | Auth for OpenAI requests |
+| `CANONICAL_HOST` | Optional host redirect enforcement |
+| `DEBUG_AI_PARSE=1` | Verbose parse diagnostics in server logs |
+| `DEBUG_AI_PARSE=2` | Includes fallback details + raw length and attempt summaries |
+
+### Common Failure Messages
+
+- `OpenAI servers are temporarily unavailable` → Upstream 502/503/504
+- `Failed to parse JSON after attempts` → Model returned non‑JSON; inspect truncated raw segment
+- `Expected ',' or '}' after property value` → Usually caused by literal (unescaped) newline inside a quoted string; parser now auto-escapes these.
+- `Variant items missing required fields` → Prompt drift; consider regenerating or tightening prompt
+
+### Improving Robustness Further (Next Ideas)
+
+- Add schema repair (e.g., regex patch missing quotes around values) before final failure
+- Automatic backfill for failed calendar batches (re-request only missing days)
+- Switch to structured output (JSON mode) once available for target model
+- Leverage function calling / response schema (if model adds support) to enforce structure
+
+Feel free to edit `parseLLMArray` in `server.js` for additional heuristics if new failure patterns appear.
+
 ## UX improvements added
 
 - Inline spinner on the "Generate Calendar" button while the AI is generating.
 - Module-based JS (ES modules) for clearer scoping and maintainability.
 - Centralized `user-store.js` for localStorage helpers.
 - Brand Brain modal and backend integration for personalized content generation.
+- Skeleton loader: while batches generate, placeholder shimmer cards render immediately.
+- Theme toggle: light/dark mode persisted in localStorage (`promptly_theme`).
+- Generation errors panel: partial batch failures surface with toggleable details.
+- SEO meta tags + Open Graph banner (`assets/og-banner.svg`).
+- Accessibility focus outlines (`:focus-visible`) across interactive elements.
+- Minified CSS build option (`node build.js`) producing `styles.min.css`.
+ - PWA: service worker + manifest for installability & offline shell.
+ - Offline fallback page (`offline.html`) for graceful network loss.
+ - PNG icons (128/256/512) referenced in `manifest.json`.
+ - Service worker registration with update polling every 30 minutes.
+ - Gzip compression for text assets (HTML/CSS/JS/JSON) when client supports it.
+ - Hardened Content Security Policy (removed `unsafe-inline` from `script-src`).
+
+## Build & Performance
+
+Run the optional build step to generate a minified stylesheet:
+
+```bash
+node build.js
+```
+
+This creates `styles.min.css` and you can ensure `index.html` points to it. Edit `styles.css` for development; re-run build to refresh.
+
+Recommended next profiling:
+1. Run Lighthouse (Chrome DevTools → Lighthouse) on local production build.
+2. Verify CLS is low (skeletons reduce layout shift).
+3. If needed, defer non-critical scripts (Stripe link, JSZip) with `loading=lazy` or dynamic import.
+4. Consider adding HTTP/2 push or preconnect hints for OpenAI & Supabase if latency matters.
+5. Use Lighthouse PWA category to confirm offline capability & manifest correctness.
+
+## Theme Toggle
+
+Implementation: adds `data-theme="light"` to the root element for light mode. Default inherits system preference, then user choice persists.
+
+## Skeleton Loader
+
+Adds 30 placeholder `div.skeleton-card` elements removed once the AI responses resolve. This improves perceived performance.
 
 If you'd like, I can wire Playwright into GitHub Actions so every push runs the smoke test.
 
@@ -102,14 +182,44 @@ DNS checklist (regardless of host)
 - `www.usepromptly.app`: usually a CNAME to the host-provided target
 - TTL: keep default; propagation can take up to 24h (often minutes)
 
-Stripe updates once live
+Stripe Billing Setup
 
-- Business website URL: `https://usepromptly.app`
-- Checkout success URL: `https://usepromptly.app/checkout/success`
-- Checkout cancel URL: `https://usepromptly.app/checkout/cancel`
-- Webhook endpoint (when implemented): `https://usepromptly.app/webhooks/stripe`
+1) Create a Price in Stripe for your Pro subscription
+- In Stripe Dashboard → Products → Create a product (e.g., Promptly Pro)
+- Add a recurring monthly price
+- Optional: set a Lookup Key (recommended), e.g., `promptly_pro_monthly`
+
+2) Configure environment variables (Render → Environment, or local .env)
+- `STRIPE_SECRET_KEY` — your Stripe Secret Key (starts with `sk_live_` or `sk_test_`)
+- `STRIPE_WEBHOOK_SECRET` — from your Stripe webhook endpoint (next step)
+- Either set `STRIPE_PRICE_ID` or `STRIPE_PRICE_LOOKUP_KEY`
+- `PUBLIC_BASE_URL` — e.g., `https://usepromptly.app` (used for Checkout success/cancel URLs)
+
+3) Add a webhook endpoint in Stripe
+- Endpoint URL: `https://usepromptly.app/stripe/webhook`
+- Events to send: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`
+- Copy the Signing Secret and set it as `STRIPE_WEBHOOK_SECRET`
+
+4) How the flow works
+- The app creates a Checkout Session using `STRIPE_PRICE_ID` or resolves `STRIPE_PRICE_LOOKUP_KEY`
+- On success, Stripe redirects users to `PUBLIC_BASE_URL/success.html?session_id={CHECKOUT_SESSION_ID}`
+- The success page calls `/api/billing/session` to verify and upgrades the user to Pro if the payment is paid and the email matches
+- The webhook maps `email → stripe_customer_id` so the “Manage billing” button can open the Stripe Customer Portal
+
+Local webhook testing (optional)
+
+Use the Stripe CLI to forward events to your local server:
+
+```bash
+# in one terminal
+stripe listen --forward-to localhost:8000/stripe/webhook
+
+# copy the webhook signing secret the CLI prints (whsec_...) into STRIPE_WEBHOOK_SECRET
+```
 
 Notes
 
 - The server already reads `PORT` and serves static files + the API from the same origin, so one deployment covers both.
 - Set `OPENAI_API_KEY` on the host; do not commit it to the repo.
+ - Gzip is performed at the app layer; most CDNs will also compress. Response includes `Vary: Accept-Encoding`.
+ - For stricter CSP, move remaining inline styles into external CSS and remove `'unsafe-inline'` from `style-src`.

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "export-logos": "node tools/export-logos.js",
-    "test:e2e": "npx playwright test tests/e2e.spec.js"
+    "test:e2e": "npx playwright test tests/e2e.spec.js",
+    "build:css": "node build.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.81.1"

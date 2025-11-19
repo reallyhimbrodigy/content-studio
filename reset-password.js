@@ -1,4 +1,8 @@
 import { getSupabaseClient } from './supabase-client.js';
+import { initTheme } from './theme.js';
+
+// Apply theme on page load
+initTheme();
 
 const resetPasswordForm = document.getElementById('reset-password-form');
 const newPasswordInput = document.getElementById('new-password');

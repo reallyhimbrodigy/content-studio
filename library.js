@@ -1,4 +1,8 @@
 import { getCurrentUser, isPro } from './user-store.js';
+import { initTheme } from './theme.js';
+
+// Apply theme on page load
+initTheme();
 
 // JSZip loader
 let __zipLoaderPromise = null;
@@ -143,6 +147,7 @@ const profileMenu = document.getElementById('profile-menu');
 const profileDropdown = document.getElementById('profile-dropdown');
 const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
+const manageBillingBtn = document.getElementById('manage-billing-btn');
 // Upgrade modal elements (library page)
 const upgradeModal = document.getElementById('upgrade-modal');
 const upgradeClose = document.getElementById('upgrade-close');
@@ -176,6 +181,30 @@ window.handleSignOut = async function() {
     userTierBadge.textContent = 'PRO';
     userTierBadge.style.display = 'inline-block';
   }
+  if (manageBillingBtn) {
+    manageBillingBtn.style.display = userIsPro ? 'inline-block' : 'none';
+    if (userIsPro && !manageBillingBtn.dataset.bound) {
+      manageBillingBtn.dataset.bound = '1';
+      manageBillingBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          const resp = await fetch('/api/billing/portal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok && data && data.url) {
+            window.location.href = data.url;
+          } else {
+            alert(data?.error || 'Billing portal is not configured yet.');
+          }
+        } catch (err) {
+          alert('Billing portal unavailable. Please try again later.');
+        }
+      });
+    }
+  }
   
   // Show Pro badge in profile menu
   const userProBadge = document.getElementById('user-pro-badge');
@@ -199,12 +228,23 @@ if (upgradeModal) {
   upgradeModal.addEventListener('click', (e) => { if (e.target === upgradeModal) hideUpgradeModal(); });
 }
 if (upgradeBtn) {
-  upgradeBtn.addEventListener('click', () => {
-    const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
+  upgradeBtn.addEventListener('click', async () => {
+    const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
     try {
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) { window.location.href = url; } else { hideUpgradeModal(); }
-    } catch (_) { window.location.href = url; }
+      const user = await getCurrentUser();
+      const resp = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user || '', priceLookupKey: 'promptly_pro_monthly' })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (resp.ok && data && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      const win = window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+      if (!win) { window.location.href = fallbackUrl; } else { hideUpgradeModal(); }
+    } catch (_) { window.location.href = fallbackUrl; }
   });
 }
 // Expose for other handlers

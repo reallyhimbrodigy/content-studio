@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact • Promptly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.json" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero-top" style="display:flex;align-items:center;justify-content:space-between;">
+          <a href="/" aria-label="Back to home"><img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" /></a>
+        </div>
+        <h1>Contact</h1>
+        <p class="hero-tagline">We'd love to hear from you. Reach out for support, feedback, or partnerships.</p>
+      </header>
+
+      <main>
+        <section class="publish-hub" style="max-width:720px;margin:0 auto;">
+          <div style="display:grid;gap:1rem;">
+            <div class="publish-card">
+              <h3 style="margin:0 0 .5rem 0;">Email</h3>
+              <p class="meta">Prefer email? We typically reply within 1–2 business days.</p>
+              <p><a class="primary" href="mailto:support@usepromptly.app">support@usepromptly.app</a></p>
+            </div>
+            <div class="publish-card">
+              <h3 style="margin:0 0 .5rem 0;">Help & FAQ</h3>
+              <p class="meta">Common questions and quick fixes.</p>
+              <p><a class="secondary" href="/help.html">Open Help</a></p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer"></footer>
+    </div>
+
+    <script type="module" src="./footer.js"></script>
+    <script src="/sw-register.js" defer></script>
+    <script src="/pwa-install.js" defer></script>
+  </body>
+</html>

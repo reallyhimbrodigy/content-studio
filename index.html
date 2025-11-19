@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Content Studio – 30-Day Idea Engine</title>
+  <title>Promptly • AI Content Studio – 30-Day Idea Engine</title>
+  <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
+  <link rel="canonical" href="https://usepromptly.app/" />
+  <meta property="og:title" content="Promptly • AI Content Studio" />
+  <meta property="og:description" content="Generate a complete 30‑day social content calendar in seconds. Strategy, captions, variants, exports." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://usepromptly.app/" />
+  <meta property="og:image" content="https://usepromptly.app/assets/og-banner.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Promptly • AI Content Studio" />
+  <meta name="twitter:description" content="Generate a complete 30‑day social content calendar in seconds." />
+  <meta name="twitter:image" content="https://usepromptly.app/assets/og-banner.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,7 +25,11 @@
   <link rel="mask-icon" href="assets/promptly-icon.svg" color="#7f5af0" />
   <link rel="apple-touch-icon" href="assets/promptly-icon.svg" />
   <meta name="theme-color" content="#0c0c0c" />
-    <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" href="styles.min.css" as="style" />
+  <link rel="stylesheet" href="styles.min.css" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="styles.min.css"/></noscript>
+  <link rel="manifest" href="manifest.json" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
@@ -31,8 +46,10 @@
           
           <!-- User menu (shown when logged in) -->
           <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
+            <button id="brand-brain-btn" class="primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Brand Brain</button>
             <span id="user-email" class="user-email"></span>
             <span id="user-pro-badge" class="pro-badge" style="display: none;">PRO</span>
+            <button id="manage-billing-btn" class="ghost" style="display:none">Manage billing</button>
             <button id="sign-out-btn" class="ghost">Sign out</button>
           </div>
         </div>
@@ -63,6 +80,7 @@
               <div class="progress-text" id="progress-text">Preparing your calendar...</div>
             </div>
             <div id="niche-feedback" class="input-feedback" aria-live="polite" aria-atomic="true"></div>
+            <div id="generation-errors" class="generation-errors" style="display:none" aria-live="polite" aria-atomic="false"></div>
           </div>
         </div>
         <div class="hero__features">
@@ -161,6 +179,8 @@
       </footer>
     </div>
     
+
+
     <!-- Brand Brain Modal -->
     <div id="brand-modal" class="modal-overlay" style="display:none">
       <div class="modal">
@@ -218,9 +238,6 @@
             <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
               Upgrade to Pro
             </button>
-            <a id="upgrade-same-tab" href="https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en" class="ghost" style="margin-top: 0.75rem; display: inline-block; text-decoration: none;">
-              Open checkout in this tab
-            </a>
           </div>
         </div>
         
@@ -229,7 +246,12 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
+  <script type="application/ld+json" src="/assets/schema-website.json"></script>
+  <script type="application/ld+json" src="/assets/schema-organization.json"></script>
+  <script type="application/ld+json" src="/assets/schema-product.json"></script>
     <script type="module" src="./script.js?t=1763412925"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
+    <script src="/sw-register.js" defer></script>
+    <script src="/pwa-install.js" defer></script>
   </body>
 </html>

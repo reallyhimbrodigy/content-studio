@@ -1,0 +1,12 @@
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Promptly",
+  "url": "https://usepromptly.app/",
+  "description": "AI content studio that generates a full 30-day social calendar with platform variants and exports.",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://usepromptly.app/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Basic health checks
+        run: |
+          node -v
+          npm -v
+          node -c server.js
+
+      - name: Start server
+        run: |
+          nohup npm start >/dev/null 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://localhost:8000/ >/dev/null && break
+            sleep 1
+          done
+
+      - name: Install Playwright (only if key is set)
+        if: env.OPENAI_API_KEY != ''
+        run: npx playwright install --with-deps
+
+      - name: Run E2E tests (only if key is set)
+        if: env.OPENAI_API_KEY != ''
+        run: npm run test:e2e
+
+      - name: Skip E2E (no API key)
+        if: env.OPENAI_API_KEY == ''
+        run: echo "Skipping e2e tests (no OPENAI_API_KEY)"

@@ -14,9 +14,11 @@ if (!OPENAI_API_KEY) {
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
 const BRANDS_DIR = path.join(DATA_DIR, 'brands');
+const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
 try {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   if (!fs.existsSync(BRANDS_DIR)) fs.mkdirSync(BRANDS_DIR);
+  if (!fs.existsSync(CUSTOMERS_FILE)) fs.writeFileSync(CUSTOMERS_FILE, '{}', 'utf8');
 } catch (e) {
   console.error('Failed to initialize data directories:', e);
 }
@@ -94,6 +96,103 @@ function openAIRequest(options, payload, retryCount = 0) {
   });
 }
 
+// Generic sanitizer + parse attempts for LLM JSON array output.
+// Returns { data, attempts } where data is parsed array (or object wrapped into array) and attempts is diagnostics.
+function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
+  const diagnostics = { rawLength: rawContent.length, attempts: [] };
+  let raw = String(rawContent || '').trim()
+    .replace(/```\s*json\s*/gi, '')
+    .replace(/```/g, '')
+    .replace(/[\u200B\uFEFF]/g, '');
+
+  // Escape literal newlines inside JSON strings (LLM sometimes emits real line breaks inside quoted values)
+  function escapeNewlinesInsideStrings(text) {
+    let out = '';
+    let inStr = false;
+    let esc = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (!inStr) {
+        if (c === '"') { inStr = true; out += c; } else { out += c; }
+        continue;
+      }
+      if (esc) { out += c; esc = false; continue; }
+      if (c === '\\') { out += c; esc = true; continue; }
+      if (c === '"') { inStr = false; out += c; continue; }
+      if (c === '\n' || c === '\r') { out += '\\n'; continue; }
+      out += c;
+    }
+    return out;
+  }
+  raw = escapeNewlinesInsideStrings(raw);
+
+  const extractJsonArray = (txt) => {
+    const start = txt.indexOf('[');
+    const end = txt.lastIndexOf(']');
+    if (start === -1 || end === -1 || end <= start) return txt;
+    return txt.substring(start, end + 1);
+  };
+
+  let candidate = extractJsonArray(raw)
+    .replace(/,\s*(\]|\})/g, '$1')
+    .replace(/,,+/g, ',')
+    .replace(/([,{]\s*)([a-zA-Z0-9_]+)\s*:(?=\s*["0-9tfn\[{])/g, '$1"$2":');
+  candidate = escapeNewlinesInsideStrings(candidate);
+
+  const attempts = [];
+  attempts.push(candidate);
+  if (candidate !== raw) attempts.push(raw);
+  if (!/^\s*\[/.test(candidate) && /"day"\s*:/.test(candidate)) {
+    // Wrap pseudo-object list lines into array
+    const lines = candidate.split(/\n+/).filter(l => l.trim());
+    attempts.push('[\n' + lines.join(',\n') + '\n]');
+  }
+
+  let lastErr;
+  for (const attempt of attempts) {
+    try {
+      const parsed = JSON.parse(attempt);
+      let arr = parsed;
+      if (requireArray && !Array.isArray(arr)) {
+        if (arr && arr.posts && Array.isArray(arr.posts)) arr = arr.posts;
+        else arr = [arr];
+      }
+      if (itemValidate && Array.isArray(arr)) {
+        const ok = arr.every(itemValidate);
+        if (!ok) throw new Error('Validation failure');
+      }
+      diagnostics.attempts.push({ ok: true, length: attempt.length });
+      return { data: arr, attempts: diagnostics };
+    } catch (e) {
+      lastErr = e;
+      diagnostics.attempts.push({ ok: false, error: e.message, length: attempt.length });
+    }
+  }
+  // Fallback: multiple top-level objects separated by newlines without commas
+  try {
+    const objCount = (raw.match(/\n\s*\{/g) || []).length;
+    if (!raw.trim().startsWith('[') && objCount > 0) {
+      const parts = raw.split(/}\s*\n\s*\{/).map((p, i) => {
+        if (i === 0 && p.trim().startsWith('{') && p.trim().endsWith('}')) return p.trim();
+        if (i === 0) return p.trim() + '}';
+        if (i === objCount) return '{' + p.trim();
+        return '{' + p.trim();
+      });
+      const wrapped = '[' + parts.join(',') + ']';
+      const parsed = JSON.parse(wrapped);
+      if (requireArray && !Array.isArray(parsed)) throw new Error('Fallback not array');
+      if (itemValidate && Array.isArray(parsed) && !parsed.every(itemValidate)) throw new Error('Fallback validation');
+      diagnostics.attempts.push({ ok: true, fallback: 'object-split', length: wrapped.length });
+      return { data: parsed, attempts: diagnostics };
+    }
+  } catch (e2) {
+    diagnostics.attempts.push({ ok: false, fallbackError: e2.message });
+  }
+  const truncated = raw.slice(0, 500);
+  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated;
+  throw new Error(msg);
+}
+
 async function embedTextList(texts) {
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
   const payload = JSON.stringify({
@@ -169,14 +268,12 @@ function getPresetGuidelines(nicheStyle = '') {
 
 function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
-
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
-    max_tokens: 4000, // Reduced from 6000 for faster response
+    max_tokens: 4000,
   });
-
   const options = {
     hostname: 'api.openai.com',
     path: '/v1/chat/completions',
@@ -187,87 +284,26 @@ function callOpenAI(nicheStyle, brandContext, opts = {}) {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => {
-        try {
-          if (res.statusCode !== 200) return reject(new Error(`OpenAI ${res.statusCode}`));
-          const json = JSON.parse(data);
-          const content = json.choices?.[0]?.message?.content;
-          if (!content) return reject(new Error('No content'));
-
-          // Sanitize common wrappers (markdown fences) and try several parse strategies
-          let raw = String(content).trim();
-          // remove code fences if any leaked
-          raw = raw.replace(/```\s*json\s*/gi, '').replace(/```/g, '').trim();
-          // Occasionally the model prepends or appends stray guidance text; extract first JSON array
-          const extractJsonArray = (txt) => {
-            const start = txt.indexOf('[');
-            const end = txt.lastIndexOf(']');
-            if (start === -1 || end === -1 || end <= start) return txt; // fallback
-            return txt.substring(start, end + 1);
-          };
-          // Strip leading BOM or zero-width chars
-          raw = raw.replace(/[\u200B\uFEFF]/g, '');
-          let candidate = extractJsonArray(raw);
-          // Remove trailing commas before ] or }
-          candidate = candidate.replace(/,\s*(\]|\})/g, '$1');
-          // Remove duplicate commas (,,) which can appear
-          candidate = candidate.replace(/,,+/g, ',');
-          // Basic key cleanup: ensure property names are quoted (rare if model misbehaves)
-          // (Conservative: only fix unquoted keys followed by colon and value starting with quote/number/true/false/[/{)
-          candidate = candidate.replace(/([,{]\s*)([a-zA-Z0-9_]+)\s*:(?=\s*["0-9tfn\[{])/g, '$1"$2":');
-
-          const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-          if (debugEnabled) {
-            console.log('[AI PARSE] Raw content length:', raw.length);
-            console.log('[AI PARSE] Candidate snippet (first 400 chars):', candidate.slice(0, 400));
-          }
-
-          // Attempt parse chain
-          const attempts = [];
-          attempts.push(candidate);
-          // Fallback 2: try raw (maybe already pure JSON)
-          if (candidate !== raw) attempts.push(raw);
-          // Fallback 3: wrap in [] if looks like object list without brackets
-          if (!/^\s*\[/.test(candidate) && /"day"\s*:/.test(candidate)) {
-            attempts.push('[\n' + candidate.split(/\n+/).filter(l => l.trim()).join(',\n') + '\n]');
-          }
-
-          let lastErr;
-          for (const attempt of attempts) {
-            try {
-              const parsed = JSON.parse(attempt);
-              if (!Array.isArray(parsed)) {
-                // If object with posts array
-                if (parsed.posts && Array.isArray(parsed.posts)) return resolve(parsed.posts);
-                // If single object, wrap
-                return resolve([parsed]);
-              }
-              // Minimal schema validation: each item must have day & idea
-              const valid = parsed.every(p => p && typeof p.day === 'number' && p.idea);
-              if (!valid && debugEnabled) console.warn('[AI PARSE] Some items missing required fields');
-              return resolve(parsed);
-            } catch (e) {
-              lastErr = e;
-              if (debugEnabled) console.warn('[AI PARSE] Attempt failed:', e.message);
-            }
-          }
-          // Provide truncated raw for easier debugging
-          const truncated = raw.slice(0, 500);
-          return reject(new Error('Failed to parse JSON from OpenAI response after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated));
-        } catch (err) {
-          return reject(err);
-        }
+  const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+  const fetchAndParse = async (attempt = 0) => {
+    const json = await openAIRequest(options, payload);
+    const content = json.choices?.[0]?.message?.content || '';
+    try {
+      const { data, attempts } = parseLLMArray(content, {
+        requireArray: true,
+        itemValidate: (p) => p && typeof p.day === 'number',
       });
-    });
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
+      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+      return data;
+    } catch (e) {
+      if (attempt < 1) { // Single parse-level retry (fresh completion)
+        if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', e.message);
+        return fetchAndParse(attempt + 1);
+      }
+      throw e;
+    }
+  };
+  return fetchAndParse(0);
 }
 
 function loadBrand(userId) {
@@ -293,6 +329,26 @@ function saveBrand(userId, chunksWithEmb) {
   return payload;
 }
 
+function loadCustomersMap() {
+  try {
+    const raw = fs.readFileSync(CUSTOMERS_FILE, 'utf8');
+    const json = JSON.parse(raw || '{}');
+    return json && typeof json === 'object' ? json : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveCustomersMap(map) {
+  try {
+    fs.writeFileSync(CUSTOMERS_FILE, JSON.stringify(map, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('Failed to save customers map:', e);
+    return false;
+  }
+}
+
 function summarizeBrandForPrompt(brand) {
   if (!brand || !brand.chunks || brand.chunks.length === 0) return '';
   // join up to ~2400 characters
@@ -308,6 +364,18 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Security & professionalism headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  res.setHeader('X-Frame-Options', 'DENY');
+  // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
+  // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co; frame-ancestors 'none';");
+  // HSTS only if behind HTTPS (skip for localhost dev)
+  if ((req.headers.host || '').includes('usepromptly.app')) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -341,7 +409,8 @@ const server = http.createServer((req, res) => {
   }
 
   // Optional canonical host redirect to enforce a single domain (e.g., promptlyapp.com)
-  if (CANONICAL_HOST) {
+  // IMPORTANT: Do NOT redirect Stripe webhooks; Stripe will not follow 301s for webhooks.
+  if (CANONICAL_HOST && parsed.pathname !== '/stripe/webhook') {
     const reqHost = (req.headers && req.headers.host) ? String(req.headers.host) : '';
     // Strip port if present for comparison
     const normalize = (h) => String(h || '').replace(/:\d+$/, '');
@@ -349,6 +418,57 @@ const server = http.createServer((req, res) => {
       const location = `https://${CANONICAL_HOST}${parsed.path || parsed.pathname || '/'}`;
       res.writeHead(301, { Location: location });
       return res.end();
+    }
+  }
+
+  // Helper: serve static file with optional gzip if client supports
+  function serveFile(filePath, res) {
+    try {
+      const ext = path.extname(filePath).toLowerCase();
+      const typeMap = {
+        '.html': 'text/html; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.ico': 'image/x-icon'
+      };
+      const raw = fs.readFileSync(filePath);
+      const accept = req.headers['accept-encoding'] || '';
+      // Only compress text-like content
+      const isText = /\.(html|css|js|json|txt)$/i.test(filePath);
+      // Override content-type for JSON-LD schema files to satisfy validators
+      try {
+        const base = path.basename(filePath);
+        const isSchemaJson = filePath.includes(path.join('assets', path.sep)) && /^schema-.*\.json$/i.test(base);
+        if (isSchemaJson) {
+          res.setHeader('Content-Type', 'application/ld+json; charset=utf-8');
+        }
+      } catch {}
+      if (isText && accept.includes('gzip')) {
+        try {
+          const zlib = require('zlib');
+          const gz = zlib.gzipSync(raw);
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', 'Accept-Encoding');
+          if (!res.getHeader('Content-Type')) {
+            res.setHeader('Content-Type', typeMap[ext] || 'application/octet-stream');
+          }
+          res.writeHead(200);
+          return res.end(gz);
+        } catch (e) {
+          // Fallback to raw
+        }
+      }
+      if (!res.getHeader('Content-Type')) {
+        res.setHeader('Content-Type', typeMap[ext] || 'application/octet-stream');
+      }
+      res.writeHead(200);
+      return res.end(raw);
+    } catch (e) {
+      res.writeHead(404);
+      return res.end('Not found');
     }
   }
 
@@ -387,6 +507,324 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: errorMessage }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/billing/portal' && req.method === 'POST') {
+    // Customer portal creation using Stripe API
+    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        const { returnUrl, email } = JSON.parse(body || '{}');
+        if (!STRIPE_SECRET_KEY) {
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Billing portal not configured', hint: 'Set STRIPE_SECRET_KEY in env.' }));
+        }
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'email required' }));
+        }
+        const customers = loadCustomersMap();
+        let cid = customers[String(email).toLowerCase()];
+        if (!cid) {
+          // Fallback: search Stripe customers by email to find existing customer id (useful if local map was lost)
+          try {
+            const q = new URLSearchParams({ email: String(email) });
+            const findOpts = {
+              hostname: 'api.stripe.com',
+              path: `/v1/customers?${q.toString()}`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
+            };
+            const list = await new Promise((resolve, reject) => {
+              const r = https.request(findOpts, (sres) => {
+                let data = '';
+                sres.on('data', (c) => (data += c));
+                sres.on('end', () => {
+                  try {
+                    const obj = JSON.parse(data);
+                    if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
+                    reject(new Error(`Stripe customers error ${sres.statusCode}: ${data}`));
+                  } catch (e) { reject(e); }
+                });
+              });
+              r.on('error', reject);
+              r.end();
+            });
+            if (list && Array.isArray(list.data) && list.data.length > 0) {
+              cid = list.data[0].id;
+              const map = loadCustomersMap();
+              map[String(email).toLowerCase()] = cid;
+              saveCustomersMap(map);
+            }
+          } catch (e) {
+            // ignore; will fall through to helpful message
+          }
+          if (!cid) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'No Stripe customer found for this user yet', hint: 'Complete checkout first so we can map your account.' }));
+          }
+        }
+        // Create portal session via Stripe REST API (form-encoded)
+        const form = new URLSearchParams({ customer: cid, return_url: String(returnUrl || '/') });
+        const options = {
+          hostname: 'api.stripe.com',
+          path: '/v1/billing_portal/sessions',
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(form.toString()),
+          },
+        };
+        try {
+          const json = await new Promise((resolve, reject) => {
+            const sreq = https.request(options, (sres) => {
+              let data = '';
+              sres.on('data', (c) => (data += c));
+              sres.on('end', () => {
+                try {
+                  const parsed = JSON.parse(data);
+                  if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(parsed);
+                  reject(new Error(`Stripe error ${sres.statusCode}: ${data}`));
+                } catch (e) { reject(e); }
+              });
+            });
+            sreq.on('error', reject);
+            sreq.write(form.toString());
+            sreq.end();
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ url: json.url }));
+        } catch (e) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: String(e.message || e) }));
+        }
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/billing/checkout' && req.method === 'POST') {
+    // Create a Stripe Checkout Session for subscriptions
+    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        if (!STRIPE_SECRET_KEY) {
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Checkout not configured', hint: 'Set STRIPE_SECRET_KEY to enable checkout.' }));
+        }
+  const { email, priceLookupKey, priceId } = JSON.parse(body || '{}');
+
+  // Build success/cancel URLs with precedence: PUBLIC_BASE_URL ENV > X-Forwarded-* > Host header
+  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
+  const xfHost = req.headers['x-forwarded-host'];
+  const xfProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
+  const host = String(PUBLIC_BASE_URL || (xfHost ? `${xfProto}://${xfHost}` : `http${req.socket.encrypted ? 's' : ''}://${req.headers.host || 'localhost:8000'}`));
+  const base = host.replace(/\/$/, '');
+        const success_url = `${base}/success.html?session_id={CHECKOUT_SESSION_ID}`;
+        const cancel_url = `${base}/?upgrade=canceled`;
+
+        // Form-encode payload
+        const form = new URLSearchParams();
+        form.set('mode', 'subscription');
+        form.set('success_url', success_url);
+        form.set('cancel_url', cancel_url);
+        form.set('allow_promotion_codes', 'true');
+        form.set('automatic_tax[enabled]', 'true');
+        if (email) form.set('customer_email', String(email));
+        let effectivePriceId = priceId || process.env.STRIPE_PRICE_ID || '';
+        const effectiveLookupKey = priceLookupKey || process.env.STRIPE_PRICE_LOOKUP_KEY || '';
+        if (!effectivePriceId && effectiveLookupKey) {
+          // Resolve lookup key to price id via Stripe API
+          const q = new URLSearchParams();
+          q.append('lookup_keys[]', String(effectiveLookupKey));
+          const priceListOptions = {
+            hostname: 'api.stripe.com',
+            path: `/v1/prices?${q.toString()}`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
+          };
+          try {
+            const list = await new Promise((resolve, reject) => {
+              const r = https.request(priceListOptions, (sres) => {
+                let data = '';
+                sres.on('data', (c) => (data += c));
+                sres.on('end', () => {
+                  try {
+                    const obj = JSON.parse(data);
+                    if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
+                    reject(new Error(`Stripe prices error ${sres.statusCode}: ${data}`));
+                  } catch (e) { reject(e); }
+                });
+              });
+              r.on('error', reject);
+              r.end();
+            });
+            effectivePriceId = list && Array.isArray(list.data) && list.data[0] && list.data[0].id;
+          } catch (e) {
+            // ignore and continue to error below if not resolved
+          }
+        }
+
+        if (effectivePriceId) {
+          form.set('line_items[0][price]', String(effectivePriceId));
+          form.set('line_items[0][quantity]', '1');
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Valid priceId or resolvable priceLookupKey required' }));
+        }
+
+        const options = {
+          hostname: 'api.stripe.com',
+          path: '/v1/checkout/sessions',
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(form.toString()),
+          },
+        };
+        const session = await new Promise((resolve, reject) => {
+          const sreq = https.request(options, (sres) => {
+            let data = '';
+            sres.on('data', (c) => (data += c));
+            sres.on('end', () => {
+              try {
+                const obj = JSON.parse(data);
+                if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) return resolve(obj);
+                reject(new Error(`Stripe error ${sres.statusCode}: ${data}`));
+              } catch (e) { reject(e); }
+            });
+          });
+          sreq.on('error', reject);
+          sreq.write(form.toString());
+          sreq.end();
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ url: session.url }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err.message || err) }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/billing/session' && req.method === 'GET') {
+    const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+    const sessionId = parsed.query.session_id;
+    if (!STRIPE_SECRET_KEY) {
+      res.writeHead(501, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Not configured' }));
+    }
+    if (!sessionId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'session_id required' }));
+    }
+    const options = {
+      hostname: 'api.stripe.com',
+      path: `/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=subscription`,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}` },
+    };
+    const start = Date.now();
+    const timer = setTimeout(() => {}, 0); // keep event loop tick
+    const done = (code, payload) => {
+      clearTimeout(timer);
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    };
+    const reqStripe = https.request(options, (sres) => {
+      let data = '';
+      sres.on('data', (c) => (data += c));
+      sres.on('end', () => {
+        try {
+          const obj = JSON.parse(data);
+          if (sres.statusCode && sres.statusCode >= 200 && sres.statusCode < 300) {
+            const payload = {
+              id: obj.id,
+              status: obj.status,
+              payment_status: obj.payment_status,
+              customer: obj.customer,
+              customer_email: obj.customer_details && obj.customer_details.email || obj.customer_email || null,
+              subscription_status: obj.subscription && obj.subscription.status || null,
+            };
+            return done(200, payload);
+          }
+          return done(502, { error: `Stripe error ${sres.statusCode}`, body: data });
+        } catch (e) {
+          return done(500, { error: String(e.message || e) });
+        }
+      });
+    });
+    reqStripe.on('error', (e) => done(502, { error: String(e.message || e) }));
+    reqStripe.end();
+    return;
+  }
+
+  if (parsed.pathname === '/stripe/webhook' && req.method === 'POST') {
+    // Map Stripe customers to user emails after successful checkout
+    const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+    let raw = '';
+    req.on('data', (chunk) => (raw += chunk));
+    req.on('end', () => {
+      try {
+        if (!STRIPE_WEBHOOK_SECRET) {
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Webhook not configured' }));
+        }
+        // Verify Stripe signature
+        const sig = req.headers['stripe-signature'] || req.headers['Stripe-Signature'] || '';
+        const parts = String(sig).split(',').reduce((acc, p) => { const [k,v] = p.split('='); if (k && v) acc[k.trim()] = v.trim(); return acc; }, {});
+        const t = parts.t; const v1 = parts.v1;
+        if (!t || !v1) throw new Error('Invalid signature header');
+        const crypto = require('crypto');
+        const signedPayload = `${t}.${raw}`;
+        const expected = crypto.createHmac('sha256', STRIPE_WEBHOOK_SECRET).update(signedPayload).digest('hex');
+        const safeEqual = (a, b) => {
+          try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); } catch { return false; }
+        };
+        if (!safeEqual(expected, v1)) throw new Error('Signature verification failed');
+
+        const event = JSON.parse(raw);
+        const type = event && event.type;
+        const obj = event && event.data && event.data.object;
+        if (!type || !obj) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Invalid event' }));
+        }
+        // Capture mapping on checkout completion or subscription creation
+        let email = '';
+        let customer = '';
+        if (type === 'checkout.session.completed') {
+          email = obj.customer_details && obj.customer_details.email || '';
+          customer = obj.customer || '';
+        } else if (type === 'customer.subscription.created' || type === 'customer.subscription.updated') {
+          customer = obj.customer || '';
+          email = obj.customer_email || '';
+        }
+        if (email && customer) {
+          const map = loadCustomersMap();
+          map[String(email).toLowerCase()] = customer;
+          saveCustomersMap(map);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ received: true }));
+      } catch (e) {
+        console.error('Stripe webhook error:', e);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(e.message || e) }));
       }
     });
     return;
@@ -449,20 +887,26 @@ const server = http.createServer((req, res) => {
           },
         };
 
-        const raw = await openAIRequest(options, payload);
-        const content = raw.choices?.[0]?.message?.content || '';
-        let text = String(content).trim().replace(/```\s*json\s*/i, '').replace(/```/g, '').trim();
-        let parsed;
-        try {
-          parsed = JSON.parse(text);
-        } catch (e) {
-          const s = Math.min(...[...text.matchAll(/[\[{]/g)].map(m=>m.index || 0));
-          const eidx = Math.max(text.lastIndexOf(']'), text.lastIndexOf('}'));
-          if (isFinite(s) && eidx> s) {
-            parsed = JSON.parse(text.slice(s, eidx+1));
-          } else throw e;
-        }
-
+        const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+        const fetchAndParse = async (attempt=0) => {
+          const json = await openAIRequest(options, payload);
+          const content = json.choices?.[0]?.message?.content || '';
+          try {
+            const { data, attempts } = parseLLMArray(content, {
+              requireArray: true,
+              itemValidate: (v) => v && typeof v.day === 'number' && v.variants && typeof v.variants === 'object'
+            });
+            if (debugEnabled) console.log('[VARIANTS PARSE] attempts:', attempts);
+            return data;
+          } catch (e) {
+            if (attempt < 1) {
+              if (debugEnabled) console.warn('[VARIANTS PARSE] retry after failure:', e.message);
+              return fetchAndParse(attempt+1);
+            }
+            throw e;
+          }
+        };
+        const parsed = await fetchAndParse(0);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ variants: parsed }));
       } catch (err) {

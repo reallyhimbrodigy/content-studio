@@ -1,4 +1,8 @@
 import { signUp, signIn, getCurrentUser, signOut, resetPassword } from './user-store.js';
+import { initTheme } from './theme.js';
+
+// Apply theme on page load
+initTheme();
 
 // Handle sign-out redirect (e.g., /auth.html?signout=1)
 (async () => {

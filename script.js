@@ -8,6 +8,7 @@ const grid = document.getElementById("calendar-grid");
   const userEmailEl = document.getElementById("user-email");
   const userTierBadge = document.getElementById("user-tier-badge");
   const signOutBtn = document.getElementById("sign-out-btn");
+  const manageBillingBtn = document.getElementById('manage-billing-btn');
   const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
@@ -165,6 +166,32 @@ const grid = document.getElementById("calendar-grid");
       if (userIsPro) console.log('✓ Pro badge shown');
     }
 
+    // Show Manage Billing for PRO users
+    if (manageBillingBtn) {
+      manageBillingBtn.style.display = userIsPro ? 'inline-block' : 'none';
+      if (userIsPro && !manageBillingBtn.dataset.bound) {
+        manageBillingBtn.dataset.bound = '1';
+        manageBillingBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          try {
+            const resp = await fetch('/api/billing/portal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data && data.url) {
+              window.location.href = data.url;
+            } else {
+              alert(data?.error || 'Billing portal is not configured yet.');
+            }
+          } catch (err) {
+            alert('Billing portal unavailable. Please try again later.');
+          }
+        });
+      }
+    }
+
     // Attach sign out handler now that the button is visible
     const signOutBtnNow = document.getElementById('sign-out-btn');
     if (signOutBtnNow && !signOutBtnNow.dataset.bound) {
@@ -211,22 +238,28 @@ if (upgradeModal) {
 }
 
 if (upgradeBtn) {
-  upgradeBtn.addEventListener('click', () => {
-    // Open Stripe Payment Link in a new, clean tab to avoid any page-script interference
-  // Force English locale to avoid dynamic import issues (Cannot find module './en') on some setups
-  const url = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
+  upgradeBtn.addEventListener('click', async () => {
+    const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
     try {
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        // Popup blocked: fall back to same-tab navigation
-        window.location.href = url;
-      } else {
-        // Close the upgrade modal if it’s open
-        if (typeof hideUpgradeModal === 'function') hideUpgradeModal();
+      // Try in-app Checkout first
+      const user = await getCurrentUser();
+      const resp = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user || '', priceLookupKey: 'promptly_pro_monthly' })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (resp.ok && data && data.url) {
+        window.location.href = data.url;
+        return;
       }
+      // Fallback to Payment Link if not configured
+      const win = window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+      if (!win) window.location.href = fallbackUrl;
+      if (typeof hideUpgradeModal === 'function') hideUpgradeModal();
     } catch (e) {
-      // Absolute fallback
-      window.location.href = url;
+      // Final fallback
+      window.location.href = fallbackUrl;
     }
   });
 }

@@ -1,0 +1,16 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Promptly",
+  "url": "https://usepromptly.app/",
+  "logo": "https://usepromptly.app/assets/promptly-icon.svg",
+  "sameAs": [],
+  "contactPoint": [
+    {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "email": "support@usepromptly.app",
+      "availableLanguage": ["en"]
+    }
+  ]
+}

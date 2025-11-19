@@ -11,6 +11,17 @@ services:
         sync: false
       - key: CANONICAL_HOST
         sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # Stripe Billing
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: STRIPE_PRICE_LOOKUP_KEY
+        sync: false
       - key: NODE_VERSION
         value: 20
     healthCheckPath: /

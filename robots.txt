@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://usepromptly.app/sitemap.xml
