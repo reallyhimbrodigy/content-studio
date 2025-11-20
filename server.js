@@ -222,7 +222,49 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const preset = getPresetGuidelines(nicheStyle);
   const presetBlock = preset ? `\n\nPreset Guidelines for this niche:\n${preset}\n\n` : '\n';
     const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must be punchy.\n2) Hashtags: mix broad + niche/local; 6–8 total (balance reach + targeting).\n3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (e.g., Reel→Carousel slides, Static→Reel).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: Reels 7–12s with trending audio; Carousels start with bold headline.\n8) Captions: start with a short hook line, then 1–2 value lines (use \\n).\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include videoScript — Reels dominate reach. Even for Static/Carousel/Story, provide an "optional Reel version" script to help creators repurpose it.`;
-    return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}\n\nCreate a calendar for "${nicheStyle}". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1} with these fields (be concise):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; first line is the hook)\n- hashtags (array of 6–8 mixed broad + niche/local tags)\n- format (Reel|Story|Carousel|Static)\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short ideas)\n- analytics (short list: 2–3 metrics)\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; natural tone)\n- promoSlot (boolean)\n- weeklyPromo (string; present only if promoSlot is true; keep short)\n- videoScript { hook, body, cta } (REQUIRED for ALL posts regardless of format; hook is 5–8 words; body is 2–3 short beats of 10–15 words each; cta is urgent call-to-action)\n\nReturn ONLY a valid JSON array of ${days} objects. Do NOT use markdown, code fences, or trailing commas. If you cannot fit a field, OMIT it. Do NOT output invalid JSON. No explanation.`;
+    return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}\n\nCreate a calendar for "${nicheStyle}". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; the first line is the hook)\n- hashtags (array of 6–8 strings; mix broad + niche/local; no punctuation)\n- format (Reel|Story|Carousel|Static)\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., ["Reach","Saves"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to "")\n- videoScript { hook, body, cta } (REQUIRED for ALL posts regardless of format; hook 5–8 words; body 2–3 short beats; cta urgent)\n\nRules:\n- If unsure, invent concise, plausible content rather than omitting fields.\n- Always include every field above (use empty string only if absolutely necessary).\n- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+}
+
+function hasAllRequiredFields(p){
+  if (!p) return false;
+  const ok = p.day!=null && p.idea && p.type && p.caption && p.hashtags && Array.isArray(p.hashtags) && p.hashtags.length>=6
+    && p.format && p.cta && p.pillar && p.storyPrompt && p.designNotes
+    && p.repurpose && Array.isArray(p.repurpose) && p.repurpose.length>=2
+    && p.analytics && Array.isArray(p.analytics) && p.analytics.length>=2
+    && p.engagementScripts && p.engagementScripts.commentReply && p.engagementScripts.dmReply
+    && p.videoScript && p.videoScript.hook && p.videoScript.body && p.videoScript.cta
+    && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true);
+  return !!ok;
+}
+
+async function repairMissingFields(nicheStyle, brandContext, partialPosts){
+  try {
+    const schema = `Fill missing fields for each post. Keep existing values exactly as given. Return ONLY a JSON array with the same length and order. ALL fields must be present for every item (never omit):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; first line is the hook)\n- hashtags (array of 6–8 strings)\n- format (Reel|Story|Carousel|Static)\n- cta (string)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (string <= 120 chars)\n- designNotes (string <= 120 chars)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 strings)\n- engagementScripts { commentReply, dmReply } (each <= 140 chars)\n- promoSlot (boolean)\n- weeklyPromo (string; include empty string if promoSlot is false)\n- videoScript { hook, body, cta }`;
+    const prompt = `Brand Context (optional):\n${brandContext || 'N/A'}\n\nNiche/Style: ${nicheStyle}\n\nHere are partial posts with some fields missing. Repair them to include ALL required fields with concise, plausible values. Preserve existing values verbatim.\n\nPartial posts (JSON array):\n${JSON.stringify(partialPosts)}\n\n${schema}`;
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 3000,
+    });
+    const options = {
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    };
+    const json = await openAIRequest(options, payload);
+    const content = json.choices?.[0]?.message?.content || '[]';
+    const { data } = parseLLMArray(content, { requireArray: true });
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn('repairMissingFields error:', e.message);
+    return [];
+  }
 }
 
 function getPresetGuidelines(nicheStyle = '') {
@@ -489,7 +531,61 @@ const server = http.createServer((req, res) => {
         // pull brand context if available
         const brand = userId ? loadBrand(userId) : null;
         const brandContext = summarizeBrandForPrompt(brand);
-        const posts = await callOpenAI(nicheStyle, brandContext, { days, startDay });
+        let posts = await callOpenAI(nicheStyle, brandContext, { days, startDay });
+        // First-pass repair via LLM if any items are missing required fields
+        const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
+        if (incomplete.length > 0) {
+          const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
+          if (Array.isArray(repaired) && repaired.length === incomplete.length) {
+            incomplete.forEach((entry, idx) => {
+              const fixed = repaired[idx] || {};
+              // Merge: prefer repaired values, fall back to original
+              const merged = Object.assign({}, entry.p, fixed);
+              if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
+              if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
+              // Normalize arrays
+              if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
+              if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
+              if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
+              // Ensure engagementScripts object shape
+              if (!merged.engagementScripts) merged.engagementScripts = {};
+              if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
+              if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
+              // Ensure videoScript object shape
+              if (!merged.videoScript) merged.videoScript = { hook: '', body: '', cta: '' };
+              posts[entry.i] = merged;
+            });
+          }
+        }
+        // Final safety net: fill any still-missing fields with conservative defaults
+        posts = posts.map((p, idx) => {
+          const out = Object.assign({
+            day: typeof p.day === 'number' ? p.day : (startDay ? Number(startDay) + idx : (idx + 1)),
+            idea: p.idea || 'Engaging post idea',
+            type: p.type || 'educational',
+            caption: p.caption || 'Quick tip that helps you today.\nSave this for later.',
+            hashtags: Array.isArray(p.hashtags) ? p.hashtags : ['marketing','content','tips','learn','growth','brand'],
+            format: p.format || 'Reel',
+            cta: p.cta || 'DM us to book today',
+            pillar: p.pillar || 'Education',
+            storyPrompt: p.storyPrompt || 'Share behind-the-scenes of today\'s work.',
+            designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
+            repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)'],
+            analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : ['Reach','Saves'],
+            engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
+            promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : false,
+            weeklyPromo: typeof p.weeklyPromo === 'string' ? p.weeklyPromo : '',
+            videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: 'DM us to grab your spot' },
+          }, p);
+          // Guarantee engagementScripts keys
+          if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
+          if (!out.engagementScripts.commentReply) out.engagementScripts.commentReply = 'Thanks! Want our quick guide?';
+          if (!out.engagementScripts.dmReply) out.engagementScripts.dmReply = 'Starts at $99. Want me to book you this week?';
+          // Ensure weeklyPromo empty when promoSlot is false
+          if (!out.promoSlot && out.weeklyPromo) out.weeklyPromo = '';
+          return out;
+        });
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ posts }));
       } catch (err) {

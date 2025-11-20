@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Promptly – Test & Diagnostics</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -155,7 +156,7 @@
       <p>Your app is running. Click below to open it:</p>
       <div class="btn-group">
         <a href="http://localhost:8000" class="btn">📱 Open App (Main)</a>
-        <a href="http://localhost:8000/auth.html" class="btn">🔐 Sign In / Sign Up</a>
+        <a href="http://localhost:8000/auth.html" class="btn" data-hide-when-authenticated>🔐 Sign In / Sign Up</a>
         <a href="http://localhost:8000/library.html" class="btn">📚 Calendar Library</a>
       </div>
     </div>
@@ -326,5 +327,6 @@
     // Run diagnostics on page load
     window.addEventListener('load', runDiagnostics);
   </script>
+  <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>

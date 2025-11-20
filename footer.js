@@ -1,6 +1,68 @@
 // Centralized footer injection across pages
 const COPYRIGHT_TEXT = `© ${new Date().getFullYear()} Promptly. All rights reserved.`;
 
+const FOOTER_LINK_SECTIONS = [
+  {
+    title: 'Platform',
+    links: [
+      { label: 'Content Library', href: '/library.html' },
+      { label: 'Schedule Diagnostics', href: '/diagnostics.html' },
+      { label: 'Browser Check', href: '/browser-diagnostics.html' },
+      { label: 'Offline Mode', href: '/offline.html' }
+    ]
+  },
+  {
+    title: 'Resources',
+    links: [
+      { label: 'Help Center', href: '/help.html' },
+      { label: 'Changelog', href: '/changelog.html' },
+      { label: 'Privacy Policy', href: '/privacy.html' },
+      { label: 'Terms of Service', href: '/terms.html' }
+    ]
+  },
+  {
+    title: 'Company',
+    links: [
+      { label: 'Contact', href: '/contact.html' },
+      { label: 'Reset Access', href: '/reset-password.html' },
+      { label: 'Sitemap', href: '/sitemap.xml' }
+    ]
+  }
+];
+
+const FOOTER_SOCIAL_LINKS = [
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/promptly', external: true },
+  { label: 'X (Twitter)', href: 'https://twitter.com/try_promptly', external: true },
+  { label: 'YouTube', href: 'https://www.youtube.com/@tryPromptly', external: true }
+];
+
+function renderLinkSections() {
+  return FOOTER_LINK_SECTIONS.map((section) => `
+      <div class="footer__column">
+        <p class="footer__column-title">${section.title}</p>
+        <ul class="footer__link-list">
+          ${section.links
+            .map((link) => `
+              <li>
+                <a href="${link.href}">${link.label}</a>
+              </li>
+            `)
+            .join('')}
+        </ul>
+      </div>
+    `)
+    .join('');
+}
+
+function renderSocialLinks() {
+  return FOOTER_SOCIAL_LINKS.map((link) => {
+    const attrs = link.external
+      ? ' target="_blank" rel="noreferrer noopener"'
+      : '';
+    return `<a href="${link.href}"${attrs}>${link.label}</a>`;
+  }).join('');
+}
+
 function ensureFooter() {
   // Prefer to append inside app shell if present
   const container = document.querySelector('.app-shell') || document.body;
@@ -12,18 +74,28 @@ function ensureFooter() {
     container.appendChild(footer);
   }
 
-  // Set/replace content with helpful links
+  const sectionsMarkup = renderLinkSections();
+  const socialsMarkup = renderSocialLinks();
+
   footer.innerHTML = `
-    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; justify-content:space-between;">
-      <p style="margin:0">${COPYRIGHT_TEXT}</p>
-      <nav style=\"display:flex; gap:0.75rem; flex-wrap:wrap; font-size:0.95rem;\">
-        <a href=\"/help.html\" class=\"ghost\" style=\"text-decoration:none;\">Help</a>
-        <a href=\"/changelog.html\" class=\"ghost\" style=\"text-decoration:none;\">Changelog</a>
-        <a href=\"/terms.html\" class=\"ghost\" style=\"text-decoration:none;\">Terms</a>
-        <a href=\"/privacy.html\" class=\"ghost\" style=\"text-decoration:none;\">Privacy</a>
-        <a href=\"/contact.html\" class=\"ghost\" style=\"text-decoration:none;\">Contact</a>
-        <a href=\"/library.html\" class=\"ghost\" style=\"text-decoration:none;\">Library</a>
+    <div class="footer__inner">
+      <div class="footer__brand">
+        <p class="footer__eyebrow">Promptly</p>
+        <p class="footer__tagline">Content systems that keep campaigns on track, informed, and shipping fast.</p>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        ${sectionsMarkup}
       </nav>
+    </div>
+    <div class="footer__meta">
+      <div class="footer__legal">
+        <span>${COPYRIGHT_TEXT}</span>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+      <div class="footer__socials" aria-label="Social links">
+        ${socialsMarkup}
+      </div>
     </div>
   `;
 }

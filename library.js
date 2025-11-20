@@ -144,7 +144,7 @@ const userEmailEl = document.getElementById('user-email');
 const signOutBtn = document.getElementById('sign-out-btn');
 const profileTrigger = document.getElementById('profile-trigger');
 const profileMenu = document.getElementById('profile-menu');
-const profileDropdown = document.getElementById('profile-dropdown');
+const profileInitial = document.getElementById('profile-initial');
 const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
 const manageBillingBtn = document.getElementById('manage-billing-btn');
@@ -174,6 +174,10 @@ window.handleSignOut = async function() {
   }
 
   if (userEmailEl) userEmailEl.textContent = currentUser;
+  if (profileInitial && currentUser) {
+    const initial = currentUser.trim().charAt(0) || 'P';
+    profileInitial.textContent = initial.toUpperCase();
+  }
   
   // Show PRO badge if applicable
   const userIsPro = await isPro(currentUser);
@@ -204,12 +208,6 @@ window.handleSignOut = async function() {
         }
       });
     }
-  }
-  
-  // Show Pro badge in profile menu
-  const userProBadge = document.getElementById('user-pro-badge');
-  if (userProBadge && userIsPro) {
-    userProBadge.style.display = 'inline-block';
   }
   
   // Load calendars after user is confirmed
@@ -276,7 +274,7 @@ if (profileTrigger && profileMenu) {
     profileTrigger.setAttribute('aria-expanded', String(!isOpen));
   });
   document.addEventListener('click', (e) => {
-    if (profileDropdown && !profileDropdown.contains(e.target)) {
+    if (!profileMenu.contains(e.target) && !profileTrigger.contains(e.target)) {
       profileMenu.style.display = 'none';
       profileTrigger.setAttribute('aria-expanded', 'false');
     }

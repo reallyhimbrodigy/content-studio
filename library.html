@@ -101,10 +101,25 @@
           <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
           
           <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
-            <span id="user-email" class="user-email"></span>
-            <span id="user-pro-badge" class="pro-badge" style="display: none;">PRO</span>
-            <button id="manage-billing-btn" class="ghost" style="display:none">Manage billing</button>
-            <button id="sign-out-btn" class="ghost">Sign out</button>
+            <button id="brand-brain-btn" class="ghost brand-brain-btn">Brand Brain</button>
+            <div class="profile-wrapper">
+              <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                <span id="profile-initial">P</span>
+              </button>
+              <div id="profile-menu" class="profile-menu" style="display:none;">
+                <div id="profile-dropdown" class="profile-dropdown">
+                  <div class="profile-menu-header">
+                    <div>
+                      <p class="profile-email" id="user-email"></p>
+                      <p class="profile-caption">Account</p>
+                    </div>
+                    <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
+                  </div>
+                  <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
+                  <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <h1>AI Content Studio</h1>

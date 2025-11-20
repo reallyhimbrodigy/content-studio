@@ -9,6 +9,10 @@ const grid = document.getElementById("calendar-grid");
   const userTierBadge = document.getElementById("user-tier-badge");
   const signOutBtn = document.getElementById("sign-out-btn");
   const manageBillingBtn = document.getElementById('manage-billing-btn');
+  const profileTrigger = document.getElementById('profile-trigger');
+  const profileMenu = document.getElementById('profile-menu');
+  const profileInitial = document.getElementById('profile-initial');
+  const landingNavLinks = document.querySelector('.landing-nav__links');
   const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
@@ -36,6 +40,8 @@ const grid = document.getElementById("calendar-grid");
   const hub = document.getElementById('publish-hub');
   const hubNext = document.getElementById('hub-next');
   const hubAfter = document.getElementById('hub-after');
+  const landingExperience = document.getElementById('landing-experience');
+  const appExperience = document.getElementById('app-experience');
   // Tabs
   const tabPlan = document.getElementById('tab-plan');
   const tabPublish = document.getElementById('tab-publish');
@@ -146,23 +152,31 @@ const grid = document.getElementById("calendar-grid");
     console.log('✓ User logged in:', currentUser);
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
-      userMenu.style.display = 'block';
+      userMenu.style.display = 'flex';
       console.log('✓ User menu displayed');
     }
+    if (landingExperience) landingExperience.style.display = 'none';
+    if (appExperience) appExperience.style.display = '';
+    if (landingNavLinks) landingNavLinks.style.display = 'none';
+    closeProfileMenu();
     
-    // Populate user email
+    // Populate user email and profile initial
     if (userEmailEl) {
       userEmailEl.textContent = currentUser;
       console.log('✓ Email set:', currentUser);
+    }
+    if (profileInitial && currentUser) {
+      const initial = currentUser.trim().charAt(0) || 'P';
+      profileInitial.textContent = initial.toUpperCase();
     }
     
     // Show Pro badge if applicable
     const userIsPro = await isPro(currentUser);
     console.log('User is Pro:', userIsPro);
     
-    const userProBadge = document.getElementById('user-pro-badge');
-    if (userProBadge) {
-      userProBadge.style.display = userIsPro ? 'inline-block' : 'none';
+    if (userTierBadge) {
+      userTierBadge.style.display = userIsPro ? 'inline-flex' : 'none';
+      userTierBadge.textContent = userIsPro ? 'PRO' : '';
       if (userIsPro) console.log('✓ Pro badge shown');
     }
 
@@ -211,10 +225,46 @@ const grid = document.getElementById("calendar-grid");
       console.log('✓ Public nav displayed');
     }
     if (userMenu) userMenu.style.display = 'none';
+    if (landingExperience) landingExperience.style.display = '';
+    if (appExperience) appExperience.style.display = 'none';
+    if (landingNavLinks) landingNavLinks.style.display = 'flex';
+    closeProfileMenu();
   }
 })();
 
-// (Profile dropdown removed) – simple inline user menu remains
+// Profile dropdown controls
+
+function closeProfileMenu() {
+  if (profileMenu) profileMenu.style.display = 'none';
+  if (profileTrigger) profileTrigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProfileMenu() {
+  if (!profileMenu || !profileTrigger) return;
+  const isOpen = profileMenu.style.display === 'block';
+  if (isOpen) {
+    closeProfileMenu();
+  } else {
+    profileMenu.style.display = 'block';
+    profileTrigger.setAttribute('aria-expanded', 'true');
+  }
+}
+
+if (profileTrigger) {
+  profileTrigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleProfileMenu();
+  });
+}
+
+document.addEventListener('click', (event) => {
+  if (!profileMenu || !profileTrigger) return;
+  const target = event.target;
+  if (!profileMenu.contains(target) && !profileTrigger.contains(target)) {
+    closeProfileMenu();
+  }
+});
 
 // Sign out handler is attached after auth check when user-menu is shown
 
@@ -1326,6 +1376,36 @@ if (saveBtn) {
   });
 }
 
+// Normalize a post to guarantee all required fields exist
+function normalizePost(p, idx = 0, startDay = 1) {
+  const out = {
+    day: typeof p.day === 'number' ? p.day : (startDay + idx),
+    idea: p.idea || p.title || 'Engaging post idea',
+    type: p.type || 'educational',
+    caption: p.caption || 'Quick tip that helps you today.\nSave this for later.',
+    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : ['marketing','content','tips','learn','growth','brand']),
+    format: p.format || 'Reel',
+    cta: p.cta || 'DM us to book today',
+    pillar: p.pillar || 'Education',
+    storyPrompt: p.storyPrompt || 'Share behind-the-scenes of today\'s work.',
+    designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
+    repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
+    analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
+    engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
+    promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
+    weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
+    videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: 'DM us to grab your spot' },
+    variants: p.variants || undefined,
+  };
+  // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
+  if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
+  if (!out.engagementScripts.commentReply && p.engagementScript) out.engagementScripts.commentReply = p.engagementScript;
+  if (!out.engagementScripts.dmReply) out.engagementScripts.dmReply = out.engagementScripts.dmReply || '';
+  // Ensure hashtags have # prefix for display purposes later
+  out.hashtags = Array.isArray(out.hashtags) ? out.hashtags : [];
+  return { ...p, ...out };
+}
+
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle) {
   console.log("🟡 generateCalendarWithAI called with:", nicheStyle);
@@ -1388,18 +1468,14 @@ async function generateCalendarWithAI(nicheStyle) {
       .sort((a, b) => a.batchIndex - b.batchIndex)
       .flatMap(r => r.posts);
 
-    // Ensure every post has a videoScript object
-    let missingCount = 0;
-    allPosts = allPosts.map(post => {
-      if (!post.videoScript || typeof post.videoScript !== 'object') {
-        missingCount++;
-        return { ...post, videoScript: { hook: '', body: '', cta: '' } };
-      }
-      return post;
-    });
-    if (missingCount > 0) {
-      console.warn(`⚠️ Fixed ${missingCount} posts missing videoScript. All posts now have a Reel Script.`);
+    // Normalize every post to guarantee required fields
+    const normalized = allPosts.map((p, i) => normalizePost(p, i, 1));
+    // Simple integrity check
+    const bad = normalized.filter(p => !p.videoScript || !p.caption || !p.hashtags || !Array.isArray(p.hashtags) || !p.storyPrompt || !p.designNotes || !p.engagementScripts);
+    if (bad.length) {
+      console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
     }
+    allPosts = normalized;
 
     console.log("🟢 All batches complete, total posts:", allPosts.length);
     return allPosts;
@@ -1753,4 +1829,3 @@ if (hubSkipPrevBtn) {
     renderPublishHub();
   });
 }
-

@@ -34,81 +34,251 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="hero">
-        <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
-          <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
-          
-          <!-- Public nav (shown when not logged in) -->
-          <nav id="public-nav" class="main-nav" style="display: none; gap: 1rem; align-items: center;">
-            <a href="auth.html?mode=login" class="secondary" style="min-width: 90px; text-align: center;">Log In</a>
-            <a href="auth.html?mode=signup" class="primary" style="min-width: 110px; text-align: center;">Get Started</a>
-          </nav>
-          
-          <!-- User menu (shown when logged in) -->
+      <nav class="landing-nav" aria-label="Primary navigation">
+        <div class="landing-nav__brand">
+          <a href="/" aria-label="Promptly home">
+            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+          </a>
+          <span class="nav-tagline">Your Content Studio</span>
+        </div>
+        <div class="landing-nav__links">
+          <a href="#product">Product</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#pricing">Pricing</a>
+        </div>
+        <div class="landing-nav__actions">
+          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
           <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-            <button id="brand-brain-btn" class="primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Brand Brain</button>
-            <span id="user-email" class="user-email"></span>
-            <span id="user-pro-badge" class="pro-badge" style="display: none;">PRO</span>
-            <button id="manage-billing-btn" class="ghost" style="display:none">Manage billing</button>
-            <button id="sign-out-btn" class="ghost">Sign out</button>
-          </div>
-        </div>
-        <h1>Your AI Content Studio</h1>
-        <p class="hero-tagline">
-          Generate a complete 30-day content calendar in seconds. Perfectly sequenced posts that build authority, grow community, and drive results.
-        </p>
-        <div class="hero__cta">
-          <div class="generate-controls">
-            <label for="niche-style-input" class="input-label">What's your niche or content style?</label>
-            <input
-              id="niche-style-input"
-              class="generate-input"
-              type="text"
-              placeholder="e.g., fitness coaches, playful tech content, sustainable fashion..."
-              aria-label="Niche and style"
-              aria-required="true"
-              required
-            />
-            <button id="generate-calendar" class="secondary primary-large">
-              <span class="spinner" aria-hidden="true" style="display:none"></span>
-              <span class="btn-text">Generate My 30-Day Calendar</span>
-            </button>
-            <div id="generation-progress" class="generation-progress" style="display:none" aria-live="polite" aria-atomic="true">
-              <div class="progress-bar">
-                <div class="progress-fill" id="progress-fill"></div>
+            <button id="brand-brain-btn" class="ghost brand-brain-btn">Brand Brain</button>
+            <div class="profile-wrapper">
+              <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                <span id="profile-initial">P</span>
+              </button>
+              <div id="profile-menu" class="profile-menu" style="display:none;">
+                <div id="profile-dropdown" class="profile-dropdown">
+                  <div class="profile-menu-header">
+                    <div>
+                      <p class="profile-email" id="user-email"></p>
+                      <p class="profile-caption">Account</p>
+                    </div>
+                    <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
+                  </div>
+                  <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
+                  <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+                </div>
               </div>
-              <div class="progress-text" id="progress-text">Preparing your calendar...</div>
             </div>
-            <div id="niche-feedback" class="input-feedback" aria-live="polite" aria-atomic="true"></div>
-            <div id="generation-errors" class="generation-errors" style="display:none" aria-live="polite" aria-atomic="false"></div>
           </div>
         </div>
-        <div class="hero__features">
-          <div class="feature-pill">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 1L10.5 6L16 7L12 11L13 16L8 13.5L3 16L4 11L0 7L5.5 6L8 1Z" fill="currentColor"/>
-            </svg>
-            <span>AI-powered strategy</span>
-          </div>
-          <div class="feature-pill">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-              <path d="M8 4v4l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-            <span>30 days in 30 seconds</span>
-          </div>
-          <div class="feature-pill">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M14 8c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M14 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M10 2h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Export & publish anywhere</span>
-          </div>
-        </div>
-      </header>
+      </nav>
 
-      <main>
+      <div id="landing-experience">
+        <header class="hero landing-hero" id="home">
+          <div class="landing-hero__grid">
+            <div class="landing-hero__intro">
+              <p class="hero-pill">Content Made Simple</p>
+              <h1>From one thought to 30 days of ready-to-post content.</h1>
+              <p class="hero-tagline">
+                Promptly is a content studio that gives businesses ready-to-use daily posts — complete with captions, scripts, hashtags, and engagement tools — so they can grow consistently without the stress of creating from scratch.
+              </p>
+              <div class="landing-hero__actions">
+                <a href="auth.html?mode=signup" class="primary primary-large">Get Started</a>
+                <a href="auth.html?mode=login" class="ghost primary-large">Log In</a>
+              </div>
+              <div class="landing-badges">
+                <span class="landing-badge">Campaign scripts & prompts</span>
+                <span class="landing-badge">Platform variants</span>
+                <span class="landing-badge">Export-ready assets</span>
+              </div>
+              <div class="hero-proof">
+                <div class="hero-proof__item">
+                  <span class="hero-proof__value">4 hrs → 4 min</span>
+                  <span class="hero-proof__label">Average time saved per calendar</span>
+                </div>
+                <div class="hero-proof__item">
+                  <span class="hero-proof__value">+230%</span>
+                  <span class="hero-proof__label">Avg engagement lift from sequenced drops</span>
+                </div>
+              </div>
+              <div class="landing-logos">
+                <span class="landing-logos__label">For the ones who post, build, and grow</span>
+                <div class="landing-logos__row">
+                  <span>Solo founders</span>
+                  <span>In-house marketers</span>
+                  <span>Agencies on retainer</span>
+                  <span>Creators growing audiences</span>
+                </div>
+              </div>
+            </div>
+            <div class="landing-hero__panel">
+              <div class="hero-panel">
+                <div class="hero-panel__header">
+                  <div>
+                    <p class="hero-panel__eyebrow">Control Room</p>
+                    <p class="hero-panel__title">30-day drop schedule</p>
+                  </div>
+                  <span class="hero-panel__status">Live preview</span>
+                </div>
+                <ul class="hero-panel__list">
+                  <li>
+                    <p class="hero-panel__kicker">Day 03 · Story</p>
+                    <p class="hero-panel__headline">Client glow-up carousel with CTA to free consult</p>
+                    <p class="hero-panel__meta">IG Carousel · LinkedIn Doc · Email Primer</p>
+                  </li>
+                  <li>
+                    <p class="hero-panel__kicker">Day 11 · Social Proof</p>
+                    <p class="hero-panel__headline">Micro case study: 47% more inbound demos in 2 weeks</p>
+                    <p class="hero-panel__meta">LinkedIn Post · X Thread · Story stickers</p>
+                  </li>
+                  <li>
+                    <p class="hero-panel__kicker">Day 22 · Promotion</p>
+                    <p class="hero-panel__headline">Launch-day teaser reel with built-in comment magnet</p>
+                    <p class="hero-panel__meta">IG Reel · TikTok · Newsletter CTA</p>
+                  </li>
+                </ul>
+                <div class="hero-panel__cta">
+                  <p class="hero-panel__cta-label">See it for your brand</p>
+                  <p class="hero-panel__meta">Hit Get Started above to generate a fully sequenced control room for your team.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section class="landing-value" id="product">
+        <div class="landing-value__intro">
+          <p class="section-eyebrow">Consistency without the chaos</p>
+          <h2>From ideas to posts, Promptly gives you the system and context to stay on track.</h2>
+        </div>
+        <div class="landing-value__grid">
+          <article class="value-card">
+            <h3>Strategic sequencing</h3>
+            <p>Balanced pillars and narrative arcs mapped over 30 days so every drop builds toward your campaign objective.</p>
+          </article>
+          <article class="value-card">
+            <h3>Channel variants</h3>
+            <p>Auto-generated copy tuned for LinkedIn, Reels, TikTok, newsletters, and more—already aligned to the master story.</p>
+          </article>
+          <article class="value-card">
+            <h3>Asset-ready exports</h3>
+            <p>Download folders, share docs, and task your team with prompts, hooks, and CTAs embedded in each card.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-workflow" id="workflow">
+        <div class="landing-workflow__intro">
+          <p class="section-eyebrow">Workflow</p>
+          <h2>From intake to launch without leaving the page.</h2>
+          <p>Borrowing from the best production rooms, our workflow keeps strategists, writers, and founders centered on the same visual timeline.</p>
+        </div>
+        <ol class="workflow-steps">
+          <li>
+            <div class="workflow-step__number">01</div>
+            <div>
+              <p class="workflow-step__label">Calibrate your brand brain</p>
+              <p class="workflow-step__desc">Drop in voice notes, tone cues, and past wins. Promptly trains a private AI palette for your campaigns.</p>
+            </div>
+          </li>
+          <li>
+            <div class="workflow-step__number">02</div>
+            <div>
+              <p class="workflow-step__label">Generate the control room</p>
+              <p class="workflow-step__desc">Get a 30-day storyboard with channel-by-channel guidance, engagement hooks, and CTA logic.</p>
+            </div>
+          </li>
+          <li>
+            <div class="workflow-step__number">03</div>
+            <div>
+              <p class="workflow-step__label">Publish with confidence</p>
+              <p class="workflow-step__desc">Use Publish Hub to grab approvals, mark posts as shipped, and download everything in one click.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+        <section class="landing-pricing" id="pricing">
+        <div class="landing-pricing__card">
+          <p class="section-eyebrow">Pricing</p>
+          <h2>Start free. Upgrade when you need superpowers.</h2>
+          <p>Explore Promptly with one calendar on us, then unlock unlimited campaigns, downloads, and Brand Brain for $19.99/mo.</p>
+          <div class="landing-pricing__price-row">
+            <div>
+              <p class="landing-pricing__price">$0</p>
+              <p class="landing-pricing__caption">per month · always-on free plan</p>
+            </div>
+            <div>
+              <p class="landing-pricing__price">$19.99</p>
+              <p class="landing-pricing__caption">per month · Promptly Pro</p>
+            </div>
+          </div>
+          <p class="landing-pricing__note">Ready to dive in? Use the Get Started + Log In actions at the top of the page.</p>
+        </div>
+        </section>
+      </div>
+
+      <div id="app-experience" style="display:none;">
+        <header class="hero app-hero">
+          <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
+            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+            <span class="hero-pill hero-pill--subtle">Content Studio</span>
+          </div>
+          <h1>Your AI Content Studio</h1>
+          <p class="hero-tagline">
+            Generate a complete 30-day content calendar in seconds. Perfectly sequenced posts that build authority, grow community, and drive results.
+          </p>
+          <div class="hero__cta">
+            <div class="generate-controls">
+              <label for="niche-style-input" class="input-label">What's your niche or content style?</label>
+              <input
+                id="niche-style-input"
+                class="generate-input"
+                type="text"
+                placeholder="e.g., fitness coaches, playful tech content, sustainable fashion..."
+                aria-label="Niche and style"
+                aria-required="true"
+                required
+              />
+              <button id="generate-calendar" class="secondary primary-large">
+                <span class="spinner" aria-hidden="true" style="display:none"></span>
+                <span class="btn-text">Generate My 30-Day Calendar</span>
+              </button>
+              <div id="generation-progress" class="generation-progress" style="display:none" aria-live="polite" aria-atomic="true">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">Preparing your calendar...</div>
+              </div>
+              <div id="niche-feedback" class="input-feedback" aria-live="polite" aria-atomic="true"></div>
+              <div id="generation-errors" class="generation-errors" style="display:none" aria-live="polite" aria-atomic="false"></div>
+            </div>
+          </div>
+          <div class="hero__features">
+            <div class="feature-pill">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 1L10.5 6L16 7L12 11L13 16L8 13.5L3 16L4 11L0 7L5.5 6L8 1Z" fill="currentColor"/>
+              </svg>
+              <span>AI-powered strategy</span>
+            </div>
+            <div class="feature-pill">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                <path d="M8 4v4l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <span>30 days in 30 seconds</span>
+            </div>
+            <div class="feature-pill">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 8c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M14 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M10 2h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Export & publish anywhere</span>
+            </div>
+          </div>
+        </header>
+
+        <main id="app">
         <nav class="tabs" aria-label="Primary">
           <button id="tab-plan" class="tab active" aria-pressed="true">Plan</button>
           <button id="tab-publish" class="tab" aria-pressed="false">Publish</button>
@@ -173,6 +343,8 @@
           <div class="calendar__grid" id="calendar-grid"></div>
         </section>
       </main>
+
+      </div>
 
       <footer class="footer">
         <p>© 2025 Promptly. All rights reserved.</p>

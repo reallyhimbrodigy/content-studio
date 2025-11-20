@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Help & Support - Promptly</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <div style="max-width: 800px; margin: 0 auto; padding: 2rem;">
@@ -45,12 +46,13 @@
     
     <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(255, 255, 255, 0.1);">
       <a href="/" style="color: rgba(127, 201, 255, 0.95); text-decoration: none; margin-right: 1rem;">← Back to Home</a>
-      <a href="/auth.html" style="color: rgba(127, 201, 255, 0.95); text-decoration: none;">Sign In</a>
+      <a href="/auth.html" data-hide-when-authenticated style="color: rgba(127, 201, 255, 0.95); text-decoration: none;">Sign In</a>
     </div>
   </div>
   <script type="module">
     import { initTheme } from './theme.js';
     initTheme();
   </script>
+  <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>
