@@ -35,12 +35,7 @@
   <body>
     <div class="app-shell">
       <nav class="landing-nav" aria-label="Primary navigation">
-        <div class="landing-nav__brand">
-          <a href="/" aria-label="Promptly home">
-            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
-          </a>
-          <span class="nav-tagline">Your Content Studio</span>
-        </div>
+        <div class="landing-nav__brand"></div>
         <div class="landing-nav__links">
           <a href="#product">Product</a>
           <a href="#workflow">Workflow</a>
@@ -48,27 +43,6 @@
         </div>
         <div class="landing-nav__actions">
           <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
-          <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-            <button id="brand-brain-btn" class="ghost brand-brain-btn">Brand Brain</button>
-            <div class="profile-wrapper">
-              <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-                <span id="profile-initial">P</span>
-              </button>
-              <div id="profile-menu" class="profile-menu" style="display:none;">
-                <div id="profile-dropdown" class="profile-dropdown">
-                  <div class="profile-menu-header">
-                    <div>
-                      <p class="profile-email" id="user-email"></p>
-                      <p class="profile-caption">Account</p>
-                    </div>
-                    <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
-                  </div>
-                  <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
-                  <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </nav>
 
@@ -110,40 +84,43 @@
                 </div>
               </div>
             </div>
-            <div class="landing-hero__panel">
-              <div class="hero-panel">
-                <div class="hero-panel__header">
-                  <div>
-                    <p class="hero-panel__eyebrow">Control Room</p>
-                    <p class="hero-panel__title">30-day drop schedule</p>
-                  </div>
-                  <span class="hero-panel__status">Live preview</span>
-                </div>
-                <ul class="hero-panel__list">
-                  <li>
-                    <p class="hero-panel__kicker">Day 03 · Story</p>
-                    <p class="hero-panel__headline">Client glow-up carousel with CTA to free consult</p>
-                    <p class="hero-panel__meta">IG Carousel · LinkedIn Doc · Email Primer</p>
-                  </li>
-                  <li>
-                    <p class="hero-panel__kicker">Day 11 · Social Proof</p>
-                    <p class="hero-panel__headline">Micro case study: 47% more inbound demos in 2 weeks</p>
-                    <p class="hero-panel__meta">LinkedIn Post · X Thread · Story stickers</p>
-                  </li>
-                  <li>
-                    <p class="hero-panel__kicker">Day 22 · Promotion</p>
-                    <p class="hero-panel__headline">Launch-day teaser reel with built-in comment magnet</p>
-                    <p class="hero-panel__meta">IG Reel · TikTok · Newsletter CTA</p>
-                  </li>
-                </ul>
-                <div class="hero-panel__cta">
-                  <p class="hero-panel__cta-label">See it for your brand</p>
-                  <p class="hero-panel__meta">Hit Get Started above to generate a fully sequenced control room for your team.</p>
-                </div>
+          <div class="landing-hero__panel">
+            <div class="hero-panel">
+              <div class="landing-samples__cards hero-panel__list">
+                <article class="calendar-card sample-card">
+                  <div class="calendar-card__day">03</div>
+                  <h3 class="calendar-card__title">Behind-the-scenes carousel</h3>
+                  <p class="calendar-card__caption">Walk through your creative process, ending with a CTA to DM “PLAN” for the template.</p>
+                  <div class="calendar-card__hashtags">#CreatorOps #ContentBehindScenes</div>
+                </article>
+                <article class="calendar-card sample-card">
+                  <div class="calendar-card__day">12</div>
+                  <h3 class="calendar-card__title">Micro case study</h3>
+                  <p class="calendar-card__caption">Highlight a 14-day win with screenshots, stats, and a testimonial pull-quote.</p>
+                  <div class="calendar-card__hashtags">#ProofPoint #ClientWins</div>
+                </article>
+                <article class="calendar-card sample-card">
+                  <div class="calendar-card__day">21</div>
+                  <h3 class="calendar-card__title">Launch-day teaser</h3>
+                  <p class="calendar-card__caption">Drop a countdown reel with a comment magnet question to boost saves and replies.</p>
+                  <div class="calendar-card__hashtags">#LaunchReady #SocialSystem</div>
+                </article>
+                <article class="calendar-card sample-card">
+                  <div class="calendar-card__day">25</div>
+                  <h3 class="calendar-card__title">Live Q&A recap</h3>
+                  <p class="calendar-card__caption">Summarize your livestream takeaways with audience quotes and a CTA to watch the replay.</p>
+                  <div class="calendar-card__hashtags">#LiveRecap #CommunityGrow</div>
+                </article>
               </div>
+              <form class="landing-samples__form hero-panel__cta" action="/auth.html?mode=login">
+                <label for="landing-sample-input" class="input-label">Imagine this for your niche</label>
+                <input id="landing-sample-input" class="generate-input" type="text" placeholder="e.g., med spas, fintech founders, indie games" />
+                <button class="primary primary-large" type="submit">Generate calendar</button>
+              </form>
             </div>
           </div>
-        </header>
+        </div>
+      </header>
 
         <section class="landing-value" id="product">
         <div class="landing-value__intro">
@@ -212,6 +189,15 @@
               <p class="landing-pricing__caption">per month · Promptly Pro</p>
             </div>
           </div>
+          <ul class="landing-pricing__features">
+            <li><strong>Caption variations</strong> with 2–3 tones (casual, professional, witty).</li>
+            <li><strong>Hashtag sets</strong> for broad reach plus niche/local tags (e.g., #OKCMedSpa, #TulsaStudents).</li>
+            <li><strong>Trending audio tips</strong> so Reels ship with suggested sounds.</li>
+            <li><strong>Posting time guidance</strong> tailored to your audience (“Weekday afternoons for student reach”).</li>
+            <li><strong>Visual template links</strong> to Canva/Figma mockups for every carousel.</li>
+            <li><strong>Expanded story prompts</strong> including polls, sliders, and interactive moments.</li>
+            <li><strong>Follow-up content ideas</strong> like testimonial posts to extend each campaign.</li>
+          </ul>
           <p class="landing-pricing__note">Ready to dive in? Use the Get Started + Log In actions at the top of the page.</p>
         </div>
         </section>
@@ -219,9 +205,32 @@
 
       <div id="app-experience" style="display:none;">
         <header class="hero app-hero">
-          <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
-            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
-            <span class="hero-pill hero-pill--subtle">Content Studio</span>
+          <div class="hero-top">
+            <div class="hero-top__left">
+              <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+              <span class="hero-pill hero-pill--subtle">Your Content Studio</span>
+            </div>
+            <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
+              <button id="brand-brain-btn" class="ghost brand-brain-btn">Brand Brain</button>
+              <div class="profile-wrapper">
+                <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                  <span id="profile-initial">P</span>
+                </button>
+                <div id="profile-menu" class="profile-menu" style="display:none;">
+                  <div id="profile-dropdown" class="profile-dropdown">
+                    <div class="profile-menu-header">
+                      <div>
+                        <p class="profile-email" id="user-email"></p>
+                        <p class="profile-caption">Account</p>
+                      </div>
+                      <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
+                    </div>
+                    <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
+                    <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <h1>Your AI Content Studio</h1>
           <p class="hero-tagline">

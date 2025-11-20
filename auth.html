@@ -9,7 +9,9 @@
       body {
         margin: 0;
         font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        background: radial-gradient(circle at top, rgba(127, 90, 240, 0.25), rgba(5, 5, 12, 0.95));
+        background: radial-gradient(circle at 20% 20%, rgba(127, 90, 240, 0.35), transparent 50%),
+                    radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.3), transparent 55%),
+                    linear-gradient(140deg, #06040f 0%, #0e1230 60%, #05040b 100%);
         color: #f5f6f8;
         min-height: 100vh;
         display: flex;
@@ -27,30 +29,90 @@
       }
 
       .auth-brand {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 32px;
-        padding: clamp(1.5rem, 3vw, 2.5rem);
-        background: rgba(12, 12, 20, 0.35);
-        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 36px;
+        padding: clamp(2rem, 4vw, 3rem);
+        background: linear-gradient(135deg, rgba(127, 90, 240, 0.25), rgba(44, 177, 188, 0.18));
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
         text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .auth-brand::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top right, rgba(255,255,255,0.25), transparent 45%);
+        pointer-events: none;
       }
 
       .auth-brand img {
-        width: 56px;
-        height: 56px;
+        width: clamp(96px, 15vw, 140px);
+        height: auto;
         margin-bottom: 1rem;
       }
 
       .auth-brand h1 {
         margin: 0 0 0.5rem;
-        font-size: clamp(1.8rem, 4vw, 2.3rem);
+        font-size: clamp(2rem, 4.5vw, 2.8rem);
+        letter-spacing: 0.02em;
       }
 
       .auth-brand p {
         margin: 0 auto 1rem;
-        max-width: 360px;
+        max-width: 400px;
+        color: rgba(245, 246, 248, 0.9);
+        line-height: 1.7;
+        font-size: 1.05rem;
+      }
+
+      .auth-brand ul {
+        list-style: none;
+        padding: 0;
+        margin: 1.5rem auto 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        max-width: 420px;
+        color: rgba(245, 246, 248, 0.85);
+        font-size: 1rem;
+        text-align: left;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-brand ul li {
+        display: flex;
+        gap: 0.65rem;
+        align-items: flex-start;
+      }
+
+      .auth-brand ul li::before {
+        content: '•';
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 1.2rem;
+        line-height: 1;
+      }
+
+      .auth-trust {
+        margin-top: 1.75rem;
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        font-size: 0.9rem;
         color: rgba(245, 246, 248, 0.75);
-        line-height: 1.6;
+      }
+
+      .auth-trust span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(6, 10, 30, 0.35);
       }
 
       .auth-links {
@@ -87,16 +149,37 @@
       }
 
       .auth-card {
-        background: rgba(28, 28, 34, 0.9);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(150deg, rgba(12, 16, 36, 0.95), rgba(10, 10, 24, 0.9));
+        border: 1px solid rgba(127, 90, 240, 0.35);
         border-radius: 32px;
-        padding: clamp(1.5rem, 3vw, 2.75rem);
-        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+        padding: clamp(1.8rem, 3vw, 3rem);
+        box-shadow: 0 35px 90px rgba(0, 0, 0, 0.5);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .auth-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 20% 20%, rgba(127, 90, 240, 0.25), transparent 50%),
+                    radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.22), transparent 55%);
+        pointer-events: none;
       }
 
       .auth-card header {
         text-align: center;
         margin-bottom: 1.5rem;
+        position: relative;
+        z-index: 1;
+      }
+
+      .auth-eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.35em;
+        color: rgba(127, 201, 255, 0.75);
+        font-size: 0.8rem;
+        margin: 0;
       }
 
       .auth-card h2 {
@@ -107,6 +190,8 @@
         margin: 0;
         color: rgba(245, 246, 248, 0.7);
       }
+
+      .auth-card > * { position: relative; z-index: 1; }
 
       .form-group { margin-bottom: 1rem; }
 
@@ -132,8 +217,9 @@
 
       input:focus {
         outline: none;
-        border-color: rgba(127, 90, 240, 0.7);
-        box-shadow: 0 0 0 2px rgba(127, 90, 240, 0.2);
+        border-color: rgba(127, 90, 240, 0.9);
+        box-shadow: 0 0 0 2px rgba(127, 90, 240, 0.35);
+        background: rgba(8, 16, 36, 0.8);
       }
 
       button {
@@ -246,6 +332,21 @@
         border-color: rgba(255, 255, 255, 0.15);
       }
 
+      .auth-support {
+        margin-top: 1.5rem;
+        text-align: center;
+        font-size: 0.9rem;
+        color: rgba(245, 246, 248, 0.7);
+      }
+
+      .auth-support a {
+        color: rgba(127, 201, 255, 0.95);
+        text-decoration: none;
+      }
+
+      .auth-support a:hover {
+        text-decoration: underline;
+      }
       #auth-feedback { text-align: center; min-height: 1rem; }
 
       @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
@@ -264,7 +365,17 @@
       <section class="auth-brand">
         <img src="assets/promptly-logo.svg" alt="Promptly" />
         <h1>Promptly</h1>
-        <p>Log in to guide every campaign from a single control room. New to Promptly? Create an account in seconds.</p>
+        <p>Log in to manage every campaign from one streamlined dashboard.<br/>New here? Create your account in seconds.</p>
+        <ul>
+          <li>No credit card required to explore your first calendar</li>
+          <li>Keep Brand Brain aligned across your entire team</li>
+          <li>Access download-ready posts for every major platform</li>
+        </ul>
+        <div class="auth-trust">
+          <span>🔒 Secure by Supabase</span>
+          <span>🛡 Privacy-first</span>
+          <span>⚡ Priority support</span>
+        </div>
         <div class="auth-links">
           <a class="auth-link" href="/">
             <span class="auth-link__title">Back to home</span>
@@ -283,6 +394,7 @@
 
       <section class="auth-card">
         <header>
+          <p class="auth-eyebrow">Account Access</p>
           <h2 id="auth-mode-title">Create your account</h2>
           <p id="auth-mode-desc">Generate 30-day calendars, save Brand Brain, and sync your library.</p>
         </header>
@@ -357,6 +469,7 @@
         <div id="forgot-password-link" class="toggle-form" style="display: none; margin-top: 0.5rem;">
           <button id="forgot-password-btn" type="button">Forgot password?</button>
         </div>
+        <p class="auth-support">Need help? <a href="/help.html">Visit the help center</a> or <a href="/reset-password.html">reset access</a>.</p>
         </form>
       </section>
     </div>

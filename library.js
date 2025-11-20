@@ -76,7 +76,7 @@ function buildPostHTML(post) {
   const nl2br = (s) => escapeHtml(s).replace(/\n/g, '<br/>');
   const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
 
-  const detailsBlocks = [
+  const detailBlocks = [
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
@@ -94,7 +94,44 @@ function buildPostHTML(post) {
         + `${post.variants.linkedinCaption ? `<div><em>LinkedIn:</em> ${escapeHtml(post.variants.linkedinCaption)}</div>` : ''}`
         + `</div>`
       : ''
-  ].filter(Boolean).join('');
+  ];
+
+  if (isLibraryUserPro && post.captionVariations) {
+    detailBlocks.push(
+      `<div class="calendar-card__caption-variations"><strong>Caption variations</strong>`
+      + `${post.captionVariations.casual ? `<div><em>Casual:</em> ${escapeHtml(post.captionVariations.casual)}</div>` : ''}`
+      + `${post.captionVariations.professional ? `<div><em>Professional:</em> ${escapeHtml(post.captionVariations.professional)}</div>` : ''}`
+      + `${post.captionVariations.witty ? `<div><em>Witty:</em> ${escapeHtml(post.captionVariations.witty)}</div>` : ''}`
+      + `</div>`
+    );
+  }
+  if (isLibraryUserPro && post.hashtagSets) {
+    const broad = Array.isArray(post.hashtagSets.broad) ? post.hashtagSets.broad.join(' ') : '';
+    const niche = Array.isArray(post.hashtagSets.niche) ? post.hashtagSets.niche.join(' ') : '';
+    detailBlocks.push(
+      `<div class="calendar-card__hashtag-sets"><strong>Hashtag sets</strong>`
+      + `${broad ? `<div><em>Broad:</em> ${escapeHtml(broad)}</div>` : ''}`
+      + `${niche ? `<div><em>Niche/local:</em> ${escapeHtml(niche)}</div>` : ''}`
+      + `</div>`
+    );
+  }
+  if (isLibraryUserPro && post.suggestedAudio) {
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  }
+  if (isLibraryUserPro && post.postingTimeTip) {
+    detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
+  }
+  if (isLibraryUserPro && post.visualTemplate && post.visualTemplate.url) {
+    detailBlocks.push(`<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`);
+  }
+  if (isLibraryUserPro && post.storyPromptExpanded) {
+    detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
+  }
+  if (isLibraryUserPro && post.followUpIdea) {
+    detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
+  }
+
+  const detailsHTML = detailBlocks.filter(Boolean).join('');
 
   const cardHTML = `
     <article class="calendar-card" data-pillar="${escapeHtml(pillar)}">
@@ -104,7 +141,7 @@ function buildPostHTML(post) {
       <p class="calendar-card__caption">${nl2br(caption)}</p>
       <details>
         <summary>Full Details</summary>
-        <div class="calendar-card__details">${detailsBlocks}</div>
+        <div class="calendar-card__details">${detailsHTML}</div>
       </details>
     </article>
   `;
@@ -129,6 +166,10 @@ function buildPostHTML(post) {
     summary:hover{color:#9d7ff5}
     .calendar-card__details{padding-top:1rem;display:flex;flex-direction:column;gap:1rem}
     .calendar-card__details>div,.calendar-card__details>span{background:rgba(255,255,255,0.05);padding:0.75rem;border-radius:8px;font-size:0.9rem}
+    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__posting-tip,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:#c7d2fe}
+    .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#7f5af0;font-style:normal;font-weight:600}
+    .calendar-card__visual a{color:#7f5af0;text-decoration:none;font-weight:600}
+    .calendar-card__visual a:hover{text-decoration:underline}
     .calendar-card__hashtags{color:#2cb1bc;font-size:0.9rem}
     .calendar-card__format,.calendar-card__cta{color:#94a3b8;font-size:0.85rem}
     strong{color:#e2e8f0;display:block;margin-bottom:0.5rem}
@@ -156,6 +197,7 @@ const brandBtn = document.getElementById('brand-brain-btn');
 const calendarsList = document.getElementById('calendars-list');
 
 let currentUser = null;
+let isLibraryUserPro = false;
 
 // Global sign-out handler (now async with Supabase)
 window.handleSignOut = async function() {
@@ -181,6 +223,7 @@ window.handleSignOut = async function() {
   
   // Show PRO badge if applicable
   const userIsPro = await isPro(currentUser);
+  isLibraryUserPro = userIsPro;
   if (userTierBadge && userIsPro) {
     userTierBadge.textContent = 'PRO';
     userTierBadge.style.display = 'inline-block';

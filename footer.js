@@ -5,17 +5,13 @@ const FOOTER_LINK_SECTIONS = [
   {
     title: 'Platform',
     links: [
-      { label: 'Content Library', href: '/library.html' },
-      { label: 'Schedule Diagnostics', href: '/diagnostics.html' },
-      { label: 'Browser Check', href: '/browser-diagnostics.html' },
-      { label: 'Offline Mode', href: '/offline.html' }
+      { label: 'Content Library', href: '/library.html' }
     ]
   },
   {
     title: 'Resources',
     links: [
       { label: 'Help Center', href: '/help.html' },
-      { label: 'Changelog', href: '/changelog.html' },
       { label: 'Privacy Policy', href: '/privacy.html' },
       { label: 'Terms of Service', href: '/terms.html' }
     ]
@@ -24,8 +20,7 @@ const FOOTER_LINK_SECTIONS = [
     title: 'Company',
     links: [
       { label: 'Contact', href: '/contact.html' },
-      { label: 'Reset Access', href: '/reset-password.html' },
-      { label: 'Sitemap', href: '/sitemap.xml' }
+      { label: 'Reset Access', href: '/reset-password.html' }
     ]
   }
 ];

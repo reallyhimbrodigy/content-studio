@@ -13,6 +13,7 @@ const grid = document.getElementById("calendar-grid");
   const profileMenu = document.getElementById('profile-menu');
   const profileInitial = document.getElementById('profile-initial');
   const landingNavLinks = document.querySelector('.landing-nav__links');
+  const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
   const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
@@ -59,9 +60,10 @@ const grid = document.getElementById("calendar-grid");
   const hubDaySelect = document.getElementById('hub-day-select');
 
   // Posted state per user+niche
-  let hubIndex = 0; // 0-based index into currentCalendar
-  let activeTab = 'plan';
-  let isCompact = false;
+let hubIndex = 0; // 0-based index into currentCalendar
+let activeTab = 'plan';
+let isCompact = false;
+let cachedUserIsPro = false;
   function postedKey() {
     const user = getCurrentUser() || 'guest';
     const niche = (currentNiche || nicheInput?.value || 'default').toLowerCase();
@@ -173,6 +175,7 @@ const grid = document.getElementById("calendar-grid");
     // Show Pro badge if applicable
     const userIsPro = await isPro(currentUser);
     console.log('User is Pro:', userIsPro);
+    cachedUserIsPro = userIsPro;
     
     if (userTierBadge) {
       userTierBadge.style.display = userIsPro ? 'inline-flex' : 'none';
@@ -227,6 +230,7 @@ const grid = document.getElementById("calendar-grid");
     if (userMenu) userMenu.style.display = 'none';
     if (landingExperience) landingExperience.style.display = '';
     if (appExperience) appExperience.style.display = 'none';
+    cachedUserIsPro = false;
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
   }
@@ -265,6 +269,22 @@ document.addEventListener('click', (event) => {
     closeProfileMenu();
   }
 });
+
+function setupLandingNavScroll() {
+  if (!landingNavAnchors || landingNavAnchors.length === 0) return;
+  landingNavAnchors.forEach((anchor) => {
+    anchor.addEventListener('click', (event) => {
+      const targetId = anchor.getAttribute('href');
+      if (!targetId || !targetId.startsWith('#')) return;
+      const section = document.querySelector(targetId);
+      if (!section) return;
+      event.preventDefault();
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+setupLandingNavScroll();
 
 // Sign out handler is attached after auth check when user-menu is shown
 
@@ -541,6 +561,22 @@ const createCard = (post) => {
     if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${post.variants.tiktokCaption}`);
     if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${post.variants.linkedinCaption}`);
   }
+  if (cachedUserIsPro && post.captionVariations) {
+    if (post.captionVariations.casual) fullTextParts.push(`Casual Caption: ${post.captionVariations.casual}`);
+    if (post.captionVariations.professional) fullTextParts.push(`Professional Caption: ${post.captionVariations.professional}`);
+    if (post.captionVariations.witty) fullTextParts.push(`Witty Caption: ${post.captionVariations.witty}`);
+  }
+  if (cachedUserIsPro && post.hashtagSets) {
+    if (post.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(post.hashtagSets.broad || []).join(' ')}`);
+    if (post.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(post.hashtagSets.niche || []).join(' ')}`);
+  }
+  if (cachedUserIsPro && post.suggestedAudio) fullTextParts.push(`Suggested Audio: ${post.suggestedAudio}`);
+  if (cachedUserIsPro && post.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${post.postingTimeTip}`);
+  if (cachedUserIsPro && post.visualTemplate && post.visualTemplate.url) {
+    fullTextParts.push(`Visual Template: ${post.visualTemplate.label || 'Open template'} - ${post.visualTemplate.url}`);
+  }
+  if (cachedUserIsPro && post.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${post.storyPromptExpanded}`);
+  if (cachedUserIsPro && post.followUpIdea) fullTextParts.push(`Follow-up Idea: ${post.followUpIdea}`);
   const fullText = fullTextParts.join('\n\n');
 
   btnCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); btnCopyFull.textContent='Copied!'; setTimeout(()=>btnCopyFull.textContent='Copy Full',1000);} catch(e){} });
@@ -595,13 +631,63 @@ const createCard = (post) => {
   }
 
   // Collapse secondary details to reduce visual clutter
+  const proDetailNodes = [];
+  if (cachedUserIsPro && post.captionVariations) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__caption-variations';
+    const parts = [];
+    if (post.captionVariations.casual) parts.push(`<div><em>Casual:</em> ${post.captionVariations.casual}</div>`);
+    if (post.captionVariations.professional) parts.push(`<div><em>Professional:</em> ${post.captionVariations.professional}</div>`);
+    if (post.captionVariations.witty) parts.push(`<div><em>Witty:</em> ${post.captionVariations.witty}</div>`);
+    node.innerHTML = `<strong>Caption variations</strong>${parts.join('')}`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.hashtagSets) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__hashtag-sets';
+    const broad = Array.isArray(post.hashtagSets.broad) ? post.hashtagSets.broad.join(' ') : '';
+    const niche = Array.isArray(post.hashtagSets.niche) ? post.hashtagSets.niche.join(' ') : '';
+    node.innerHTML = `<strong>Hashtag sets</strong>${broad ? `<div><em>Broad:</em> ${broad}</div>` : ''}${niche ? `<div><em>Niche/local:</em> ${niche}</div>` : ''}`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.suggestedAudio) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__audio';
+    node.innerHTML = `<strong>Suggested audio</strong><div>${post.suggestedAudio}</div>`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.postingTimeTip) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__posting-tip';
+    node.innerHTML = `<strong>Posting time tip</strong><div>${post.postingTimeTip}</div>`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.visualTemplate && post.visualTemplate.url) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__visual';
+    node.innerHTML = `<strong>Visual template</strong><div><a href="${post.visualTemplate.url}" target="_blank" rel="noreferrer noopener">${post.visualTemplate.label || 'Open template'}</a></div>`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.storyPromptExpanded) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__story-extended';
+    node.innerHTML = `<strong>Story prompt+</strong> ${post.storyPromptExpanded}`;
+    proDetailNodes.push(node);
+  }
+  if (cachedUserIsPro && post.followUpIdea) {
+    const node = document.createElement('div');
+    node.className = 'calendar-card__followup';
+    node.innerHTML = `<strong>Follow-up idea</strong> ${post.followUpIdea}`;
+    proDetailNodes.push(node);
+  }
+
   const details = document.createElement('details');
   const summary = document.createElement('summary'); summary.textContent = 'Details';
   const detailsBody = document.createElement('div'); detailsBody.className = 'details-body';
   detailsBody.append(
     hashtagsEl, formatEl, ctaEl,
     storyPromptEl, designNotesEl, repurposeEl, analyticsEl, engagementEl,
-    promoSlotEl, weeklyPromoEl, videoScriptEl, variantsEl, actionsEl
+    promoSlotEl, weeklyPromoEl, videoScriptEl, variantsEl, ...proDetailNodes, actionsEl
   );
   details.append(summary, detailsBody);
 
@@ -742,6 +828,116 @@ const slugify = (s = "") =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .slice(0, 40);
+
+const proInteractivePrompts = [
+  'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
+  'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
+  'Turn the story into a “This or That” sequence with a DM me button.',
+  'Collect audience input with a “Ask me anything about today’s tip” box.',
+  'Use a countdown sticker leading into tomorrow’s teaser.'
+];
+
+const proFollowUpIdeas = [
+  'Follow up with a testimonial carousel from a recent client.',
+  'Share a short Reel showing the before/after from this concept.',
+  'Post a static quote graphic summarizing key data from today’s drop.',
+  'Go live to answer the top questions sparked by this post.',
+  'Send a newsletter recap that embeds today’s main CTA.'
+];
+
+const proAudioSuggestions = [
+  '"Calm Momentum" (lofi beat trending across strategy reels).',
+  '"Golden Hour Drip" (90 BPM instrumental great for B-roll).',
+  '"Swipe Series Synth" (upbeat synthwave loop, ideal for carousels).',
+  '"Builder Pulse" (steady percussion track favored in creator tips).',
+  '"Voiceover Spark" (soft piano underlay trending for storytelling).'
+];
+
+const proPostingTips = [
+  'Post weekday afternoons to catch students between classes.',
+  'Aim for early morning drops to reach execs before meetings.',
+  'Share on Saturday evenings when lifestyle audiences scroll longer.',
+  'Publish mid-week around lunch for the best B2B engagement.',
+  'Queue it for Sunday nights when planning-minded followers tune in.'
+];
+
+const proTemplateLabels = ['Carousel mockup', 'Reel cover kit', 'Swipe file layout', 'Story sticker board'];
+
+const capitalizeSentence = (text = '') => {
+  if (!text) return '';
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+const formatHashtag = (tag = '') => {
+  const clean = tag.replace(/[^a-z0-9#]/gi, '');
+  if (!clean) return '';
+  return clean.startsWith('#') ? clean : `#${clean}`;
+};
+
+const buildNicheTag = (nicheStyle = '') => {
+  const words = (nicheStyle || 'Promptly').split(/\s+/).filter(Boolean).slice(0, 3);
+  const cleaned = words.map(w => capitalizeSentence(w.replace(/[^a-z0-9]/gi, ''))).join('');
+  return cleaned || 'Promptly';
+};
+
+const pickCycled = (items, index = 0, offset = 0) => {
+  if (!items.length) return '';
+  const idx = Math.abs(index + offset) % items.length;
+  return items[idx];
+};
+
+const enrichPostWithProFields = (post, index, nicheStyle = '') => {
+  const baseCaption = (post.caption || post.idea || 'Share today’s win.').trim();
+  const nicheTag = buildNicheTag(nicheStyle);
+  const hashtagArray = Array.isArray(post.hashtags) ? post.hashtags.map(formatHashtag).filter(Boolean) : [];
+  const broadSet = hashtagArray.length ? hashtagArray.slice(0, 6) : ['#ContentPlan', '#Storytelling', '#CreatorJourney'];
+  const nicheSetBase = [
+    `#${nicheTag}`,
+    `#${nicheTag}Life`,
+    `#${nicheTag}Studio`,
+    `#${nicheTag}Stories`
+  ];
+
+  const captionVariations = {
+    casual: `${baseCaption} ✨`,
+    professional: `Professional angle: ${capitalizeSentence(baseCaption)}`,
+    witty: `Hot take: ${baseCaption.replace(/[.!?]$/, '')} — let’s make it happen.`
+  };
+
+  const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
+  const interactive = pickCycled(proInteractivePrompts, index);
+
+  return {
+    ...post,
+    captionVariations,
+    hashtagSets: {
+      broad: broadSet,
+      niche: nicheSetBase
+    },
+    suggestedAudio: pickCycled(proAudioSuggestions, index),
+    postingTimeTip: pickCycled(proPostingTips, index),
+    visualTemplate: {
+      label: pickCycled(proTemplateLabels, index),
+      url: `https://www.canva.com/design/DA-${visualSlug}`
+    },
+    storyPromptExpanded: post.storyPrompt
+      ? `${post.storyPrompt} ${interactive}`
+      : interactive,
+    followUpIdea: pickCycled(proFollowUpIdeas, index)
+  };
+};
+
+const stripProFields = (post) => {
+  const clone = { ...post };
+  delete clone.captionVariations;
+  delete clone.hashtagSets;
+  delete clone.suggestedAudio;
+  delete clone.postingTimeTip;
+  delete clone.visualTemplate;
+  delete clone.storyPromptExpanded;
+  delete clone.followUpIdea;
+  return clone;
+};
 
 const validateNiche = (val) => {
   if (!val || !val.trim()) return { ok: false, msg: "Please enter a niche or style." };
@@ -1209,7 +1405,7 @@ function buildPostHTML(post){
   const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
 
   // Build a single calendar card markup mirroring the in-app component
-  const detailsBlocks = [
+  const detailBlocks = [
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
@@ -1227,7 +1423,46 @@ function buildPostHTML(post){
         + `${post.variants.linkedinCaption?`<div><em>LinkedIn:</em> ${escapeHtml(post.variants.linkedinCaption)}</div>`:''}`
         + `</div>`
       : ''
-  ].filter(Boolean).join('');
+  ];
+
+  if (post.captionVariations) {
+    detailBlocks.push(
+      `<div class="calendar-card__caption-variations"><strong>Caption variations</strong>`
+      + `${post.captionVariations.casual ? `<div><em>Casual:</em> ${escapeHtml(post.captionVariations.casual)}</div>` : ''}`
+      + `${post.captionVariations.professional ? `<div><em>Professional:</em> ${escapeHtml(post.captionVariations.professional)}</div>` : ''}`
+      + `${post.captionVariations.witty ? `<div><em>Witty:</em> ${escapeHtml(post.captionVariations.witty)}</div>` : ''}`
+      + `</div>`
+    );
+  }
+  if (post.hashtagSets) {
+    const broad = Array.isArray(post.hashtagSets.broad) ? post.hashtagSets.broad.join(' ') : '';
+    const niche = Array.isArray(post.hashtagSets.niche) ? post.hashtagSets.niche.join(' ') : '';
+    detailBlocks.push(
+      `<div class="calendar-card__hashtag-sets"><strong>Hashtag sets</strong>`
+      + `${broad ? `<div><em>Broad:</em> ${escapeHtml(broad)}</div>` : ''}`
+      + `${niche ? `<div><em>Niche/local:</em> ${escapeHtml(niche)}</div>` : ''}`
+      + `</div>`
+    );
+  }
+  if (post.suggestedAudio) {
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  }
+  if (post.postingTimeTip) {
+    detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
+  }
+  if (post.visualTemplate && post.visualTemplate.url) {
+    detailBlocks.push(
+      `<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`
+    );
+  }
+  if (post.storyPromptExpanded) {
+    detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
+  }
+  if (post.followUpIdea) {
+    detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
+  }
+
+  const detailsBlocks = detailBlocks.filter(Boolean).join('');
 
   const cardHTML = `
     <article class="calendar-card" data-pillar="${escapeHtml(pillar)}">
@@ -1306,8 +1541,11 @@ function buildPostHTML(post){
     .calendar-card__hashtags { color: #2cb1bc; font-size: 0.97rem; margin: 0.25rem 0; font-weight: 600; }
     .calendar-card__format { display: inline-block; background: rgba(44, 177, 188, 0.13); color: #2cb1bc; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
     .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #7f5af0; font-size: 0.97rem; }
-  .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__analytics, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
+    .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__analytics, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__posting-tip, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
+    .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
+    .calendar-card__visual a:hover { text-decoration: underline; }
     details { margin-top: 0.5rem; }
     details > summary { cursor: pointer; color: var(--text-primary); font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.4rem 0.6rem; width: fit-content; transition: all 0.2s ease; }
     details[open] > summary { background: var(--accent-soft); border-color: var(--accent-strong); }
@@ -1411,6 +1649,8 @@ async function generateCalendarWithAI(nicheStyle) {
   console.log("🟡 generateCalendarWithAI called with:", nicheStyle);
   
   try {
+    const currentUserEmail = await getCurrentUser();
+    const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
     const batchSize = 5;
     const totalBatches = 6; // 30 posts / 5 per batch
     let completedBatches = 0;
@@ -1476,6 +1716,12 @@ async function generateCalendarWithAI(nicheStyle) {
       console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
     }
     allPosts = normalized;
+
+    if (userIsPro) {
+      allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
+    } else {
+      allPosts = allPosts.map((post) => stripProFields(post));
+    }
 
     console.log("🟢 All batches complete, total posts:", allPosts.length);
     return allPosts;

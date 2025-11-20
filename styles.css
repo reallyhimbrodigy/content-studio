@@ -42,11 +42,14 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, #171717, #050505 50%);
+  background: radial-gradient(circle at 20% 20%, rgba(127, 90, 240, 0.25), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.18), transparent 60%),
+    linear-gradient(135deg, #05040a 0%, #0f1121 60%, #07070f 100%);
 }
 
 .app-shell {
-  max-width: 1200px;
+  width: 100%;
+  max-width: none;
   padding: clamp(1.5rem, 2vw, 3rem);
   display: flex;
   flex-direction: column;
@@ -68,7 +71,7 @@ body {
 .calendar-card details { margin-top: 0.5rem; }
 .calendar-card details > summary { cursor: pointer; color: var(--text-primary); font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.4rem 0.6rem; width: fit-content; transition: all 0.2s ease; }
 .calendar-card details[open] > summary { background: var(--accent-soft); border-color: var(--accent-strong); }
-.calendar-card .details-body { margin-top: 0.5rem; display: grid; gap: 0.35rem; animation: fadeInSlide 0.25s ease; }
+.calendar-card .details-body { margin-top: 0.5rem; display: grid; gap: 0.35rem; animation: fadeInSlide 0.25s ease; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
 @keyframes fadeInSlide {
   from { opacity: 0; transform: translateY(-4px); }
@@ -226,6 +229,14 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.landing-nav__text {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
 }
 
 .landing-nav__links a {
@@ -586,6 +597,63 @@ body {
   margin-top: 1rem;
 }
 
+.landing-pricing__features {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.landing-pricing__features li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.landing-pricing__features li::before {
+  content: '•';
+  color: #7f5af0;
+  font-size: 1.2rem;
+  line-height: 1;
+  margin-top: 0.1rem;
+}
+
+.landing-samples {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.landing-samples__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.sample-card {
+  min-height: auto;
+  background: rgba(20, 20, 30, 0.85);
+}
+
+.landing-samples__form {
+  border: 1px solid var(--card-border);
+  border-radius: 24px;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  background: rgba(12, 12, 20, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.landing-samples__form .generate-input {
+  width: 100%;
+}
+
 .landing-pricing__note {
   margin-top: 1rem;
   color: var(--text-secondary);
@@ -840,6 +908,17 @@ a.ghost:hover {
   align-items: flex-start;
   width: 100%;
   margin-bottom: 0.5rem;
+}
+
+.hero-top__left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hero-top__left .logo {
+  margin-bottom: 0;
+  max-width: 220px;
 }
 
 .user-menu {
@@ -1299,7 +1378,7 @@ a.ghost:hover {
 .calendar__grid {
   display: grid;
   gap: var(--grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 /* Compact mode */
@@ -1422,6 +1501,35 @@ a.ghost:hover {
   font-style: normal;
   color: rgba(245, 246, 248, 0.9);
   font-weight: 600;
+}
+
+.calendar-card__caption-variations,
+.calendar-card__hashtag-sets,
+.calendar-card__audio,
+.calendar-card__posting-tip,
+.calendar-card__visual,
+.calendar-card__story-extended,
+.calendar-card__followup {
+  font-size: 0.93rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.calendar-card__caption-variations em,
+.calendar-card__hashtag-sets em {
+  font-style: normal;
+  color: rgba(245, 246, 248, 0.9);
+  font-weight: 600;
+}
+
+.calendar-card__visual a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.calendar-card__visual a:hover {
+  text-decoration: underline;
 }
 
 .calendar-card__actions {
