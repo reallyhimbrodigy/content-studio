@@ -16,6 +16,17 @@ export async function getCurrentUser() {
   }
 }
 
+export async function getCurrentUserDetails() {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user || null;
+  } catch (error) {
+    console.error('getCurrentUserDetails error:', error);
+    return null;
+  }
+}
+
 export async function getCurrentUserId() {
   try {
     const { data: { user }, error } = await supabase.auth.getUser();

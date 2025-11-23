@@ -15,8 +15,10 @@
         color: #f5f6f8;
         min-height: 100vh;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: 1.5rem;
         padding: clamp(1rem, 4vw, 3rem);
       }
 
@@ -115,38 +117,6 @@
         background: rgba(6, 10, 30, 0.35);
       }
 
-      .auth-links {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
-      }
-
-      .auth-link {
-        display: flex;
-        flex-direction: column;
-        padding: 0.9rem 1rem;
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: rgba(255, 255, 255, 0.02);
-        text-decoration: none;
-        transition: border-color 0.2s ease, transform 0.2s ease;
-      }
-
-      .auth-link:hover {
-        border-color: rgba(127, 90, 240, 0.5);
-        transform: translateY(-1px);
-      }
-
-      .auth-link__title {
-        font-weight: 600;
-        color: rgba(255, 255, 255, 0.92);
-      }
-
-      .auth-link__meta {
-        font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.55);
-      }
 
       .auth-card {
         background: linear-gradient(150deg, rgba(12, 16, 36, 0.95), rgba(10, 10, 24, 0.9));
@@ -347,6 +317,41 @@
       .auth-support a:hover {
         text-decoration: underline;
       }
+
+      .terms-consent {
+        margin: 1rem 0 0.75rem;
+        font-size: 0.88rem;
+        color: rgba(245, 246, 248, 0.75);
+      }
+
+      .terms-checkbox {
+        display: flex;
+        gap: 0.65rem;
+        align-items: flex-start;
+      }
+
+      .terms-checkbox input {
+        width: 1.1rem;
+        height: 1.1rem;
+        margin-top: 0.2rem;
+        accent-color: #7f5af0;
+      }
+
+      .terms-checkbox a {
+        color: rgba(127, 201, 255, 0.95);
+        text-decoration: none;
+      }
+
+      .terms-checkbox a:hover {
+        text-decoration: underline;
+      }
+      
+      .auth-footer {
+        margin-top: 2rem;
+        text-align: center;
+        color: rgba(245, 246, 248, 0.6);
+        font-size: 0.85rem;
+      }
       #auth-feedback { text-align: center; min-height: 1rem; }
 
       @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
@@ -375,20 +380,6 @@
           <span>🔒 Secure by Supabase</span>
           <span>🛡 Privacy-first</span>
           <span>⚡ Priority support</span>
-        </div>
-        <div class="auth-links">
-          <a class="auth-link" href="/">
-            <span class="auth-link__title">Back to home</span>
-            <span class="auth-link__meta">Explore the latest updates</span>
-          </a>
-          <a class="auth-link" href="/help.html">
-            <span class="auth-link__title">Help center</span>
-            <span class="auth-link__meta">Guides, FAQs, and support</span>
-          </a>
-          <a class="auth-link" href="/terms.html">
-            <span class="auth-link__title">Terms & privacy</span>
-            <span class="auth-link__meta">Read how we protect data</span>
-          </a>
         </div>
       </section>
 
@@ -435,8 +426,16 @@
           </div>
         </div>
         
-        <div id="terms-agreement" class="terms">
-          By signing up, you agree to our <a href="/terms.html">Terms</a> and <a href="/privacy.html">Privacy Policy</a>
+        <div class="terms-consent" id="terms-consent">
+          <label class="terms-checkbox" for="terms-checkbox">
+            <input type="checkbox" id="terms-checkbox" required />
+            <span>
+              I have read and agree to the
+              <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>
+              and
+              <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
+            </span>
+          </label>
         </div>
         
         <button id="auth-btn" type="submit" class="primary">
@@ -473,10 +472,16 @@
         </form>
       </section>
     </div>
+    <footer class="auth-footer">
+      © <span id="auth-footer-year"></span> Promptly. All rights reserved.
+    </footer>
     
     <script type="module" src="./auth.js"></script>
-    <script type="module" src="./footer.js"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
+    <script>
+      const footerYear = document.getElementById('auth-footer-year');
+      if (footerYear) footerYear.textContent = new Date().getFullYear();
+    </script>
   </body>
 </html>

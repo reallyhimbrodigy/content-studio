@@ -44,7 +44,8 @@ const emailInput = document.getElementById("email");
 
   const forgotPasswordLink = document.getElementById('forgot-password-link');
   const forgotPasswordBtn = document.getElementById('forgot-password-btn');
-  const termsAgreement = document.getElementById('terms-agreement');
+  const termsConsent = document.getElementById('terms-consent');
+  const termsCheckbox = document.getElementById('terms-checkbox');
   const passwordStrength = document.getElementById('password-strength');
   const authBtnText = document.getElementById('auth-btn-text');
   const authBtnSpinner = document.getElementById('auth-btn-spinner');
@@ -102,7 +103,11 @@ const emailInput = document.getElementById("email");
     // Show "Forgot password?" only in Sign In mode
     if (forgotPasswordLink) forgotPasswordLink.style.display = isSignUp ? 'none' : 'block';
     // Show terms agreement and password strength only in Sign Up mode
-    if (termsAgreement) termsAgreement.style.display = isSignUp ? 'block' : 'none';
+    if (termsConsent) termsConsent.style.display = isSignUp ? 'block' : 'none';
+    if (termsCheckbox) {
+      termsCheckbox.required = isSignUp;
+      if (!isSignUp) termsCheckbox.checked = false;
+    }
     if (passwordStrength) passwordStrength.style.display = isSignUp ? 'block' : 'none';
     if (isSignUp && passwordInput) updatePasswordStrength();
   };

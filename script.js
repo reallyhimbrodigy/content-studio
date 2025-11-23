@@ -1,4 +1,4 @@
-import { getCurrentUser, saveUserCalendar, signOut as storeSignOut, getUserTier, setUserTier, isPro } from './user-store.js';
+import { getCurrentUser, getCurrentUserDetails, saveUserCalendar, signOut as storeSignOut, getUserTier, setUserTier, isPro } from './user-store.js';
 
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
@@ -12,6 +12,36 @@ const grid = document.getElementById("calendar-grid");
   const profileTrigger = document.getElementById('profile-trigger');
   const profileMenu = document.getElementById('profile-menu');
   const profileInitial = document.getElementById('profile-initial');
+  const profilePhotoEl = document.getElementById('profile-photo');
+  const userPronounsEl = document.getElementById('user-pronouns');
+  const accountOverviewBtn = document.getElementById('account-overview-btn');
+  const profileSettingsBtn = document.getElementById('profile-settings-btn');
+  const passwordSettingsBtn = document.getElementById('password-settings-btn');
+  const accountModal = document.getElementById('account-modal');
+  const accountCloseBtn = document.getElementById('account-close-btn');
+  const accountCancelBtn = document.getElementById('account-cancel-btn');
+  const accountForm = document.getElementById('account-settings-form');
+  const accountDisplayNameInput = document.getElementById('account-display-name');
+  const accountPronounsInput = document.getElementById('account-pronouns');
+  const accountPhotoFileInput = document.getElementById('account-photo-file');
+  const accountPhotoClearBtn = document.getElementById('account-photo-clear');
+  const accountPhotoTrigger = document.getElementById('account-photo-trigger');
+  const accountRoleInput = document.getElementById('account-role');
+  const accountFeedback = document.getElementById('account-feedback');
+  const accountPhotoPreview = document.getElementById('account-photo-preview');
+  const prefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
+  const prefersHighContrastInput = document.getElementById('prefers-high-contrast');
+  const prefersLargeTypeInput = document.getElementById('prefers-large-type');
+  const accountEmailDisplay = document.getElementById('account-email-display');
+  const accountEmailCopyBtn = document.getElementById('account-email-copy');
+  const accountPasswordManageBtn = document.getElementById('account-password-manage');
+  const accountPlanStatusEl = document.getElementById('account-plan-status');
+  const accountPlanLimitsEl = document.getElementById('account-plan-limits');
+  const accountLastLoginEl = document.getElementById('account-last-login');
+  const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+  const settingsPanels = document.querySelectorAll('[data-settings-panel]');
+  const postFrequencyDisplay = document.getElementById('post-frequency-display');
+  const postFrequencySelect = document.getElementById('post-frequency-select');
   const landingNavLinks = document.querySelector('.landing-nav__links');
   const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
   const tabLibrary = document.getElementById("tab-library");
@@ -59,11 +89,220 @@ const grid = document.getElementById("calendar-grid");
   const hubMarkBtn = document.getElementById('hub-mark-posted');
   const hubDaySelect = document.getElementById('hub-day-select');
 
+  const PROFILE_SETTINGS_KEY = 'promptly_profile_settings';
+  let profileSettings = loadProfileSettings();
+  let activeUserEmail = '';
+  let stagedPhotoData = '';
+  let activeSettingsTab = 'account';
+
   // Posted state per user+niche
 let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
 let cachedUserIsPro = false;
+let currentPostFrequency = 1;
+const POST_FREQUENCY_KEY = 'promptly_post_frequency';
+const PLAN_DETAILS = {
+  pro: {
+    label: 'Promptly Pro',
+    limits: 'Unlimited calendars · downloads & Brand Brain',
+  },
+  free: {
+    label: 'Free plan',
+    limits: '1 calendar/month · single-platform exports',
+  },
+};
+
+function loadProfileSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_SETTINGS_KEY) || '{}') || {};
+  } catch (error) {
+    console.warn('Unable to parse profile settings', error);
+    return {};
+  }
+}
+
+function getPostFrequency() {
+  if (!cachedUserIsPro) return 1;
+  const stored = localStorage.getItem(POST_FREQUENCY_KEY);
+  const parsed = parseInt(stored, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.min(parsed, 6);
+}
+
+function setPostFrequency(value) {
+  if (!cachedUserIsPro) return;
+  const normalized = Math.min(Math.max(parseInt(value, 10) || 1, 1), 6);
+  try {
+    localStorage.setItem(POST_FREQUENCY_KEY, String(normalized));
+  } catch (error) {
+    console.warn('Unable to store post frequency', error);
+  }
+  if (postFrequencySelect) postFrequencySelect.value = String(normalized);
+  if (postFrequencyDisplay) postFrequencyDisplay.textContent = `${normalized}x`;
+  currentPostFrequency = normalized;
+  renderCards(currentCalendar);
+}
+
+function saveProfileSettings(partial = {}) {
+  profileSettings = { ...(profileSettings || {}), ...partial };
+  try {
+    localStorage.setItem(PROFILE_SETTINGS_KEY, JSON.stringify(profileSettings));
+  } catch (error) {
+    console.warn('Unable to save profile settings', error);
+  }
+  applyProfileSettings();
+}
+
+function setProfileAvatarSource(source = '') {
+  if (!profilePhotoEl) return;
+  if (source) {
+    profilePhotoEl.src = source;
+    profilePhotoEl.style.display = 'block';
+    if (profileTrigger) profileTrigger.classList.add('profile-trigger--has-photo');
+  } else {
+    profilePhotoEl.removeAttribute('src');
+    profilePhotoEl.style.display = 'none';
+    if (profileTrigger) profileTrigger.classList.remove('profile-trigger--has-photo');
+  }
+}
+
+function getStoredPhotoSource() {
+  return (profileSettings?.photoData || profileSettings?.photoUrl || '').trim();
+}
+
+function applyProfileSettings() {
+  const settings = profileSettings || {};
+  const displayName = (settings.displayName || '').trim();
+  const avatarSource = getStoredPhotoSource();
+  const initialsSource = displayName || activeUserEmail || 'P';
+  if (profileInitial && initialsSource) {
+    const initial = initialsSource.trim().charAt(0) || 'P';
+    profileInitial.textContent = initial.toUpperCase();
+  }
+  setProfileAvatarSource(avatarSource);
+  if (userPronounsEl) {
+    const pronouns = (settings.pronouns || '').trim();
+    userPronounsEl.textContent = pronouns;
+    userPronounsEl.style.display = pronouns ? '' : 'none';
+  }
+  document.body.classList.toggle('prefers-high-contrast', !!settings.highContrast);
+  document.body.classList.toggle('prefers-large-type', !!settings.largeType);
+  document.body.classList.toggle('prefers-reduced-motion', !!settings.reducedMotion);
+  document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
+}
+
+function setAccountSettingsTab(tab = 'account') {
+  if (!tab) tab = 'account';
+  activeSettingsTab = tab;
+  settingsTabButtons.forEach((btn) => {
+    const isActive = (btn.dataset.settingsTab || 'account') === tab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+    if (isActive) {
+      btn.removeAttribute('tabindex');
+    } else {
+      btn.setAttribute('tabindex', '-1');
+    }
+  });
+  settingsPanels.forEach((panel) => {
+    const isActive = (panel.dataset.settingsPanel || 'account') === tab;
+    panel.classList.toggle('active-panel', isActive);
+  });
+}
+
+if (settingsTabButtons.length) {
+  settingsTabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.settingsTab || 'account';
+      setAccountSettingsTab(tab);
+    });
+  });
+  setAccountSettingsTab('account');
+}
+
+function updateAccountOverviewEmail(email) {
+  if (accountEmailDisplay) {
+    accountEmailDisplay.textContent = email || 'Not signed in';
+  }
+}
+
+updateAccountOverviewEmail(activeUserEmail);
+
+function updateAccountPlanInfo(state) {
+  let plan;
+  if (state === 'none') {
+    plan = { label: 'Not signed in', limits: 'Sign in to manage your subscription.' };
+  } else {
+    const isPro = !!state;
+    plan = isPro ? PLAN_DETAILS.pro : PLAN_DETAILS.free;
+  }
+  if (accountPlanStatusEl) accountPlanStatusEl.textContent = plan.label;
+  if (accountPlanLimitsEl) accountPlanLimitsEl.textContent = plan.limits;
+}
+
+function updateAccountLastLogin(timestamp) {
+  if (!accountLastLoginEl) return;
+  if (!timestamp) {
+    accountLastLoginEl.textContent = 'Not available';
+    return;
+  }
+  try {
+    const date = new Date(timestamp);
+    accountLastLoginEl.textContent = isNaN(date.getTime())
+      ? 'Not available'
+      : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    accountLastLoginEl.textContent = 'Not available';
+  }
+}
+
+function hydrateAccountForm() {
+  if (!accountForm) return;
+  const settings = profileSettings || {};
+  if (accountDisplayNameInput) accountDisplayNameInput.value = settings.displayName || '';
+  if (accountPronounsInput) accountPronounsInput.value = settings.pronouns || '';
+  stagedPhotoData = getStoredPhotoSource();
+  if (accountPhotoFileInput) accountPhotoFileInput.value = '';
+  if (accountRoleInput) accountRoleInput.value = settings.role || '';
+  if (prefersHighContrastInput) prefersHighContrastInput.checked = !!settings.highContrast;
+  if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!settings.largeType;
+  if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!settings.reducedMotion;
+  updatePhotoPreview(stagedPhotoData);
+}
+
+function updatePhotoPreview(url) {
+  if (!accountPhotoPreview) return;
+  if (url) {
+    const safeUrl = url.replace(/'/g, "\\'");
+    accountPhotoPreview.style.backgroundImage = `url('${safeUrl}')`;
+    accountPhotoPreview.style.borderStyle = 'solid';
+  } else {
+    accountPhotoPreview.style.backgroundImage = 'none';
+    accountPhotoPreview.style.borderStyle = 'dashed';
+  }
+}
+
+function openAccountModal(initialTab = 'account') {
+  if (!accountModal) return;
+  hydrateAccountForm();
+  if (accountFeedback) {
+    accountFeedback.textContent = '';
+    accountFeedback.classList.remove('success');
+  }
+  setAccountSettingsTab(initialTab);
+  accountModal.style.display = 'flex';
+}
+
+function closeAccountModal() {
+  if (!accountModal) return;
+  accountModal.style.display = 'none';
+  stagedPhotoData = getStoredPhotoSource();
+  setProfileAvatarSource(stagedPhotoData);
+  updatePhotoPreview(stagedPhotoData);
+}
+
+applyProfileSettings();
   function postedKey() {
     const user = getCurrentUser() || 'guest';
     const niche = (currentNiche || nicheInput?.value || 'default').toLowerCase();
@@ -152,6 +391,8 @@ let cachedUserIsPro = false;
   if (currentUser) {
     // User is logged in - show profile menu
     console.log('✓ User logged in:', currentUser);
+    activeUserEmail = currentUser;
+    applyProfileSettings();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
@@ -167,6 +408,7 @@ let cachedUserIsPro = false;
       userEmailEl.textContent = currentUser;
       console.log('✓ Email set:', currentUser);
     }
+    updateAccountOverviewEmail(currentUser);
     if (profileInitial && currentUser) {
       const initial = currentUser.trim().charAt(0) || 'P';
       profileInitial.textContent = initial.toUpperCase();
@@ -176,6 +418,15 @@ let cachedUserIsPro = false;
     const userIsPro = await isPro(currentUser);
     console.log('User is Pro:', userIsPro);
     cachedUserIsPro = userIsPro;
+    updatePostFrequencyUI();
+    updateAccountPlanInfo(userIsPro);
+    try {
+      const userDetails = await getCurrentUserDetails();
+      updateAccountLastLogin(userDetails?.last_sign_in_at || userDetails?.updated_at || userDetails?.created_at || '');
+    } catch (err) {
+      console.warn('Unable to fetch user details', err);
+      updateAccountLastLogin('');
+    }
     
     if (userTierBadge) {
       userTierBadge.style.display = userIsPro ? 'inline-flex' : 'none';
@@ -223,6 +474,11 @@ let cachedUserIsPro = false;
   } else {
     // User is not logged in - show public nav
     console.log('✗ No user logged in - showing public nav');
+    activeUserEmail = '';
+    applyProfileSettings();
+    updateAccountOverviewEmail('');
+    updateAccountPlanInfo('none');
+    updateAccountLastLogin('');
     if (publicNav) {
       publicNav.style.display = 'flex';
       console.log('✓ Public nav displayed');
@@ -231,6 +487,7 @@ let cachedUserIsPro = false;
     if (landingExperience) landingExperience.style.display = '';
     if (appExperience) appExperience.style.display = 'none';
     cachedUserIsPro = false;
+    updatePostFrequencyUI();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
   }
@@ -265,10 +522,176 @@ if (profileTrigger) {
 document.addEventListener('click', (event) => {
   if (!profileMenu || !profileTrigger) return;
   const target = event.target;
-  if (!profileMenu.contains(target) && !profileTrigger.contains(target)) {
-    closeProfileMenu();
+  if (profileMenu.contains(target)) {
+    event.stopPropagation();
+    return;
   }
+  if (profileTrigger.contains(target)) return;
+  closeProfileMenu();
 });
+
+if (accountOverviewBtn) {
+  accountOverviewBtn.addEventListener('click', () => {
+    closeProfileMenu();
+    openAccountModal('account');
+  });
+}
+
+if (profileSettingsBtn) {
+  profileSettingsBtn.addEventListener('click', () => {
+    closeProfileMenu();
+    openAccountModal('profile');
+  });
+}
+
+if (passwordSettingsBtn) {
+  passwordSettingsBtn.addEventListener('click', () => {
+    closeProfileMenu();
+    window.location.href = 'reset-password.html';
+  });
+}
+
+if (accountCloseBtn) {
+  accountCloseBtn.addEventListener('click', () => {
+    closeAccountModal();
+  });
+}
+
+if (accountCancelBtn) {
+  accountCancelBtn.addEventListener('click', () => {
+    closeAccountModal();
+  });
+}
+
+if (accountModal) {
+  accountModal.addEventListener('click', (event) => {
+    if (event.target === accountModal) {
+      closeAccountModal();
+    }
+  });
+}
+
+if (document) {
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeAccountModal();
+    }
+  });
+}
+
+if (accountEmailCopyBtn) {
+  const defaultLabel = accountEmailCopyBtn.textContent || 'Copy';
+  accountEmailCopyBtn.addEventListener('click', async () => {
+    if (!activeUserEmail) return;
+    try {
+      await navigator.clipboard.writeText(activeUserEmail);
+      accountEmailCopyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        accountEmailCopyBtn.textContent = defaultLabel;
+      }, 1200);
+    } catch (e) {
+      console.warn('Unable to copy email', e);
+    }
+  });
+}
+
+if (accountPasswordManageBtn) {
+  accountPasswordManageBtn.addEventListener('click', () => {
+    closeAccountModal();
+    window.location.href = 'reset-password.html';
+  });
+}
+
+if (accountPhotoFileInput) {
+  accountPhotoFileInput.addEventListener('change', (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      if (accountFeedback) {
+        accountFeedback.textContent = 'Please upload an image file.';
+        accountFeedback.classList.remove('success');
+      }
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      stagedPhotoData = typeof reader.result === 'string' ? reader.result : '';
+      updatePhotoPreview(stagedPhotoData);
+      setProfileAvatarSource(stagedPhotoData);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+if (accountPhotoClearBtn) {
+  accountPhotoClearBtn.addEventListener('click', () => {
+    stagedPhotoData = '';
+    if (accountPhotoFileInput) accountPhotoFileInput.value = '';
+    updatePhotoPreview('');
+    setProfileAvatarSource('');
+  });
+}
+
+if (accountPhotoTrigger) {
+  accountPhotoTrigger.addEventListener('click', () => {
+    accountPhotoFileInput?.click();
+  });
+}
+
+if (postFrequencySelect) {
+  const guardFreeChange = (event) => {
+    if (cachedUserIsPro) return false;
+    event?.preventDefault();
+    postFrequencySelect.value = '1';
+    postFrequencySelect.blur();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return true;
+  };
+
+  postFrequencySelect.addEventListener('mousedown', (event) => {
+    if (guardFreeChange(event)) return;
+  });
+
+  postFrequencySelect.addEventListener('keydown', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') {
+      if (guardFreeChange(event)) return;
+    }
+  });
+
+  postFrequencySelect.addEventListener('change', () => {
+    if (guardFreeChange()) return;
+    setPostFrequency(postFrequencySelect.value);
+  });
+}
+
+if (accountForm) {
+  accountForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const payload = {
+      displayName: accountDisplayNameInput?.value.trim() || '',
+      pronouns: accountPronounsInput?.value.trim() || '',
+      photoData: stagedPhotoData || '',
+      role: accountRoleInput?.value.trim() || '',
+      highContrast: !!prefersHighContrastInput?.checked,
+      largeType: !!prefersLargeTypeInput?.checked,
+      reducedMotion: !!prefersReducedMotionInput?.checked
+    };
+    saveProfileSettings(payload);
+    if (accountFeedback) {
+      accountFeedback.textContent = 'Preferences saved.';
+      accountFeedback.classList.add('success');
+      setTimeout(() => {
+        if (accountFeedback) {
+          accountFeedback.textContent = '';
+          accountFeedback.classList.remove('success');
+        }
+      }, 1500);
+    }
+    setTimeout(() => {
+      closeAccountModal();
+    }, 800);
+  });
+}
 
 function setupLandingNavScroll() {
   if (!landingNavAnchors || landingNavAnchors.length === 0) return;
@@ -413,289 +836,377 @@ if (brandSaveBtn) {
 }
 
 const createCard = (post) => {
-  const { day, idea, type, caption, hashtags, format, cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScript, promoSlot, videoScript, weeklyPromo } = post;
-  const card = document.createElement("article");
-  card.className = "calendar-card";
-  card.dataset.pillar = pillar || "";
-  if (isPosted(day)) card.classList.add('posted');
+  const entries = Array.isArray(post.multiPosts) && post.multiPosts.length ? post.multiPosts : [post];
+  const primary = entries[0] || post;
+  const dayValue = typeof post.day === 'number' ? post.day : (primary.day || '');
+  const card = document.createElement('article');
+  card.className = 'calendar-card';
+  card.dataset.pillar = primary.pillar || '';
+  if (isPosted(dayValue)) card.classList.add('posted');
 
-  const dayEl = document.createElement("div");
-  dayEl.className = "calendar-card__day";
-  dayEl.textContent = String(day).padStart(2, "0");
+  const dayEl = document.createElement('div');
+  dayEl.className = 'calendar-card__day';
+  dayEl.textContent = String(dayValue).padStart(2, '0');
 
-  const ideaEl = document.createElement("h3");
-  ideaEl.className = "calendar-card__title";
-  ideaEl.textContent = idea || post.title || "";
+  const entriesWrap = document.createElement('div');
+  entriesWrap.className = 'calendar-card__entries';
+  if (entries.length > 1) entriesWrap.classList.add('calendar-card__entries--multi');
 
-  const typeEl = document.createElement("span");
-  typeEl.className = "calendar-card__type";
-  typeEl.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : "";
+  entries.forEach((entry, idx) => entriesWrap.appendChild(buildEntry(entry, idx)));
 
-  const captionEl = document.createElement("p");
-  captionEl.className = "calendar-card__caption";
-  captionEl.textContent = caption || post.description || "";
-
-  const hashtagsEl = document.createElement("div");
-  hashtagsEl.className = "calendar-card__hashtags";
-  if (Array.isArray(hashtags)) {
-    hashtagsEl.textContent = hashtags.map(h => (h.startsWith('#') ? h : `#${h}`)).join(' ');
-  } else if (typeof hashtags === 'string') {
-    hashtagsEl.textContent = hashtags;
-  }
-
-  const formatEl = document.createElement("span");
-  formatEl.className = "calendar-card__format";
-  formatEl.textContent = format ? `Format: ${format}` : "";
-
-  const ctaEl = document.createElement("span");
-  ctaEl.className = "calendar-card__cta";
-  ctaEl.textContent = cta ? `CTA: ${cta}` : "";
-
-  // New MVP pack fields
-  const storyPromptEl = document.createElement("div");
-  storyPromptEl.className = "calendar-card__story";
-  if (storyPrompt) storyPromptEl.innerHTML = `<strong>Story Prompt:</strong> ${storyPrompt}`;
-
-  const designNotesEl = document.createElement("div");
-  designNotesEl.className = "calendar-card__design";
-  if (designNotes) designNotesEl.innerHTML = `<strong>Design Notes:</strong> ${designNotes}`;
-
-  const repurposeEl = document.createElement("div");
-  repurposeEl.className = "calendar-card__repurpose";
-  if (repurpose) {
-    const text = Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose;
-    repurposeEl.innerHTML = `<strong>Repurpose:</strong> ${text}`;
-  }
-
-  const analyticsEl = document.createElement("div");
-  analyticsEl.className = "calendar-card__analytics";
-  if (analytics) {
-    const text = Array.isArray(analytics) ? analytics.join(', ') : analytics;
-    analyticsEl.innerHTML = `<strong>Analytics:</strong> ${text}`;
-  }
-
-  const engagementEl = document.createElement("div");
-  engagementEl.className = "calendar-card__engagement";
-  if (post.engagementScripts && (post.engagementScripts.commentReply || post.engagementScripts.dmReply)) {
-    const list = [];
-    if (post.engagementScripts.commentReply) list.push(`<div><em>Comment:</em> ${post.engagementScripts.commentReply}</div>`);
-    if (post.engagementScripts.dmReply) list.push(`<div><em>DM:</em> ${post.engagementScripts.dmReply}</div>`);
-    engagementEl.innerHTML = `<strong>Engagement Scripts</strong>${list.join('')}`;
-  } else if (engagementScript) {
-    engagementEl.innerHTML = `<strong>Engagement Script:</strong> ${engagementScript}`;
-  }
-
-  const promoSlotEl = document.createElement("div");
-  promoSlotEl.className = "calendar-card__promo";
-  if (promoSlot) promoSlotEl.innerHTML = `<strong>Weekly Promo Slot:</strong> Yes`;
-
-  const weeklyPromoEl = document.createElement("div");
-  weeklyPromoEl.className = "calendar-card__weekly-promo";
-  if (weeklyPromo) weeklyPromoEl.innerHTML = `<strong>Promo:</strong> ${weeklyPromo}`;
-
-  const videoScriptEl = document.createElement("div");
-  videoScriptEl.className = "calendar-card__video";
-  if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
-    const hook = videoScript.hook ? `<div><em>Hook:</em> ${videoScript.hook}</div>` : '';
-    const body = videoScript.body ? `<div><em>Body:</em> ${videoScript.body}</div>` : '';
-    const vcta = videoScript.cta ? `<div><em>CTA:</em> ${videoScript.cta}</div>` : '';
-     const label = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
-     videoScriptEl.innerHTML = `<strong>${label}</strong>${hook}${body}${vcta}`;
-  }
-
-  // Platform variants (if available)
-  const variantsEl = document.createElement('div');
-  variantsEl.className = 'calendar-card__variants';
-  if (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption)) {
-    const parts = [];
-    if (post.variants.igCaption) parts.push(`<div><em>Instagram:</em> ${post.variants.igCaption}</div>`);
-    if (post.variants.tiktokCaption) parts.push(`<div><em>TikTok:</em> ${post.variants.tiktokCaption}</div>`);
-    if (post.variants.linkedinCaption) parts.push(`<div><em>LinkedIn:</em> ${post.variants.linkedinCaption}</div>`);
-    variantsEl.innerHTML = `<strong>Platform Variants</strong>${parts.join('')}`;
-  }
-
-  // Action buttons for done-for-you workflow
-  const actionsEl = document.createElement('div');
-  actionsEl.className = 'calendar-card__actions';
-  const makeBtn = (label) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'ghost';
-    b.style.fontSize = '0.8rem';
-    b.style.padding = '0.3rem 0.6rem';
-    b.textContent = label;
-    return b;
-  };
-  const btnCopyCaption = makeBtn('Copy Caption');
-  const btnCopyFull = makeBtn('Copy Full');
-  const btnDownloadDoc = makeBtn('Download');
-
-  // Compose all card content for full copy
-  const fullTextParts = [];
-  fullTextParts.push(`Day ${String(day).padStart(2,'0')}`);
-  if (idea) fullTextParts.push(`Idea: ${idea}`);
-  if (type) fullTextParts.push(`Type: ${type}`);
-  if (caption) fullTextParts.push(`Caption: ${caption}`);
-  if (Array.isArray(hashtags) && hashtags.length) fullTextParts.push(`Hashtags: ${hashtags.map(h=>h.startsWith('#')?h:`#${h}`).join(' ')}`);
-  if (format) fullTextParts.push(`Format: ${format}`);
-  if (cta) fullTextParts.push(`CTA: ${cta}`);
-  if (storyPrompt) fullTextParts.push(`Story Prompt: ${storyPrompt}`);
-  if (designNotes) fullTextParts.push(`Design Notes: ${designNotes}`);
-  if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
-  if (analytics && Array.isArray(analytics) && analytics.length) fullTextParts.push(`Analytics: ${analytics.join(', ')}`);
-  if (promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
-  if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
-  if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
-    const scriptLines = [];
-    if (videoScript.hook) scriptLines.push(`Hook: ${videoScript.hook}`);
-    if (videoScript.body) scriptLines.push(`Body: ${videoScript.body}`);
-    if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
-    fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
-  }
-  if (post.engagementScripts && (post.engagementScripts.commentReply || post.engagementScripts.dmReply)) {
-    if (post.engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${post.engagementScripts.commentReply}`);
-    if (post.engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${post.engagementScripts.dmReply}`);
-  }
-  if (post.variants) {
-    if (post.variants.igCaption) fullTextParts.push(`Instagram Variant: ${post.variants.igCaption}`);
-    if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${post.variants.tiktokCaption}`);
-    if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${post.variants.linkedinCaption}`);
-  }
-  if (cachedUserIsPro && post.captionVariations) {
-    if (post.captionVariations.casual) fullTextParts.push(`Casual Caption: ${post.captionVariations.casual}`);
-    if (post.captionVariations.professional) fullTextParts.push(`Professional Caption: ${post.captionVariations.professional}`);
-    if (post.captionVariations.witty) fullTextParts.push(`Witty Caption: ${post.captionVariations.witty}`);
-  }
-  if (cachedUserIsPro && post.hashtagSets) {
-    if (post.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(post.hashtagSets.broad || []).join(' ')}`);
-    if (post.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(post.hashtagSets.niche || []).join(' ')}`);
-  }
-  if (cachedUserIsPro && post.suggestedAudio) fullTextParts.push(`Suggested Audio: ${post.suggestedAudio}`);
-  if (cachedUserIsPro && post.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${post.postingTimeTip}`);
-  if (cachedUserIsPro && post.visualTemplate && post.visualTemplate.url) {
-    fullTextParts.push(`Visual Template: ${post.visualTemplate.label || 'Open template'} - ${post.visualTemplate.url}`);
-  }
-  if (cachedUserIsPro && post.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${post.storyPromptExpanded}`);
-  if (cachedUserIsPro && post.followUpIdea) fullTextParts.push(`Follow-up Idea: ${post.followUpIdea}`);
-  const fullText = fullTextParts.join('\n\n');
-
-  btnCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); btnCopyFull.textContent='Copied!'; setTimeout(()=>btnCopyFull.textContent='Copy Full',1000);} catch(e){} });
-  btnDownloadDoc.addEventListener('click', async ()=>{
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
-    
-    try {
-      const JSZipLib = await ensureZip().catch(()=>null);
-      if (!JSZipLib) { alert('Failed to load Zip library. Please try again.'); return; }
-      const zip = new JSZipLib();
-      const folderName = `post-day-${String(day).padStart(2,'0')}-${slugify(idea || title || 'post')}`;
-      const folder = zip.folder(folderName);
-      const html = buildPostHTML(post);
-      folder.file('post.html', html);
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${folderName}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch(e) {}
-  });
-  actionsEl.append(btnCopyFull);
-  actionsEl.appendChild(btnDownloadDoc);
-
-  // Variant copy shortcuts
-  if (post.variants) {
-    if (post.variants.igCaption) {
-      const b = makeBtn('Copy IG');
-      b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.igCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy IG',1000);} catch(e){} });
-      actionsEl.appendChild(b);
-    }
-    if (post.variants.tiktokCaption) {
-      const b = makeBtn('Copy TikTok');
-      b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.tiktokCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy TikTok',1000);} catch(e){} });
-      actionsEl.appendChild(b);
-    }
-    if (post.variants.linkedinCaption) {
-      const b = makeBtn('Copy LinkedIn');
-      b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.linkedinCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy LinkedIn',1000);} catch(e){} });
-      actionsEl.appendChild(b);
-    }
-  }
-
-  // Collapse secondary details to reduce visual clutter
-  const proDetailNodes = [];
-  if (cachedUserIsPro && post.captionVariations) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__caption-variations';
-    const parts = [];
-    if (post.captionVariations.casual) parts.push(`<div><em>Casual:</em> ${post.captionVariations.casual}</div>`);
-    if (post.captionVariations.professional) parts.push(`<div><em>Professional:</em> ${post.captionVariations.professional}</div>`);
-    if (post.captionVariations.witty) parts.push(`<div><em>Witty:</em> ${post.captionVariations.witty}</div>`);
-    node.innerHTML = `<strong>Caption variations</strong>${parts.join('')}`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.hashtagSets) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__hashtag-sets';
-    const broad = Array.isArray(post.hashtagSets.broad) ? post.hashtagSets.broad.join(' ') : '';
-    const niche = Array.isArray(post.hashtagSets.niche) ? post.hashtagSets.niche.join(' ') : '';
-    node.innerHTML = `<strong>Hashtag sets</strong>${broad ? `<div><em>Broad:</em> ${broad}</div>` : ''}${niche ? `<div><em>Niche/local:</em> ${niche}</div>` : ''}`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.suggestedAudio) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__audio';
-    node.innerHTML = `<strong>Suggested audio</strong><div>${post.suggestedAudio}</div>`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.postingTimeTip) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__posting-tip';
-    node.innerHTML = `<strong>Posting time tip</strong><div>${post.postingTimeTip}</div>`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.visualTemplate && post.visualTemplate.url) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__visual';
-    node.innerHTML = `<strong>Visual template</strong><div><a href="${post.visualTemplate.url}" target="_blank" rel="noreferrer noopener">${post.visualTemplate.label || 'Open template'}</a></div>`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.storyPromptExpanded) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__story-extended';
-    node.innerHTML = `<strong>Story prompt+</strong> ${post.storyPromptExpanded}`;
-    proDetailNodes.push(node);
-  }
-  if (cachedUserIsPro && post.followUpIdea) {
-    const node = document.createElement('div');
-    node.className = 'calendar-card__followup';
-    node.innerHTML = `<strong>Follow-up idea</strong> ${post.followUpIdea}`;
-    proDetailNodes.push(node);
-  }
-
-  const details = document.createElement('details');
-  const summary = document.createElement('summary'); summary.textContent = 'Details';
-  const detailsBody = document.createElement('div'); detailsBody.className = 'details-body';
-  detailsBody.append(
-    hashtagsEl, formatEl, ctaEl,
-    storyPromptEl, designNotesEl, repurposeEl, analyticsEl, engagementEl,
-    promoSlotEl, weeklyPromoEl, videoScriptEl, variantsEl, ...proDetailNodes, actionsEl
-  );
-  details.append(summary, detailsBody);
-
-  // Layout: essentials visible, everything else tucked into details
-  card.append(
-    dayEl, ideaEl, typeEl, captionEl, details
-  );
+  card.append(dayEl, entriesWrap);
   return card;
+
+  function buildEntry(entry, idx) {
+    const entryEl = document.createElement('div');
+    entryEl.className = 'calendar-card__entry';
+
+    if (entries.length > 1) {
+      const badge = document.createElement('div');
+      badge.className = 'calendar-card__entry-badge';
+      badge.textContent = `Post ${idx + 1}`;
+      entryEl.appendChild(badge);
+    }
+
+    const {
+      idea,
+      title,
+      type,
+      caption,
+      description,
+      hashtags,
+      format,
+      cta,
+      pillar,
+      storyPrompt,
+      designNotes,
+      repurpose,
+      analytics,
+      engagementScripts,
+      engagementScript,
+      promoSlot,
+      videoScript,
+      weeklyPromo,
+    } = entry;
+    const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
+
+    if (!card.dataset.pillar && pillar) {
+      card.dataset.pillar = pillar;
+    }
+
+    const ideaEl = document.createElement('h3');
+    ideaEl.className = 'calendar-card__title';
+    ideaEl.textContent = idea || title || '';
+
+    const typeEl = document.createElement('span');
+    typeEl.className = 'calendar-card__type';
+    typeEl.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : '';
+
+    const captionEl = document.createElement('p');
+    captionEl.className = 'calendar-card__caption';
+    captionEl.textContent = caption || description || '';
+
+    const hashtagsEl = document.createElement('div');
+    hashtagsEl.className = 'calendar-card__hashtags';
+    if (Array.isArray(hashtags)) {
+      hashtagsEl.textContent = hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ');
+    } else if (typeof hashtags === 'string') {
+      hashtagsEl.textContent = hashtags;
+    }
+
+    const formatEl = document.createElement('span');
+    formatEl.className = 'calendar-card__format';
+    formatEl.textContent = format ? `Format: ${format}` : '';
+
+    const ctaEl = document.createElement('span');
+    ctaEl.className = 'calendar-card__cta';
+    ctaEl.textContent = cta ? `CTA: ${cta}` : '';
+
+    const storyPromptEl = document.createElement('div');
+    storyPromptEl.className = 'calendar-card__story';
+    if (storyPrompt) storyPromptEl.innerHTML = `<strong>Story Prompt:</strong> ${storyPrompt}`;
+
+    const designNotesEl = document.createElement('div');
+    designNotesEl.className = 'calendar-card__design';
+    if (designNotes) designNotesEl.innerHTML = `<strong>Design Notes:</strong> ${designNotes}`;
+
+    const repurposeEl = document.createElement('div');
+    repurposeEl.className = 'calendar-card__repurpose';
+    if (repurpose) {
+      const text = Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose;
+      repurposeEl.innerHTML = `<strong>Repurpose:</strong> ${text}`;
+    }
+
+    const analyticsEl = document.createElement('div');
+    analyticsEl.className = 'calendar-card__analytics';
+    if (analytics) {
+      const text = Array.isArray(analytics) ? analytics.join(', ') : analytics;
+      analyticsEl.innerHTML = `<strong>Analytics:</strong> ${text}`;
+    }
+
+    const engagementEl = document.createElement('div');
+    engagementEl.className = 'calendar-card__engagement';
+    if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
+      const list = [];
+      if (engagementScripts.commentReply) list.push(`<div><em>Comment:</em> ${engagementScripts.commentReply}</div>`);
+      if (engagementScripts.dmReply) list.push(`<div><em>DM:</em> ${engagementScripts.dmReply}</div>`);
+      engagementEl.innerHTML = `<strong>Engagement Scripts</strong>${list.join('')}`;
+    } else if (engagementScript) {
+      engagementEl.innerHTML = `<strong>Engagement Script:</strong> ${engagementScript}`;
+    }
+
+    const promoSlotEl = document.createElement('div');
+    promoSlotEl.className = 'calendar-card__promo';
+    if (promoSlot) promoSlotEl.innerHTML = `<strong>Weekly Promo Slot:</strong> Yes`;
+
+    const weeklyPromoEl = document.createElement('div');
+    weeklyPromoEl.className = 'calendar-card__weekly-promo';
+    if (weeklyPromo) weeklyPromoEl.innerHTML = `<strong>Promo:</strong> ${weeklyPromo}`;
+
+    const videoScriptEl = document.createElement('div');
+    videoScriptEl.className = 'calendar-card__video';
+    if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
+      const hook = videoScript.hook ? `<div><em>Hook:</em> ${videoScript.hook}</div>` : '';
+      const body = videoScript.body ? `<div><em>Body:</em> ${videoScript.body}</div>` : '';
+      const vcta = videoScript.cta ? `<div><em>CTA:</em> ${videoScript.cta}</div>` : '';
+      const label = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
+      videoScriptEl.innerHTML = `<strong>${label}</strong>${hook}${body}${vcta}`;
+    }
+
+    const variantsEl = document.createElement('div');
+    variantsEl.className = 'calendar-card__variants';
+    if (entry.variants && (entry.variants.igCaption || entry.variants.tiktokCaption || entry.variants.linkedinCaption)) {
+      const parts = [];
+      if (entry.variants.igCaption) parts.push(`<div><em>Instagram:</em> ${entry.variants.igCaption}</div>`);
+      if (entry.variants.tiktokCaption) parts.push(`<div><em>TikTok:</em> ${entry.variants.tiktokCaption}</div>`);
+      if (entry.variants.linkedinCaption) parts.push(`<div><em>LinkedIn:</em> ${entry.variants.linkedinCaption}</div>`);
+      variantsEl.innerHTML = `<strong>Platform Variants</strong>${parts.join('')}`;
+    }
+
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'calendar-card__actions';
+    const makeBtn = (label) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ghost';
+      b.style.fontSize = '0.8rem';
+      b.style.padding = '0.3rem 0.6rem';
+      b.textContent = label;
+      return b;
+    };
+    const btnCopyFull = makeBtn('Copy Full');
+    const btnDownloadDoc = makeBtn('Download');
+    const captionBtn = caption ? makeBtn('Copy Caption') : null;
+
+    if (captionBtn) {
+      captionBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(caption);
+          captionBtn.textContent = 'Copied!';
+          setTimeout(() => (captionBtn.textContent = 'Copy Caption'), 1000);
+        } catch (e) {}
+      });
+      actionsEl.appendChild(captionBtn);
+    }
+
+    const fullTextParts = [];
+    const dayLabel = `Day ${String(entryDay).padStart(2, '0')}${entries.length > 1 ? ` • Post ${idx + 1}` : ''}`;
+    fullTextParts.push(dayLabel);
+    if (idea || title) fullTextParts.push(`Idea: ${idea || title}`);
+    if (type) fullTextParts.push(`Type: ${type}`);
+    if (caption) fullTextParts.push(`Caption: ${caption}`);
+    if (Array.isArray(hashtags) && hashtags.length) {
+      fullTextParts.push(`Hashtags: ${hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')}`);
+    } else if (typeof hashtags === 'string' && hashtags.trim()) {
+      fullTextParts.push(`Hashtags: ${hashtags}`);
+    }
+    if (format) fullTextParts.push(`Format: ${format}`);
+    if (cta) fullTextParts.push(`CTA: ${cta}`);
+    if (storyPrompt) fullTextParts.push(`Story Prompt: ${storyPrompt}`);
+    if (designNotes) fullTextParts.push(`Design Notes: ${designNotes}`);
+    if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
+    if (analytics && Array.isArray(analytics) && analytics.length) fullTextParts.push(`Analytics: ${analytics.join(', ')}`);
+    if (promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
+    if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
+    if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
+      const scriptLines = [];
+      if (videoScript.hook) scriptLines.push(`Hook: ${videoScript.hook}`);
+      if (videoScript.body) scriptLines.push(`Body: ${videoScript.body}`);
+      if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
+      fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
+    }
+    if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
+      if (engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${engagementScripts.commentReply}`);
+      if (engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${engagementScripts.dmReply}`);
+    }
+    if (entry.variants) {
+      if (entry.variants.igCaption) fullTextParts.push(`Instagram Variant: ${entry.variants.igCaption}`);
+      if (entry.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${entry.variants.tiktokCaption}`);
+      if (entry.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${entry.variants.linkedinCaption}`);
+    }
+    if (cachedUserIsPro && entry.captionVariations) {
+      if (entry.captionVariations.casual) fullTextParts.push(`Casual Caption: ${entry.captionVariations.casual}`);
+      if (entry.captionVariations.professional) fullTextParts.push(`Professional Caption: ${entry.captionVariations.professional}`);
+      if (entry.captionVariations.witty) fullTextParts.push(`Witty Caption: ${entry.captionVariations.witty}`);
+    }
+    if (cachedUserIsPro && entry.hashtagSets) {
+      if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
+      if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
+    }
+    if (cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
+    if (cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
+    if (cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
+    if (cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
+    const fullText = fullTextParts.join('\n\n');
+
+    btnCopyFull.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(fullText);
+        btnCopyFull.textContent = 'Copied!';
+        setTimeout(() => (btnCopyFull.textContent = 'Copy Full'), 1000);
+      } catch (e) {}
+    });
+
+    btnDownloadDoc.addEventListener('click', async () => {
+      const user = await getCurrentUser();
+      const userIsPro = await isPro(user);
+      if (!userIsPro) {
+        showUpgradeModal();
+        return;
+      }
+
+      try {
+        const JSZipLib = await ensureZip().catch(() => null);
+        if (!JSZipLib) {
+          alert('Failed to load Zip library. Please try again.');
+          return;
+        }
+        const zip = new JSZipLib();
+        const folderName = `post-day-${String(entryDay).padStart(2, '0')}-post-${idx + 1}-${slugify(idea || title || 'post')}`;
+        const folder = zip.folder(folderName);
+        const html = buildPostHTML(entry);
+        folder.file('post.html', html);
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${folderName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {}
+    });
+
+    actionsEl.append(btnCopyFull);
+    actionsEl.appendChild(btnDownloadDoc);
+
+    if (entry.variants) {
+      if (entry.variants.igCaption) {
+        const b = makeBtn('Copy IG');
+        b.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(entry.variants.igCaption);
+            b.textContent = 'Copied!';
+            setTimeout(() => (b.textContent = 'Copy IG'), 1000);
+          } catch (e) {}
+        });
+        actionsEl.appendChild(b);
+      }
+      if (entry.variants.tiktokCaption) {
+        const b = makeBtn('Copy TikTok');
+        b.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(entry.variants.tiktokCaption);
+            b.textContent = 'Copied!';
+            setTimeout(() => (b.textContent = 'Copy TikTok'), 1000);
+          } catch (e) {}
+        });
+        actionsEl.appendChild(b);
+      }
+      if (entry.variants.linkedinCaption) {
+        const b = makeBtn('Copy LinkedIn');
+        b.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(entry.variants.linkedinCaption);
+            b.textContent = 'Copied!';
+            setTimeout(() => (b.textContent = 'Copy LinkedIn'), 1000);
+          } catch (e) {}
+        });
+        actionsEl.appendChild(b);
+      }
+    }
+
+    const proDetailNodes = [];
+    if (cachedUserIsPro && entry.captionVariations) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__caption-variations';
+      const parts = [];
+      if (entry.captionVariations.casual) parts.push(`<div><em>Casual:</em> ${entry.captionVariations.casual}</div>`);
+      if (entry.captionVariations.professional) parts.push(`<div><em>Professional:</em> ${entry.captionVariations.professional}</div>`);
+      if (entry.captionVariations.witty) parts.push(`<div><em>Witty:</em> ${entry.captionVariations.witty}</div>`);
+      node.innerHTML = `<strong>Caption variations</strong>${parts.join('')}`;
+      proDetailNodes.push(node);
+    }
+    if (cachedUserIsPro && entry.hashtagSets) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__hashtag-sets';
+      const broad = Array.isArray(entry.hashtagSets.broad) ? entry.hashtagSets.broad.join(' ') : '';
+      const niche = Array.isArray(entry.hashtagSets.niche) ? entry.hashtagSets.niche.join(' ') : '';
+      node.innerHTML = `<strong>Hashtag sets</strong>${broad ? `<div><em>Broad:</em> ${broad}</div>` : ''}${niche ? `<div><em>Niche/local:</em> ${niche}</div>` : ''}`;
+      proDetailNodes.push(node);
+    }
+    if (cachedUserIsPro && entry.suggestedAudio) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__audio';
+      node.innerHTML = `<strong>Suggested audio</strong><div>${entry.suggestedAudio}</div>`;
+      proDetailNodes.push(node);
+    }
+    if (cachedUserIsPro && entry.postingTimeTip) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__posting-tip';
+      node.innerHTML = `<strong>Posting time tip</strong><div>${entry.postingTimeTip}</div>`;
+      proDetailNodes.push(node);
+    }
+    if (cachedUserIsPro && entry.storyPromptExpanded) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__story-extended';
+      node.innerHTML = `<strong>Story prompt+</strong> ${entry.storyPromptExpanded}`;
+      proDetailNodes.push(node);
+    }
+    if (cachedUserIsPro && entry.followUpIdea) {
+      const node = document.createElement('div');
+      node.className = 'calendar-card__followup';
+      node.innerHTML = `<strong>Follow-up idea</strong> ${entry.followUpIdea}`;
+      proDetailNodes.push(node);
+    }
+
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Details';
+    const detailsBody = document.createElement('div');
+    detailsBody.className = 'details-body';
+    detailsBody.append(
+      hashtagsEl,
+      formatEl,
+      ctaEl,
+      storyPromptEl,
+      designNotesEl,
+      repurposeEl,
+      analyticsEl,
+      engagementEl,
+      promoSlotEl,
+      weeklyPromoEl,
+      videoScriptEl,
+      variantsEl,
+      ...proDetailNodes,
+      actionsEl,
+    );
+    details.append(summary, detailsBody);
+
+    entryEl.append(ideaEl, typeEl, captionEl, details);
+    return entryEl;
+  }
 };
 
 let currentCalendar = []; // Store the current calendar data
@@ -703,8 +1214,37 @@ let currentNiche = ""; // Store the niche for the current calendar
 
 const renderCards = (subset) => {
   grid.innerHTML = "";
-  subset.forEach((post) => grid.appendChild(createCard(post)));
+  const freq = Math.max(currentPostFrequency || 1, 1);
+  if (freq <= 1) {
+    subset.forEach((post) => grid.appendChild(createCard(post)));
+    return;
+  }
+  const grouped = new Map();
+  let fallbackIndex = 0;
+  subset.forEach((post) => {
+    const dayKey = typeof post.day === 'number' ? post.day : Math.floor(fallbackIndex / freq) + 1;
+    fallbackIndex += 1;
+    if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+    grouped.get(dayKey).push(post);
+  });
+  Array.from(grouped.entries())
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .forEach(([dayKey, posts]) => {
+      const merged = { ...posts[0], day: dayKey, multiPosts: posts };
+      grid.appendChild(createCard(merged));
+    });
 };
+
+function updatePostFrequencyUI() {
+  if (!postFrequencySelect) return;
+  const stored = getPostFrequency();
+  currentPostFrequency = stored;
+  postFrequencySelect.value = String(stored);
+  if (postFrequencyDisplay) postFrequencyDisplay.textContent = `${stored}x`;
+  renderCards(currentCalendar);
+}
+
+updatePostFrequencyUI();
 
 // Filter dropdown functionality
 let currentFilter = 'all';
@@ -765,6 +1305,7 @@ console.log("✓ Filter dropdown initialized");
 
 // Start with empty grid (no pre-made posts)
 try {
+  currentPostFrequency = getPostFrequency();
   renderCards([]);
   console.log("✓ Initial render complete");
   updateTabs();
@@ -845,13 +1386,35 @@ const proFollowUpIdeas = [
   'Send a newsletter recap that embeds today’s main CTA.'
 ];
 
-const proAudioSuggestions = [
-  '"Calm Momentum" (lofi beat trending across strategy reels).',
-  '"Golden Hour Drip" (90 BPM instrumental great for B-roll).',
-  '"Swipe Series Synth" (upbeat synthwave loop, ideal for carousels).',
-  '"Builder Pulse" (steady percussion track favored in creator tips).',
-  '"Voiceover Spark" (soft piano underlay trending for storytelling).'
+const trendingTikTokAudios = [
+  { title: 'Not Like Us', artist: 'Kendrick Lamar', usage: 'high-energy glow-up reveals and punchy before/afters' },
+  { title: 'Birds of a Feather', artist: 'Billie Eilish', usage: 'softer transformation stories + community moments' },
+  { title: 'GATA ONLY', artist: 'Flo Milli', usage: 'quick jump cuts or sassier myth-busting clips' },
+  { title: 'Espresso (sped up)', artist: 'Sabrina Carpenter', usage: 'day-in-the-life facials + POV walkthroughs' },
+  { title: 'Skinny', artist: 'Halsey', usage: 'confidence POV audio for skincare pep talks' }
 ];
+
+const trendingInstagramAudios = [
+  { title: 'Good Luck, Babe!', artist: 'Chappell Roan', usage: 'bold hook for promo CTA slides' },
+  { title: 'Austin (Boots Stop Workin’)', artist: 'Dasha', usage: 'text overlays about routines or service stacks' },
+  { title: 'Tucson', artist: 'Khalid', usage: 'slow-pan treatment rooms or ingredient spotlights' },
+  { title: 'Million Dollar Baby', artist: 'Tommy Richman', usage: 'jump-cut reels showing quick transformations' },
+  { title: '360', artist: 'Charli XCX', usage: 'carousel teasers and motion graphic carousels' }
+];
+
+const describeTrendingAudio = (index = 0) => {
+  const now = new Date();
+  const monthYear = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(now);
+  const tikTokPick = pickCycled(trendingTikTokAudios, index);
+  const igPick = pickCycled(trendingInstagramAudios, index + 1);
+  const tikTokText = tikTokPick
+    ? `TikTok — “${tikTokPick.title}” by ${tikTokPick.artist} (perfect for ${tikTokPick.usage}).`
+    : '';
+  const igText = igPick
+    ? `Instagram Reels — “${igPick.title}” by ${igPick.artist} (great for ${igPick.usage}).`
+    : '';
+  return `Trending now (${monthYear}): ${tikTokText} ${igText}`.trim();
+};
 
 const proPostingTips = [
   'Post weekday afternoons to catch students between classes.',
@@ -861,7 +1424,6 @@ const proPostingTips = [
   'Queue it for Sunday nights when planning-minded followers tune in.'
 ];
 
-const proTemplateLabels = ['Carousel mockup', 'Reel cover kit', 'Swipe file layout', 'Story sticker board'];
 
 const capitalizeSentence = (text = '') => {
   if (!text) return '';
@@ -899,9 +1461,9 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   ];
 
   const captionVariations = {
-    casual: `${baseCaption} ✨`,
-    professional: `Professional angle: ${capitalizeSentence(baseCaption)}`,
-    witty: `Hot take: ${baseCaption.replace(/[.!?]$/, '')} — let’s make it happen.`
+    casual: `${baseCaption.replace(/[.!?]+$/, '')}! Drop your best question in the comments 💬`,
+    professional: `Let’s address the big question: ${capitalizeSentence(baseCaption)} Our team is ready with evidence-backed answers.`,
+    witty: `Plot twist: ${baseCaption.replace(/[.!?]$/, '')}. Ask away and we’ll spill the tea (and the serums).`
   };
 
   const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
@@ -914,12 +1476,8 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
       broad: broadSet,
       niche: nicheSetBase
     },
-    suggestedAudio: pickCycled(proAudioSuggestions, index),
+    suggestedAudio: describeTrendingAudio(index),
     postingTimeTip: pickCycled(proPostingTips, index),
-    visualTemplate: {
-      label: pickCycled(proTemplateLabels, index),
-      url: `https://www.canva.com/design/DA-${visualSlug}`
-    },
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
       : interactive,
@@ -1450,11 +2008,6 @@ function buildPostHTML(post){
   if (post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
   }
-  if (post.visualTemplate && post.visualTemplate.url) {
-    detailBlocks.push(
-      `<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`
-    );
-  }
   if (post.storyPromptExpanded) {
     detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
   }
@@ -1614,18 +2167,644 @@ if (saveBtn) {
   });
 }
 
+const DEFAULT_IDEA_TEXT = 'Engaging post idea';
+const DEFAULT_CAPTION_TEXT = 'Quick tip that helps you today.\nSave this for later.';
+const DEFAULT_STORY_PROMPT_TEXT = "Share behind-the-scenes of today's work.";
+
+const POST_SLOT_ANGLES = [
+  {
+    name: 'Story spotlight',
+    buildIdea: (base) => `Story spotlight: ${base}`,
+    buildCaption: (base, cta) => `Story spotlight: ${base}. A real client walked in feeling stuck—we tweaked one move and the shift was wild. Ready for your own version? ${cta}`,
+    buildStoryPrompt: (base) => `Record a 30-second selfie story describing how ${base} played out for a real person. Highlight their before, the pivot, and the win.`,
+    designNotes: 'Use warm, candid footage plus on-screen captions that hit the turning point.',
+    repurpose: ['Story clip → Reel remix', 'Quote the testimonial in a carousel'],
+    analytics: ['Saves', 'Shares'],
+    buildVideoScript: (base, cta) => ({
+      hook: `What happened when we doubled down on ${base}?`,
+      body: '1) Introduce the person\n2) Show the “aha” moment\n3) Reveal the result with a number.',
+      cta,
+    }),
+    buildEngagementScripts: (base, cta) => ({
+      commentReply: `Appreciate you checking out this story! Want the behind-the-scenes playbook for ${base.toLowerCase()}?`,
+      dmReply: `I can map out how ${base.toLowerCase()} would look for you—want me to send the cheatsheet?`,
+    }),
+  },
+  {
+    name: 'Proof drop',
+    buildIdea: (base) => `Proof drop: ${base}`,
+    buildCaption: (base, cta) => `Proof drop: ${base}. Screenshot a metric, testimonial, or before/after that shows the transformation. Spell out the levers you pulled and invite them to replicate it. ${cta}`,
+    buildStoryPrompt: (base) => `Film a voiceover scrolling through proof that ${base} works—circle the metric and narrate what changed.`,
+    designNotes: 'Bold numeric typography, tight crop on stats, branded highlight color.',
+    repurpose: ['Stat graphic → LinkedIn post', 'Metric → Email teaser'],
+    analytics: ['Profile visits', 'Click-throughs'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Need receipts that ${base} delivers?`,
+      body: 'Walk through the numbers, then call out exactly what triggered the spike.',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Wild, right? If you want to know how ${base.toLowerCase()} works in your setup, ask away.`,
+      dmReply: `Happy to unpack that proof point in DMs—want me to send the 3-step breakdown?`,
+    }),
+  },
+  {
+    name: 'Myth bust',
+    buildIdea: (base) => `Myth busting: ${base}`,
+    buildCaption: (base, cta) => `Myth busting time: people still believe the wrong thing about ${base}. Call out the myth, stack your truth with one vivid example, and end with an empowering action step. ${cta}`,
+    buildStoryPrompt: (base) => `Record a quick myth-vs-truth reel pointing straight at the camera. Say “Myth:” then flip to “Here’s the truth about ${base}.”`,
+    designNotes: 'Split-screen or text overlay that literally says “Myth” and “Truth.”',
+    repurpose: ['Myth vs Truth carousel', 'Save as FAQ highlight'],
+    analytics: ['Comments', 'Shares'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Myth: ${base}. Truth: let me show you.`,
+      body: 'Call out the belief, explain why it fails, and gift them the new habit.',
+      cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Thanks for chiming in! Drop the next myth you hear all the time and I’ll break it down.',
+      dmReply: 'If you’re running into that myth in real time, shoot me the context—I’ll help you counter it.',
+    }),
+  },
+  {
+    name: 'Community question',
+    buildIdea: (base) => `Community question: ${base}`,
+    buildCaption: (base) => `Community question: ${base}. Give your own POV first, then explicitly ask followers to share their routines, wins, or hurdles. Spotlight a few in Stories to keep the loop going.`,
+    buildStoryPrompt: (base) => `Film yourself asking the question about ${base}, then stitch replies throughout the day.`,
+    designNotes: 'Use a simple text-on-gradient background or selfie clip with captions + poll stickers.',
+    repurpose: ['Turn answers into a roundup post', 'Collect quotes for newsletter'],
+    analytics: ['Comments', 'DMs'],
+    buildVideoScript: (base) => ({
+      hook: `Real talk: how are you approaching ${base}?`,
+      body: 'Share your stance, then ask them to weigh in with a specific emoji or keyword.',
+      cta: 'Drop your answer in the comments—best one gets a shoutout.',
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Love this perspective—mind if I feature it in Stories?',
+      dmReply: 'Got it! I’ll share a couple bonus tips that expand on your take.',
+    }),
+  },
+  {
+    name: 'Mini training',
+    buildIdea: (base) => `Mini training: ${base}`,
+    buildCaption: (base, cta) => `Mini training: ${base}. Lay out a 3-step checklist: the setup, the action, the win they should expect. Encourage followers to screenshot it, try it tonight, then tell you how it went. ${cta}`,
+    buildStoryPrompt: (base) => `Screen-record or slide through a whiteboard as you outline the 3 steps for ${base}.`,
+    designNotes: 'Use numbered typography, punchy verbs, and arrows that show progression.',
+    repurpose: ['Checklist → PDF lead magnet', 'Turn each step into a Story panel'],
+    analytics: ['Saves', 'Replies'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Here’s your 3-step plan for ${base}.`,
+      body: 'Step 1: set the stage. Step 2: show the action. Step 3: reveal the payoff.',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Let me know when you run through those steps for ${base.toLowerCase()}—I’ll help troubleshoot.`,
+      dmReply: 'Shoot me your screenshot and I’ll personalize the next move.',
+    }),
+  },
+  {
+    name: 'Offer reminder',
+    buildIdea: (base) => `Offer reminder: ${base}`,
+    buildCaption: (base, cta) => `Offer reminder: tie ${base} back to the program, product, or slot you have open. Spell out exactly who it helps, what they get, and why this week is the best time to jump in. ${cta}`,
+    buildStoryPrompt: (base) => `Record a clip from your workspace or client area inviting them to claim the ${base}-style result.`,
+    designNotes: 'Show a behind-the-scenes moment plus bold CTA button on screen.',
+    repurpose: ['Turn into an email CTA', 'Use as pinned Story highlight'],
+    analytics: ['Profile visits', 'Link clicks'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Spots open for people who want ${base}.`,
+      body: 'Explain what’s included, sprinkle urgency, and mention proof.',
+      cta,
+    }),
+    buildEngagementScripts: (base, cta) => ({
+      commentReply: `Just sent over details for ${base.toLowerCase()}—want me to hold a slot for you?`,
+      dmReply: `Here’s the mini application for ${base.toLowerCase()}. I’ll keep an eye out for your name!`,
+    }),
+  },
+  {
+    name: 'Trend radar',
+    buildIdea: (base) => `Trend radar: ${base}`,
+    buildCaption: (base, cta) => `Trend radar: ${base}. Flag what’s changing this month, spell out how it impacts your audience, and recommend a micro-shift they can make today. ${cta}`,
+    buildStoryPrompt: (base) => `Film a quick “trend desk” explainer: headline, why it matters, what you’re advising.`,
+    designNotes: 'News-style lower thirds, ticker-inspired typography, animated arrows.',
+    repurpose: ['Trend note → Newsletter opener', 'Trend clip → LinkedIn post'],
+    analytics: ['Shares', 'Profile visits'],
+    buildVideoScript: (base, cta) => ({
+      hook: `If ${base} is on your radar, here’s what to watch:`,
+      body: '1) Name the shift\n2) Show who it affects\n3) Give them a move to make',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Appreciate you keeping tabs on ${base.toLowerCase()} too—what signals are you seeing?`,
+      dmReply: `Want a custom read on how ${base.toLowerCase()} will hit your brand? Shoot me your niche and I’ll riff.`,
+    }),
+  },
+  {
+    name: 'Swipe file',
+    buildIdea: (base) => `Swipe file: ${base}`,
+    buildCaption: (base, cta) => `Swipe file drop: ${base}. Outline the exact template, line-by-line, and invite followers to screenshot + tag you when they try it. ${cta}`,
+    buildStoryPrompt: (base) => `Share a “copy this” walkthrough: point to each line of the swipe file while narrating how to personalize it.`,
+    designNotes: 'Use cursor highlights, note-style backgrounds, or Notion-style cards.',
+    repurpose: ['Swipe → PDF lead magnet', 'Swipe → Carousel frames'],
+    analytics: ['Saves', 'Replies'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Steal this ${base} swipe in 3 lines.`,
+      body: 'Line 1: pattern interrupt\nLine 2: promise\nLine 3: CTA',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Tag me when you plug this ${base.toLowerCase()} swipe into your content—I’ll amplify my favorites.`,
+      dmReply: `Send me your version and I’ll tweak the hook for you.`,
+    }),
+  },
+  {
+    name: 'Build in public',
+    buildIdea: (base) => `Build in public: ${base}`,
+    buildCaption: (base, cta) => `Build-in-public check-in: show where ${base} is today, what broke, and the one experiment you’re running next. Transparently sharing the messy middle builds trust. ${cta}`,
+    buildStoryPrompt: (base) => `Record a short vlog clip walking through the “in-progress” dashboard tied to ${base}.`,
+    designNotes: 'B-roll of dashboards/whiteboards, handwritten annotations, quick status labels.',
+    repurpose: ['Turn into blog progress log', 'Clip into YouTube Short'],
+    analytics: ['Profile visits', 'DMs'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Building ${base} in public: here’s today’s update.`,
+      body: 'Current status → friction point → next micro-step.',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `If you’re building ${base.toLowerCase()} too, let’s trade notes—what stage are you in?`,
+      dmReply: `Want to compare dashboards? I’ll send a Loom break-down.`,
+    }),
+  },
+  {
+    name: 'Hot take',
+    buildIdea: (base) => `Hot take: ${base}`,
+    buildCaption: (base, cta) => `Hot take: ${base}. Lead with the spicy belief, back it with one data point or story, then give the “if you disagree, try this” olive branch. ${cta}`,
+    buildStoryPrompt: (base) => `Shoot a dramatic opener (zoom-in, clap, snap) before dropping the hot take about ${base}.`,
+    designNotes: 'Bold gradient background, motion blur text, reaction emojis.',
+    repurpose: ['Turn into Twitter thread', 'Use as debate poll in Stories'],
+    analytics: ['Comments', 'Shares'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Hot take: you’re doing ${base} wrong.`,
+      body: 'Explain the belief, cite proof, offer alternative.',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Spicy! Drop your counterpoint—I’ll pin the best argument.`,
+      dmReply: `Totally cool if you disagree. Want me to send the full breakdown behind this take?`,
+    }),
+  },
+  {
+    name: 'FAQ clinic',
+    buildIdea: (base) => `FAQ clinic: ${base}`,
+    buildCaption: (base, cta) => `FAQ clinic: answer the question you see nonstop about ${base}. Give the short version, the nuance, and a quick diagnostic so people know what bucket they’re in. ${cta}`,
+    buildStoryPrompt: (base) => `Use question stickers to collect the FAQs about ${base}, then stitch your answers.`,
+    designNotes: 'Clean Q&A cards, subtle borders, typewriter question text.',
+    repurpose: ['Compile into FAQ highlight', 'Turn into blog Q&A'],
+    analytics: ['Replies', 'Profile visits'],
+    buildVideoScript: (base, cta) => ({
+      hook: `${base}? Here’s the real answer.`,
+      body: 'State the question → bust assumptions → recommend next step.',
+      cta,
+    }),
+    buildEngagementScripts: (base) => ({
+      commentReply: `Got another ${base.toLowerCase()} question? Drop it and I’ll tackle it next.`,
+      dmReply: `I’ll send the long-form answer plus links—just say “FAQ me.”`,
+    }),
+  },
+  {
+    name: 'Client spotlight',
+    buildIdea: (base) => `Client spotlight: ${base}`,
+    buildCaption: (base, cta) => `Client spotlight: highlight one person who implemented ${base} and narrate their before/after. Tag them if they’re cool with it and share the exact prompt you gave them. ${cta}`,
+    buildStoryPrompt: (base) => `Record a short montage of the client’s win with captions describing the ${base} approach.`,
+    designNotes: 'Use testimonial card overlays, signature colors, and a hero photo.',
+    repurpose: ['Turn into case study PDF', 'Send as sales follow-up asset'],
+    analytics: ['Saves', 'Link clicks'],
+    buildVideoScript: (base, cta) => ({
+      hook: `Client spotlight: how ${base} changed their week.`,
+      body: 'Introduce the client → describe pain → show the win + data.',
+      cta,
+    }),
+    buildEngagementScripts: (base, cta) => ({
+      commentReply: `Want the same ${base.toLowerCase()} result? I’ll send you the starter checklist.`,
+      dmReply: `Happy to intro you to this client if you’re curious—tap me and I’ll connect you.`,
+    }),
+  },
+];
+
+const UNIQUE_TOPIC_BLUEPRINTS = [
+  {
+    name: 'Aftercare blueprint',
+    idea: (subject, helpers) => `Aftercare blueprint: 72 hours after ${subject}`,
+    caption: (subject, helpers) => `Glow insurance for ${subject}: here’s the 24-hour, 48-hour, and 72-hour checklist that keeps results locked in. Save it, tape it to your mirror, and tag us when you follow through. ${helpers.cta}`,
+    storyPrompt: (subject) => `Film your top three aftercare must-haves after ${subject} and label when to use them.`,
+    designNotes: 'Flat lay of products with annotated arrows and timestamps.',
+    repurpose: ['Turn into printable checklist', 'Add to automated SMS follow-up'],
+    analytics: ['Saves', 'Replies'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Stop sabotaging ${subject} with weak aftercare.`,
+      body: 'Show the kit • explain why each step matters • highlight one common mistake.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: (subject) => ({
+      commentReply: `Need me to text you this ${subject} aftercare plan? Drop “REMIND” below.`,
+      dmReply: `Send me a selfie after your ${subject} tomorrow and I’ll double-check healing for you.`,
+    }),
+  },
+  {
+    name: 'Event countdown',
+    idea: (subject, helpers) => `${helpers.title} countdown: when to book before a big event`,
+    caption: (subject, helpers) => `VIP timeline alert: here’s exactly when to schedule ${subject} if you’re prepping for a wedding, shoot, or party. Screenshot the 5-day countdown and share it with your group chat. ${helpers.cta}`,
+    storyPrompt: () => 'Create a vertical timeline graphic and narrate each milestone.',
+    designNotes: 'Use timeline layout with dates and checkmarks.',
+    repurpose: ['Send to bridal leads', 'Turn into pinned Story highlight'],
+    analytics: ['Saves', 'Shares'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Booking ${subject} before an event? Do this.`,
+      body: 'Day -7: prep • Day -3: treatment • Day -1: aftercare drill.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Tell me your event date and I’ll pop the ideal appointment windows in your DMs.',
+      dmReply: 'Drop the date + vibe and I’ll send a personalized countdown.',
+    }),
+  },
+  {
+    name: 'Ingredient face-off',
+    idea: (subject, helpers) => `Ingredient face-off inside ${subject}`,
+    caption: (subject, helpers) => `Two MVP ingredients power this ${subject}. Let’s compare what each one does, who it’s best for, and how to know when you need it. ${helpers.cta}`,
+    storyPrompt: () => 'Film a side-by-side reel labeling each ingredient’s benefit.',
+    designNotes: 'Split-screen ingredient cards with icons.',
+    repurpose: ['Turn into carousel explainer', 'Convert to email mini-lesson'],
+    analytics: ['Saves', 'Comments'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Ingredient showdown inside your ${subject}.`,
+      body: 'Highlight ingredient A • highlight ingredient B • explain the combo magic.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: (subject) => ({
+      commentReply: `Curious which ${subject} ingredient you need? Tell me your skin goal and I’ll answer.`,
+      dmReply: `Shoot me a photo of the products you already use—I’ll tell you if they pair with this ${subject}.`,
+    }),
+  },
+  {
+    name: 'Membership spotlight',
+    idea: (subject, helpers) => `Membership perks for consistent ${subject}`,
+    caption: (subject, helpers) => `If you love ${subject}, the membership pays for itself. Here’s what weekly/biweekly visits unlock, the surprise perks, and the accountability you didn’t know you needed. ${helpers.cta}`,
+    storyPrompt: () => 'Record a walkthrough of the member portal or welcome kit.',
+    designNotes: 'Use card stack visuals with perk highlights.',
+    repurpose: ['Turn into sales page section', 'Include in onboarding email'],
+    analytics: ['Profile visits', 'Link clicks'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Membership math for ${subject}: let’s break it down.`,
+      body: 'Cost vs value, bonus perks, and who it’s perfect for.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Want me to run the numbers based on your routine? Drop “membership” and I’ll DM you.',
+      dmReply: 'I’ll send over the full perk stack plus current openings—just say the word.',
+    }),
+  },
+  {
+    name: 'Seasonal switch-up',
+    idea: (subject, helpers) => `Seasonal switch-up: how ${subject} changes`,
+    caption: (subject, helpers) => `Seasons change, so should your ${subject}. Here’s how we tweak exfoliation, hydration, and LED time when temps swing. ${helpers.cta}`,
+    storyPrompt: () => 'Film B-roll of seasonal props (sun hat vs cozy scarf) and overlay tips.',
+    designNotes: 'Use split seasonal palette with icons.',
+    repurpose: ['Update blog seasonal guide', 'Send as quarterly reminder'],
+    analytics: ['Shares', 'Replies'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Your ${subject} in winter vs summer.`,
+      body: 'Call out the mistakes • show your tweak • invite them to book the seasonal plan.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: (subject) => ({
+      commentReply: `What climate are you in? I’ll tailor the ${subject} switch-up for you.`,
+      dmReply: `Send me your current routine—I’ll highlight what to pause until spring.`,
+    }),
+  },
+  {
+    name: 'At-home vs pro',
+    idea: (subject, helpers) => `At-home vs pro results with ${subject}`,
+    caption: (subject, helpers) => `DIY can be cute, but here’s what only a pro ${subject} delivers. Outline the at-home steps we still love, then show the pro-only benefits. ${helpers.cta}`,
+    storyPrompt: () => 'Split screen reel: home routine on one side, pro tools on the other.',
+    designNotes: 'Use checklists + “pro only” stamps.',
+    repurpose: ['Turn into lead magnet', 'Use as FAQ reply'],
+    analytics: ['Saves', 'Profile visits'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Can you DIY ${subject}?`,
+      body: 'List what’s safe at home • list what’s better in-studio • call to action.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: (subject) => ({
+      commentReply: `Curious if your at-home tools play nice with ${subject}? Tell me the brand.`,
+      dmReply: `Send me your cart screenshot and I’ll give a thumbs up/down.`,
+    }),
+  },
+  {
+    name: 'Add-on stack',
+    idea: (subject, helpers) => `Add-on stack: level up your ${subject}`,
+    caption: (subject, helpers) => `Want your ${subject} to hit harder? Stack it with these two add-ons. Share the price, time, and who each combo is perfect for. ${helpers.cta}`,
+    storyPrompt: () => 'Record a “choose your own adventure” Stories poll with add-on combos.',
+    designNotes: 'Use flow-chart arrows showing combinations.',
+    repurpose: ['Bundle into sales deck', 'Upsell via email'],
+    analytics: ['Upsells', 'Replies'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `The add-on stack that makes ${subject} unstoppable.`,
+      body: 'Add-on 1 reason • Add-on 2 reason • real client reaction.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: (subject) => ({
+      commentReply: `Tell me your goal and I’ll recommend the perfect ${subject} stack.`,
+      dmReply: `I’ll hold a spot for the combo you want—just drop your preferred day.`,
+    }),
+  },
+  {
+    name: 'Pricing clarity',
+    idea: (subject, helpers) => `Pricing clarity: where your ${subject} investment goes`,
+    caption: (subject, helpers) => `Here’s what you pay for with ${subject}: sterile tools, licensed pros, medical-grade serums, and the follow-up plan. Transparency builds trust, so let’s show the receipt. ${helpers.cta}`,
+    storyPrompt: () => 'Film a reel labeling each cost bucket on-screen.',
+    designNotes: 'Receipt-style typography with highlighted lines.',
+    repurpose: ['Embed on pricing page', 'Send during sales consults'],
+    analytics: ['Profile visits', 'Link clicks'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Ever wonder why ${subject} costs what it does?`,
+      body: 'Line-item the investment • show what corners you refuse to cut.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Have a budget? Tell me and I’ll map what we can achieve inside it.',
+      dmReply: 'I’ll send financing + membership options—just DM “pricing.”',
+    }),
+  },
+  {
+    name: 'Mistake audit',
+    idea: (subject, helpers) => `Mistakes we fix before ${subject}`,
+    caption: (subject, helpers) => `I see the same three mistakes right before ${subject}: wrong cleanser, skipping SPF, and sleeping on silk. Call them out, show how you correct them, and invite followers to audit themselves. ${helpers.cta}`,
+    storyPrompt: () => 'Create a carousel: “Did you do this?” → “Here’s the fix.”',
+    designNotes: 'Use bold red “fix this” banners.',
+    repurpose: ['Use as onboarding PDF', 'Share in welcome email'],
+    analytics: ['Comments', 'Saves'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Don’t book ${subject} until you stop doing this.`,
+      body: 'Mistake • consequence • quick fix.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Confess your pre-appointment habits and I’ll doctor them up.',
+      dmReply: 'Send me your routine and I’ll flag what to pause before we treat you.',
+    }),
+  },
+  {
+    name: 'Audience pivot',
+    idea: (subject, helpers) => `${helpers.title} for first-timers`,
+    caption: (subject, helpers) => `Teens, men, and first-timers ask if ${subject} is “for them.” Answer with empathy: explain sensations, prep, and confidence boosts. ${helpers.cta}`,
+    storyPrompt: () => 'Interview a first-time client about how it actually felt.',
+    designNotes: 'Use approachable, friendly typography and candid photography.',
+    repurpose: ['Feature on FAQ page', 'Create pinned TikTok'],
+    analytics: ['Follows', 'DMs'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `First ${subject}? Here’s what to expect.`,
+      body: 'Walk through arrival • treatment • aftercare.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'If it’s your first time, tell me your biggest worry—I’ll answer it publicly.',
+      dmReply: 'Drop me a “newbie” DM and I’ll voice-note the full rundown.',
+    }),
+  },
+  {
+    name: 'Tool + tech spotlight',
+    idea: (subject, helpers) => `Tool spotlight inside ${subject}`,
+    caption: (subject, helpers) => `Let’s geek out over the tech that powers ${subject}. Break down how the tool works, safety checks you run, and the sensation clients actually feel. ${helpers.cta}`,
+    storyPrompt: () => 'Film a close-up of the tool in action with narration.',
+    designNotes: 'Use blueprint lines, arrows, and specs.',
+    repurpose: ['Add to diagnostic landing page', 'Send as “meet the tech” email'],
+    analytics: ['Profile visits', 'Shares'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `Meet the tech that makes ${subject} possible.`,
+      body: 'Show the interface • show calibration • show real-time results.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Got a gear question? I’m the nerd to ask.',
+      dmReply: 'I’ll send you the full spec sheet plus why we chose this model.',
+    }),
+  },
+  {
+    name: 'Progress diary',
+    idea: (subject, helpers) => `Progress diary: 3 visits of ${subject}`,
+    caption: (subject, helpers) => `Document the journey: Visit 1 baseline, Visit 2 turning point, Visit 3 glow-up. People trust receipts, so show them the diary. ${helpers.cta}`,
+    storyPrompt: () => 'Compile voice memos or quick clips after each visit.',
+    designNotes: 'Scrapbook layout with Polaroid frames.',
+    repurpose: ['Turn into blog case study', 'Use as nurture email arc'],
+    analytics: ['Saves', 'Link clicks'],
+    buildVideoScript: (subject, helpers) => ({
+      hook: `What 3 ${subject} visits look like.`,
+      body: 'Baseline clip • mid-way clip • final reveal.',
+      cta: helpers.cta,
+    }),
+    buildEngagementScripts: () => ({
+      commentReply: 'Want me to document your journey too? Say “diary me.”',
+      dmReply: 'I’ll send the consent form + how we keep your footage cute.',
+    }),
+  },
+];
+const UNIQUE_SUFFIXES = [
+  'Remix',
+  'Deep Dive',
+  'Blueprint',
+  'Hot Seat',
+  'Playbook',
+  'Office Hours',
+  'Pulse Check',
+  'Lightning Lesson',
+  'Creator POV',
+  'Swipe This',
+];
+
+function mergeUnique(list, additions) {
+  const base = Array.isArray(list) ? [...list] : (list ? [list] : []);
+  (additions || []).forEach((item) => {
+    if (item && !base.includes(item)) base.push(item);
+  });
+  return base;
+}
+
+function applySlotAngle(post, angle, slotNumber) {
+  if (!angle) return;
+  const baseIdea = (post.idea || DEFAULT_IDEA_TEXT).trim();
+  const cta = post.cta || 'DM us to book today';
+  if (angle.buildIdea) post.idea = angle.buildIdea(baseIdea, slotNumber);
+  if (angle.buildCaption) post.caption = angle.buildCaption(baseIdea, cta, post.caption);
+  if (angle.buildStoryPrompt) post.storyPrompt = angle.buildStoryPrompt(baseIdea);
+  if (angle.designNotes) post.designNotes = angle.designNotes;
+  if (angle.repurpose) post.repurpose = mergeUnique(post.repurpose, angle.repurpose);
+  if (angle.analytics) post.analytics = mergeUnique(post.analytics, angle.analytics);
+  if (angle.buildVideoScript) {
+    const video = angle.buildVideoScript(baseIdea, cta);
+    post.videoScript = { ...(post.videoScript || {}), ...video };
+  }
+  const engagement = angle.buildEngagementScripts ? angle.buildEngagementScripts(baseIdea, cta) : null;
+  if (engagement) {
+    post.engagementScripts = {
+      commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
+      dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
+    };
+  }
+}
+
+const TOPIC_STOPWORDS = new Set([
+  'the','and','for','with','that','this','your','from','have','just','about','only','they','them','into','their','ours','you','our','are','was','were','than','then','when','what','ever','everyone','older','people','glowing','skin','glow','make','like','want','need','more','less','very','much','also','after','before','even'
+]);
+
+function extractKeyword(text = '') {
+  const tokens = (text || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  for (const token of tokens) {
+    if (token.length > 3 && !TOPIC_STOPWORDS.has(token)) return token;
+  }
+  return 'your service';
+}
+
+function toTitleCase(str = '') {
+  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1));
+}
+
+function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
+  if (!blueprint) return;
+  const normalized = (keyword || 'your service').replace(/\s+/g, ' ').trim();
+  const helpers = {
+    cta: post.cta || 'DM us to book today',
+    slotNumber,
+    title: toTitleCase(normalized),
+  };
+  if (blueprint.idea) post.idea = blueprint.idea(normalized, helpers);
+  if (blueprint.caption) post.caption = blueprint.caption(normalized, helpers);
+  if (blueprint.storyPrompt) post.storyPrompt = blueprint.storyPrompt(normalized, helpers);
+  if (blueprint.designNotes) post.designNotes = blueprint.designNotes;
+  if (blueprint.pillar) post.pillar = blueprint.pillar;
+  if (blueprint.cta) post.cta = typeof blueprint.cta === 'function' ? blueprint.cta(normalized, helpers) : blueprint.cta;
+  if (blueprint.repurpose) post.repurpose = mergeUnique(post.repurpose, blueprint.repurpose);
+  if (blueprint.analytics) post.analytics = mergeUnique(post.analytics, blueprint.analytics);
+  if (blueprint.buildVideoScript) {
+    const video = blueprint.buildVideoScript(normalized, helpers);
+    post.videoScript = { ...(post.videoScript || {}), ...video };
+  }
+  const engagement = blueprint.buildEngagementScripts ? blueprint.buildEngagementScripts(normalized, helpers) : null;
+  if (engagement) {
+    post.engagementScripts = {
+      commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
+      dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
+    };
+  }
+}
+
+function applyVariantByIndex(post, index, keyword) {
+  if (index < POST_SLOT_ANGLES.length) {
+    applySlotAngle(post, POST_SLOT_ANGLES[index], (post.slot || 0) + index);
+    return true;
+  }
+  const blueprintIndex = index - POST_SLOT_ANGLES.length;
+  if (blueprintIndex < UNIQUE_TOPIC_BLUEPRINTS.length) {
+    applyTopicBlueprint(post, UNIQUE_TOPIC_BLUEPRINTS[blueprintIndex], keyword, (post.slot || 0) + index);
+    return true;
+  }
+  return false;
+}
+
+function normalizeSignature(text = '') {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function isGenericPost(post) {
+  const idea = normalizeSignature(post.idea || '');
+  const caption = normalizeSignature(post.caption || '');
+  const story = normalizeSignature(post.storyPrompt || '');
+  return (
+    !idea ||
+    idea === normalizeSignature(DEFAULT_IDEA_TEXT) ||
+    !caption ||
+    caption === normalizeSignature(DEFAULT_CAPTION_TEXT) ||
+    story === normalizeSignature(DEFAULT_STORY_PROMPT_TEXT)
+  );
+}
+
+function ensureUniqueDailyPosts(posts, frequency) {
+  if (!Array.isArray(posts) || posts.length === 0) return posts;
+  const maxAngles = POST_SLOT_ANGLES.length;
+  const groups = new Map();
+  posts.forEach((post, idx) => {
+    const dayKey = typeof post.day === 'number' ? post.day : Math.floor(idx / Math.max(frequency || 1, 1)) + 1;
+    if (!groups.has(dayKey)) groups.set(dayKey, []);
+    groups.get(dayKey).push(post);
+  });
+  groups.forEach((dayPosts) => {
+    const seen = new Set();
+    dayPosts.forEach((post, slotIdx) => {
+      const key = `${normalizeSignature(post.idea || '')}|${normalizeSignature(post.caption || '')}`;
+      const needsAngle = isGenericPost(post) || seen.has(key);
+      if (needsAngle) {
+        const angle = POST_SLOT_ANGLES[slotIdx % maxAngles];
+        applySlotAngle(post, angle, slotIdx + 1);
+      }
+      const updatedKey = `${normalizeSignature(post.idea || '')}|${normalizeSignature(post.caption || '')}`;
+      seen.add(updatedKey);
+    });
+  });
+  return posts;
+}
+
+function makePostSignature(post) {
+  return `${normalizeSignature(post.idea || post.title || '')}|${normalizeSignature(post.caption || '')}`;
+}
+
+function ensureGlobalVariety(posts) {
+  if (!Array.isArray(posts)) return posts;
+  const baseCounts = new Map();
+  const finalKeys = new Set();
+  posts.forEach((post) => {
+    const baseKey = makePostSignature(post);
+    const seen = baseCounts.get(baseKey) || 0;
+    const keyword = extractKeyword(post.idea || post.title || post.caption || '');
+    const needsRewrite = isGenericPost(post) || seen > 0;
+    if (needsRewrite) {
+      const handled = applyVariantByIndex(post, seen, keyword);
+      if (!handled) {
+        const suffix = UNIQUE_SUFFIXES[(seen - POST_SLOT_ANGLES.length) % UNIQUE_SUFFIXES.length];
+        post.idea = `${post.idea} (${suffix})`;
+        post.caption = `${post.caption}\n\n${suffix}: screenshot this so you remember it later.`;
+      }
+    }
+    baseCounts.set(baseKey, seen + 1);
+    let finalKey = makePostSignature(post);
+    let guard = 0;
+    while (finalKeys.has(finalKey) && guard < UNIQUE_TOPIC_BLUEPRINTS.length) {
+      guard++;
+      const adjusted = applyVariantByIndex(post, seen + guard, keyword);
+      if (!adjusted) break;
+      finalKey = makePostSignature(post);
+    }
+    if (finalKeys.has(finalKey)) {
+      const suffix = UNIQUE_SUFFIXES[(finalKeys.size + guard) % UNIQUE_SUFFIXES.length];
+      post.idea = `${post.idea} (${suffix})`;
+      post.caption = `${post.caption}\n\n${suffix}: screenshot this so you remember it later.`;
+      finalKey = makePostSignature(post);
+    }
+    finalKeys.add(finalKey);
+  });
+  return posts;
+}
+
 // Normalize a post to guarantee all required fields exist
 function normalizePost(p, idx = 0, startDay = 1) {
   const out = {
     day: typeof p.day === 'number' ? p.day : (startDay + idx),
-    idea: p.idea || p.title || 'Engaging post idea',
+    idea: p.idea || p.title || DEFAULT_IDEA_TEXT,
     type: p.type || 'educational',
-    caption: p.caption || 'Quick tip that helps you today.\nSave this for later.',
+    caption: p.caption || DEFAULT_CAPTION_TEXT,
     hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : ['marketing','content','tips','learn','growth','brand']),
     format: p.format || 'Reel',
     cta: p.cta || 'DM us to book today',
     pillar: p.pillar || 'Education',
-    storyPrompt: p.storyPrompt || 'Share behind-the-scenes of today\'s work.',
+    storyPrompt: p.storyPrompt || DEFAULT_STORY_PROMPT_TEXT,
     designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
     repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
     analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
@@ -1645,19 +2824,24 @@ function normalizePost(p, idx = 0, startDay = 1) {
 }
 
 // OpenAI API integration (via backend proxy)
-async function generateCalendarWithAI(nicheStyle) {
+async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
   console.log("🟡 generateCalendarWithAI called with:", nicheStyle);
   
   try {
     const currentUserEmail = await getCurrentUser();
     const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
+    const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const batchSize = 5;
-    const totalBatches = 6; // 30 posts / 5 per batch
+    const totalDays = 30;
+    const totalPosts = totalDays * normalizedFrequency;
+    const totalBatches = Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
     
     // Helper to fetch one batch
     const fetchBatch = async (batchIndex) => {
-      const startDay = batchIndex * batchSize + 1;
+      const remaining = totalPosts - batchIndex * batchSize;
+      const requestSize = Math.min(batchSize, remaining);
+      const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
       console.log(`🟡 Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
       
       const response = await fetch("/api/generate-calendar", {
@@ -1666,8 +2850,9 @@ async function generateCalendarWithAI(nicheStyle) {
         body: JSON.stringify({ 
           nicheStyle, 
           userId: getCurrentUser() || undefined, 
-          days: batchSize, 
-          startDay: startDay
+          days: requestSize, 
+          startDay,
+          postsPerDay: normalizedFrequency
         })
       });
       
@@ -1686,13 +2871,12 @@ async function generateCalendarWithAI(nicheStyle) {
       const pFill = document.getElementById('progress-fill');
       const pText = document.getElementById('progress-text');
       
-      const progress = completedBatches * batchSize;
-      const total = 30;
-      const percent = Math.round((completedBatches / totalBatches) * 100);
+      const progress = Math.min(completedBatches * batchSize, totalPosts);
+      const percent = Math.round((progress / totalPosts) * 100);
       
-      if (textSpan) textSpan.textContent = `Generating... (${progress}/${total} posts)`;
+      if (textSpan) textSpan.textContent = `Generating... (${progress}/${totalPosts} posts)`;
       if (pFill) pFill.style.width = `${percent}%`;
-      if (pText) pText.textContent = `${progress} of ${total} posts created (${percent}%)`;
+      if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
       
       console.log(`🟢 Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts };
@@ -1709,13 +2893,22 @@ async function generateCalendarWithAI(nicheStyle) {
       .flatMap(r => r.posts);
 
     // Normalize every post to guarantee required fields
-    const normalized = allPosts.map((p, i) => normalizePost(p, i, 1));
+    const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
     // Simple integrity check
     const bad = normalized.filter(p => !p.videoScript || !p.caption || !p.hashtags || !Array.isArray(p.hashtags) || !p.storyPrompt || !p.designNotes || !p.engagementScripts);
     if (bad.length) {
       console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
     }
-    allPosts = normalized;
+    allPosts = normalized.map((post, idx) => {
+      const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
+      const slot = (idx % normalizedFrequency) + 1;
+      return { ...post, day: dayIndex, slot };
+    });
+
+    if (normalizedFrequency > 1) {
+      allPosts = ensureUniqueDailyPosts(allPosts, normalizedFrequency);
+    }
+    allPosts = ensureGlobalVariety(allPosts);
 
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
@@ -1833,7 +3026,9 @@ if (generateBtn) {
       console.log("🟢 Calling API with niche:", niche);
 
       // Call OpenAI to generate calendar
-      const aiGeneratedPosts = await generateCalendarWithAI(niche);
+      const postsPerDay = getPostFrequency();
+      currentPostFrequency = postsPerDay;
+      const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
       console.log("🟢 Received posts:", aiGeneratedPosts);
       
       // Increment generation count for free users
@@ -1871,9 +3066,14 @@ if (generateBtn) {
       // Make sure we stay on the plan tab after generation
       activeTab = 'plan';
       updateTabs();
+      if (calendarSection) {
+        setTimeout(() => {
+          calendarSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
       
       if (feedbackEl) {
-        feedbackEl.textContent = `✓ Calendar created for "${niche}"`;
+        feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
         feedbackEl.classList.add("success");
         setTimeout(() => {
           if (feedbackEl) {
