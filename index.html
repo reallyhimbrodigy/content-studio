@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Promptly • AI Content Studio – 30-Day Idea Engine</title>
+  <title>Promptly</title>
   <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
   <link rel="canonical" href="https://usepromptly.app/" />
   <meta property="og:title" content="Promptly • AI Content Studio" />
@@ -26,11 +26,8 @@
   <link rel="apple-touch-icon" href="assets/promptly-icon.svg" />
   <meta name="theme-color" content="#0c0c0c" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="preload" href="styles.min.css" as="style" />
-  <link rel="stylesheet" href="styles.min.css" media="print" onload="this.media='all'" />
-  <noscript><link rel="stylesheet" href="styles.min.css"/></noscript>
   <link rel="manifest" href="manifest.json" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/vendor/supabase.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -124,7 +121,7 @@
 
         <section class="landing-value" id="product">
         <div class="landing-value__intro">
-          <p class="section-eyebrow">Consistency without the chaos</p>
+          <p class="section-eyebrow">Product</p>
           <h2>From ideas to posts, Promptly gives you the system and context to stay on track.</h2>
         </div>
         <div class="landing-value__grid">
@@ -211,7 +208,6 @@
               <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
             </div>
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-              <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
               <label class="post-frequency" for="post-frequency-select">
                 <span class="post-frequency__label">Posts/day</span>
                 <span class="post-frequency__value" id="post-frequency-display">1x</span>
@@ -221,17 +217,17 @@
                   <option value="3">3x</option>
                 </select>
               </label>
+              <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
                 <div class="profile-wrapper">
                   <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
                   <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
                     <span id="profile-initial" aria-hidden="true">P</span>
-                    <img id="profile-photo" class="profile-photo" alt="" loading="lazy" decoding="async" style="display:none;" />
                   </button>
                   <div id="profile-menu" class="profile-menu" style="display:none;">
                     <div id="profile-dropdown" class="profile-dropdown">
                       <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
                       <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                      <button id="profile-settings-btn" class="profile-menu-item">Profile, photo &amp; accessibility</button>
+                      <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
                       <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
                       <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
                       <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
@@ -426,22 +422,6 @@
             <div class="settings-group">
               <label for="account-pronouns">Pronouns (optional)</label>
               <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
-            </div>
-            <div class="settings-group settings-group--avatar">
-              <div class="settings-group__row">
-                <label for="account-photo-file">Profile photo</label>
-                <span class="field-hint">Upload a square JPG or PNG.</span>
-              </div>
-              <div class="settings-avatar-row">
-                <button type="button" class="settings-avatar__card" id="account-photo-trigger">
-                  <span class="sr-only">Change profile photo</span>
-                  <div class="settings-avatar__preview" id="account-photo-preview" aria-hidden="true"></div>
-                </button>
-                <div class="settings-avatar__actions">
-                  <input id="account-photo-file" type="file" accept="image/*" class="sr-only" />
-                  <button type="button" id="account-photo-clear" class="ghost settings-avatar__clear">Remove photo</button>
-                </div>
-              </div>
             </div>
             <div class="settings-group">
               <label for="account-role">Role or team</label>

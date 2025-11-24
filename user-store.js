@@ -1,5 +1,55 @@
 // Supabase-powered user & calendar storage (replaces localStorage)
 import { supabase } from './supabase-client.js';
+export { supabase };
+
+const PROFILE_SETTINGS_COLUMN_FLAG_KEY = 'promptly_profile_settings_column_missing';
+const PROFILE_SETTINGS_COLUMN_FLAG_TTL = 12 * 60 * 60 * 1000; // 12 hours
+let profileSettingsColumnMissing = false;
+try {
+  const raw = localStorage.getItem(PROFILE_SETTINGS_COLUMN_FLAG_KEY);
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.timestamp && Date.now() - Number(parsed.timestamp) < PROFILE_SETTINGS_COLUMN_FLAG_TTL) {
+      profileSettingsColumnMissing = true;
+    } else {
+      localStorage.removeItem(PROFILE_SETTINGS_COLUMN_FLAG_KEY);
+    }
+  }
+} catch (_err) {
+  // Ignore storage access issues (e.g., Safari private mode)
+}
+
+function isAuthSessionMissingError(error) {
+  if (!error) return false;
+  if (error.name === 'AuthSessionMissingError') return true;
+  const msg = String(error.message || '').toLowerCase();
+  return msg.includes('auth session missing');
+}
+
+function markProfileSettingsColumnMissing() {
+  profileSettingsColumnMissing = true;
+  try {
+    localStorage.setItem(
+      PROFILE_SETTINGS_COLUMN_FLAG_KEY,
+      JSON.stringify({ timestamp: Date.now() })
+    );
+  } catch (_err) {
+    // Ignore storage failures
+  }
+}
+
+function isProfileSettingsColumnMissing(error) {
+  if (!error) return false;
+  if (profileSettingsColumnMissing) return true;
+  const code = String(error.code || '');
+  const msg = String(error.message || '').toLowerCase();
+  if (code === '42703' || msg.includes('profile_settings')) {
+    markProfileSettingsColumnMissing();
+    console.warn('Supabase profiles.profile_settings column is missing. Apply the latest schema migration to enable synced profile preferences.');
+    return true;
+  }
+  return false;
+}
 
 // ============================================================================
 // Authentication
@@ -7,11 +57,16 @@ import { supabase } from './supabase-client.js';
 
 export async function getCurrentUser() {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { session }, error } = await supabase.auth.getSession();
     if (error) throw error;
+    if (session?.user?.email) return session.user.email;
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
     return user?.email || null;
   } catch (error) {
-    console.error('getCurrentUser error:', error);
+    if (!isAuthSessionMissingError(error)) {
+      console.error('getCurrentUser error:', error);
+    }
     return null;
   }
 }
@@ -22,7 +77,9 @@ export async function getCurrentUserDetails() {
     if (error) throw error;
     return user || null;
   } catch (error) {
-    console.error('getCurrentUserDetails error:', error);
+    if (!isAuthSessionMissingError(error)) {
+      console.error('getCurrentUserDetails error:', error);
+    }
     return null;
   }
 }
@@ -33,7 +90,9 @@ export async function getCurrentUserId() {
     if (error) throw error;
     return user?.id || null;
   } catch (error) {
-    console.error('getCurrentUserId error:', error);
+    if (!isAuthSessionMissingError(error)) {
+      console.error('getCurrentUserId error:', error);
+    }
     return null;
   }
 }
@@ -185,6 +244,66 @@ export async function setUserTier(email, tier) {
 export async function isPro(email) {
   const tier = await getUserTier(email);
   return tier === 'pro';
+}
+
+export async function getProfilePreferences() {
+  if (profileSettingsColumnMissing) return {};
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) return {};
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      if (isProfileSettingsColumnMissing(error)) return {};
+      throw error;
+    }
+    const settings = data?.profile_settings;
+    if (!settings || typeof settings !== 'object') return {};
+    return settings;
+  } catch (error) {
+    if (!isProfileSettingsColumnMissing(error)) {
+      console.error('getProfilePreferences error:', error);
+    }
+    return {};
+  }
+}
+
+export async function saveProfilePreferences(settings = {}) {
+  if (profileSettingsColumnMissing) {
+    return settings && typeof settings === 'object' ? settings : {};
+  }
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('No user logged in');
+
+    const safeSettings = settings && typeof settings === 'object' ? settings : {};
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        profile_settings: safeSettings,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      if (isProfileSettingsColumnMissing(error)) return safeSettings;
+      throw error;
+    }
+    return data?.profile_settings || safeSettings;
+  } catch (error) {
+    if (isProfileSettingsColumnMissing(error)) {
+      return settings && typeof settings === 'object' ? settings : {};
+    }
+    console.error('saveProfilePreferences error:', error);
+    throw error;
+  }
 }
 
 // ============================================================================

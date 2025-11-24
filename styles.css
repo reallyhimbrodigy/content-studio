@@ -1005,6 +1005,7 @@ a.ghost:hover {
   position: relative;
   overflow: hidden;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  z-index: 1;
 }
 
 .post-frequency:hover {
@@ -1068,22 +1069,6 @@ a.ghost:hover {
 .profile-trigger span {
   font-weight: 700;
   letter-spacing: 0.08em;
-}
-
-.profile-photo {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-  display: none;
-}
-
-.profile-trigger.profile-trigger--has-photo span {
-  display: none;
-}
-
-.profile-trigger.profile-trigger--has-photo .profile-photo {
-  display: block !important;
 }
 
 .profile-menu {
@@ -1305,87 +1290,6 @@ a.ghost:hover {
   outline: none;
   border-color: rgba(127, 90, 240, 0.65);
   box-shadow: 0 0 0 1px rgba(127, 90, 240, 0.4);
-}
-
-.settings-group--avatar .settings-avatar-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: stretch;
-}
-
-.settings-avatar__card {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 0.85rem;
-  border-radius: 999px;
-  background: rgba(12, 12, 20, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  cursor: pointer;
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  min-width: 96px;
-  min-height: 96px;
-  justify-content: center;
-}
-
-.settings-avatar__card,
-.settings-avatar__card:focus,
-.settings-avatar__card:active {
-  background-image: none;
-  border-image: none;
-  outline: none;
-}
-
-.settings-avatar__card:hover,
-.settings-avatar__card:focus-visible {
-  border-color: rgba(127, 90, 240, 0.8);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(5, 5, 10, 0.45);
-}
-
-.settings-avatar__preview {
-  width: 80px;
-  height: 80px;
-  border-radius: 24px;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  background-size: cover;
-  background-position: center;
-  background-color: rgba(255, 255, 255, 0.02);
-  position: relative;
-  overflow: hidden;
-}
-
-.settings-avatar__preview::after {
-  content: "Change";
-  position: absolute;
-  inset: 0;
-  background: rgba(5, 5, 12, 0.55);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.settings-avatar__card:hover .settings-avatar__preview::after,
-.settings-avatar__card:focus-visible .settings-avatar__preview::after {
-  opacity: 1;
-}
-
-.settings-avatar__actions {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.settings-avatar__clear {
-  padding: 0.35rem 0.95rem;
-  font-size: 0.85rem;
 }
 
 .field-hint {

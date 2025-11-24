@@ -345,7 +345,36 @@
       .terms-checkbox a:hover {
         text-decoration: underline;
       }
-      
+
+      .auth-back-home {
+        margin-top: 1.25rem;
+      }
+
+      .auth-back-home--card {
+        text-align: center;
+      }
+
+      .auth-back-home__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.65rem 1.2rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: rgba(8, 10, 28, 0.55);
+        color: #f5f6f8;
+        text-decoration: none;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+
+      .auth-back-home__link:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 30px rgba(5, 5, 10, 0.45);
+        border-color: rgba(255, 255, 255, 0.45);
+      }
+
       .auth-footer {
         margin-top: 2rem;
         text-align: center;
@@ -363,7 +392,7 @@
         }
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/vendor/supabase.js"></script>
   </head>
   <body>
     <div class="auth-shell">
@@ -380,6 +409,11 @@
           <span>🔒 Secure by Supabase</span>
           <span>🛡 Privacy-first</span>
           <span>⚡ Priority support</span>
+        </div>
+        <div class="auth-back-home">
+          <a href="/?view=landing" class="auth-back-home__link" data-back-home>
+            <span>←</span> Back to home
+          </a>
         </div>
       </section>
 
@@ -464,7 +498,7 @@
           Already have an account?
           <button id="toggle-mode" type="button">Sign In</button>
         </div>
-        
+
         <div id="forgot-password-link" class="toggle-form" style="display: none; margin-top: 0.5rem;">
           <button id="forgot-password-btn" type="button">Forgot password?</button>
         </div>
@@ -475,13 +509,9 @@
     <footer class="auth-footer">
       © <span id="auth-footer-year"></span> Promptly. All rights reserved.
     </footer>
-    
+
     <script type="module" src="./auth.js"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
-    <script>
-      const footerYear = document.getElementById('auth-footer-year');
-      if (footerYear) footerYear.textContent = new Date().getFullYear();
-    </script>
   </body>
 </html>

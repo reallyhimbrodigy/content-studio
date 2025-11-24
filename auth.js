@@ -1,4 +1,4 @@
-import { signUp, signIn, getCurrentUser, signOut, resetPassword } from './user-store.js';
+import { signUp, signIn, getCurrentUser, signOut, resetPassword, supabase } from './user-store.js';
 import { initTheme } from './theme.js';
 
 // Apply theme on page load
@@ -50,6 +50,14 @@ const emailInput = document.getElementById("email");
   const authBtnText = document.getElementById('auth-btn-text');
   const authBtnSpinner = document.getElementById('auth-btn-spinner');
   const googleAuthBtn = document.getElementById('google-auth-btn');
+  const footerYear = document.getElementById('auth-footer-year');
+  if (footerYear) footerYear.textContent = new Date().getFullYear();
+  const backHomeLinks = document.querySelectorAll('[data-back-home]');
+  backHomeLinks.forEach((link) => {
+    link.addEventListener('click', () => {
+      try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
+    });
+  });
 
   // Password strength checker
   const checkPasswordStrength = (password) => {
@@ -187,6 +195,7 @@ const emailInput = document.getElementById("email");
         }
 
         if (result.ok) {
+          try { sessionStorage.setItem('promptly_show_app', '1'); } catch (_) {}
           // Verify session is established before redirecting
           const verifyAndRedirect = async () => {
             try {
@@ -227,9 +236,6 @@ const emailInput = document.getElementById("email");
     if (googleAuthBtn) {
       googleAuthBtn.addEventListener('click', async () => {
         try {
-          const { getSupabaseClient } = await import('./supabase-client.js');
-          const supabase = await getSupabaseClient();
-          
           const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

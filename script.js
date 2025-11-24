@@ -1,4 +1,4 @@
-import { getCurrentUser, getCurrentUserDetails, saveUserCalendar, signOut as storeSignOut, getUserTier, setUserTier, isPro } from './user-store.js';
+import { getCurrentUser, getCurrentUserDetails, saveUserCalendar, signOut as storeSignOut, getUserTier, setUserTier, isPro, getProfilePreferences, saveProfilePreferences } from './user-store.js';
 
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
@@ -12,7 +12,6 @@ const grid = document.getElementById("calendar-grid");
   const profileTrigger = document.getElementById('profile-trigger');
   const profileMenu = document.getElementById('profile-menu');
   const profileInitial = document.getElementById('profile-initial');
-  const profilePhotoEl = document.getElementById('profile-photo');
   const userPronounsEl = document.getElementById('user-pronouns');
   const accountOverviewBtn = document.getElementById('account-overview-btn');
   const profileSettingsBtn = document.getElementById('profile-settings-btn');
@@ -23,12 +22,8 @@ const grid = document.getElementById("calendar-grid");
   const accountForm = document.getElementById('account-settings-form');
   const accountDisplayNameInput = document.getElementById('account-display-name');
   const accountPronounsInput = document.getElementById('account-pronouns');
-  const accountPhotoFileInput = document.getElementById('account-photo-file');
-  const accountPhotoClearBtn = document.getElementById('account-photo-clear');
-  const accountPhotoTrigger = document.getElementById('account-photo-trigger');
   const accountRoleInput = document.getElementById('account-role');
   const accountFeedback = document.getElementById('account-feedback');
-  const accountPhotoPreview = document.getElementById('account-photo-preview');
   const prefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
   const prefersHighContrastInput = document.getElementById('prefers-high-contrast');
   const prefersLargeTypeInput = document.getElementById('prefers-large-type');
@@ -43,8 +38,8 @@ const grid = document.getElementById("calendar-grid");
   const postFrequencyDisplay = document.getElementById('post-frequency-display');
   const postFrequencySelect = document.getElementById('post-frequency-select');
   const landingNavLinks = document.querySelector('.landing-nav__links');
-  const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
-  const tabLibrary = document.getElementById("tab-library");
+const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
+const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
   const upgradeClose = document.getElementById("upgrade-close");
@@ -71,9 +66,11 @@ const grid = document.getElementById("calendar-grid");
   const hub = document.getElementById('publish-hub');
   const hubNext = document.getElementById('hub-next');
   const hubAfter = document.getElementById('hub-after');
-  const landingExperience = document.getElementById('landing-experience');
-  const appExperience = document.getElementById('app-experience');
-  // Tabs
+const landingExperience = document.getElementById('landing-experience');
+const appExperience = document.getElementById('app-experience');
+const urlParams = new URLSearchParams(window.location.search || '');
+const forceLandingView = urlParams.get('view') === 'landing';
+// Tabs
   const tabPlan = document.getElementById('tab-plan');
   const tabPublish = document.getElementById('tab-publish');
   const calendarSection = document.querySelector('section.calendar');
@@ -87,13 +84,32 @@ const grid = document.getElementById("calendar-grid");
   const hubSkipPrevBtn = document.getElementById('hub-skip-prev');
   const hubProgress = document.getElementById('hub-progress');
   const hubMarkBtn = document.getElementById('hub-mark-posted');
-  const hubDaySelect = document.getElementById('hub-day-select');
+const hubDaySelect = document.getElementById('hub-day-select');
 
-  const PROFILE_SETTINGS_KEY = 'promptly_profile_settings';
-  let profileSettings = loadProfileSettings();
-  let activeUserEmail = '';
-  let stagedPhotoData = '';
-  let activeSettingsTab = 'account';
+const PROFILE_SETTINGS_LEGACY_KEY = 'promptly_profile_settings';
+const PROFILE_SETTINGS_PREFIX = 'promptly_profile_settings_v2:';
+const PROFILE_SETTINGS_VOLATILE_PREFIX = 'promptly_profile_settings_volatile:';
+const PROFILE_SETTINGS_MEMORY_CACHE = {};
+let profileSettingsQuotaWarned = false;
+let profileSettingsPersistentDisabled = false;
+let profileSettings = loadProfileSettings();
+let profileSettingsSyncPromise = null;
+let activeUserEmail = '';
+let activeSettingsTab = 'account';
+let forceAppAfterAuth = false;
+try {
+  forceAppAfterAuth = sessionStorage.getItem('promptly_show_app') === '1';
+} catch (_) {}
+
+if (forceLandingView) {
+  try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
+  forceAppAfterAuth = false;
+  if (landingExperience) landingExperience.style.display = '';
+  if (appExperience) appExperience.style.display = 'none';
+} else if (forceAppAfterAuth && landingExperience && appExperience) {
+  landingExperience.style.display = 'none';
+  appExperience.style.display = '';
+}
 
   // Posted state per user+niche
 let hubIndex = 0; // 0-based index into currentCalendar
@@ -113,12 +129,111 @@ const PLAN_DETAILS = {
   },
 };
 
-function loadProfileSettings() {
+function getProfileSettingsStorageKey(email = '') {
+  const normalized = (email || 'anon').toString().trim().toLowerCase();
+  return `${PROFILE_SETTINGS_PREFIX}${normalized || 'anon'}`;
+}
+
+function getVolatileProfileSettingsKey(email = '') {
+  const normalized = (email || 'anon').toString().trim().toLowerCase();
+  return `${PROFILE_SETTINGS_VOLATILE_PREFIX}${normalized || 'anon'}`;
+}
+
+function readStoredProfileSettings(key) {
   try {
-    return JSON.parse(localStorage.getItem(PROFILE_SETTINGS_KEY) || '{}') || {};
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
   } catch (error) {
     console.warn('Unable to parse profile settings', error);
-    return {};
+    return null;
+  }
+}
+
+function loadVolatileProfileSettings(email = '') {
+  const key = getVolatileProfileSettingsKey(email);
+  if (PROFILE_SETTINGS_MEMORY_CACHE[key]) return PROFILE_SETTINGS_MEMORY_CACHE[key];
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      PROFILE_SETTINGS_MEMORY_CACHE[key] = parsed;
+      return parsed;
+    }
+  } catch (_err) {
+    // Ignore sessionStorage access issues
+  }
+  return null;
+}
+
+function clearVolatileProfileSettings(email = '') {
+  const key = getVolatileProfileSettingsKey(email);
+  delete PROFILE_SETTINGS_MEMORY_CACHE[key];
+  try {
+    sessionStorage.removeItem(key);
+  } catch (_err) {
+    // Ignore sessionStorage access issues
+  }
+}
+
+function persistVolatileProfileSettings(settings = {}, email = activeUserEmail, sourceError = null) {
+  const key = getVolatileProfileSettingsKey(email);
+  PROFILE_SETTINGS_MEMORY_CACHE[key] = settings;
+  try {
+    sessionStorage.setItem(key, JSON.stringify(settings));
+  } catch (_err) {
+    // Ignore inability to persist in sessionStorage; memory cache is still populated
+  }
+  return { ok: false, saved: settings, volatile: true, error: sourceError };
+}
+
+function loadProfileSettings(email = '') {
+  const key = getProfileSettingsStorageKey(email);
+  const stored = readStoredProfileSettings(key);
+  if (stored) return stored;
+  const volatile = loadVolatileProfileSettings(email);
+  if (volatile) return volatile;
+  const legacy = readStoredProfileSettings(PROFILE_SETTINGS_LEGACY_KEY);
+  if (legacy) {
+    try {
+      localStorage.setItem(key, JSON.stringify(legacy));
+      if (email) {
+        localStorage.removeItem(PROFILE_SETTINGS_LEGACY_KEY);
+      }
+    } catch (error) {
+      console.warn('Unable to migrate legacy profile settings', error);
+    }
+    return legacy;
+  }
+  return loadVolatileProfileSettings(email) || {};
+}
+
+function isQuotaExceededError(error) {
+  if (!error) return false;
+  if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') return true;
+  return error.code === 22 || /quota/i.test(String(error.message || ''));
+}
+
+function persistProfileSettingsLocally(settings = {}, email = activeUserEmail) {
+  if (profileSettingsPersistentDisabled) {
+    return persistVolatileProfileSettings(settings, email);
+  }
+  const key = getProfileSettingsStorageKey(email);
+  const payload = JSON.stringify(settings || {});
+  try {
+    localStorage.setItem(key, payload);
+    clearVolatileProfileSettings(email);
+    return { ok: true, saved: settings };
+  } catch (error) {
+    if (!profileSettingsQuotaWarned) {
+      console.warn('Unable to save profile settings', error);
+      profileSettingsQuotaWarned = true;
+    }
+    profileSettingsPersistentDisabled = true;
+    return persistVolatileProfileSettings(settings, email, error);
   }
 }
 
@@ -144,43 +259,29 @@ function setPostFrequency(value) {
   renderCards(currentCalendar);
 }
 
-function saveProfileSettings(partial = {}) {
-  profileSettings = { ...(profileSettings || {}), ...partial };
-  try {
-    localStorage.setItem(PROFILE_SETTINGS_KEY, JSON.stringify(profileSettings));
-  } catch (error) {
-    console.warn('Unable to save profile settings', error);
+function updateProfileSettings(partial = {}, options = {}) {
+  const { replace = false, targetEmail } = options;
+  const merged = replace
+    ? { ...(partial || {}) }
+    : { ...(profileSettings || {}), ...(partial || {}) };
+  const persistResult = persistProfileSettingsLocally(merged, targetEmail ?? activeUserEmail);
+  if (persistResult?.saved) {
+    profileSettings = persistResult.saved;
+  } else {
+    profileSettings = merged;
   }
   applyProfileSettings();
-}
-
-function setProfileAvatarSource(source = '') {
-  if (!profilePhotoEl) return;
-  if (source) {
-    profilePhotoEl.src = source;
-    profilePhotoEl.style.display = 'block';
-    if (profileTrigger) profileTrigger.classList.add('profile-trigger--has-photo');
-  } else {
-    profilePhotoEl.removeAttribute('src');
-    profilePhotoEl.style.display = 'none';
-    if (profileTrigger) profileTrigger.classList.remove('profile-trigger--has-photo');
-  }
-}
-
-function getStoredPhotoSource() {
-  return (profileSettings?.photoData || profileSettings?.photoUrl || '').trim();
+  return persistResult || { ok: true, saved: profileSettings };
 }
 
 function applyProfileSettings() {
   const settings = profileSettings || {};
   const displayName = (settings.displayName || '').trim();
-  const avatarSource = getStoredPhotoSource();
   const initialsSource = displayName || activeUserEmail || 'P';
   if (profileInitial && initialsSource) {
     const initial = initialsSource.trim().charAt(0) || 'P';
     profileInitial.textContent = initial.toUpperCase();
   }
-  setProfileAvatarSource(avatarSource);
   if (userPronounsEl) {
     const pronouns = (settings.pronouns || '').trim();
     userPronounsEl.textContent = pronouns;
@@ -190,6 +291,23 @@ function applyProfileSettings() {
   document.body.classList.toggle('prefers-large-type', !!settings.largeType);
   document.body.classList.toggle('prefers-reduced-motion', !!settings.reducedMotion);
   document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
+}
+
+async function syncProfileSettingsFromSupabase() {
+  if (!activeUserEmail) return;
+  if (profileSettingsSyncPromise) return profileSettingsSyncPromise;
+  profileSettingsSyncPromise = (async () => {
+    try {
+      const remoteSettings = await getProfilePreferences();
+      const payload = remoteSettings && typeof remoteSettings === 'object' ? remoteSettings : {};
+      updateProfileSettings(payload, { replace: true, targetEmail: activeUserEmail });
+    } catch (error) {
+      console.warn('Unable to sync profile settings from Supabase', error);
+    } finally {
+      profileSettingsSyncPromise = null;
+    }
+  })();
+  return profileSettingsSyncPromise;
 }
 
 function setAccountSettingsTab(tab = 'account') {
@@ -262,25 +380,10 @@ function hydrateAccountForm() {
   const settings = profileSettings || {};
   if (accountDisplayNameInput) accountDisplayNameInput.value = settings.displayName || '';
   if (accountPronounsInput) accountPronounsInput.value = settings.pronouns || '';
-  stagedPhotoData = getStoredPhotoSource();
-  if (accountPhotoFileInput) accountPhotoFileInput.value = '';
   if (accountRoleInput) accountRoleInput.value = settings.role || '';
   if (prefersHighContrastInput) prefersHighContrastInput.checked = !!settings.highContrast;
   if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!settings.largeType;
   if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!settings.reducedMotion;
-  updatePhotoPreview(stagedPhotoData);
-}
-
-function updatePhotoPreview(url) {
-  if (!accountPhotoPreview) return;
-  if (url) {
-    const safeUrl = url.replace(/'/g, "\\'");
-    accountPhotoPreview.style.backgroundImage = `url('${safeUrl}')`;
-    accountPhotoPreview.style.borderStyle = 'solid';
-  } else {
-    accountPhotoPreview.style.backgroundImage = 'none';
-    accountPhotoPreview.style.borderStyle = 'dashed';
-  }
 }
 
 function openAccountModal(initialTab = 'account') {
@@ -297,9 +400,6 @@ function openAccountModal(initialTab = 'account') {
 function closeAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
-  stagedPhotoData = getStoredPhotoSource();
-  setProfileAvatarSource(stagedPhotoData);
-  updatePhotoPreview(stagedPhotoData);
 }
 
 applyProfileSettings();
@@ -379,20 +479,36 @@ applyProfileSettings();
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
 // Show/hide nav based on auth state
-(async () => {
+async function bootstrapApp(attempt = 0) {
   const currentUser = await getCurrentUser();
   const publicNav = document.getElementById('public-nav');
   const userMenu = document.getElementById('user-menu');
-  
+
+  if (forceLandingView) {
+    if (landingExperience) landingExperience.style.display = '';
+    if (appExperience) appExperience.style.display = 'none';
+    if (publicNav) publicNav.style.display = 'flex';
+    if (userMenu) userMenu.style.display = 'none';
+    closeProfileMenu();
+    return;
+  }
+
+  if (!currentUser && forceAppAfterAuth && attempt < 6) {
+    setTimeout(() => bootstrapApp(attempt + 1), 400);
+    return;
+  }
+
   console.log('Auth check - currentUser:', currentUser);
   console.log('publicNav element:', publicNav);
   console.log('userMenu element:', userMenu);
-  
+
   if (currentUser) {
     // User is logged in - show profile menu
     console.log('✓ User logged in:', currentUser);
     activeUserEmail = currentUser;
+    profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
+    syncProfileSettingsFromSupabase();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
@@ -471,10 +587,16 @@ applyProfileSettings();
         window.location.replace('auth.html');
       });
     }
+
+    if (forceAppAfterAuth) {
+      try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
+      forceAppAfterAuth = false;
+    }
   } else {
     // User is not logged in - show public nav
     console.log('✗ No user logged in - showing public nav');
     activeUserEmail = '';
+    profileSettings = loadProfileSettings();
     applyProfileSettings();
     updateAccountOverviewEmail('');
     updateAccountPlanInfo('none');
@@ -491,13 +613,16 @@ applyProfileSettings();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
   }
-})();
+}
+
+bootstrapApp();
 
 // Profile dropdown controls
 
 function closeProfileMenu() {
   if (profileMenu) profileMenu.style.display = 'none';
   if (profileTrigger) profileTrigger.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('profile-menu-open');
 }
 
 function toggleProfileMenu() {
@@ -508,6 +633,7 @@ function toggleProfileMenu() {
   } else {
     profileMenu.style.display = 'block';
     profileTrigger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('profile-menu-open');
   }
 }
 
@@ -519,37 +645,54 @@ if (profileTrigger) {
   });
 }
 
+if (profileMenu) {
+  profileMenu.addEventListener('click', (event) => {
+    event.stopPropagation();
+  });
+}
+
 document.addEventListener('click', (event) => {
   if (!profileMenu || !profileTrigger) return;
   const target = event.target;
-  if (profileMenu.contains(target)) {
-    event.stopPropagation();
-    return;
-  }
   if (profileTrigger.contains(target)) return;
   closeProfileMenu();
 });
 
-if (accountOverviewBtn) {
-  accountOverviewBtn.addEventListener('click', () => {
+const postFrequencyContainer = document.querySelector('.post-frequency');
+if (postFrequencyContainer) {
+  postFrequencyContainer.addEventListener('pointerdown', () => {
     closeProfileMenu();
-    openAccountModal('account');
   });
 }
 
-if (profileSettingsBtn) {
-  profileSettingsBtn.addEventListener('click', () => {
+if (postFrequencySelect) {
+  postFrequencySelect.addEventListener('focus', () => {
     closeProfileMenu();
-    openAccountModal('profile');
   });
 }
 
-if (passwordSettingsBtn) {
-  passwordSettingsBtn.addEventListener('click', () => {
-    closeProfileMenu();
-    window.location.href = 'reset-password.html';
+const bindProfileMenuAction = (btn, handler) => {
+  if (!btn) return;
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handler();
   });
-}
+};
+
+bindProfileMenuAction(accountOverviewBtn, () => {
+  closeProfileMenu();
+  openAccountModal('account');
+});
+
+bindProfileMenuAction(profileSettingsBtn, () => {
+  closeProfileMenu();
+  openAccountModal('profile');
+});
+
+bindProfileMenuAction(passwordSettingsBtn, () => {
+  closeProfileMenu();
+  window.location.href = 'reset-password.html';
+});
 
 if (accountCloseBtn) {
   accountCloseBtn.addEventListener('click', () => {
@@ -602,42 +745,6 @@ if (accountPasswordManageBtn) {
   });
 }
 
-if (accountPhotoFileInput) {
-  accountPhotoFileInput.addEventListener('change', (event) => {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      if (accountFeedback) {
-        accountFeedback.textContent = 'Please upload an image file.';
-        accountFeedback.classList.remove('success');
-      }
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      stagedPhotoData = typeof reader.result === 'string' ? reader.result : '';
-      updatePhotoPreview(stagedPhotoData);
-      setProfileAvatarSource(stagedPhotoData);
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-if (accountPhotoClearBtn) {
-  accountPhotoClearBtn.addEventListener('click', () => {
-    stagedPhotoData = '';
-    if (accountPhotoFileInput) accountPhotoFileInput.value = '';
-    updatePhotoPreview('');
-    setProfileAvatarSource('');
-  });
-}
-
-if (accountPhotoTrigger) {
-  accountPhotoTrigger.addEventListener('click', () => {
-    accountPhotoFileInput?.click();
-  });
-}
-
 if (postFrequencySelect) {
   const guardFreeChange = (event) => {
     if (cachedUserIsPro) return false;
@@ -665,31 +772,62 @@ if (postFrequencySelect) {
 }
 
 if (accountForm) {
-  accountForm.addEventListener('submit', (event) => {
+  accountForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (accountFeedback) {
+      accountFeedback.textContent = activeUserEmail ? 'Saving preferences...' : 'Preferences saved locally.';
+      accountFeedback.classList.remove('error');
+      accountFeedback.classList.remove('success');
+    }
+
     const payload = {
       displayName: accountDisplayNameInput?.value.trim() || '',
       pronouns: accountPronounsInput?.value.trim() || '',
-      photoData: stagedPhotoData || '',
       role: accountRoleInput?.value.trim() || '',
       highContrast: !!prefersHighContrastInput?.checked,
       largeType: !!prefersLargeTypeInput?.checked,
       reducedMotion: !!prefersReducedMotionInput?.checked
     };
-    saveProfileSettings(payload);
+    const persistResult = updateProfileSettings(payload, { targetEmail: activeUserEmail });
+
+    let syncedToSupabase = false;
+    let shouldCloseModal = !activeUserEmail;
+    let localSaveNote = persistResult?.volatile ? ' Settings will reset when you close this tab.' : '';
+
+    if (activeUserEmail) {
+      try {
+        const savedRemote = await saveProfilePreferences(profileSettings);
+        updateProfileSettings(savedRemote, { replace: true, targetEmail: activeUserEmail });
+        syncedToSupabase = true;
+        shouldCloseModal = true;
+      } catch (error) {
+        console.warn('Unable to sync profile settings to Supabase', error);
+        shouldCloseModal = false;
+      }
+    }
+
     if (accountFeedback) {
-      accountFeedback.textContent = 'Preferences saved.';
-      accountFeedback.classList.add('success');
+      if (syncedToSupabase) {
+        accountFeedback.textContent = `Preferences saved.${localSaveNote}`;
+        accountFeedback.classList.add('success');
+      } else if (!activeUserEmail) {
+        accountFeedback.textContent = `Preferences saved locally.${localSaveNote}`;
+        accountFeedback.classList.add('success');
+      } else {
+        accountFeedback.textContent = `Saved locally, but syncing failed. Try again soon.${localSaveNote}`;
+        accountFeedback.classList.add('error');
+      }
+    }
+
+    if (shouldCloseModal) {
       setTimeout(() => {
+        closeAccountModal();
         if (accountFeedback) {
           accountFeedback.textContent = '';
-          accountFeedback.classList.remove('success');
+          accountFeedback.classList.remove('success', 'error');
         }
-      }, 1500);
+      }, 800);
     }
-    setTimeout(() => {
-      closeAccountModal();
-    }, 800);
   });
 }
 
