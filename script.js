@@ -37,8 +37,9 @@ const grid = document.getElementById("calendar-grid");
   const settingsPanels = document.querySelectorAll('[data-settings-panel]');
   const postFrequencyDisplay = document.getElementById('post-frequency-display');
   const postFrequencySelect = document.getElementById('post-frequency-select');
-  const landingNavLinks = document.querySelector('.landing-nav__links');
+const landingNavLinks = document.querySelector('.landing-nav__links');
 const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
+const landingSampleActionButtons = document.querySelectorAll('.landing-samples__cards .calendar-card__actions button');
 const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
@@ -673,20 +674,49 @@ if (postFrequencySelect) {
 
 const bindProfileMenuAction = (btn, handler) => {
   if (!btn) return;
-  btn.addEventListener('click', (event) => {
-    event.stopPropagation();
+  const invoke = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     handler();
+  };
+  let pointerTriggered = false;
+  btn.addEventListener('pointerdown', (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    pointerTriggered = true;
+    invoke(event);
+  });
+  btn.addEventListener('click', (event) => {
+    if (pointerTriggered) {
+      pointerTriggered = false;
+      return;
+    }
+    invoke(event);
+  });
+  btn.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      invoke(event);
+    }
   });
 };
 
 bindProfileMenuAction(accountOverviewBtn, () => {
   closeProfileMenu();
-  openAccountModal('account');
+  if (accountModal) {
+    openAccountModal('account');
+  } else {
+    window.location.href = '/#account';
+  }
 });
 
 bindProfileMenuAction(profileSettingsBtn, () => {
   closeProfileMenu();
-  openAccountModal('profile');
+  if (accountModal) {
+    openAccountModal('profile');
+  } else {
+    window.location.href = '/#profile-settings';
+  }
 });
 
 bindProfileMenuAction(passwordSettingsBtn, () => {
@@ -846,6 +876,19 @@ function setupLandingNavScroll() {
 }
 
 setupLandingNavScroll();
+
+function setupLandingSampleActionRedirects() {
+  if (!landingSampleActionButtons || landingSampleActionButtons.length === 0) return;
+  landingSampleActionButtons.forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.location.href = '/auth.html?mode=signup';
+    });
+  });
+}
+
+setupLandingSampleActionRedirects();
 
 // Sign out handler is attached after auth check when user-menu is shown
 
@@ -1040,9 +1083,27 @@ const createCard = (post) => {
     typeEl.className = 'calendar-card__type';
     typeEl.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : '';
 
+    const captionRow = document.createElement('div');
+    captionRow.className = 'calendar-card__caption-row';
     const captionEl = document.createElement('p');
     captionEl.className = 'calendar-card__caption';
     captionEl.textContent = caption || description || '';
+    const captionCopyBtn = document.createElement('button');
+    captionCopyBtn.type = 'button';
+    captionCopyBtn.className = 'detail-copy-btn caption-copy-btn';
+    captionCopyBtn.setAttribute('aria-label', 'Copy caption');
+    captionCopyBtn.innerHTML = `<svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
+      <rect x="4" y="5.5" width="8" height="10" rx="2"/>
+    </svg>`;
+    captionCopyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(caption || description || '');
+        captionCopyBtn.classList.add('copied');
+        setTimeout(() => captionCopyBtn.classList.remove('copied'), 800);
+      } catch (e) {}
+    });
+    captionRow.append(captionEl, captionCopyBtn);
 
     const hashtagsEl = document.createElement('div');
     hashtagsEl.className = 'calendar-card__hashtags';
@@ -1052,74 +1113,93 @@ const createCard = (post) => {
       hashtagsEl.textContent = hashtags;
     }
 
-    const formatEl = document.createElement('span');
-    formatEl.className = 'calendar-card__format';
-    formatEl.textContent = format ? `Format: ${format}` : '';
+    const createDetailRow = (label, value, className) => {
+      if (!value) return null;
+      const row = document.createElement('div');
+      row.className = `${className} calendar-card__detail-row`;
+      const header = document.createElement('div');
+      header.className = 'detail-row__top';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = `${label}:`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'detail-copy-btn';
+      btn.setAttribute('aria-label', `Copy ${label}`);
+      btn.innerHTML = `<svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
+        <rect x="4" y="5.5" width="8" height="10" rx="2"/>
+      </svg>`;
+      btn.addEventListener('click', async () => {
+        try {
+        await navigator.clipboard.writeText(value);
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 800);
+      } catch (e) {}
+      });
+      header.append(labelEl, btn);
+      const textEl = document.createElement('span');
+      textEl.className = 'detail-text';
+      textEl.textContent = value;
+      row.append(header, textEl);
+      return row;
+    };
 
-    const ctaEl = document.createElement('span');
-    ctaEl.className = 'calendar-card__cta';
-    ctaEl.textContent = cta ? `CTA: ${cta}` : '';
+    const formatEl = createDetailRow('Format', format, 'calendar-card__format');
+    const ctaEl = createDetailRow('CTA', cta, 'calendar-card__cta');
 
-    const storyPromptEl = document.createElement('div');
-    storyPromptEl.className = 'calendar-card__story';
-    if (storyPrompt) storyPromptEl.innerHTML = `<strong>Story Prompt:</strong> ${storyPrompt}`;
+    const storyPromptText = storyPrompt || '';
+    const storyPromptEl = storyPromptText ? createDetailRow('Story Prompt', storyPromptText, 'calendar-card__story') : null;
 
-    const designNotesEl = document.createElement('div');
-    designNotesEl.className = 'calendar-card__design';
-    if (designNotes) designNotesEl.innerHTML = `<strong>Design Notes:</strong> ${designNotes}`;
+    const designNotesText = designNotes || '';
+    const designNotesEl = designNotesText ? createDetailRow('Design Notes', designNotesText, 'calendar-card__design') : null;
 
-    const repurposeEl = document.createElement('div');
-    repurposeEl.className = 'calendar-card__repurpose';
-    if (repurpose) {
-      const text = Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose;
-      repurposeEl.innerHTML = `<strong>Repurpose:</strong> ${text}`;
-    }
+    const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
+    const repurposeEl = repurposeText ? createDetailRow('Repurpose', repurposeText, 'calendar-card__repurpose') : null;
 
-    const analyticsEl = document.createElement('div');
-    analyticsEl.className = 'calendar-card__analytics';
-    if (analytics) {
-      const text = Array.isArray(analytics) ? analytics.join(', ') : analytics;
-      analyticsEl.innerHTML = `<strong>Analytics:</strong> ${text}`;
-    }
+    const analyticsText = analytics ? (Array.isArray(analytics) ? analytics.join(', ') : analytics) : '';
+    const analyticsEl = analyticsText ? createDetailRow('Analytics', analyticsText, 'calendar-card__analytics') : null;
 
-    const engagementEl = document.createElement('div');
-    engagementEl.className = 'calendar-card__engagement';
+    let engagementText = '';
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
-      const list = [];
-      if (engagementScripts.commentReply) list.push(`<div><em>Comment:</em> ${engagementScripts.commentReply}</div>`);
-      if (engagementScripts.dmReply) list.push(`<div><em>DM:</em> ${engagementScripts.dmReply}</div>`);
-      engagementEl.innerHTML = `<strong>Engagement Scripts</strong>${list.join('')}`;
-    } else if (engagementScript) {
-      engagementEl.innerHTML = `<strong>Engagement Script:</strong> ${engagementScript}`;
-    }
-
-    const promoSlotEl = document.createElement('div');
-    promoSlotEl.className = 'calendar-card__promo';
-    if (promoSlot) promoSlotEl.innerHTML = `<strong>Weekly Promo Slot:</strong> Yes`;
-
-    const weeklyPromoEl = document.createElement('div');
-    weeklyPromoEl.className = 'calendar-card__weekly-promo';
-    if (weeklyPromo) weeklyPromoEl.innerHTML = `<strong>Promo:</strong> ${weeklyPromo}`;
-
-    const videoScriptEl = document.createElement('div');
-    videoScriptEl.className = 'calendar-card__video';
-    if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
-      const hook = videoScript.hook ? `<div><em>Hook:</em> ${videoScript.hook}</div>` : '';
-      const body = videoScript.body ? `<div><em>Body:</em> ${videoScript.body}</div>` : '';
-      const vcta = videoScript.cta ? `<div><em>CTA:</em> ${videoScript.cta}</div>` : '';
-      const label = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
-      videoScriptEl.innerHTML = `<strong>${label}</strong>${hook}${body}${vcta}`;
-    }
-
-    const variantsEl = document.createElement('div');
-    variantsEl.className = 'calendar-card__variants';
-    if (entry.variants && (entry.variants.igCaption || entry.variants.tiktokCaption || entry.variants.linkedinCaption)) {
       const parts = [];
-      if (entry.variants.igCaption) parts.push(`<div><em>Instagram:</em> ${entry.variants.igCaption}</div>`);
-      if (entry.variants.tiktokCaption) parts.push(`<div><em>TikTok:</em> ${entry.variants.tiktokCaption}</div>`);
-      if (entry.variants.linkedinCaption) parts.push(`<div><em>LinkedIn:</em> ${entry.variants.linkedinCaption}</div>`);
-      variantsEl.innerHTML = `<strong>Platform Variants</strong>${parts.join('')}`;
+      if (engagementScripts.commentReply) parts.push(`Comment: ${engagementScripts.commentReply}`);
+      if (engagementScripts.dmReply) parts.push(`DM: ${engagementScripts.dmReply}`);
+      engagementText = parts.join(' | ');
+    } else if (engagementScript) {
+      engagementText = engagementScript;
     }
+    const engagementEl = engagementText ? createDetailRow('Engagement', engagementText, 'calendar-card__engagement') : null;
+
+    const promoSlotEl = promoSlot
+      ? (() => {
+          const node = document.createElement('div');
+          node.className = 'calendar-card__promo';
+          node.innerHTML = `<strong>Weekly Promo Slot:</strong> Yes`;
+          return node;
+        })()
+      : null;
+
+    const weeklyPromoEl = weeklyPromo ? createDetailRow('Promo', weeklyPromo, 'calendar-card__weekly-promo') : null;
+
+    const videoScriptText =
+      videoScript && (videoScript.hook || videoScript.body || videoScript.cta)
+        ? [videoScript.hook && `Hook: ${videoScript.hook}`, videoScript.body && `Body: ${videoScript.body}`, videoScript.cta && `CTA: ${videoScript.cta}`]
+            .filter(Boolean)
+            .join(' | ')
+        : '';
+    const videoScriptEl = videoScriptText ? createDetailRow(format === 'Reel' ? 'Reel Script' : 'Video Script', videoScriptText, 'calendar-card__video') : null;
+
+    const variantText =
+      entry.variants && (entry.variants.igCaption || entry.variants.tiktokCaption || entry.variants.linkedinCaption)
+        ? [
+            entry.variants.igCaption && `Instagram: ${entry.variants.igCaption}`,
+            entry.variants.tiktokCaption && `TikTok: ${entry.variants.tiktokCaption}`,
+            entry.variants.linkedinCaption && `LinkedIn: ${entry.variants.linkedinCaption}`,
+          ]
+            .filter(Boolean)
+            .join(' | ')
+        : '';
+    const variantsEl = variantText ? createDetailRow('Platform Variants', variantText, 'calendar-card__variants') : null;
 
     const actionsEl = document.createElement('div');
     actionsEl.className = 'calendar-card__actions';
@@ -1132,20 +1212,25 @@ const createCard = (post) => {
       b.textContent = label;
       return b;
     };
+    const attachProAction = (button, handler) => {
+      if (!button || typeof handler !== 'function') return null;
+      button.classList.remove('ghost');
+      button.classList.add('pro-gradient-btn');
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        const user = await getCurrentUser();
+        const userIsPro = await isPro(user);
+        if (!userIsPro) {
+          showUpgradeModal();
+          return;
+        }
+        handler(event);
+      });
+      return button;
+    };
     const btnCopyFull = makeBtn('Copy Full');
     const btnDownloadDoc = makeBtn('Download');
-    const captionBtn = caption ? makeBtn('Copy Caption') : null;
-
-    if (captionBtn) {
-      captionBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(caption);
-          captionBtn.textContent = 'Copied!';
-          setTimeout(() => (captionBtn.textContent = 'Copy Caption'), 1000);
-        } catch (e) {}
-      });
-      actionsEl.appendChild(captionBtn);
-    }
+    const captionBtn = null;
 
     const fullTextParts = [];
     const dayLabel = `Day ${String(entryDay).padStart(2, '0')}${entries.length > 1 ? ` • Post ${idx + 1}` : ''}`;
@@ -1205,14 +1290,7 @@ const createCard = (post) => {
       } catch (e) {}
     });
 
-    btnDownloadDoc.addEventListener('click', async () => {
-      const user = await getCurrentUser();
-      const userIsPro = await isPro(user);
-      if (!userIsPro) {
-        showUpgradeModal();
-        return;
-      }
-
+    attachProAction(btnDownloadDoc, async () => {
       try {
         const JSZipLib = await ensureZip().catch(() => null);
         if (!JSZipLib) {
@@ -1236,8 +1314,11 @@ const createCard = (post) => {
       } catch (e) {}
     });
 
-    actionsEl.append(btnCopyFull);
-    actionsEl.appendChild(btnDownloadDoc);
+    if (btnCopyFull) actionsEl.append(btnCopyFull);
+    if (btnDownloadDoc) actionsEl.appendChild(btnDownloadDoc);
+    const regenBtn = makeBtn('Regenerate');
+    attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
+    actionsEl.appendChild(regenBtn);
 
     if (entry.variants) {
       if (entry.variants.igCaption) {
@@ -1277,46 +1358,33 @@ const createCard = (post) => {
 
     const proDetailNodes = [];
     if (cachedUserIsPro && entry.captionVariations) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__caption-variations';
       const parts = [];
-      if (entry.captionVariations.casual) parts.push(`<div><em>Casual:</em> ${entry.captionVariations.casual}</div>`);
-      if (entry.captionVariations.professional) parts.push(`<div><em>Professional:</em> ${entry.captionVariations.professional}</div>`);
-      if (entry.captionVariations.witty) parts.push(`<div><em>Witty:</em> ${entry.captionVariations.witty}</div>`);
-      node.innerHTML = `<strong>Caption variations</strong>${parts.join('')}`;
-      proDetailNodes.push(node);
+      if (entry.captionVariations.casual) parts.push(`Casual: ${entry.captionVariations.casual}`);
+      if (entry.captionVariations.professional) parts.push(`Professional: ${entry.captionVariations.professional}`);
+      if (entry.captionVariations.witty) parts.push(`Witty: ${entry.captionVariations.witty}`);
+      const text = parts.join(' | ');
+      if (text) proDetailNodes.push(createDetailRow('Caption variations', text, 'calendar-card__caption-variations'));
     }
     if (cachedUserIsPro && entry.hashtagSets) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__hashtag-sets';
-      const broad = Array.isArray(entry.hashtagSets.broad) ? entry.hashtagSets.broad.join(' ') : '';
-      const niche = Array.isArray(entry.hashtagSets.niche) ? entry.hashtagSets.niche.join(' ') : '';
-      node.innerHTML = `<strong>Hashtag sets</strong>${broad ? `<div><em>Broad:</em> ${broad}</div>` : ''}${niche ? `<div><em>Niche/local:</em> ${niche}</div>` : ''}`;
-      proDetailNodes.push(node);
+      const parts = [];
+      const broad = Array.isArray(entry.hashtagSets.broad) ? entry.hashtagSets.broad.join(' ') : entry.hashtagSets.broad;
+      const niche = Array.isArray(entry.hashtagSets.niche) ? entry.hashtagSets.niche.join(' ') : entry.hashtagSets.niche;
+      if (broad) parts.push(`Broad: ${broad}`);
+      if (niche) parts.push(`Niche/local: ${niche}`);
+      const text = parts.join(' | ');
+      if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
     if (cachedUserIsPro && entry.suggestedAudio) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__audio';
-      node.innerHTML = `<strong>Suggested audio</strong><div>${entry.suggestedAudio}</div>`;
-      proDetailNodes.push(node);
+      proDetailNodes.push(createDetailRow('Suggested audio', entry.suggestedAudio, 'calendar-card__audio'));
     }
     if (cachedUserIsPro && entry.postingTimeTip) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__posting-tip';
-      node.innerHTML = `<strong>Posting time tip</strong><div>${entry.postingTimeTip}</div>`;
-      proDetailNodes.push(node);
+      proDetailNodes.push(createDetailRow('Posting time tip', entry.postingTimeTip, 'calendar-card__posting-tip'));
     }
     if (cachedUserIsPro && entry.storyPromptExpanded) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__story-extended';
-      node.innerHTML = `<strong>Story prompt+</strong> ${entry.storyPromptExpanded}`;
-      proDetailNodes.push(node);
+      proDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
     }
     if (cachedUserIsPro && entry.followUpIdea) {
-      const node = document.createElement('div');
-      node.className = 'calendar-card__followup';
-      node.innerHTML = `<strong>Follow-up idea</strong> ${entry.followUpIdea}`;
-      proDetailNodes.push(node);
+      proDetailNodes.push(createDetailRow('Follow-up idea', entry.followUpIdea, 'calendar-card__followup'));
     }
 
     const details = document.createElement('details');
@@ -1324,7 +1392,7 @@ const createCard = (post) => {
     summary.textContent = 'Details';
     const detailsBody = document.createElement('div');
     detailsBody.className = 'details-body';
-    detailsBody.append(
+    [
       hashtagsEl,
       formatEl,
       ctaEl,
@@ -1339,16 +1407,114 @@ const createCard = (post) => {
       variantsEl,
       ...proDetailNodes,
       actionsEl,
-    );
+    ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
     details.append(summary, detailsBody);
 
-    entryEl.append(ideaEl, typeEl, captionEl, details);
+    entryEl.append(ideaEl, typeEl, captionRow, details);
     return entryEl;
   }
 };
 
+async function handleRegenerateDay(entry, entryDay, triggerEl) {
+  const targetDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
+  const button = triggerEl || null;
+  if (!targetDay || !entry) {
+    alert('Unable to determine which day to regenerate. Please try again.');
+    return;
+  }
+  const nicheStyle = (currentNiche || nicheInput?.value || '').trim() || 'content creator';
+  const originalLabel = button ? button.textContent : '';
+  const payloadPost = JSON.parse(JSON.stringify(entry || {}));
+  delete payloadPost.multiPosts;
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Regenerating…';
+    }
+    const currentUser = await getCurrentUser();
+    let parsed = null;
+    if (regenDaySupported) {
+      const resp = await fetch('/api/regen-day', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day: targetDay,
+          nicheStyle,
+          post: payloadPost,
+          userId: currentUser || undefined,
+        }),
+      });
+      if (resp.status === 404) {
+        regenDaySupported = false;
+      } else {
+        parsed = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(parsed.error || 'Failed to regenerate this day');
+        }
+      }
+    }
+    if (!parsed) {
+      const fallback = await regenerateDayFallback({
+        day: targetDay,
+        nicheStyle,
+        currentUser,
+        cache: payloadPost,
+      });
+      parsed = { post: fallback };
+    }
+    if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
+    const newPost = parsed.post;
+    let replaced = false;
+    currentCalendar = currentCalendar.map((p) => {
+      if (!replaced && p === entry) {
+        replaced = true;
+        return newPost;
+      }
+      if (!replaced && Number(p.day) === targetDay && entry !== p) {
+        replaced = true;
+        return newPost;
+      }
+      return p;
+    });
+    if (!replaced) {
+      currentCalendar = [...currentCalendar, newPost];
+    }
+    renderCards(currentCalendar);
+  } catch (err) {
+    console.error('Regenerate day failed:', err);
+    alert(err.message || 'Failed to regenerate this day.');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel || 'Regenerate';
+    }
+  }
+}
+
+async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
+  const resp = await fetch('/api/generate-calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nicheStyle,
+      days: 1,
+      startDay: day,
+      userId: currentUser || undefined,
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.posts || !data.posts.length) {
+    throw new Error(data.error || 'Failed to regenerate day (fallback)');
+  }
+  const fallbackPost = data.posts[0];
+  fallbackPost.day = day;
+  if (cache && cache.pillar && !fallbackPost.pillar) fallbackPost.pillar = cache.pillar;
+  return fallbackPost;
+}
+
 let currentCalendar = []; // Store the current calendar data
 let currentNiche = ""; // Store the niche for the current calendar
+let regenDaySupported = true;
 
 const renderCards = (subset) => {
   grid.innerHTML = "";

@@ -3,6 +3,7 @@ const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
+const promptPresets = require('./data/prompt-presets.json');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -34,8 +35,12 @@ function slugify(s = '') {
 function chunkText(input, maxLen = 800) {
   if (!input) return [];
   const parts = String(input)
-    .replace(/\r\n/g, '\n')
-    .split(/\n\n+/)
+    .replace(/
+/g, '
+')
+    .split(/
+
++/)
     .map((p) => p.trim())
     .filter(Boolean);
   const chunks = [];
@@ -103,7 +108,7 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   let raw = String(rawContent || '').trim()
     .replace(/```\s*json\s*/gi, '')
     .replace(/```/g, '')
-    .replace(/[\u200B\uFEFF]/g, '');
+    .replace(/[​﻿]/g, '');
 
   // Escape literal newlines inside JSON strings (LLM sometimes emits real line breaks inside quoted values)
   function escapeNewlinesInsideStrings(text) {
@@ -117,9 +122,11 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
         continue;
       }
       if (esc) { out += c; esc = false; continue; }
-      if (c === '\\') { out += c; esc = true; continue; }
+      if (c === '\') { out += c; esc = true; continue; }
       if (c === '"') { inStr = false; out += c; continue; }
-      if (c === '\n' || c === '\r') { out += '\\n'; continue; }
+      if (c === '
+' || c === '
+') { out += '\n'; continue; }
       out += c;
     }
     return out;
@@ -144,8 +151,12 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   if (candidate !== raw) attempts.push(raw);
   if (!/^\s*\[/.test(candidate) && /"day"\s*:/.test(candidate)) {
     // Wrap pseudo-object list lines into array
-    const lines = candidate.split(/\n+/).filter(l => l.trim());
-    attempts.push('[\n' + lines.join(',\n') + '\n]');
+    const lines = candidate.split(/
++/).filter(l => l.trim());
+    attempts.push('[
+' + lines.join(',
+') + '
+]');
   }
 
   let lastErr;
@@ -170,9 +181,11 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   }
   // Fallback: multiple top-level objects separated by newlines without commas
   try {
-    const objCount = (raw.match(/\n\s*\{/g) || []).length;
+    const objCount = (raw.match(/
+\s*\{/g) || []).length;
     if (!raw.trim().startsWith('[') && objCount > 0) {
-      const parts = raw.split(/}\s*\n\s*\{/).map((p, i) => {
+      const parts = raw.split(/}\s*
+\s*\{/).map((p, i) => {
         if (i === 0 && p.trim().startsWith('{') && p.trim().endsWith('}')) return p.trim();
         if (i === 0) return p.trim() + '}';
         if (i === objCount) return '{' + p.trim();
@@ -189,7 +202,8 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
     diagnostics.attempts.push({ ok: false, fallbackError: e2.message });
   }
   const truncated = raw.slice(0, 500);
-  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated;
+  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '
+Raw (truncated): ' + truncated;
   throw new Error(msg);
 }
 
@@ -217,12 +231,88 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const brandBlock = brandContext
-      ? `\n\nBrand Context: ${brandContext}\n\n`
+    ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
   const preset = getPresetGuidelines(nicheStyle);
-  const presetBlock = preset ? `\n\nPreset Guidelines for this niche:\n${preset}\n\n` : '\n';
-    const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must be punchy.\n2) Hashtags: mix broad + niche/local; 6–8 total (balance reach + targeting).\n3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (e.g., Reel→Carousel slides, Static→Reel).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: Reels 7–12s with trending audio; Carousels start with bold headline.\n8) Captions: start with a short hook line, then 1–2 value lines (use \\n).\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include videoScript — Reels dominate reach. Even for Static/Carousel/Story, provide an "optional Reel version" script to help creators repurpose it.`;
-    return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}\n\nCreate a calendar for "${nicheStyle}". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; the first line is the hook)\n- hashtags (array of 6–8 strings; mix broad + niche/local; no punctuation)\n- format (Reel|Story|Carousel|Static)\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., ["Reach","Saves"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to "")\n- videoScript { hook, body, cta } (REQUIRED for ALL posts regardless of format; hook 5–8 words; body 2–3 short beats; cta urgent)\n\nRules:\n- If unsure, invent concise, plausible content rather than omitting fields.\n- Always include every field above (use empty string only if absolutely necessary).\n- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+  const presetGuidelines = (() => {
+    if (!preset) return '';
+    if (Array.isArray(preset.presetGuidelines)) {
+      return preset.presetGuidelines.join('\n');
+    }
+    return preset.presetGuidelines || '';
+  })();
+  const presetBlock = presetGuidelines
+    ? `\n\nPreset Guidelines for this niche:\n${presetGuidelines}\n\n`
+    : '\n';
+  const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
+    ? preset.nicheRules.join('\n')
+    : '';
+  const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
+  const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must be punchy.\n2) Hashtags: mix broad + niche/local; 6–8 total (balance reach + targeting).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (e.g., Reel→Carousel slides, Static→Reel).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: Reels 7–12s with trending audio; Carousels start with bold headline.\n8) Captions: start with a short hook line, then 1–2 value lines (use \n).\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include videoScript — Reels dominate reach. Even for Static/Carousel/Story, provide an \"optional Reel version\" script to help creators repurpose it.`;
+  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; the first line is the hook)\n- hashtags (array of 6–8 strings; mix broad + niche/local; no punctuation)\n- format (Reel|Story|Carousel|Static)\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- videoScript { hook, body, cta } (REQUIRED for ALL posts regardless of format; hook 5–8 words; body 2–3 short beats; cta urgent)\n\nRules:\n- If unsure, invent concise, plausible content rather than omitting fields.\n- Always include every field above (use empty string only if absolutely necessary).\n- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+}
+function sanitizePostForPrompt(post = {}) {
+  const fields = ['idea','title','type','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','videoScript'];
+  const sanitized = {};
+  fields.forEach((field) => {
+    if (post[field] != null) sanitized[field] = post[field];
+  });
+  sanitized.day = post.day;
+  return sanitized;
+}
+
+function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
+  const preset = getPresetGuidelines(nicheStyle);
+  const presetGuidelines = (() => {
+    if (!preset) return '';
+    if (Array.isArray(preset.presetGuidelines)) return preset.presetGuidelines.join('
+');
+    return preset.presetGuidelines || '';
+  })();
+  const presetBlock = presetGuidelines ? `
+
+Preset Guidelines for this niche:
+${presetGuidelines}
+
+` : '
+';
+  const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
+    ? preset.nicheRules.join('
+')
+    : '';
+  const brandBlock = brandContext ? `
+
+Brand Context: ${brandContext}
+
+` : '
+';
+  const qualityRules = `Quality Rules â Make each post plug-and-play & conversion-ready:
+1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must be punchy.
+2) Hashtags: mix broad + niche/local; 6â8 total (balance reach + targeting).
+3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
+4) Design: specify colors, typography, pacing, and end-card CTA.
+5) Repurpose: 2â3 concrete transformations (e.g., ReelâCarousel slides, StaticâReel).
+6) Engagement: natural, friendly scripts for comments & DMs.
+7) Format: Reels 7â12s with trending audio; Carousels start with bold headline.
+8) Captions: start with a short hook line, then 1â2 value lines (use 
+).
+9) Keep outputs concise to avoid truncation.
+10) CRITICAL: Every post MUST include videoScript â Reels dominate reach.`;
+  const nicheSpecific = nicheRules ? `
+Niche-specific constraints:
+${nicheRules}` : '';
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, caption, hashtags, format, cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, videoScript).`;
+  const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
+
+Niche/Style: ${nicheStyle}
+Day to regenerate: ${day}
+
+Current post (for reference only, do NOT reuse):
+${snapshot}
+
+Rewrite this day from scratch with a fresh angle while respecting all schema fields. ${schema}`;
 }
 
 function hasAllRequiredFields(p){
@@ -239,8 +329,34 @@ function hasAllRequiredFields(p){
 
 async function repairMissingFields(nicheStyle, brandContext, partialPosts){
   try {
-    const schema = `Fill missing fields for each post. Keep existing values exactly as given. Return ONLY a JSON array with the same length and order. ALL fields must be present for every item (never omit):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- caption (exactly 2 short lines; first line is the hook)\n- hashtags (array of 6–8 strings)\n- format (Reel|Story|Carousel|Static)\n- cta (string)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (string <= 120 chars)\n- designNotes (string <= 120 chars)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 strings)\n- engagementScripts { commentReply, dmReply } (each <= 140 chars)\n- promoSlot (boolean)\n- weeklyPromo (string; include empty string if promoSlot is false)\n- videoScript { hook, body, cta }`;
-    const prompt = `Brand Context (optional):\n${brandContext || 'N/A'}\n\nNiche/Style: ${nicheStyle}\n\nHere are partial posts with some fields missing. Repair them to include ALL required fields with concise, plausible values. Preserve existing values verbatim.\n\nPartial posts (JSON array):\n${JSON.stringify(partialPosts)}\n\n${schema}`;
+    const schema = `Fill missing fields for each post. Keep existing values exactly as given. Return ONLY a JSON array with the same length and order. ALL fields must be present for every item (never omit):
+- day (number)
+- idea (string)
+- type (educational|promotional|lifestyle|interactive)
+- caption (exactly 2 short lines; first line is the hook)
+- hashtags (array of 6â8 strings)
+- format (Reel|Story|Carousel|Static)
+- cta (string)
+- pillar (Education|Social Proof|Promotion|Lifestyle)
+- storyPrompt (string <= 120 chars)
+- designNotes (string <= 120 chars)
+- repurpose (array of 2â3 short strings)
+- analytics (array of 2â3 strings)
+- engagementScripts { commentReply, dmReply } (each <= 140 chars)
+- promoSlot (boolean)
+- weeklyPromo (string; include empty string if promoSlot is false)
+- videoScript { hook, body, cta }`;
+    const prompt = `Brand Context (optional):
+${brandContext || 'N/A'}
+
+Niche/Style: ${nicheStyle}
+
+Here are partial posts with some fields missing. Repair them to include ALL required fields with concise, plausible values. Preserve existing values verbatim.
+
+Partial posts (JSON array):
+${JSON.stringify(partialPosts)}
+
+${schema}`;
     const payload = JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
@@ -267,45 +383,68 @@ async function repairMissingFields(nicheStyle, brandContext, partialPosts){
   }
 }
 
+function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
+  const fallbackDay = typeof forcedDay === 'number'
+    ? Number(forcedDay)
+    : (startDay ? Number(startDay) + idx : idx + 1);
+  const defaultHashtags = ['marketing', 'content', 'tips', 'learn', 'growth', 'brand'];
+  const out = Object.assign({}, post);
+  out.day = typeof out.day === 'number' ? out.day : fallbackDay;
+  out.idea = out.idea || out.title || 'Engaging post idea';
+  out.type = out.type || 'educational';
+  out.caption = out.caption || 'Quick tip that helps you today.
+Save this for later.';
+  if (!Array.isArray(out.hashtags)) {
+    if (typeof out.hashtags === 'string') {
+      out.hashtags = out.hashtags.split(/[,\s]+/).filter(Boolean);
+    } else {
+      out.hashtags = defaultHashtags.slice();
+    }
+  }
+  out.format = out.format || 'Reel';
+  out.cta = out.cta || 'DM us to book today';
+  out.pillar = out.pillar || 'Education';
+  out.storyPrompt = out.storyPrompt || "Share behind-the-scenes of today's work.";
+  out.designNotes = out.designNotes || 'Clean layout, bold headline, brand colors.';
+  if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
+    out.repurpose = ['Reel -> Carousel (3 slides)', 'Caption -> Story (2 frames)'];
+  }
+  if (!Array.isArray(out.analytics) || !out.analytics.length) {
+    out.analytics = ['Reach', 'Saves'];
+  }
+  if (!out.engagementScripts) {
+    out.engagementScripts = { commentReply: '', dmReply: '' };
+  }
+  if (!out.engagementScripts.commentReply) {
+    out.engagementScripts.commentReply = 'Thanks! Want our quick guide?';
+  }
+  if (!out.engagementScripts.dmReply) {
+    out.engagementScripts.dmReply = 'Starts at $99. Want me to book you this week?';
+  }
+  if (typeof out.promoSlot !== 'boolean') out.promoSlot = !!out.weeklyPromo;
+  if (!out.promoSlot && out.weeklyPromo) out.weeklyPromo = '';
+  if (!out.videoScript) out.videoScript = { hook: '', body: '', cta: '' };
+  if (!out.videoScript.hook) out.videoScript.hook = 'Stop scrollingâquick tip';
+  if (!out.videoScript.body) out.videoScript.body = 'Show result â¢ Explain 1 step â¢ Tease benefit';
+  if (!out.videoScript.cta) out.videoScript.cta = 'DM us to grab your spot';
+  return out;
+}
+
 function getPresetGuidelines(nicheStyle = '') {
-  const s = String(nicheStyle).toLowerCase();
-  const isMedSpa = /med\s*spa|spa|aesthetics|aesthetician|skin\s*clinic|derma/.test(s);
-  if (!isMedSpa) return '';
-  return `
-📖 Story Prompts (Daily Engagement)
-- Polls: "Do you wash your face before bed? Yes / No"
-- Quizzes: "Guess which treatment clears acne fastest?"
-- Q&A Stickers: "Ask us anything about facials!"
-- Countdowns: "2 days left for student discount"
-- Behind-the-scenes: Staff prepping rooms, mixing products.
-
-🎨 Design Notes
-- Colors: Pastels + neutrals (soft pink, mint, beige) — youthful + calming.
-- Fonts: Clean sans-serif, modern.
-- Style: Bright lighting, authentic client photos, minimal text overlays.
-- Reels: Trending audio, quick cuts (7–12s max).
-- Carousels: Bold headline on slide 1, clean icons after.
-
-🎥 Video Scripts (Weekly Reels — include at least 2 per week)
-- Myth-Busting Reel: hook/body/cta (e.g., "Facials aren’t just for older people", benefits, "Book your glow session today").
-- Transformation Reel: hook/body/cta (e.g., "From dull to glowing in 1 session", show before/after, "DM us to book").
-
-🔄 Repurposing
-- Reel → Carousel (3 slides), Carousel → Story frames, Static → Reel (animate text), Testimonial → Blog/Email.
-
-📊 Analytics Checklist
-- Reach (Reels > Stories > Static), Engagement (saves/shares/comments), Conversions (link clicks, DMs, bookings), Top Content.
-
-💬 Engagement Scripts
-- Comment reply: User: "Looks amazing!" You: "Thanks! Want me to send our facial menu?"
-- DM: User: "How much is a peel?" You: "Peels start at $99 with visible results. Want me to book you this week?"
-
-🗓️ Weekly Promo Slots (rotate weekly)
-- Week 1: Student discount (15% off facials)
-- Week 2: Weekend glow special (20% off)
-- Week 3: Giveaway (free facial; tag friends)
-- Week 4: Bundle deal (facial + peel combo)
-`;
+  const s = String(nicheStyle || '').toLowerCase();
+  if (!s) return null;
+  for (const preset of promptPresets) {
+    const patterns = Array.isArray(preset.patterns) ? preset.patterns : [];
+    const matches = patterns.some((pattern) => {
+      try {
+        return new RegExp(pattern, 'i').test(s);
+      } catch (err) {
+        return s.includes(String(pattern || '').toLowerCase());
+      }
+    });
+    if (matches) return preset;
+  }
+  return null;
 }
 
 function callOpenAI(nicheStyle, brandContext, opts = {}) {
@@ -396,8 +535,10 @@ function summarizeBrandForPrompt(brand) {
   // join up to ~2400 characters
   let out = '';
   for (const c of brand.chunks) {
-    if ((out + '\n' + c.text).length > 2400) break;
-    out += (out ? '\n' : '') + c.text;
+    if ((out + '
+' + c.text).length > 2400) break;
+    out += (out ? '
+' : '') + c.text;
   }
   return out;
 }
@@ -557,33 +698,26 @@ const server = http.createServer((req, res) => {
             });
           }
         }
-        // Final safety net: fill any still-missing fields with conservative defaults
+        let promoCount = 0;
+        const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
         posts = posts.map((p, idx) => {
-          const out = Object.assign({
-            day: typeof p.day === 'number' ? p.day : (startDay ? Number(startDay) + idx : (idx + 1)),
-            idea: p.idea || 'Engaging post idea',
-            type: p.type || 'educational',
-            caption: p.caption || 'Quick tip that helps you today.\nSave this for later.',
-            hashtags: Array.isArray(p.hashtags) ? p.hashtags : ['marketing','content','tips','learn','growth','brand'],
-            format: p.format || 'Reel',
-            cta: p.cta || 'DM us to book today',
-            pillar: p.pillar || 'Education',
-            storyPrompt: p.storyPrompt || 'Share behind-the-scenes of today\'s work.',
-            designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
-            repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)'],
-            analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : ['Reach','Saves'],
-            engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
-            promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : false,
-            weeklyPromo: typeof p.weeklyPromo === 'string' ? p.weeklyPromo : '',
-            videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: 'DM us to grab your spot' },
-          }, p);
-          // Guarantee engagementScripts keys
-          if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
-          if (!out.engagementScripts.commentReply) out.engagementScripts.commentReply = 'Thanks! Want our quick guide?';
-          if (!out.engagementScripts.dmReply) out.engagementScripts.dmReply = 'Starts at $99. Want me to book you this week?';
-          // Ensure weeklyPromo empty when promoSlot is false
-          if (!out.promoSlot && out.weeklyPromo) out.weeklyPromo = '';
-          return out;
+          const normalized = normalizePost(p, idx, startDay);
+          const isPromo =
+            !!normalized.promoSlot ||
+            (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
+            (typeof normalized.cta === 'string' && promoKeywords.test(normalized.cta)) ||
+            (typeof normalized.idea === 'string' && promoKeywords.test(normalized.idea));
+          if (isPromo) {
+            promoCount += 1;
+            if (promoCount > 3) {
+              normalized.promoSlot = false;
+              normalized.weeklyPromo = '';
+              if (promoKeywords.test(normalized.idea || '')) {
+                normalized.idea = normalized.idea.replace(promoKeywords, '').trim() || 'Fresh content idea';
+              }
+            }
+          }
+          return normalized;
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -960,8 +1094,20 @@ const server = http.createServer((req, res) => {
         }));
 
         const sys = `You transform captions into platform-specific variants. Be concise and keep JSON valid.`;
-        const rules = `Rules:\n- Respect brand tone if given.\n- Keep hashtags balanced (6–8) except LinkedIn (0–3).\n- IG: 2 short lines max; keep or improve hook; keep hashtags.\n- TikTok: punchy, 80–150 chars, 4–8 hashtags; fun tone.\n- LinkedIn: 2–3 sentences, professional, minimal hashtags (0–3), soft CTA.\nReturn ONLY JSON array of objects: { day, variants: { igCaption, tiktokCaption, linkedinCaption } } in same order as input.`;
-        const prompt = `${brandContext ? `Brand Context:\n${brandContext}\n\n` : ''}${rules}\n\nInput posts (JSON):\n${JSON.stringify(compactPosts)}`;
+        const rules = `Rules:
+- Respect brand tone if given.
+- Keep hashtags balanced (6â8) except LinkedIn (0â3).
+- IG: 2 short lines max; keep or improve hook; keep hashtags.
+- TikTok: punchy, 80â150 chars, 4â8 hashtags; fun tone.
+- LinkedIn: 2â3 sentences, professional, minimal hashtags (0â3), soft CTA.
+Return ONLY JSON array of objects: { day, variants: { igCaption, tiktokCaption, linkedinCaption } } in same order as input.`;
+        const prompt = `${brandContext ? `Brand Context:
+${brandContext}
+
+` : ''}${rules}
+
+Input posts (JSON):
+${JSON.stringify(compactPosts)}`;
 
         const payload = JSON.stringify({
           model: 'gpt-4o-mini',
@@ -1009,6 +1155,61 @@ const server = http.createServer((req, res) => {
         console.error('Variants error:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: String(err) }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        const { nicheStyle, day, post, userId } = JSON.parse(body || '{}');
+        if (!nicheStyle || typeof day === 'undefined' || day === null) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'nicheStyle and day are required' }));
+        }
+        if (!post || typeof post !== 'object') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'post payload required' }));
+        }
+        if (!OPENAI_API_KEY) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
+        }
+        const brand = userId ? loadBrand(userId) : null;
+        const brandContext = summarizeBrandForPrompt(brand);
+        const prompt = buildSingleDayPrompt(nicheStyle, day, post, brandContext);
+        const payload = JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.55,
+          max_tokens: 1600,
+        });
+        const options = {
+          hostname: 'api.openai.com',
+          path: '/v1/chat/completions',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+        };
+        const json = await openAIRequest(options, payload);
+        const content = json.choices?.[0]?.message?.content || '';
+        const { data } = parseLLMArray(content, { requireArray: true });
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error('Model returned no data');
+        }
+        const normalized = normalizePost(data[0], 0, Number(day) || 1, Number(day));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ post: normalized }));
+      } catch (err) {
+        console.error('regen-day error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Failed to regenerate day' }));
       }
     });
     return;

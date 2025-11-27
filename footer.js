@@ -5,6 +5,7 @@ const FOOTER_LINK_SECTIONS = [
   {
     title: 'Platform',
     links: [
+      { label: 'Home', href: '/' },
       { label: 'Content Library', href: '/library.html' }
     ]
   },
@@ -25,11 +26,7 @@ const FOOTER_LINK_SECTIONS = [
   }
 ];
 
-const FOOTER_SOCIAL_LINKS = [
-  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/promptly', external: true },
-  { label: 'X (Twitter)', href: 'https://twitter.com/try_promptly', external: true },
-  { label: 'YouTube', href: 'https://www.youtube.com/@tryPromptly', external: true }
-];
+const FOOTER_SOCIAL_LINKS = [];
 
 function renderLinkSections() {
   return FOOTER_LINK_SECTIONS.map((section) => `
@@ -76,7 +73,7 @@ function ensureFooter() {
     <div class="footer__inner">
       <div class="footer__brand">
         <p class="footer__eyebrow">Promptly</p>
-        <p class="footer__tagline">Content systems that keep campaigns organized, aligned, and moving fast.</p>
+        <p class="footer__tagline">Content studio that keeps campaigns organized, aligned, and moving fast.</p>
       </div>
       <nav class="footer__links" aria-label="Footer">
         ${sectionsMarkup}
@@ -85,8 +82,6 @@ function ensureFooter() {
     <div class="footer__meta">
       <div class="footer__legal">
         <span>${COPYRIGHT_TEXT}</span>
-        <a href="/privacy.html">Privacy</a>
-        <a href="/terms.html">Terms</a>
       </div>
       <div class="footer__socials" aria-label="Social links">
         ${socialsMarkup}

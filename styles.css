@@ -5,7 +5,7 @@
 .calendar-card__engagement,
 .calendar-card__promo {
   font-size: 0.97rem;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin: 0.25rem 0 0.1rem 0;
   line-height: 1.5;
 }
@@ -45,6 +45,8 @@ body {
   background: radial-gradient(circle at 20% 20%, rgba(127, 90, 240, 0.25), transparent 55%),
     radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.18), transparent 60%),
     linear-gradient(135deg, #05040a 0%, #0f1121 60%, #07070f 100%);
+  display: flex;
+  flex-direction: column;
 }
 
 .app-shell {
@@ -55,6 +57,7 @@ body {
   flex-direction: column;
   gap: clamp(2rem, 2.5vw, 3rem);
   margin: 0 auto;
+  flex: 1;
 }
 
 .tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--card-border); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(6px); background: linear-gradient(180deg, rgba(20,20,28,0.9), rgba(20,20,28,0.6)); padding-top: 0.25rem; }
@@ -133,24 +136,15 @@ body {
   border-radius: 24px;
   padding: clamp(2rem, 4vw, 3.5rem);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   backdrop-filter: blur(14px);
 }
 
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: -30% 40% 40% -40%;
-  background: radial-gradient(circle, rgba(127, 90, 240, 0.25), transparent 60%);
-  z-index: 0;
-}
-
-.hero > * {
-  position: relative;
-  z-index: 1;
+.app-hero {
+  overflow: visible;
 }
 
 .hero__badge {
@@ -363,7 +357,9 @@ body {
 
 .landing-hero__panel {
   width: 100%;
-  max-width: 520px;
+  max-width: 640px;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-panel {
@@ -572,6 +568,13 @@ body {
   gap: 0.85rem;
 }
 
+.landing-pricing__columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
 .landing-pricing__price-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -681,6 +684,16 @@ body {
   gap: 1.5rem;
 }
 
+.content-page__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.content-page__logo img {
+  height: 36px;
+}
+
 .content-page header h1 {
   margin: 0;
 }
@@ -766,6 +779,22 @@ button.ghost:hover {
   background: var(--accent-soft);
   border-color: var(--accent-strong);
   transform: translateY(-2px);
+}
+
+.pro-gradient-btn {
+  background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+  color: #050509;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 12px 24px rgba(127, 90, 240, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pro-gradient-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(127, 90, 240, 0.35);
 }
 
 /* Anchor variants styled like buttons */
@@ -941,8 +970,8 @@ a.ghost:hover {
 /* logo */
 .logo {
   display: block;
-  max-width: 320px;
-  width: min(44%, 320px);
+  max-width: 360px;
+  width: min(48%, 360px);
   height: auto;
   margin-bottom: 0.5rem;
 }
@@ -964,7 +993,7 @@ a.ghost:hover {
 
 .hero-top__left .logo {
   margin-bottom: 0;
-  max-width: 220px;
+  max-width: 260px;
 }
 
 .user-menu {
@@ -972,6 +1001,7 @@ a.ghost:hover {
   align-items: center;
   gap: 0.75rem;
   text-align: right;
+  margin-left: auto;
 }
 
 .brand-brain-btn {
@@ -1433,6 +1463,8 @@ body.prefers-reduced-motion *::after {
   margin: 0;
   background: radial-gradient(circle at top, rgba(127, 90, 240, 0.25), rgba(5, 5, 12, 0.95));
   color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
 }
 
 .auth-page__shell {
@@ -1442,6 +1474,7 @@ body.prefers-reduced-motion *::after {
   display: flex;
   flex-direction: column;
   gap: clamp(1.5rem, 3vw, 2.5rem);
+  flex: 1;
 }
 
 .auth-page__nav {
@@ -1556,10 +1589,6 @@ body.prefers-reduced-motion *::after {
   font-weight: 600;
 }
 
-.auth-input-wrapper {
-  position: relative;
-}
-
 .auth-field input {
   width: 100%;
   padding: 0.85rem 3rem 0.85rem 1rem;
@@ -1576,7 +1605,20 @@ body.prefers-reduced-motion *::after {
   box-shadow: 0 0 0 3px rgba(127, 90, 240, 0.2);
 }
 
-.auth-visibility {
+.auth-input-wrapper {
+  position: relative;
+}
+
+.password-field-wrapper {
+  position: relative;
+}
+
+.password-field-wrapper input {
+  padding-right: 2.75rem;
+}
+
+.auth-visibility,
+.password-toggle {
   position: absolute;
   top: 50%;
   right: 0.75rem;
@@ -1586,6 +1628,25 @@ body.prefers-reduced-motion *::after {
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   padding: 0;
+}
+
+.password-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.password-toggle .icon-eye-off {
+  display: none;
+}
+
+.password-toggle[aria-pressed="true"] .icon-eye,
+.password-toggle.is-active .icon-eye {
+  display: none;
+}
+
+.password-toggle[aria-pressed="true"] .icon-eye-off,
+.password-toggle.is-active .icon-eye-off {
+  display: inline;
 }
 
 .auth-hint {
@@ -1611,6 +1672,39 @@ body.prefers-reduced-motion *::after {
   box-shadow: 0 18px 35px rgba(127, 90, 240, 0.35);
 }
 
+.auth-back-home-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 0.65rem 1.3rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 600;
+  margin-top: 1rem;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.auth-back-home-btn:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.auth-page__copywriting {
+  margin-top: 2rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.auth-page__copywriting strong {
+  color: #f5f6f8;
+}
+
 .auth-feedback {
   min-height: 1.25rem;
   font-size: 0.9rem;
@@ -1620,6 +1714,24 @@ body.prefers-reduced-motion *::after {
 @media (max-width: 900px) {
   .auth-page__shell {
     padding: 1.5rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .auth-page__grid {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    text-align: left;
+  }
+
+  .auth-page__intro {
+    flex: 1;
+  }
+
+  .auth-card {
+    flex: 1;
+    max-width: 480px;
   }
 }
 
@@ -1767,6 +1879,12 @@ body.prefers-reduced-motion *::after {
   font-weight: 500;
 }
 
+.calendar-card__caption-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
 .calendar-card__hashtags {
   color: #2cb1bc;
   font-size: 0.97rem;
@@ -1791,8 +1909,69 @@ body.prefers-reduced-motion *::after {
   display: block;
   margin-top: 0.5rem;
   font-weight: 600;
-  color: #7f5af0;
+  color: var(--text-primary);
   font-size: 0.97rem;
+}
+
+.calendar-card__cta strong {
+  color: #7f5af0;
+  margin-right: 0.25rem;
+}
+
+.calendar-card__entry strong {
+  color: #7f5af0;
+}
+
+.calendar-card__detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.detail-row__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.calendar-card__detail-row .detail-text {
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-word;
+  font-size: 0.92rem;
+}
+
+.detail-copy-btn {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.detail-copy-btn:hover {
+  color: #a28dfd;
+  transform: translateY(-1px);
+}
+
+.detail-copy-btn.copied {
+  color: #36d399;
+}
+
+.detail-copy-btn .detail-copy-icon {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
 }
 
 .calendar-card__entries {
@@ -1834,46 +2013,31 @@ body.prefers-reduced-motion *::after {
   justify-content: flex-end;
 }
 
-.calendar-card__weekly-promo,
-.calendar-card__video {
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-}
-.calendar-card__variants {
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-}
-.calendar-card__variants em {
-  font-style: normal;
-  color: rgba(245, 246, 248, 0.9);
-  font-weight: 600;
-}
-.calendar-card__engagement em {
-  font-style: normal;
-  color: rgba(245, 246, 248, 0.9);
-  font-weight: 600;
-}
-.calendar-card__video em {
-  font-style: normal;
-  color: rgba(245, 246, 248, 0.9);
-  font-weight: 600;
-}
-
 .calendar-card__caption-variations,
 .calendar-card__hashtag-sets,
 .calendar-card__audio,
 .calendar-card__posting-tip,
 .calendar-card__story-extended,
-.calendar-card__followup {
+.calendar-card__followup,
+.calendar-card__variants,
+.calendar-card__weekly-promo,
+.calendar-card__video {
   font-size: 0.93rem;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin-top: 0.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .calendar-card__caption-variations em,
-.calendar-card__hashtag-sets em {
+.calendar-card__hashtag-sets em,
+.calendar-card__variants em,
+.calendar-card__weekly-promo em,
+.calendar-card__video em {
   font-style: normal;
   color: rgba(245, 246, 248, 0.9);
   font-weight: 600;

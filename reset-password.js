@@ -9,18 +9,28 @@ const newPasswordInput = document.getElementById('new-password');
 const confirmPasswordInput = document.getElementById('confirm-password');
 const resetBtn = document.getElementById('reset-btn');
 const resetFeedbackEl = document.getElementById('reset-feedback');
-const togglePasswordBtn = document.getElementById('toggle-password-visibility');
-const eyeIcon = document.getElementById('eye-icon');
-const eyeOffIcon = document.getElementById('eye-off-icon');
-
-// Password visibility toggle
-if (togglePasswordBtn) {
-  togglePasswordBtn.addEventListener('click', () => {
-    const isPassword = newPasswordInput.type === 'password';
-    newPasswordInput.type = isPassword ? 'text' : 'password';
-    eyeIcon.style.display = isPassword ? 'none' : 'block';
-    eyeOffIcon.style.display = isPassword ? 'block' : 'none';
+function initPasswordToggles() {
+const bindToggle = (btn, input) => {
+  if (!btn || !input) return;
+  btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    const willShow = input.type === 'password';
+    input.type = willShow ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', String(willShow));
+    btn.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
   });
+};
+
+const togglePasswordBtn = document.getElementById('toggle-password-visibility');
+const toggleConfirmBtn = document.getElementById('toggle-confirm-visibility');
+bindToggle(togglePasswordBtn, newPasswordInput);
+bindToggle(toggleConfirmBtn, confirmPasswordInput);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPasswordToggles, { once: true });
+} else {
+  initPasswordToggles();
 }
 
 // Handle password reset form submission
