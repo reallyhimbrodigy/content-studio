@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Med Spa & Aesthetics",
+    "patterns": ["med\\s*spa", "aesthetic", "skin\\s*clinic", "derma", "facial"],
+    "presetGuidelines": [
+      "📖 Story Prompts (Daily Engagement)",
+      "- Polls: \"Do you wash your face before bed? Yes / No\"",
+      "- Quizzes: \"Guess which treatment clears acne fastest?\"",
+      "- Q&A Stickers: \"Ask us anything about facials!\"",
+      "- Countdowns: \"2 days left for student discount\"",
+      "- Behind-the-scenes: Staff prepping rooms, mixing products.",
+      "",
+      "🎨 Design Notes",
+      "- Colors: Pastels + neutrals (soft pink, mint, beige) — youthful + calming.",
+      "- Fonts: Clean sans-serif, modern.",
+      "- Style: Bright lighting, authentic client photos, minimal text overlays.",
+      "- Reels: Trending audio, quick cuts (7–12s max).",
+      "- Carousels: Bold headline on slide 1, clean icons after.",
+      "",
+      "🎥 Video Scripts (Weekly Reels — include at least 2 per week)",
+      "- Myth-Busting Reel: hook/body/cta (e.g., \"Facials aren’t just for older people\", benefits, \"Book your glow session today\").",
+      "- Transformation Reel: hook/body/cta (e.g., \"From dull to glowing in 1 session\", show before/after, \"DM us to book\").",
+      "",
+      "🔄 Repurposing",
+      "- Reel → Carousel (3 slides), Carousel → Story frames, Static → Reel (animate text), Testimonial → Blog/Email.",
+      "",
+      "📊 Analytics Checklist",
+      "- Reach (Reels > Stories > Static), Engagement (saves/shares/comments), Conversions (link clicks, DMs, bookings), Top Content.",
+      "",
+      "💬 Engagement Scripts",
+      "- Comment reply: User: \"Looks amazing!\" You: \"Thanks! Want me to send our facial menu?\"",
+      "- DM: User: \"How much is a peel?\" You: \"Peels start at $99 with visible results. Want me to book you this week?\"",
+      "",
+      "🗓️ Weekly Promo Slots (rotate weekly)",
+      "- Week 1: Student discount (15% off facials)",
+      "- Week 2: Weekend glow special (20% off)",
+      "- Week 3: Giveaway (free facial; tag friends)",
+      "- Week 4: Bundle deal (facial + peel combo)"
+    ],
+    "nicheRules": []
+  },
+  {
+    "name": "Vlogger / Video Diary",
+    "patterns": ["vlog", "vlogger", "daily vlog", "video diary", "video blog"],
+    "presetGuidelines": [
+      "🎬 Vlog Production Prompts",
+      "- Include cinematic establishing shots, ambient audio notes, and transitions.",
+      "- Alternate between fast-paced montage sequences and slower reflective moments.",
+      "- End every vlog with a teaser for tomorrow’s story beat."
+    ],
+    "nicheRules": [
+      "- Every idea must be a tangible vlog episode with scenes, locations, activities, or POV story beats (never abstract tips).",
+      "- Describe sensory/emotional details so the creator knows what to film (lighting, sounds, props, companions).",
+      "- Hooks must read like episode titles or cold-open lines, not advice for other creators.",
+      "- VideoScript.body should outline 2–3 key moments in the vlog timeline (setup, peak moment, resolution)."
+    ]
+  }
+]

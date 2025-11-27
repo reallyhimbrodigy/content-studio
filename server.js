@@ -3,7 +3,7 @@ const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
-const promptPresets = require('./data/prompt-presets.json');
+const promptPresets = require('./assets/prompt-presets.json');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
