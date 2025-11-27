@@ -7,19 +7,25 @@ const promptPresets = require('./data/prompt-presets.json');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
+const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
+}
+if (!STABILITY_API_KEY) {
+  console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
 }
 
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
 const BRANDS_DIR = path.join(DATA_DIR, 'brands');
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
+const DESIGN_ASSETS_DIR = path.join(DATA_DIR, 'design-assets');
 try {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   if (!fs.existsSync(BRANDS_DIR)) fs.mkdirSync(BRANDS_DIR);
   if (!fs.existsSync(CUSTOMERS_FILE)) fs.writeFileSync(CUSTOMERS_FILE, '{}', 'utf8');
+  if (!fs.existsSync(DESIGN_ASSETS_DIR)) fs.mkdirSync(DESIGN_ASSETS_DIR);
 } catch (e) {
   console.error('Failed to initialize data directories:', e);
 }
@@ -34,15 +40,23 @@ function slugify(s = '') {
 
 function chunkText(input, maxLen = 800) {
   if (!input) return [];
-  const parts = String(input)
-    .replace(/
-/g, '
-')
-    .split(/
-
-+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const normalized = String(input).replaceAll('\r\n', '\n');
+  const parts = [];
+  let collector = [];
+  const flush = () => {
+    if (collector.length === 0) return;
+    const paragraph = collector.join('\n').trim();
+    if (paragraph) parts.push(paragraph);
+    collector = [];
+  };
+  for (const line of normalized.split('\n')) {
+    if (line.trim() === '') {
+      flush();
+    } else {
+      collector.push(line);
+    }
+  }
+  flush();
   const chunks = [];
   for (const p of parts) {
     if (p.length <= maxLen) {
@@ -57,6 +71,138 @@ function chunkText(input, maxLen = 800) {
   }
   return chunks;
 }
+
+function stabilityJsonRequest({ path: apiPath, method = 'POST', payload }) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.stability.ai',
+      path: apiPath,
+      method,
+      headers: {
+        'Authorization': `Bearer ${STABILITY_API_KEY}`,
+        'Accept': 'application/json',
+      },
+    };
+    if (payload) {
+      options.headers['Content-Type'] = 'application/json';
+    }
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            const parsed = JSON.parse(data || '{}');
+            return resolve(parsed);
+          } catch (err) {
+            return reject(err);
+          }
+        }
+        const err = new Error(`Stability API error ${res.statusCode}: ${data}`);
+        err.statusCode = res.statusCode;
+        reject(err);
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function downloadBinary(urlString) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlString);
+    const getter = parsed.protocol === 'http:' ? http : https;
+    getter.get(parsed, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return resolve(downloadBinary(res.headers.location));
+      }
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        return reject(new Error(`Download failed ${res.statusCode}`));
+      }
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    }).on('error', reject);
+  });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateStabilityImage(prompt, aspectRatio = '9:16') {
+  const body = JSON.stringify({
+    prompt,
+    output_format: 'png',
+    aspect_ratio: aspectRatio,
+  });
+  const json = await stabilityJsonRequest({
+    path: '/v2beta/stable-image/generate/sd3',
+    method: 'POST',
+    payload: body,
+  });
+  const artifact = json && Array.isArray(json.artifacts) ? json.artifacts[0] : null;
+  if (!artifact || !artifact.base64) {
+    throw new Error('Stability image generation returned no artifact');
+  }
+  return Buffer.from(artifact.base64, 'base64');
+}
+
+async function pollStabilityVideoTask(taskId) {
+  for (let i = 0; i < 30; i++) {
+    await wait(2000);
+    const status = await stabilityJsonRequest({
+      path: `/v2beta/stable-video/async/tasks/${taskId}`,
+      method: 'GET',
+    });
+    if (status && status.status === 'completed') {
+      const videoUrl =
+        status.result?.videos?.[0]?.video ||
+        status.result?.videos?.[0]?.video_url ||
+        status.result?.videos?.[0]?.url ||
+        status.result?.video_url ||
+        status.result?.video;
+      if (!videoUrl) throw new Error('Completed video task missing URL');
+      return downloadBinary(videoUrl);
+    }
+    if (status && status.status === 'failed') {
+      throw new Error('Stability video generation failed');
+    }
+  }
+  throw new Error('Timed out waiting for Stability video');
+}
+
+async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
+  const body = JSON.stringify({
+    prompt,
+    aspect_ratio: aspectRatio,
+    cfg_scale: 1.8,
+    motion_bucket_id: 40,
+    seed: Math.floor(Math.random() * 1000000000),
+  });
+  const task = await stabilityJsonRequest({
+    path: '/v2beta/stable-video/async/text-to-video',
+    method: 'POST',
+    payload: body,
+  });
+  const taskId = task && (task.id || task.result_id || task.result?.id);
+  if (!taskId) throw new Error('Stability video response missing task id');
+  return pollStabilityVideoTask(taskId);
+}
+
+function buildDesignPrompt({ assetType, tone, notes, day, caption, niche }) {
+  const pieces = [
+    `Create a ${assetType || 'social media asset'} for ${niche || 'a modern brand'}.`,
+    tone ? `Use a ${tone} aesthetic.` : '',
+    day ? `This is for day ${day} of a 30-day campaign.` : '',
+    caption ? `Core caption or CTA: ${caption}` : '',
+    notes ? `Incorporate these notes: ${notes}` : '',
+    'Use bold typography and layout that is platform ready.',
+  ].filter(Boolean);
+  return pieces.join(' ');
+}
+
 
 function openAIRequest(options, payload, retryCount = 0) {
   return new Promise((resolve, reject) => {
@@ -118,15 +264,31 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (!inStr) {
-        if (c === '"') { inStr = true; out += c; } else { out += c; }
+        if (c === '"') {
+          inStr = true;
+        }
+        out += c;
         continue;
       }
-      if (esc) { out += c; esc = false; continue; }
-      if (c === '\') { out += c; esc = true; continue; }
-      if (c === '"') { inStr = false; out += c; continue; }
-      if (c === '
-' || c === '
-') { out += '\n'; continue; }
+      if (esc) {
+        out += c;
+        esc = false;
+        continue;
+      }
+      if (c === '\\') {
+        out += c;
+        esc = true;
+        continue;
+      }
+      if (c === '"') {
+        inStr = false;
+        out += c;
+        continue;
+      }
+      if (c === '\n' || c === '\r') {
+        out += '\\n';
+        continue;
+      }
       out += c;
     }
     return out;
@@ -151,12 +313,8 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   if (candidate !== raw) attempts.push(raw);
   if (!/^\s*\[/.test(candidate) && /"day"\s*:/.test(candidate)) {
     // Wrap pseudo-object list lines into array
-    const lines = candidate.split(/
-+/).filter(l => l.trim());
-    attempts.push('[
-' + lines.join(',
-') + '
-]');
+    const lines = candidate.split(/\n+/).filter((l) => l.trim());
+    attempts.push('[\n' + lines.join(',\n') + '\n]');
   }
 
   let lastErr;
@@ -181,11 +339,9 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   }
   // Fallback: multiple top-level objects separated by newlines without commas
   try {
-    const objCount = (raw.match(/
-\s*\{/g) || []).length;
+    const objCount = (raw.match(/\n\s*\{/g) || []).length;
     if (!raw.trim().startsWith('[') && objCount > 0) {
-      const parts = raw.split(/}\s*
-\s*\{/).map((p, i) => {
+      const parts = raw.split(/}\s*\n\s*\{/).map((p, i) => {
         if (i === 0 && p.trim().startsWith('{') && p.trim().endsWith('}')) return p.trim();
         if (i === 0) return p.trim() + '}';
         if (i === objCount) return '{' + p.trim();
@@ -202,8 +358,7 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
     diagnostics.attempts.push({ ok: false, fallbackError: e2.message });
   }
   const truncated = raw.slice(0, 500);
-  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '
-Raw (truncated): ' + truncated;
+  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated;
   throw new Error(msg);
 }
 
@@ -266,42 +421,30 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const preset = getPresetGuidelines(nicheStyle);
   const presetGuidelines = (() => {
     if (!preset) return '';
-    if (Array.isArray(preset.presetGuidelines)) return preset.presetGuidelines.join('
-');
+    if (Array.isArray(preset.presetGuidelines)) return preset.presetGuidelines.join('\n');
     return preset.presetGuidelines || '';
   })();
-  const presetBlock = presetGuidelines ? `
-
-Preset Guidelines for this niche:
-${presetGuidelines}
-
-` : '
-';
+  const presetBlock = presetGuidelines
+    ? `\n\nPreset Guidelines for this niche:\n${presetGuidelines}\n\n`
+    : '\n';
   const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
-    ? preset.nicheRules.join('
-')
+    ? preset.nicheRules.join('\n')
     : '';
-  const brandBlock = brandContext ? `
-
-Brand Context: ${brandContext}
-
-` : '
-';
-  const qualityRules = `Quality Rules â Make each post plug-and-play & conversion-ready:
-1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must be punchy.
-2) Hashtags: mix broad + niche/local; 6â8 total (balance reach + targeting).
+  const brandBlock = brandContext
+    ? `\n\nBrand Context: ${brandContext}\n\n`
+    : '\n';
+  const qualityRules = `Quality Rules — Make each post plug-and-play and conversion-ready:
+1) Hook harder: first 3 seconds must be scroll-stopping; videoScript.hook must punch.
+2) Hashtags: mix broad + niche/local; 6–8 total to balance reach and targeting.
 3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
-4) Design: specify colors, typography, pacing, and end-card CTA.
-5) Repurpose: 2â3 concrete transformations (e.g., ReelâCarousel slides, StaticâReel).
+4) Design notes: specify colors, typography, pacing, and end-card CTA.
+5) Repurpose: 2–3 concrete transformations (Reel→Carousel slides, Static→Reel, etc.).
 6) Engagement: natural, friendly scripts for comments & DMs.
-7) Format: Reels 7â12s with trending audio; Carousels start with bold headline.
-8) Captions: start with a short hook line, then 1â2 value lines (use 
-).
+7) Format: Reels 7–12s with trending audio; carousels start with bold headline.
+8) Captions: start with a short hook line, then 1–2 value lines (use \\n).
 9) Keep outputs concise to avoid truncation.
-10) CRITICAL: Every post MUST include videoScript â Reels dominate reach.`;
-  const nicheSpecific = nicheRules ? `
-Niche-specific constraints:
-${nicheRules}` : '';
+10) CRITICAL: every post MUST include videoScript — even non-video formats should note how to adapt it.`;
+  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, caption, hashtags, format, cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, videoScript).`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
@@ -309,10 +452,10 @@ ${nicheRules}` : '';
 Niche/Style: ${nicheStyle}
 Day to regenerate: ${day}
 
-Current post (for reference only, do NOT reuse):
+Current post (reference only — do NOT reuse text):
 ${snapshot}
 
-Rewrite this day from scratch with a fresh angle while respecting all schema fields. ${schema}`;
+Rewrite this day from scratch with a fresh angle while respecting every schema field. ${schema}`;
 }
 
 function hasAllRequiredFields(p){
@@ -392,8 +535,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   out.day = typeof out.day === 'number' ? out.day : fallbackDay;
   out.idea = out.idea || out.title || 'Engaging post idea';
   out.type = out.type || 'educational';
-  out.caption = out.caption || 'Quick tip that helps you today.
-Save this for later.';
+  out.caption = out.caption || 'Quick tip that helps you today.\nSave this for later.';
   if (!Array.isArray(out.hashtags)) {
     if (typeof out.hashtags === 'string') {
       out.hashtags = out.hashtags.split(/[,\s]+/).filter(Boolean);
@@ -535,10 +677,8 @@ function summarizeBrandForPrompt(brand) {
   // join up to ~2400 characters
   let out = '';
   for (const c of brand.chunks) {
-    if ((out + '
-' + c.text).length > 2400) break;
-    out += (out ? '
-' : '') + c.text;
+    if ((out + '\n' + c.text).length > 2400) break;
+    out += (out ? '\n' : '') + c.text;
   }
   return out;
 }
@@ -737,6 +877,57 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: errorMessage }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/design/generate' && req.method === 'POST') {
+    if (!STABILITY_API_KEY) {
+      res.writeHead(501, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Design generation not configured', hint: 'Set STABILITY_API_KEY on the server.' }));
+    }
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const { assetType = 'story template', tone = 'bold', notes = '', day = '', caption = '', niche = '', aspectRatio = '9:16' } = payload;
+        const wantsVideo = /video|clip|snippet/i.test(String(assetType || ''));
+        const prompt = buildDesignPrompt({ assetType, tone, notes, day, caption, niche });
+        let buffer;
+        let extension;
+        try {
+          if (wantsVideo) {
+            buffer = await generateStabilityVideo(prompt, aspectRatio);
+            extension = '.mp4';
+          } else {
+            buffer = await generateStabilityImage(prompt, aspectRatio);
+            extension = '.png';
+          }
+        } catch (err) {
+          console.error('Stability generation failed:', err);
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Stability generation failed', detail: err.message || String(err) }));
+        }
+        const safeName = `${Date.now()}-${slugify(assetType || 'asset')}${extension}`;
+        const target = path.join(DESIGN_ASSETS_DIR, safeName);
+        fs.writeFileSync(target, buffer);
+        const response = {
+          id: safeName,
+          day,
+          title: `${assetType || 'AI Asset'}${day ? ` · Day ${day}` : ''}`,
+          type: assetType,
+          typeLabel: assetType,
+          status: 'Ready',
+          downloadUrl: `/data/design-assets/${safeName}`,
+          previewText: notes || caption || '',
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON', detail: err.message || String(err) }));
       }
     });
     return;
