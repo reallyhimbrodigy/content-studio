@@ -64,6 +64,166 @@ body {
 .tab { background: transparent; border: none; padding: 0.5rem 0.75rem; border-radius: 8px 8px 0 0; font-weight: 600; color: var(--text-secondary); transition: all 0.2s ease; }
 .tab.active { background: var(--surface); color: var(--text-primary); border: 1px solid var(--card-border); border-bottom-color: transparent; }
 
+.design-lab {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 1.5rem;
+  display: none;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.design-lab__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.design-lab__head h2 {
+  margin: 0 0 0.25rem 0;
+}
+
+.design-lab__head p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.design-lab__actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.design-empty {
+  display: none;
+}
+
+.design-card {
+  border: 1px dashed rgba(255,255,255,0.2);
+  border-radius: 16px;
+  padding: 1.2rem;
+  background: rgba(255,255,255,0.02);
+}
+
+.design-card h3 {
+  margin: 0 0 0.25rem 0;
+}
+
+.design-card p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-secondary);
+}
+
+.design-lab__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.design-asset {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: rgba(8,8,16,0.55);
+}
+
+.design-asset__preview {
+  border-radius: 12px;
+  min-height: 140px;
+  background: linear-gradient(135deg, rgba(127,90,240,0.2), rgba(44,177,188,0.2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.5rem;
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+}
+
+.design-asset__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.design-asset__meta span {
+  color: var(--text-secondary);
+}
+
+.design-asset__badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  background: rgba(127, 90, 240, 0.18);
+  color: #bba7ff;
+  border-radius: 999px;
+  padding: 0.1rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.design-asset__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.design-asset__actions button {
+  flex: 1;
+}
+
+.design-modal {
+  width: min(520px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.design-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.design-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.design-form__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.design-form__row textarea,
+.design-form__row select {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: var(--text-primary);
+  padding: 0.65rem;
+}
+
+.design-selected-post {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.design-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /* Calendar More actions */
 .more-actions { margin-left: auto; }
 .more-actions > summary { list-style: none; cursor: pointer; padding: 0.4rem 0.8rem; border: 1px solid var(--card-border); border-radius: 999px; background: rgba(255,255,255,0.05); color: var(--text-primary); font-weight: 600; transition: all 0.2s ease; }
@@ -772,6 +932,11 @@ button.ghost {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+button.ghost.small {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
 }
 
 button.ghost[aria-pressed="true"],
@@ -1885,6 +2050,10 @@ body.prefers-reduced-motion *::after {
   gap: 0.5rem;
 }
 
+.caption-copy-btn {
+  flex-shrink: 0;
+}
+
 .calendar-card__hashtags {
   color: #2cb1bc;
   font-size: 0.97rem;
@@ -2051,6 +2220,47 @@ body.prefers-reduced-motion *::after {
 
 .calendar-card__visual a:hover {
   text-decoration: underline;
+}
+
+.calendar-card__assets {
+  margin-top: 0.4rem;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(127, 90, 240, 0.08);
+}
+
+.calendar-card__assets strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(245, 246, 248, 0.78);
+}
+
+.calendar-card__asset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.calendar-card__asset-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 90, 240, 0.35);
+  padding: 0.2rem 0.8rem;
+  font-size: 0.78rem;
+  color: #cbb7ff;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.04);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.calendar-card__asset-chip:hover {
+  border-color: rgba(127, 90, 240, 0.65);
+  transform: translateY(-1px);
 }
 
 .calendar-card__actions {
@@ -2560,6 +2770,8 @@ body.prefers-reduced-motion *::after {
   border-radius: 16px;
   padding: 1.5rem;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .modal-overlay .modal h3 {
@@ -2597,6 +2809,115 @@ body.prefers-reduced-motion *::after {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.brand-modal {
+  width: min(1680px, 99vw);
+  max-height: 82vh;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem;
+  padding: 0.75rem;
+}
+
+.brand-modal__section textarea {
+  width: 100%;
+  min-height: 100px;
+}
+
+.brand-kit {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 0.6rem;
+  background: rgba(255,255,255,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.brand-kit__hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.brand-kit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.brand-kit__grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.brand-kit__grid input[type="color"] {
+  width: 100%;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.35);
+}
+
+.brand-kit__grid--fonts input[type="text"] {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.35);
+  color: var(--text-primary);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.92rem;
+}
+
+.brand-kit__logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand-kit__file input[type="file"] {
+  margin-top: 0.35rem;
+}
+
+.brand-kit__logo-preview {
+  min-width: 140px;
+  min-height: 120px;
+  border: 1px dashed rgba(255,255,255,0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  background: rgba(255,255,255,0.03);
+}
+
+.brand-kit__logo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.brand-kit__logo-preview p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.brand-kit__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.brand-kit__actions .input-feedback {
+  flex: 1;
 }
 
 /* Upgrade Modal Styles */

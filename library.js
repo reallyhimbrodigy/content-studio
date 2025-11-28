@@ -130,6 +130,16 @@ function buildPostHTML(post) {
   if (isLibraryUserPro && post.followUpIdea) {
     detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
   }
+  if (Array.isArray(post.assets) && post.assets.length) {
+    const chips = post.assets
+      .map((asset) => {
+        const label = escapeHtml(asset.typeLabel || asset.title || 'View');
+        const url = escapeHtml(asset.downloadUrl || asset.url || '#');
+        return `<a class="calendar-card__asset-chip" href="${url}" target="_blank" rel="noopener">${label}</a>`;
+      })
+      .join('');
+    detailBlocks.push(`<div class="calendar-card__assets"><strong>AI Assets</strong><div class="calendar-card__asset-chips">${chips}</div></div>`);
+  }
 
   const detailsHTML = detailBlocks.filter(Boolean).join('');
 
@@ -170,6 +180,11 @@ function buildPostHTML(post) {
     .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#7f5af0;font-style:normal;font-weight:600}
     .calendar-card__visual a{color:#7f5af0;text-decoration:none;font-weight:600}
     .calendar-card__visual a:hover{text-decoration:underline}
+    .calendar-card__assets{background:rgba(255,255,255,0.04);padding:0.6rem;border-radius:8px}
+    .calendar-card__assets strong{display:block;margin-bottom:0.35rem}
+    .calendar-card__asset-chips{display:flex;flex-wrap:wrap;gap:0.35rem}
+    .calendar-card__asset-chip{display:inline-flex;align-items:center;border-radius:999px;border:1px solid rgba(127,90,240,0.35);padding:0.2rem 0.85rem;font-size:0.85rem;color:#7f5af0;text-decoration:none}
+    .calendar-card__asset-chip:hover{border-color:rgba(127,90,240,0.7)}
     .calendar-card__hashtags{color:#2cb1bc;font-size:0.9rem}
     .calendar-card__format,.calendar-card__cta{color:#94a3b8;font-size:0.85rem}
     strong{color:#e2e8f0;display:block;margin-bottom:0.5rem}

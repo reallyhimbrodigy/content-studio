@@ -191,7 +191,7 @@ async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
   return pollStabilityVideoTask(taskId);
 }
 
-function buildDesignPrompt({ assetType, tone, notes, day, caption, niche }) {
+function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit }) {
   const pieces = [
     `Create a ${assetType || 'social media asset'} for ${niche || 'a modern brand'}.`,
     tone ? `Use a ${tone} aesthetic.` : '',
@@ -199,6 +199,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche }) {
     caption ? `Core caption or CTA: ${caption}` : '',
     notes ? `Incorporate these notes: ${notes}` : '',
     'Use bold typography and layout that is platform ready.',
+    brandKit ? describeBrandKitForPrompt(brandKit, { includeLogo: true }) : '',
   ].filter(Boolean);
   return pieces.join(' ');
 }
@@ -643,11 +644,119 @@ function loadBrand(userId) {
 
 function saveBrand(userId, chunksWithEmb) {
   const file = path.join(BRANDS_DIR, slugify(userId) + '.json');
+  let existingKit = null;
+  try {
+    if (fs.existsSync(file)) {
+      const current = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (current && current.kit) existingKit = current.kit;
+    }
+  } catch (_) {}
   const payload = {
     userId,
     updatedAt: new Date().toISOString(),
     chunks: chunksWithEmb,
+    kit: existingKit || null,
   };
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
+  return payload;
+}
+
+const HEX_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+
+function normalizeHexColor(value) {
+  if (typeof value !== 'string') return null;
+  let hex = value.trim();
+  if (!hex) return '';
+  if (!hex.startsWith('#')) hex = `#${hex}`;
+  if (!HEX_COLOR_REGEX.test(hex)) return null;
+  if (hex.length === 4) {
+    hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  return hex.toLowerCase();
+}
+
+function sanitizeFont(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, 80);
+}
+
+function sanitizeLogoData(url) {
+  if (url === '') return '';
+  if (typeof url !== 'string' || !url.startsWith('data:image/')) {
+    throw new Error('Invalid logo file. Upload a PNG, JPG, or SVG.');
+  }
+  if (Buffer.byteLength(url, 'utf8') > MAX_LOGO_BYTES) {
+    throw new Error('Logo is too large. Please upload a smaller file (<=2MB).');
+  }
+  return url;
+}
+
+function sanitizeBrandKitInput(input = {}) {
+  if (!input || typeof input !== 'object') return null;
+  const kit = {};
+  if ('primaryColor' in input) {
+    if (!input.primaryColor) {
+      kit.primaryColor = '';
+    } else {
+      const normalized = normalizeHexColor(input.primaryColor);
+      if (!normalized) throw new Error('Primary color must be a hex code (e.g., #7f5af0).');
+      kit.primaryColor = normalized;
+    }
+  }
+  if ('secondaryColor' in input) {
+    if (!input.secondaryColor) {
+      kit.secondaryColor = '';
+    } else {
+      const normalized = normalizeHexColor(input.secondaryColor);
+      if (!normalized) throw new Error('Secondary color must be a hex code.');
+      kit.secondaryColor = normalized;
+    }
+  }
+  if ('accentColor' in input) {
+    if (!input.accentColor) {
+      kit.accentColor = '';
+    } else {
+      const normalized = normalizeHexColor(input.accentColor);
+      if (!normalized) throw new Error('Accent color must be a hex code.');
+      kit.accentColor = normalized;
+    }
+  }
+  if ('headingFont' in input) {
+    kit.headingFont = sanitizeFont(input.headingFont);
+  }
+  if ('bodyFont' in input) {
+    kit.bodyFont = sanitizeFont(input.bodyFont);
+  }
+  if ('logoDataUrl' in input) {
+    kit.logoDataUrl = sanitizeLogoData(input.logoDataUrl);
+  }
+  if (!Object.keys(kit).length) return null;
+  kit.updatedAt = new Date().toISOString();
+  return kit;
+}
+
+function saveBrandKit(userId, kitInput) {
+  const sanitized = sanitizeBrandKitInput(kitInput);
+  if (!sanitized) {
+    throw new Error('Provide at least one brand kit field to save.');
+  }
+  const file = path.join(BRANDS_DIR, slugify(userId) + '.json');
+  let payload = {
+    userId,
+    updatedAt: new Date().toISOString(),
+    chunks: [],
+    kit: sanitized,
+  };
+  try {
+    if (fs.existsSync(file)) {
+      const current = JSON.parse(fs.readFileSync(file, 'utf8'));
+      payload = Object.assign({}, current, { userId, updatedAt: current?.updatedAt || new Date().toISOString() });
+      payload.chunks = Array.isArray(current?.chunks) ? current.chunks : [];
+    }
+  } catch (_) {}
+  payload.kit = Object.assign({}, payload.kit || {}, sanitized);
+  payload.kit.updatedAt = sanitized.updatedAt;
   fs.writeFileSync(file, JSON.stringify(payload, null, 2), 'utf8');
   return payload;
 }
@@ -672,15 +781,49 @@ function saveCustomersMap(map) {
   }
 }
 
-function summarizeBrandForPrompt(brand) {
-  if (!brand || !brand.chunks || brand.chunks.length === 0) return '';
-  // join up to ~2400 characters
-  let out = '';
-  for (const c of brand.chunks) {
-    if ((out + '\n' + c.text).length > 2400) break;
-    out += (out ? '\n' : '') + c.text;
+function describeBrandKitForPrompt(kit, { includeLogo } = {}) {
+  if (!kit) return '';
+  const lines = [];
+  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
+  if (palette.length) {
+    lines.push(`Palette: ${palette.join(', ')}`);
   }
-  return out;
+  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
+  if (fonts.length) {
+    lines.push(`Typography: ${fonts.join(' / ')}`);
+  }
+  if (includeLogo && kit.logoDataUrl) {
+    lines.push('Logo: Include safe area for brand mark.');
+  }
+  return lines.length ? lines.join('\n') : '';
+}
+
+function summarizeBrandForPrompt(brand) {
+  if (!brand) return '';
+  let out = '';
+  if (brand.chunks && brand.chunks.length > 0) {
+    for (const c of brand.chunks) {
+      if ((out + '\n' + c.text).length > 2400) break;
+      out += (out ? '\n' : '') + c.text;
+    }
+  }
+  const kitSummary = describeBrandKitForPrompt(brand.kit, { includeLogo: false });
+  if (kitSummary) {
+    out += (out ? '\n\n' : '') + `Brand kit:\n${kitSummary}`;
+  }
+  return out.trim();
+}
+
+function isBrandKitPath(pathname) {
+  if (!pathname) return false;
+  const normalized = String(pathname)
+    .toLowerCase()
+    .replace(/\/+$/, '');
+  return (
+    normalized === '/api/brand/kit' ||
+    normalized === '/api/brand-kit' ||
+    normalized === '/api/brandkit'
+  );
 }
 
 const server = http.createServer((req, res) => {
@@ -733,7 +876,9 @@ const server = http.createServer((req, res) => {
 
   // Optional canonical host redirect to enforce a single domain (e.g., promptlyapp.com)
   // IMPORTANT: Do NOT redirect Stripe webhooks; Stripe will not follow 301s for webhooks.
-  if (CANONICAL_HOST && parsed.pathname !== '/stripe/webhook') {
+  const pathLower = typeof parsed.pathname === 'string' ? parsed.pathname.toLowerCase() : '';
+  const isApiRequest = pathLower.startsWith('/api/') || req.method !== 'GET';
+  if (CANONICAL_HOST && parsed.pathname !== '/stripe/webhook' && !isApiRequest) {
     const reqHost = (req.headers && req.headers.host) ? String(req.headers.host) : '';
     // Strip port if present for comparison
     const normalize = (h) => String(h || '').replace(/:\d+$/, '');
@@ -892,9 +1037,20 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const payload = JSON.parse(body || '{}');
-        const { assetType = 'story template', tone = 'bold', notes = '', day = '', caption = '', niche = '', aspectRatio = '9:16' } = payload;
+        const {
+          assetType = 'story template',
+          tone = 'bold',
+          notes = '',
+          day = '',
+          caption = '',
+          niche = '',
+          aspectRatio = '9:16',
+          userId = '',
+        } = payload;
+        const brandProfile = userId ? loadBrand(userId) : null;
+        const brandKit = brandProfile?.kit || null;
         const wantsVideo = /video|clip|snippet/i.test(String(assetType || ''));
-        const prompt = buildDesignPrompt({ assetType, tone, notes, day, caption, niche });
+        const prompt = buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit });
         let buffer;
         let extension;
         try {
@@ -1406,6 +1562,55 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  const normalizedPath = (() => {
+    const rawPath = typeof parsed.pathname === 'string' ? parsed.pathname : '';
+    const trimmed = rawPath.replace(/\/+$/, '');
+    return (trimmed || '/').toLowerCase();
+  })();
+
+  if (isBrandKitPath(normalizedPath) && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        const { userId, kit } = JSON.parse(body || '{}');
+        if (!userId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'userId required' }));
+        }
+        if (!kit || typeof kit !== 'object') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'kit payload required' }));
+        }
+        const saved = saveBrandKit(userId, kit);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ ok: true, kit: saved.kit || null }));
+      } catch (err) {
+        console.error('Brand kit save error:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: err.message || 'Unable to save brand kit' }));
+      }
+    });
+    return;
+  }
+
+  if (isBrandKitPath(normalizedPath) && req.method === 'GET') {
+    const userId = parsed.query.userId;
+    if (!userId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'userId required' }));
+    }
+    try {
+      const brand = loadBrand(userId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, kit: brand?.kit || null }));
+    } catch (err) {
+      console.error('Brand kit fetch error:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unable to load brand kit' }));
+    }
+  }
+
   if (parsed.pathname === '/api/brand/ingest' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -1487,7 +1692,6 @@ ${JSON.stringify(compactPosts)}`;
       return res.end(JSON.stringify({ error: 'Not found' }));
     }
 
-    // Serve the file
     const ext = path.extname(filePath).toLowerCase();
     const mimeTypes = {
       '.html': 'text/html; charset=utf-8',

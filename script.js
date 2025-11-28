@@ -56,6 +56,17 @@ const tabLibrary = document.getElementById("tab-library");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
   const brandStatus = document.getElementById("brand-status");
+  const brandPrimaryColorInput = document.getElementById('brand-primary-color');
+  const brandSecondaryColorInput = document.getElementById('brand-secondary-color');
+  const brandAccentColorInput = document.getElementById('brand-accent-color');
+  const brandHeadingFontInput = document.getElementById('brand-heading-font');
+  const brandBodyFontInput = document.getElementById('brand-body-font');
+  const brandLogoInput = document.getElementById('brand-logo-input');
+  const brandLogoPreview = document.getElementById('brand-logo-preview');
+  const brandLogoPlaceholder = document.getElementById('brand-logo-placeholder');
+  const brandLogoClearBtn = document.getElementById('brand-logo-clear');
+  const brandKitSaveBtn = document.getElementById('brand-kit-save-btn');
+  const brandKitStatus = document.getElementById('brand-kit-status');
   const exportIcsBtn = document.getElementById('export-ics');
   const downloadZipBtn = document.getElementById('download-zip');
   const copyAllCaptionsBtn = document.getElementById('copy-all-captions');
@@ -67,6 +78,21 @@ const tabLibrary = document.getElementById("tab-library");
   const hub = document.getElementById('publish-hub');
   const hubNext = document.getElementById('hub-next');
   const hubAfter = document.getElementById('hub-after');
+const designSection = document.getElementById('design-lab');
+const designGrid = document.getElementById('design-grid');
+const designEmpty = document.getElementById('design-empty');
+const designRequestBtn = document.getElementById('design-request-btn');
+const designEmptyCta = document.getElementById('design-empty-cta');
+const designModal = document.getElementById('design-modal');
+const designForm = document.getElementById('design-form');
+const designCloseBtn = document.getElementById('design-close-btn');
+const designCancelBtn = document.getElementById('design-cancel-btn');
+const designFeedbackEl = document.getElementById('design-feedback');
+const designSelectedPost = document.getElementById('design-selected-post');
+const designDayInput = document.getElementById('design-day');
+const designAssetTypeInput = document.getElementById('design-asset-type');
+const designToneInput = document.getElementById('design-tone');
+const designNotesInput = document.getElementById('design-notes');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -74,6 +100,7 @@ const forceLandingView = urlParams.get('view') === 'landing';
 // Tabs
   const tabPlan = document.getElementById('tab-plan');
   const tabPublish = document.getElementById('tab-publish');
+  const tabDesign = document.getElementById('tab-design');
   const calendarSection = document.querySelector('section.calendar');
   const toggleCompactBtn = document.getElementById('toggle-compact');
   const hubEmpty = document.getElementById('hub-empty');
@@ -118,6 +145,87 @@ let activeTab = 'plan';
 let isCompact = false;
 let cachedUserIsPro = false;
 let currentPostFrequency = 1;
+let designAssets = [];
+let activeDesignContext = null;
+let currentBrandKit = null;
+let brandKitLoaded = false;
+const ASSET_PRESETS = {
+  education: {
+    assetType: 'carousel-template',
+    tone: 'bold',
+    note: 'Infographic flow with labeled data points and icon callouts.'
+  },
+  lifestyle: {
+    assetType: 'story-template',
+    tone: 'playful',
+    note: 'Photo-first layout with candid lifestyle prompts and overlay captions.'
+  },
+  promotion: {
+    assetType: 'social-graphic',
+    tone: 'bold',
+    note: 'Product mockup spotlight with price badge and urgent CTA ribbon.'
+  },
+  'social proof': {
+    assetType: 'social-graphic',
+    tone: 'elegant',
+    note: 'Testimonial card featuring quote, avatar placeholder, and star accents.'
+  }
+};
+const TYPE_TO_PILLAR = {
+  educational: 'education',
+  promotional: 'promotion',
+  lifestyle: 'lifestyle',
+  interactive: 'lifestyle'
+};
+
+function normalizePillar(entry = {}) {
+  const rawPillar = String(entry.pillar || '').toLowerCase().trim();
+  if (rawPillar && ASSET_PRESETS[rawPillar]) return rawPillar;
+  const typeKey = TYPE_TO_PILLAR[String(entry.type || '').toLowerCase().trim()];
+  if (typeKey && ASSET_PRESETS[typeKey]) return typeKey;
+  const fallback = rawPillar || typeKey || '';
+  return fallback;
+}
+
+function deriveAssetPreset(entry = {}) {
+  const pillarKey = normalizePillar(entry);
+  let preset = pillarKey && ASSET_PRESETS[pillarKey] ? ASSET_PRESETS[pillarKey] : null;
+  if (!preset) {
+    const format = String(entry.format || '').toLowerCase();
+    if (format.includes('story')) {
+      preset = { assetType: 'story-template', tone: 'playful', note: 'Story-friendly vertical layout with photo prompts and sticker callouts.' };
+    } else if (format.includes('reel') || format.includes('video')) {
+      preset = { assetType: 'video-snippet', tone: 'bold', note: 'Video frame storyboard with hook text, mid-scene overlay, and CTA end card.' };
+    }
+  }
+  if (!preset) {
+    preset = { assetType: 'social-graphic', tone: 'bold', note: 'High-contrast CTA graphic anchored by branded gradients.' };
+  }
+  return preset;
+}
+
+function buildAutoNotes(entry = {}, preset = {}) {
+  const parts = [];
+  if (preset.note) parts.push(preset.note);
+  const idea = entry.idea || entry.title;
+  if (idea) parts.push(`Concept: ${idea}`);
+  if (entry.caption) {
+    const safeCaption = entry.caption.replace(/\s+/g, ' ').trim();
+    parts.push(`Caption cue: ${safeCaption}`);
+  }
+  if (entry.cta) parts.push(`CTA: ${entry.cta}`);
+  if (entry.designNotes) parts.push(`Existing notes: ${entry.designNotes}`);
+  if (entry.storyPrompt) parts.push(`Story prompt: ${entry.storyPrompt}`);
+  if (currentBrandKit) {
+    const palette = [currentBrandKit.primaryColor, currentBrandKit.secondaryColor, currentBrandKit.accentColor].filter(Boolean).join(', ');
+    if (palette) parts.push(`Brand palette: ${palette}`);
+    const fonts = [currentBrandKit.headingFont, currentBrandKit.bodyFont].filter(Boolean).join(' / ');
+    if (fonts) parts.push(`Fonts: ${fonts}`);
+    if (currentBrandKit.logoDataUrl) parts.push('Reserve safe space for brand logo in a corner.');
+  }
+  return parts.filter(Boolean).join('\n');
+}
+renderDesignAssets();
 const POST_FREQUENCY_KEY = 'promptly_post_frequency';
 const PLAN_DETAILS = {
   pro: {
@@ -416,38 +524,284 @@ applyProfileSettings();
       return JSON.parse(localStorage.getItem(postedKey()) || '{}');
     } catch { return {}; }
   }
-  function updateTabs(){
+function updateTabs(){
     if (!calendarSection || !hub) return;
+    const wantsDesign = activeTab === 'design';
+    if (wantsDesign && !cachedUserIsPro) activeTab = 'plan';
     const hasCalendar = currentCalendar && currentCalendar.length > 0;
     // Toggle classes
     if (tabPlan) tabPlan.classList.toggle('active', activeTab==='plan');
     if (tabPublish) tabPublish.classList.toggle('active', activeTab==='publish');
+    if (tabDesign) tabDesign.classList.toggle('active', activeTab==='design');
     if (tabPlan) tabPlan.setAttribute('aria-pressed', String(activeTab==='plan'));
     if (tabPublish) tabPublish.setAttribute('aria-pressed', String(activeTab==='publish'));
-    // Show/hide sections with fade
-    if (activeTab==='plan') {
-      // Fade out hub, fade in calendar
-      if (hub.style.display !== 'none') {
-        hub.style.opacity = '0';
-        setTimeout(() => { hub.style.display = 'none'; }, 200);
-      }
-      calendarSection.style.display = '';
+    if (tabDesign) tabDesign.setAttribute('aria-pressed', String(activeTab==='design'));
+
+    const showCalendar = activeTab === 'plan';
+    const showHub = activeTab === 'publish';
+    const showDesign = activeTab === 'design' && designSection;
+
+    calendarSection.style.display = showCalendar ? '' : 'none';
+    hub.style.display = showHub ? '' : 'none';
+    if (designSection) designSection.style.display = showDesign ? 'flex' : 'none';
+
+    if (showCalendar) {
+      hub.style.opacity = '0';
+      if (designSection) designSection.style.opacity = '0';
       requestAnimationFrame(() => { calendarSection.style.opacity = '1'; });
-    } else {
-      // Fade out calendar, fade in hub
+    } else if (showHub) {
       calendarSection.style.opacity = '0';
-      setTimeout(() => { calendarSection.style.display = 'none'; }, 200);
-      hub.style.display = '';
+      if (designSection) designSection.style.opacity = '0';
       requestAnimationFrame(() => { hub.style.opacity = '1'; });
-      // Show empty state if no calendar
-      if (!hasCalendar) {
+  if (!hasCalendar) {
         if (hubEmpty) hubEmpty.style.display = '';
         if (hubGrid) hubGrid.style.display = 'none';
       } else {
         if (hubEmpty) hubEmpty.style.display = 'none';
         if (hubGrid) hubGrid.style.display = '';
       }
+    } else if (showDesign && designSection) {
+      calendarSection.style.opacity = '0';
+      hub.style.opacity = '0';
+      requestAnimationFrame(() => { designSection.style.opacity = '1'; });
+      renderDesignAssets();
     }
+  }
+
+function renderDesignAssets() {
+    if (!designGrid || !designEmpty) return;
+    if (!designAssets.length) {
+      designEmpty.style.display = '';
+      designGrid.innerHTML = '';
+      return;
+    }
+    designEmpty.style.display = 'none';
+    designGrid.innerHTML = designAssets
+      .map((asset) => {
+        const resolvedDay = asset.linkedDay || asset.day;
+        const dayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
+        const preview = escapeHtml(asset.previewText || asset.title || 'AI asset ready to download');
+        const title = escapeHtml(asset.title || 'AI Asset');
+        const typeText = escapeHtml(asset.typeLabel || formatAssetTypeLabel(asset.assetType));
+        const status = escapeHtml(asset.status || 'Ready');
+        const download = escapeHtml(asset.downloadUrl || '');
+        const brief = escapeHtml(asset.brief || asset.previewText || '');
+        const linkBadge = resolvedDay ? `<span class="design-asset__badge">Linked to Day ${String(resolvedDay).padStart(2, '0')}</span>` : '';
+        return `
+          <article class="design-asset" data-asset-id="${asset.id}">
+            <div class="design-asset__preview">${preview}</div>
+            <div class="design-asset__meta">
+              <strong>${title}</strong>
+              <span>${escapeHtml(dayLabel)} · ${typeText}</span>
+              ${linkBadge}
+              <span>Status: ${status}</span>
+            </div>
+            <div class="design-asset__actions">
+              <button class="secondary design-asset__download" data-url="${download}">Download</button>
+              <button class="ghost design-asset__copy" data-brief="${brief}">Copy brief</button>
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
+async function requireProAccess() {
+    if (cachedUserIsPro) return true;
+    const user = await getCurrentUser();
+    if (!user) return false;
+    const userIsPro = await isPro(user);
+    cachedUserIsPro = userIsPro;
+    return userIsPro;
+  }
+
+async function startDesignModal(entry = null, entryDay = null) {
+    const allowed = await requireProAccess();
+    if (!allowed) {
+      showUpgradeModal();
+      return;
+    }
+    const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
+    activeDesignContext = entry ? { entry, day: resolvedDay } : null;
+    if (designForm) designForm.reset();
+    if (designDayInput) designDayInput.value = resolvedDay || '';
+
+    if (entry) {
+      const preset = deriveAssetPreset(entry);
+      if (designAssetTypeInput) {
+        const hasOption = Array.from(designAssetTypeInput.options || []).some((opt) => opt.value === preset.assetType);
+        designAssetTypeInput.value = hasOption ? preset.assetType : designAssetTypeInput.value;
+      }
+      if (designToneInput) {
+        const hasTone = Array.from(designToneInput.options || []).some((opt) => opt.value === preset.tone);
+        designToneInput.value = hasTone ? preset.tone : designToneInput.value;
+      }
+      if (designNotesInput) {
+        designNotesInput.value = buildAutoNotes(entry, preset);
+      }
+    } else if (designNotesInput) {
+      designNotesInput.value = '';
+    }
+
+    if (designSelectedPost) {
+      if (entry && resolvedDay) {
+        const idea = entry.idea || entry.title || 'Post';
+        designSelectedPost.textContent = `Linked to Day ${String(resolvedDay).padStart(2, '0')}: ${idea}`;
+      } else if (entry) {
+        designSelectedPost.textContent = entry.idea || entry.title || 'Linked post';
+      } else {
+        designSelectedPost.textContent = 'General request (not linked to a specific day)';
+      }
+    }
+    if (designFeedbackEl) designFeedbackEl.textContent = '';
+    if (designModal) designModal.style.display = 'flex';
+  }
+
+function closeDesignModal() {
+    if (designModal) designModal.style.display = 'none';
+    if (designFeedbackEl) designFeedbackEl.textContent = '';
+    if (designForm) designForm.reset();
+    if (designDayInput) designDayInput.value = '';
+    if (designSelectedPost) designSelectedPost.textContent = '';
+    activeDesignContext = null;
+  }
+
+function formatAssetTypeLabel(type) {
+    return type ? type.replace(/[-_]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) : 'Asset';
+  }
+
+async function handleDesignFormSubmit(event) {
+    event.preventDefault();
+    const allowed = await requireProAccess();
+    if (!allowed) {
+      showUpgradeModal();
+      return;
+    }
+    const currentUserId = activeUserEmail || await getCurrentUser();
+    const payload = {
+      day: Number(designDayInput?.value) || activeDesignContext?.day || null,
+      assetType: designAssetTypeInput?.value || 'social-graphic',
+      tone: designToneInput?.value || 'bold',
+      notes: designNotesInput?.value?.trim() || '',
+      userId: currentUserId || '',
+      title:
+        (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
+        (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
+    };
+    const kitSummary = summarizeBrandKitBrief(currentBrandKit);
+    if (kitSummary) payload.brandKitSummary = kitSummary;
+    if (designFeedbackEl) designFeedbackEl.textContent = 'Generating asset...';
+    try {
+      const asset = await requestDesignAsset(payload);
+      asset.createdAt = asset.createdAt || new Date().toISOString();
+      asset.linkedDay = payload.day || activeDesignContext?.day || null;
+      designAssets.unshift(asset);
+      renderDesignAssets();
+      if (activeDesignContext?.entry) {
+        linkAssetToCalendarPost(asset);
+      }
+      if (designFeedbackEl) {
+        if (asset.linkedDay) {
+          designFeedbackEl.textContent = `Asset linked to Day ${String(asset.linkedDay).padStart(2, '0')}.`;
+        } else {
+          designFeedbackEl.textContent = 'Asset added to Design tab.';
+        }
+      }
+      setTimeout(() => {
+        closeDesignModal();
+      }, 1100);
+    } catch (error) {
+      console.error('Design asset error:', error);
+      if (designFeedbackEl) designFeedbackEl.textContent = 'Unable to generate asset. Try again soon.';
+    }
+  }
+
+async function requestDesignAsset(payload) {
+    try {
+      const response = await fetch('/api/design/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const asset = {
+          id: data.id || Date.now(),
+          day: payload.day,
+          title: data.title || payload.title,
+          typeLabel: data.type || formatAssetTypeLabel(payload.assetType),
+          previewText: data.previewText || data.summary || `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`,
+          downloadUrl: data.downloadUrl || '',
+          status: data.status || 'Ready',
+          brief: payload.notes || '',
+        };
+        if (!asset.downloadUrl) {
+          const blob = buildDesignPdfBlob(asset, payload);
+          asset.fileBlob = blob;
+          asset.fileName = `${slugify(asset.title || 'promptly-asset')}.pdf`;
+          asset.downloadUrl = URL.createObjectURL(blob);
+        }
+        return asset;
+      }
+    } catch (error) {
+      console.warn('Design asset generation fallback', error);
+    }
+    const fallback = {
+      id: Date.now(),
+      day: payload.day,
+      title: payload.title,
+      typeLabel: formatAssetTypeLabel(payload.assetType),
+      previewText: `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`,
+      status: 'Ready',
+      brief: payload.notes || '',
+    };
+    const blob = buildDesignPdfBlob(fallback, payload);
+    fallback.fileBlob = blob;
+    fallback.fileName = `${slugify(fallback.title || 'promptly-asset')}.pdf`;
+    fallback.downloadUrl = URL.createObjectURL(blob);
+  return fallback;
+}
+
+function linkAssetToCalendarPost(asset) {
+    if (!activeDesignContext || !activeDesignContext.entry) return;
+    const targetEntry = activeDesignContext.entry;
+    const summary = {
+      id: asset.id,
+      title: asset.title,
+      typeLabel: asset.typeLabel,
+      downloadUrl: asset.downloadUrl,
+      previewText: asset.previewText,
+      status: asset.status,
+      createdAt: asset.createdAt || new Date().toISOString(),
+      day: asset.linkedDay || activeDesignContext.day || null,
+    };
+    if (!Array.isArray(targetEntry.assets)) targetEntry.assets = [];
+    const next = [summary, ...targetEntry.assets.filter((existing) => existing && existing.id !== summary.id)];
+    targetEntry.assets = next.slice(0, 5);
+    if (Array.isArray(currentCalendar) && currentCalendar.length) {
+      renderCards(currentCalendar);
+    }
+  }
+
+function handleDesignAssetDownload(asset, fileNameOverride) {
+    let url = asset.downloadUrl;
+    let revokeLater = false;
+    if (!url && asset.fileBlob) {
+      url = URL.createObjectURL(asset.fileBlob);
+      revokeLater = true;
+    }
+    if (!url) {
+      const blob = buildDesignPdfBlob(asset, asset);
+      url = URL.createObjectURL(blob);
+      revokeLater = true;
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileNameOverride || asset.fileName || `${slugify(asset.title || 'promptly-asset')}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (revokeLater) URL.revokeObjectURL(url);
   }
   function savePostedMap(map) { localStorage.setItem(postedKey(), JSON.stringify(map)); }
   function isPosted(day) { const map = loadPostedMap(); return !!map[String(day)]; }
@@ -510,6 +864,7 @@ async function bootstrapApp(attempt = 0) {
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
+    refreshBrandKit();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
@@ -597,6 +952,9 @@ async function bootstrapApp(attempt = 0) {
     // User is not logged in - show public nav
     console.log('✗ No user logged in - showing public nav');
     activeUserEmail = '';
+    currentBrandKit = null;
+    brandKitLoaded = false;
+    applyBrandKitToForm(null);
     profileSettings = loadProfileSettings();
     applyProfileSettings();
     updateAccountOverviewEmail('');
@@ -959,6 +1317,175 @@ function closeBrandModal() {
   if (brandModal) brandModal.style.display = 'none';
 }
 
+function updateBrandLogoPreview(src) {
+  if (!brandLogoPreview) return;
+  if (src) {
+    brandLogoPreview.src = src;
+    brandLogoPreview.style.display = 'block';
+    brandLogoPreview.dataset.logo = src;
+    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'none';
+  } else {
+    brandLogoPreview.removeAttribute('src');
+    brandLogoPreview.style.display = 'none';
+    if (brandLogoPreview.dataset) delete brandLogoPreview.dataset.logo;
+    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'block';
+  }
+}
+
+function applyBrandKitToForm(kit) {
+  const defaults = {
+    primaryColor: '#7f5af0',
+    secondaryColor: '#2cb1bc',
+    accentColor: '#ff7ac3',
+  };
+  if (brandPrimaryColorInput) brandPrimaryColorInput.value = kit?.primaryColor || defaults.primaryColor;
+  if (brandSecondaryColorInput) brandSecondaryColorInput.value = kit?.secondaryColor || defaults.secondaryColor;
+  if (brandAccentColorInput) brandAccentColorInput.value = kit?.accentColor || defaults.accentColor;
+  if (brandHeadingFontInput) brandHeadingFontInput.value = kit?.headingFont || '';
+  if (brandBodyFontInput) brandBodyFontInput.value = kit?.bodyFont || '';
+  updateBrandLogoPreview(kit?.logoDataUrl || '');
+}
+
+function serializeBrandKitForm() {
+  return {
+    primaryColor: brandPrimaryColorInput?.value || '',
+    secondaryColor: brandSecondaryColorInput?.value || '',
+    accentColor: brandAccentColorInput?.value || '',
+    headingFont: brandHeadingFontInput?.value?.trim() || '',
+    bodyFont: brandBodyFontInput?.value?.trim() || '',
+    logoDataUrl: brandLogoPreview?.dataset.logo ?? '',
+  };
+}
+
+function summarizeBrandKitBrief(kit) {
+  if (!kit) return '';
+  const parts = [];
+  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
+  if (palette.length) parts.push(`Palette ${palette.join(', ')}`);
+  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
+  if (fonts.length) parts.push(`Fonts ${fonts.join(' / ')}`);
+  if (kit.logoDataUrl) parts.push('Reserve space for logo mark.');
+  return parts.join(' | ');
+}
+
+async function refreshBrandKit(force = false) {
+  if (brandKitLoaded && !force) return currentBrandKit;
+  const userId = activeUserEmail || await getCurrentUser();
+  if (!userId) return null;
+  try {
+    const resp = await fetch(`/api/brand/kit?userId=${encodeURIComponent(userId)}`, { cache: 'no-store', redirect: 'manual' });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      currentBrandKit = data.kit || null;
+      applyBrandKitToForm(currentBrandKit);
+    } else {
+      throw new Error('kit endpoint unavailable');
+    }
+  } catch (err) {
+    console.warn('Brand kit fetch failed, falling back to profile preferences:', err?.message || err);
+    try {
+      const prefs = await getProfilePreferences();
+      currentBrandKit = prefs?.brandKit || null;
+      applyBrandKitToForm(currentBrandKit);
+    } catch (fallbackErr) {
+      console.warn('Unable to load brand kit from preferences:', fallbackErr?.message || fallbackErr);
+    }
+  }
+  brandKitLoaded = true;
+  return currentBrandKit;
+}
+
+async function handleBrandKitSave() {
+  const userId = activeUserEmail || await getCurrentUser();
+  if (!userId) {
+    if (brandKitStatus) brandKitStatus.textContent = 'Sign in to save your brand kit.';
+    return;
+  }
+  const kitPayload = serializeBrandKitForm();
+  if (brandKitStatus) {
+    brandKitStatus.textContent = 'Saving brand kit...';
+    brandKitStatus.classList.remove('success');
+  }
+  if (brandKitSaveBtn) brandKitSaveBtn.disabled = true;
+  let saved = false;
+  try {
+    const resp = await fetch('/api/brand/kit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, kit: kitPayload }),
+      redirect: 'manual',
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      currentBrandKit = data.kit || kitPayload;
+      saved = true;
+    } else {
+      throw new Error('Kit API unavailable');
+    }
+  } catch (err) {
+    console.warn('Brand kit save via API failed, falling back to profile preferences:', err?.message || err);
+    try {
+      const prefs = await getProfilePreferences();
+      const nextPrefs = Object.assign({}, prefs, { brandKit: kitPayload });
+      await saveProfilePreferences(nextPrefs);
+      currentBrandKit = kitPayload;
+      saved = true;
+    } catch (fallbackErr) {
+      console.error('Brand kit fallback save failed:', fallbackErr);
+      if (brandKitStatus) {
+        brandKitStatus.textContent = fallbackErr.message || 'Unable to save brand kit';
+        brandKitStatus.classList.remove('success');
+      }
+    }
+  } finally {
+    if (brandKitSaveBtn) brandKitSaveBtn.disabled = false;
+    if (brandKitStatus) {
+      if (saved) {
+        brandKitStatus.textContent = '✓ Brand kit saved';
+        brandKitStatus.classList.add('success');
+        brandKitLoaded = true;
+        applyBrandKitToForm(currentBrandKit);
+      }
+      setTimeout(() => {
+        brandKitStatus.textContent = '';
+        brandKitStatus.classList.remove('success');
+      }, 2600);
+    }
+  }
+}
+
+function handleBrandLogoUpload(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    if (brandKitStatus) {
+      brandKitStatus.textContent = 'Logo is too large (max 2MB).';
+      brandKitStatus.classList.remove('success');
+    }
+    event.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result;
+    if (typeof result === 'string' && result.startsWith('data:image/')) {
+      updateBrandLogoPreview(result);
+    } else if (brandKitStatus) {
+      brandKitStatus.textContent = 'Unsupported logo format.';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearBrandLogoPreview() {
+  if (brandLogoInput) brandLogoInput.value = '';
+  updateBrandLogoPreview('');
+}
+
+if (brandPrimaryColorInput || brandSecondaryColorInput || brandAccentColorInput) {
+  applyBrandKitToForm(null);
+}
+
 if (brandBtn && brandModal) {
   brandBtn.addEventListener('click', async () => {
     console.log('🧠 Brand Brain clicked');
@@ -971,6 +1498,7 @@ if (brandBtn && brandModal) {
       showUpgradeModal();
       return;
     }
+    await refreshBrandKit();
     console.log('🧠 Opening brand modal');
     openBrandModal();
   });
@@ -982,7 +1510,7 @@ if (brandCancelBtn) {
 }
 if (brandSaveBtn) {
   brandSaveBtn.addEventListener('click', async () => {
-    const userId = getCurrentUser();
+    const userId = await getCurrentUser();
     if (!userId) {
       alert('Please sign in to save Brand Brain.');
       return;
@@ -1013,6 +1541,21 @@ if (brandSaveBtn) {
       brandSaveBtn.disabled = false;
       brandSaveBtn.textContent = 'Save to Brand Brain';
     }
+  });
+}
+if (brandKitSaveBtn) {
+  brandKitSaveBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    handleBrandKitSave();
+  });
+}
+if (brandLogoInput) {
+  brandLogoInput.addEventListener('change', handleBrandLogoUpload);
+}
+if (brandLogoClearBtn) {
+  brandLogoClearBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    clearBrandLogoPreview();
   });
 }
 
@@ -1143,6 +1686,30 @@ const createCard = (post) => {
       row.append(header, textEl);
       return row;
     };
+    const buildLinkedAssetsRow = (entryData) => {
+      const assets = Array.isArray(entryData?.assets) ? entryData.assets : [];
+      if (!assets.length) return null;
+      const container = document.createElement('div');
+      container.className = 'calendar-card__assets calendar-card__detail-row';
+      const header = document.createElement('div');
+      header.className = 'detail-row__top';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = assets.length > 1 ? 'AI Assets' : 'AI Asset';
+      header.append(labelEl);
+      const chips = document.createElement('div');
+      chips.className = 'calendar-card__asset-chips';
+      assets.forEach((asset) => {
+        const link = document.createElement('a');
+        link.href = asset.downloadUrl || asset.url || '#';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = asset.typeLabel || asset.title || 'View';
+        link.className = 'calendar-card__asset-chip';
+        chips.appendChild(link);
+      });
+      container.append(header, chips);
+      return container;
+    };
 
     const formatEl = createDetailRow('Format', format, 'calendar-card__format');
     const ctaEl = createDetailRow('CTA', cta, 'calendar-card__cta');
@@ -1200,6 +1767,7 @@ const createCard = (post) => {
             .join(' | ')
         : '';
     const variantsEl = variantText ? createDetailRow('Platform Variants', variantText, 'calendar-card__variants') : null;
+    const assetsEl = buildLinkedAssetsRow(entry);
 
     const actionsEl = document.createElement('div');
     actionsEl.className = 'calendar-card__actions';
@@ -1320,6 +1888,10 @@ const createCard = (post) => {
     attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
     actionsEl.appendChild(regenBtn);
 
+    const assetBtn = makeBtn('Generate Asset');
+    attachProAction(assetBtn, () => startDesignModal(entry, entryDay));
+    actionsEl.appendChild(assetBtn);
+
     if (entry.variants) {
       if (entry.variants.igCaption) {
         const b = makeBtn('Copy IG');
@@ -1405,6 +1977,7 @@ const createCard = (post) => {
       weeklyPromoEl,
       videoScriptEl,
       variantsEl,
+      assetsEl,
       ...proDetailNodes,
       actionsEl,
     ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
@@ -2287,6 +2860,17 @@ function buildPostHTML(post){
       : ''
   ];
 
+  if (Array.isArray(post.assets) && post.assets.length) {
+    const assetChips = post.assets
+      .map((asset) => {
+        const label = escapeHtml(asset.typeLabel || asset.title || 'View');
+        const url = escapeHtml(asset.downloadUrl || asset.url || '#');
+        return `<a class="calendar-card__asset-chip" href="${url}" target="_blank" rel="noopener">${label}</a>`;
+      })
+      .join('');
+    detailBlocks.push(`<div class="calendar-card__assets"><strong>AI Assets</strong><div class="calendar-card__asset-chips">${assetChips}</div></div>`);
+  }
+
   if (post.captionVariations) {
     detailBlocks.push(
       `<div class="calendar-card__caption-variations"><strong>Caption variations</strong>`
@@ -2403,6 +2987,11 @@ function buildPostHTML(post){
     .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
     .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
     .calendar-card__visual a:hover { text-decoration: underline; }
+    .calendar-card__assets { background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 8px; }
+    .calendar-card__assets strong { display: block; margin-bottom: 0.35rem; }
+    .calendar-card__asset-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .calendar-card__asset-chip { display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(127,90,240,0.35); padding: 0.2rem 0.85rem; font-size: 0.85rem; color: #7f5af0; text-decoration: none; }
+    .calendar-card__asset-chip:hover { border-color: rgba(127,90,240,0.7); }
     details { margin-top: 0.5rem; }
     details > summary { cursor: pointer; color: var(--text-primary); font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.4rem 0.6rem; width: fit-content; transition: all 0.2s ease; }
     details[open] > summary { background: var(--accent-soft); border-color: var(--accent-strong); }
@@ -3422,6 +4011,17 @@ console.log("All buttons are ready to use!");
 // Tabs behavior
 if (tabPlan) tabPlan.addEventListener('click', ()=>{ activeTab='plan'; updateTabs(); });
 if (tabPublish) tabPublish.addEventListener('click', ()=>{ activeTab='publish'; updateTabs(); });
+if (tabDesign) {
+  tabDesign.addEventListener('click', async () => {
+    const allowed = await requireProAccess();
+    if (!allowed) {
+      showUpgradeModal();
+      return;
+    }
+    activeTab = 'design';
+    updateTabs();
+  });
+}
 
 // Compact mode toggle
 if (toggleCompactBtn && calendarSection) {
@@ -3438,6 +4038,44 @@ if (hubEmptyGenBtn) {
     activeTab = 'plan';
     updateTabs();
     if (nicheInput) nicheInput.focus();
+  });
+}
+
+// Design Lab events
+if (designRequestBtn) designRequestBtn.addEventListener('click', () => startDesignModal());
+if (designEmptyCta) designEmptyCta.addEventListener('click', () => startDesignModal());
+if (designCloseBtn) designCloseBtn.addEventListener('click', closeDesignModal);
+if (designCancelBtn) designCancelBtn.addEventListener('click', closeDesignModal);
+if (designModal) {
+  designModal.addEventListener('click', (event) => {
+    if (event.target === designModal) closeDesignModal();
+  });
+}
+if (designForm) designForm.addEventListener('submit', handleDesignFormSubmit);
+if (designGrid) {
+  designGrid.addEventListener('click', async (event) => {
+    const card = event.target.closest('.design-asset');
+    if (!card) return;
+    const assetId = Number(card.dataset.assetId);
+    const asset = designAssets.find((item) => item.id === assetId);
+    if (!asset) return;
+    const downloadBtn = event.target.closest('.design-asset__download');
+    const copyBtn = event.target.closest('.design-asset__copy');
+    if (downloadBtn) {
+      event.preventDefault();
+      handleDesignAssetDownload(asset, downloadBtn.dataset.filename);
+    } else if (copyBtn) {
+      event.preventDefault();
+      try {
+        await navigator.clipboard.writeText(asset.brief || asset.previewText || asset.title || '');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy brief';
+        }, 1000);
+      } catch (error) {
+        console.warn('Unable to copy brief', error);
+      }
+    }
   });
 }
 
@@ -3579,3 +4217,56 @@ if (hubSkipPrevBtn) {
     renderPublishHub();
   });
 }
+function buildDesignPdfBlob(asset, payload) {
+    const lines = [
+      `Promptly AI Asset`,
+      `Title: ${asset.title || 'AI Asset'}`,
+      `Day: ${asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'Unassigned'}`,
+      `Type: ${asset.typeLabel || formatAssetTypeLabel(payload.assetType)}`,
+      `Tone: ${payload.tone || 'Brand default'}`,
+      `Notes: ${payload.notes || 'None provided'}`,
+      `Preview: ${asset.previewText || 'Ready-to-use design prompts'}`,
+    ];
+    if (payload.brandKitSummary) {
+      lines.push(`Brand Kit: ${payload.brandKitSummary}`);
+    }
+    const content = pdfBuildText(lines);
+    const pdf = [
+      '%PDF-1.4',
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      '2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj',
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj',
+      `4 0 obj << /Length ${content.length} >> stream`,
+      content,
+      'endstream endobj',
+      '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+      'xref',
+      '0 6',
+      '0000000000 65535 f ',
+      '0000000010 00000 n ',
+      '0000000063 00000 n ',
+      '0000000114 00000 n ',
+      '0000000215 00000 n ',
+      '0000000344 00000 n ',
+      'trailer << /Size 6 /Root 1 0 R >>',
+      'startxref',
+      String(370 + content.length),
+      '%%EOF',
+    ].join('\n');
+    return new Blob([pdf], { type: 'application/pdf' });
+  }
+
+function pdfBuildText(lines) {
+    const escaped = lines.map((line) => escapePdfText(line));
+    const ops = escaped
+      .map((line, idx) => {
+        const prefix = idx === 0 ? 'BT /F1 12 Tf 60 760 Td' : '0 -16 Td';
+        return `${idx === 0 ? prefix : prefix}\n(${line}) Tj`;
+      })
+      .join('\n');
+    return `${ops}\nET`;
+  }
+
+function escapePdfText(text) {
+    return String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
