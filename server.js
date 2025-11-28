@@ -72,7 +72,7 @@ function chunkText(input, maxLen = 800) {
   return chunks;
 }
 
-function stabilityJsonRequest({ path: apiPath, method = 'POST', payload }) {
+function stabilityJsonRequest({ path: apiPath, method = 'POST', payload, contentType }) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.stability.ai',
@@ -84,7 +84,7 @@ function stabilityJsonRequest({ path: apiPath, method = 'POST', payload }) {
       },
     };
     if (payload) {
-      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Type'] = contentType || 'application/json';
     }
     const req = https.request(options, (res) => {
       let data = '';
@@ -105,6 +105,54 @@ function stabilityJsonRequest({ path: apiPath, method = 'POST', payload }) {
     });
     req.on('error', reject);
     if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function stabilityMultipartRequest({ path: apiPath, method = 'POST', fields = [] }) {
+  return new Promise((resolve, reject) => {
+    const boundary = '----promptly' + Math.random().toString(16).slice(2);
+    const body = fields
+      .map((field) => {
+        let disposition = `Content-Disposition: form-data; name="${field.name}"`;
+        if (field.filename) disposition += `; filename="${field.filename}"`;
+        const typeLine = `Content-Type: ${field.contentType || 'text/plain; charset=utf-8'}`;
+        const value = field.value === undefined || field.value === null ? '' : String(field.value);
+        return `--${boundary}\r\n${disposition}\r\n${typeLine}\r\n\r\n${value}\r\n`;
+      })
+      .join('') + `--${boundary}--\r\n`;
+    const bodyBuffer = Buffer.from(body, 'utf8');
+    const options = {
+      hostname: 'api.stability.ai',
+      path: apiPath,
+      method,
+      headers: {
+        'Authorization': `Bearer ${STABILITY_API_KEY}`,
+        'Accept': 'application/json',
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': bodyBuffer.length,
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            const parsed = JSON.parse(data || '{}');
+            resolve(parsed);
+          } catch (err) {
+            reject(err);
+          }
+        } else {
+          const err = new Error(`Stability API error ${res.statusCode}: ${data}`);
+          err.statusCode = res.statusCode;
+          reject(err);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(bodyBuffer);
     req.end();
   });
 }
@@ -132,15 +180,15 @@ function wait(ms) {
 }
 
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
-  const body = JSON.stringify({
-    prompt,
-    output_format: 'png',
-    aspect_ratio: aspectRatio,
-  });
-  const json = await stabilityJsonRequest({
+  const json = await stabilityMultipartRequest({
     path: '/v2beta/stable-image/generate/sd3',
     method: 'POST',
-    payload: body,
+    fields: [
+      { name: 'text_prompts[0][text]', value: prompt },
+      { name: 'mode', value: 'text-to-image' },
+      { name: 'aspect_ratio', value: aspectRatio },
+      { name: 'output_format', value: 'png' },
+    ],
   });
   const artifact = json && Array.isArray(json.artifacts) ? json.artifacts[0] : null;
   if (!artifact || !artifact.base64) {
@@ -182,7 +230,7 @@ async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
     seed: Math.floor(Math.random() * 1000000000),
   });
   const task = await stabilityJsonRequest({
-    path: '/v2beta/stable-video/async/text-to-video',
+    path: '/v2beta/stable-video/async/generate',
     method: 'POST',
     payload: body,
   });

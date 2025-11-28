@@ -238,6 +238,33 @@ function buildAutoNotes(entry = {}, preset = {}) {
   return parts.filter(Boolean).join('\n');
 }
 
+function showDesignError(message = 'Unable to generate asset', detail = '') {
+  if (!designFeedbackEl) return;
+  const formattedDetail =
+    detail && !String(detail).includes(String(message)) ? ` ${String(detail)}` : '';
+  designFeedbackEl.textContent = `${message}${formattedDetail || ''}`;
+  designFeedbackEl.classList.remove('success');
+  designFeedbackEl.classList.add('error');
+}
+
+function showDesignSuccess(message = '') {
+  if (!designFeedbackEl) return;
+  designFeedbackEl.textContent = message;
+  designFeedbackEl.classList.remove('error');
+  if (message) {
+    designFeedbackEl.classList.add('success');
+  } else {
+    designFeedbackEl.classList.remove('success');
+  }
+}
+
+function clearDesignFeedback() {
+  if (!designFeedbackEl) return;
+  designFeedbackEl.textContent = '';
+  designFeedbackEl.classList.remove('success');
+  designFeedbackEl.classList.remove('error');
+}
+
 function loadDesignTemplates() {
   if (typeof localStorage === 'undefined') return [];
   try {
@@ -907,13 +934,13 @@ async function startDesignModal(entry = null, entryDay = null) {
         designSelectedPost.textContent = 'General request (not linked to a specific day)';
       }
     }
-    if (designFeedbackEl) designFeedbackEl.textContent = '';
+    clearDesignFeedback();
     if (designModal) designModal.style.display = 'flex';
   }
 
 function closeDesignModal() {
     if (designModal) designModal.style.display = 'none';
-    if (designFeedbackEl) designFeedbackEl.textContent = '';
+    clearDesignFeedback();
     if (designForm) designForm.reset();
     if (designDayInput) designDayInput.value = '';
     if (designSelectedPost) designSelectedPost.textContent = '';
@@ -950,7 +977,7 @@ async function handleDesignFormSubmit(event) {
     }
     const kitSummary = summarizeBrandKitBrief(currentBrandKit);
     if (kitSummary) payload.brandKitSummary = kitSummary;
-    if (designFeedbackEl) designFeedbackEl.textContent = 'Generating asset...';
+    showDesignSuccess('Generating asset…');
     try {
       const asset = await requestDesignAsset(payload);
       asset.createdAt = asset.createdAt || new Date().toISOString();
@@ -967,21 +994,20 @@ async function handleDesignFormSubmit(event) {
       if (activeDesignContext?.entry) {
         linkAssetToCalendarPost(asset);
       }
-      if (designFeedbackEl) {
-        if (asset.linkedDay) {
-          designFeedbackEl.textContent = `Asset linked to Day ${String(asset.linkedDay).padStart(2, '0')}.`;
-        } else {
-          designFeedbackEl.textContent = 'Asset added to Design tab.';
-        }
-      }
+      const successMessage = asset.linkedDay
+        ? `Asset linked to Day ${String(asset.linkedDay).padStart(2, '0')}.`
+        : 'Asset added to Design tab.';
+      showDesignSuccess(successMessage);
       setTimeout(() => {
         closeDesignModal();
       }, 1100);
     } catch (error) {
       console.error('Design asset error:', error);
-      if (designFeedbackEl) {
-        designFeedbackEl.textContent = error?.message || 'Unable to generate asset. Try again soon.';
-      }
+      const detailMessage =
+        error?.details?.detail ||
+        (Array.isArray(error?.details?.errors) ? error.details.errors.join(', ') : '') ||
+        '';
+      showDesignError(error?.message || 'Unable to generate asset. Try again soon.', detailMessage);
     }
   }
 
@@ -1002,6 +1028,8 @@ async function requestDesignAsset(payload) {
         }
         const err = new Error(detail?.error || detail?.detail || `Design API error ${response.status}`);
         err.isApiError = true;
+        err.status = response.status;
+        err.details = detail || { raw };
         throw err;
       }
       const data = raw ? JSON.parse(raw) : {};

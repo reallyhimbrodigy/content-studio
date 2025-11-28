@@ -1177,6 +1177,11 @@ a.ghost:hover {
   color: rgba(255, 120, 120, 0.95);
   font-size: 0.9rem;
   margin-top: -0.5rem;
+  white-space: pre-line;
+}
+
+.input-feedback.error {
+  color: rgba(255, 132, 132, 0.98);
 }
 
 .input-feedback.success {

@@ -37,6 +37,18 @@ Notes
 - The test will call your running local server at `http://localhost:8000` and requires a working OpenAI proxy backend (the server and OPENAI_API_KEY must be configured).
 - Playwright is intentionally optional — it's not required to run the app, but it's a useful smoke test for CI.
 
+### Stability sandbox check
+
+There is also a lightweight integration check that pings Stability's sandbox endpoint with the exact multipart payload our server sends:
+
+```bash
+# export your sandbox (or production) key first
+export STABILITY_SANDBOX_API_KEY=your_sandbox_key
+npm run test:stability
+```
+
+If no sandbox key is set the script exits cleanly and prints "skipped", which allows it to run safely during CI/deploys.
+
 ## Brand Brain (new feature)
 
 **What it does:** Store your brand voice, guidelines, key messages, and examples. Future calendar generations will match your brand automatically.
