@@ -12,7 +12,9 @@ const endpoint = 'https://api.stability.ai/v2beta/stable-image/generate/sd3';
 
 async function run() {
   const form = new FormData();
-  form.set('text_prompts[0][text]', `Promptly deployment check ${new Date().toISOString()}`);
+  const prompt = `Promptly deployment check ${new Date().toISOString()}`;
+  form.set('prompt', prompt);
+  form.set('text_prompts[0][text]', prompt);
   form.set('mode', 'text-to-image');
   form.set('aspect_ratio', '1:1');
   form.set('output_format', 'png');
@@ -36,12 +38,13 @@ async function run() {
   } catch (err) {
     throw new Error(`Unable to parse Stability response: ${err.message}`);
   }
-  if (!Array.isArray(data.artifacts) || !data.artifacts.length) {
-    throw new Error('Stability sandbox response missing artifacts array.');
-  }
-  const hasBase64 = data.artifacts.some((artifact) => artifact && artifact.base64);
-  if (!hasBase64) {
-    throw new Error('Stability sandbox response missing base64 artifacts.');
+  const hasArtifacts = Array.isArray(data.artifacts) && data.artifacts.length > 0;
+  const hasArtifactBase64 = hasArtifacts && data.artifacts.some((artifact) => artifact && artifact.base64);
+  const hasImageField = typeof data.image === 'string' && data.image.length > 32;
+  if (!hasArtifactBase64 && !hasImageField) {
+    throw new Error(
+      `Stability sandbox response missing recognizable image data: ${JSON.stringify(data).slice(0, 400)}`
+    );
   }
   console.log('✓ Stability sandbox endpoint responded with an artifact.');
 }

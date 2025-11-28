@@ -184,6 +184,7 @@ async function generateStabilityImage(prompt, aspectRatio = '9:16') {
     path: '/v2beta/stable-image/generate/sd3',
     method: 'POST',
     fields: [
+      { name: 'prompt', value: prompt },
       { name: 'text_prompts[0][text]', value: prompt },
       { name: 'mode', value: 'text-to-image' },
       { name: 'aspect_ratio', value: aspectRatio },
@@ -191,10 +192,15 @@ async function generateStabilityImage(prompt, aspectRatio = '9:16') {
     ],
   });
   const artifact = json && Array.isArray(json.artifacts) ? json.artifacts[0] : null;
-  if (!artifact || !artifact.base64) {
-    throw new Error('Stability image generation returned no artifact');
+  if (artifact && artifact.base64) {
+    return Buffer.from(artifact.base64, 'base64');
   }
-  return Buffer.from(artifact.base64, 'base64');
+  if (typeof json?.image === 'string') {
+    return Buffer.from(json.image, 'base64');
+  }
+  throw new Error(
+    `Stability image generation returned unexpected payload: ${JSON.stringify(json).slice(0, 200)}`
+  );
 }
 
 async function pollStabilityVideoTask(taskId) {
