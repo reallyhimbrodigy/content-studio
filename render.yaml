@@ -22,6 +22,8 @@ services:
         sync: false
       - key: STRIPE_PRICE_LOOKUP_KEY
         sync: false
+      - key: STABILITY_API_KEY
+        sync: false
       - key: NODE_VERSION
         value: 20
     healthCheckPath: /

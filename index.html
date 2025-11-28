@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600&family=Montserrat:wght@500;600&family=Poppins:wght@500;600&family=Bebas+Neue&family=Lora:wght@600&family=Merriweather:wght@600&family=Raleway:wght@500;600&family=Oswald:wght@500;600&family=Cinzel:wght@600&family=Josefin+Sans:wght@500;600&family=Abril+Fatface&family=League+Spartan:wght@500;600&family=Source+Sans+3:wght@400;500&family=Roboto:wght@400;500&family=Open+Sans:wght@400;600&family=Work+Sans:wght@400;500&family=Lato:wght@400;600&family=Nunito:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=PT+Serif:wght@400;600&family=Merriweather+Sans:wght@400;600&family=Karla:wght@400;600&family=Manrope:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
@@ -395,6 +395,10 @@
               <p>Generate on-brand graphics, templates, and video snippets ready to post alongside your calendar.</p>
             </div>
             <div class="design-lab__actions">
+              <div class="design-batch-status">
+                <button id="design-batch-generate" class="ghost" disabled>Generate Selected</button>
+                <span id="design-batch-count">No days selected</span>
+              </div>
               <button id="design-request-btn" class="primary">Request New Asset</button>
             </div>
           </div>
@@ -469,6 +473,16 @@
               <option value="story-template">Story template</option>
               <option value="video-snippet">Video snippet</option>
             </select>
+          </div>
+          <div class="design-form__row design-template-picker">
+            <div class="design-template-picker__head">
+              <label for="design-template-select">Saved layout</label>
+              <button type="button" class="ghost small" id="design-template-clear" disabled>Clear</button>
+            </div>
+            <select id="design-template-select" aria-label="Select saved layout" disabled>
+              <option value="">No template</option>
+            </select>
+            <p id="design-template-hint" class="design-template-hint">Save any generated design as a template to reuse it here.</p>
           </div>
           <div class="design-form__row">
             <label for="design-tone">Creative direction</label>
@@ -617,11 +631,111 @@
           <div class="brand-kit__grid brand-kit__grid--fonts">
             <label>
               Heading font
-              <input type="text" id="brand-heading-font" placeholder="e.g., Inter Bold" />
+              <input type="hidden" id="brand-heading-font" value="" />
+              <div class="font-picker" data-target="brand-heading-font">
+                <button type="button" class="font-picker__trigger">
+                  <span class="font-picker__label">Default</span>
+                  <span class="font-picker__chevron">⌄</span>
+                </button>
+                <div class="font-picker__list">
+                  <button type="button" class="font-picker__option is-active" data-font="">
+                    Default
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-inter-bold" data-font="Inter Bold" data-preview-class="font-preview-inter-bold">
+                    Inter Bold
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-playfair-display" data-font="Playfair Display" data-preview-class="font-preview-playfair-display">
+                    Playfair Display
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-montserrat" data-font="Montserrat" data-preview-class="font-preview-montserrat">
+                    Montserrat
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-poppins" data-font="Poppins" data-preview-class="font-preview-poppins">
+                    Poppins
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-bebas-neue" data-font="Bebas Neue" data-preview-class="font-preview-bebas-neue">
+                    Bebas Neue
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-lora" data-font="Lora" data-preview-class="font-preview-lora">
+                    Lora
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-merriweather" data-font="Merriweather" data-preview-class="font-preview-merriweather">
+                    Merriweather
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-raleway" data-font="Raleway" data-preview-class="font-preview-raleway">
+                    Raleway
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-oswald" data-font="Oswald" data-preview-class="font-preview-oswald">
+                    Oswald
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-cinzel" data-font="Cinzel" data-preview-class="font-preview-cinzel">
+                    Cinzel
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-josefin-sans" data-font="Josefin Sans" data-preview-class="font-preview-josefin-sans">
+                    Josefin Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-abril-fatface" data-font="Abril Fatface" data-preview-class="font-preview-abril-fatface">
+                    Abril Fatface
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-league-spartan" data-font="League Spartan" data-preview-class="font-preview-league-spartan">
+                    League Spartan
+                  </button>
+                </div>
+              </div>
             </label>
             <label>
               Body font
-              <input type="text" id="brand-body-font" placeholder="e.g., Source Sans" />
+              <input type="hidden" id="brand-body-font" value="" />
+              <div class="font-picker" data-target="brand-body-font">
+                <button type="button" class="font-picker__trigger">
+                  <span class="font-picker__label">Default</span>
+                  <span class="font-picker__chevron">⌄</span>
+                </button>
+                <div class="font-picker__list">
+                  <button type="button" class="font-picker__option is-active" data-font="">
+                    Default
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-inter" data-font="Inter" data-preview-class="font-preview-inter">
+                    Inter
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-source-sans" data-font="Source Sans" data-preview-class="font-preview-source-sans">
+                    Source Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-roboto" data-font="Roboto" data-preview-class="font-preview-roboto">
+                    Roboto
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-open-sans" data-font="Open Sans" data-preview-class="font-preview-open-sans">
+                    Open Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-work-sans" data-font="Work Sans" data-preview-class="font-preview-work-sans">
+                    Work Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-lato" data-font="Lato" data-preview-class="font-preview-lato">
+                    Lato
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-nunito" data-font="Nunito" data-preview-class="font-preview-nunito">
+                    Nunito
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-ibm-plex-sans" data-font="IBM Plex Sans" data-preview-class="font-preview-ibm-plex-sans">
+                    IBM Plex Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-pt-serif" data-font="PT Serif" data-preview-class="font-preview-pt-serif">
+                    PT Serif
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-merriweather-sans" data-font="Merriweather Sans" data-preview-class="font-preview-merriweather-sans">
+                    Merriweather Sans
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-karla" data-font="Karla" data-preview-class="font-preview-karla">
+                    Karla
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-manrope" data-font="Manrope" data-preview-class="font-preview-manrope">
+                    Manrope
+                  </button>
+                  <button type="button" class="font-picker__option font-preview-space-grotesk" data-font="Space Grotesk" data-preview-class="font-preview-space-grotesk">
+                    Space Grotesk
+                  </button>
+                </div>
+              </div>
             </label>
           </div>
           <div class="brand-kit__logo-row">
