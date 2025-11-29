@@ -252,6 +252,11 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
     day ? `This is for day ${day} of a 30-day campaign.` : '',
     caption ? `Core caption or CTA: ${caption}` : '',
     notes ? `Incorporate these notes: ${notes}` : '',
+    /story/i.test(assetType || '')
+      ? 'Design a vertical Instagram/TikTok story template with 1-3 concise English phrases (max 12 words each).'
+      : '',
+    'All text must be real English copy—no lorem ipsum or pseudo-words.',
+    'Keep wording short and legible for mobile (use sentence case, avoid paragraphs).',
     'Use bold typography and layout that is platform ready.',
     brandKit ? describeBrandKitForPrompt(brandKit, { includeLogo: true }) : '',
   ].filter(Boolean);
