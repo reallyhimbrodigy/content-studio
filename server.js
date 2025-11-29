@@ -1707,8 +1707,22 @@ ${JSON.stringify(compactPosts)}`;
         return res.end(JSON.stringify({ error: 'userId required' }));
       }
       const brand = loadBrand(userId);
+      const text = Array.isArray(brand?.chunks)
+        ? brand.chunks
+            .map((chunk) => (typeof chunk?.text === 'string' ? chunk.text.trim() : ''))
+            .filter(Boolean)
+            .join('\n\n')
+        : '';
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ ok: true, hasProfile: !!brand, chunks: brand?.chunks?.length || 0 }));
+      return res.end(
+        JSON.stringify({
+          ok: true,
+          hasProfile: !!brand,
+          chunks: brand?.chunks?.length || 0,
+          text,
+          updatedAt: brand?.updatedAt || null,
+        })
+      );
     } catch (err) {
       console.error('Brand profile error:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
