@@ -205,8 +205,10 @@ const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
-let highlightDesignAssetId = urlParams.get('asset') ? Number(urlParams.get('asset')) : null;
-if (!Number.isFinite(highlightDesignAssetId)) highlightDesignAssetId = null;
+let highlightDesignAssetId = urlParams.get('asset');
+if (highlightDesignAssetId && highlightDesignAssetId.includes('%')) {
+  try { highlightDesignAssetId = decodeURIComponent(highlightDesignAssetId); } catch (_) {}
+}
 let designFilterState = {
   type: designFilterType?.value || 'all',
   day: designFilterDay?.value || 'all',
@@ -400,7 +402,8 @@ function mergeDesignAssetSnapshot(snapshot) {
   if (!snapshot.previewInlineUrl && descriptor.kind !== 'text') {
     snapshot.previewInlineUrl = descriptor.url;
   }
-  const existingIndex = designAssets.findIndex((asset) => asset.id === snapshot.id);
+  snapshot.id = String(snapshot.id);
+  const existingIndex = designAssets.findIndex((asset) => String(asset.id) === snapshot.id);
   if (existingIndex >= 0) {
     designAssets[existingIndex] = { ...designAssets[existingIndex], ...snapshot };
   } else {
@@ -1052,15 +1055,15 @@ function updateDesignSelectionUI() {
 }
 
 function toggleDesignAssetSelection(assetId, isSelected) {
-  const normalized = Number(assetId);
-  if (!Number.isFinite(normalized)) return;
+  const normalized = String(assetId ?? '').trim();
+  if (!normalized) return;
   if (isSelected) selectedDesignAssetIds.add(normalized);
   else selectedDesignAssetIds.delete(normalized);
   updateDesignSelectionUI();
 }
 
 async function handleDesignExportSelected() {
-  const assets = designAssets.filter((asset) => selectedDesignAssetIds.has(asset.id));
+  const assets = designAssets.filter((asset) => selectedDesignAssetIds.has(String(asset.id)));
   if (!assets.length) return;
   try {
     const JSZipLib = await ensureZip().catch(() => null);
@@ -1102,7 +1105,7 @@ async function handleDesignRegenerateSelected() {
     alert('Sign in to regenerate assets.');
     return;
   }
-  const targets = designAssets.filter((asset) => selectedDesignAssetIds.has(asset.id));
+  const targets = designAssets.filter((asset) => selectedDesignAssetIds.has(String(asset.id)));
   if (!targets.length) return;
   showDesignSuccess(`Regenerating ${targets.length} asset${targets.length === 1 ? '' : 's'}...`);
   for (const asset of targets) {
@@ -1154,12 +1157,12 @@ function deleteDesignAsset(asset, assetDay) {
   if (!asset) return;
   const confirmed = window.confirm('Delete this asset from both the Design Lab and its calendar day?');
   if (!confirmed) return;
-  designAssets = designAssets.filter((item) => Number(item.id) !== Number(asset.id));
+  designAssets = designAssets.filter((item) => String(item.id) !== String(asset.id));
   const targetDay = assetDay || asset.linkedDay || asset.day;
   if (targetDay && Array.isArray(currentCalendar)) {
     const targetEntry = findPostByDay(targetDay);
     if (targetEntry && Array.isArray(targetEntry.assets)) {
-      targetEntry.assets = targetEntry.assets.filter((item) => Number(item.id) !== Number(asset.id));
+      targetEntry.assets = targetEntry.assets.filter((item) => String(item.id) !== String(asset.id));
       renderCards(currentCalendar);
       persistCurrentCalendarState();
     }
@@ -1246,7 +1249,11 @@ function renderDesignLivePreview() {
 }
 
 async function openDesignAssetDetail(target) {
-  const asset = typeof target === 'object' ? target : designAssets.find((item) => Number(item.id) === Number(target));
+  const lookupId = typeof target === 'object' ? null : String(target ?? '').trim();
+  const asset =
+    typeof target === 'object'
+      ? target
+      : designAssets.find((item) => String(item.id) === lookupId);
   if (!asset || !assetDetailModal) return;
   activeAssetDetailId = asset.id;
   await ensureAssetInlinePreview(asset);
@@ -1300,7 +1307,7 @@ function closeDesignAssetDetail() {
 function handleAssetDetailSave(event) {
   event.preventDefault();
   if (!activeAssetDetailId) return;
-  const asset = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
+  const asset = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
   if (!asset) return;
   if (!asset.originalSnapshot) {
     asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
@@ -1683,9 +1690,9 @@ function renderDesignAssets() {
     designGrid.classList.toggle('design-grid', designViewMode === 'grid');
     designGrid.classList.toggle('design-list', designViewMode === 'list');
     designGrid.classList.toggle('design-view--list', designViewMode === 'list');
-    const knownIds = new Set(designAssets.map((asset) => Number(asset.id)));
+    const knownIds = new Set(designAssets.map((asset) => String(asset.id)));
     selectedDesignAssetIds.forEach((id) => {
-      if (!knownIds.has(id)) selectedDesignAssetIds.delete(id);
+      if (!knownIds.has(String(id))) selectedDesignAssetIds.delete(id);
     });
     refreshDesignDayFilterOptions();
     refreshDesignCampaignFilterOptions();
@@ -1698,7 +1705,7 @@ function renderDesignAssets() {
     let filteredAssets = applyDesignFilters(designAssets);
     if (
       highlightDesignAssetId &&
-      !filteredAssets.some((asset) => Number(asset?.id) === Number(highlightDesignAssetId))
+      !filteredAssets.some((asset) => String(asset?.id) === String(highlightDesignAssetId))
     ) {
       designFilterState = { type: 'all', day: 'all' };
       if (designFilterType) designFilterType.value = 'all';
@@ -1713,7 +1720,7 @@ function renderDesignAssets() {
     designEmpty.style.display = 'none';
     designGrid.innerHTML = filteredAssets
       .map((asset) => {
-        const numericId = Number(asset.id);
+        const assetKey = String(asset.id);
         const resolvedDay = asset.linkedDay || asset.day;
         const dayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
         const previewBlock = buildDesignAssetPreviewBlock(asset);
@@ -1728,21 +1735,21 @@ function renderDesignAssets() {
         const captionLine = asset.caption ? `<p class="design-asset__caption">${escapeHtml(asset.caption)}</p>` : '';
         const ctaLine = asset.cta ? `<p class="design-asset__cta">CTA: ${escapeHtml(asset.cta)}</p>` : '';
         const toneLine = asset.tone ? `<span class="design-asset__tone">${escapeHtml(asset.tone)}</span>` : '';
-        const isSelected = selectedDesignAssetIds.has(numericId);
+        const isSelected = selectedDesignAssetIds.has(assetKey);
         return `
-          <article class="design-asset" data-asset-id="${asset.id}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
+          <article class="design-asset" data-asset-id="${assetKey}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
             <label class="design-asset__select">
-              <input type="checkbox" data-asset-select="${asset.id}" ${isSelected ? 'checked' : ''}/>
+              <input type="checkbox" data-asset-select="${assetKey}" ${isSelected ? 'checked' : ''}/>
               <span>Select</span>
             </label>
             <div class="design-asset__preview-wrapper">
               <div class="design-asset__preview${previewBlock.isMedia ? ' design-asset__preview--media' : ''}">${previewBlock.html}</div>
               <div class="design-asset__hover">
-                <button type="button" class="primary" data-asset-action="edit" data-asset-id="${asset.id}">Edit</button>
-                <button type="button" class="ghost" data-asset-action="download" data-asset-id="${asset.id}">Download</button>
-                <button type="button" class="ghost" data-asset-action="copy" data-asset-id="${asset.id}">Copy Brief</button>
-                <button type="button" class="ghost" data-asset-action="template" data-asset-id="${asset.id}">Save Template</button>
-                <button type="button" class="ghost danger" data-asset-action="delete" data-asset-id="${asset.id}" data-asset-day="${resolvedDay || ''}">Delete</button>
+                <button type="button" class="primary" data-asset-action="edit" data-asset-id="${assetKey}">Edit</button>
+                <button type="button" class="ghost" data-asset-action="download" data-asset-id="${assetKey}">Download</button>
+                <button type="button" class="ghost" data-asset-action="copy" data-asset-id="${assetKey}">Copy Brief</button>
+                <button type="button" class="ghost" data-asset-action="template" data-asset-id="${assetKey}">Save Template</button>
+                <button type="button" class="ghost danger" data-asset-action="delete" data-asset-id="${assetKey}" data-asset-day="${resolvedDay || ''}">Delete</button>
               </div>
             </div>
             <div class="design-asset__meta">
@@ -1777,7 +1784,7 @@ function renderDesignAssets() {
       }
     }
     if (pendingAssetDetailId) {
-      const pendingAsset = designAssets.find((asset) => Number(asset.id) === Number(pendingAssetDetailId));
+      const pendingAsset = designAssets.find((asset) => String(asset.id) === String(pendingAssetDetailId));
       if (pendingAsset) openDesignAssetDetail(pendingAsset);
       pendingAssetDetailId = null;
     }
@@ -1844,12 +1851,14 @@ function buildDesignAssetPreviewBlock(asset = {}) {
 
 function reorderDesignAssets(sourceId, targetId, insertBefore = true) {
     if (!Array.isArray(designAssets) || !designAssets.length) return;
-    if (sourceId === targetId) return;
-    const sourceIndex = designAssets.findIndex((asset) => asset.id === sourceId);
-    const targetIndex = designAssets.findIndex((asset) => asset.id === targetId);
+    const safeSource = String(sourceId ?? '').trim();
+    const safeTarget = String(targetId ?? '').trim();
+    if (!safeSource || !safeTarget || safeSource === safeTarget) return;
+    const sourceIndex = designAssets.findIndex((asset) => String(asset.id) === safeSource);
+    const targetIndex = designAssets.findIndex((asset) => String(asset.id) === safeTarget);
     if (sourceIndex === -1 || targetIndex === -1) return;
     const [movedAsset] = designAssets.splice(sourceIndex, 1);
-    let nextIndex = designAssets.findIndex((asset) => asset.id === targetId);
+    let nextIndex = designAssets.findIndex((asset) => String(asset.id) === safeTarget);
     if (nextIndex === -1) {
       designAssets.splice(sourceIndex, 0, movedAsset);
       return;
@@ -2066,7 +2075,7 @@ async function requestDesignAsset(payload) {
       const data = raw ? JSON.parse(raw) : {};
       const paletteDefaults = getBrandPaletteDefaults();
       const asset = {
-        id: data.id || Date.now(),
+        id: String(data.id || Date.now()),
         day: payload.day,
         title: data.title || payload.title,
         typeLabel: data.type || formatAssetTypeLabel(payload.assetType),
@@ -2105,7 +2114,7 @@ async function requestDesignAsset(payload) {
     }
     const paletteDefaults = getBrandPaletteDefaults();
     const fallback = {
-      id: Date.now(),
+      id: String(Date.now()),
       day: payload.day,
       title: payload.title,
       typeLabel: formatAssetTypeLabel(payload.assetType),
@@ -5930,8 +5939,9 @@ if (designGrid) {
     const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
     const actionBtn = actionTarget?.closest('[data-asset-action]');
     if (actionBtn) {
-      const assetId = Number(actionBtn.dataset.assetId);
-      const asset = designAssets.find((item) => Number(item.id) === assetId);
+      const assetId = String(actionBtn.dataset.assetId ?? '').trim();
+      if (!assetId) return;
+      const asset = designAssets.find((item) => String(item.id) === assetId);
       if (!asset) return;
       const action = actionBtn.dataset.assetAction;
       event.preventDefault();
@@ -5959,9 +5969,13 @@ if (designGrid) {
   designGrid.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.design-asset');
     if (!card) return;
-    draggedDesignAssetId = Number(card.dataset.assetId);
+    draggedDesignAssetId = String(card.dataset.assetId ?? '').trim();
+    if (!draggedDesignAssetId) {
+      draggedDesignAssetId = null;
+      return;
+    }
     event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', String(draggedDesignAssetId));
+    event.dataTransfer.setData('text/plain', draggedDesignAssetId);
   });
 
   designGrid.addEventListener('dragend', () => {
@@ -5972,7 +5986,9 @@ if (designGrid) {
   designGrid.addEventListener('dragover', (event) => {
     if (!draggedDesignAssetId) return;
     const target = event.target.closest('.design-asset');
-    if (!target || Number(target.dataset.assetId) === draggedDesignAssetId) return;
+    if (!target) return;
+    const targetId = String(target.dataset.assetId ?? '').trim();
+    if (!targetId || targetId === draggedDesignAssetId) return;
     event.preventDefault();
     const rect = target.getBoundingClientRect();
     const insertBefore = event.clientY < rect.top + rect.height / 2;
@@ -5991,9 +6007,10 @@ if (designGrid) {
   designGrid.addEventListener('drop', (event) => {
     if (!draggedDesignAssetId) return;
     const target = event.target.closest('.design-asset');
-    if (!target || Number(target.dataset.assetId) === draggedDesignAssetId) return;
+    if (!target) return;
+    const targetId = String(target.dataset.assetId ?? '').trim();
+    if (!targetId || targetId === draggedDesignAssetId) return;
     event.preventDefault();
-    const targetId = Number(target.dataset.assetId);
     const insertBefore = target.dataset.dropPosition !== 'bottom';
     reorderDesignAssets(draggedDesignAssetId, targetId, insertBefore);
     draggedDesignAssetId = null;
@@ -6004,7 +6021,7 @@ if (designGrid) {
     const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
     const checkbox = actionTarget?.closest('input[data-asset-select]');
     if (checkbox) {
-      const id = Number(checkbox.dataset.assetSelect);
+      const id = String(checkbox.dataset.assetSelect ?? '').trim();
       toggleDesignAssetSelection(id, checkbox.checked);
       return;
     }
@@ -6033,7 +6050,7 @@ if (assetDetailForm) {
 if (assetDetailUndoBtn) {
   assetDetailUndoBtn.addEventListener('click', () => {
     if (!activeAssetDetailId) return;
-    const asset = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
+    const asset = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
     if (!asset || !asset.originalSnapshot) return;
     Object.assign(asset, JSON.parse(JSON.stringify(asset.originalSnapshot)));
     persistDesignAssetsToStorage();
@@ -6046,7 +6063,7 @@ if (assetDetailUndoBtn) {
 if (assetDetailRegenerateBtn) {
   assetDetailRegenerateBtn.addEventListener('click', async () => {
     if (!activeAssetDetailId) return;
-    const asset = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
+    const asset = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
     if (!asset) return;
     const userId = activeUserEmail || (await getCurrentUser());
     if (!userId) {
@@ -6057,7 +6074,7 @@ if (assetDetailRegenerateBtn) {
     assetDetailRegenerateBtn.textContent = 'Regenerating…';
     try {
       await regenerateSingleDesignAsset(asset, userId);
-      const updated = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
+      const updated = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
       if (updated) {
         await ensureAssetInlinePreview(updated);
         renderAssetDetailPreview(updated);
