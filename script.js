@@ -40,7 +40,6 @@ const grid = document.getElementById("calendar-grid");
 const landingNavLinks = document.querySelector('.landing-nav__links');
 const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
 const landingSampleActionButtons = document.querySelectorAll('.landing-samples__cards .calendar-card__actions button');
-const tabLibrary = document.getElementById("tab-library");
   const generateBtn = document.getElementById("generate-calendar");
   const upgradeModal = document.getElementById("upgrade-modal");
   const upgradeClose = document.getElementById("upgrade-close");
@@ -64,9 +63,13 @@ const tabLibrary = document.getElementById("tab-library");
   const brandLogoInput = document.getElementById('brand-logo-input');
   const brandLogoPreview = document.getElementById('brand-logo-preview');
   const brandLogoPlaceholder = document.getElementById('brand-logo-placeholder');
-  const brandLogoClearBtn = document.getElementById('brand-logo-clear');
+const brandLogoClearBtn = document.getElementById('brand-logo-clear');
 const brandKitSaveBtn = document.getElementById('brand-kit-save-btn');
 const brandKitStatus = document.getElementById('brand-kit-status');
+const appLayout = document.querySelector('.app-layout');
+const proNavLinks = document.querySelectorAll('.sidebar-link--pro');
+const appSidebar = document.getElementById('app-sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
 let fontPickers = [];
 let fontPickerListenersBound = false;
   const exportIcsBtn = document.getElementById('export-ics');
@@ -107,7 +110,6 @@ const forceLandingView = urlParams.get('view') === 'landing';
 // Tabs
   const tabPlan = document.getElementById('tab-plan');
   const tabPublish = document.getElementById('tab-publish');
-  const tabDesign = document.getElementById('tab-design');
   const calendarSection = document.querySelector('section.calendar');
   const toggleCompactBtn = document.getElementById('toggle-compact');
   const hubEmpty = document.getElementById('hub-empty');
@@ -158,9 +160,11 @@ let currentBrandKit = null;
 let brandKitLoaded = false;
 let brandProfileLoaded = false;
 let currentBrandText = '';
+const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignDays = new Set();
 let draggedDesignAssetId = null;
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
+const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
 const ASSET_PRESETS = {
@@ -288,6 +292,31 @@ function persistDesignTemplates() {
   } catch (error) {
     console.warn('Unable to store templates', error);
   }
+}
+
+function applySidebarState(collapsed) {
+  if (!appSidebar) return;
+  appSidebar.classList.toggle('collapsed', collapsed);
+  if (appLayout) appLayout.classList.toggle('sidebar-collapsed', collapsed);
+  if (sidebarToggle) {
+    sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  }
+  try {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch (_) {}
+}
+
+function initSidebar() {
+  if (!appSidebar || !sidebarToggle) return;
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1';
+  } catch (_) {}
+  applySidebarState(collapsed);
+  sidebarToggle.addEventListener('click', () => {
+    const next = !appLayout.classList.contains('sidebar-collapsed');
+    applySidebarState(next);
+  });
 }
 
 function inferAssetTypeFromAsset(asset = {}) {
@@ -419,6 +448,19 @@ function updateDesignBatchUI() {
   if (designBatchBtn) designBatchBtn.disabled = count === 0;
 }
 
+function updateBatchSelectionVisual(day, isSelected) {
+  if (!grid) return;
+  const cards = grid.querySelectorAll(`.calendar-card[data-day="${day}"]`);
+  cards.forEach((card) => {
+    card.classList.toggle('selected-for-design', isSelected);
+    const buttons = card.querySelectorAll('.batch-select-btn');
+    buttons.forEach((btn) => {
+      btn.textContent = isSelected ? 'Selected' : 'Batch Select';
+      btn.classList.toggle('is-active', isSelected);
+    });
+  });
+}
+
 function toggleDesignDaySelection(day) {
   const normalized = Number(day);
   if (selectedDesignDays.has(normalized)) {
@@ -427,9 +469,7 @@ function toggleDesignDaySelection(day) {
     selectedDesignDays.add(normalized);
   }
   updateDesignBatchUI();
-  if (Array.isArray(currentCalendar) && currentCalendar.length) {
-    renderCards(currentCalendar);
-  }
+  updateBatchSelectionVisual(normalized, selectedDesignDays.has(normalized));
 }
 renderDesignAssets();
 const POST_FREQUENCY_KEY = 'promptly_post_frequency';
@@ -738,10 +778,8 @@ function updateTabs(){
     // Toggle classes
     if (tabPlan) tabPlan.classList.toggle('active', activeTab==='plan');
     if (tabPublish) tabPublish.classList.toggle('active', activeTab==='publish');
-    if (tabDesign) tabDesign.classList.toggle('active', activeTab==='design');
     if (tabPlan) tabPlan.setAttribute('aria-pressed', String(activeTab==='plan'));
     if (tabPublish) tabPublish.setAttribute('aria-pressed', String(activeTab==='publish'));
-    if (tabDesign) tabDesign.setAttribute('aria-pressed', String(activeTab==='design'));
 
     const showCalendar = activeTab === 'plan';
     const showHub = activeTab === 'publish';
@@ -1153,7 +1191,6 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
   console.log("exportBtn:", exportBtn ? "✓ found" : "✗ MISSING");
   console.log("saveBtn:", saveBtn ? "✓ found" : "✗ MISSING");
   console.log("grid:", grid ? "✓ found" : "✗ MISSING");
-  console.log("tabLibrary:", tabLibrary ? "✓ found" : "✗ MISSING");
   console.log("signOutBtn:", signOutBtn ? "✓ found" : "✗ MISSING");
   console.log("brandBtn:", brandBtn ? "✓ found" : "✗ MISSING");
 
@@ -1691,14 +1728,6 @@ if (upgradeBtn) {
 window.showUpgradeModal = showUpgradeModal;
 
 // Library tab handler
-if (tabLibrary) {
-  tabLibrary.addEventListener("click", () => {
-    console.log("Library tab clicked");
-    window.location.href = "/library.html";
-  });
-} else {
-  console.error("❌ Library tab not found - this could prevent navigation");
-}
 
 // Brand Brain modal handlers
 function openBrandModal() {
@@ -1786,10 +1815,36 @@ function summarizeBrandKitBrief(kit) {
   return parts.join(' | ');
 }
 
+function brandBrainLocalKey(email = activeUserEmail) {
+  const normalized = (email || 'guest').toString().trim().toLowerCase();
+  return `${BRAND_BRAIN_LOCAL_PREFIX}${normalized || 'guest'}`;
+}
+
+function loadBrandBrainLocal(email = activeUserEmail) {
+  try {
+    return localStorage.getItem(brandBrainLocalKey(email)) || '';
+  } catch {
+    return '';
+  }
+}
+
+function persistBrandBrainLocal(text, email = activeUserEmail) {
+  try {
+    const key = brandBrainLocalKey(email);
+    if (!text) localStorage.removeItem(key);
+    else localStorage.setItem(key, text);
+  } catch (_) {}
+}
+
 async function refreshBrandBrain(force = false) {
   if (brandProfileLoaded && !force) return currentBrandText;
   const userId = activeUserEmail || (await getCurrentUser());
   if (!userId) return '';
+  const localCopy = loadBrandBrainLocal(userId);
+  if (!brandProfileLoaded && localCopy && brandText) {
+    brandText.value = localCopy;
+    currentBrandText = localCopy;
+  }
   try {
     const resp = await fetch(`/api/brand/profile?userId=${encodeURIComponent(userId)}`, {
       cache: 'no-store',
@@ -1797,8 +1852,9 @@ async function refreshBrandBrain(force = false) {
     });
     if (resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      currentBrandText = data.text || '';
+      currentBrandText = data.text || localCopy || '';
       if (brandText) brandText.value = currentBrandText;
+      persistBrandBrainLocal(currentBrandText, userId);
     } else {
       console.warn('Brand profile request failed with status', resp.status);
     }
@@ -1823,13 +1879,13 @@ async function refreshBrandKit(force = false) {
       throw new Error('kit endpoint unavailable');
     }
   } catch (err) {
-    console.warn('Brand kit fetch failed, falling back to profile preferences:', err?.message || err);
+    console.warn('Brand Design fetch failed, falling back to profile preferences:', err?.message || err);
     try {
       const prefs = await getProfilePreferences();
       currentBrandKit = prefs?.brandKit || null;
       applyBrandKitToForm(currentBrandKit);
     } catch (fallbackErr) {
-      console.warn('Unable to load brand kit from preferences:', fallbackErr?.message || fallbackErr);
+      console.warn('Unable to load Brand Design from preferences:', fallbackErr?.message || fallbackErr);
     }
   }
   brandKitLoaded = true;
@@ -1839,12 +1895,12 @@ async function refreshBrandKit(force = false) {
 async function handleBrandKitSave() {
   const userId = activeUserEmail || await getCurrentUser();
   if (!userId) {
-    if (brandKitStatus) brandKitStatus.textContent = 'Sign in to save your brand kit.';
+    if (brandKitStatus) brandKitStatus.textContent = 'Sign in to save your Brand Design.';
     return;
   }
   const kitPayload = serializeBrandKitForm();
   if (brandKitStatus) {
-    brandKitStatus.textContent = 'Saving brand kit...';
+    brandKitStatus.textContent = 'Saving Brand Design...';
     brandKitStatus.classList.remove('success');
   }
   if (brandKitSaveBtn) brandKitSaveBtn.disabled = true;
@@ -1864,7 +1920,7 @@ async function handleBrandKitSave() {
       throw new Error('Kit API unavailable');
     }
   } catch (err) {
-    console.warn('Brand kit save via API failed, falling back to profile preferences:', err?.message || err);
+    console.warn('Brand Design save via API failed, falling back to profile preferences:', err?.message || err);
     try {
       const prefs = await getProfilePreferences();
       const nextPrefs = Object.assign({}, prefs, { brandKit: kitPayload });
@@ -1872,9 +1928,9 @@ async function handleBrandKitSave() {
       currentBrandKit = kitPayload;
       saved = true;
     } catch (fallbackErr) {
-      console.error('Brand kit fallback save failed:', fallbackErr);
+      console.error('Brand Design fallback save failed:', fallbackErr);
       if (brandKitStatus) {
-        brandKitStatus.textContent = fallbackErr.message || 'Unable to save brand kit';
+        brandKitStatus.textContent = fallbackErr.message || 'Unable to save Brand Design';
         brandKitStatus.classList.remove('success');
       }
     }
@@ -1882,7 +1938,7 @@ async function handleBrandKitSave() {
     if (brandKitSaveBtn) brandKitSaveBtn.disabled = false;
     if (brandKitStatus) {
       if (saved) {
-        brandKitStatus.textContent = '✓ Brand kit saved';
+        brandKitStatus.textContent = '✓ Brand design saved';
         brandKitStatus.classList.add('success');
         brandKitLoaded = true;
         applyBrandKitToForm(currentBrandKit);
@@ -2020,6 +2076,7 @@ if (brandSaveBtn) {
         brandStatus.classList.add('success');
       }
       currentBrandText = text;
+      persistBrandBrainLocal(text, userId);
       brandProfileLoaded = true;
       setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
     } catch (e) {
@@ -2053,6 +2110,7 @@ const createCard = (post) => {
   const card = document.createElement('article');
   card.className = 'calendar-card';
   card.dataset.pillar = primary.pillar || '';
+  card.dataset.day = dayValue != null ? String(dayValue) : '';
   if (selectedDesignDays.has(Number(dayValue))) {
     card.classList.add('selected-for-design');
   }
@@ -2590,6 +2648,7 @@ let currentNiche = ""; // Store the niche for the current calendar
 let regenDaySupported = true;
 
 const renderCards = (subset) => {
+  if (!grid) return;
   grid.innerHTML = "";
   const freq = Math.max(currentPostFrequency || 1, 1);
   if (freq <= 1) {
@@ -2640,7 +2699,7 @@ const applyFilter = (filter) => {
 
   // Update button label
   const filterText = filter === 'all' ? 'All pillars' : filter;
-  pillarFilterLabel.textContent = filterText;
+  if (pillarFilterLabel) pillarFilterLabel.textContent = filterText;
 
   // Apply filter to calendar
   if (filter === 'all') {
@@ -2650,35 +2709,39 @@ const applyFilter = (filter) => {
   }
 
   // Close dropdown
-  pillarFilterMenu.style.display = 'none';
-  pillarFilterBtn.setAttribute('aria-expanded', 'false');
+  if (pillarFilterMenu) pillarFilterMenu.style.display = 'none';
+  if (pillarFilterBtn) pillarFilterBtn.setAttribute('aria-expanded', 'false');
 };
 
 // Toggle dropdown
-pillarFilterBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  const isOpen = pillarFilterMenu.style.display === 'block';
-  pillarFilterMenu.style.display = isOpen ? 'none' : 'block';
-  pillarFilterBtn.setAttribute('aria-expanded', !isOpen);
-});
-
-// Handle dropdown item clicks
-filterDropdownItems.forEach((item) => {
-  item.addEventListener('click', (e) => {
+if (pillarFilterBtn && pillarFilterMenu) {
+  pillarFilterBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    applyFilter(item.dataset.filter);
+    const isOpen = pillarFilterMenu.style.display === 'block';
+    pillarFilterMenu.style.display = isOpen ? 'none' : 'block';
+    pillarFilterBtn.setAttribute('aria-expanded', String(!isOpen));
   });
-});
 
-// Close dropdown when clicking outside
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.filter-dropdown')) {
-    pillarFilterMenu.style.display = 'none';
-    pillarFilterBtn.setAttribute('aria-expanded', 'false');
-  }
-});
+  // Handle dropdown item clicks
+  filterDropdownItems.forEach((item) => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      applyFilter(item.dataset.filter);
+    });
+  });
 
-console.log("✓ Filter dropdown initialized");
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.filter-dropdown')) {
+      pillarFilterMenu.style.display = 'none';
+      pillarFilterBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  console.log("✓ Filter dropdown initialized");
+} else {
+  console.warn('Filter controls unavailable; skipping pillar dropdown setup.');
+}
 
 // Start with empty grid (no pre-made posts)
 try {
@@ -2709,7 +2772,7 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
     }
     currentCalendar = posts;
     currentNiche = cal.nicheStyle;
-    nicheInput.value = currentNiche;
+    if (nicheInput) nicheInput.value = currentNiche;
     renderCards(currentCalendar);
     applyFilter("all");
     // Initialize hub controls
@@ -4503,25 +4566,14 @@ console.log("✓ Script.js loaded successfully");
 if (generateBtn) console.log("✓ Generate button has event listener");
 if (saveBtn) console.log("✓ Save button has event listener");
 if (exportBtn) console.log("✓ Export button has event listener");
-if (tabLibrary) console.log("✓ Library tab has event listener");
 if (signOutBtn) console.log("✓ Sign out button has event listener");
 
 console.log("All buttons are ready to use!");
+initSidebar();
 
 // Tabs behavior
 if (tabPlan) tabPlan.addEventListener('click', ()=>{ activeTab='plan'; updateTabs(); });
 if (tabPublish) tabPublish.addEventListener('click', ()=>{ activeTab='publish'; updateTabs(); });
-if (tabDesign) {
-  tabDesign.addEventListener('click', async () => {
-    const allowed = await requireProAccess();
-    if (!allowed) {
-      showUpgradeModal();
-      return;
-    }
-    activeTab = 'design';
-    updateTabs();
-  });
-}
 
 // Compact mode toggle
 if (toggleCompactBtn && calendarSection) {
@@ -4529,6 +4581,18 @@ if (toggleCompactBtn && calendarSection) {
     isCompact = !isCompact;
     calendarSection.classList.toggle('compact', isCompact);
     toggleCompactBtn.textContent = isCompact ? 'Full view' : 'Compact mode';
+  });
+}
+
+if (proNavLinks.length) {
+  proNavLinks.forEach((link) => {
+    link.addEventListener('click', async (event) => {
+      const allowed = await requireProAccess();
+      if (!allowed) {
+        event.preventDefault();
+        showUpgradeModal();
+      }
+    });
   });
 }
 
@@ -4547,7 +4611,11 @@ if (designEmptyCta) designEmptyCta.addEventListener('click', () => startDesignMo
 if (designCloseBtn) designCloseBtn.addEventListener('click', closeDesignModal);
 if (designCancelBtn) designCancelBtn.addEventListener('click', closeDesignModal);
 if (designBatchBtn) {
-  designBatchBtn.addEventListener('click', handleDesignBatchGenerate);
+  designBatchBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleDesignBatchGenerate();
+  });
   updateDesignBatchUI();
 }
 if (designTemplateSelect) {
@@ -4798,7 +4866,7 @@ function buildDesignPdfBlob(asset, payload) {
       `Preview: ${asset.previewText || 'Ready-to-use design prompts'}`,
     ];
     if (payload.brandKitSummary) {
-      lines.push(`Brand Kit: ${payload.brandKitSummary}`);
+      lines.push(`Brand Design: ${payload.brandKitSummary}`);
     }
     const content = pdfBuildText(lines);
     const pdf = [

@@ -323,34 +323,9 @@ if (signOutBtn) {
   });
 }
 
-// Profile dropdown behavior (minimal version)
-if (profileTrigger && profileMenu) {
-  profileTrigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = profileMenu.style.display === 'block';
-    profileMenu.style.display = isOpen ? 'none' : 'block';
-    profileTrigger.setAttribute('aria-expanded', String(!isOpen));
-  });
-  document.addEventListener('click', (e) => {
-    if (!profileMenu.contains(e.target) && !profileTrigger.contains(e.target)) {
-      profileMenu.style.display = 'none';
-      profileTrigger.setAttribute('aria-expanded', 'false');
-    }
-  });
-}
 
 if (newCalendarBtn) {
   newCalendarBtn.addEventListener('click', () => {
-    window.location.href = '/';
-  });
-}
-
-// Brand Brain gating on library page
-if (brandBtn) {
-  brandBtn.addEventListener('click', async () => {
-    const userIsPro = await isPro(currentUser);
-    if (!userIsPro) { showUpgradeModal(); return; }
-    // Pro users: navigate to home (Brand Brain lives on main page)
     window.location.href = '/';
   });
 }

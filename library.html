@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Promptly – Saved Calendars</title>
+    <title>Promptly</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -96,25 +96,42 @@
   </head>
   <body>
     <div class="app-shell">
+      <div class="app-layout">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
+          <span class="sidebar-toggle__bars" aria-hidden="true"></span>
+        </button>
+        <aside class="app-sidebar" id="app-sidebar">
+          <nav class="sidebar-nav" aria-label="Workspace navigation">
+            <a href="/" class="sidebar-link">
+              <span>Content Calendar</span>
+            </a>
+            <a href="/library.html" class="sidebar-link is-active" aria-current="page">
+              <span>Library</span>
+            </a>
+            <a href="/design.html" class="sidebar-link sidebar-link--pro">
+              <span>Design Lab</span>
+              <em>Pro</em>
+            </a>
+          </nav>
+        </aside>
+        <div class="app-main">
       <header class="hero">
         <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
           <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
           
           <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
-            <button id="brand-brain-btn" class="ghost brand-brain-btn">Brand Brain</button>
+            <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
             <div class="profile-wrapper">
+              <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
               <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-                <span id="profile-initial">P</span>
+                <span id="profile-initial" aria-hidden="true">P</span>
               </button>
               <div id="profile-menu" class="profile-menu" style="display:none;">
                 <div id="profile-dropdown" class="profile-dropdown">
-                  <div class="profile-menu-header">
-                    <div>
-                      <p class="profile-email" id="user-email"></p>
-                      <p class="profile-caption">Account</p>
-                    </div>
-                    <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
-                  </div>
+                  <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
+                  <button id="account-overview-btn" class="profile-menu-item">Account</button>
+                  <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
+                  <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
                   <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
                   <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
                 </div>
@@ -122,8 +139,8 @@
             </div>
           </div>
         </div>
-        <h1>AI Content Studio</h1>
-        <p>A 30-day content calendar engineered for creators who move fast.</p>
+        <h1>Library</h1>
+        <p>Reopen, download, or continue refining any saved calendar. Everything you generate lives here.</p>
       </header>
 
       <main>
@@ -141,6 +158,193 @@
       <footer class="footer">
         <p>Built with intention. Turn this MVP into your studio's always-on idea engine.</p>
       </footer>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account + Accessibility Modal -->
+    <div id="account-modal" class="modal-overlay" style="display:none">
+      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+        <div class="settings-modal__head">
+          <div>
+            <h3 id="account-modal-title">Account settings</h3>
+            <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
+          </div>
+          <button class="ghost icon-only" id="account-close-btn" aria-label="Close profile settings">&times;</button>
+        </div>
+        <div class="settings-tabs" role="tablist">
+          <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
+          <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
+        </div>
+        <div class="settings-panel active-panel" data-settings-panel="account">
+          <div class="settings-group">
+            <label>Email</label>
+            <div class="settings-field-readonly">
+              <span id="account-email-display">you@example.com</span>
+              <button type="button" id="account-email-copy" class="ghost">Copy</button>
+            </div>
+          </div>
+          <div class="settings-group">
+            <label>Password</label>
+            <div class="settings-field-readonly">
+              <span aria-label="Password is hidden">••••••••</span>
+              <button type="button" id="account-password-manage" class="ghost">Update password</button>
+            </div>
+            <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+          </div>
+          <div class="settings-group">
+            <label>Subscription</label>
+            <div class="settings-field-readonly">
+              <div class="settings-field-readonly__details">
+                <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
+                <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+              </div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <label>Last login</label>
+            <div class="settings-field-readonly">
+              <span id="account-last-login">Not available</span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-panel" data-settings-panel="profile">
+          <form id="account-settings-form" class="settings-form">
+            <div class="settings-group">
+              <label for="account-display-name">Display name</label>
+              <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
+            </div>
+            <div class="settings-group">
+              <label for="account-pronouns">Pronouns (optional)</label>
+              <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
+            </div>
+            <div class="settings-group">
+              <label for="account-role">Role or team</label>
+              <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
+            </div>
+            <fieldset class="settings-group">
+              <legend class="settings-group__label">Interface preferences</legend>
+              <div class="settings-accessibility">
+                <label class="settings-toggle">
+                  <input type="checkbox" id="prefers-high-contrast" />
+                  <span>High contrast surfaces</span>
+                </label>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="prefers-large-type" />
+                  <span>Larger typography</span>
+                </label>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="prefers-reduced-motion" />
+                  <span>Reduce motion &amp; animations</span>
+                </label>
+              </div>
+            </fieldset>
+            <div class="settings-actions">
+              <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
+              <div class="settings-actions__buttons">
+                <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
+                <button type="submit" class="primary">Save preferences</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brand Brain Modal -->
+    <div id="brand-modal" class="modal-overlay" style="display:none">
+      <div class="modal brand-modal">
+        <div class="brand-modal__section">
+          <h3>Brand Brain</h3>
+          <p class="modal-sub">Add your brand voice, tone, guidelines, and examples. We'll use this to personalize all generated content.</p>
+          <textarea id="brand-text" rows="8" placeholder="Example: We're a wellness brand for busy professionals. Tone: Supportive and energizing..."></textarea>
+          <div class="modal-actions">
+            <button id="brand-cancel-btn" class="ghost">Close</button>
+            <button id="brand-save-btn" class="primary">Save Voice &amp; Guidelines</button>
+          </div>
+          <div id="brand-status" class="input-feedback" aria-live="polite"></div>
+        </div>
+        <div class="brand-modal__section brand-kit">
+          <h4>Brand Design</h4>
+          <p class="brand-kit__hint">Upload your palette, fonts, and logo once. Every generated asset will respect these rules automatically.</p>
+          <div class="brand-kit__grid">
+            <label>
+              Primary color
+              <input type="color" id="brand-primary-color" value="#7f5af0" />
+            </label>
+            <label>
+              Secondary color
+              <input type="color" id="brand-secondary-color" value="#2cb1bc" />
+            </label>
+            <label>
+              Accent color
+              <input type="color" id="brand-accent-color" value="#ff7ac3" />
+            </label>
+          </div>
+          <div class="brand-kit__grid brand-kit__grid--fonts">
+            <label>
+              Heading font
+              <input type="hidden" id="brand-heading-font" value="" />
+              <div class="font-picker" data-target="brand-heading-font">
+                <button type="button" class="font-picker__trigger">
+                  <span class="font-picker__label">Default</span>
+                  <span class="font-picker__chevron">⌄</span>
+                </button>
+                <div class="font-picker__list">
+                  <button type="button" class="font-picker__option is-active" data-font="">Default</button>
+                  <button type="button" class="font-picker__option font-preview-inter-bold" data-font="Inter Bold" data-preview-class="font-preview-inter-bold">Inter Bold</button>
+                  <button type="button" class="font-picker__option font-preview-playfair-display" data-font="Playfair Display" data-preview-class="font-preview-playfair-display">Playfair Display</button>
+                  <button type="button" class="font-picker__option font-preview-montserrat" data-font="Montserrat" data-preview-class="font-preview-montserrat">Montserrat</button>
+                  <button type="button" class="font-picker__option font-preview-poppins" data-font="Poppins" data-preview-class="font-preview-poppins">Poppins</button>
+                  <button type="button" class="font-picker__option font-preview-bebas-neue" data-font="Bebas Neue" data-preview-class="font-preview-bebas-neue">Bebas Neue</button>
+                  <button type="button" class="font-picker__option font-preview-lora" data-font="Lora" data-preview-class="font-preview-lora">Lora</button>
+                  <button type="button" class="font-picker__option font-preview-merriweather" data-font="Merriweather" data-preview-class="font-preview-merriweather">Merriweather</button>
+                  <button type="button" class="font-picker__option font-preview-raleway" data-font="Raleway" data-preview-class="font-preview-raleway">Raleway</button>
+                  <button type="button" class="font-picker__option font-preview-oswald" data-font="Oswald" data-preview-class="font-preview-oswald">Oswald</button>
+                  <button type="button" class="font-picker__option font-preview-cinzel" data-font="Cinzel" data-preview-class="font-preview-cinzel">Cinzel</button>
+                  <button type="button" class="font-picker__option font-preview-josefin-sans" data-font="Josefin Sans" data-preview-class="font-preview-josefin-sans">Josefin Sans</button>
+                  <button type="button" class="font-picker__option font-preview-league-spartan" data-font="League Spartan" data-preview-class="font-preview-league-spartan">League Spartan</button>
+                </div>
+              </div>
+            </label>
+            <label>
+              Body font
+              <input type="hidden" id="brand-body-font" value="" />
+              <div class="font-picker" data-target="brand-body-font">
+                <button type="button" class="font-picker__trigger">
+                  <span class="font-picker__label">Default</span>
+                  <span class="font-picker__chevron">⌄</span>
+                </button>
+                <div class="font-picker__list">
+                  <button type="button" class="font-picker__option is-active" data-font="">Default</button>
+                  <button type="button" class="font-picker__option font-preview-inter" data-font="Inter" data-preview-class="font-preview-inter">Inter</button>
+                  <button type="button" class="font-picker__option font-preview-source-sans" data-font="Source Sans" data-preview-class="font-preview-source-sans">Source Sans</button>
+                  <button type="button" class="font-picker__option font-preview-roboto" data-font="Roboto" data-preview-class="font-preview-roboto">Roboto</button>
+                  <button type="button" class="font-picker__option font-preview-open-sans" data-font="Open Sans" data-preview-class="font-preview-open-sans">Open Sans</button>
+                  <button type="button" class="font-picker__option font-preview-work-sans" data-font="Work Sans" data-preview-class="font-preview-work-sans">Work Sans</button>
+                  <button type="button" class="font-picker__option font-preview-lato" data-font="Lato" data-preview-class="font-preview-lato">Lato</button>
+                  <button type="button" class="font-picker__option font-preview-nunito" data-font="Nunito" data-preview-class="font-preview-nunito">Nunito</button>
+                  <button type="button" class="font-picker__option font-preview-source-sans-3" data-font="Source Sans 3" data-preview-class="font-preview-source-sans-3">Source Sans 3</button>
+                </div>
+              </div>
+            </label>
+          </div>
+          <div class="brand-kit__logo">
+            <div class="brand-kit__logo-preview">
+              <img id="brand-logo-preview" alt="Brand logo preview" style="display:none;" />
+              <div id="brand-logo-placeholder" class="brand-kit__logo-placeholder">Logo preview</div>
+            </div>
+            <div class="brand-kit__logo-actions">
+              <input type="file" id="brand-logo-input" accept="image/png,image/jpeg,image/svg+xml" />
+              <button id="brand-logo-clear" class="ghost small">Remove logo</button>
+            </div>
+          </div>
+          <div class="brand-kit__actions">
+            <p id="brand-kit-status" class="input-feedback" aria-live="polite"></p>
+            <button id="brand-kit-save-btn" class="primary">Save Brand Design</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Upgrade Modal (mirrored from index.html) -->
@@ -190,6 +394,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
+    <script type="module" src="./script.js"></script>
     <script type="module" src="./library.js?t=1763412925"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
     <script src="/sw-register.js" defer></script>

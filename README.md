@@ -59,11 +59,11 @@ If no sandbox key is set the script exits cleanly and prints "skipped", which al
 3. Click "Save to Brand Brain"
 4. Generate calendars — the AI will use your brand context to tailor every post
 
-### Brand Kit uploads
+### Brand Design uploads
 
 Creators can now lock in logos, color palette, and typography once, and every Stability-generated asset will inherit those rules automatically.
 
-- Open **Brand Brain → Brand Kit** to set primary/secondary/accent colors, heading/body fonts, and an optional logo upload (PNG/JPG/SVG, ≤600 KB).
+- Open **Brand Brain → Brand Design** to set primary/secondary/accent colors, heading/body fonts, and an optional logo upload (PNG/JPG/SVG, ≤600 KB).
 - Data is stored alongside the Brand Brain profile (`data/brands/{user}.json`), and the `/api/design/generate` endpoint injects kit directives into every Stability prompt.
 - Assets triggered from calendar cards remember the originating day and appear inside the Design tab + calendar card chips, so text + visuals stay linked.
 

@@ -798,7 +798,7 @@ function sanitizeBrandKitInput(input = {}) {
 function saveBrandKit(userId, kitInput) {
   const sanitized = sanitizeBrandKitInput(kitInput);
   if (!sanitized) {
-    throw new Error('Provide at least one brand kit field to save.');
+    throw new Error('Provide at least one Brand Design field to save.');
   }
   const file = path.join(BRANDS_DIR, slugify(userId) + '.json');
   let payload = {
@@ -868,7 +868,7 @@ function summarizeBrandForPrompt(brand) {
   }
   const kitSummary = describeBrandKitForPrompt(brand.kit, { includeLogo: false });
   if (kitSummary) {
-    out += (out ? '\n\n' : '') + `Brand kit:\n${kitSummary}`;
+    out += (out ? '\n\n' : '') + `Brand design:\n${kitSummary}`;
   }
   return out.trim();
 }
@@ -1645,9 +1645,9 @@ ${JSON.stringify(compactPosts)}`;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ ok: true, kit: saved.kit || null }));
       } catch (err) {
-        console.error('Brand kit save error:', err);
+        console.error('Brand Design save error:', err);
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: err.message || 'Unable to save brand kit' }));
+        return res.end(JSON.stringify({ error: err.message || 'Unable to save Brand Design' }));
       }
     });
     return;
@@ -1664,9 +1664,9 @@ ${JSON.stringify(compactPosts)}`;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ ok: true, kit: brand?.kit || null }));
     } catch (err) {
-      console.error('Brand kit fetch error:', err);
+      console.error('Brand Design fetch error:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Unable to load brand kit' }));
+      return res.end(JSON.stringify({ error: 'Unable to load Brand Design' }));
     }
   }
 
