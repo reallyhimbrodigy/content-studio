@@ -165,8 +165,83 @@ const selectedDesignDays = new Set();
 let draggedDesignAssetId = null;
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
+const LAST_USER_STORAGE_KEY = 'promptly_active_user_v1';
+const CALENDAR_STORAGE_PREFIX = 'promptly_calendar_state_v1:';
+const DESIGN_ASSET_STORAGE_PREFIX = 'promptly_design_assets_v2:';
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
+
+function rememberActiveUserEmail(email = '') {
+  if (typeof localStorage === 'undefined') return;
+  if (email) {
+    localStorage.setItem(LAST_USER_STORAGE_KEY, String(email).toLowerCase());
+  } else {
+    localStorage.removeItem(LAST_USER_STORAGE_KEY);
+  }
+}
+
+function resolveStorageUserKey() {
+  if (activeUserEmail) return String(activeUserEmail).toLowerCase();
+  if (typeof localStorage !== 'undefined') {
+    const cached = localStorage.getItem(LAST_USER_STORAGE_KEY);
+    if (cached) return cached.toLowerCase();
+  }
+  return 'guest';
+}
+
+function getScopedStorageKey(prefix) {
+  if (typeof localStorage === 'undefined') return null;
+  return `${prefix}${resolveStorageUserKey()}`;
+}
+
+function persistDesignAssetsToStorage() {
+  if (typeof localStorage === 'undefined') return;
+  const key = getScopedStorageKey(DESIGN_ASSET_STORAGE_PREFIX);
+  if (!key) return;
+  try {
+    const serializable = designAssets.map((asset) => {
+      const { fileBlob, ...rest } = asset || {};
+      return rest;
+    });
+    localStorage.setItem(key, JSON.stringify(serializable));
+  } catch (err) {
+    console.warn('Unable to persist design assets', err);
+  }
+}
+
+function hydrateDesignAssetsFromStorage(force = false) {
+  if (typeof localStorage === 'undefined') return;
+  if (!force && Array.isArray(designAssets) && designAssets.length) return;
+  const key = getScopedStorageKey(DESIGN_ASSET_STORAGE_PREFIX);
+  if (!key) return;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      if (force) {
+        designAssets = [];
+        renderDesignAssets();
+      }
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    designAssets = parsed.map((asset) => ({ ...asset }));
+    designAssets.forEach((asset) => {
+      if (!asset) return;
+      if (!asset.fileName) asset.fileName = 'promptly-asset.pdf';
+      if (!asset.downloadUrl) {
+        const blob = buildDesignPdfBlob(asset, asset);
+        asset.fileBlob = blob;
+        asset.downloadUrl = URL.createObjectURL(blob);
+      }
+    });
+    renderDesignAssets();
+  } catch (err) {
+    console.warn('Unable to hydrate design assets', err);
+  }
+}
+
+hydrateDesignAssetsFromStorage();
 const ASSET_PRESETS = {
   education: {
     assetType: 'carousel-template',
@@ -901,6 +976,7 @@ function reorderDesignAssets(sourceId, targetId, insertBefore = true) {
     if (!insertBefore) nextIndex += 1;
     designAssets.splice(nextIndex, 0, movedAsset);
     renderDesignAssets();
+    persistDesignAssetsToStorage();
     if (designFeedbackEl) {
       designFeedbackEl.textContent = 'Asset order updated.';
       setTimeout(() => {
@@ -1023,6 +1099,7 @@ async function handleDesignFormSubmit(event) {
       asset.createdAt = asset.createdAt || new Date().toISOString();
       asset.linkedDay = payload.day || activeDesignContext?.day || null;
       designAssets.unshift(asset);
+      persistDesignAssetsToStorage();
       renderDesignAssets();
       activeTab = 'design';
       updateTabs();
@@ -1143,6 +1220,7 @@ function linkAssetToCalendarPost(asset) {
     targetEntry.assets = next.slice(0, 5);
     if (Array.isArray(currentCalendar) && currentCalendar.length) {
       renderCards(currentCalendar);
+      persistCurrentCalendarState();
     }
   }
 
@@ -1222,7 +1300,12 @@ async function bootstrapApp(attempt = 0) {
   if (currentUser) {
     // User is logged in - show profile menu
     console.log('✓ User logged in:', currentUser);
+    const previousStorageUser = resolveStorageUserKey();
     activeUserEmail = currentUser;
+    rememberActiveUserEmail(currentUser);
+    hydrateDesignAssetsFromStorage(true);
+    const switchedUsers = previousStorageUser !== resolveStorageUserKey();
+    hydrateCalendarFromStorage(switchedUsers);
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
@@ -1333,6 +1416,9 @@ async function bootstrapApp(attempt = 0) {
     updatePostFrequencyUI();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
+    rememberActiveUserEmail('');
+    hydrateDesignAssetsFromStorage(true);
+    hydrateCalendarFromStorage(true);
   }
 }
 
@@ -1419,7 +1505,9 @@ async function handleDesignBatchGenerate() {
   selectedDesignDays.clear();
   updateDesignBatchUI();
   renderDesignAssets();
+  if (successCount) persistDesignAssetsToStorage();
   renderCards(currentCalendar);
+  persistCurrentCalendarState();
   if (designFeedbackEl) {
     if (failures.length) {
       const failureDays = failures.map((f) => `Day ${f.day}`).join(', ');
@@ -2612,6 +2700,8 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       currentCalendar = [...currentCalendar, newPost];
     }
     renderCards(currentCalendar);
+    persistCurrentCalendarState();
+    syncCalendarUIAfterDataChange();
   } catch (err) {
     console.error('Regenerate day failed:', err);
     alert(err.message || 'Failed to regenerate this day.');
@@ -2647,6 +2737,101 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
 let currentCalendar = []; // Store the current calendar data
 let currentNiche = ""; // Store the niche for the current calendar
 let regenDaySupported = true;
+
+function revealCalendarActionButtons() {
+  const buttons = [
+    saveBtn,
+    exportBtn,
+    exportCsvBtn,
+    exportIcsBtn,
+    downloadZipBtn,
+    copyAllCaptionsBtn,
+    copyAllFullBtn,
+    genVariantsBtn,
+    exportVariantsCsvBtn,
+    downloadVariantsZipBtn,
+    downloadCalendarFolderBtn,
+  ];
+  buttons.forEach((btn) => {
+    if (btn) btn.style.display = 'inline-block';
+  });
+}
+
+function syncHubControls() {
+  if (!hubDaySelect) return;
+  if (!Array.isArray(currentCalendar) || !currentCalendar.length) {
+    hubDaySelect.innerHTML = '';
+    return;
+  }
+  hubDaySelect.innerHTML = currentCalendar
+    .map((p, idx) => `<option value="${idx}">Day ${String(p.day).padStart(2, '0')}</option>`)
+    .join('');
+  const nextIdx = findNextUnposted(0);
+  hubIndex = Math.max(0, Math.min(currentCalendar.length - 1, nextIdx));
+  hubDaySelect.value = String(hubIndex);
+}
+
+function syncCalendarUIAfterDataChange(options = {}) {
+  revealCalendarActionButtons();
+  syncHubControls();
+  if (hub) renderPublishHub();
+  updateTabs();
+  if (options.scrollToCalendar && calendarSection) {
+    setTimeout(() => {
+      calendarSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }
+}
+
+function persistCurrentCalendarState() {
+  if (typeof localStorage === 'undefined') return;
+  const key = getScopedStorageKey(CALENDAR_STORAGE_PREFIX);
+  if (!key) return;
+  if (!Array.isArray(currentCalendar) || !currentCalendar.length) {
+    localStorage.removeItem(key);
+    return;
+  }
+  try {
+    const payload = {
+      posts: currentCalendar,
+      niche: currentNiche || nicheInput?.value || '',
+      savedAt: new Date().toISOString(),
+      postFrequency: currentPostFrequency || 1,
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Unable to persist calendar', err);
+  }
+}
+
+function hydrateCalendarFromStorage(force = false) {
+  if (typeof localStorage === 'undefined') return false;
+  if (!force && Array.isArray(currentCalendar) && currentCalendar.length) return false;
+  const key = getScopedStorageKey(CALENDAR_STORAGE_PREFIX);
+  if (!key) return false;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      if (force) {
+        currentCalendar = [];
+        renderCards(currentCalendar);
+        updateTabs();
+      }
+      return false;
+    }
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.posts) || !data.posts.length) return false;
+    currentCalendar = data.posts;
+    currentNiche = data.niche || currentNiche;
+    if (nicheInput && data.niche) nicheInput.value = data.niche;
+    renderCards(currentCalendar);
+    syncCalendarUIAfterDataChange();
+    return true;
+  } catch (err) {
+    console.warn('Unable to hydrate calendar', err);
+    return false;
+  }
+}
 
 const renderCards = (subset) => {
   if (!grid) return;
@@ -2754,6 +2939,8 @@ try {
   console.error("❌ Error rendering initial cards:", err);
 }
 
+hydrateCalendarFromStorage();
+
 // Check if there's a calendar to load from library
 const loadCalendarData = sessionStorage.getItem("promptly_load_calendar");
 if (loadCalendarData && loadCalendarData !== 'undefined') {
@@ -2776,27 +2963,9 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
     if (nicheInput) nicheInput.value = currentNiche;
     renderCards(currentCalendar);
     applyFilter("all");
-    // Initialize hub controls
-    if (hubDaySelect) {
-      hubDaySelect.innerHTML = currentCalendar.map((p, idx)=>`<option value="${idx}">Day ${String(p.day).padStart(2,'0')}</option>`).join('');
-    }
-    hubIndex = findNextUnposted(0);
-    if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-  if (hub) { renderPublishHub(); }
-  updateTabs();
-    if (saveBtn) saveBtn.style.display = "inline-block";
-    if (exportBtn) exportBtn.style.display = "inline-block";
-    if (exportCsvBtn) exportCsvBtn.style.display = 'inline-block';
-    if (exportIcsBtn) exportIcsBtn.style.display = 'inline-block';
-    if (downloadZipBtn) downloadZipBtn.style.display = 'inline-block';
-    if (copyAllCaptionsBtn) copyAllCaptionsBtn.style.display = 'inline-block';
-    if (copyAllFullBtn) copyAllFullBtn.style.display = 'inline-block';
-  if (genVariantsBtn) genVariantsBtn.style.display = 'inline-block';
-  if (saveBtn) saveBtn.style.display = 'inline-block';
-  if (exportVariantsCsvBtn) exportVariantsCsvBtn.style.display = 'inline-block';
-  if (downloadVariantsZipBtn) downloadVariantsZipBtn.style.display = 'inline-block';
-  if (downloadCalendarFolderBtn) downloadCalendarFolderBtn.style.display = 'inline-block';
-  if (hub) { renderPublishHub(); hub.style.display='block'; }
+    syncCalendarUIAfterDataChange();
+    persistCurrentCalendarState();
+    if (hub) hub.style.display = 'block';
     sessionStorage.removeItem("promptly_load_calendar");
   } catch (err) {
     console.error("Failed to load calendar:", err);
@@ -3192,6 +3361,8 @@ if (genVariantsBtn) {
       currentCalendar = merged;
       renderCards(currentCalendar);
       applyFilter('all');
+      persistCurrentCalendarState();
+      syncCalendarUIAfterDataChange();
       if (feedbackEl) { feedbackEl.textContent = '✓ Platform variants added to each card.'; feedbackEl.classList.add('success'); setTimeout(()=>{ if (feedbackEl){ feedbackEl.textContent=''; feedbackEl.classList.remove('success'); } }, 2500);}    
     } catch (e) {
       if (feedbackEl) { feedbackEl.textContent = `Error: ${e.message}`; feedbackEl.classList.remove('success'); }
@@ -4498,36 +4669,9 @@ if (generateBtn) {
       applyFilter("all");
 
   hideGeneratingState(originalText);
-      
-      // Show save and export buttons
-      if (saveBtn) saveBtn.style.display = "inline-block";
-      if (exportBtn) exportBtn.style.display = "inline-block";
-  if (exportCsvBtn) exportCsvBtn.style.display = 'inline-block';
-  if (exportIcsBtn) exportIcsBtn.style.display = 'inline-block';
-  if (downloadZipBtn) downloadZipBtn.style.display = 'inline-block';
-  if (copyAllCaptionsBtn) copyAllCaptionsBtn.style.display = 'inline-block';
-  if (copyAllFullBtn) copyAllFullBtn.style.display = 'inline-block';
-  if (genVariantsBtn) genVariantsBtn.style.display = 'inline-block';
-  if (saveBtn) saveBtn.style.display = 'inline-block';
-      if (exportVariantsCsvBtn) exportVariantsCsvBtn.style.display = 'inline-block';
-      if (downloadVariantsZipBtn) downloadVariantsZipBtn.style.display = 'inline-block';
-      if (downloadCalendarFolderBtn) downloadCalendarFolderBtn.style.display = 'inline-block';
-      // initialize hub controls
-      if (hubDaySelect) {
-        hubDaySelect.innerHTML = currentCalendar.map((p, idx)=>`<option value="${idx}">Day ${String(p.day).padStart(2,'0')}</option>`).join('');
-      }
-      hubIndex = findNextUnposted(0);
-      if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-      if (hub) { renderPublishHub(); }
-      
-      // Make sure we stay on the plan tab after generation
       activeTab = 'plan';
-      updateTabs();
-      if (calendarSection) {
-        setTimeout(() => {
-          calendarSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 150);
-      }
+      syncCalendarUIAfterDataChange({ scrollToCalendar: true });
+      persistCurrentCalendarState();
       
       if (feedbackEl) {
         feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
