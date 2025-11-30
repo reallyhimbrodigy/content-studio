@@ -1466,13 +1466,6 @@ async function handleDesignFormSubmit(event) {
       designAssets.unshift(asset);
       persistDesignAssetsToStorage();
       renderDesignAssets();
-      activeTab = 'design';
-      updateTabs();
-      if (designSection) {
-        setTimeout(() => {
-          designSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 150);
-      }
       if (activeDesignContext?.entry) {
         linkAssetToCalendarPost(asset);
       }
@@ -1487,10 +1480,7 @@ async function handleDesignFormSubmit(event) {
           ? ''
           : ` (${Math.max(0, remainingQuota)} of ${DESIGN_FREE_MONTHLY_QUOTA} free assets remain)`;
       showDesignSuccess(`${successMessage}${quotaSuffix}`);
-      setTimeout(() => {
-        closeDesignModal();
-        window.location.href = '/design.html';
-      }, 1100);
+      setTimeout(closeDesignModal, 1100);
     } catch (error) {
       console.error('Design asset error:', error);
       const detailMessage =
@@ -4088,7 +4078,7 @@ function buildPostHTML(post){
             </div>
             <div class="calendar-card__asset-actions">
               <a class="calendar-card__asset-btn" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
-              <a class="calendar-card__asset-btn ghost" href="${designUrl}" target="_blank" rel="noopener">View/Edit</a>
+              <a class="calendar-card__asset-btn ghost" href="${designUrl}">View/Edit</a>
             </div>
           </div>
         `;
