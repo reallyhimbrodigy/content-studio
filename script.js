@@ -76,7 +76,6 @@ let fontPickerListenersBound = false;
   const downloadZipBtn = document.getElementById('download-zip');
   const copyAllCaptionsBtn = document.getElementById('copy-all-captions');
   const copyAllFullBtn = document.getElementById('copy-all-full');
-  const genVariantsBtn = document.getElementById('gen-variants');
   const exportVariantsCsvBtn = document.getElementById('export-variants-csv');
   const downloadVariantsZipBtn = document.getElementById('download-variants-zip');
   const downloadCalendarFolderBtn = document.getElementById('download-calendar-folder');
@@ -163,11 +162,14 @@ let currentBrandText = '';
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignDays = new Set();
 let draggedDesignAssetId = null;
+let platformVariantSyncPromise = null;
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
 const LAST_USER_STORAGE_KEY = 'promptly_active_user_v1';
 const CALENDAR_STORAGE_PREFIX = 'promptly_calendar_state_v1:';
 const DESIGN_ASSET_STORAGE_PREFIX = 'promptly_design_assets_v2:';
+const DESIGN_USAGE_STORAGE_PREFIX = 'promptly_design_usage_v1:';
+const DESIGN_FREE_MONTHLY_QUOTA = 3;
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
 
@@ -242,6 +244,55 @@ function hydrateDesignAssetsFromStorage(force = false) {
 }
 
 hydrateDesignAssetsFromStorage();
+
+function currentMonthToken() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function designUsageKey(userId) {
+  const normalized = (userId || resolveStorageUserKey() || 'guest').toLowerCase();
+  return `${DESIGN_USAGE_STORAGE_PREFIX}${normalized}`;
+}
+
+function loadDesignUsage(userId) {
+  if (typeof localStorage === 'undefined') return { month: currentMonthToken(), count: 0 };
+  const key = designUsageKey(userId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return { month: currentMonthToken(), count: 0 };
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.month !== currentMonthToken()) {
+      return { month: currentMonthToken(), count: 0 };
+    }
+    return { month: parsed.month, count: Number(parsed.count) || 0 };
+  } catch {
+    return { month: currentMonthToken(), count: 0 };
+  }
+}
+
+function persistDesignUsage(userId, record) {
+  if (typeof localStorage === 'undefined') return;
+  const key = designUsageKey(userId);
+  try {
+    localStorage.setItem(key, JSON.stringify({ month: record.month, count: record.count }));
+  } catch (err) {
+    console.warn('Unable to persist design usage', err);
+  }
+}
+
+function getRemainingDesignQuota(userId) {
+  const usage = loadDesignUsage(userId);
+  return Math.max(0, DESIGN_FREE_MONTHLY_QUOTA - usage.count);
+}
+
+function incrementDesignUsage(userId) {
+  const usage = loadDesignUsage(userId);
+  usage.month = currentMonthToken();
+  usage.count = (usage.count || 0) + 1;
+  persistDesignUsage(userId, usage);
+  return Math.max(0, DESIGN_FREE_MONTHLY_QUOTA - usage.count);
+}
 const ASSET_PRESETS = {
   education: {
     assetType: 'carousel-template',
@@ -1007,11 +1058,14 @@ async function requireProAccess() {
   }
 
 async function startDesignModal(entry = null, entryDay = null) {
-    const allowed = await requireProAccess();
-    if (!allowed) {
-      showUpgradeModal();
+    const userId = activeUserEmail || (await getCurrentUser());
+    if (!userId) {
+      window.location.href = '/auth.html?mode=signup';
       return;
     }
+    const userIsPro = cachedUserIsPro || (await isPro(userId));
+    if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
+    const remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(userId);
     const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
     activeDesignContext = entry ? { entry, day: resolvedDay } : null;
     if (designForm) designForm.reset();
@@ -1051,6 +1105,13 @@ async function startDesignModal(entry = null, entryDay = null) {
       }
     }
     clearDesignFeedback();
+    if (!userIsPro && designFeedbackEl) {
+      designFeedbackEl.textContent =
+        remainingQuota > 0
+          ? `Free plan: ${remainingQuota} of ${DESIGN_FREE_MONTHLY_QUOTA} AI assets left this month.`
+          : 'Free plan limit reached. Upgrade for unlimited AI assets.';
+      designFeedbackEl.classList.toggle('error', remainingQuota <= 0);
+    }
     if (designModal) designModal.style.display = 'flex';
   }
 
@@ -1070,12 +1131,20 @@ function formatAssetTypeLabel(type) {
 
 async function handleDesignFormSubmit(event) {
     event.preventDefault();
-    const allowed = await requireProAccess();
-    if (!allowed) {
+    const currentUserId = activeUserEmail || (await getCurrentUser());
+    if (!currentUserId) {
+      showDesignError('Sign in required', 'Create a free account to generate AI assets.');
+      window.location.href = '/auth.html?mode=signup';
+      return;
+    }
+    const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
+    if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
+    let remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(currentUserId);
+    if (!userIsPro && remainingQuota <= 0) {
+      showDesignError('Monthly limit reached', 'Free plan includes 3 AI assets per month. Upgrade for unlimited designs.');
       showUpgradeModal();
       return;
     }
-    const currentUserId = activeUserEmail || await getCurrentUser();
     const payload = {
       day: Number(designDayInput?.value) || activeDesignContext?.day || null,
       assetType: designAssetTypeInput?.value || 'social-graphic',
@@ -1111,10 +1180,17 @@ async function handleDesignFormSubmit(event) {
       if (activeDesignContext?.entry) {
         linkAssetToCalendarPost(asset);
       }
+      if (!userIsPro) {
+        remainingQuota = incrementDesignUsage(currentUserId);
+      }
       const successMessage = asset.linkedDay
         ? `Asset linked to Day ${String(asset.linkedDay).padStart(2, '0')}.`
         : 'Asset added to Design tab.';
-      showDesignSuccess(successMessage);
+      const quotaSuffix =
+        userIsPro || remainingQuota === Infinity
+          ? ''
+          : ` (${Math.max(0, remainingQuota)} of ${DESIGN_FREE_MONTHLY_QUOTA} free assets remain)`;
+      showDesignSuccess(`${successMessage}${quotaSuffix}`);
       setTimeout(() => {
         closeDesignModal();
         window.location.href = '/design.html';
@@ -1305,7 +1381,8 @@ async function bootstrapApp(attempt = 0) {
     rememberActiveUserEmail(currentUser);
     hydrateDesignAssetsFromStorage(true);
     const switchedUsers = previousStorageUser !== resolveStorageUserKey();
-    hydrateCalendarFromStorage(switchedUsers);
+    const hydratedCalendar = hydrateCalendarFromStorage(switchedUsers);
+    if (hydratedCalendar) ensurePlatformVariantsForCurrentCalendar('hydrate');
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
@@ -2540,39 +2617,7 @@ const createCard = (post) => {
     actionsEl.appendChild(assetBtn);
 
     if (entry.variants) {
-      if (entry.variants.igCaption) {
-        const b = makeBtn('Copy IG');
-        b.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(entry.variants.igCaption);
-            b.textContent = 'Copied!';
-            setTimeout(() => (b.textContent = 'Copy IG'), 1000);
-          } catch (e) {}
-        });
-        actionsEl.appendChild(b);
-      }
-      if (entry.variants.tiktokCaption) {
-        const b = makeBtn('Copy TikTok');
-        b.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(entry.variants.tiktokCaption);
-            b.textContent = 'Copied!';
-            setTimeout(() => (b.textContent = 'Copy TikTok'), 1000);
-          } catch (e) {}
-        });
-        actionsEl.appendChild(b);
-      }
-      if (entry.variants.linkedinCaption) {
-        const b = makeBtn('Copy LinkedIn');
-        b.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(entry.variants.linkedinCaption);
-            b.textContent = 'Copied!';
-            setTimeout(() => (b.textContent = 'Copy LinkedIn'), 1000);
-          } catch (e) {}
-        });
-        actionsEl.appendChild(b);
-      }
+      // variant captions still show in detail rows; copy buttons removed
     }
 
     const proDetailNodes = [];
@@ -2702,6 +2747,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     renderCards(currentCalendar);
     persistCurrentCalendarState();
     syncCalendarUIAfterDataChange();
+    await ensurePlatformVariantsForCurrentCalendar('regen');
   } catch (err) {
     console.error('Regenerate day failed:', err);
     alert(err.message || 'Failed to regenerate this day.');
@@ -2747,7 +2793,6 @@ function revealCalendarActionButtons() {
     downloadZipBtn,
     copyAllCaptionsBtn,
     copyAllFullBtn,
-    genVariantsBtn,
     exportVariantsCsvBtn,
     downloadVariantsZipBtn,
     downloadCalendarFolderBtn,
@@ -2939,7 +2984,8 @@ try {
   console.error("❌ Error rendering initial cards:", err);
 }
 
-hydrateCalendarFromStorage();
+const hydratedFromStorage = hydrateCalendarFromStorage();
+if (hydratedFromStorage) ensurePlatformVariantsForCurrentCalendar('hydrate');
 
 // Check if there's a calendar to load from library
 const loadCalendarData = sessionStorage.getItem("promptly_load_calendar");
@@ -2965,6 +3011,7 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
     applyFilter("all");
     syncCalendarUIAfterDataChange();
     persistCurrentCalendarState();
+    ensurePlatformVariantsForCurrentCalendar('library');
     if (hub) hub.style.display = 'block';
     sessionStorage.removeItem("promptly_load_calendar");
   } catch (err) {
@@ -3331,45 +3378,87 @@ if (copyAllFullBtn) {
   });
 }
 
-// Generate platform variants
-if (genVariantsBtn) {
-  genVariantsBtn.addEventListener('click', async ()=>{
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
-    
-    if (!currentCalendar || currentCalendar.length === 0) { alert('Generate a calendar first.'); return; }
-    genVariantsBtn.disabled = true; const original = genVariantsBtn.textContent; genVariantsBtn.textContent = 'Generating…';
-    try {
-      const batches = [currentCalendar.slice(0,15), currentCalendar.slice(15)];
-      let merged = [...currentCalendar];
-      for (const chunk of batches) {
-        if (chunk.length === 0) continue;
-        const resp = await fetch('/api/generate-variants', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ posts: chunk, nicheStyle: nicheInput?.value || '', userId: getCurrentUser() || undefined })
-        });
-        if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.error || 'Variant generation failed'); }
-        const data = await resp.json();
-        const byDay = new Map((data.variants||[]).map(v=>[v.day, v.variants]));
-        merged = merged.map(p=> byDay.has(p.day) ? { ...p, variants: byDay.get(p.day) } : p);
-      }
-      currentCalendar = merged;
-      renderCards(currentCalendar);
-      applyFilter('all');
-      persistCurrentCalendarState();
-      syncCalendarUIAfterDataChange();
-      if (feedbackEl) { feedbackEl.textContent = '✓ Platform variants added to each card.'; feedbackEl.classList.add('success'); setTimeout(()=>{ if (feedbackEl){ feedbackEl.textContent=''; feedbackEl.classList.remove('success'); } }, 2500);}    
-    } catch (e) {
-      if (feedbackEl) { feedbackEl.textContent = `Error: ${e.message}`; feedbackEl.classList.remove('success'); }
-    } finally {
-      genVariantsBtn.disabled = false; genVariantsBtn.textContent = original;
-    }
+async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
+  if (platformVariantSyncPromise) return platformVariantSyncPromise;
+  if (!Array.isArray(currentCalendar) || !currentCalendar.length) return;
+  const userId = activeUserEmail || (await getCurrentUser());
+  if (!userId) return;
+  const userIsPro = typeof cachedUserIsPro === 'boolean' ? cachedUserIsPro : await isPro(userId);
+  if (!userIsPro) return;
+  const needsVariants = currentCalendar.some((post) => {
+    const variants = post?.variants;
+    if (!variants) return true;
+    return !Object.keys(variants).length;
   });
+  if (!needsVariants) return;
+
+  const shouldShowFeedback = !!feedbackEl && reason !== 'manual';
+  const statusMessage =
+    reason === 'regen'
+      ? 'Updating platform variants for this post...'
+      : 'Adding platform variants for your calendar...';
+  if (shouldShowFeedback) {
+    feedbackEl.textContent = statusMessage;
+    feedbackEl.classList.remove('error');
+    feedbackEl.classList.remove('success');
+  }
+
+  const runner = async () => {
+    const chunkSize = 15;
+    let merged = [...currentCalendar];
+    for (let i = 0; i < currentCalendar.length; i += chunkSize) {
+      const chunk = currentCalendar.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      const resp = await fetch('/api/generate-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          posts: chunk,
+          nicheStyle: nicheInput?.value || currentNiche || '',
+          userId,
+        }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(body.error || 'Variant generation failed');
+      }
+      const byDay = new Map((Array.isArray(body.variants) ? body.variants : []).map((v) => [v.day, v.variants]));
+      merged = merged.map((post) => (byDay.has(post.day) ? { ...post, variants: byDay.get(post.day) } : post));
+    }
+    currentCalendar = merged;
+    if (currentFilter === 'all') {
+      renderCards(currentCalendar);
+    } else {
+      applyFilter(currentFilter);
+    }
+    persistCurrentCalendarState();
+    syncCalendarUIAfterDataChange();
+    if (shouldShowFeedback) {
+      const successMessage = 'Platform variants added for your calendar.';
+      feedbackEl.textContent = successMessage;
+      feedbackEl.classList.add('success');
+      setTimeout(() => {
+        if (feedbackEl && feedbackEl.textContent === successMessage) {
+          feedbackEl.textContent = '';
+          feedbackEl.classList.remove('success');
+        }
+      }, 3000);
+    }
+  };
+
+  platformVariantSyncPromise = runner()
+    .catch((error) => {
+      console.error('Platform variant sync failed:', error);
+      if (shouldShowFeedback) {
+        feedbackEl.textContent = `Variant error: ${error.message || 'Unable to add platform variants.'}`;
+        feedbackEl.classList.remove('success');
+      }
+    })
+    .finally(() => {
+      platformVariantSyncPromise = null;
+    });
+
+  return platformVariantSyncPromise;
 }
 
 // Variants CSV export
@@ -4609,11 +4698,7 @@ function incrementGenerationCount() {
 }
 
 async function canGenerate() {
-  const user = await getCurrentUser();
-  if (!user) return false;
-  const pro = await isPro(user);
-  if (pro) return true; // Pro users have unlimited
-  return getGenerationCount() < 1; // Free users get 1 per month
+  return true;
 }
 
 if (generateBtn) {
@@ -4672,6 +4757,7 @@ if (generateBtn) {
       activeTab = 'plan';
       syncCalendarUIAfterDataChange({ scrollToCalendar: true });
       persistCurrentCalendarState();
+      await ensurePlatformVariantsForCurrentCalendar('auto');
       
       if (feedbackEl) {
         feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
@@ -4962,9 +5048,7 @@ function renderPublishHub(){
     const bCopyFull = mk('Copy Full'); bCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); bCopyFull.textContent='Copied!'; setTimeout(()=>bCopyFull.textContent='Copy Full', 1000);} catch(e){} });
     actions.appendChild(bCopyFull);
     if (post.variants){
-      if (post.variants.igCaption){ const b=mk('Copy IG'); b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.igCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy IG',1000);} catch(e){} }); actions.appendChild(b); }
-      if (post.variants.tiktokCaption){ const b=mk('Copy TikTok'); b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.tiktokCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy TikTok',1000);} catch(e){} }); actions.appendChild(b); }
-      if (post.variants.linkedinCaption){ const b=mk('Copy LinkedIn'); b.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(post.variants.linkedinCaption); b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy LinkedIn',1000);} catch(e){} }); actions.appendChild(b); }
+      // variant copy buttons removed
     }
     const variantsDiv = document.createElement('div'); variantsDiv.className='variants';
     if (post.variants){

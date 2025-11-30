@@ -246,18 +246,20 @@ async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
 }
 
 function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit }) {
+  const isStory = /story/i.test(assetType || '');
   const pieces = [
     `Create a ${assetType || 'social media asset'} for ${niche || 'a modern brand'}.`,
     tone ? `Use a ${tone} aesthetic.` : '',
     day ? `This is for day ${day} of a 30-day campaign.` : '',
     caption ? `Core caption or CTA: ${caption}` : '',
     notes ? `Incorporate these notes: ${notes}` : '',
-    /story/i.test(assetType || '')
-      ? 'Design a vertical Instagram/TikTok story template with 1-3 concise English phrases (max 12 words each).'
-      : '',
-    'All text must be real English copy—no lorem ipsum or pseudo-words.',
-    'Keep wording short and legible for mobile (use sentence case, avoid paragraphs).',
-    'Use bold typography and layout that is platform ready.',
+    isStory
+      ? 'Design a vertical 9:16 Instagram/TikTok story template with exactly three stacked frames: Frame 1 (Hook), Frame 2 (Proof or Tip), Frame 3 (CTA). Each frame may contain at most two short English phrases (<= 6 words) and generous blank space for imagery.'
+      : 'Keep the layout hero-image forward with concise overlays that stay under 12 total English words.',
+    'All copy must be real English words (no lorem ipsum, no pseudo text).',
+    'Avoid dense paragraphs—use large typography, capsule shapes, stickers, and gradient blocks so it is visually appealing, not a page of text.',
+    'Ensure the design feels native to Instagram/TikTok algorithms: bold hook, social proof mid-frame, urgent CTA at the end.',
+    'Use bold, legible typography and high-contrast layering suitable for mobile.',
     brandKit ? describeBrandKitForPrompt(brandKit, { includeLogo: true }) : '',
   ].filter(Boolean);
   return pieces.join(' ');
