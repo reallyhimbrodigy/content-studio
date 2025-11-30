@@ -11,7 +11,8 @@
     "test:stability": "node tests/stability-sandbox.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.81.1"
+    "@supabase/supabase-js": "^2.81.1",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "sharp": "^0.32.4"

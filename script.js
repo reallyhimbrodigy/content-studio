@@ -99,6 +99,9 @@ const designDayInput = document.getElementById('design-day');
 const designAssetTypeInput = document.getElementById('design-asset-type');
 const designToneInput = document.getElementById('design-tone');
 const designNotesInput = document.getElementById('design-notes');
+const designConceptInput = document.getElementById('design-concept');
+const designCaptionCueInput = document.getElementById('design-caption-cue');
+const designCtaInput = document.getElementById('design-cta');
 const designTemplateSelect = document.getElementById('design-template-select');
 const designTemplateClearBtn = document.getElementById('design-template-clear');
 const designTemplateHint = document.getElementById('design-template-hint');
@@ -342,6 +345,7 @@ function hydrateDesignAssetsFromStorage(force = false) {
       const paletteDefaults = getBrandPaletteDefaults();
       asset.primaryColor = asset.primaryColor || paletteDefaults.primaryColor;
       asset.secondaryColor = asset.secondaryColor || paletteDefaults.secondaryColor;
+      asset.accentColor = asset.accentColor || paletteDefaults.accentColor;
       asset.headingFont = asset.headingFont || paletteDefaults.headingFont;
       asset.bodyFont = asset.bodyFont || paletteDefaults.bodyFont;
       if (!asset.fileName) asset.fileName = 'promptly-asset.pdf';
@@ -357,6 +361,7 @@ function hydrateDesignAssetsFromStorage(force = false) {
       asset.notes = asset.notes || '';
       asset.previewInlineUrl = asset.previewInlineUrl || '';
       asset.campaign = asset.campaign || '';
+      asset.slides = normalizeSlides(asset.slides);
       const descriptor = buildAssetPreviewDescriptor(asset);
       asset.previewType = descriptor.kind;
       if (descriptor.kind === 'text' && !asset.previewText) {
@@ -397,6 +402,9 @@ function ingestFocusAssetSnapshot() {
 
 function mergeDesignAssetSnapshot(snapshot) {
   if (!snapshot || !snapshot.id) return;
+  if (snapshot.slides) {
+    snapshot.slides = normalizeSlides(snapshot.slides);
+  }
   const descriptor = buildAssetPreviewDescriptor(snapshot);
   snapshot.previewType = descriptor.kind;
   if (!snapshot.previewInlineUrl && descriptor.kind !== 'text') {
@@ -425,7 +433,15 @@ function blobToDataUrl(blob) {
 }
 
 async function ensureAssetInlinePreview(asset) {
-  if (!asset || asset.previewInlineUrl) return asset;
+  if (!asset) return asset;
+  if (!asset.previewInlineUrl && Array.isArray(asset.slides) && asset.slides.length) {
+    const firstSlide = normalizeSlides(asset.slides)[0];
+    if (firstSlide?.previewUrl) {
+      asset.previewInlineUrl = firstSlide.previewUrl;
+      return asset;
+    }
+  }
+  if (asset.previewInlineUrl) return asset;
   const ext = getAssetExtension(asset);
   if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return asset;
   try {
@@ -490,6 +506,7 @@ function getBrandPaletteDefaults() {
   return {
     primaryColor: palette.primaryColor || '#7f5af0',
     secondaryColor: palette.secondaryColor || '#2cb1bc',
+    accentColor: palette.accentColor || '#ff7ac3',
     headingFont: heading || 'Inter Bold',
     bodyFont: body || 'Source Sans Pro',
   };
@@ -1120,6 +1137,14 @@ async function handleDesignRegenerateSelected() {
 }
 
 async function regenerateSingleDesignAsset(asset, currentUserId) {
+  const paletteDefaults = getBrandPaletteDefaults();
+  const palette = {
+    primary: asset.primaryColor || paletteDefaults.primaryColor,
+    secondary: asset.secondaryColor || paletteDefaults.secondaryColor,
+    accent: asset.accentColor || paletteDefaults.accentColor,
+    heading: asset.headingFont || paletteDefaults.headingFont,
+    body: asset.bodyFont || paletteDefaults.bodyFont,
+  };
   const payload = {
     day: asset.linkedDay || asset.day || null,
     assetType: asset.assetType || inferAssetTypeFromAsset(asset),
@@ -1132,10 +1157,21 @@ async function regenerateSingleDesignAsset(asset, currentUserId) {
     title: asset.title || (asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'AI Asset'),
     templateId: asset.templateId || null,
     templateLabel: asset.templateLabel || null,
-    primaryColor: asset.primaryColor || getBrandPaletteDefaults().primaryColor,
-    secondaryColor: asset.secondaryColor || getBrandPaletteDefaults().secondaryColor,
-    headingFont: asset.headingFont || getBrandPaletteDefaults().headingFont,
-    bodyFont: asset.bodyFont || getBrandPaletteDefaults().bodyFont,
+    primaryColor: palette.primary,
+    secondaryColor: palette.secondary,
+    accentColor: palette.accent,
+    headingFont: palette.heading,
+    bodyFont: palette.body,
+    concept: asset.concept || '',
+    brandPalette: {
+      primaryColor: palette.primary,
+      secondaryColor: palette.secondary,
+      accentColor: palette.accent,
+    },
+    fonts: {
+      heading: palette.heading,
+      body: palette.body,
+    },
   };
   let updated = await requestDesignAsset(payload);
   updated = await ensureAssetInlinePreview(updated);
@@ -1288,6 +1324,10 @@ function renderAssetDetailPreview(asset) {
   if (!assetDetailPreview) return;
   const descriptor = buildAssetPreviewDescriptor(asset);
   let html = `<div class="design-preview__graphic" style="width:100%;height:100%;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">No preview available</div>`;
+  if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
+    assetDetailPreview.innerHTML = buildCarouselSliderHtml(descriptor.slides, { context: 'detail' });
+    return;
+  }
   if (descriptor.kind === 'image') {
     html = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'Asset preview')}" />`;
   } else if (descriptor.kind === 'video') {
@@ -1732,10 +1772,14 @@ function renderDesignAssets() {
         const campaignBadge = asset.campaign ? `<span class="design-asset__badge design-asset__badge--campaign">${escapeHtml(asset.campaign)}</span>` : '';
         const templateBadge = asset.templateLabel ? `<span class="design-asset__badge">Template: ${escapeHtml(asset.templateLabel)}</span>` : '';
         const typeBadge = `<span class="design-asset__badge">${typeText}</span>`;
+        const slideCount = Array.isArray(asset.slides) ? asset.slides.length : 0;
+        const slideBadge = slideCount ? `<span class="design-asset__badge">Slides: ${slideCount}</span>` : '';
         const captionLine = asset.caption ? `<p class="design-asset__caption">${escapeHtml(asset.caption)}</p>` : '';
         const ctaLine = asset.cta ? `<p class="design-asset__cta">CTA: ${escapeHtml(asset.cta)}</p>` : '';
         const toneLine = asset.tone ? `<span class="design-asset__tone">${escapeHtml(asset.tone)}</span>` : '';
         const isSelected = selectedDesignAssetIds.has(assetKey);
+        const slideChips = buildSlideChipRowHtml(asset.slides);
+        const downloadLabel = slideCount ? 'Download ZIP' : 'Download';
         return `
           <article class="design-asset" data-asset-id="${assetKey}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
             <label class="design-asset__select">
@@ -1746,7 +1790,7 @@ function renderDesignAssets() {
               <div class="design-asset__preview${previewBlock.isMedia ? ' design-asset__preview--media' : ''}">${previewBlock.html}</div>
               <div class="design-asset__hover">
                 <button type="button" class="primary" data-asset-action="edit" data-asset-id="${assetKey}">Edit</button>
-                <button type="button" class="ghost" data-asset-action="download" data-asset-id="${assetKey}">Download</button>
+                <button type="button" class="ghost" data-asset-action="download" data-asset-id="${assetKey}">${downloadLabel}</button>
                 <button type="button" class="ghost" data-asset-action="copy" data-asset-id="${assetKey}">Copy Brief</button>
                 <button type="button" class="ghost" data-asset-action="template" data-asset-id="${assetKey}">Save Template</button>
                 <button type="button" class="ghost danger" data-asset-action="delete" data-asset-id="${assetKey}" data-asset-day="${resolvedDay || ''}">Delete</button>
@@ -1759,12 +1803,14 @@ function renderDesignAssets() {
                 ${linkBadge}
                 ${campaignBadge}
                 ${templateBadge}
+                ${slideBadge}
               </div>
               <span>${escapeHtml(dayLabel)}</span>
               <span>Status: ${status}</span>
               ${toneLine}
               ${captionLine}
               ${ctaLine}
+              ${slideChips}
             </div>
           </article>
         `;
@@ -1804,7 +1850,38 @@ function getAssetExtension(asset = {}) {
   return getFileExtensionFromSource(source);
 }
 
+function normalizeSlides(slides = []) {
+  if (!Array.isArray(slides)) return [];
+  return slides
+    .map((slide, idx) => {
+      if (!slide) return null;
+      const downloadUrl = slide.downloadUrl || slide.url || '';
+      const previewUrl = slide.previewUrl || downloadUrl;
+      const label = slide.label || slide.role || `Slide ${idx + 1}`;
+      return {
+        id: String(slide.id || `${Date.now()}-${idx}`),
+        label,
+        role: slide.role || label,
+        slideNumber: Number(slide.slideNumber || idx + 1),
+        platform: slide.platform || slide.format || '',
+        aspectRatio: slide.aspectRatio || '',
+        width: slide.width || null,
+        height: slide.height || null,
+        downloadUrl,
+        previewUrl,
+      };
+    })
+    .filter((slide) => slide && (slide.downloadUrl || slide.previewUrl));
+}
+
 function buildAssetPreviewDescriptor(asset = {}) {
+  if (Array.isArray(asset.slides) && asset.slides.length) {
+    const slides = normalizeSlides(asset.slides);
+    if (slides.length) {
+      const first = slides[0];
+      return { kind: 'carousel', slides, url: first.previewUrl || first.downloadUrl || '' };
+    }
+  }
   const inline = asset.previewInlineUrl || '';
   if (inline) {
     const lower = inline.slice(0, 30).toLowerCase();
@@ -1826,8 +1903,68 @@ function buildAssetPreviewDescriptor(asset = {}) {
   };
 }
 
+function buildCarouselSliderHtml(slides = [], options = {}) {
+  const normalized = normalizeSlides(slides);
+  if (!normalized.length) {
+    return `<div class="design-asset__preview-text">Carousel preview unavailable</div>`;
+  }
+  const contextClass = options.context ? ` design-slider--${options.context}` : '';
+  const slidesHtml = normalized
+    .map((slide, idx) => {
+      const url = escapeHtml(slide.previewUrl || slide.downloadUrl || '');
+      const alt = escapeHtml(slide.label || `Slide ${idx + 1}`);
+      const caption = escapeHtml(slide.label || slide.role || `Slide ${idx + 1}`);
+      return `
+        <div class="design-slider__slide${idx === 0 ? ' is-active' : ''}" data-slide-index="${idx}">
+          <img src="${url}" alt="${alt}" loading="lazy" />
+          <span class="design-slider__caption">${caption}</span>
+        </div>
+      `;
+    })
+    .join('');
+  const dotsHtml = normalized
+    .map(
+      (_, idx) =>
+        `<button type="button" class="design-slider__dot${idx === 0 ? ' is-active' : ''}" data-carousel-dot="${idx}" aria-label="Go to slide ${idx + 1}"></button>`
+    )
+    .join('');
+  return `
+    <div class="design-slider${contextClass}" data-carousel-slider data-active-index="0">
+      <button type="button" class="design-slider__nav design-slider__nav--prev" data-carousel-nav="prev" aria-label="Previous slide">‹</button>
+      <div class="design-slider__track">
+        ${slidesHtml}
+      </div>
+      <button type="button" class="design-slider__nav design-slider__nav--next" data-carousel-nav="next" aria-label="Next slide">›</button>
+      <div class="design-slider__dots">${dotsHtml}</div>
+    </div>
+  `;
+}
+
+function buildSlideChipRowHtml(slides = [], context = 'design') {
+  const normalized = normalizeSlides(slides);
+  if (!normalized.length) return '';
+  const wrapperClass = context === 'calendar' ? 'calendar-card__asset-slides' : 'design-asset__slides';
+  const chipClass = context === 'calendar' ? 'calendar-card__asset-slide-chip' : 'design-asset__slide-chip';
+  const chips = normalized
+    .map((slide, idx) => {
+      const href = escapeHtml(slide.downloadUrl || slide.previewUrl || '');
+      if (!href) return '';
+      const label = escapeHtml(slide.label || `Slide ${idx + 1}`);
+      return `<a href="${href}" class="${chipClass}" download target="_blank" rel="noopener">${label}</a>`;
+    })
+    .join('');
+  if (!chips) return '';
+  return `<div class="${wrapperClass}">${chips}</div>`;
+}
+
 function buildDesignAssetPreviewBlock(asset = {}) {
   const descriptor = buildAssetPreviewDescriptor(asset);
+  if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
+    return {
+      isMedia: true,
+      html: buildCarouselSliderHtml(descriptor.slides, { context: 'grid' }),
+    };
+  }
   if (descriptor.kind === 'image') {
     const safeUrl = escapeHtml(descriptor.url);
     const alt = escapeHtml(asset.title || 'AI asset preview');
@@ -1902,14 +2039,23 @@ async function startDesignModal(entry = null, entryDay = null) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = cachedUserIsPro || (await isPro(userId));
-    if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
-    const remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(userId);
-    const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
-    activeDesignContext = entry ? { entry, day: resolvedDay } : null;
-    if (designForm) designForm.reset();
-    if (designDayInput) designDayInput.value = resolvedDay || '';
-    renderDesignTemplateOptions(activeTemplateId);
+  const userIsPro = cachedUserIsPro || (await isPro(userId));
+  if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
+  const remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(userId);
+  const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
+  activeDesignContext = entry ? { entry, day: resolvedDay } : null;
+  if (designForm) designForm.reset();
+  if (designDayInput) designDayInput.value = resolvedDay || '';
+  if (designConceptInput) {
+    designConceptInput.value = entry ? (entry.idea || entry.title || '') : '';
+  }
+  if (designCaptionCueInput) {
+    designCaptionCueInput.value = entry ? (entry.caption || entry.description || '') : '';
+  }
+  if (designCtaInput) {
+    designCtaInput.value = entry ? (entry.cta || '') : '';
+  }
+  renderDesignTemplateOptions(activeTemplateId);
 
     if (entry) {
       const preset = deriveAssetPreset(entry);
@@ -1986,30 +2132,56 @@ async function handleDesignFormSubmit(event) {
       showUpgradeModal();
       return;
     }
-    const paletteDefaults = getBrandPaletteDefaults();
-    const palette = {
-      primaryColor: paletteDefaults.primaryColor,
-      secondaryColor: paletteDefaults.secondaryColor,
-      headingFont: paletteDefaults.headingFont,
-      bodyFont: paletteDefaults.bodyFont,
-    };
-    const payload = {
-      day: Number(designDayInput?.value) || activeDesignContext?.day || null,
-      assetType: designAssetTypeInput?.value || 'social-graphic',
-      tone: designToneInput?.value || 'bold',
-      notes: designNotesInput?.value?.trim() || '',
-      userId: currentUserId || '',
-      caption: activeDesignContext?.entry?.caption || activeDesignContext?.entry?.description || '',
-      cta: activeDesignContext?.entry?.cta || '',
-      campaign: currentNiche || nicheInput?.value || '',
-      title:
-        (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
-        (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
+  const paletteDefaults = getBrandPaletteDefaults();
+  const palette = {
+    primaryColor: paletteDefaults.primaryColor,
+    secondaryColor: paletteDefaults.secondaryColor,
+    accentColor: paletteDefaults.accentColor,
+    headingFont: paletteDefaults.headingFont,
+    bodyFont: paletteDefaults.bodyFont,
+  };
+  const conceptValue =
+    designConceptInput?.value?.trim() ||
+    activeDesignContext?.entry?.idea ||
+    activeDesignContext?.entry?.title ||
+    '';
+  const captionCueValue =
+    designCaptionCueInput?.value?.trim() ||
+    activeDesignContext?.entry?.caption ||
+    activeDesignContext?.entry?.description ||
+    '';
+  const ctaValue = designCtaInput?.value?.trim() || activeDesignContext?.entry?.cta || '';
+  const resolvedNiche = currentNiche || nicheInput?.value?.trim() || '';
+  const payload = {
+    day: Number(designDayInput?.value) || activeDesignContext?.day || null,
+    assetType: designAssetTypeInput?.value || 'social-graphic',
+    tone: designToneInput?.value || 'bold',
+    notes: designNotesInput?.value?.trim() || '',
+    userId: currentUserId || '',
+    concept: conceptValue,
+    caption: captionCueValue,
+    captionCue: captionCueValue,
+    cta: ctaValue,
+    campaign: resolvedNiche,
+    niche: resolvedNiche,
+    title:
+      (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
+      (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
+    primaryColor: palette.primaryColor,
+    secondaryColor: palette.secondaryColor,
+    accentColor: palette.accentColor,
+    headingFont: palette.headingFont,
+    bodyFont: palette.bodyFont,
+    brandPalette: {
       primaryColor: palette.primaryColor,
       secondaryColor: palette.secondaryColor,
-      headingFont: palette.headingFont,
-      bodyFont: palette.bodyFont,
-    };
+      accentColor: palette.accentColor,
+    },
+    fonts: {
+      heading: palette.headingFont,
+      body: palette.bodyFont,
+    },
+  };
     if (activeTemplateId) {
       const tpl = designTemplates.find((item) => String(item?.id) === String(activeTemplateId));
       payload.templateId = activeTemplateId;
@@ -2074,6 +2246,7 @@ async function requestDesignAsset(payload) {
       }
       const data = raw ? JSON.parse(raw) : {};
       const paletteDefaults = getBrandPaletteDefaults();
+      const slides = normalizeSlides(data.slides || []);
       const asset = {
         id: String(data.id || Date.now()),
         day: payload.day,
@@ -2081,6 +2254,8 @@ async function requestDesignAsset(payload) {
         typeLabel: data.type || formatAssetTypeLabel(payload.assetType),
         previewText: data.previewText || data.summary || `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`,
         downloadUrl: data.downloadUrl || '',
+        bundleUrl: data.bundleUrl || '',
+        previewInlineUrl: data.previewUrl || '',
         status: data.status || 'Ready',
         brief: data.brief || payload.notes || '',
         assetType: data.assetType || payload.assetType || inferAssetTypeFromAsset({ typeLabel: data.type }),
@@ -2093,10 +2268,21 @@ async function requestDesignAsset(payload) {
         campaign: data.campaign || payload.campaign || '',
         primaryColor: data.primaryColor || payload.primaryColor || paletteDefaults.primaryColor,
         secondaryColor: data.secondaryColor || payload.secondaryColor || paletteDefaults.secondaryColor,
+        accentColor: data.accentColor || payload.accentColor || paletteDefaults.accentColor,
         headingFont: data.headingFont || payload.headingFont || paletteDefaults.headingFont,
         bodyFont: data.bodyFont || payload.bodyFont || paletteDefaults.bodyFont,
+        concept: data.concept || payload.concept || '',
         lastEdited: null,
+        slides,
       };
+      if (slides.length) {
+        if (!asset.downloadUrl) {
+          asset.downloadUrl = slides[0].downloadUrl || '';
+        }
+        if (!asset.previewInlineUrl) {
+          asset.previewInlineUrl = slides[0].previewUrl || '';
+        }
+      }
       if (!asset.downloadUrl) {
         const blob = buildDesignPdfBlob(asset, payload);
         asset.fileBlob = blob;
@@ -2131,9 +2317,13 @@ async function requestDesignAsset(payload) {
       campaign: payload.campaign || '',
       primaryColor: payload.primaryColor || paletteDefaults.primaryColor,
       secondaryColor: payload.secondaryColor || paletteDefaults.secondaryColor,
+      accentColor: payload.accentColor || paletteDefaults.accentColor,
       headingFont: payload.headingFont || paletteDefaults.headingFont,
       bodyFont: payload.bodyFont || paletteDefaults.bodyFont,
       lastEdited: null,
+      concept: payload.concept || '',
+      bundleUrl: '',
+      slides: [],
     };
     const blob = buildDesignPdfBlob(fallback, payload);
     fallback.fileBlob = blob;
@@ -2146,18 +2336,20 @@ async function requestDesignAsset(payload) {
 function linkAssetToCalendarPost(asset) {
     const dayToLink = asset.linkedDay || asset.day || activeDesignContext?.day || null;
     const targetEntry = dayToLink ? findPostByDay(dayToLink) : null;
-    if (!targetEntry) return;
-    const descriptor = buildAssetPreviewDescriptor(asset);
-    const summary = {
-      id: asset.id,
-      title: asset.title,
-      typeLabel: asset.typeLabel,
-      downloadUrl: asset.downloadUrl,
-      previewType: descriptor.kind,
-      previewInlineUrl: asset.previewInlineUrl || (descriptor.kind === 'text' ? '' : descriptor.url),
-      previewText: descriptor.kind === 'text' ? descriptor.text : asset.previewText,
-      status: asset.status,
-      createdAt: asset.createdAt || new Date().toISOString(),
+  if (!targetEntry) return;
+  const descriptor = buildAssetPreviewDescriptor(asset);
+  const slides = sanitizeSlidesForStorage(asset.slides);
+  const summary = {
+    id: asset.id,
+    title: asset.title,
+    typeLabel: asset.typeLabel,
+    downloadUrl: asset.bundleUrl || asset.downloadUrl,
+    bundleUrl: asset.bundleUrl || '',
+    previewType: descriptor.kind,
+    previewInlineUrl: asset.previewInlineUrl || (descriptor.kind === 'text' ? '' : descriptor.url),
+    previewText: descriptor.kind === 'text' ? descriptor.text : asset.previewText,
+    status: asset.status,
+    createdAt: asset.createdAt || new Date().toISOString(),
       day: dayToLink,
       designUrl: asset.designUrl || `/design.html?asset=${asset.id}`,
       caption: asset.caption || targetEntry.caption || '',
@@ -2166,12 +2358,15 @@ function linkAssetToCalendarPost(asset) {
       notes: asset.notes || '',
       assetType: asset.assetType || asset.typeLabel || '',
       campaign: asset.campaign || '',
-      primaryColor: asset.primaryColor || '',
-      secondaryColor: asset.secondaryColor || '',
-      headingFont: asset.headingFont || '',
-      bodyFont: asset.bodyFont || '',
-      lastEdited: asset.lastEdited || '',
-    };
+    primaryColor: asset.primaryColor || '',
+    secondaryColor: asset.secondaryColor || '',
+    accentColor: asset.accentColor || '',
+    headingFont: asset.headingFont || '',
+    bodyFont: asset.bodyFont || '',
+    lastEdited: asset.lastEdited || '',
+    concept: asset.concept || '',
+    slides,
+  };
     targetEntry.assets = Array.isArray(targetEntry.assets) ? targetEntry.assets.filter((existing) => existing && existing.id !== summary.id) : [];
     targetEntry.assets.unshift(summary);
     targetEntry.assets = targetEntry.assets.slice(0, 5);
@@ -2180,8 +2375,12 @@ function linkAssetToCalendarPost(asset) {
   }
 
 function handleDesignAssetDownload(asset, fileNameOverride) {
-    let url = asset.downloadUrl;
+    const normalizedSlides = Array.isArray(asset.slides) ? normalizeSlides(asset.slides) : [];
+    let url = asset.bundleUrl || asset.downloadUrl;
     let revokeLater = false;
+    if (!url && normalizedSlides.length) {
+      url = normalizedSlides[0].downloadUrl || normalizedSlides[0].previewUrl || '';
+    }
     if (!url && asset.fileBlob) {
       url = URL.createObjectURL(asset.fileBlob);
       revokeLater = true;
@@ -2193,7 +2392,7 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
     }
     const link = document.createElement('a');
     link.href = url;
-    const ext = getAssetExtension(asset) || 'pdf';
+    const ext = getFileExtensionFromSource(url) || (asset.bundleUrl ? 'zip' : getAssetExtension(asset) || 'pdf');
     const dayLabel = asset.linkedDay || asset.day ? `day-${String(asset.linkedDay || asset.day).padStart(2, '0')}` : 'asset';
     const typeLabel = slugify(asset.assetType || asset.typeLabel || 'design');
     const computedName = `${dayLabel}-${typeLabel}`;
@@ -3304,7 +3503,9 @@ const createCard = (post) => {
         const preview = document.createElement('div');
         preview.className = 'calendar-card__asset-preview';
         const descriptor = buildAssetPreviewDescriptor(asset);
-        if (descriptor.kind === 'image' && descriptor.url) {
+        if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
+          preview.innerHTML = buildCarouselSliderHtml(descriptor.slides, { context: 'calendar' });
+        } else if (descriptor.kind === 'image' && descriptor.url) {
           const img = document.createElement('img');
           img.src = descriptor.url;
           img.alt = asset.title || 'AI asset preview';
@@ -3346,26 +3547,35 @@ const createCard = (post) => {
           badge.textContent = assetDay ? `Linked to Day ${String(assetDay).padStart(2, '0')}` : 'Linked to calendar';
           meta.appendChild(badge);
         }
+        const slideChips = buildSlideChipRowHtml(asset.slides, 'calendar');
+        if (slideChips) {
+          meta.insertAdjacentHTML('beforeend', slideChips);
+        }
         card.appendChild(meta);
         const actions = document.createElement('div');
         actions.className = 'calendar-card__asset-actions';
+        const assetSnapshot = encodeURIComponent(
+          JSON.stringify({
+            ...asset,
+            previewInlineUrl: asset.previewInlineUrl || '',
+          })
+        );
         if (asset.designUrl || asset.id) {
-          const viewLink = document.createElement('a');
-          viewLink.className = 'calendar-card__asset-btn ghost';
+          const viewLink = document.createElement('button');
+          viewLink.type = 'button';
+          viewLink.className = 'calendar-card__asset-btn ghost calendar-card__asset-btn--view';
           viewLink.textContent = 'View/Edit';
-          viewLink.href = asset.designUrl || `/design.html?asset=${asset.id}`;
+          viewLink.dataset.designUrl = asset.designUrl || `/design.html?asset=${asset.id}`;
+          viewLink.dataset.asset = assetSnapshot;
           actions.appendChild(viewLink);
         }
-        if (asset.downloadUrl) {
-          const downloadLink = document.createElement('a');
-          downloadLink.className = 'calendar-card__asset-btn';
-          downloadLink.textContent = 'Download';
-          downloadLink.href = asset.downloadUrl;
-          downloadLink.target = '_blank';
-          downloadLink.rel = 'noopener';
-          downloadLink.setAttribute('download', '');
-          actions.appendChild(downloadLink);
-        }
+        const downloadLabel = Array.isArray(asset.slides) && asset.slides.length ? 'Download ZIP' : 'Download';
+        const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'calendar-card__asset-btn calendar-card__asset-btn--download';
+        downloadBtn.textContent = downloadLabel;
+        downloadBtn.dataset.asset = assetSnapshot;
+        actions.appendChild(downloadBtn);
         card.appendChild(actions);
         grid.appendChild(card);
       });
@@ -4642,20 +4852,24 @@ function buildPostHTML(post){
       .map((asset) => {
         const descriptor = buildAssetPreviewDescriptor(asset);
         let previewHtml = '';
-        if (descriptor.kind === 'image' && descriptor.url) {
+        if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
+          previewHtml = buildCarouselSliderHtml(descriptor.slides, { context: 'calendar' });
+        } else if (descriptor.kind === 'image' && descriptor.url) {
           previewHtml = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'AI asset preview')}" />`;
         } else if (descriptor.kind === 'video' && descriptor.url) {
           previewHtml = `<video src="${escapeHtml(descriptor.url)}" controls playsinline preload="metadata"></video>`;
         } else {
           previewHtml = `<div class="calendar-card__asset-preview-text">${escapeHtml(descriptor.text || asset.previewText || '')}</div>`;
         }
-        const downloadUrl = escapeHtml(asset.downloadUrl || asset.url || '#');
+        const downloadUrl = escapeHtml(asset.bundleUrl || asset.downloadUrl || asset.url || '#');
         const designUrl = escapeHtml(asset.designUrl || '#');
         const assetSnapshot = encodeURIComponent(JSON.stringify({
           ...asset,
           previewInlineUrl: asset.previewInlineUrl || '',
         }));
         const captionText = asset.caption ? `<p>${escapeHtml(asset.caption)}</p>` : '';
+        const slideChipsHtml = buildSlideChipRowHtml(asset.slides, 'calendar');
+        const downloadLabel = Array.isArray(asset.slides) && asset.slides.length ? 'Download ZIP' : 'Download';
         return `
           <div class="calendar-card__asset-card">
             <div class="calendar-card__asset-preview">${previewHtml}</div>
@@ -4664,9 +4878,10 @@ function buildPostHTML(post){
               ${asset.title ? `<span>${escapeHtml(asset.title)}</span>` : ''}
               ${captionText}
               ${asset.day ? `<span class="calendar-card__asset-badge">Linked to Day ${String(asset.day).padStart(2, '0')}</span>` : ''}
+              ${slideChipsHtml}
             </div>
             <div class="calendar-card__asset-actions">
-              <a class="calendar-card__asset-btn" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
+              <a class="calendar-card__asset-btn" href="${downloadUrl}" target="_blank" rel="noopener" download>${downloadLabel}</a>
               <button type="button" class="calendar-card__asset-btn ghost calendar-card__asset-btn--view" data-design-url="${designUrl}" data-asset="${assetSnapshot}">View/Edit</button>
             </div>
           </div>
@@ -6086,8 +6301,26 @@ if (assetDetailRegenerateBtn) {
   });
 }
 
+function handleCalendarAssetDownload(encoded) {
+  try {
+    const payload = JSON.parse(decodeURIComponent(encoded));
+    handleDesignAssetDownload(payload);
+  } catch (err) {
+    console.warn('Unable to download calendar asset', err);
+  }
+}
+
 if (grid) {
   grid.addEventListener('click', (event) => {
+    const downloadBtn = event.target.closest('.calendar-card__asset-btn--download');
+    if (downloadBtn) {
+      event.preventDefault();
+      const encodedAsset = downloadBtn.dataset.asset || '';
+      if (encodedAsset) {
+        handleCalendarAssetDownload(encodedAsset);
+      }
+      return;
+    }
     const viewBtn = event.target.closest('.calendar-card__asset-btn--view');
     if (!viewBtn) return;
     event.preventDefault();
@@ -6321,7 +6554,25 @@ function sanitizeAssetForStorage(asset = {}) {
     headingFont: asset.headingFont || '',
     bodyFont: asset.bodyFont || '',
     lastEdited: asset.lastEdited || '',
+    concept: asset.concept || '',
+    bundleUrl: asset.bundleUrl || '',
+    slides: sanitizeSlidesForStorage(asset.slides),
   };
+}
+
+function sanitizeSlidesForStorage(slides = []) {
+  return normalizeSlides(slides).map((slide) => ({
+    id: slide.id,
+    label: slide.label,
+    role: slide.role,
+    slideNumber: slide.slideNumber,
+    platform: slide.platform,
+    aspectRatio: slide.aspectRatio,
+    width: slide.width || null,
+    height: slide.height || null,
+    downloadUrl: slide.downloadUrl || '',
+    previewUrl: slide.previewUrl || '',
+  }));
 }
 if (designSection && (!calendarSection || !hub)) {
   activeTab = 'design';
@@ -6413,3 +6664,45 @@ const BUILT_IN_TEMPLATES = [
   },
 ];
 const BUILT_IN_TEMPLATE_IDS = new Set(BUILT_IN_TEMPLATES.map((tpl) => String(tpl.id)));
+
+function setCarouselSlide(slider, nextIndex = 0) {
+  if (!slider) return;
+  const slides = slider.querySelectorAll('.design-slider__slide');
+  if (!slides.length) return;
+  const dots = slider.querySelectorAll('.design-slider__dot');
+  const total = slides.length;
+  let index = Number(nextIndex);
+  if (!Number.isFinite(index)) index = 0;
+  if (index < 0) index = total - 1;
+  if (index >= total) index = 0;
+  slider.dataset.activeIndex = String(index);
+  slides.forEach((slide, idx) => slide.classList.toggle('is-active', idx === index));
+  dots.forEach((dot, idx) => dot.classList.toggle('is-active', idx === index));
+}
+
+function advanceCarouselSlide(slider, delta) {
+  if (!slider) return;
+  const current = Number(slider.dataset.activeIndex || 0) || 0;
+  setCarouselSlide(slider, current + delta);
+}
+
+document.addEventListener('click', (event) => {
+  const navBtn = event.target.closest('[data-carousel-nav]');
+  if (navBtn) {
+    event.preventDefault();
+    const slider = navBtn.closest('[data-carousel-slider]');
+    if (slider) {
+      const delta = navBtn.dataset.carouselNav === 'prev' ? -1 : 1;
+      advanceCarouselSlide(slider, delta);
+    }
+  }
+  const dotBtn = event.target.closest('[data-carousel-dot]');
+  if (dotBtn) {
+    event.preventDefault();
+    const slider = dotBtn.closest('[data-carousel-slider]');
+    if (slider) {
+      const targetIndex = Number(dotBtn.dataset.carouselDot || 0) || 0;
+      setCarouselSlide(slider, targetIndex);
+    }
+  }
+});

@@ -4,6 +4,7 @@ const url = require('url');
 const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
+const JSZip = require('jszip');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -71,6 +72,19 @@ function chunkText(input, maxLen = 800) {
   }
   return chunks;
 }
+
+const CAROUSEL_SLIDE_BLUEPRINTS = [
+  { key: 'hook', title: 'Slide 1 · Hook', role: 'Hook', instructions: 'Deliver a bold hook or question that stops the scroll.', order: 1 },
+  { key: 'value_one', title: 'Slide 2 · Value', role: 'Value 1', instructions: 'Share the strongest proof point, stat, or insight tied to the concept.', order: 2 },
+  { key: 'value_two', title: 'Slide 3 · Value', role: 'Value 2', instructions: 'Add a complementary tip or detail that reinforces the hook.', order: 3 },
+  { key: 'engagement', title: 'Slide 4 · Engagement', role: 'Engagement', instructions: 'Prompt the viewer to comment, save, or DM. Reference the concept directly.', order: 4 },
+  { key: 'cta', title: 'Slide 5 · CTA', role: 'CTA', instructions: 'End with a clear CTA button or sticker that drives action.', order: 5 },
+];
+
+const CAROUSEL_OUTPUT_FORMATS = [
+  { key: 'instagram', label: 'Instagram', platform: 'Instagram', aspectRatio: '1:1', width: 1080, height: 1080 },
+  { key: 'tiktok', label: 'TikTok', platform: 'TikTok', aspectRatio: '9:16', width: 1080, height: 1920 },
+];
 
 function stabilityJsonRequest({ path: apiPath, method = 'POST', payload, contentType }) {
   return new Promise((resolve, reject) => {
@@ -245,13 +259,121 @@ async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
   return pollStabilityVideoTask(taskId);
 }
 
-function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit }) {
+function buildCarouselSlidePrompt({
+  slide,
+  format,
+  tone,
+  concept,
+  captionCue,
+  cta,
+  notes,
+  brandPalette = {},
+  fonts = {},
+  niche = '',
+}) {
+  const paletteLine = [brandPalette.primary, brandPalette.secondary, brandPalette.accent].filter(Boolean).join(', ');
+  const fontLine = [fonts.heading, fonts.body].filter(Boolean).join(' + ');
+  const lines = [
+    `Design slide ${slide.order} of a ${format.label} carousel (${format.width}x${format.height}).`,
+    `Slide role: ${slide.instructions}`,
+    concept ? `Concept or theme: ${concept}.` : '',
+    captionCue ? `Caption cue or hook: ${captionCue}.` : '',
+    niche ? `Audience: ${niche}.` : '',
+    cta ? `CTA to reinforce eventually: ${cta}.` : '',
+    notes ? `Creative notes: ${notes}.` : '',
+    tone ? `Visual tone: ${tone}.` : '',
+    paletteLine ? `Use the brand palette (${paletteLine}) for backgrounds and accents.` : '',
+    fontLine ? `Typography should use ${fontLine}.` : '',
+    'Keep copy on this slide under 15 English words with generous negative space.',
+    'Maintain the same gradient/texture system used across the other slides.',
+    format.aspectRatio === '9:16'
+      ? 'Ensure safe margins for TikTok/Stories with vertical composition.'
+      : 'Ensure square composition centered for Instagram carousel.',
+    slide.key === 'engagement' ? 'Incorporate a sticker-style prompt asking viewers to comment, DM, or save.' : '',
+    slide.key === 'cta' ? 'Include a button-style CTA and a subtle urgency line (e.g., “Spots filling fast”).' : '',
+  ];
+  return lines.filter(Boolean).join(' ');
+}
+
+async function generateCarouselSlides({
+  tone,
+  notes,
+  concept,
+  captionCue,
+  cta,
+  niche,
+  brandPalette,
+  fonts,
+}) {
+  const slides = [];
+  const timestamp = Date.now();
+  const baseSlug = slugify(concept || captionCue || 'carousel');
+  for (const slideDef of CAROUSEL_SLIDE_BLUEPRINTS) {
+    for (const format of CAROUSEL_OUTPUT_FORMATS) {
+      const prompt = buildCarouselSlidePrompt({
+        slide: slideDef,
+        format,
+        tone,
+        concept,
+        captionCue,
+        cta,
+        notes,
+        brandPalette,
+        fonts,
+        niche,
+      });
+      const buffer = await generateStabilityImage(prompt, format.aspectRatio);
+      const filename = `${timestamp}-${baseSlug}-${slideDef.key}-${format.key}.png`;
+      const target = path.join(DESIGN_ASSETS_DIR, filename);
+      fs.writeFileSync(target, buffer);
+      const downloadUrl = `/data/design-assets/${filename}`;
+      slides.push({
+        id: `${timestamp}-${slideDef.key}-${format.key}`,
+        label: `${slideDef.title} · ${format.label}`,
+        role: slideDef.role,
+        slideNumber: slideDef.order,
+        platform: format.platform,
+        aspectRatio: format.aspectRatio,
+        width: format.width,
+        height: format.height,
+        downloadUrl,
+        previewUrl: downloadUrl,
+      });
+    }
+  }
+  if (!slides.length) throw new Error('No carousel slides were generated');
+  const zipName = `${timestamp}-${baseSlug}-carousel.zip`;
+  const zipPath = path.join(DESIGN_ASSETS_DIR, zipName);
+  const zip = new JSZip();
+  slides.forEach((slide, idx) => {
+    const fileName = slide.downloadUrl.split('/').pop();
+    if (!fileName) return;
+    const absolute = path.join(DESIGN_ASSETS_DIR, fileName);
+    if (!fs.existsSync(absolute)) return;
+    const zipLabel = `${String(slide.slideNumber || idx + 1).padStart(2, '0')}-${slugify(slide.label || `slide-${idx + 1}`)}.png`;
+    zip.file(zipLabel, fs.readFileSync(absolute));
+  });
+  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  fs.writeFileSync(zipPath, zipBuffer);
+  return {
+    slides,
+    bundleUrl: `/data/design-assets/${zipName}`,
+    previewUrl: slides[0]?.previewUrl || '',
+    downloadUrl: slides[0]?.downloadUrl || '',
+  };
+}
+
+function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit, concept, cta, brandPalette = {}, fonts = {} }) {
   const isStory = /story/i.test(assetType || '');
+  const paletteTokens = [brandPalette.primary, brandPalette.secondary, brandPalette.accent].filter(Boolean);
+  const fontTokens = [fonts.heading, fonts.body].filter(Boolean);
   const pieces = [
     `Create a ${assetType || 'social media asset'} for ${niche || 'a modern brand'}.`,
     tone ? `Use a ${tone} aesthetic.` : '',
     day ? `This is for day ${day} of a 30-day campaign.` : '',
     caption ? `Core caption or CTA: ${caption}` : '',
+    concept ? `Concept or hook to visualize: ${concept}.` : '',
+    cta ? `Final call-to-action to emphasize: ${cta}.` : '',
     notes ? `Incorporate these notes: ${notes}` : '',
     isStory
       ? 'Design a vertical 9:16 Instagram/TikTok story template with exactly three stacked frames: Frame 1 (Hook), Frame 2 (Proof or Tip), Frame 3 (CTA). Each frame may contain at most two short English phrases (<= 6 words) and generous blank space for imagery.'
@@ -260,6 +382,8 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
     'Avoid dense paragraphs—use large typography, capsule shapes, stickers, and gradient blocks so it is visually appealing, not a page of text.',
     'Ensure the design feels native to Instagram/TikTok algorithms: bold hook, social proof mid-frame, urgent CTA at the end.',
     'Use bold, legible typography and high-contrast layering suitable for mobile.',
+    paletteTokens.length ? `Stick to this palette: ${paletteTokens.join(', ')}.` : '',
+    fontTokens.length ? `Typography should pair ${fontTokens.join(' + ')}.` : '',
     brandKit ? describeBrandKitForPrompt(brandKit, { includeLogo: true }) : '',
   ].filter(Boolean);
   return pieces.join(' ');
@@ -1104,14 +1228,83 @@ const server = http.createServer((req, res) => {
           notes = '',
           day = '',
           caption = '',
+          captionCue = '',
+          concept = '',
           niche = '',
           aspectRatio = '9:16',
           userId = '',
+          cta: payloadCta = '',
+          brandPalette: palettePayload = {},
+          fonts: fontsPayload = {},
+          primaryColor: payloadPrimary = '',
+          secondaryColor: payloadSecondary = '',
+          accentColor: payloadAccent = '',
+          headingFont: payloadHeading = '',
+          bodyFont: payloadBody = '',
         } = payload;
         const brandProfile = userId ? loadBrand(userId) : null;
         const brandKit = brandProfile?.kit || null;
+        const palette = {
+          primary: palettePayload.primaryColor || payloadPrimary || brandKit?.primaryColor || '#7f5af0',
+          secondary: palettePayload.secondaryColor || payloadSecondary || brandKit?.secondaryColor || '#2cb1bc',
+          accent: palettePayload.accentColor || payloadAccent || brandKit?.accentColor || '#ff7ac3',
+        };
+        const fonts = {
+          heading: fontsPayload.heading || payloadHeading || brandKit?.headingFont || 'Inter Bold',
+          body: fontsPayload.body || payloadBody || brandKit?.bodyFont || 'Source Sans Pro',
+        };
         const wantsVideo = /video|clip|snippet/i.test(String(assetType || ''));
-        const prompt = buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit });
+        const wantsCarousel = /carousel/i.test(String(assetType || ''));
+        if (wantsCarousel) {
+          try {
+            const carouselResult = await generateCarouselSlides({
+              tone,
+              notes,
+              concept: concept || captionCue || caption || '',
+              captionCue: captionCue || caption || '',
+              cta: payloadCta || '',
+              niche,
+              brandPalette: palette,
+              fonts,
+            });
+            const response = {
+              id: `${Date.now()}-${slugify(assetType)}`,
+              day,
+              title: `${assetType || 'Carousel'}${day ? ` · Day ${day}` : ''}`,
+              type: assetType,
+              typeLabel: assetType,
+              status: 'Ready',
+              downloadUrl: carouselResult.downloadUrl,
+              bundleUrl: carouselResult.bundleUrl,
+              previewUrl: carouselResult.previewUrl,
+              slides: carouselResult.slides,
+              previewText: notes || caption || '',
+              accentColor: palette.accent,
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response));
+            return;
+          } catch (err) {
+            console.error('Stability generation failed:', err);
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Stability generation failed', detail: err.message || String(err) }));
+            return;
+          }
+        }
+        const captionText = captionCue || caption || '';
+        const prompt = buildDesignPrompt({
+          assetType,
+          tone,
+          notes,
+          day,
+          caption: captionText,
+          niche,
+          brandKit,
+          concept: concept || captionText,
+          cta: payloadCta,
+          brandPalette: palette,
+          fonts,
+        });
         let buffer;
         let extension;
         try {
@@ -1138,7 +1331,11 @@ const server = http.createServer((req, res) => {
           typeLabel: assetType,
           status: 'Ready',
           downloadUrl: `/data/design-assets/${safeName}`,
+          previewUrl: `/data/design-assets/${safeName}`,
           previewText: notes || caption || '',
+          bundleUrl: '',
+          slides: [],
+          accentColor: palette.accent,
         };
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response));
