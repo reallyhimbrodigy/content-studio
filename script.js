@@ -249,18 +249,46 @@ function hydrateDesignAssetsFromStorage(force = false) {
       asset.cta = asset.cta || '';
       asset.tone = asset.tone || '';
       asset.notes = asset.notes || '';
-      const descriptor = buildAssetPreviewDescriptor(asset);
-      asset.previewType = descriptor.kind;
-      if (descriptor.kind !== 'text' && descriptor.url) {
-        asset.previewUrl = descriptor.url;
-      } else if (!asset.previewText) {
-        asset.previewText = descriptor.text;
-      }
-    });
+      asset.previewInlineUrl = asset.previewInlineUrl || '';
+    const descriptor = buildAssetPreviewDescriptor(asset);
+    asset.previewType = descriptor.kind;
+    if (descriptor.kind === 'text' && !asset.previewText) {
+      asset.previewText = descriptor.text;
+    }
+  });
     renderDesignAssets();
   } catch (err) {
     console.warn('Unable to hydrate design assets', err);
   }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function ensureAssetInlinePreview(asset) {
+  if (!asset || asset.previewInlineUrl) return asset;
+  const ext = getAssetExtension(asset);
+  if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return asset;
+  try {
+    let blob = asset.fileBlob || null;
+    if (!blob && asset.downloadUrl) {
+      const resp = await fetch(asset.downloadUrl);
+      if (!resp.ok) return asset;
+      blob = await resp.blob();
+    }
+    if (!blob) return asset;
+    const dataUrl = await blobToDataUrl(blob);
+    asset.previewInlineUrl = dataUrl;
+  } catch (err) {
+    console.warn('Inline preview capture failed', err);
+  }
+  return asset;
 }
 
 hydrateDesignAssetsFromStorage();
@@ -1010,7 +1038,16 @@ function renderDesignAssets() {
       designGrid.innerHTML = '';
       return;
     }
-    const filteredAssets = applyDesignFilters(designAssets);
+    let filteredAssets = applyDesignFilters(designAssets);
+    if (
+      highlightDesignAssetId &&
+      !filteredAssets.some((asset) => Number(asset?.id) === Number(highlightDesignAssetId))
+    ) {
+      designFilterState = { type: 'all', day: 'all' };
+      if (designFilterType) designFilterType.value = 'all';
+      if (designFilterDay) designFilterDay.value = 'all';
+      filteredAssets = applyDesignFilters(designAssets);
+    }
     if (!filteredAssets.length) {
       designEmpty.style.display = 'none';
       designGrid.innerHTML = `<div class="design-grid__empty">No assets match the selected filters.</div>`;
@@ -1083,13 +1120,19 @@ function getAssetExtension(asset = {}) {
 }
 
 function buildAssetPreviewDescriptor(asset = {}) {
-  const url = asset.previewUrl || asset.downloadUrl || '';
-  const ext = getFileExtensionFromSource(url);
-  if (url && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
-    return { kind: 'image', url };
+  const inline = asset.previewInlineUrl || '';
+  if (inline) {
+    const lower = inline.slice(0, 30).toLowerCase();
+    if (lower.includes('video')) {
+      return { kind: 'video', url: inline };
+    }
+    return { kind: 'image', url: inline };
   }
-  if (url && ['mp4', 'webm', 'mov'].includes(ext)) {
-    return { kind: 'video', url };
+  const url = asset.previewUrl || '';
+  if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
+    const lower = url.slice(0, 30).toLowerCase();
+    if (lower.includes('video')) return { kind: 'video', url };
+    return { kind: 'image', url };
   }
   return {
     kind: 'text',
@@ -1273,7 +1316,8 @@ async function handleDesignFormSubmit(event) {
     if (kitSummary) payload.brandKitSummary = kitSummary;
     showDesignSuccess('Generating asset…');
     try {
-      const asset = await requestDesignAsset(payload);
+      let asset = await requestDesignAsset(payload);
+      asset = await ensureAssetInlinePreview(asset);
       asset.createdAt = asset.createdAt || new Date().toISOString();
       asset.linkedDay = payload.day || activeDesignContext?.day || null;
       designAssets.unshift(asset);
@@ -1360,12 +1404,8 @@ async function requestDesignAsset(payload) {
         asset.downloadUrl = URL.createObjectURL(blob);
       }
       asset.designUrl = `/design.html?asset=${asset.id}`;
-      const descriptor = buildAssetPreviewDescriptor(asset);
-      asset.previewType = descriptor.kind;
-      if (descriptor.kind !== 'text' && descriptor.url) {
-        asset.previewUrl = descriptor.url;
-      } else if (!asset.previewText) {
-        asset.previewText = descriptor.text;
+      if (!asset.previewText) {
+        asset.previewText = `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`;
       }
       return asset;
     } catch (error) {
@@ -1393,13 +1433,6 @@ async function requestDesignAsset(payload) {
     fallback.fileName = `${slugify(fallback.title || 'promptly-asset')}.pdf`;
     fallback.downloadUrl = URL.createObjectURL(blob);
     fallback.designUrl = `/design.html?asset=${fallback.id}`;
-    const descriptor = buildAssetPreviewDescriptor(fallback);
-    fallback.previewType = descriptor.kind;
-    if (descriptor.kind !== 'text' && descriptor.url) {
-      fallback.previewUrl = descriptor.url;
-    } else if (!fallback.previewText) {
-      fallback.previewText = descriptor.text;
-    }
     return fallback;
 }
 
@@ -1417,7 +1450,7 @@ function linkAssetToCalendarPost(asset) {
       typeLabel: asset.typeLabel,
       downloadUrl: asset.downloadUrl,
       previewType: descriptor.kind,
-      previewUrl: descriptor.kind === 'text' ? '' : descriptor.url,
+      previewInlineUrl: descriptor.kind === 'text' ? '' : descriptor.url,
       previewText: descriptor.kind === 'text' ? descriptor.text : asset.previewText,
       status: asset.status,
       createdAt: asset.createdAt || new Date().toISOString(),
@@ -1706,7 +1739,8 @@ async function handleDesignBatchGenerate() {
     const kitSummary = summarizeBrandKitBrief(currentBrandKit);
     if (kitSummary) payload.brandKitSummary = kitSummary;
     try {
-      const asset = await requestDesignAsset(payload);
+      let asset = await requestDesignAsset(payload);
+      asset = await ensureAssetInlinePreview(asset);
       asset.createdAt = asset.createdAt || new Date().toISOString();
       asset.linkedDay = day;
       designAssets.unshift(asset);
