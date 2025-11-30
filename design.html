@@ -154,6 +154,10 @@
               <option value="">No template</option>
             </select>
             <p id="design-template-hint" class="design-template-hint">Save any generated design as a template to reuse it here.</p>
+            <div class="design-template-shortcuts">
+              <button type="button" id="design-use-last-template" class="ghost small" disabled>Use last template</button>
+            </div>
+            <div id="design-template-gallery" class="design-template-gallery" aria-live="polite"></div>
           </div>
           <div class="design-form__row">
             <label for="design-tone">Creative direction</label>
@@ -163,6 +167,13 @@
               <option value="playful">Playful & colorful</option>
               <option value="elegant">Luxury & elegant</option>
             </select>
+          </div>
+          <div class="design-preview-panel">
+            <div class="design-preview-head">
+              <span>Live preview</span>
+              <small>Updates as you tweak the settings</small>
+            </div>
+            <div id="design-preview" class="design-preview"></div>
           </div>
           <div class="design-form__row">
             <label for="design-notes">Notes for AI (optional)</label>

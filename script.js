@@ -102,8 +102,11 @@ const designNotesInput = document.getElementById('design-notes');
 const designTemplateSelect = document.getElementById('design-template-select');
 const designTemplateClearBtn = document.getElementById('design-template-clear');
 const designTemplateHint = document.getElementById('design-template-hint');
+const designTemplateGallery = document.getElementById('design-template-gallery');
+const designUseLastTemplateBtn = document.getElementById('design-use-last-template');
 const designFilterType = document.getElementById('design-filter-type');
 const designFilterDay = document.getElementById('design-filter-day');
+const designPreviewEl = document.getElementById('design-preview');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -172,6 +175,7 @@ const CALENDAR_STORAGE_PREFIX = 'promptly_calendar_state_v1:';
 const DESIGN_ASSET_STORAGE_PREFIX = 'promptly_design_assets_v2:';
 const DESIGN_USAGE_STORAGE_PREFIX = 'promptly_design_usage_v1:';
 const DESIGN_FREE_MONTHLY_QUOTA = 3;
+const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
 let highlightDesignAssetId = urlParams.get('asset') ? Number(urlParams.get('asset')) : null;
@@ -180,6 +184,29 @@ let designFilterState = {
   type: designFilterType?.value || 'all',
   day: designFilterDay?.value || 'all',
 };
+
+function getLastTemplateId() {
+  try {
+    return localStorage.getItem(DESIGN_LAST_TEMPLATE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberLastTemplate(templateId) {
+  if (!templateId) return;
+  try {
+    localStorage.setItem(DESIGN_LAST_TEMPLATE_KEY, String(templateId));
+  } catch {}
+  updateTemplateShortcuts();
+}
+
+function updateTemplateShortcuts() {
+  if (!designUseLastTemplateBtn) return;
+  const lastId = getLastTemplateId();
+  const exists = lastId && designTemplates.some((tpl) => String(tpl.id) === String(lastId));
+  designUseLastTemplateBtn.disabled = !exists;
+}
 
 function rememberActiveUserEmail(email = '') {
   if (typeof localStorage === 'undefined') return;
@@ -545,8 +572,9 @@ function inferAssetTypeFromAsset(asset = {}) {
   return 'social-graphic';
 }
 
-function handleDesignTemplateSave(asset) {
+async function handleDesignTemplateSave(asset) {
   if (!asset) return;
+  await ensureAssetInlinePreview(asset);
   const defaultLabel = asset.title || formatAssetTypeLabel(inferAssetTypeFromAsset(asset));
   const labelInput = typeof window !== 'undefined'
     ? window.prompt('Name this layout template', defaultLabel || 'Template')
@@ -560,6 +588,7 @@ function handleDesignTemplateSave(asset) {
     tone: asset.tone || 'bold',
     notes: asset.notes || asset.brief || '',
     previewText: asset.previewText || asset.title || '',
+    previewInlineUrl: asset.previewInlineUrl || asset.previewUrl || '',
     createdAt: new Date().toISOString(),
   };
   const lower = label.toLowerCase();
@@ -600,6 +629,8 @@ function renderDesignTemplateOptions(selectedId = '') {
     if (targetId) activeTemplateId = '';
   }
   updateDesignTemplateHint(designTemplateSelect.value || '');
+  renderDesignTemplateGallery(selectedId || designTemplateSelect.value || '');
+  updateTemplateShortcuts();
 }
 
 function updateDesignTemplateHint(templateId = '') {
@@ -619,10 +650,40 @@ function updateDesignTemplateHint(templateId = '') {
   }
 }
 
+function renderDesignTemplateGallery(selectedId = '') {
+  if (!designTemplateGallery) return;
+  if (!designTemplates.length) {
+    designTemplateGallery.innerHTML = `<p class="design-template-hint">Save an asset to unlock reusable layouts.</p>`;
+    return;
+  }
+  designTemplateGallery.innerHTML = designTemplates
+    .map((tpl) => {
+      const isActive = String(tpl.id) === String(selectedId || activeTemplateId);
+      const preview = tpl.previewInlineUrl
+        ? `<img src="${tpl.previewInlineUrl}" alt="${escapeHtml(tpl.label)} preview" />`
+        : `<div class="design-template-card__preview-text">${escapeHtml(tpl.previewText || tpl.label)}</div>`;
+      return `
+        <button type="button" class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
+          <div class="design-template-card__preview">${preview}</div>
+          <strong>${escapeHtml(tpl.label)}</strong>
+          <span>${escapeHtml(formatAssetTypeLabel(tpl.assetType || 'social-graphic'))}</span>
+        </button>
+      `;
+    })
+    .join('');
+  designTemplateGallery.querySelectorAll('.design-template-card').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.templateId;
+      if (id) applyDesignTemplateSelection(id);
+    });
+  });
+}
+
 function applyDesignTemplateSelection(templateId) {
   const template = designTemplates.find((tpl) => String(tpl.id) === String(templateId));
   if (!template) return;
   activeTemplateId = String(template.id);
+  rememberLastTemplate(activeTemplateId);
   if (designTemplateSelect && designTemplateSelect.value !== String(template.id)) {
     designTemplateSelect.value = String(template.id);
   }
@@ -652,12 +713,16 @@ function applyDesignTemplateSelection(templateId) {
     designNotesInput.value = template.notes;
   }
   updateDesignTemplateHint(template.id);
+  renderDesignTemplateGallery(template.id);
+  renderDesignLivePreview();
 }
 
 function clearDesignTemplateSelection() {
   activeTemplateId = '';
   if (designTemplateSelect) designTemplateSelect.value = '';
   updateDesignTemplateHint('');
+  renderDesignTemplateGallery('');
+  updateTemplateShortcuts();
 }
 
 function updateDesignBatchUI() {
@@ -689,7 +754,81 @@ function toggleDesignDaySelection(day) {
   updateDesignBatchUI();
   updateBatchSelectionVisual(normalized, selectedDesignDays.has(normalized));
 }
+
+function mapToneToTheme(tone = 'bold') {
+  const presets = {
+    bold: {
+      from: '#7f5af0',
+      to: '#ff7ac3',
+      text: '#ffffff',
+    },
+    minimal: {
+      from: '#0b1b2b',
+      to: '#1f3a5f',
+      text: '#f5f6f8',
+    },
+    playful: {
+      from: '#ff9472',
+      to: '#f2709c',
+      text: '#1d1d1d',
+    },
+    elegant: {
+      from: '#0f0c29',
+      to: '#302b63',
+      text: '#fdf6e3',
+    },
+  };
+  return presets[tone] || presets.bold;
+}
+
+function buildPreviewMarkup(type, tone) {
+  const theme = mapToneToTheme(tone);
+  const baseStyle = `background: linear-gradient(135deg, ${theme.from}, ${theme.to}); color: ${theme.text};`;
+  if (type === 'story-template') {
+    return `
+      <div class="design-preview__mock design-preview__story">
+        <div class="design-preview__story-frame" style="${baseStyle}">Hook</div>
+        <div class="design-preview__story-frame" style="background: rgba(255,255,255,0.08);">Proof / Tip</div>
+        <div class="design-preview__story-frame" style="${baseStyle}">CTA</div>
+      </div>
+    `;
+  }
+  if (type === 'carousel-template') {
+    return `
+      <div class="design-preview__mock design-preview__carousel">
+        <div class="design-preview__carousel-slide" style="${baseStyle}">Slide 1</div>
+        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08);">Slide 2</div>
+        <div class="design-preview__carousel-slide" style="${baseStyle}">Slide 3</div>
+      </div>
+    `;
+  }
+  if (type === 'video-snippet') {
+    return `
+      <div class="design-preview__mock design-preview__video" style="${baseStyle}">
+        <div class="design-preview__track"></div>
+        <div class="design-preview__track"></div>
+        <div class="design-preview__track" style="background: rgba(255,255,255,0.65);"></div>
+      </div>
+    `;
+  }
+  return `
+    <div class="design-preview__mock">
+      <div class="design-preview__graphic" style="${baseStyle}">
+        <strong>Headline</strong>
+        <p>Supporting copy & CTA</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderDesignLivePreview() {
+  if (!designPreviewEl) return;
+  const type = designAssetTypeInput?.value || 'social-graphic';
+  const tone = designToneInput?.value || 'bold';
+  designPreviewEl.innerHTML = buildPreviewMarkup(type, tone);
+}
 renderDesignAssets();
+renderDesignLivePreview();
 const POST_FREQUENCY_KEY = 'promptly_post_frequency';
 const PLAN_DETAILS = {
   pro: {
@@ -1245,6 +1384,8 @@ async function startDesignModal(entry = null, entryDay = null) {
     } else {
       updateDesignTemplateHint('');
     }
+    updateTemplateShortcuts();
+    renderDesignLivePreview();
 
     if (designSelectedPost) {
       if (entry && resolvedDay) {
@@ -1303,6 +1444,8 @@ async function handleDesignFormSubmit(event) {
       tone: designToneInput?.value || 'bold',
       notes: designNotesInput?.value?.trim() || '',
       userId: currentUserId || '',
+      caption: activeDesignContext?.entry?.caption || activeDesignContext?.entry?.description || '',
+      cta: activeDesignContext?.entry?.cta || '',
       title:
         (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
         (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
@@ -5117,6 +5260,7 @@ if (designTemplateSelect) {
     } else {
       clearDesignTemplateSelection();
     }
+    renderDesignLivePreview();
   });
 }
 if (designTemplateClearBtn) {
@@ -5124,12 +5268,31 @@ if (designTemplateClearBtn) {
     event.preventDefault();
     clearDesignTemplateSelection();
     if (designTemplateSelect) designTemplateSelect.focus();
+    renderDesignLivePreview();
+  });
+}
+if (designUseLastTemplateBtn) {
+  designUseLastTemplateBtn.addEventListener('click', () => {
+    const lastId = getLastTemplateId();
+    if (lastId) {
+      applyDesignTemplateSelection(lastId);
+      renderDesignLivePreview();
+    }
   });
 }
 if (designModal) {
   designModal.addEventListener('click', (event) => {
     if (event.target === designModal) closeDesignModal();
   });
+}
+if (designAssetTypeInput) {
+  designAssetTypeInput.addEventListener('change', renderDesignLivePreview);
+}
+if (designToneInput) {
+  designToneInput.addEventListener('change', renderDesignLivePreview);
+}
+if (designNotesInput) {
+  designNotesInput.addEventListener('input', renderDesignLivePreview);
 }
 if (designForm) designForm.addEventListener('submit', handleDesignFormSubmit);
 if (designFilterType) {
@@ -5170,7 +5333,7 @@ if (designGrid) {
       }
     } else if (templateBtn) {
       event.preventDefault();
-      handleDesignTemplateSave(asset);
+      await handleDesignTemplateSave(asset);
     }
   });
 
