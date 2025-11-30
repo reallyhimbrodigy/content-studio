@@ -192,6 +192,8 @@ let designFilterState = {
   campaign: designFilterCampaign?.value || 'all',
   month: designFilterMonth?.value || 'all',
 };
+let designStorageDisabled = false;
+let calendarStorageDisabled = false;
 
 function getLastTemplateId() {
   try {
@@ -240,17 +242,17 @@ function getScopedStorageKey(prefix) {
 }
 
 function persistDesignAssetsToStorage() {
-  if (typeof localStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined' || designStorageDisabled) return;
   const key = getScopedStorageKey(DESIGN_ASSET_STORAGE_PREFIX);
   if (!key) return;
   try {
-    const serializable = designAssets.map((asset) => {
-      const { fileBlob, ...rest } = asset || {};
-      return rest;
-    });
-    localStorage.setItem(key, JSON.stringify(serializable));
+    const payload = JSON.stringify(designAssets.slice(0, 60).map(sanitizeAssetForStorage));
+    localStorage.setItem(key, payload);
   } catch (err) {
     console.warn('Unable to persist design assets', err);
+    if (err && err.name === 'QuotaExceededError') {
+      designStorageDisabled = true;
+    }
   }
 }
 
@@ -876,6 +878,14 @@ function toggleDesignDaySelection(day) {
   }
   updateDesignBatchUI();
   updateBatchSelectionVisual(normalized, selectedDesignDays.has(normalized));
+}
+
+function prunePostForStorage(post = {}) {
+  const clone = { ...post };
+  if (Array.isArray(clone.assets)) {
+    clone.assets = clone.assets.map(sanitizeAssetForStorage);
+  }
+  return clone;
 }
 
 function updateDesignSelectionUI() {
@@ -3443,7 +3453,7 @@ function syncCalendarUIAfterDataChange(options = {}) {
 }
 
 function persistCurrentCalendarState() {
-  if (typeof localStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined' || calendarStorageDisabled) return;
   const key = getScopedStorageKey(CALENDAR_STORAGE_PREFIX);
   if (!key) return;
   if (!Array.isArray(currentCalendar) || !currentCalendar.length) {
@@ -3452,7 +3462,7 @@ function persistCurrentCalendarState() {
   }
   try {
     const payload = {
-      posts: currentCalendar,
+      posts: currentCalendar.map(prunePostForStorage),
       niche: currentNiche || nicheInput?.value || '',
       savedAt: new Date().toISOString(),
       postFrequency: currentPostFrequency || 1,
@@ -3460,6 +3470,9 @@ function persistCurrentCalendarState() {
     localStorage.setItem(key, JSON.stringify(payload));
   } catch (err) {
     console.warn('Unable to persist calendar', err);
+    if (err && err.name === 'QuotaExceededError') {
+      calendarStorageDisabled = true;
+    }
   }
 }
 
@@ -5858,3 +5871,26 @@ function pdfBuildText(lines) {
 function escapePdfText(text) {
     return String(text || '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
   }
+function sanitizeAssetForStorage(asset = {}) {
+  return {
+    id: asset.id,
+    day: asset.day || asset.linkedDay || null,
+    linkedDay: asset.linkedDay || asset.day || null,
+    title: asset.title || '',
+    typeLabel: asset.typeLabel || '',
+    assetType: asset.assetType || '',
+    tone: asset.tone || '',
+    notes: asset.notes || '',
+    status: asset.status || '',
+    downloadUrl: asset.downloadUrl || '',
+    designUrl: asset.designUrl || '',
+    templateId: asset.templateId || null,
+    templateLabel: asset.templateLabel || null,
+    caption: asset.caption || '',
+    cta: asset.cta || '',
+    campaign: asset.campaign || '',
+    previewText: asset.previewText || '',
+    previewType: asset.previewType || '',
+    createdAt: asset.createdAt || new Date().toISOString(),
+  };
+}
