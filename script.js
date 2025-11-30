@@ -1248,6 +1248,22 @@ function handleAssetDetailSave(event) {
   closeDesignAssetDetail();
 }
 applyDesignViewMode(designViewMode);
+(function syncPreviewPlacement() {
+  try {
+    const appPreviewPanel = document.querySelector('#app-experience .design-preview-panel');
+    const appNotesRow = document.querySelector('#app-experience #design-notes')?.closest('.design-form__row');
+    if (appPreviewPanel && appNotesRow && appPreviewPanel.nextElementSibling !== appNotesRow) {
+      appNotesRow.parentElement.insertBefore(appPreviewPanel, appNotesRow);
+    }
+    const modalPreviewPanel = document.querySelector('#design-modal .design-preview-panel');
+    const modalNotesRow = document.querySelector('#design-modal #design-notes')?.closest('.design-form__row');
+    if (modalPreviewPanel && modalNotesRow && modalPreviewPanel.nextElementSibling !== modalNotesRow) {
+      modalNotesRow.parentElement.insertBefore(modalPreviewPanel, modalNotesRow);
+    }
+  } catch (err) {
+    console.warn('Unable to align preview panel placement', err);
+  }
+})();
 renderDesignLivePreview();
 const POST_FREQUENCY_KEY = 'promptly_post_frequency';
 const PLAN_DETAILS = {
