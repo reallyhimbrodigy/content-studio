@@ -250,6 +250,33 @@ body {
   flex-wrap: wrap;
 }
 
+.design-lab__filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  background: rgba(8, 8, 16, 0.55);
+}
+
+.design-lab__filters label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  gap: 0.25rem;
+}
+
+.design-lab__filters select {
+  min-width: 150px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  padding: 0.35rem 0.6rem;
+}
+
 .design-batch-status {
   display: flex;
   align-items: center;
@@ -291,6 +318,14 @@ body {
   gap: 1rem;
 }
 
+.design-grid__empty {
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
 .design-asset {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
@@ -300,6 +335,11 @@ body {
   gap: 0.75rem;
   background: rgba(8,8,16,0.55);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.design-asset--highlight {
+  border-color: rgba(127, 90, 240, 0.8);
+  box-shadow: 0 0 0 3px rgba(127, 90, 240, 0.25);
 }
 
 .design-asset.drag-over-top {
@@ -2502,6 +2542,96 @@ body.prefers-reduced-motion *::after {
 .calendar-card__asset-chip:hover {
   border-color: rgba(127, 90, 240, 0.65);
   transform: translateY(-1px);
+}
+
+.calendar-card__asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.65rem;
+}
+
+.calendar-card__asset-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  background: rgba(12, 12, 20, 0.5);
+}
+
+.calendar-card__asset-preview {
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+}
+
+.calendar-card__asset-preview img,
+.calendar-card__asset-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.calendar-card__asset-preview-text {
+  font-size: 0.78rem;
+  text-align: center;
+  padding: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.calendar-card__asset-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.calendar-card__asset-meta strong {
+  font-size: 0.85rem;
+}
+
+.calendar-card__asset-meta span,
+.calendar-card__asset-meta p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.calendar-card__asset-badge {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+.calendar-card__asset-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.calendar-card__asset-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(127, 90, 240, 0.45);
+  padding: 0.2rem 0.8rem;
+  font-size: 0.75rem;
+  color: #f5f6f8;
+  text-decoration: none;
+  background: rgba(127, 90, 240, 0.1);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.calendar-card__asset-btn.ghost {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+
+.calendar-card__asset-btn:hover {
+  border-color: rgba(127, 90, 240, 0.75);
+  background: rgba(127, 90, 240, 0.18);
 }
 
 .calendar-card__actions {

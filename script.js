@@ -102,6 +102,8 @@ const designNotesInput = document.getElementById('design-notes');
 const designTemplateSelect = document.getElementById('design-template-select');
 const designTemplateClearBtn = document.getElementById('design-template-clear');
 const designTemplateHint = document.getElementById('design-template-hint');
+const designFilterType = document.getElementById('design-filter-type');
+const designFilterDay = document.getElementById('design-filter-day');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -163,6 +165,7 @@ const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignDays = new Set();
 let draggedDesignAssetId = null;
 let platformVariantSyncPromise = null;
+const urlParams = new URLSearchParams(window.location.search || '');
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
 const LAST_USER_STORAGE_KEY = 'promptly_active_user_v1';
@@ -172,6 +175,12 @@ const DESIGN_USAGE_STORAGE_PREFIX = 'promptly_design_usage_v1:';
 const DESIGN_FREE_MONTHLY_QUOTA = 3;
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
+let highlightDesignAssetId = urlParams.get('asset') ? Number(urlParams.get('asset')) : null;
+if (!Number.isFinite(highlightDesignAssetId)) highlightDesignAssetId = null;
+let designFilterState = {
+  type: designFilterType?.value || 'all',
+  day: designFilterDay?.value || 'all',
+};
 
 function rememberActiveUserEmail(email = '') {
   if (typeof localStorage === 'undefined') return;
@@ -236,6 +245,18 @@ function hydrateDesignAssetsFromStorage(force = false) {
         asset.fileBlob = blob;
         asset.downloadUrl = URL.createObjectURL(blob);
       }
+      asset.designUrl = asset.designUrl || `/design.html?asset=${asset.id}`;
+      asset.caption = asset.caption || '';
+      asset.cta = asset.cta || '';
+      asset.tone = asset.tone || '';
+      asset.notes = asset.notes || '';
+      const descriptor = buildAssetPreviewDescriptor(asset);
+      asset.previewType = descriptor.kind;
+      if (descriptor.kind !== 'text' && descriptor.url) {
+        asset.previewUrl = descriptor.url;
+      } else if (!asset.previewText) {
+        asset.previewText = descriptor.text;
+      }
     });
     renderDesignAssets();
   } catch (err) {
@@ -292,6 +313,50 @@ function incrementDesignUsage(userId) {
   usage.count = (usage.count || 0) + 1;
   persistDesignUsage(userId, usage);
   return Math.max(0, DESIGN_FREE_MONTHLY_QUOTA - usage.count);
+}
+
+function normalizeAssetTypeKey(value = '') {
+  return String(value || '').toLowerCase();
+}
+
+function applyDesignFilters(list = []) {
+  return list.filter((asset) => {
+    if (!asset) return false;
+    const typeFilter = designFilterState.type;
+    if (typeFilter && typeFilter !== 'all') {
+      const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel);
+      if (assetTypeKey !== typeFilter) return false;
+    }
+    const dayFilter = designFilterState.day;
+    if (dayFilter && dayFilter !== 'all') {
+      const assetDay = Number(asset.linkedDay || asset.day);
+      if (String(assetDay || '') !== String(dayFilter)) return false;
+    }
+    return true;
+  });
+}
+
+function refreshDesignDayFilterOptions() {
+  if (!designFilterDay) return;
+  const previous = designFilterState.day;
+  const days = Array.from(
+    new Set(
+      designAssets
+        .map((asset) => Number(asset?.linkedDay || asset?.day))
+        .filter((day) => Number.isFinite(day) && day > 0)
+    )
+  ).sort((a, b) => a - b);
+  const options = [
+    '<option value="all">All days</option>',
+    ...days.map((day) => `<option value="${day}">Day ${String(day).padStart(2, '0')}</option>`),
+  ].join('');
+  designFilterDay.innerHTML = options;
+  if (previous !== 'all' && days.some((day) => String(day) === String(previous))) {
+    designFilterDay.value = previous;
+  } else {
+    designFilterDay.value = 'all';
+    designFilterState.day = 'all';
+  }
 }
 const ASSET_PRESETS = {
   education: {
@@ -940,13 +1005,20 @@ function updateTabs(){
 
 function renderDesignAssets() {
     if (!designGrid || !designEmpty) return;
+    refreshDesignDayFilterOptions();
     if (!designAssets.length) {
       designEmpty.style.display = '';
       designGrid.innerHTML = '';
       return;
     }
+    const filteredAssets = applyDesignFilters(designAssets);
+    if (!filteredAssets.length) {
+      designEmpty.style.display = 'none';
+      designGrid.innerHTML = `<div class="design-grid__empty">No assets match the selected filters.</div>`;
+      return;
+    }
     designEmpty.style.display = 'none';
-    designGrid.innerHTML = designAssets
+    designGrid.innerHTML = filteredAssets
       .map((asset) => {
         const resolvedDay = asset.linkedDay || asset.day;
         const dayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
@@ -958,8 +1030,11 @@ function renderDesignAssets() {
         const brief = escapeHtml(asset.brief || asset.previewText || '');
         const linkBadge = resolvedDay ? `<span class="design-asset__badge">Linked to Day ${String(resolvedDay).padStart(2, '0')}</span>` : '';
         const templateBadge = asset.templateLabel ? `<span class="design-asset__badge">Template: ${escapeHtml(asset.templateLabel)}</span>` : '';
+        const captionLine = asset.caption ? `<p class="design-asset__caption">${escapeHtml(asset.caption)}</p>` : '';
+        const ctaLine = asset.cta ? `<p class="design-asset__cta">CTA: ${escapeHtml(asset.cta)}</p>` : '';
+        const toneLine = asset.tone ? `<span class="design-asset__tone">${escapeHtml(asset.tone)}</span>` : '';
         return `
-          <article class="design-asset" data-asset-id="${asset.id}" draggable="true">
+          <article class="design-asset" data-asset-id="${asset.id}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
             <div class="design-asset__preview${previewBlock.isMedia ? ' design-asset__preview--media' : ''}">${previewBlock.html}</div>
             <div class="design-asset__meta">
               <strong>${title}</strong>
@@ -967,6 +1042,9 @@ function renderDesignAssets() {
               ${linkBadge}
               ${templateBadge}
               <span>Status: ${status}</span>
+              ${toneLine}
+              ${captionLine}
+              ${ctaLine}
             </div>
             <div class="design-asset__actions">
               <button class="secondary design-asset__download" data-url="${download}">Download</button>
@@ -977,10 +1055,22 @@ function renderDesignAssets() {
         `;
       })
       .join('');
+    if (highlightDesignAssetId) {
+      const highlightEl = designGrid.querySelector(`.design-asset[data-asset-id="${highlightDesignAssetId}"]`);
+      if (highlightEl) {
+        highlightEl.classList.add('design-asset--highlight');
+        highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        highlightDesignAssetId = null;
+        if (urlParams.has('asset')) {
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete('asset');
+          window.history.replaceState({}, '', newUrl.toString());
+        }
+      }
+    }
   }
 
-function getAssetExtension(asset = {}) {
-  const source = asset.downloadUrl || asset.fileName || '';
+function getFileExtensionFromSource(source = '') {
   if (!source) return '';
   const clean = source.split('?')[0] || '';
   const idx = clean.lastIndexOf('.');
@@ -988,19 +1078,39 @@ function getAssetExtension(asset = {}) {
   return clean.slice(idx + 1).toLowerCase();
 }
 
+function getAssetExtension(asset = {}) {
+  const source = asset.downloadUrl || asset.fileName || '';
+  return getFileExtensionFromSource(source);
+}
+
+function buildAssetPreviewDescriptor(asset = {}) {
+  const url = asset.previewUrl || asset.downloadUrl || '';
+  const ext = getFileExtensionFromSource(url);
+  if (url && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+    return { kind: 'image', url };
+  }
+  if (url && ['mp4', 'webm', 'mov'].includes(ext)) {
+    return { kind: 'video', url };
+  }
+  return {
+    kind: 'text',
+    url: '',
+    text: asset.previewText || asset.title || 'AI asset ready to download',
+  };
+}
+
 function buildDesignAssetPreviewBlock(asset = {}) {
-  const textFallback = escapeHtml(asset.previewText || asset.title || 'AI asset ready to download');
-  const url = asset.downloadUrl || '';
-  const ext = getAssetExtension(asset);
-  const safeUrl = url ? escapeHtml(url) : '';
-  if (safeUrl && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) {
+  const descriptor = buildAssetPreviewDescriptor(asset);
+  if (descriptor.kind === 'image') {
+    const safeUrl = escapeHtml(descriptor.url);
     const alt = escapeHtml(asset.title || 'AI asset preview');
     return {
       isMedia: true,
       html: `<img src="${safeUrl}" alt="${alt}" loading="lazy" />`,
     };
   }
-  if (safeUrl && ['mp4', 'webm', 'mov'].includes(ext)) {
+  if (descriptor.kind === 'video') {
+    const safeUrl = escapeHtml(descriptor.url);
     return {
       isMedia: true,
       html: `<video src="${safeUrl}" controls playsinline preload="metadata"></video>`,
@@ -1008,7 +1118,7 @@ function buildDesignAssetPreviewBlock(asset = {}) {
   }
   return {
     isMedia: false,
-    html: `<div class="design-asset__preview-text">${textFallback}</div>`,
+    html: `<div class="design-asset__preview-text">${escapeHtml(descriptor.text)}</div>`,
   };
 }
 
@@ -1241,12 +1351,22 @@ async function requestDesignAsset(payload) {
         notes: data.notes || payload.notes || '',
         templateId: data.templateId || payload.templateId || null,
         templateLabel: data.templateLabel || payload.templateLabel || null,
+        caption: data.caption || payload.caption || activeDesignContext?.entry?.caption || '',
+        cta: data.cta || payload.cta || activeDesignContext?.entry?.cta || '',
       };
       if (!asset.downloadUrl) {
         const blob = buildDesignPdfBlob(asset, payload);
         asset.fileBlob = blob;
         asset.fileName = `${slugify(asset.title || 'promptly-asset')}.pdf`;
         asset.downloadUrl = URL.createObjectURL(blob);
+      }
+      asset.designUrl = `/design.html?asset=${asset.id}`;
+      const descriptor = buildAssetPreviewDescriptor(asset);
+      asset.previewType = descriptor.kind;
+      if (descriptor.kind !== 'text' && descriptor.url) {
+        asset.previewUrl = descriptor.url;
+      } else if (!asset.previewText) {
+        asset.previewText = descriptor.text;
       }
       return asset;
     } catch (error) {
@@ -1266,12 +1386,22 @@ async function requestDesignAsset(payload) {
       notes: payload.notes || '',
       templateId: payload.templateId || null,
       templateLabel: payload.templateLabel || null,
+      caption: payload.caption || activeDesignContext?.entry?.caption || '',
+      cta: payload.cta || activeDesignContext?.entry?.cta || '',
     };
     const blob = buildDesignPdfBlob(fallback, payload);
     fallback.fileBlob = blob;
     fallback.fileName = `${slugify(fallback.title || 'promptly-asset')}.pdf`;
     fallback.downloadUrl = URL.createObjectURL(blob);
-  return fallback;
+    fallback.designUrl = `/design.html?asset=${fallback.id}`;
+    const descriptor = buildAssetPreviewDescriptor(fallback);
+    fallback.previewType = descriptor.kind;
+    if (descriptor.kind !== 'text' && descriptor.url) {
+      fallback.previewUrl = descriptor.url;
+    } else if (!fallback.previewText) {
+      fallback.previewText = descriptor.text;
+    }
+    return fallback;
 }
 
 function linkAssetToCalendarPost(asset) {
@@ -1281,15 +1411,24 @@ function linkAssetToCalendarPost(asset) {
       (contextEntry && contextEntry.day === dayToLink ? contextEntry : null) ||
       (dayToLink ? findPostByDay(dayToLink) : null);
     if (!targetEntry) return;
+    const descriptor = buildAssetPreviewDescriptor(asset);
     const summary = {
       id: asset.id,
       title: asset.title,
       typeLabel: asset.typeLabel,
       downloadUrl: asset.downloadUrl,
-      previewText: asset.previewText,
+      previewType: descriptor.kind,
+      previewUrl: descriptor.kind === 'text' ? '' : descriptor.url,
+      previewText: descriptor.kind === 'text' ? descriptor.text : asset.previewText,
       status: asset.status,
       createdAt: asset.createdAt || new Date().toISOString(),
       day: dayToLink,
+      designUrl: asset.designUrl || `/design.html?asset=${asset.id}`,
+      caption: asset.caption || contextEntry?.caption || contextEntry?.description || '',
+      cta: asset.cta || contextEntry?.cta || '',
+      tone: asset.tone || '',
+      notes: asset.notes || '',
+      assetType: asset.assetType || asset.typeLabel || '',
     };
     if (!Array.isArray(targetEntry.assets)) targetEntry.assets = [];
     const next = [summary, ...targetEntry.assets.filter((existing) => existing && existing.id !== summary.id)];
@@ -2410,18 +2549,81 @@ const createCard = (post) => {
       const labelEl = document.createElement('strong');
       labelEl.textContent = assets.length > 1 ? 'AI Assets' : 'AI Asset';
       header.append(labelEl);
-      const chips = document.createElement('div');
-      chips.className = 'calendar-card__asset-chips';
+      container.appendChild(header);
+      const grid = document.createElement('div');
+      grid.className = 'calendar-card__asset-grid';
       assets.forEach((asset) => {
-        const link = document.createElement('a');
-        link.href = asset.downloadUrl || asset.url || '#';
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.textContent = asset.typeLabel || asset.title || 'View';
-        link.className = 'calendar-card__asset-chip';
-        chips.appendChild(link);
+        const card = document.createElement('div');
+        card.className = 'calendar-card__asset-card';
+        const preview = document.createElement('div');
+        preview.className = 'calendar-card__asset-preview';
+        const descriptor = buildAssetPreviewDescriptor(asset);
+        if (descriptor.kind === 'image' && descriptor.url) {
+          const img = document.createElement('img');
+          img.src = descriptor.url;
+          img.alt = asset.title || 'AI asset preview';
+          img.loading = 'lazy';
+          preview.appendChild(img);
+        } else if (descriptor.kind === 'video' && descriptor.url) {
+          const video = document.createElement('video');
+          video.src = descriptor.url;
+          video.controls = true;
+          video.playsInline = true;
+          video.preload = 'metadata';
+          preview.appendChild(video);
+        } else {
+          const text = document.createElement('div');
+          text.className = 'calendar-card__asset-preview-text';
+          text.textContent = descriptor.text || asset.previewText || asset.typeLabel || 'AI asset ready';
+          preview.appendChild(text);
+        }
+        card.appendChild(preview);
+        const meta = document.createElement('div');
+        meta.className = 'calendar-card__asset-meta';
+        const typeEl = document.createElement('strong');
+        typeEl.textContent = asset.typeLabel || asset.title || 'AI Asset';
+        meta.appendChild(typeEl);
+        if (asset.title) {
+          const titleLine = document.createElement('span');
+          titleLine.textContent = asset.title;
+          meta.appendChild(titleLine);
+        }
+        if (asset.caption) {
+          const captionLine = document.createElement('p');
+          captionLine.textContent = asset.caption;
+          meta.appendChild(captionLine);
+        }
+        if (asset.day || entryData?.day) {
+          const badge = document.createElement('span');
+          badge.className = 'calendar-card__asset-badge';
+          const assetDay = asset.day || entryData?.day;
+          badge.textContent = assetDay ? `Linked to Day ${String(assetDay).padStart(2, '0')}` : 'Linked to calendar';
+          meta.appendChild(badge);
+        }
+        card.appendChild(meta);
+        const actions = document.createElement('div');
+        actions.className = 'calendar-card__asset-actions';
+        if (asset.designUrl || asset.id) {
+          const viewLink = document.createElement('a');
+          viewLink.className = 'calendar-card__asset-btn ghost';
+          viewLink.textContent = 'View/Edit';
+          viewLink.href = asset.designUrl || `/design.html?asset=${asset.id}`;
+          actions.appendChild(viewLink);
+        }
+        if (asset.downloadUrl) {
+          const downloadLink = document.createElement('a');
+          downloadLink.className = 'calendar-card__asset-btn';
+          downloadLink.textContent = 'Download';
+          downloadLink.href = asset.downloadUrl;
+          downloadLink.target = '_blank';
+          downloadLink.rel = 'noopener';
+          downloadLink.setAttribute('download', '');
+          actions.appendChild(downloadLink);
+        }
+        card.appendChild(actions);
+        grid.appendChild(card);
       });
-      container.append(header, chips);
+      container.appendChild(grid);
       return container;
     };
 
@@ -3685,14 +3887,38 @@ function buildPostHTML(post){
   ];
 
   if (Array.isArray(post.assets) && post.assets.length) {
-    const assetChips = post.assets
+    const assetCards = post.assets
       .map((asset) => {
-        const label = escapeHtml(asset.typeLabel || asset.title || 'View');
-        const url = escapeHtml(asset.downloadUrl || asset.url || '#');
-        return `<a class="calendar-card__asset-chip" href="${url}" target="_blank" rel="noopener">${label}</a>`;
+        const descriptor = buildAssetPreviewDescriptor(asset);
+        let previewHtml = '';
+        if (descriptor.kind === 'image' && descriptor.url) {
+          previewHtml = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'AI asset preview')}" />`;
+        } else if (descriptor.kind === 'video' && descriptor.url) {
+          previewHtml = `<video src="${escapeHtml(descriptor.url)}" controls playsinline preload="metadata"></video>`;
+        } else {
+          previewHtml = `<div class="calendar-card__asset-preview-text">${escapeHtml(descriptor.text || asset.previewText || '')}</div>`;
+        }
+        const downloadUrl = escapeHtml(asset.downloadUrl || asset.url || '#');
+        const designUrl = escapeHtml(asset.designUrl || '#');
+        const captionText = asset.caption ? `<p>${escapeHtml(asset.caption)}</p>` : '';
+        return `
+          <div class="calendar-card__asset-card">
+            <div class="calendar-card__asset-preview">${previewHtml}</div>
+            <div class="calendar-card__asset-meta">
+              <strong>${escapeHtml(asset.typeLabel || asset.title || 'AI Asset')}</strong>
+              ${asset.title ? `<span>${escapeHtml(asset.title)}</span>` : ''}
+              ${captionText}
+              ${asset.day ? `<span class="calendar-card__asset-badge">Linked to Day ${String(asset.day).padStart(2, '0')}</span>` : ''}
+            </div>
+            <div class="calendar-card__asset-actions">
+              <a class="calendar-card__asset-btn" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
+              <a class="calendar-card__asset-btn ghost" href="${designUrl}" target="_blank" rel="noopener">View/Edit</a>
+            </div>
+          </div>
+        `;
       })
       .join('');
-    detailBlocks.push(`<div class="calendar-card__assets"><strong>AI Assets</strong><div class="calendar-card__asset-chips">${assetChips}</div></div>`);
+    detailBlocks.push(`<div class="calendar-card__assets"><strong>AI Assets</strong><div class="calendar-card__asset-grid">${assetCards}</div></div>`);
   }
 
   if (post.captionVariations) {
@@ -4873,6 +5099,18 @@ if (designModal) {
   });
 }
 if (designForm) designForm.addEventListener('submit', handleDesignFormSubmit);
+if (designFilterType) {
+  designFilterType.addEventListener('change', (event) => {
+    designFilterState.type = event.target.value || 'all';
+    renderDesignAssets();
+  });
+}
+if (designFilterDay) {
+  designFilterDay.addEventListener('change', (event) => {
+    designFilterState.day = event.target.value || 'all';
+    renderDesignAssets();
+  });
+}
 if (designGrid) {
   designGrid.addEventListener('click', async (event) => {
     const card = event.target.closest('.design-asset');
