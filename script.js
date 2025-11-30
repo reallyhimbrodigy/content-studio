@@ -115,6 +115,7 @@ const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
+const designSuggestionButtons = document.querySelectorAll('.design-suggestion');
 const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
@@ -217,6 +218,7 @@ let designViewMode = (() => {
 })();
 let activeAssetDetailId = null;
 let pendingAssetDetailId = null;
+if (designSelectionCount) designSelectionCount.textContent = '0 selected';
 
 function getLastTemplateId() {
   try {
@@ -239,6 +241,21 @@ function updateTemplateShortcuts() {
   const lastId = getLastTemplateId();
   const exists = lastId && designTemplates.some((tpl) => String(tpl.id) === String(lastId));
   designUseLastTemplateBtn.disabled = !exists;
+  if (exists) {
+    updateLastTemplateButtonThumbnail(lastId);
+  } else if (designUseLastTemplateBtn) {
+    designUseLastTemplateBtn.innerHTML = 'Use last template';
+  }
+}
+
+function updateLastTemplateButtonThumbnail(templateId = '') {
+  if (!designUseLastTemplateBtn) return;
+  const tpl = designTemplates.find((item) => String(item.id) === String(templateId || getLastTemplateId()));
+  if (!tpl) return;
+  const preview = tpl.previewInlineUrl
+    ? `<img src="${escapeHtml(tpl.previewInlineUrl)}" alt="${escapeHtml(tpl.label)}" />`
+    : `<span class="design-template-card__preview-text">${escapeHtml(tpl.label)}</span>`;
+  designUseLastTemplateBtn.innerHTML = `<span class="design-use-last-thumb">${preview}</span><span>Reapply ${escapeHtml(tpl.label)}</span>`;
 }
 
 function applyDesignViewMode(mode = 'grid') {
@@ -677,24 +694,28 @@ function loadDesignTemplates() {
     const raw = localStorage.getItem(DESIGN_TEMPLATE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
+    const userTemplates = Array.isArray(parsed)
       ? parsed
           .filter(Boolean)
           .map((tpl) => ({
             ...tpl,
             previewInlineUrl: tpl.previewInlineUrl || '',
+            category: tpl.category || TEMPLATE_CATEGORY_MAP[tpl.assetType] || 'Saved Templates',
+            tags: Array.isArray(tpl.tags) ? tpl.tags : (tpl.tone ? [tpl.tone] : []),
           }))
       : [];
+    return [...BUILT_IN_TEMPLATES, ...userTemplates];
   } catch (error) {
     console.warn('Unable to load saved templates', error);
-    return [];
+    return [...BUILT_IN_TEMPLATES];
   }
 }
 
 function persistDesignTemplates() {
   if (typeof localStorage === 'undefined') return;
   try {
-    const payload = JSON.stringify(designTemplates.slice(0, 40));
+    const userTemplates = designTemplates.filter((tpl) => !BUILT_IN_TEMPLATE_IDS.has(String(tpl.id)));
+    const payload = JSON.stringify(userTemplates.slice(0, 60));
     localStorage.setItem(DESIGN_TEMPLATE_STORAGE_KEY, payload);
   } catch (error) {
     console.warn('Unable to store templates', error);
@@ -757,6 +778,12 @@ async function handleDesignTemplateSave(asset) {
     notes: asset.notes || asset.brief || '',
     previewText: asset.previewText || asset.title || '',
     previewInlineUrl: asset.previewInlineUrl || asset.previewUrl || '',
+    category: TEMPLATE_CATEGORY_MAP[inferAssetTypeFromAsset(asset)] || 'Saved Templates',
+    tags: Array.from(
+      new Set(
+        [asset.tone, (asset.campaign || '').trim(), ...(Array.isArray(asset.tags) ? asset.tags : [])].filter(Boolean)
+      )
+    ),
     createdAt: new Date().toISOString(),
   };
   const lower = label.toLowerCase();
@@ -820,22 +847,49 @@ function updateDesignTemplateHint(templateId = '') {
 
 function renderDesignTemplateGallery(selectedId = '') {
   if (!designTemplateGallery) return;
-  if (!designTemplates.length) {
+  if (!Array.isArray(designTemplates) || !designTemplates.length) {
     designTemplateGallery.innerHTML = `<p class="design-template-hint">Save an asset to unlock reusable layouts.</p>`;
     return;
   }
-  designTemplateGallery.innerHTML = designTemplates
-    .map((tpl) => {
-      const isActive = String(tpl.id) === String(selectedId || activeTemplateId);
-      const preview = tpl.previewInlineUrl
-        ? `<img src="${escapeHtml(tpl.previewInlineUrl)}" alt="${escapeHtml(tpl.label)} preview" />`
-        : `<div class="design-template-card__preview-text">${escapeHtml(tpl.previewText || tpl.label)}</div>`;
+  const grouped = {};
+  designTemplates.forEach((tpl) => {
+    const category = tpl.category || 'Saved Templates';
+    if (!grouped[category]) grouped[category] = [];
+    grouped[category].push(tpl);
+  });
+  const currentType = designAssetTypeInput?.value || '';
+  designTemplateGallery.innerHTML = Object.entries(grouped)
+    .map(([category, templates]) => {
+      const cards = templates
+        .map((tpl) => {
+          const isActive = String(tpl.id) === String(selectedId || activeTemplateId);
+          const recommended = currentType && tpl.assetType === currentType;
+          const preview = tpl.previewInlineUrl
+            ? `<img src="${escapeHtml(tpl.previewInlineUrl)}" alt="${escapeHtml(tpl.label)} preview" loading="lazy" />`
+            : `<div class="design-template-card__preview-text">${escapeHtml(tpl.previewText || tpl.label)}</div>`;
+          const tags = Array.isArray(tpl.tags)
+            ? tpl.tags
+                .map((tag) => `<span class="design-template-card__tag">${escapeHtml(tag)}</span>`)
+                .join('')
+            : '';
+          const badge = recommended ? `<span class="design-template-card__badge">Recommended</span>` : '';
+          return `
+            <button type="button" class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
+              <div class="design-template-card__preview">${preview}${badge}</div>
+              <strong>${escapeHtml(tpl.label)}</strong>
+              <span>${escapeHtml(formatAssetTypeLabel(tpl.assetType || ''))}</span>
+              <div class="design-template-card__tags">${tags}</div>
+            </button>
+          `;
+        })
+        .join('');
       return `
-        <button type="button" class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
-          <div class="design-template-card__preview">${preview}</div>
-          <strong>${escapeHtml(tpl.label)}</strong>
-          <span>${escapeHtml(formatAssetTypeLabel(tpl.assetType || 'social-graphic'))}</span>
-        </button>
+        <div class="design-template-section">
+          <header class="design-template-section__head">
+            <h4>${escapeHtml(category)}</h4>
+          </header>
+          <div class="design-template-section__grid">${cards}</div>
+        </div>
       `;
     })
     .join('');
@@ -845,6 +899,7 @@ function renderDesignTemplateGallery(selectedId = '') {
       if (id) applyDesignTemplateSelection(id);
     });
   });
+  updateLastTemplateButtonThumbnail();
 }
 
 function applyDesignTemplateSelection(templateId) {
@@ -934,7 +989,7 @@ function prunePostForStorage(post = {}) {
 function updateDesignSelectionUI() {
   const count = selectedDesignAssetIds.size;
   if (designSelectionCount) {
-    designSelectionCount.textContent = count ? `${count} asset${count === 1 ? '' : 's'} selected` : 'No assets selected';
+    designSelectionCount.textContent = `${count} selected`;
   }
   if (designExportSelectedBtn) designExportSelectedBtn.disabled = count === 0;
   if (designRegenerateSelectedBtn) designRegenerateSelectedBtn.disabled = count === 0;
@@ -1066,35 +1121,38 @@ function buildPreviewMarkup(type, tone) {
   if (type === 'story-template') {
     return `
       <div class="design-preview__mock design-preview__story">
-        <div class="design-preview__story-frame" style="${baseStyle}">Hook</div>
-        <div class="design-preview__story-frame" style="background: rgba(255,255,255,0.08);">Proof / Tip</div>
-        <div class="design-preview__story-frame" style="${baseStyle}">CTA</div>
+        <div class="design-preview__story-frame" style="${baseStyle}">Hook: Show behind-the-scenes</div>
+        <div class="design-preview__story-frame" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Slide 2: Tip overlay</div>
+        <div class="design-preview__story-frame" style="${baseStyle}">Swipe up CTA</div>
       </div>
     `;
   }
   if (type === 'carousel-template') {
     return `
       <div class="design-preview__mock design-preview__carousel">
-        <div class="design-preview__carousel-slide" style="${baseStyle}">Slide 1</div>
-        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08);">Slide 2</div>
-        <div class="design-preview__carousel-slide" style="${baseStyle}">Slide 3</div>
+        <div class="design-preview__carousel-slide" style="${baseStyle}">Hook</div>
+        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Problem</div>
+        <div class="design-preview__carousel-slide" style="${baseStyle}">Solution</div>
+        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Result</div>
       </div>
     `;
   }
   if (type === 'video-snippet') {
     return `
       <div class="design-preview__mock design-preview__video" style="${baseStyle}">
-        <div class="design-preview__track"></div>
-        <div class="design-preview__track"></div>
+        <div class="design-preview__track" style="background: rgba(255,255,255,0.3);"></div>
+        <div class="design-preview__track" style="background: rgba(255,255,255,0.3);"></div>
         <div class="design-preview__track" style="background: rgba(255,255,255,0.65);"></div>
+        <span style="font-size:0.75rem;text-align:center;">Vertical reel storyboard</span>
       </div>
     `;
   }
   return `
     <div class="design-preview__mock">
       <div class="design-preview__graphic" style="${baseStyle}">
-        <strong>Headline</strong>
-        <p>Supporting copy & CTA</p>
+        <strong>Hook headline</strong>
+        <p>“Quote or caption preview”</p>
+        <div style="border-radius:999px;border:1px solid rgba(255,255,255,0.6);padding:0.2rem 0.9rem;font-size:0.8rem;">CTA Button</div>
       </div>
     </div>
   `;
@@ -5647,13 +5705,37 @@ if (designViewGridBtn) {
 if (designViewListBtn) {
   designViewListBtn.addEventListener('click', () => applyDesignViewMode('list'));
 }
+if (designSuggestionButtons.length) {
+  designSuggestionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const assetType = button.dataset.assetType || 'social-graphic';
+      const caption = button.dataset.caption || '';
+      const notes = button.dataset.notes || '';
+      const day = Number(button.dataset.day) || null;
+      const entry = {
+        idea: button.textContent.trim(),
+        caption,
+        description: caption,
+        day,
+      };
+      if (designAssetTypeInput) designAssetTypeInput.value = assetType;
+      if (designToneInput && button.dataset.tone) designToneInput.value = button.dataset.tone;
+      if (designNotesInput) designNotesInput.value = notes;
+      renderDesignLivePreview();
+      startDesignModal(entry, day);
+    });
+  });
+}
 if (designModal) {
   designModal.addEventListener('click', (event) => {
     if (event.target === designModal) closeDesignModal();
   });
 }
 if (designAssetTypeInput) {
-  designAssetTypeInput.addEventListener('change', renderDesignLivePreview);
+  designAssetTypeInput.addEventListener('change', () => {
+    renderDesignLivePreview();
+    renderDesignTemplateGallery();
+  });
 }
 if (designToneInput) {
   designToneInput.addEventListener('change', renderDesignLivePreview);
@@ -6056,3 +6138,88 @@ if (designSection && (!calendarSection || !hub)) {
   designSection.style.display = 'flex';
   designSection.style.opacity = '1';
 }
+const TEMPLATE_CATEGORY_MAP = {
+  'social-graphic': 'Quotes & Tips',
+  'carousel-template': 'Case Studies',
+  'story-template': 'Behind-the-Scenes',
+  'video-snippet': 'Promos',
+};
+
+function createTemplateThumbnail(text, palette = ['#7f5af0', '#2cb1bc']) {
+  const [from, to] = palette;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320">
+    <defs>
+      <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${from}" />
+        <stop offset="100%" stop-color="${to}" />
+      </linearGradient>
+    </defs>
+    <rect width="240" height="320" rx="24" fill="url(#grad)" />
+    <text x="50%" y="55%" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="20" font-weight="600">${text}</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+const BUILT_IN_TEMPLATES = [
+  {
+    id: 'preset_quote_card',
+    label: 'Quote Spark',
+    assetType: 'social-graphic',
+    tone: 'elegant',
+    notes: 'Centered quote overlay with drop shadow, quote icon, and author line.',
+    previewText: '“Signature Quote”',
+    previewInlineUrl: createTemplateThumbnail('Quote Spark', ['#141726', '#5a4ff0']),
+    category: 'Quotes & Tips',
+    tags: ['quote', 'minimal'],
+    recommendedFor: ['social-graphic'],
+  },
+  {
+    id: 'preset_testimonial',
+    label: 'Testimonial Glow',
+    assetType: 'social-graphic',
+    tone: 'playful',
+    notes: 'Avatar + quote + star rating, gradient background, pill CTA.',
+    previewText: 'Testimonial',
+    previewInlineUrl: createTemplateThumbnail('Testimonial', ['#ff8ba7', '#ffc3a0']),
+    category: 'Testimonials',
+    tags: ['testimonial', 'bold'],
+    recommendedFor: ['social-graphic', 'story-template'],
+  },
+  {
+    id: 'preset_promo_banner',
+    label: 'Promo Countdown',
+    assetType: 'social-graphic',
+    tone: 'bold',
+    notes: 'Big numeric countdown, gradient border, button CTA.',
+    previewText: 'Promo Banner',
+    previewInlineUrl: createTemplateThumbnail('Promo', ['#ff5f6d', '#ffc371']),
+    category: 'Promos',
+    tags: ['promo', 'cta'],
+    recommendedFor: ['social-graphic', 'video-snippet'],
+  },
+  {
+    id: 'preset_case_study',
+    label: 'Case Study Carousel',
+    assetType: 'carousel-template',
+    tone: 'minimal',
+    notes: 'Slide 1: hook. Slide 2: problem. Slide 3: process. Slide 4: result.',
+    previewText: 'Case Study',
+    previewInlineUrl: createTemplateThumbnail('Case Study', ['#0f2027', '#203a43']),
+    category: 'Case Studies',
+    tags: ['carousel', 'case study'],
+    recommendedFor: ['carousel-template'],
+  },
+  {
+    id: 'preset_story_bts',
+    label: 'Behind-the-Scenes Story',
+    assetType: 'story-template',
+    tone: 'playful',
+    notes: 'Top hook text, photo slot, sticker CTA, bottom caption overlay.',
+    previewText: 'Story BTS',
+    previewInlineUrl: createTemplateThumbnail('Story BTS', ['#f7971e', '#ffd200']),
+    category: 'Behind-the-Scenes',
+    tags: ['story', 'bts'],
+    recommendedFor: ['story-template'],
+  },
+];
+const BUILT_IN_TEMPLATE_IDS = new Set(BUILT_IN_TEMPLATES.map((tpl) => String(tpl.id)));
