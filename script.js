@@ -165,7 +165,6 @@ const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignDays = new Set();
 let draggedDesignAssetId = null;
 let platformVariantSyncPromise = null;
-const urlParams = new URLSearchParams(window.location.search || '');
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
 const LAST_USER_STORAGE_KEY = 'promptly_active_user_v1';
