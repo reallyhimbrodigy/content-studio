@@ -125,6 +125,13 @@ const assetDetailCta = document.getElementById('asset-detail-cta');
 const assetDetailNotes = document.getElementById('asset-detail-notes');
 const assetDetailMeta = document.getElementById('asset-detail-meta');
 const assetDetailRegenerateBtn = document.getElementById('asset-detail-regenerate');
+const assetDetailTone = document.getElementById('asset-detail-tone');
+const assetDetailPrimaryColor = document.getElementById('asset-detail-primary');
+const assetDetailSecondaryColor = document.getElementById('asset-detail-secondary');
+const assetDetailHeadingFont = document.getElementById('asset-detail-heading-font');
+const assetDetailBodyFont = document.getElementById('asset-detail-body-font');
+const assetDetailTimestamp = document.getElementById('asset-detail-timestamp');
+const assetDetailUndoBtn = document.getElementById('asset-detail-undo');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -330,6 +337,11 @@ function hydrateDesignAssetsFromStorage(force = false) {
     designAssets = parsed.map((asset) => ({ ...asset }));
     designAssets.forEach((asset) => {
       if (!asset) return;
+      const paletteDefaults = getBrandPaletteDefaults();
+      asset.primaryColor = asset.primaryColor || paletteDefaults.primaryColor;
+      asset.secondaryColor = asset.secondaryColor || paletteDefaults.secondaryColor;
+      asset.headingFont = asset.headingFont || paletteDefaults.headingFont;
+      asset.bodyFont = asset.bodyFont || paletteDefaults.bodyFont;
       if (!asset.fileName) asset.fileName = 'promptly-asset.pdf';
       if (!asset.downloadUrl) {
         const blob = buildDesignPdfBlob(asset, asset);
@@ -466,6 +478,18 @@ function persistDesignUsage(userId, record) {
   } catch (err) {
     console.warn('Unable to persist design usage', err);
   }
+}
+
+function getBrandPaletteDefaults() {
+  const palette = currentBrandKit || {};
+  const heading = brandHeadingFontInput?.value || palette.headingFont || '';
+  const body = brandBodyFontInput?.value || palette.bodyFont || '';
+  return {
+    primaryColor: palette.primaryColor || '#7f5af0',
+    secondaryColor: palette.secondaryColor || '#2cb1bc',
+    headingFont: heading || 'Inter Bold',
+    bodyFont: body || 'Source Sans Pro',
+  };
 }
 
 function getRemainingDesignQuota(userId) {
@@ -1105,6 +1129,10 @@ async function regenerateSingleDesignAsset(asset, currentUserId) {
     title: asset.title || (asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'AI Asset'),
     templateId: asset.templateId || null,
     templateLabel: asset.templateLabel || null,
+    primaryColor: asset.primaryColor || getBrandPaletteDefaults().primaryColor,
+    secondaryColor: asset.secondaryColor || getBrandPaletteDefaults().secondaryColor,
+    headingFont: asset.headingFont || getBrandPaletteDefaults().headingFont,
+    bodyFont: asset.bodyFont || getBrandPaletteDefaults().bodyFont,
   };
   let updated = await requestDesignAsset(payload);
   updated = await ensureAssetInlinePreview(updated);
@@ -1116,6 +1144,7 @@ async function regenerateSingleDesignAsset(asset, currentUserId) {
   } else {
     designAssets.unshift(updated);
   }
+  updated.lastEdited = new Date().toISOString();
   persistDesignAssetsToStorage();
   linkAssetToCalendarPost(updated);
   renderDesignAssets();
@@ -1225,9 +1254,25 @@ async function openDesignAssetDetail(target) {
   if (assetDetailCaption) assetDetailCaption.value = asset.caption || '';
   if (assetDetailCta) assetDetailCta.value = asset.cta || '';
   if (assetDetailNotes) assetDetailNotes.value = asset.notes || '';
+  if (assetDetailTone) assetDetailTone.value = asset.tone || 'bold';
+  if (assetDetailPrimaryColor) assetDetailPrimaryColor.value = asset.primaryColor || getBrandPaletteDefaults().primaryColor;
+  if (assetDetailSecondaryColor) assetDetailSecondaryColor.value = asset.secondaryColor || getBrandPaletteDefaults().secondaryColor;
+  if (assetDetailHeadingFont) assetDetailHeadingFont.value = asset.headingFont || '';
+  if (assetDetailBodyFont) assetDetailBodyFont.value = asset.bodyFont || '';
   if (assetDetailMeta) {
     const dayLabel = asset.linkedDay || asset.day ? `Day ${String(asset.linkedDay || asset.day).padStart(2, '0')}` : 'Unassigned';
     assetDetailMeta.textContent = `${formatAssetTypeLabel(asset.assetType || asset.typeLabel)} · ${dayLabel}`;
+  }
+  if (assetDetailTimestamp) {
+    assetDetailTimestamp.textContent = asset.lastEdited
+      ? `Last edited ${new Date(asset.lastEdited).toLocaleString()}`
+      : 'Not edited yet';
+  }
+  if (!asset.originalSnapshot) {
+    asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
+  }
+  if (assetDetailUndoBtn) {
+    assetDetailUndoBtn.disabled = !asset.originalSnapshot;
   }
   assetDetailModal.style.display = 'flex';
 }
@@ -1257,9 +1302,18 @@ function handleAssetDetailSave(event) {
   if (!activeAssetDetailId) return;
   const asset = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
   if (!asset) return;
+  if (!asset.originalSnapshot) {
+    asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
+  }
   asset.caption = assetDetailCaption?.value?.trim() || '';
   asset.cta = assetDetailCta?.value?.trim() || '';
   asset.notes = assetDetailNotes?.value?.trim() || '';
+  asset.tone = assetDetailTone?.value || asset.tone;
+  asset.primaryColor = assetDetailPrimaryColor?.value || asset.primaryColor;
+  asset.secondaryColor = assetDetailSecondaryColor?.value || asset.secondaryColor;
+  asset.headingFont = assetDetailHeadingFont?.value?.trim() || asset.headingFont;
+  asset.bodyFont = assetDetailBodyFont?.value?.trim() || asset.bodyFont;
+  asset.lastEdited = new Date().toISOString();
   persistDesignAssetsToStorage();
   linkAssetToCalendarPost(asset);
   renderDesignAssets();
@@ -1923,6 +1977,13 @@ async function handleDesignFormSubmit(event) {
       showUpgradeModal();
       return;
     }
+    const paletteDefaults = getBrandPaletteDefaults();
+    const palette = {
+      primaryColor: paletteDefaults.primaryColor,
+      secondaryColor: paletteDefaults.secondaryColor,
+      headingFont: paletteDefaults.headingFont,
+      bodyFont: paletteDefaults.bodyFont,
+    };
     const payload = {
       day: Number(designDayInput?.value) || activeDesignContext?.day || null,
       assetType: designAssetTypeInput?.value || 'social-graphic',
@@ -1935,6 +1996,10 @@ async function handleDesignFormSubmit(event) {
       title:
         (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
         (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
+      primaryColor: palette.primaryColor,
+      secondaryColor: palette.secondaryColor,
+      headingFont: palette.headingFont,
+      bodyFont: palette.bodyFont,
     };
     if (activeTemplateId) {
       const tpl = designTemplates.find((item) => String(item?.id) === String(activeTemplateId));
@@ -1999,6 +2064,7 @@ async function requestDesignAsset(payload) {
         throw err;
       }
       const data = raw ? JSON.parse(raw) : {};
+      const paletteDefaults = getBrandPaletteDefaults();
       const asset = {
         id: data.id || Date.now(),
         day: payload.day,
@@ -2016,6 +2082,11 @@ async function requestDesignAsset(payload) {
         caption: data.caption || payload.caption || activeDesignContext?.entry?.caption || '',
         cta: data.cta || payload.cta || activeDesignContext?.entry?.cta || '',
         campaign: data.campaign || payload.campaign || '',
+        primaryColor: data.primaryColor || payload.primaryColor || paletteDefaults.primaryColor,
+        secondaryColor: data.secondaryColor || payload.secondaryColor || paletteDefaults.secondaryColor,
+        headingFont: data.headingFont || payload.headingFont || paletteDefaults.headingFont,
+        bodyFont: data.bodyFont || payload.bodyFont || paletteDefaults.bodyFont,
+        lastEdited: null,
       };
       if (!asset.downloadUrl) {
         const blob = buildDesignPdfBlob(asset, payload);
@@ -2032,6 +2103,7 @@ async function requestDesignAsset(payload) {
       if (error?.isApiError) throw error;
       console.warn('Design asset generation fallback', error);
     }
+    const paletteDefaults = getBrandPaletteDefaults();
     const fallback = {
       id: Date.now(),
       day: payload.day,
@@ -2048,6 +2120,11 @@ async function requestDesignAsset(payload) {
       caption: payload.caption || activeDesignContext?.entry?.caption || '',
       cta: payload.cta || activeDesignContext?.entry?.cta || '',
       campaign: payload.campaign || '',
+      primaryColor: payload.primaryColor || paletteDefaults.primaryColor,
+      secondaryColor: payload.secondaryColor || paletteDefaults.secondaryColor,
+      headingFont: payload.headingFont || paletteDefaults.headingFont,
+      bodyFont: payload.bodyFont || paletteDefaults.bodyFont,
+      lastEdited: null,
     };
     const blob = buildDesignPdfBlob(fallback, payload);
     fallback.fileBlob = blob;
@@ -2080,6 +2157,11 @@ function linkAssetToCalendarPost(asset) {
       notes: asset.notes || '',
       assetType: asset.assetType || asset.typeLabel || '',
       campaign: asset.campaign || '',
+      primaryColor: asset.primaryColor || '',
+      secondaryColor: asset.secondaryColor || '',
+      headingFont: asset.headingFont || '',
+      bodyFont: asset.bodyFont || '',
+      lastEdited: asset.lastEdited || '',
     };
     targetEntry.assets = Array.isArray(targetEntry.assets) ? targetEntry.assets.filter((existing) => existing && existing.id !== summary.id) : [];
     targetEntry.assets.unshift(summary);
@@ -2102,7 +2184,11 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
     }
     const link = document.createElement('a');
     link.href = url;
-    link.download = fileNameOverride || asset.fileName || `${slugify(asset.title || 'promptly-asset')}.pdf`;
+    const ext = getAssetExtension(asset) || 'pdf';
+    const dayLabel = asset.linkedDay || asset.day ? `day-${String(asset.linkedDay || asset.day).padStart(2, '0')}` : 'asset';
+    const typeLabel = slugify(asset.assetType || asset.typeLabel || 'design');
+    const computedName = `${dayLabel}-${typeLabel}`;
+    link.download = fileNameOverride || asset.fileName || `${computedName}.${ext}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -5841,7 +5927,8 @@ if (designFilterTone) {
 }
 if (designGrid) {
   designGrid.addEventListener('click', async (event) => {
-    const actionBtn = event.target.closest('[data-asset-action]');
+    const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const actionBtn = actionTarget?.closest('[data-asset-action]');
     if (actionBtn) {
       const assetId = Number(actionBtn.dataset.assetId);
       const asset = designAssets.find((item) => Number(item.id) === assetId);
@@ -5914,7 +6001,8 @@ if (designGrid) {
   });
 
   designGrid.addEventListener('change', (event) => {
-    const checkbox = event.target.closest('input[data-asset-select]');
+    const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const checkbox = actionTarget?.closest('input[data-asset-select]');
     if (checkbox) {
       const id = Number(checkbox.dataset.assetSelect);
       toggleDesignAssetSelection(id, checkbox.checked);
@@ -5941,6 +6029,19 @@ if (assetDetailModal) {
 }
 if (assetDetailForm) {
   assetDetailForm.addEventListener('submit', handleAssetDetailSave);
+}
+if (assetDetailUndoBtn) {
+  assetDetailUndoBtn.addEventListener('click', () => {
+    if (!activeAssetDetailId) return;
+    const asset = designAssets.find((item) => Number(item.id) === Number(activeAssetDetailId));
+    if (!asset || !asset.originalSnapshot) return;
+    Object.assign(asset, JSON.parse(JSON.stringify(asset.originalSnapshot)));
+    persistDesignAssetsToStorage();
+    linkAssetToCalendarPost(asset);
+    renderDesignAssets();
+    openDesignAssetDetail(asset);
+    showDesignSuccess('Reverted to original asset.');
+  });
 }
 if (assetDetailRegenerateBtn) {
   assetDetailRegenerateBtn.addEventListener('click', async () => {
@@ -6198,6 +6299,11 @@ function sanitizeAssetForStorage(asset = {}) {
     previewInlineUrl: asset.previewInlineUrl || '',
     createdAt: asset.createdAt || new Date().toISOString(),
     brief: asset.brief || '',
+    primaryColor: asset.primaryColor || '',
+    secondaryColor: asset.secondaryColor || '',
+    headingFont: asset.headingFont || '',
+    bodyFont: asset.bodyFont || '',
+    lastEdited: asset.lastEdited || '',
   };
 }
 if (designSection && (!calendarSection || !hub)) {

@@ -540,10 +540,41 @@
                 <input type="text" id="asset-detail-cta" placeholder="Edit CTA" />
               </label>
               <label>
+                Creative direction
+                <select id="asset-detail-tone">
+                  <option value="bold">Bold & punchy</option>
+                  <option value="minimal">Minimal & clean</option>
+                  <option value="playful">Playful & colorful</option>
+                  <option value="elegant">Luxury & elegant</option>
+                </select>
+              </label>
+              <div class="asset-detail__colors">
+                <label>
+                  Primary color
+                  <input type="color" id="asset-detail-primary" />
+                </label>
+                <label>
+                  Secondary color
+                  <input type="color" id="asset-detail-secondary" />
+                </label>
+              </div>
+              <div class="asset-detail__fonts">
+                <label>
+                  Heading font
+                  <input type="text" id="asset-detail-heading-font" placeholder="e.g., Inter Bold" />
+                </label>
+                <label>
+                  Body font
+                  <input type="text" id="asset-detail-body-font" placeholder="e.g., Source Sans" />
+                </label>
+              </div>
+              <label>
                 Notes / Story prompt
                 <textarea id="asset-detail-notes" rows="3" placeholder="Add internal notes or story prompt"></textarea>
               </label>
+              <p id="asset-detail-timestamp" class="asset-detail__timestamp"></p>
               <div class="asset-detail__actions">
+                <button type="button" class="ghost" id="asset-detail-undo" disabled>Undo</button>
                 <button type="button" class="ghost" id="asset-detail-regenerate">Regenerate</button>
                 <button type="submit" class="primary">Save changes</button>
               </div>

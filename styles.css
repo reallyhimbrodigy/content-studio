@@ -4212,3 +4212,15 @@ body.prefers-reduced-motion *::after {
 .design-template-card__preview {
   position: relative;
 }
+.asset-detail__colors,
+.asset-detail__fonts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+  gap: 0.5rem;
+}
+
+.asset-detail__timestamp {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0.25rem 0;
+}
