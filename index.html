@@ -435,6 +435,77 @@
           </div>
           <div class="calendar__grid" id="calendar-grid"></div>
         </section>
+        <section class="design-lab" id="design-lab">
+          <div class="design-lab__head">
+            <div>
+              <h2>Design Lab</h2>
+              <p>Generate ready-to-post assets for your calendar — story templates, carousels, graphics, and more.</p>
+            </div>
+          </div>
+          <div class="design-toolbar">
+            <div class="design-toolbar__actions">
+              <button id="design-request-btn" class="primary action-btn">Request Asset</button>
+              <button type="button" id="design-batch-generate" class="ghost action-btn" disabled>Generate Selected</button>
+              <button type="button" id="design-regenerate-selected" class="ghost action-btn" disabled>Regenerate</button>
+              <button type="button" id="design-export-selected" class="ghost action-btn" disabled>Export</button>
+              <span id="design-selection-count" class="selection-pill">0 selected</span>
+              <span id="design-batch-count" class="selection-pill selection-pill--muted">0 days</span>
+            </div>
+            <div class="design-filter-bar" role="group" aria-label="Design filters">
+              <div class="design-view-toggle" role="group" aria-label="View mode">
+                <button type="button" id="design-view-grid" class="design-view-btn is-active">Grid</button>
+                <button type="button" id="design-view-list" class="design-view-btn">List</button>
+              </div>
+              <div class="design-filter-pills">
+                <label class="filter-pill">Asset Type
+                  <select id="design-filter-type">
+                    <option value="all">All</option>
+                    <option value="social-graphic">Social graphic</option>
+                    <option value="carousel-template">Carousel template</option>
+                    <option value="story-template">Story template</option>
+                    <option value="video-snippet">Video snippet</option>
+                  </select>
+                </label>
+                <label class="filter-pill">Linked Day
+                  <select id="design-filter-day">
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                <label class="filter-pill">Tone
+                  <select id="design-filter-tone">
+                    <option value="all">All</option>
+                    <option value="bold">Bold</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="playful">Playful</option>
+                    <option value="elegant">Elegant</option>
+                  </select>
+                </label>
+                <label class="filter-pill">Campaign
+                  <select id="design-filter-campaign">
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                <label class="filter-pill">Month
+                  <select id="design-filter-month">
+                    <option value="all">Any</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="design-empty" class="design-empty">
+            <div class="design-empty__art" aria-hidden="true"></div>
+            <h3>No assets yet — let’s bring your calendar to life.</h3>
+            <p>Pick an asset type below to see how AI can transform your posts.</p>
+            <div class="design-empty__suggestions">
+              <button class="design-suggestion" data-day="1" data-asset-type="social-graphic" data-caption="Swipe-worthy headline" data-notes="Gradient CTA badge, hero product photo." data-tone="bold">Social Graphic · Day 1</button>
+              <button class="design-suggestion" data-day="3" data-asset-type="carousel-template" data-caption="Mini case study" data-notes="Headline slide + 3 supporting slides." data-tone="minimal">Carousel Template · Day 3</button>
+              <button class="design-suggestion" data-day="5" data-asset-type="video-snippet" data-caption="Behind-the-scenes teaser" data-notes="Vertical reel storyboard with hook, proof, CTA frames." data-tone="playful">Video Snippet · Day 5</button>
+            </div>
+            <button id="design-empty-cta" class="primary">Generate your first asset</button>
+          </div>
+          <div class="design-lab__grid" id="design-grid"></div>
+        </section>
       </main>
 
       <footer class="footer">

@@ -2022,11 +2022,8 @@ async function requestDesignAsset(payload) {
 }
 
 function linkAssetToCalendarPost(asset) {
-    const contextEntry = activeDesignContext?.entry;
-    const dayToLink = asset.linkedDay || activeDesignContext?.day || null;
-    const targetEntry =
-      (contextEntry && contextEntry.day === dayToLink ? contextEntry : null) ||
-      (dayToLink ? findPostByDay(dayToLink) : null);
+    const dayToLink = asset.linkedDay || asset.day || activeDesignContext?.day || null;
+    const targetEntry = dayToLink ? findPostByDay(dayToLink) : null;
     if (!targetEntry) return;
     const descriptor = buildAssetPreviewDescriptor(asset);
     const summary = {
@@ -2041,20 +2038,18 @@ function linkAssetToCalendarPost(asset) {
       createdAt: asset.createdAt || new Date().toISOString(),
       day: dayToLink,
       designUrl: asset.designUrl || `/design.html?asset=${asset.id}`,
-      caption: asset.caption || contextEntry?.caption || contextEntry?.description || '',
-      cta: asset.cta || contextEntry?.cta || '',
+      caption: asset.caption || targetEntry.caption || '',
+      cta: asset.cta || targetEntry.cta || '',
       tone: asset.tone || '',
       notes: asset.notes || '',
       assetType: asset.assetType || asset.typeLabel || '',
       campaign: asset.campaign || '',
     };
-    if (!Array.isArray(targetEntry.assets)) targetEntry.assets = [];
-    const next = [summary, ...targetEntry.assets.filter((existing) => existing && existing.id !== summary.id)];
-    targetEntry.assets = next.slice(0, 5);
-    if (Array.isArray(currentCalendar) && currentCalendar.length) {
-      renderCards(currentCalendar);
-      persistCurrentCalendarState();
-    }
+    targetEntry.assets = Array.isArray(targetEntry.assets) ? targetEntry.assets.filter((existing) => existing && existing.id !== summary.id) : [];
+    targetEntry.assets.unshift(summary);
+    targetEntry.assets = targetEntry.assets.slice(0, 5);
+    renderCards(currentCalendar);
+    persistCurrentCalendarState();
   }
 
 function handleDesignAssetDownload(asset, fileNameOverride) {
@@ -3796,7 +3791,9 @@ if (pillarFilterBtn && pillarFilterMenu) {
 
   console.log("✓ Filter dropdown initialized");
 } else {
-  console.warn('Filter controls unavailable; skipping pillar dropdown setup.');
+  if (calendarSection) {
+    console.warn('Filter controls unavailable; skipping pillar dropdown setup.');
+  }
 }
 
 // Start with empty grid (no pre-made posts)
@@ -5640,7 +5637,7 @@ if (generateBtn) {
       if (generateBtn && !btnText) generateBtn.disabled = false;
     }
   });
-} else {
+} else if (calendarSection) {
   console.error("❌ Generate button not found - this is why Generate Calendar doesn't work");
 }
 
