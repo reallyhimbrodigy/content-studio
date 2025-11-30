@@ -794,6 +794,7 @@ body {
   flex-direction: column;
   gap: 0.35rem;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
 }
 
 .design-template-card:hover {
@@ -862,6 +863,20 @@ body {
 .design-template-card span {
   font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+.design-template-card__actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.design-template-card__actions button {
+  flex: 1;
+}
+
+.design-template-card__actions .danger {
+  border-color: rgba(255, 99, 99, 0.45);
+  color: #ff7c7c;
 }
 
 .design-selected-post {
@@ -4188,4 +4203,7 @@ body.prefers-reduced-motion *::after {
 
 .design-hero__content {
   max-width: 640px;
+}
+.design-template-card__preview {
+  position: relative;
 }

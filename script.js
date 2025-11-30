@@ -808,6 +808,24 @@ async function handleDesignTemplateSave(asset) {
   }
 }
 
+function deleteDesignTemplate(templateId) {
+  if (!templateId) return;
+  if (BUILT_IN_TEMPLATE_IDS.has(String(templateId))) return;
+  const beforeCount = designTemplates.length;
+  designTemplates = designTemplates.filter((tpl) => String(tpl.id) !== String(templateId));
+  if (designTemplates.length === beforeCount) return;
+  if (String(activeTemplateId) === String(templateId)) {
+    activeTemplateId = '';
+    if (designTemplateSelect) designTemplateSelect.value = '';
+    updateDesignTemplateHint('');
+    renderDesignLivePreview();
+  }
+  persistDesignTemplates();
+  updateTemplateShortcuts();
+  renderDesignTemplateOptions(activeTemplateId);
+  renderDesignTemplateGallery(activeTemplateId);
+}
+
 function renderDesignTemplateOptions(selectedId = '') {
   if (!designTemplateSelect) return;
   const options = designTemplates
@@ -874,12 +892,20 @@ function renderDesignTemplateGallery(selectedId = '') {
             : '';
           const badge = recommended ? `<span class="design-template-card__badge">Recommended</span>` : '';
           return `
-            <button type="button" class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
+            <div class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
               <div class="design-template-card__preview">${preview}${badge}</div>
               <strong>${escapeHtml(tpl.label)}</strong>
               <span>${escapeHtml(formatAssetTypeLabel(tpl.assetType || ''))}</span>
               <div class="design-template-card__tags">${tags}</div>
-            </button>
+              <div class="design-template-card__actions">
+                <button type="button" class="ghost" data-template-action="apply" data-template-id="${tpl.id}">Use template</button>
+                ${
+                  BUILT_IN_TEMPLATE_IDS.has(String(tpl.id))
+                    ? ''
+                    : `<button type="button" class="ghost danger" data-template-action="delete" data-template-id="${tpl.id}">Delete</button>`
+                }
+              </div>
+            </div>
           `;
         })
         .join('');
@@ -893,10 +919,16 @@ function renderDesignTemplateGallery(selectedId = '') {
       `;
     })
     .join('');
-  designTemplateGallery.querySelectorAll('.design-template-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.templateId;
-      if (id) applyDesignTemplateSelection(id);
+  designTemplateGallery.querySelectorAll('[data-template-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.dataset.templateId;
+      if (!id) return;
+      const action = button.dataset.templateAction;
+      if (action === 'apply') {
+        applyDesignTemplateSelection(id);
+      } else if (action === 'delete') {
+        deleteDesignTemplate(id);
+      }
     });
   });
   updateLastTemplateButtonThumbnail();
