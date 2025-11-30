@@ -1040,6 +1040,7 @@ async function handleDesignFormSubmit(event) {
       showDesignSuccess(successMessage);
       setTimeout(() => {
         closeDesignModal();
+        window.location.href = '/design.html';
       }, 1100);
     } catch (error) {
       console.error('Design asset error:', error);
