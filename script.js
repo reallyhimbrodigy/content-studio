@@ -1121,6 +1121,25 @@ async function regenerateSingleDesignAsset(asset, currentUserId) {
   renderDesignAssets();
 }
 
+function deleteDesignAsset(asset, assetDay) {
+  if (!asset) return;
+  const confirmed = window.confirm('Delete this asset from both the Design Lab and its calendar day?');
+  if (!confirmed) return;
+  designAssets = designAssets.filter((item) => Number(item.id) !== Number(asset.id));
+  const targetDay = assetDay || asset.linkedDay || asset.day;
+  if (targetDay && Array.isArray(currentCalendar)) {
+    const targetEntry = findPostByDay(targetDay);
+    if (targetEntry && Array.isArray(targetEntry.assets)) {
+      targetEntry.assets = targetEntry.assets.filter((item) => Number(item.id) !== Number(asset.id));
+      renderCards(currentCalendar);
+      persistCurrentCalendarState();
+    }
+  }
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
+  showDesignSuccess('Asset deleted.');
+}
+
 function mapToneToTheme(tone = 'bold') {
   const presets = {
     bold: {
@@ -1669,6 +1688,7 @@ function renderDesignAssets() {
                 <button type="button" class="ghost" data-asset-action="download" data-asset-id="${asset.id}">Download</button>
                 <button type="button" class="ghost" data-asset-action="copy" data-asset-id="${asset.id}">Copy Brief</button>
                 <button type="button" class="ghost" data-asset-action="template" data-asset-id="${asset.id}">Save Template</button>
+                <button type="button" class="ghost danger" data-asset-action="delete" data-asset-id="${asset.id}" data-asset-day="${resolvedDay || ''}">Delete</button>
               </div>
             </div>
             <div class="design-asset__meta">
@@ -5842,6 +5862,8 @@ if (designGrid) {
         }
       } else if (action === 'template') {
         await handleDesignTemplateSave(asset);
+      } else if (action === 'delete') {
+        deleteDesignAsset(asset, actionBtn.dataset.assetDay);
       }
       return;
     }

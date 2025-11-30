@@ -601,6 +601,11 @@ body {
   min-width: 140px;
 }
 
+.design-asset__hover .danger {
+  border-color: rgba(255, 86, 86, 0.5);
+  color: #ff6b6b;
+}
+
 .design-modal {
   width: min(520px, 92vw);
   display: flex;
