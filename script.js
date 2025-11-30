@@ -5894,3 +5894,8 @@ function sanitizeAssetForStorage(asset = {}) {
     createdAt: asset.createdAt || new Date().toISOString(),
   };
 }
+if (designSection && (!calendarSection || !hub)) {
+  activeTab = 'design';
+  designSection.style.display = 'flex';
+  designSection.style.opacity = '1';
+}
