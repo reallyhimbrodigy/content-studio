@@ -88,6 +88,10 @@
             </div>
           </div>
           <div class="design-lab__filters">
+            <div class="design-view-toggle" role="group" aria-label="View mode">
+              <button type="button" id="design-view-grid" class="design-view-btn is-active">Grid</button>
+              <button type="button" id="design-view-list" class="design-view-btn">List</button>
+            </div>
             <label>
               Asset type
               <select id="design-filter-type">
@@ -102,6 +106,16 @@
               Linked day
               <select id="design-filter-day">
                 <option value="all">All days</option>
+              </select>
+            </label>
+            <label>
+              Creative direction
+              <select id="design-filter-tone">
+                <option value="all">All tones</option>
+                <option value="bold">Bold & punchy</option>
+                <option value="minimal">Minimal & clean</option>
+                <option value="playful">Playful & colorful</option>
+                <option value="elegant">Luxury & elegant</option>
               </select>
             </label>
             <label>
@@ -204,6 +218,42 @@
             <button type="submit" class="primary">Generate asset</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Design Asset Preview Modal -->
+    <div id="asset-detail-modal" class="modal-overlay" style="display:none">
+      <div class="modal asset-detail-modal" role="dialog" aria-modal="true" aria-labelledby="asset-detail-title">
+        <div class="asset-detail__body">
+          <div class="asset-detail__preview" id="asset-detail-preview"></div>
+          <div class="asset-detail__form">
+            <div class="asset-detail__head">
+              <div>
+                <h3 id="asset-detail-title">Asset</h3>
+                <p id="asset-detail-meta" class="modal-sub"></p>
+              </div>
+              <button class="ghost icon-only" id="asset-detail-close" aria-label="Close asset preview">&times;</button>
+            </div>
+            <form id="asset-detail-form">
+              <label>
+                Caption cue
+                <textarea id="asset-detail-caption" rows="3" placeholder="Edit caption cue"></textarea>
+              </label>
+              <label>
+                CTA
+                <input type="text" id="asset-detail-cta" placeholder="Edit CTA" />
+              </label>
+              <label>
+                Notes / Story prompt
+                <textarea id="asset-detail-notes" rows="3" placeholder="Add internal notes or story prompt"></textarea>
+              </label>
+              <div class="asset-detail__actions">
+                <button type="button" class="ghost" id="asset-detail-regenerate">Regenerate</button>
+                <button type="submit" class="primary">Save changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
 
