@@ -311,7 +311,11 @@ function ingestFocusAssetSnapshot() {
     sessionStorage.removeItem('promptly_focus_asset');
   } catch {}
   try {
-    const snapshot = JSON.parse(decodeURIComponent(encoded));
+    let payload = encoded;
+    try {
+      payload = decodeURIComponent(encoded);
+    } catch (_) {}
+    const snapshot = JSON.parse(payload);
     if (snapshot && snapshot.id) {
       mergeDesignAssetSnapshot(snapshot);
     }
