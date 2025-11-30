@@ -277,6 +277,28 @@ body {
   padding: 0.35rem 0.6rem;
 }
 
+.design-selection-actions {
+  margin-top: 0.5rem;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.design-selection-actions__buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.design-selection-actions button[disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .design-batch-status {
   display: flex;
   align-items: center;
@@ -340,6 +362,20 @@ body {
 .design-asset--highlight {
   border-color: rgba(127, 90, 240, 0.8);
   box-shadow: 0 0 0 3px rgba(127, 90, 240, 0.25);
+}
+
+.design-asset__select {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.design-asset__select input {
+  accent-color: var(--accent);
 }
 
 .design-asset.drag-over-top {
@@ -410,6 +446,11 @@ body {
   padding: 0.1rem 0.65rem;
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.design-asset__badge--campaign {
+  background: rgba(44, 177, 188, 0.2);
+  color: #9df6ff;
 }
 
 .design-asset__actions {
@@ -2789,6 +2830,9 @@ body.prefers-reduced-motion *::after {
 }
 
 .calendar-card__asset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   border: 1px solid rgba(127, 90, 240, 0.45);
   padding: 0.2rem 0.8rem;
@@ -2797,6 +2841,7 @@ body.prefers-reduced-motion *::after {
   text-decoration: none;
   background: rgba(127, 90, 240, 0.1);
   transition: border-color 0.2s ease, background 0.2s ease;
+  cursor: pointer;
 }
 
 .calendar-card__asset-btn.ghost {

@@ -106,6 +106,11 @@ const designTemplateGallery = document.getElementById('design-template-gallery')
 const designUseLastTemplateBtn = document.getElementById('design-use-last-template');
 const designFilterType = document.getElementById('design-filter-type');
 const designFilterDay = document.getElementById('design-filter-day');
+const designFilterCampaign = document.getElementById('design-filter-campaign');
+const designFilterMonth = document.getElementById('design-filter-month');
+const designSelectionCount = document.getElementById('design-selection-count');
+const designExportSelectedBtn = document.getElementById('design-export-selected');
+const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
@@ -166,6 +171,7 @@ let brandProfileLoaded = false;
 let currentBrandText = '';
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignDays = new Set();
+const selectedDesignAssetIds = new Set();
 let draggedDesignAssetId = null;
 let platformVariantSyncPromise = null;
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
@@ -183,6 +189,8 @@ if (!Number.isFinite(highlightDesignAssetId)) highlightDesignAssetId = null;
 let designFilterState = {
   type: designFilterType?.value || 'all',
   day: designFilterDay?.value || 'all',
+  campaign: designFilterCampaign?.value || 'all',
+  month: designFilterMonth?.value || 'all',
 };
 
 function getLastTemplateId() {
@@ -277,16 +285,57 @@ function hydrateDesignAssetsFromStorage(force = false) {
       asset.tone = asset.tone || '';
       asset.notes = asset.notes || '';
       asset.previewInlineUrl = asset.previewInlineUrl || '';
-    const descriptor = buildAssetPreviewDescriptor(asset);
-    asset.previewType = descriptor.kind;
-    if (descriptor.kind === 'text' && !asset.previewText) {
-      asset.previewText = descriptor.text;
-    }
-  });
+      asset.campaign = asset.campaign || '';
+      const descriptor = buildAssetPreviewDescriptor(asset);
+      asset.previewType = descriptor.kind;
+      if (descriptor.kind === 'text' && !asset.previewText) {
+        asset.previewText = descriptor.text;
+      }
+    });
     renderDesignAssets();
   } catch (err) {
     console.warn('Unable to hydrate design assets', err);
   }
+}
+
+function ingestFocusAssetSnapshot() {
+  if (typeof sessionStorage === 'undefined') return;
+  let encoded = null;
+  try {
+    encoded = sessionStorage.getItem('promptly_focus_asset');
+  } catch (err) {
+    encoded = null;
+  }
+  if (!encoded) return;
+  try {
+    sessionStorage.removeItem('promptly_focus_asset');
+  } catch {}
+  try {
+    const snapshot = JSON.parse(decodeURIComponent(encoded));
+    if (snapshot && snapshot.id) {
+      mergeDesignAssetSnapshot(snapshot);
+    }
+  } catch (err) {
+    console.warn('Unable to ingest focus asset', err);
+  }
+}
+
+function mergeDesignAssetSnapshot(snapshot) {
+  if (!snapshot || !snapshot.id) return;
+  const descriptor = buildAssetPreviewDescriptor(snapshot);
+  snapshot.previewType = descriptor.kind;
+  if (!snapshot.previewInlineUrl && descriptor.kind !== 'text') {
+    snapshot.previewInlineUrl = descriptor.url;
+  }
+  const existingIndex = designAssets.findIndex((asset) => asset.id === snapshot.id);
+  if (existingIndex >= 0) {
+    designAssets[existingIndex] = { ...designAssets[existingIndex], ...snapshot };
+  } else {
+    designAssets.unshift(snapshot);
+  }
+  highlightDesignAssetId = snapshot.id;
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
 }
 
 function blobToDataUrl(blob) {
@@ -319,6 +368,7 @@ async function ensureAssetInlinePreview(asset) {
 }
 
 hydrateDesignAssetsFromStorage();
+ingestFocusAssetSnapshot();
 
 function currentMonthToken() {
   const now = new Date();
@@ -386,6 +436,16 @@ function applyDesignFilters(list = []) {
       const assetDay = Number(asset.linkedDay || asset.day);
       if (String(assetDay || '') !== String(dayFilter)) return false;
     }
+    const campaignFilter = designFilterState.campaign;
+    if (campaignFilter && campaignFilter !== 'all') {
+      if ((asset.campaign || '') !== campaignFilter) return false;
+    }
+    const monthFilter = designFilterState.month;
+    if (monthFilter && monthFilter !== 'all') {
+      const createdAt = asset.createdAt || '';
+      const month = createdAt ? String(createdAt).slice(0, 7) : '';
+      if (month !== monthFilter) return false;
+    }
     return true;
   });
 }
@@ -410,6 +470,52 @@ function refreshDesignDayFilterOptions() {
   } else {
     designFilterDay.value = 'all';
     designFilterState.day = 'all';
+  }
+}
+
+function refreshDesignCampaignFilterOptions() {
+  if (!designFilterCampaign) return;
+  const previous = designFilterState.campaign;
+  const campaigns = Array.from(
+    new Set(
+      designAssets
+        .map((asset) => (asset.campaign || '').trim())
+        .filter(Boolean)
+    )
+  ).sort();
+  const options = [
+    '<option value="all">All campaigns</option>',
+    ...campaigns.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
+  ].join('');
+  designFilterCampaign.innerHTML = options;
+  if (previous && previous !== 'all' && campaigns.includes(previous)) {
+    designFilterCampaign.value = previous;
+  } else {
+    designFilterCampaign.value = 'all';
+    designFilterState.campaign = 'all';
+  }
+}
+
+function refreshDesignMonthFilterOptions() {
+  if (!designFilterMonth) return;
+  const previous = designFilterState.month;
+  const months = Array.from(
+    new Set(
+      designAssets
+        .map((asset) => (asset.createdAt || '').slice(0, 7))
+        .filter((month) => month && month.includes('-'))
+    )
+  ).sort().reverse();
+  const options = [
+    '<option value="all">Any time</option>',
+    ...months.map((month) => `<option value="${month}">${month}</option>`),
+  ].join('');
+  designFilterMonth.innerHTML = options;
+  if (previous && previous !== 'all' && months.includes(previous)) {
+    designFilterMonth.value = previous;
+  } else {
+    designFilterMonth.value = 'all';
+    designFilterState.month = 'all';
   }
 }
 const ASSET_PRESETS = {
@@ -522,7 +628,14 @@ function loadDesignTemplates() {
     const raw = localStorage.getItem(DESIGN_TEMPLATE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter(Boolean)
+          .map((tpl) => ({
+            ...tpl,
+            previewInlineUrl: tpl.previewInlineUrl || '',
+          }))
+      : [];
   } catch (error) {
     console.warn('Unable to load saved templates', error);
     return [];
@@ -553,9 +666,15 @@ function applySidebarState(collapsed) {
 
 function initSidebar() {
   if (!appSidebar || !sidebarToggle) return;
-  let collapsed = false;
+  let collapsed = true;
   try {
-    collapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1';
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (stored === null) {
+      collapsed = true;
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, '1');
+    } else {
+      collapsed = stored === '1';
+    }
   } catch (_) {}
   applySidebarState(collapsed);
   sidebarToggle.addEventListener('click', () => {
@@ -660,7 +779,7 @@ function renderDesignTemplateGallery(selectedId = '') {
     .map((tpl) => {
       const isActive = String(tpl.id) === String(selectedId || activeTemplateId);
       const preview = tpl.previewInlineUrl
-        ? `<img src="${tpl.previewInlineUrl}" alt="${escapeHtml(tpl.label)} preview" />`
+        ? `<img src="${escapeHtml(tpl.previewInlineUrl)}" alt="${escapeHtml(tpl.label)} preview" />`
         : `<div class="design-template-card__preview-text">${escapeHtml(tpl.previewText || tpl.label)}</div>`;
       return `
         <button type="button" class="design-template-card${isActive ? ' is-active' : ''}" data-template-id="${tpl.id}">
@@ -753,6 +872,109 @@ function toggleDesignDaySelection(day) {
   }
   updateDesignBatchUI();
   updateBatchSelectionVisual(normalized, selectedDesignDays.has(normalized));
+}
+
+function updateDesignSelectionUI() {
+  const count = selectedDesignAssetIds.size;
+  if (designSelectionCount) {
+    designSelectionCount.textContent = count ? `${count} asset${count === 1 ? '' : 's'} selected` : 'No assets selected';
+  }
+  if (designExportSelectedBtn) designExportSelectedBtn.disabled = count === 0;
+  if (designRegenerateSelectedBtn) designRegenerateSelectedBtn.disabled = count === 0;
+}
+
+function toggleDesignAssetSelection(assetId, isSelected) {
+  const normalized = Number(assetId);
+  if (!Number.isFinite(normalized)) return;
+  if (isSelected) selectedDesignAssetIds.add(normalized);
+  else selectedDesignAssetIds.delete(normalized);
+  updateDesignSelectionUI();
+}
+
+async function handleDesignExportSelected() {
+  const assets = designAssets.filter((asset) => selectedDesignAssetIds.has(asset.id));
+  if (!assets.length) return;
+  try {
+    const JSZipLib = await ensureZip().catch(() => null);
+    if (!JSZipLib) throw new Error('Failed to load Zip library');
+    const zip = new JSZipLib();
+    for (const asset of assets) {
+      if (!asset.downloadUrl) continue;
+      const response = await fetch(asset.downloadUrl);
+      if (!response.ok) continue;
+      const blob = await response.blob();
+      const ext = getAssetExtension(asset) || 'bin';
+      const filename = `${slugify(asset.title || `asset-${asset.id}`)}.${ext}`;
+      zip.file(filename, blob);
+    }
+    const bundle = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(bundle);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `promptly-assets-${Date.now()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export selected assets failed', err);
+    alert('Unable to export selected assets right now.');
+  }
+}
+
+async function handleDesignRegenerateSelected() {
+  if (!selectedDesignAssetIds.size) return;
+  const allowed = await requireProAccess();
+  if (!allowed) {
+    showUpgradeModal();
+    return;
+  }
+  const currentUserId = activeUserEmail || (await getCurrentUser());
+  if (!currentUserId) {
+    alert('Sign in to regenerate assets.');
+    return;
+  }
+  const targets = designAssets.filter((asset) => selectedDesignAssetIds.has(asset.id));
+  if (!targets.length) return;
+  showDesignSuccess(`Regenerating ${targets.length} asset${targets.length === 1 ? '' : 's'}...`);
+  for (const asset of targets) {
+    try {
+      await regenerateSingleDesignAsset(asset, currentUserId);
+    } catch (err) {
+      console.warn('Failed to regenerate asset', asset.id, err);
+    }
+  }
+  showDesignSuccess('Selected assets refreshed.');
+  setTimeout(() => clearDesignFeedback(), 2000);
+}
+
+async function regenerateSingleDesignAsset(asset, currentUserId) {
+  const payload = {
+    day: asset.linkedDay || asset.day || null,
+    assetType: asset.assetType || inferAssetTypeFromAsset(asset),
+    tone: asset.tone || 'bold',
+    notes: asset.notes || asset.brief || '',
+    userId: currentUserId,
+    caption: asset.caption || '',
+    cta: asset.cta || '',
+    campaign: asset.campaign || '',
+    title: asset.title || (asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'AI Asset'),
+    templateId: asset.templateId || null,
+    templateLabel: asset.templateLabel || null,
+  };
+  let updated = await requestDesignAsset(payload);
+  updated = await ensureAssetInlinePreview(updated);
+  updated.linkedDay = payload.day;
+  updated.campaign = payload.campaign;
+  const idx = designAssets.findIndex((item) => item.id === asset.id);
+  if (idx !== -1) {
+    designAssets[idx] = { ...asset, ...updated };
+  } else {
+    designAssets.unshift(updated);
+  }
+  persistDesignAssetsToStorage();
+  linkAssetToCalendarPost(updated);
+  renderDesignAssets();
 }
 
 function mapToneToTheme(tone = 'bold') {
@@ -1171,7 +1393,13 @@ function updateTabs(){
 
 function renderDesignAssets() {
     if (!designGrid || !designEmpty) return;
+    const knownIds = new Set(designAssets.map((asset) => Number(asset.id)));
+    selectedDesignAssetIds.forEach((id) => {
+      if (!knownIds.has(id)) selectedDesignAssetIds.delete(id);
+    });
     refreshDesignDayFilterOptions();
+    refreshDesignCampaignFilterOptions();
+    refreshDesignMonthFilterOptions();
     if (!designAssets.length) {
       designEmpty.style.display = '';
       designGrid.innerHTML = '';
@@ -1195,6 +1423,7 @@ function renderDesignAssets() {
     designEmpty.style.display = 'none';
     designGrid.innerHTML = filteredAssets
       .map((asset) => {
+        const numericId = Number(asset.id);
         const resolvedDay = asset.linkedDay || asset.day;
         const dayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
         const previewBlock = buildDesignAssetPreviewBlock(asset);
@@ -1204,17 +1433,24 @@ function renderDesignAssets() {
         const download = escapeHtml(asset.downloadUrl || '');
         const brief = escapeHtml(asset.brief || asset.previewText || '');
         const linkBadge = resolvedDay ? `<span class="design-asset__badge">Linked to Day ${String(resolvedDay).padStart(2, '0')}</span>` : '';
+        const campaignBadge = asset.campaign ? `<span class="design-asset__badge design-asset__badge--campaign">${escapeHtml(asset.campaign)}</span>` : '';
         const templateBadge = asset.templateLabel ? `<span class="design-asset__badge">Template: ${escapeHtml(asset.templateLabel)}</span>` : '';
         const captionLine = asset.caption ? `<p class="design-asset__caption">${escapeHtml(asset.caption)}</p>` : '';
         const ctaLine = asset.cta ? `<p class="design-asset__cta">CTA: ${escapeHtml(asset.cta)}</p>` : '';
         const toneLine = asset.tone ? `<span class="design-asset__tone">${escapeHtml(asset.tone)}</span>` : '';
+        const isSelected = selectedDesignAssetIds.has(numericId);
         return `
           <article class="design-asset" data-asset-id="${asset.id}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
+            <label class="design-asset__select">
+              <input type="checkbox" data-asset-select="${asset.id}" ${isSelected ? 'checked' : ''}/>
+              <span>Select</span>
+            </label>
             <div class="design-asset__preview${previewBlock.isMedia ? ' design-asset__preview--media' : ''}">${previewBlock.html}</div>
             <div class="design-asset__meta">
               <strong>${title}</strong>
               <span>${escapeHtml(dayLabel)} · ${typeText}</span>
               ${linkBadge}
+              ${campaignBadge}
               ${templateBadge}
               <span>Status: ${status}</span>
               ${toneLine}
@@ -1243,6 +1479,7 @@ function renderDesignAssets() {
         }
       }
     }
+    updateDesignSelectionUI();
   }
 
 function getFileExtensionFromSource(source = '') {
@@ -1446,6 +1683,7 @@ async function handleDesignFormSubmit(event) {
       userId: currentUserId || '',
       caption: activeDesignContext?.entry?.caption || activeDesignContext?.entry?.description || '',
       cta: activeDesignContext?.entry?.cta || '',
+      campaign: currentNiche || nicheInput?.value || '',
       title:
         (activeDesignContext?.entry && (activeDesignContext.entry.idea || activeDesignContext.entry.title)) ||
         (designDayInput?.value ? `Day ${designDayInput.value}` : `Asset for ${currentNiche || 'brand'}`),
@@ -1529,6 +1767,7 @@ async function requestDesignAsset(payload) {
         templateLabel: data.templateLabel || payload.templateLabel || null,
         caption: data.caption || payload.caption || activeDesignContext?.entry?.caption || '',
         cta: data.cta || payload.cta || activeDesignContext?.entry?.cta || '',
+        campaign: data.campaign || payload.campaign || '',
       };
       if (!asset.downloadUrl) {
         const blob = buildDesignPdfBlob(asset, payload);
@@ -1560,6 +1799,7 @@ async function requestDesignAsset(payload) {
       templateLabel: payload.templateLabel || null,
       caption: payload.caption || activeDesignContext?.entry?.caption || '',
       cta: payload.cta || activeDesignContext?.entry?.cta || '',
+      campaign: payload.campaign || '',
     };
     const blob = buildDesignPdfBlob(fallback, payload);
     fallback.fileBlob = blob;
@@ -1583,7 +1823,7 @@ function linkAssetToCalendarPost(asset) {
       typeLabel: asset.typeLabel,
       downloadUrl: asset.downloadUrl,
       previewType: descriptor.kind,
-      previewInlineUrl: descriptor.kind === 'text' ? '' : descriptor.url,
+      previewInlineUrl: asset.previewInlineUrl || (descriptor.kind === 'text' ? '' : descriptor.url),
       previewText: descriptor.kind === 'text' ? descriptor.text : asset.previewText,
       status: asset.status,
       createdAt: asset.createdAt || new Date().toISOString(),
@@ -1594,6 +1834,7 @@ function linkAssetToCalendarPost(asset) {
       tone: asset.tone || '',
       notes: asset.notes || '',
       assetType: asset.assetType || asset.typeLabel || '',
+      campaign: asset.campaign || '',
     };
     if (!Array.isArray(targetEntry.assets)) targetEntry.assets = [];
     const next = [summary, ...targetEntry.assets.filter((existing) => existing && existing.id !== summary.id)];
@@ -1867,6 +2108,7 @@ async function handleDesignBatchGenerate() {
       notes: buildAutoNotes(entry, preset),
       caption: entry.caption || entry.description || '',
       niche: currentNiche || nicheInput?.value || '',
+      campaign: currentNiche || nicheInput?.value || '',
       title: entry.idea || entry.title || `Day ${String(day).padStart(2, '0')} asset`,
     };
     const kitSummary = summarizeBrandKitBrief(currentBrandKit);
@@ -4066,6 +4308,10 @@ function buildPostHTML(post){
         }
         const downloadUrl = escapeHtml(asset.downloadUrl || asset.url || '#');
         const designUrl = escapeHtml(asset.designUrl || '#');
+        const assetSnapshot = encodeURIComponent(JSON.stringify({
+          ...asset,
+          previewInlineUrl: asset.previewInlineUrl || '',
+        }));
         const captionText = asset.caption ? `<p>${escapeHtml(asset.caption)}</p>` : '';
         return `
           <div class="calendar-card__asset-card">
@@ -4078,7 +4324,7 @@ function buildPostHTML(post){
             </div>
             <div class="calendar-card__asset-actions">
               <a class="calendar-card__asset-btn" href="${downloadUrl}" target="_blank" rel="noopener" download>Download</a>
-              <a class="calendar-card__asset-btn ghost" href="${designUrl}">View/Edit</a>
+              <button type="button" class="calendar-card__asset-btn ghost calendar-card__asset-btn--view" data-design-url="${designUrl}" data-asset="${assetSnapshot}">View/Edit</button>
             </div>
           </div>
         `;
@@ -5297,6 +5543,18 @@ if (designFilterDay) {
     renderDesignAssets();
   });
 }
+if (designFilterCampaign) {
+  designFilterCampaign.addEventListener('change', (event) => {
+    designFilterState.campaign = event.target.value || 'all';
+    renderDesignAssets();
+  });
+}
+if (designFilterMonth) {
+  designFilterMonth.addEventListener('change', (event) => {
+    designFilterState.month = event.target.value || 'all';
+    renderDesignAssets();
+  });
+}
 if (designGrid) {
   designGrid.addEventListener('click', async (event) => {
     const card = event.target.closest('.design-asset');
@@ -5369,6 +5627,41 @@ if (designGrid) {
     reorderDesignAssets(draggedDesignAssetId, targetId, insertBefore);
     draggedDesignAssetId = null;
     clearDesignDragHighlights();
+  });
+
+  designGrid.addEventListener('change', (event) => {
+    const checkbox = event.target.closest('input[data-asset-select]');
+    if (checkbox) {
+      const id = Number(checkbox.dataset.assetSelect);
+      toggleDesignAssetSelection(id, checkbox.checked);
+      return;
+    }
+  });
+}
+
+if (designExportSelectedBtn) {
+  designExportSelectedBtn.addEventListener('click', handleDesignExportSelected);
+}
+
+if (designRegenerateSelectedBtn) {
+  designRegenerateSelectedBtn.addEventListener('click', handleDesignRegenerateSelected);
+}
+
+if (grid) {
+  grid.addEventListener('click', (event) => {
+    const viewBtn = event.target.closest('.calendar-card__asset-btn--view');
+    if (!viewBtn) return;
+    event.preventDefault();
+    const encoded = viewBtn.dataset.asset || '';
+    if (encoded) {
+      try {
+        sessionStorage.setItem('promptly_focus_asset', encoded);
+      } catch (err) {
+        console.warn('Unable to cache focus asset', err);
+      }
+    }
+    const targetUrl = viewBtn.dataset.designUrl || '/design.html';
+    window.location.href = targetUrl;
   });
 }
 

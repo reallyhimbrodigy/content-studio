@@ -104,6 +104,25 @@
                 <option value="all">All days</option>
               </select>
             </label>
+            <label>
+              Campaign
+              <select id="design-filter-campaign">
+                <option value="all">All campaigns</option>
+              </select>
+            </label>
+            <label>
+              Month
+              <select id="design-filter-month">
+                <option value="all">Any time</option>
+              </select>
+            </label>
+          </div>
+          <div class="design-selection-actions">
+            <span id="design-selection-count">No assets selected</span>
+            <div class="design-selection-actions__buttons">
+              <button type="button" class="ghost" id="design-export-selected" disabled>Export Selected</button>
+              <button type="button" class="ghost" id="design-regenerate-selected" disabled>Regenerate Selected</button>
+            </div>
           </div>
           <div id="design-empty" class="design-empty">
             <div class="design-card">
