@@ -71,12 +71,12 @@
     <h1>Promptly – Browser Diagnostics</h1>
     
     <div class="card">
-      <h2>🔍 System Check</h2>
+      <h2>System Check</h2>
       <div id="status"></div>
     </div>
 
     <div class="card">
-      <h2>📋 Debug Log</h2>
+      <h2>Debug Log</h2>
       <div class="log-box" id="log"></div>
       <button data-hide-when-authenticated onclick="location.href='http://localhost:8000/auth.html'">Try Auth Page Again</button>
       <button onclick="location.href='http://localhost:8000/'">Try Main App</button>
@@ -115,7 +115,7 @@
 
     // Run diagnostics
     async function runDiag() {
-      addLog('🧪 Starting browser diagnostics...', 'info');
+      addLog('Starting browser diagnostics...', 'info');
       
       // Check 1: localStorage
       try {
@@ -185,7 +185,7 @@
 
     // Run on load
     window.addEventListener('load', runDiag);
-    addLog('📖 Diagnostics page loaded. Checking system...', 'info');
+    addLog('Diagnostics page loaded. Checking system...', 'info');
   </script>
   <script type="module" src="./auth-visibility.js"></script>
 </body>

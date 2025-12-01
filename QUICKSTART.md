@@ -6,7 +6,7 @@ Your app is **fully functional**. The backend, API, and all buttons work end-to-
 
 ---
 
-## 🚀 Getting Started (3 steps)
+## Getting Started (3 steps)
 
 ### Step 1: Open the app
 ```
@@ -34,7 +34,7 @@ http://localhost:8000
 
 ---
 
-## 🎯 Available Features
+## Available Features
 
 Once you've signed in and generated a calendar:
 
@@ -88,7 +88,7 @@ npm start
 
 ---
 
-## 🔐 API Key Status
+## API Key Status
 
 Your OpenAI API key is set and the server is using it. If you see warnings about "OPENAI_API_KEY not set" in the server logs, that's from old processes. Verify:
 
@@ -99,7 +99,7 @@ bash -lc 'source ~/.zshenv && printf "Key length: %d\n" ${#OPENAI_API_KEY}'
 
 ---
 
-## 📁 File Structure
+## File Structure
 
 ```
 .
@@ -119,7 +119,7 @@ bash -lc 'source ~/.zshenv && printf "Key length: %d\n" ${#OPENAI_API_KEY}'
 
 ---
 
-## 🧪 Verification
+## Verification
 
 Run this to verify everything is working:
 
@@ -138,7 +138,7 @@ You should see:
 
 ---
 
-## 💡 Tips & Tricks
+## Tips & Tricks
 
 - **Generate multiple calendars:** Each niche gets its own entry in your library
 - **Export for sharing:** Download as JSON and send to teammates
@@ -176,7 +176,7 @@ Try these in order:
 
 ---
 
-## 📞 Need Help?
+## Need Help?
 
 If something still doesn't work:
 - Open DevTools Console (F12) and paste any error messages
@@ -185,4 +185,4 @@ If something still doesn't work:
 
 ---
 
-**Ready to generate your first calendar? Open `http://localhost:8000` and sign up!** 🚀
+**Ready to generate your first calendar? Open `http://localhost:8000` and sign up!**

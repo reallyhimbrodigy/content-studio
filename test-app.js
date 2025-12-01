@@ -11,7 +11,7 @@ const https = require('https');
 
 const BASE_URL = 'http://localhost:8000';
 
-console.log('🧪 Starting E2E Test Suite...\n');
+console.log('Starting E2E Test Suite...\n');
 
 // Test 1: Verify server is running
 function testServerHealth() {
@@ -86,9 +86,9 @@ function testGenerateAPI(nicheStyle) {
     
     if (result.ok) {
       console.log(`  ✅ API successful (HTTP ${result.status})`);
-      console.log(`  📊 Generated ${result.postsCount} posts`);
+      console.log(`  Generated ${result.postsCount} posts`);
       if (result.sample) {
-        console.log(`  📌 Sample: Day ${result.sample.day} - "${result.sample.title}" (${result.sample.pillar})`);
+        console.log(`  Sample: Day ${result.sample.day} - "${result.sample.title}" (${result.sample.pillar})`);
       }
     } else {
       console.log(`  ❌ API failed (HTTP ${result.status})`);
@@ -96,7 +96,7 @@ function testGenerateAPI(nicheStyle) {
     }
 
     console.log('\n' + '='.repeat(60));
-    console.log('🎯 SUMMARY:');
+    console.log('SUMMARY:');
     console.log('='.repeat(60));
     
     if (healthOk && result.ok) {
@@ -106,7 +106,7 @@ function testGenerateAPI(nicheStyle) {
       console.log('  • Auth page is accessible at /auth.html');
       console.log('  • API endpoint /api/generate-calendar is working');
       console.log('  • OpenAI integration is functional');
-      console.log('\n📖 Next steps:');
+      console.log('\nNext steps:');
       console.log('  1. Open http://localhost:8000 in your browser');
       console.log('  2. Sign up or sign in with any email/password');
       console.log('  3. Enter a niche (e.g., "vegan fitness coaches")');

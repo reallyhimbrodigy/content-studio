@@ -3426,18 +3426,18 @@ if (fontPickers.length) {
 
 if (brandBtn && brandModal) {
   brandBtn.addEventListener('click', async () => {
-    console.log('🧠 Brand Brain clicked');
+console.log('Brand Brain clicked');
     const user = await getCurrentUser();
-    console.log('🧠 Current user:', user);
+    console.log('Current user:', user);
     const userIsPro = await isPro(user);
-    console.log('🧠 User is Pro:', userIsPro);
+    console.log('User is Pro:', userIsPro);
     if (!userIsPro) {
-      console.log('🧠 Showing upgrade modal');
+      console.log('Showing upgrade modal');
       showUpgradeModal();
       return;
     }
     await Promise.all([refreshBrandKit(), refreshBrandBrain()]);
-    console.log('🧠 Opening brand modal');
+    console.log('Opening brand modal');
     openBrandModal();
   });
 }
@@ -4415,7 +4415,7 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   ];
 
   const captionVariations = {
-    casual: `${baseCaption.replace(/[.!?]+$/, '')}! Drop your best question in the comments 💬`,
+    casual: `${baseCaption.replace(/[.!?]+$/, '')}! Drop your best question in the comments`,
     professional: `Let’s address the big question: ${capitalizeSentence(baseCaption)} Our team is ready with evidence-backed answers.`,
     witty: `Plot twist: ${baseCaption.replace(/[.!?]$/, '')}. Ask away and we’ll spill the tea (and the serums).`
   };
@@ -4528,13 +4528,13 @@ function hideGeneratingState(originalText) {
 // Export button handler
 if (exportBtn) {
   exportBtn.addEventListener("click", async () => {
-    console.log('📦 Export clicked');
+    console.log('Export clicked');
     const user = await getCurrentUser();
-    console.log('📦 Current user:', user);
+    console.log('Current user:', user);
     const userIsPro = await isPro(user);
-    console.log('📦 User is Pro:', userIsPro);
+    console.log('User is Pro:', userIsPro);
     if (!userIsPro) {
-      console.log('📦 Showing upgrade modal');
+      console.log('Showing upgrade modal');
       showUpgradeModal();
       return;
     }
@@ -5173,7 +5173,7 @@ if (saveBtn) {
     if (!userIsPro) {
       showUpgradeModal();
       if (feedbackEl) {
-        feedbackEl.textContent = "🔒 Save to Library is a Pro feature. Upgrade to save unlimited calendars!";
+        feedbackEl.textContent = "Save to Library is a Pro feature. Upgrade to save unlimited calendars!";
         feedbackEl.style.color = 'var(--accent)';
       }
       return;
@@ -5872,7 +5872,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
 
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
-  console.log("🟡 generateCalendarWithAI called with:", nicheStyle);
+  console.log(" generateCalendarWithAI called with:", nicheStyle);
   
   try {
     const currentUserEmail = await getCurrentUser();
@@ -5889,7 +5889,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
-      console.log(`🟡 Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
+      console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
       
       const response = await fetch("/api/generate-calendar", {
         method: "POST",
@@ -5925,12 +5925,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       if (pFill) pFill.style.width = `${percent}%`;
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
       
-      console.log(`🟢 Batch ${batchIndex + 1} complete`);
+      console.log(` Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts };
     };
     
     // Fire all 6 batches in parallel for maximum speed (~30 seconds)
-    console.log("🟡 Requesting all batches in parallel...");
+    console.log(" Requesting all batches in parallel...");
     const batchPromises = Array.from({ length: totalBatches }, (_, i) => fetchBatch(i));
     const results = await Promise.all(batchPromises);
     
@@ -5963,11 +5963,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       allPosts = allPosts.map((post) => stripProFields(post));
     }
 
-    console.log("🟢 All batches complete, total posts:", allPosts.length);
+    console.log(" All batches complete, total posts:", allPosts.length);
     return allPosts;
   } catch (err) {
-    console.error("🔴 generateCalendarWithAI error:", err);
-    console.error("🔴 Error details:", { message: err.message, stack: err.stack });
+    console.error(" generateCalendarWithAI error:", err);
+    console.error(" Error details:", { message: err.message, stack: err.stack });
     throw err;
   }
 }
@@ -6034,10 +6034,10 @@ async function canGenerate() {
 if (generateBtn) {
   generateBtn.addEventListener("click", async () => {
     const niche = nicheInput ? nicheInput.value.trim() : "";
-    console.log("🔵 Generate clicked, niche:", niche);
+    console.log(" Generate clicked, niche:", niche);
     
     const { ok, msg } = validateNiche(niche);
-    console.log("🔵 Validation result:", { ok, msg });
+    console.log(" Validation result:", { ok, msg });
     
     if (!ok) {
       // show validation feedback and focus
@@ -6054,7 +6054,7 @@ if (generateBtn) {
     if (!(await canGenerate())) {
       showUpgradeModal();
       if (feedbackEl) {
-        feedbackEl.textContent = "🔒 You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
+        feedbackEl.textContent = " You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
         feedbackEl.style.color = 'var(--accent)';
       }
       return;
@@ -6063,16 +6063,16 @@ if (generateBtn) {
     const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
     // proceed with AI generation and display
     try {
-      console.log("🟢 Starting AI generation for:", niche);
+      console.log(" Starting AI generation for:", niche);
       showGeneratingState();
       if (feedbackEl) feedbackEl.textContent = "";
-      console.log("🟢 Calling API with niche:", niche);
+      console.log(" Calling API with niche:", niche);
 
       // Call OpenAI to generate calendar
       const postsPerDay = getPostFrequency();
       currentPostFrequency = postsPerDay;
       const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
-      console.log("🟢 Received posts:", aiGeneratedPosts);
+      console.log(" Received posts:", aiGeneratedPosts);
       
       // Increment generation count for free users
       incrementGenerationCount();
