@@ -6082,6 +6082,7 @@ if (generateBtn) {
       currentNiche = niche;
       renderCards(currentCalendar);
       applyFilter("all");
+      await ensurePlatformVariantsForCurrentCalendar('generate');
 
       hideGeneratingState(originalText);
       activeTab = 'plan';
