@@ -123,6 +123,10 @@ const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
 const assetDetailForm = document.getElementById('asset-detail-form');
+const assetDetailType = document.getElementById('asset-detail-type');
+const assetDetailTemplateSelect = document.getElementById('asset-detail-template');
+const assetDetailUseLastTemplateBtn = document.getElementById('asset-detail-use-last-template');
+const assetDetailSlides = document.getElementById('asset-detail-slides');
 const assetDetailCaption = document.getElementById('asset-detail-caption');
 const assetDetailCta = document.getElementById('asset-detail-cta');
 const assetDetailNotes = document.getElementById('asset-detail-notes');
@@ -131,10 +135,12 @@ const assetDetailRegenerateBtn = document.getElementById('asset-detail-regenerat
 const assetDetailTone = document.getElementById('asset-detail-tone');
 const assetDetailPrimaryColor = document.getElementById('asset-detail-primary');
 const assetDetailSecondaryColor = document.getElementById('asset-detail-secondary');
+const assetDetailAccentColor = document.getElementById('asset-detail-accent');
 const assetDetailHeadingFont = document.getElementById('asset-detail-heading-font');
 const assetDetailBodyFont = document.getElementById('asset-detail-body-font');
 const assetDetailTimestamp = document.getElementById('asset-detail-timestamp');
 const assetDetailUndoBtn = document.getElementById('asset-detail-undo');
+const assetDetailCancelBtn = document.getElementById('asset-detail-cancel');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -246,6 +252,7 @@ function rememberLastTemplate(templateId) {
     localStorage.setItem(DESIGN_LAST_TEMPLATE_KEY, String(templateId));
   } catch {}
   updateTemplateShortcuts();
+  updateAssetDetailTemplateShortcut();
 }
 
 function updateTemplateShortcuts() {
@@ -461,6 +468,8 @@ async function ensureAssetInlinePreview(asset) {
 }
 
 hydrateDesignAssetsFromStorage();
+populateAssetDetailTemplateOptions();
+updateAssetDetailTemplateShortcut();
 ingestFocusAssetSnapshot();
 
 function currentMonthToken() {
@@ -888,6 +897,7 @@ function renderDesignTemplateOptions(selectedId = '') {
   updateDesignTemplateHint(designTemplateSelect.value || '');
   renderDesignTemplateGallery(selectedId || designTemplateSelect.value || '');
   updateTemplateShortcuts();
+  populateAssetDetailTemplateOptions(selectedId || '');
 }
 
 function updateDesignTemplateHint(templateId = '') {
@@ -976,6 +986,30 @@ function renderDesignTemplateGallery(selectedId = '') {
     });
   });
   updateLastTemplateButtonThumbnail();
+}
+
+function populateAssetDetailTemplateOptions(selectedId = '') {
+  if (!assetDetailTemplateSelect) return;
+  const safeSelected = selectedId || assetDetailTemplateSelect.value || '';
+  const options = designTemplates
+    .map((tpl) => `<option value="${escapeHtml(tpl.id)}">${escapeHtml(tpl.label)}</option>`)
+    .join('');
+  assetDetailTemplateSelect.innerHTML = `<option value="">No template</option>${options}`;
+  assetDetailTemplateSelect.disabled = designTemplates.length === 0;
+  if (safeSelected && designTemplates.some((tpl) => String(tpl.id) === String(safeSelected))) {
+    assetDetailTemplateSelect.value = String(safeSelected);
+  } else {
+    assetDetailTemplateSelect.value = '';
+  }
+  updateAssetDetailTemplateShortcut();
+}
+
+function updateAssetDetailTemplateShortcut() {
+  if (!assetDetailUseLastTemplateBtn) return;
+  const lastId = getLastTemplateId();
+  const tpl = lastId ? designTemplates.find((item) => String(item.id) === String(lastId)) : null;
+  assetDetailUseLastTemplateBtn.disabled = !tpl;
+  assetDetailUseLastTemplateBtn.textContent = tpl ? `Use ${tpl.label}` : 'Use last template';
 }
 
 function applyDesignTemplateSelection(templateId) {
@@ -1292,6 +1326,19 @@ async function openDesignAssetDetail(target) {
       : designAssets.find((item) => String(item.id) === lookupId);
   if (!asset || !assetDetailModal) return;
   activeAssetDetailId = asset.id;
+  if (assetDetailType) {
+    const typeValue = asset.assetType || inferAssetTypeFromAsset(asset) || 'social-graphic';
+    const hasOption = Array.from(assetDetailType.options || []).some((opt) => opt.value === typeValue);
+    if (!hasOption) {
+      const opt = document.createElement('option');
+      opt.value = typeValue;
+      opt.textContent = formatAssetTypeLabel(typeValue);
+      assetDetailType.appendChild(opt);
+    }
+    assetDetailType.value = typeValue;
+  }
+  populateAssetDetailTemplateOptions(asset.templateId || '');
+  if (assetDetailTemplateSelect) assetDetailTemplateSelect.value = asset.templateId || '';
   await ensureAssetInlinePreview(asset);
   renderAssetDetailPreview(asset);
   if (assetDetailCaption) assetDetailCaption.value = asset.caption || '';
@@ -1300,11 +1347,13 @@ async function openDesignAssetDetail(target) {
   if (assetDetailTone) assetDetailTone.value = asset.tone || 'bold';
   if (assetDetailPrimaryColor) assetDetailPrimaryColor.value = asset.primaryColor || getBrandPaletteDefaults().primaryColor;
   if (assetDetailSecondaryColor) assetDetailSecondaryColor.value = asset.secondaryColor || getBrandPaletteDefaults().secondaryColor;
+  if (assetDetailAccentColor) assetDetailAccentColor.value = asset.accentColor || getBrandPaletteDefaults().accentColor;
   if (assetDetailHeadingFont) assetDetailHeadingFont.value = asset.headingFont || '';
   if (assetDetailBodyFont) assetDetailBodyFont.value = asset.bodyFont || '';
   if (assetDetailMeta) {
+    const typeLabel = formatAssetTypeLabel(asset.assetType || asset.typeLabel);
     const dayLabel = asset.linkedDay || asset.day ? `Day ${String(asset.linkedDay || asset.day).padStart(2, '0')}` : 'Unassigned';
-    assetDetailMeta.textContent = `${formatAssetTypeLabel(asset.assetType || asset.typeLabel)} · ${dayLabel}`;
+    assetDetailMeta.textContent = `${typeLabel} · ${dayLabel}`;
   }
   if (assetDetailTimestamp) {
     assetDetailTimestamp.textContent = asset.lastEdited
@@ -1326,22 +1375,29 @@ function renderAssetDetailPreview(asset) {
   let html = `<div class="design-preview__graphic" style="width:100%;height:100%;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">No preview available</div>`;
   if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
     assetDetailPreview.innerHTML = buildCarouselSliderHtml(descriptor.slides, { context: 'detail' });
-    return;
-  }
-  if (descriptor.kind === 'image') {
+  } else if (descriptor.kind === 'image') {
     html = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'Asset preview')}" />`;
+    assetDetailPreview.innerHTML = html;
   } else if (descriptor.kind === 'video') {
     html = `<video src="${escapeHtml(descriptor.url)}" controls playsinline preload="metadata"></video>`;
+    assetDetailPreview.innerHTML = html;
   } else if (descriptor.text) {
     html = `<div class="design-preview__graphic">${escapeHtml(descriptor.text)}</div>`;
+    assetDetailPreview.innerHTML = html;
+  } else {
+    assetDetailPreview.innerHTML = html;
   }
-  assetDetailPreview.innerHTML = html;
+  if (assetDetailSlides) {
+    const chips = buildSlideChipRowHtml(asset.slides, 'design');
+    assetDetailSlides.innerHTML = chips || '';
+  }
 }
 
 function closeDesignAssetDetail() {
   if (!assetDetailModal) return;
   assetDetailModal.style.display = 'none';
   activeAssetDetailId = null;
+  if (assetDetailSlides) assetDetailSlides.innerHTML = '';
 }
 
 function handleAssetDetailSave(event) {
@@ -1352,12 +1408,30 @@ function handleAssetDetailSave(event) {
   if (!asset.originalSnapshot) {
     asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
   }
+  const typeValue = assetDetailType?.value || asset.assetType || inferAssetTypeFromAsset(asset);
+  if (typeValue) {
+    asset.assetType = typeValue;
+    asset.typeLabel = formatAssetTypeLabel(typeValue);
+  }
+  if (assetDetailTemplateSelect) {
+    const templateId = assetDetailTemplateSelect.value || '';
+    if (templateId && designTemplates.some((tpl) => String(tpl.id) === String(templateId))) {
+      asset.templateId = templateId;
+      const tpl = designTemplates.find((item) => String(item.id) === String(templateId));
+      asset.templateLabel = tpl?.label || '';
+      rememberLastTemplate(templateId);
+    } else {
+      asset.templateId = null;
+      asset.templateLabel = null;
+    }
+  }
   asset.caption = assetDetailCaption?.value?.trim() || '';
   asset.cta = assetDetailCta?.value?.trim() || '';
   asset.notes = assetDetailNotes?.value?.trim() || '';
   asset.tone = assetDetailTone?.value || asset.tone;
   asset.primaryColor = assetDetailPrimaryColor?.value || asset.primaryColor;
   asset.secondaryColor = assetDetailSecondaryColor?.value || asset.secondaryColor;
+  asset.accentColor = assetDetailAccentColor?.value || asset.accentColor;
   asset.headingFont = assetDetailHeadingFont?.value?.trim() || asset.headingFont;
   asset.bodyFont = assetDetailBodyFont?.value?.trim() || asset.bodyFont;
   asset.lastEdited = new Date().toISOString();
@@ -6074,6 +6148,13 @@ if (designUseLastTemplateBtn) {
     }
   });
 }
+if (assetDetailUseLastTemplateBtn) {
+  assetDetailUseLastTemplateBtn.addEventListener('click', () => {
+    const lastId = getLastTemplateId();
+    if (!lastId) return;
+    populateAssetDetailTemplateOptions(lastId);
+  });
+}
 if (designViewGridBtn) {
   designViewGridBtn.addEventListener('click', () => applyDesignViewMode('grid'));
 }
@@ -6285,6 +6366,7 @@ if (assetDetailRegenerateBtn) {
       alert('Sign in to regenerate assets.');
       return;
     }
+    const originalLabel = assetDetailRegenerateBtn.textContent;
     assetDetailRegenerateBtn.disabled = true;
     assetDetailRegenerateBtn.textContent = 'Regenerating…';
     try {
@@ -6296,8 +6378,14 @@ if (assetDetailRegenerateBtn) {
       }
     } finally {
       assetDetailRegenerateBtn.disabled = false;
-      assetDetailRegenerateBtn.textContent = 'Regenerate';
+      assetDetailRegenerateBtn.textContent = originalLabel || 'Regenerate';
     }
+  });
+}
+if (assetDetailCancelBtn) {
+  assetDetailCancelBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    closeDesignAssetDetail();
   });
 }
 
