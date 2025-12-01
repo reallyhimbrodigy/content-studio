@@ -139,6 +139,16 @@ const assetDetailMeta = document.getElementById('asset-detail-meta');
 const assetDetailRegenerateBtn = document.getElementById('asset-detail-regenerate');
 const assetDetailTimestamp = document.getElementById('asset-detail-timestamp');
 const assetDetailCancelBtn = document.getElementById('asset-detail-cancel');
+const assetDetailTemplateSelect = document.getElementById('asset-detail-template-select');
+const assetDetailUseLastTemplateBtn = document.getElementById('asset-detail-use-last-template');
+const assetDetailUndoBtn = document.getElementById('asset-detail-undo');
+const assetDetailType = document.getElementById('asset-detail-type');
+const assetDetailTone = document.getElementById('asset-detail-tone');
+const assetDetailPrimaryColor = document.getElementById('asset-detail-primary-color');
+const assetDetailSecondaryColor = document.getElementById('asset-detail-secondary-color');
+const assetDetailAccentColor = document.getElementById('asset-detail-accent-color');
+const assetDetailHeadingFont = document.getElementById('asset-detail-heading-font');
+const assetDetailBodyFont = document.getElementById('asset-detail-body-font');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -359,6 +369,22 @@ function setDesignNotesCollapsed(collapsed = true) {
   designNotesPanel.classList.toggle('is-open', !collapsed);
   designNotesPanel.classList.toggle('is-collapsed', collapsed);
   designNotesToggle.setAttribute('aria-expanded', (!collapsed).toString());
+}
+
+function setAssetDetailNotesCollapsed(collapsed = true) {
+  if (!assetDetailNotesPanel || !assetDetailNotesToggle) return;
+  const isCollapsed = Boolean(collapsed);
+  assetDetailNotesPanel.classList.toggle('is-open', !isCollapsed);
+  assetDetailNotesPanel.classList.toggle('is-collapsed', isCollapsed);
+  if (isCollapsed) {
+    assetDetailNotesPanel.style.maxHeight = '0px';
+  } else {
+    requestAnimationFrame(() => {
+      const scrollHeight = assetDetailNotesPanel.scrollHeight || 0;
+      assetDetailNotesPanel.style.maxHeight = `${scrollHeight}px`;
+    });
+  }
+  assetDetailNotesToggle.setAttribute('aria-expanded', (!isCollapsed).toString());
 }
 
 initializeDesignAutofillFields();
@@ -1430,6 +1456,89 @@ function renderDesignLivePreview() {
   }
 }
 
+function buildAssetDetailBrandPreview(asset = {}) {
+  const typeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || inferAssetTypeFromAsset(asset) || 'social-graphic');
+  const toneKey = asset.creativeDirection || asset.tone || 'bold';
+  const theme = getPreviewTheme(toneKey || 'bold');
+  const headingFont = `${theme.headingFont || 'Inter'}`;
+  const bodyFont = `${theme.bodyFont || 'Source Sans Pro'}`;
+  const headline = escapeHtml(asset.title || asset.caption || 'Ready-to-post hook');
+  const caption = escapeHtml(asset.caption || 'Share one sharp insight or proof point here.');
+  const cta = escapeHtml(asset.cta || 'Add CTA');
+  const notes = escapeHtml(asset.notes || 'Add creative direction notes or animation cues.');
+  const logoMarkup = theme.logo
+    ? `<span class="asset-detail__brand-logo"><img src="${escapeHtml(theme.logo)}" alt="Brand logo" loading="lazy" /></span>`
+    : `<span class="asset-detail__brand-logo">Logo</span>`;
+  const gradient = `linear-gradient(135deg, ${theme.from}, ${theme.to})`;
+  const subduedBg = 'rgba(255,255,255,0.05)';
+  const slideWrapper = (label, text, accent = false, index = 0) => {
+    const bg = accent ? gradient : subduedBg;
+    const font = accent && index === 0 ? headingFont : bodyFont;
+    return `
+      <article class="asset-detail__brand-slide" style="background:${bg};font-family:${font}, 'Inter', sans-serif;">
+        <span class="asset-detail__brand-slide-label">${label}</span>
+        <p>${text}</p>
+      </article>
+    `;
+  };
+  const baseWrapper = (content) =>
+    `<div class="asset-detail__brand-preview" data-preview-type="${typeKey}" style="background:${theme.canvas};">${logoMarkup}<div class="asset-detail__brand-preview-grid">${content}</div></div>`;
+  if (typeKey === 'story-template') {
+    const slides = [
+      slideWrapper('Slide 01 • Hook', headline, true, 0),
+      slideWrapper('Slide 02 • Proof/Tip', caption, false, 1),
+      slideWrapper('Slide 03 • CTA', cta, true, 2),
+    ].join('');
+    return { html: baseWrapper(slides), background: theme.canvas };
+  }
+  if (typeKey === 'carousel-template') {
+    const slides = [
+      slideWrapper('Slide 01 • Hook', headline, true, 0),
+      slideWrapper('Slide 02 • Value', caption, false, 1),
+      slideWrapper('Slide 03 • Value', notes || caption, false, 2),
+      slideWrapper('Slide 04 • Engagement', escapeHtml(asset.engagementPrompt || 'Prompt saves or replies.'), false, 3),
+      slideWrapper('Slide 05 • CTA', cta, true, 4),
+    ].join('');
+    return { html: baseWrapper(slides), background: theme.canvas };
+  }
+  const detailCard = `
+    <article class="asset-detail__brand-card" style="background:${gradient};color:${theme.textColor};font-family:${bodyFont}, 'Source Sans Pro', sans-serif;">
+      ${logoMarkup}
+      <p class="asset-detail__brand-preview-headline" style="font-family:${headingFont}, 'Inter', sans-serif;">${headline}</p>
+      <p class="asset-detail__brand-preview-caption">${caption}</p>
+      <span class="asset-detail__brand-preview-cta">${cta}</span>
+    </article>
+  `;
+  const notesCard = `
+    <div class="asset-detail__brand-meta" style="font-family:${bodyFont}, 'Source Sans Pro', sans-serif;">
+      <span class="asset-detail__brand-meta-label">Notes</span>
+      <p>${notes}</p>
+    </div>
+  `;
+  return {
+    html: `<div class="asset-detail__brand-preview" data-preview-type="${typeKey}" style="background:${theme.canvas};">${detailCard}${notesCard}</div>`,
+    background: theme.canvas,
+  };
+}
+
+function getActiveAssetDetailDraft() {
+  if (!activeAssetDetailId) return null;
+  const asset = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
+  if (!asset) return null;
+  const draft = { ...asset };
+  draft.title = assetDetailHeadline?.value?.trim() || '';
+  draft.caption = assetDetailCaption?.value?.trim() || '';
+  draft.cta = assetDetailCta?.value?.trim() || '';
+  draft.notes = assetDetailNotes?.value?.trim() || '';
+  return draft;
+}
+
+function refreshAssetDetailPreviewFromForm(forceBrand = true) {
+  const draft = getActiveAssetDetailDraft();
+  if (!draft) return;
+  renderAssetDetailPreview(draft, { forceBrandPreview: forceBrand });
+}
+
 async function openDesignAssetDetail(target) {
   const lookupId = typeof target === 'object' ? null : String(target ?? '').trim();
   const asset =
@@ -1468,23 +1577,31 @@ async function openDesignAssetDetail(target) {
   assetDetailModal.style.display = 'flex';
 }
 
-function renderAssetDetailPreview(asset) {
+function renderAssetDetailPreview(asset, options = {}) {
   if (!assetDetailPreview) return;
-  const descriptor = buildAssetPreviewDescriptor(asset);
-  let html = `<div class="design-preview__graphic" style="width:100%;height:100%;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">No preview available</div>`;
-  if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
-    assetDetailPreview.innerHTML = buildCarouselSliderHtml(descriptor.slides, { context: 'detail' });
-  } else if (descriptor.kind === 'image') {
-    html = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'Asset preview')}" />`;
-    assetDetailPreview.innerHTML = html;
-  } else if (descriptor.kind === 'video') {
-    html = `<video src="${escapeHtml(descriptor.url)}" controls playsinline preload="metadata"></video>`;
-    assetDetailPreview.innerHTML = html;
-  } else if (descriptor.text) {
-    html = `<div class="design-preview__graphic">${escapeHtml(descriptor.text)}</div>`;
-    assetDetailPreview.innerHTML = html;
+  const descriptor = options.forceBrandPreview ? null : buildAssetPreviewDescriptor(asset);
+  const shouldUseBrandPreview = options.forceBrandPreview || !descriptor || descriptor.kind === 'text';
+  if (shouldUseBrandPreview) {
+    const preview = buildAssetDetailBrandPreview(asset);
+    assetDetailPreview.innerHTML = preview.html;
+    assetDetailPreview.style.background = preview.background || 'rgba(7,9,26,0.92)';
   } else {
-    assetDetailPreview.innerHTML = html;
+    let html = `<div class="design-preview__graphic" style="width:100%;height:100%;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">No preview available</div>`;
+    if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
+      assetDetailPreview.innerHTML = buildCarouselSliderHtml(descriptor.slides, { context: 'detail' });
+    } else if (descriptor.kind === 'image') {
+      html = `<img src="${escapeHtml(descriptor.url)}" alt="${escapeHtml(asset.title || 'Asset preview')}" />`;
+      assetDetailPreview.innerHTML = html;
+    } else if (descriptor.kind === 'video') {
+      html = `<video src="${escapeHtml(descriptor.url)}" controls playsinline preload="metadata"></video>`;
+      assetDetailPreview.innerHTML = html;
+    } else if (descriptor.text) {
+      html = `<div class="design-preview__graphic">${escapeHtml(descriptor.text)}</div>`;
+      assetDetailPreview.innerHTML = html;
+    } else {
+      assetDetailPreview.innerHTML = html;
+    }
+    assetDetailPreview.style.background = 'transparent';
   }
   if (assetDetailSlides) {
     const chips = buildSlideChipRowHtml(asset.slides, 'design');
@@ -1507,32 +1624,11 @@ function handleAssetDetailSave(event) {
   if (!asset.originalSnapshot) {
     asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
   }
-  const typeValue = assetDetailType?.value || asset.assetType || inferAssetTypeFromAsset(asset);
-  if (typeValue) {
-    asset.assetType = typeValue;
-    asset.typeLabel = formatAssetTypeLabel(typeValue);
-  }
-  if (assetDetailTemplateSelect) {
-    const templateId = assetDetailTemplateSelect.value || '';
-    if (templateId && designTemplates.some((tpl) => String(tpl.id) === String(templateId))) {
-      asset.templateId = templateId;
-      const tpl = designTemplates.find((item) => String(item.id) === String(templateId));
-      asset.templateLabel = tpl?.label || '';
-      rememberLastTemplate(templateId);
-    } else {
-      asset.templateId = null;
-      asset.templateLabel = null;
-    }
-  }
+  asset.title = assetDetailHeadline?.value?.trim() || '';
   asset.caption = assetDetailCaption?.value?.trim() || '';
   asset.cta = assetDetailCta?.value?.trim() || '';
   asset.notes = assetDetailNotes?.value?.trim() || '';
-  asset.tone = assetDetailTone?.value || asset.tone;
-  asset.primaryColor = assetDetailPrimaryColor?.value || asset.primaryColor;
-  asset.secondaryColor = assetDetailSecondaryColor?.value || asset.secondaryColor;
-  asset.accentColor = assetDetailAccentColor?.value || asset.accentColor;
-  asset.headingFont = assetDetailHeadingFont?.value?.trim() || asset.headingFont;
-  asset.bodyFont = assetDetailBodyFont?.value?.trim() || asset.bodyFont;
+  asset.previewText = asset.title || asset.caption || asset.previewText || '';
   asset.lastEdited = new Date().toISOString();
   persistDesignAssetsToStorage();
   linkAssetToCalendarPost(asset);
@@ -6437,6 +6533,30 @@ if (assetDetailCancelBtn) {
   assetDetailCancelBtn.addEventListener('click', (event) => {
     event.preventDefault();
     closeDesignAssetDetail();
+  });
+}
+
+if (assetDetailNotesToggle) {
+  assetDetailNotesToggle.addEventListener('click', () => {
+    const isCurrentlyOpen = assetDetailNotesPanel?.classList.contains('is-open');
+    setAssetDetailNotesCollapsed(isCurrentlyOpen);
+  });
+}
+
+const assetDetailPreviewInputs = [assetDetailHeadline, assetDetailCaption, assetDetailCta];
+assetDetailPreviewInputs.forEach((input) => {
+  if (!input) return;
+  input.addEventListener('input', () => {
+    refreshAssetDetailPreviewFromForm(true);
+  });
+});
+
+if (assetDetailNotes) {
+  assetDetailNotes.addEventListener('input', () => {
+    if (assetDetailNotesPanel?.classList.contains('is-open')) {
+      assetDetailNotesPanel.style.maxHeight = `${assetDetailNotesPanel.scrollHeight}px`;
+    }
+    refreshAssetDetailPreviewFromForm(true);
   });
 }
 
