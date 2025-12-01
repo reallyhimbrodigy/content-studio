@@ -519,98 +519,52 @@
     <div id="asset-detail-modal" class="modal-overlay" style="display:none">
       <div class="modal asset-detail-modal" role="dialog" aria-modal="true" aria-labelledby="asset-detail-title">
         <div class="asset-detail__body">
-          <section class="asset-detail__preview-pane">
-            <div class="asset-detail__preview-head">
-              <div>
-                <p class="asset-detail__eyebrow">Live preview</p>
-                <h3 id="asset-detail-title">Asset</h3>
-                <p id="asset-detail-meta" class="asset-detail__meta"></p>
-              </div>
-              <button class="ghost icon-only" id="asset-detail-close" aria-label="Close asset preview">&times;</button>
+          <header class="asset-detail__header">
+            <div>
+              <p class="asset-detail__eyebrow">View / Edit Asset</p>
+              <h3 id="asset-detail-title">Asset</h3>
+              <p id="asset-detail-meta" class="asset-detail__meta"></p>
             </div>
+            <button class="ghost icon-only" id="asset-detail-close" aria-label="Close asset preview">&times;</button>
+          </header>
+          <div class="asset-detail__topline">
+            <span id="asset-detail-type-label" class="asset-detail__pill">Social Graphic</span>
+            <span id="asset-detail-day-label" class="asset-detail__pill asset-detail__pill--muted">Day 00</span>
+            <p id="asset-detail-timestamp" class="asset-detail__timestamp"></p>
+          </div>
+          <form id="asset-detail-form" class="asset-detail__form">
+            <label class="asset-detail__field" title="This is the primary hook users see first">
+              <span>Headline / Hook</span>
+              <input type="text" id="asset-detail-headline" placeholder="E.g., Glow Routine Breakdown" />
+            </label>
+            <label class="asset-detail__field" title="Main caption text shown on the post">
+              <span>Caption Cue</span>
+              <textarea id="asset-detail-caption" rows="3" placeholder="Caption cue"></textarea>
+            </label>
+            <label class="asset-detail__field" title="What action should the audience take?">
+              <span>CTA</span>
+              <input type="text" id="asset-detail-cta" placeholder="Call-to-action" />
+            </label>
+            <div class="asset-detail__field asset-detail__field--notes" title="Add optional context for regeneration">
+              <button type="button" class="design-notes__toggle" id="asset-detail-notes-toggle" aria-expanded="false" aria-controls="asset-detail-notes-panel">
+                Add notes for AI (optional)
+              </button>
+              <div class="design-notes__panel" id="asset-detail-notes-panel">
+                <textarea id="asset-detail-notes" rows="3" placeholder="Mention layout tweaks, palette notes, overlays, etc."></textarea>
+              </div>
+            </div>
+            <div class="asset-detail__footer">
+              <div class="asset-detail__footer-actions">
+                <button type="button" class="ghost" id="asset-detail-cancel">Cancel</button>
+                <button type="button" class="ghost icon-button" id="asset-detail-regenerate">Regenerate</button>
+                <button type="submit" class="primary asset-detail__save">Save Changes</button>
+              </div>
+            </div>
+          </form>
+          <section class="asset-detail__preview-block">
+            <p class="asset-detail__eyebrow">Live Preview</p>
             <div class="asset-detail__preview-surface" id="asset-detail-preview"></div>
             <div id="asset-detail-slides" class="asset-detail__slides"></div>
-            <p id="asset-detail-timestamp" class="asset-detail__timestamp"></p>
-          </section>
-          <section class="asset-detail__panel">
-            <form id="asset-detail-form">
-              <div class="asset-detail__field">
-                <label for="asset-detail-type">Asset type</label>
-                <select id="asset-detail-type">
-                  <option value="social-graphic">Social graphic</option>
-                  <option value="carousel-template">Carousel template</option>
-                  <option value="story-template">Story template</option>
-                  <option value="video-snippet">Video snippet</option>
-                </select>
-              </div>
-              <div class="asset-detail__field asset-detail__field--stack">
-                <label for="asset-detail-template">Saved layout</label>
-                <div class="asset-detail__template-controls">
-                  <select id="asset-detail-template">
-                    <option value="">No template</option>
-                  </select>
-                  <button type="button" class="ghost small" id="asset-detail-use-last-template" disabled>Use last template</button>
-                </div>
-              </div>
-              <div class="asset-detail__field">
-                <label for="asset-detail-tone">Creative direction</label>
-                <select id="asset-detail-tone">
-                  <option value="bold">Bold & punchy</option>
-                  <option value="minimal">Minimal & clean</option>
-                  <option value="playful">Playful & colorful</option>
-                  <option value="elegant">Luxury & elegant</option>
-                </select>
-              </div>
-              <div class="asset-detail__field">
-                <label for="asset-detail-notes">Notes for AI</label>
-                <textarea id="asset-detail-notes" rows="3" placeholder="Mention overlays, layout tweaks, etc."></textarea>
-              </div>
-              <div class="asset-detail__row">
-                <label>
-                  Caption cue
-                  <textarea id="asset-detail-caption" rows="2" placeholder="Hook copy or caption cue"></textarea>
-                </label>
-                <label>
-                  CTA
-                  <input type="text" id="asset-detail-cta" placeholder="Call-to-action" />
-                </label>
-              </div>
-              <div class="asset-detail__palette">
-                <p>Brand palette</p>
-                <div class="asset-detail__colors">
-                  <label>
-                    Primary
-                    <input type="color" id="asset-detail-primary" />
-                  </label>
-                  <label>
-                    Secondary
-                    <input type="color" id="asset-detail-secondary" />
-                  </label>
-                  <label>
-                    Accent
-                    <input type="color" id="asset-detail-accent" />
-                  </label>
-                </div>
-              </div>
-              <div class="asset-detail__fonts">
-                <label>
-                  Heading font
-                  <input type="text" id="asset-detail-heading-font" placeholder="Inter Bold" />
-                </label>
-                <label>
-                  Body font
-                  <input type="text" id="asset-detail-body-font" placeholder="Source Sans" />
-                </label>
-              </div>
-              <div class="asset-detail__footer">
-                <button type="button" class="ghost-text" id="asset-detail-undo" disabled>Undo</button>
-                <div class="asset-detail__footer-actions">
-                  <button type="button" class="ghost" id="asset-detail-cancel">Cancel</button>
-                  <button type="button" class="ghost icon-button" id="asset-detail-regenerate">↻ Regenerate</button>
-                  <button type="submit" class="primary asset-detail__save">Save Changes</button>
-                </div>
-              </div>
-            </form>
           </section>
         </div>
       </div>

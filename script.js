@@ -126,23 +126,18 @@ const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
 const assetDetailForm = document.getElementById('asset-detail-form');
-const assetDetailType = document.getElementById('asset-detail-type');
-const assetDetailTemplateSelect = document.getElementById('asset-detail-template');
-const assetDetailUseLastTemplateBtn = document.getElementById('asset-detail-use-last-template');
+const assetDetailTypeLabel = document.getElementById('asset-detail-type-label');
+const assetDetailDayLabel = document.getElementById('asset-detail-day-label');
 const assetDetailSlides = document.getElementById('asset-detail-slides');
+const assetDetailHeadline = document.getElementById('asset-detail-headline');
 const assetDetailCaption = document.getElementById('asset-detail-caption');
 const assetDetailCta = document.getElementById('asset-detail-cta');
 const assetDetailNotes = document.getElementById('asset-detail-notes');
+const assetDetailNotesToggle = document.getElementById('asset-detail-notes-toggle');
+const assetDetailNotesPanel = document.getElementById('asset-detail-notes-panel');
 const assetDetailMeta = document.getElementById('asset-detail-meta');
 const assetDetailRegenerateBtn = document.getElementById('asset-detail-regenerate');
-const assetDetailTone = document.getElementById('asset-detail-tone');
-const assetDetailPrimaryColor = document.getElementById('asset-detail-primary');
-const assetDetailSecondaryColor = document.getElementById('asset-detail-secondary');
-const assetDetailAccentColor = document.getElementById('asset-detail-accent');
-const assetDetailHeadingFont = document.getElementById('asset-detail-heading-font');
-const assetDetailBodyFont = document.getElementById('asset-detail-body-font');
 const assetDetailTimestamp = document.getElementById('asset-detail-timestamp');
-const assetDetailUndoBtn = document.getElementById('asset-detail-undo');
 const assetDetailCancelBtn = document.getElementById('asset-detail-cancel');
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
@@ -1443,34 +1438,23 @@ async function openDesignAssetDetail(target) {
       : designAssets.find((item) => String(item.id) === lookupId);
   if (!asset || !assetDetailModal) return;
   activeAssetDetailId = asset.id;
-  if (assetDetailType) {
-    const typeValue = asset.assetType || inferAssetTypeFromAsset(asset) || 'social-graphic';
-    const hasOption = Array.from(assetDetailType.options || []).some((opt) => opt.value === typeValue);
-    if (!hasOption) {
-      const opt = document.createElement('option');
-      opt.value = typeValue;
-      opt.textContent = formatAssetTypeLabel(typeValue);
-      assetDetailType.appendChild(opt);
-    }
-    assetDetailType.value = typeValue;
+  const typeLabel = formatAssetTypeLabel(asset.assetType || asset.typeLabel);
+  const linkedDay = asset.linkedDay || asset.day;
+  if (assetDetailTypeLabel) {
+    assetDetailTypeLabel.textContent = typeLabel || 'Asset';
   }
-  populateAssetDetailTemplateOptions(asset.templateId || '');
-  if (assetDetailTemplateSelect) assetDetailTemplateSelect.value = asset.templateId || '';
+  if (assetDetailDayLabel) {
+    assetDetailDayLabel.textContent = linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : 'Unassigned';
+  }
   await ensureAssetInlinePreview(asset);
   renderAssetDetailPreview(asset);
+  if (assetDetailHeadline) assetDetailHeadline.value = asset.title || asset.caption || '';
   if (assetDetailCaption) assetDetailCaption.value = asset.caption || '';
   if (assetDetailCta) assetDetailCta.value = asset.cta || '';
   if (assetDetailNotes) assetDetailNotes.value = asset.notes || '';
-  if (assetDetailTone) assetDetailTone.value = asset.tone || 'bold';
-  if (assetDetailPrimaryColor) assetDetailPrimaryColor.value = asset.primaryColor || getBrandPaletteDefaults().primaryColor;
-  if (assetDetailSecondaryColor) assetDetailSecondaryColor.value = asset.secondaryColor || getBrandPaletteDefaults().secondaryColor;
-  if (assetDetailAccentColor) assetDetailAccentColor.value = asset.accentColor || getBrandPaletteDefaults().accentColor;
-  if (assetDetailHeadingFont) assetDetailHeadingFont.value = asset.headingFont || '';
-  if (assetDetailBodyFont) assetDetailBodyFont.value = asset.bodyFont || '';
   if (assetDetailMeta) {
-    const typeLabel = formatAssetTypeLabel(asset.assetType || asset.typeLabel);
-    const dayLabel = asset.linkedDay || asset.day ? `Day ${String(asset.linkedDay || asset.day).padStart(2, '0')}` : 'Unassigned';
-    assetDetailMeta.textContent = `${typeLabel} · ${dayLabel}`;
+    const campaign = asset.campaign ? `Campaign: ${asset.campaign}` : '';
+    assetDetailMeta.textContent = campaign || '';
   }
   if (assetDetailTimestamp) {
     assetDetailTimestamp.textContent = asset.lastEdited
@@ -1480,9 +1464,7 @@ async function openDesignAssetDetail(target) {
   if (!asset.originalSnapshot) {
     asset.originalSnapshot = JSON.parse(JSON.stringify(sanitizeAssetForStorage(asset)));
   }
-  if (assetDetailUndoBtn) {
-    assetDetailUndoBtn.disabled = !asset.originalSnapshot;
-  }
+  setAssetDetailNotesCollapsed(!(assetDetailNotes?.value || '').trim());
   assetDetailModal.style.display = 'flex';
 }
 
