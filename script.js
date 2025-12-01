@@ -3508,9 +3508,6 @@ const createCard = (post) => {
   card.className = 'calendar-card';
   card.dataset.pillar = primary.pillar || '';
   card.dataset.day = dayValue != null ? String(dayValue) : '';
-  if (selectedDesignDays.has(Number(dayValue))) {
-    card.classList.add('selected-for-design');
-  }
   if (isPosted(dayValue)) card.classList.add('posted');
 
   const dayEl = document.createElement('div');
@@ -6063,10 +6060,10 @@ if (generateBtn) {
       return;
     }
 
+    const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
     // proceed with AI generation and display
     try {
       console.log("🟢 Starting AI generation for:", niche);
-      const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
       showGeneratingState();
       if (feedbackEl) feedbackEl.textContent = "";
       console.log("🟢 Calling API with niche:", niche);
@@ -6086,7 +6083,7 @@ if (generateBtn) {
       renderCards(currentCalendar);
       applyFilter("all");
 
-  hideGeneratingState(originalText);
+      hideGeneratingState(originalText);
       activeTab = 'plan';
       syncCalendarUIAfterDataChange({ scrollToCalendar: true });
       persistCurrentCalendarState();
@@ -6106,7 +6103,7 @@ if (generateBtn) {
       console.error("❌ Failed to generate calendar:", err);
       console.error("❌ Error message:", err.message);
       console.error("❌ Full error:", err);
-  hideGeneratingState('Try Again');
+      hideGeneratingState('Try Again');
       if (feedbackEl) {
         feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
         feedbackEl.classList.remove("success");
