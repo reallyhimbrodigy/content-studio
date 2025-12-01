@@ -86,8 +86,6 @@ const designSection = document.getElementById('design-lab');
 const designGrid = document.getElementById('design-grid');
 const designEmpty = document.getElementById('design-empty');
 const designRequestBtn = document.getElementById('design-request-btn');
-const designBatchBtn = document.getElementById('design-batch-generate');
-const designBatchCount = document.getElementById('design-batch-count');
 const designEmptyCta = document.getElementById('design-empty-cta');
 const designModal = document.getElementById('design-modal');
 const designForm = document.getElementById('design-form');
@@ -204,7 +202,6 @@ let brandKitLoaded = false;
 let brandProfileLoaded = false;
 let currentBrandText = '';
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
-const selectedDesignDays = new Set();
 const selectedDesignAssetIds = new Set();
 let draggedDesignAssetId = null;
 let platformVariantSyncPromise = null;
@@ -1153,36 +1150,6 @@ function clearDesignTemplateSelection() {
   updateDesignTemplateHint('');
   renderDesignTemplateGallery('');
   updateTemplateShortcuts();
-}
-
-function updateDesignBatchUI() {
-  const count = selectedDesignDays.size;
-  if (designBatchCount) designBatchCount.textContent = count ? `${count} selected` : 'No days selected';
-  if (designBatchBtn) designBatchBtn.disabled = count === 0;
-}
-
-function updateBatchSelectionVisual(day, isSelected) {
-  if (!grid) return;
-  const cards = grid.querySelectorAll(`.calendar-card[data-day="${day}"]`);
-  cards.forEach((card) => {
-    card.classList.toggle('selected-for-design', isSelected);
-    const buttons = card.querySelectorAll('.batch-select-btn');
-    buttons.forEach((btn) => {
-      btn.textContent = isSelected ? 'Selected' : 'Batch Select';
-      btn.classList.toggle('is-active', isSelected);
-    });
-  });
-}
-
-function toggleDesignDaySelection(day) {
-  const normalized = Number(day);
-  if (selectedDesignDays.has(normalized)) {
-    selectedDesignDays.delete(normalized);
-  } else {
-    selectedDesignDays.add(normalized);
-  }
-  updateDesignBatchUI();
-  updateBatchSelectionVisual(normalized, selectedDesignDays.has(normalized));
 }
 
 function prunePostForStorage(post = {}) {
@@ -2861,71 +2828,6 @@ function findPostByDay(day) {
   return currentCalendar.find((post) => Number(post.day) === target);
 }
 
-async function handleDesignBatchGenerate() {
-  if (!selectedDesignDays.size) {
-    alert('Select at least one day to batch generate assets.');
-    return;
-  }
-  const allowed = await requireProAccess();
-  if (!allowed) {
-    showUpgradeModal();
-    return;
-  }
-  const days = Array.from(selectedDesignDays).sort((a, b) => a - b);
-  if (designFeedbackEl) designFeedbackEl.textContent = `Generating ${days.length} assets...`;
-  let successCount = 0;
-  const failures = [];
-  for (const day of days) {
-    const entry = findPostByDay(day);
-    if (!entry) {
-      failures.push({ day, reason: 'Missing post' });
-      continue;
-    }
-    const preset = deriveAssetPreset(entry);
-    const payload = {
-      day,
-      assetType: preset.assetType,
-      tone: preset.tone,
-      notes: buildAutoNotes(entry, preset),
-      caption: entry.caption || entry.description || '',
-      niche: currentNiche || nicheInput?.value || '',
-      campaign: currentNiche || nicheInput?.value || '',
-      title: entry.idea || entry.title || `Day ${String(day).padStart(2, '0')} asset`,
-    };
-    const kitSummary = summarizeBrandKitBrief(currentBrandKit);
-    if (kitSummary) payload.brandKitSummary = kitSummary;
-    try {
-      let asset = await requestDesignAsset(payload);
-      asset = await ensureAssetInlinePreview(asset);
-      asset.createdAt = asset.createdAt || new Date().toISOString();
-      asset.linkedDay = day;
-      designAssets.unshift(asset);
-      linkAssetToCalendarPost(asset);
-      successCount += 1;
-    } catch (err) {
-      console.error('Batch design generation failed for day', day, err);
-      failures.push({ day, reason: err.message || 'Unknown error' });
-    }
-  }
-  selectedDesignDays.clear();
-  updateDesignBatchUI();
-  renderDesignAssets();
-  if (successCount) persistDesignAssetsToStorage();
-  renderCards(currentCalendar);
-  persistCurrentCalendarState();
-  if (designFeedbackEl) {
-    if (failures.length) {
-      const failureDays = failures.map((f) => `Day ${f.day}`).join(', ');
-      designFeedbackEl.textContent = `Generated ${successCount} assets. Failed for ${failureDays}.`;
-    } else {
-      designFeedbackEl.textContent = `Generated ${successCount} assets.`;
-    }
-    setTimeout(() => {
-      if (designFeedbackEl) designFeedbackEl.textContent = '';
-    }, 4000);
-  }
-}
-
 if (profileMenu) {
   profileMenu.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -3916,11 +3818,6 @@ const createCard = (post) => {
     const btnCopyFull = makeBtn('Copy Full');
     const btnDownloadDoc = makeBtn('Download');
     const captionBtn = null;
-    const batchBtn = makeBtn('Batch Select');
-    batchBtn.classList.add('batch-select-btn');
-    batchBtn.addEventListener('click', () => {
-      toggleDesignDaySelection(entryDay);
-    });
 
     const fullTextParts = [];
     const dayLabel = `Day ${String(entryDay).padStart(2, '0')}${entries.length > 1 ? ` • Post ${idx + 1}` : ''}`;
@@ -4006,11 +3903,6 @@ const createCard = (post) => {
 
     if (btnCopyFull) actionsEl.append(btnCopyFull);
     if (btnDownloadDoc) actionsEl.appendChild(btnDownloadDoc);
-    if (batchBtn) {
-      batchBtn.textContent = selectedDesignDays.has(Number(entryDay)) ? 'Selected' : 'Batch Select';
-      batchBtn.classList.toggle('is-active', selectedDesignDays.has(Number(entryDay)));
-      actionsEl.appendChild(batchBtn);
-    }
     const regenBtn = makeBtn('Regenerate');
     attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
     actionsEl.appendChild(regenBtn);
@@ -6282,14 +6174,6 @@ if (designRequestBtn) designRequestBtn.addEventListener('click', () => startDesi
 if (designEmptyCta) designEmptyCta.addEventListener('click', () => startDesignModal());
 if (designCloseBtn) designCloseBtn.addEventListener('click', closeDesignModal);
 if (designCancelBtn) designCancelBtn.addEventListener('click', closeDesignModal);
-if (designBatchBtn) {
-  designBatchBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    handleDesignBatchGenerate();
-  });
-  updateDesignBatchUI();
-}
 if (designTemplateSelect) {
   renderDesignTemplateOptions(activeTemplateId);
   designTemplateSelect.addEventListener('change', (event) => {
