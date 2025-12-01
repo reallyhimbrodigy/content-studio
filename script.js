@@ -1,4 +1,15 @@
-import { getCurrentUser, getCurrentUserDetails, saveUserCalendar, signOut as storeSignOut, getUserTier, setUserTier, isPro, getProfilePreferences, saveProfilePreferences } from './user-store.js';
+import {
+  getCurrentUser,
+  getCurrentUserDetails,
+  saveUserCalendar,
+  signOut as storeSignOut,
+  getUserTier,
+  setUserTier,
+  isPro,
+  getProfilePreferences,
+  saveProfilePreferences,
+  supabase
+} from './user-store.js';
 
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
@@ -1405,7 +1416,10 @@ function handleDesignRegenerateSelected() {
     setTimeout(() => clearDesignFeedback(), 2000);
   }, 900 + Math.random() * 700);
 }
-;
+
+async function regenerateSingleDesignAsset(asset, currentUserId) {
+  if (!asset || !currentUserId) return;
+  const paletteDefaults = getBrandPaletteDefaults();
   const payload = {
     day: asset.linkedDay || asset.day || null,
     assetType: asset.assetType || inferAssetTypeFromAsset(asset),
@@ -1418,20 +1432,20 @@ function handleDesignRegenerateSelected() {
     title: asset.title || (asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'AI Asset'),
     templateId: asset.templateId || null,
     templateLabel: asset.templateLabel || null,
-    primaryColor: palette.primary,
-    secondaryColor: palette.secondary,
-    accentColor: palette.accent,
-    headingFont: palette.heading,
-    bodyFont: palette.body,
+    primaryColor: paletteDefaults.primaryColor,
+    secondaryColor: paletteDefaults.secondaryColor,
+    accentColor: paletteDefaults.accentColor,
+    headingFont: paletteDefaults.headingFont,
+    bodyFont: paletteDefaults.bodyFont,
     concept: asset.concept || '',
     brandPalette: {
-      primaryColor: palette.primary,
-      secondaryColor: palette.secondary,
-      accentColor: palette.accent,
+      primaryColor: paletteDefaults.primaryColor,
+      secondaryColor: paletteDefaults.secondaryColor,
+      accentColor: paletteDefaults.accentColor,
     },
     fonts: {
-      heading: palette.heading,
-      body: palette.body,
+      heading: paletteDefaults.headingFont,
+      body: paletteDefaults.bodyFont,
     },
   };
   let updated = await requestDesignAsset(payload);
@@ -3305,6 +3319,19 @@ async function bootstrapApp(attempt = 0) {
 }
 
 bootstrapApp();
+
+if (supabase?.auth?.onAuthStateChange) {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_IN') {
+      try {
+        sessionStorage.setItem('promptly_show_app', '1');
+      } catch (_) {
+        // Ignore storage failures (e.g., Safari private mode)
+      }
+    }
+    bootstrapApp();
+  });
+}
 
 // Profile dropdown controls
 
