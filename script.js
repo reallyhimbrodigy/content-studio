@@ -4240,8 +4240,11 @@ function hydrateCalendarFromStorage(force = false) {
     const data = JSON.parse(raw);
     if (!data || !Array.isArray(data.posts) || !data.posts.length) return false;
     currentCalendar = data.posts;
-    currentNiche = data.niche || currentNiche;
-    if (nicheInput && data.niche) nicheInput.value = data.niche;
+    const storedNiche = typeof data.niche === 'string' ? data.niche.trim() : '';
+    if (storedNiche) {
+      currentNiche = storedNiche;
+      if (nicheInput) nicheInput.value = storedNiche;
+    }
     renderCards(currentCalendar);
     syncCalendarUIAfterDataChange();
     return true;
@@ -4380,14 +4383,14 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
       console.warn(`⚠️ Fixed ${missingCount} posts missing videoScript (from library/load). All posts now have a Reel Script.`);
     }
     currentCalendar = posts;
-    currentNiche = cal.nicheStyle;
-    if (nicheInput) nicheInput.value = currentNiche;
+    const loadedNiche = typeof cal.nicheStyle === 'string' ? cal.nicheStyle.trim() : '';
+    currentNiche = loadedNiche;
+    if (nicheInput) nicheInput.value = loadedNiche || '';
     renderCards(currentCalendar);
     applyFilter("all");
     syncCalendarUIAfterDataChange();
     persistCurrentCalendarState();
     ensurePlatformVariantsForCurrentCalendar('library');
-    if (hub) hub.style.display = 'block';
     sessionStorage.removeItem("promptly_load_calendar");
   } catch (err) {
     console.error("Failed to load calendar:", err);

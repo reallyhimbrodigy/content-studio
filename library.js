@@ -196,6 +196,97 @@ function buildPostHTML(post) {
 }
 
 // Library page behavior (now async with Supabase)
+
+/**
+ * @typedef {Object} Calendar
+ * @property {string} id
+ * @property {string} title
+ * @property {"draft"|"scheduled"|"published"} status
+ * @property {string[]} platforms
+ * @property {string} startDate
+ * @property {string|null} endDate
+ * @property {number} postsCount
+ * @property {number} variantsCount
+ * @property {string} updatedAt
+ * @property {string} [createdAt]
+ */
+
+// TODO: Replace with real data from the backend once calendar APIs are available.
+const LIBRARY_MOCK_CALENDARS = [
+  {
+    id: 'mock-001',
+    title: 'Creator Launch Sprint',
+    status: 'draft',
+    platforms: ['IG', 'TikTok'],
+    startDate: '2026-03-01T00:00:00Z',
+    endDate: '2026-03-30T00:00:00Z',
+    postsCount: 30,
+    variantsCount: 90,
+    updatedAt: '2026-03-24T14:45:00Z',
+    createdAt: '2026-02-25T09:00:00Z'
+  },
+  {
+    id: 'mock-002',
+    title: 'Wellness Sprint Q2',
+    status: 'scheduled',
+    platforms: ['IG', 'YouTube Shorts', 'LinkedIn'],
+    startDate: '2026-04-01T00:00:00Z',
+    endDate: '2026-04-30T00:00:00Z',
+    postsCount: 28,
+    variantsCount: 72,
+    updatedAt: '2026-03-20T12:20:00Z',
+    createdAt: '2026-03-01T10:00:00Z'
+  },
+  {
+    id: 'mock-003',
+    title: 'Agency Evergreen Highlights',
+    status: 'published',
+    platforms: ['IG', 'TikTok', 'LinkedIn'],
+    startDate: '2026-02-01T00:00:00Z',
+    endDate: '2026-02-28T00:00:00Z',
+    postsCount: 30,
+    variantsCount: 85,
+    updatedAt: '2026-02-28T18:15:00Z',
+    createdAt: '2026-01-25T08:30:00Z'
+  },
+  {
+    id: 'mock-004',
+    title: 'Product Drop Countdown',
+    status: 'scheduled',
+    platforms: ['IG', 'TikTok'],
+    startDate: '2026-05-05T00:00:00Z',
+    endDate: null,
+    postsCount: 20,
+    variantsCount: 50,
+    updatedAt: '2026-03-18T09:10:00Z',
+    createdAt: '2026-03-05T11:00:00Z'
+  },
+  {
+    id: 'mock-005',
+    title: 'Community Building Flow',
+    status: 'draft',
+    platforms: ['IG', 'LinkedIn'],
+    startDate: '2026-03-10T00:00:00Z',
+    endDate: '2026-04-08T00:00:00Z',
+    postsCount: 25,
+    variantsCount: 60,
+    updatedAt: '2026-03-17T16:30:00Z',
+    createdAt: '2026-03-12T14:00:00Z'
+  },
+  {
+    id: 'mock-006',
+    title: 'Creator Partnerships Pack',
+    status: 'published',
+    platforms: ['TikTok', 'YouTube Shorts'],
+    startDate: '2026-01-05T00:00:00Z',
+    endDate: '2026-02-03T00:00:00Z',
+    postsCount: 32,
+    variantsCount: 88,
+    updatedAt: '2026-02-03T11:05:00Z',
+    createdAt: '2025-12-28T10:00:00Z'
+  }
+];
+
 const userEmailEl = document.getElementById('user-email');
 const signOutBtn = document.getElementById('sign-out-btn');
 const profileTrigger = document.getElementById('profile-trigger');
@@ -210,9 +301,20 @@ const upgradeClose = document.getElementById('upgrade-close');
 const upgradeBtn = document.getElementById('upgrade-btn');
 const brandBtn = document.getElementById('brand-brain-btn');
 const calendarsList = document.getElementById('calendars-list');
+const calendarToolbar = document.getElementById('calendar-toolbar');
+const calendarSearchInput = document.getElementById('calendar-search');
+const calendarSortSelect = document.getElementById('calendar-sort');
+const calendarFilterButtons = document.querySelectorAll('[data-calendar-filter]');
+const calendarEmptyState = document.getElementById('calendar-empty-state');
+const calendarEmptyCta = document.getElementById('calendar-empty-cta');
 
 let currentUser = null;
 let isLibraryUserPro = false;
+let libraryCalendarData = LIBRARY_MOCK_CALENDARS.map((item) => normalizeCalendar(item, { source: 'mock' }));
+const calendarFilters = { search: '', status: 'all', sort: 'recent' };
+const calendarRawLookup = new Map();
+
+renderLibraryCalendars();
 
 // Global sign-out handler (now async with Supabase)
 window.handleSignOut = async function() {
@@ -324,114 +426,332 @@ if (signOutBtn) {
 }
 
 
+function startNewCalendarFlow() {
+  window.location.href = '/';
+}
+
 if (newCalendarBtn) {
-  newCalendarBtn.addEventListener('click', () => {
-    window.location.href = '/';
+  newCalendarBtn.addEventListener('click', startNewCalendarFlow);
+}
+if (calendarEmptyCta) {
+  calendarEmptyCta.addEventListener('click', startNewCalendarFlow);
+}
+
+if (calendarSearchInput) {
+  calendarSearchInput.addEventListener('input', (event) => {
+    calendarFilters.search = String(event.target.value || '').trim().toLowerCase();
+    renderLibraryCalendars();
   });
 }
+
+if (calendarSortSelect) {
+  calendarSortSelect.addEventListener('change', (event) => {
+    calendarFilters.sort = String(event.target.value || 'recent');
+    renderLibraryCalendars();
+  });
+}
+
+calendarFilterButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const value = button.dataset.calendarFilter || 'all';
+    calendarFilters.status = value;
+    updateFilterActiveState();
+    renderLibraryCalendars();
+  });
+});
 
 async function loadCalendars() {
   const { getUserCalendars } = await import('./user-store.js');
   const userCalendars = await getUserCalendars(currentUser);
+  calendarRawLookup.clear();
 
-  if (!calendarsList) return;
-  calendarsList.innerHTML = '';
-
-  if (userCalendars.length === 0) {
-    calendarsList.innerHTML = `
-      <div class="empty-state">
-        <h3>No saved calendars yet</h3>
-        <p>Generate your first calendar to get started!</p>
-      </div>
-    `;
+  if (!Array.isArray(userCalendars) || userCalendars.length === 0) {
+    setLibraryCalendars([]);
     return;
   }
 
-  userCalendars.forEach((cal, idx) => {
-    const date = new Date(cal.saved_at || cal.updated_at || cal.created_at || Date.now());
-    const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const nicheTitle = cal.niche_style || cal.nicheStyle || 'Untitled';
-    const posts = Array.isArray(cal.posts) ? cal.posts : [];
+  const normalized = userCalendars.map((calendar, index) => {
+    const normalizedEntry = normalizeCalendar(
+      {
+        id: calendar.id || `saved-${index}`,
+        title: calendar.niche_style || calendar.nicheStyle || 'Untitled Calendar',
+        status: calendar.status || 'draft',
+        platforms: Array.isArray(calendar.platforms) && calendar.platforms.length ? calendar.platforms : inferPlatformsFromPosts(calendar.posts),
+        startDate: calendar.start_date || calendar.rangeStart || calendar.created_at || new Date().toISOString(),
+        endDate: calendar.end_date || calendar.rangeEnd || null,
+        postsCount: Array.isArray(calendar.posts) ? calendar.posts.length : Number(calendar.postsCount || 0),
+        variantsCount: typeof calendar.variantCount === 'number' ? calendar.variantCount : Math.max((Array.isArray(calendar.posts) ? calendar.posts.length : 0) * 3, 0),
+        updatedAt: calendar.updated_at || calendar.saved_at || calendar.created_at || new Date().toISOString(),
+        createdAt: calendar.created_at || calendar.saved_at || calendar.updated_at || new Date().toISOString()
+      },
+      { source: 'remote', raw: calendar }
+    );
+    calendarRawLookup.set(normalizedEntry.id, calendar);
+    return normalizedEntry;
+  });
 
-    const html = `
-      <div class="calendar-item" data-id="${cal.id}">
-        <div class="calendar-item-info">
-          <h3>${nicheTitle}</h3>
-          <p>${posts.length} posts • ${dateStr}</p>
-        </div>
-        <div class="calendar-item-actions">
-          <button class="load-btn" data-idx="${idx}">Load & Edit</button>
-          <button class="download-btn" data-idx="${idx}">Download</button>
-          <button class="delete-btn" data-idx="${idx}">Delete</button>
-        </div>
+  setLibraryCalendars(normalized);
+}
+
+function setLibraryCalendars(data) {
+  libraryCalendarData = Array.isArray(data) ? data : [];
+  renderLibraryCalendars();
+}
+
+function renderLibraryCalendars() {
+  if (!calendarsList) return;
+  const baseCount = libraryCalendarData.length;
+  toggleToolbarDisabled(baseCount === 0);
+  if (calendarEmptyState) calendarEmptyState.classList.toggle('is-visible', baseCount === 0);
+
+  if (baseCount === 0) {
+    calendarsList.innerHTML = '';
+    return;
+  }
+
+  const filtered = getFilteredCalendars();
+  if (!filtered.length) {
+    calendarsList.innerHTML = `<div class="calendar-empty-results">No calendars match this view.</div>`;
+    return;
+  }
+
+  const cardsHtml = filtered.map(renderCalendarCard).join('');
+  calendarsList.innerHTML = cardsHtml;
+  attachCalendarCardInteractions();
+}
+
+function getFilteredCalendars() {
+  const search = (calendarFilters.search || '').toLowerCase();
+  return [...libraryCalendarData]
+    .filter((calendar) => {
+      if (calendarFilters.status !== 'all' && calendar.status !== calendarFilters.status) return false;
+      if (search && !calendar.title.toLowerCase().includes(search)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (calendarFilters.sort === 'alpha') {
+        return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+      }
+      if (calendarFilters.sort === 'created') {
+        return new Date(b.createdAt || b.startDate).getTime() - new Date(a.createdAt || a.startDate).getTime();
+      }
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+}
+
+function renderCalendarCard(calendar) {
+  const statusLabel = formatStatusLabel(calendar.status);
+  const rangeLabel = formatCalendarRange(calendar);
+  const updatedLabel = formatUpdatedAt(calendar.updatedAt);
+  const platforms = (calendar.platforms || []).slice(0, 4);
+  const platformChips = platforms
+    .map((platform) => `<span class="calendar-card__platform-chip">${escapeHtml(platform)}</span>`)
+    .join('');
+
+  return `
+    <article class="calendar-card" data-calendar-id="${escapeHtml(calendar.id)}" tabindex="0">
+      <div class="calendar-card__meta">
+        <span class="calendar-card__status calendar-card__status--${escapeHtml(calendar.status)}">${statusLabel}</span>
+        <span>${updatedLabel}</span>
       </div>
-    `;
-    calendarsList.innerHTML += html;
-  });
+      <h3>${escapeHtml(calendar.title)}</h3>
+      <div class="calendar-card__platforms">${platformChips}</div>
+      <p class="calendar-card__range">${rangeLabel}</p>
+      <p class="calendar-card__metrics">Posts: ${calendar.postsCount} • Variants: ${calendar.variantsCount}</p>
+      <div class="calendar-card__actions">
+        <button type="button" class="primary" data-calendar-action="open" data-calendar-id="${escapeHtml(calendar.id)}">Open</button>
+        <button type="button" class="ghost" data-calendar-action="duplicate" data-calendar-id="${escapeHtml(calendar.id)}">Duplicate</button>
+        <button type="button" class="ghost" data-calendar-action="export" data-calendar-id="${escapeHtml(calendar.id)}">Export</button>
+      </div>
+    </article>
+  `;
+}
 
-  document.querySelectorAll('.load-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = btn.dataset.idx;
-      sessionStorage.setItem('promptly_load_calendar', JSON.stringify(userCalendars[idx]));
-      window.location.href = '/';
+function attachCalendarCardInteractions() {
+  if (!calendarsList) return;
+  calendarsList.querySelectorAll('.calendar-card').forEach((card) => {
+    const calendarId = card.getAttribute('data-calendar-id');
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('button')) return;
+      handleCalendarAction('open', calendarId);
+    });
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handleCalendarAction('open', calendarId);
+      }
     });
   });
 
-  document.querySelectorAll('.download-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const userIsPro = await isPro(currentUser);
-      if (!userIsPro) { showUpgradeModal(); return; }
-      const idx = btn.dataset.idx;
-      const cal = userCalendars[idx];
-      
-      // Load JSZip library
-      const JSZipLib = await ensureZip().catch(() => null);
-      if (!JSZipLib) {
-        alert('Failed to load download library. Please check your connection and try again.');
-        return;
-      }
-      const zip = new JSZipLib();
-      const folderName = `calendar-${slugify(cal.nicheStyle || 'posts')}`;
-      const folder = zip.folder(folderName);
-      
-      // Create 30 individual HTML files
-      cal.posts.forEach((post) => {
-        const day = post.day || '';
-        const title = post.idea || post.title || '';
-        const fileName = `day-${String(day).padStart(2,'0')}-${slugify(title || 'post')}.html`;
-        const html = buildPostHTML(post);
-        folder.file(fileName, html);
-      });
-      
-      const blob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${folderName}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    });
-  });
-
-  document.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = btn.dataset.idx;
-      const cal = userCalendars[idx];
-      const title = cal.niche_style || cal.nicheStyle || 'Untitled';
-      if (!cal?.id) { alert('Missing calendar id.'); return; }
-      if (confirm(`Delete calendar "${title}"?`)) {
-        const { deleteUserCalendar } = await import('./user-store.js');
-        const res = await deleteUserCalendar(cal.id);
-        if (!res.ok) {
-          alert('Failed to delete calendar: ' + (res.msg || 'Unknown error'));
-          return;
-        }
-        await loadCalendars();
-      }
+  calendarsList.querySelectorAll('[data-calendar-action]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const action = button.dataset.calendarAction;
+      const calendarId = button.dataset.calendarId;
+      handleCalendarAction(action, calendarId);
     });
   });
 }
 
-loadCalendars();
+function handleCalendarAction(action = 'open', calendarId = '') {
+  if (!calendarId) return;
+  const record = libraryCalendarData.find((calendar) => calendar.id === calendarId);
+  if (!record) return;
+  const rawCalendar = calendarRawLookup.get(calendarId);
+
+  if (record.source !== 'remote' || !rawCalendar) {
+    alert('Save a calendar in Promptly to open, duplicate, or export from the Library.');
+    return;
+  }
+
+  if (action === 'open') {
+    sessionStorage.setItem('promptly_load_calendar', JSON.stringify(rawCalendar));
+    window.location.href = '/';
+  } else if (action === 'duplicate') {
+    const duplicatePayload = JSON.parse(JSON.stringify(rawCalendar));
+    delete duplicatePayload.id;
+    sessionStorage.setItem('promptly_load_calendar', JSON.stringify(duplicatePayload));
+    window.location.href = '/';
+  } else if (action === 'export') {
+    exportCalendarArchive(rawCalendar);
+  }
+}
+
+async function exportCalendarArchive(calendar) {
+  const userIsPro = await isPro(currentUser);
+  if (!userIsPro) {
+    showUpgradeModal();
+    return;
+  }
+  const JSZipLib = await ensureZip().catch(() => null);
+  if (!JSZipLib) {
+    alert('Failed to load download library. Please check your connection and try again.');
+    return;
+  }
+  const posts = Array.isArray(calendar.posts) ? calendar.posts : [];
+  if (!posts.length) {
+    alert('This calendar has no posts to export yet.');
+    return;
+  }
+  const zip = new JSZipLib();
+  const folderName = `calendar-${slugify(calendar.nicheStyle || calendar.niche_style || 'posts')}`;
+  const folder = zip.folder(folderName);
+  posts.forEach((post) => {
+    const day = post.day || '';
+    const title = post.idea || post.title || '';
+    const fileName = `day-${String(day).padStart(2, '0')}-${slugify(title || 'post')}.html`;
+    folder.file(fileName, buildPostHTML(post));
+  });
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${folderName}.zip`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toggleToolbarDisabled(disabled) {
+  if (calendarToolbar) calendarToolbar.classList.toggle('is-disabled', disabled);
+  if (calendarSearchInput) calendarSearchInput.disabled = disabled;
+  if (calendarSortSelect) calendarSortSelect.disabled = disabled;
+  calendarFilterButtons.forEach((btn) => {
+    btn.disabled = disabled;
+  });
+  if (!disabled) {
+    updateFilterActiveState();
+  }
+}
+
+function updateFilterActiveState() {
+  calendarFilterButtons.forEach((btn) => {
+    const value = btn.dataset.calendarFilter || 'all';
+    const isSelected = value === calendarFilters.status && !btn.disabled;
+    btn.classList.toggle('is-active', isSelected);
+  });
+}
+
+function normalizeCalendar(calendar, { source = 'mock', raw = null } = {}) {
+  const startDate = calendar.startDate || new Date().toISOString();
+  const endDate = calendar.endDate ?? null;
+  const updatedAt = calendar.updatedAt || startDate;
+  const createdAt = calendar.createdAt || startDate;
+  const platforms = Array.isArray(calendar.platforms) && calendar.platforms.length ? calendar.platforms : ['IG'];
+  const generatedId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `calendar-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return {
+    id: String(calendar.id || generatedId),
+    title: calendar.title || 'Untitled Calendar',
+    status: (calendar.status || 'draft').toLowerCase(),
+    platforms,
+    startDate,
+    endDate,
+    postsCount: typeof calendar.postsCount === 'number' ? calendar.postsCount : 0,
+    variantsCount: typeof calendar.variantsCount === 'number' ? calendar.variantsCount : 0,
+    updatedAt,
+    createdAt,
+    source,
+    raw
+  };
+}
+
+function inferPlatformsFromPosts(posts) {
+  if (!Array.isArray(posts) || !posts.length) return ['IG'];
+  const platformSet = new Set();
+  const sample = posts.slice(0, 10);
+  sample.forEach((post) => {
+    if (Array.isArray(post.platforms)) {
+      post.platforms.forEach((p) => p && platformSet.add(p));
+    } else if (typeof post.platform === 'string') {
+      platformSet.add(post.platform);
+    }
+    if (post.variants) {
+      Object.keys(post.variants).forEach((key) => {
+        const normalized = key.toLowerCase();
+        if (normalized.includes('ig') || normalized.includes('instagram')) platformSet.add('IG');
+        if (normalized.includes('tiktok')) platformSet.add('TikTok');
+        if (normalized.includes('linkedin')) platformSet.add('LinkedIn');
+        if (normalized.includes('youtube')) platformSet.add('YouTube Shorts');
+      });
+    }
+  });
+  if (!platformSet.size) platformSet.add('IG');
+  return Array.from(platformSet).slice(0, 4);
+}
+
+function formatCalendarRange(calendar) {
+  const start = calendar.startDate ? new Date(calendar.startDate) : null;
+  const end = calendar.endDate ? new Date(calendar.endDate) : null;
+  if (start && end) {
+    return `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
+  }
+  if (start && !end) {
+    return `${formatDisplayDate(start)} – Rolling 30 days`;
+  }
+  return 'Rolling 30 days';
+}
+
+function formatDisplayDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatUpdatedAt(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return `Updated ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function formatStatusLabel(status) {
+  const map = {
+    draft: 'Draft',
+    scheduled: 'Scheduled',
+    published: 'Published'
+  };
+  return map[status] || 'Draft';
+}
+
+updateFilterActiveState();

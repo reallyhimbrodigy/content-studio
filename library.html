@@ -12,84 +12,239 @@
     <style>
       .library-container {
         padding: 2rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
       }
-      
+
       .library-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
         gap: 1rem;
+        flex-wrap: wrap;
       }
-      
+
       .library-header h2 {
         margin: 0;
-        font-size: 2rem;
+        font-size: clamp(1.75rem, 3vw, 2.25rem);
       }
-      
+
       .nav-buttons {
         display: flex;
         gap: 0.75rem;
+        flex-wrap: wrap;
       }
-      
-      .calendar-item {
-        background: rgba(28, 28, 34, 0.84);
+
+      .library-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-end;
+        background: rgba(15, 16, 30, 0.6);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 18px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
+        padding: 1rem;
+      }
+
+      .library-toolbar.is-disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+
+      .library-toolbar__field {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
+        flex-direction: column;
+        gap: 0.3rem;
+        flex: 1 1 220px;
       }
-      
-      .calendar-item-info h3 {
-        margin: 0 0 0.4rem;
-        font-size: 1.1rem;
+
+      .library-toolbar__field label {
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(245, 246, 248, 0.6);
       }
-      
-      .calendar-item-info p {
-        margin: 0;
-        font-size: 0.85rem;
-        color: rgba(245, 246, 248, 0.64);
+
+      .library-toolbar__field input,
+      .library-toolbar__field select {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 0.75rem 0.9rem;
+        background: rgba(0, 0, 0, 0.2);
+        color: #f5f6f8;
+        font-size: 0.95rem;
       }
-      
-      .calendar-item-actions {
+
+      .library-toolbar input::placeholder {
+        color: rgba(245, 246, 248, 0.5);
+      }
+
+      .library-filters {
         display: flex;
         gap: 0.5rem;
         flex-wrap: wrap;
+        align-items: center;
       }
-      
-      .calendar-item-actions button {
-        padding: 0.5rem 1rem;
-        font-size: 0.85rem;
-        border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.05);
+
+      .library-filter {
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 0.5rem 1.1rem;
+        background: rgba(255, 255, 255, 0.03);
         color: #f5f6f8;
+        font-size: 0.85rem;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: border-color 0.2s ease, background 0.2s ease;
       }
-      
-      .calendar-item-actions button:hover {
-        background: rgba(255, 255, 255, 0.1);
+
+      .library-filter.is-active {
+        border-color: rgba(127, 90, 240, 0.8);
+        background: rgba(127, 90, 240, 0.15);
+        color: #d2c7ff;
       }
-      
-      .delete-btn {
-        color: rgba(255, 120, 120, 0.95) !important;
-        border-color: rgba(255, 120, 120, 0.3) !important;
+
+      .library-filter:disabled,
+      .library-toolbar__field input:disabled,
+      .library-toolbar__field select:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
-      
-      .empty-state {
+
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.25rem;
+      }
+
+      .calendar-card {
+        background: rgba(20, 20, 28, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        cursor: pointer;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+        min-height: 260px;
+      }
+
+      .calendar-card:hover,
+      .calendar-card:focus-within {
+        border-color: rgba(127, 90, 240, 0.7);
+        transform: translateY(-2px);
+      }
+
+      .calendar-card h3 {
+        margin: 0;
+        font-size: 1.15rem;
+      }
+
+      .calendar-card__meta,
+      .calendar-card__metrics {
+        font-size: 0.85rem;
+        color: rgba(245, 246, 248, 0.65);
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .calendar-card__platforms {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+      }
+
+      .calendar-card__platform-chip {
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.2rem 0.75rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: rgba(245, 246, 248, 0.8);
+      }
+
+      .calendar-card__status {
+        border-radius: 999px;
+        padding: 0.2rem 0.8rem;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border: 1px solid transparent;
+      }
+
+      .calendar-card__status--draft {
+        border-color: rgba(255, 255, 255, 0.25);
+        color: rgba(245, 246, 248, 0.8);
+      }
+
+      .calendar-card__status--scheduled {
+        border-color: rgba(247, 181, 99, 0.9);
+        color: rgba(247, 181, 99, 0.95);
+        background: rgba(247, 181, 99, 0.1);
+      }
+
+      .calendar-card__status--published {
+        border-color: rgba(86, 227, 150, 0.85);
+        color: rgba(86, 227, 150, 0.95);
+        background: rgba(86, 227, 150, 0.12);
+      }
+
+      .calendar-card__range {
+        font-size: 0.9rem;
+        color: rgba(245, 246, 248, 0.8);
+        margin: 0;
+      }
+
+      .calendar-card__actions {
+        margin-top: auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .calendar-card__actions button {
+        flex: 1;
+        min-width: 90px;
+      }
+
+      .calendar-empty-state {
+        border: 1px dashed rgba(255, 255, 255, 0.18);
+        border-radius: 20px;
+        padding: 2.5rem 1.25rem;
         text-align: center;
-        padding: 3rem 2rem;
-        color: rgba(245, 246, 248, 0.64);
+        color: rgba(245, 246, 248, 0.75);
+        display: none;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: center;
       }
-      
-      .empty-state h3 {
-        font-size: 1.3rem;
-        margin-bottom: 0.5rem;
+
+      .calendar-empty-state.is-visible {
+        display: flex;
+      }
+
+      .calendar-empty-state__icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        background: rgba(127, 90, 240, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.75rem;
+        color: rgba(127, 90, 240, 0.95);
+      }
+
+      .calendar-empty-results {
+        text-align: center;
+        padding: 2rem 1rem;
+        color: rgba(245, 246, 248, 0.7);
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
@@ -144,14 +299,46 @@
       </header>
 
       <main>
-        <section class="library-container">
+        <section class="library-container" aria-labelledby="library-saved-heading">
           <div class="library-header">
-            <h2>Saved Calendars</h2>
+            <h2 id="library-saved-heading">Saved Calendars</h2>
             <div class="nav-buttons">
               <button id="new-calendar-btn" class="secondary">+ New Calendar</button>
             </div>
           </div>
-          <div id="calendars-list"></div>
+
+          <div class="library-toolbar" id="calendar-toolbar" role="region" aria-label="Calendar controls">
+            <div class="library-toolbar__field library-toolbar__field--search">
+              <label for="calendar-search">Search</label>
+              <input type="search" id="calendar-search" placeholder="Search calendars…" autocomplete="off" />
+            </div>
+            <div class="library-toolbar__field library-toolbar__field--sort">
+              <label for="calendar-sort">Sort by</label>
+              <select id="calendar-sort">
+                <option value="recent">Recently updated</option>
+                <option value="created">Created date</option>
+                <option value="alpha">A–Z</option>
+              </select>
+            </div>
+            <div class="library-toolbar__field library-toolbar__field--filters">
+              <label>Filter</label>
+              <div class="library-filters" role="group" aria-label="Calendar status filter">
+                <button type="button" class="library-filter is-active" data-calendar-filter="all">All</button>
+                <button type="button" class="library-filter" data-calendar-filter="draft">Draft</button>
+                <button type="button" class="library-filter" data-calendar-filter="scheduled">Scheduled</button>
+                <button type="button" class="library-filter" data-calendar-filter="published">Published</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="calendar-empty-state" class="calendar-empty-state" role="status" aria-live="polite">
+            <div class="calendar-empty-state__icon" aria-hidden="true">∎</div>
+            <h3>No calendars yet</h3>
+            <p>Start from one idea and we’ll turn it into a month of ready-to-post scripts.</p>
+            <button type="button" id="calendar-empty-cta" class="primary">Create your first calendar</button>
+          </div>
+
+          <div id="calendars-list" class="calendar-grid" aria-live="polite"></div>
         </section>
       </main>
 
