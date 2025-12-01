@@ -5,10 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
+const { supabaseAdmin } = require('./services/supabase-admin');
+const { createPlacidRender, getPlacidRenderResult, isPlacidConfigured } = require('./services/placid');
+const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
+const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
@@ -191,6 +195,335 @@ function downloadBinary(urlString) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(payload));
+}
+
+function isDesignPipelineReady() {
+  return Boolean(
+    supabaseAdmin &&
+      POST_GRAPHIC_TEMPLATE_ID &&
+      isPlacidConfigured() &&
+      isCloudinaryConfigured()
+  );
+}
+
+async function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2 * 1024 * 1024) {
+        reject(new Error('Payload too large'));
+        req.connection?.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (error) {
+        const err = new Error('Invalid JSON payload');
+        err.statusCode = 400;
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+async function requireSupabaseUser(req) {
+  if (!supabaseAdmin) {
+    const err = new Error('Supabase admin client not configured');
+    err.statusCode = 501;
+    throw err;
+  }
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) {
+    const err = new Error('Unauthorized');
+    err.statusCode = 401;
+    throw err;
+  }
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) {
+    const err = new Error('Unauthorized');
+    err.statusCode = 401;
+    throw err;
+  }
+  return data.user;
+}
+
+function parseLinkedDayFromKey(calendarDayId) {
+  if (!calendarDayId) return null;
+  const match = String(calendarDayId).match(/(\d{1,2})$/);
+  if (match) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function mapDesignAssetRow(row) {
+  if (!row) return null;
+  const data = row.data || {};
+  const linkedDay = data.linked_day || parseLinkedDayFromKey(row.calendar_day_id);
+  const previewUrl =
+    data.preview_url ||
+    (row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '');
+  return {
+    id: row.id,
+    type: row.type,
+    assetType: row.type,
+    typeLabel: row.type === 'post_graphic' ? 'Post Graphic' : 'Design Asset',
+    status: row.status,
+    calendarDayId: row.calendar_day_id,
+    linkedDay,
+    linkedDayLabel: linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : '',
+    title: data.title || 'Post Graphic',
+    subtitle: data.subtitle || '',
+    cta: data.cta || '',
+    campaign: data.campaign || 'General',
+    tone: data.tone || '',
+    previewUrl,
+    previewInlineUrl: previewUrl,
+    downloadUrl: previewUrl,
+    designUrl: `/design.html?asset=${encodeURIComponent(row.id)}`,
+    cloudinaryPublicId: row.cloudinary_public_id || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    data,
+    origin: 'remote',
+  };
+}
+
+async function advanceDesignAssetPipeline(assetRow) {
+  if (!assetRow || assetRow.status !== 'rendering' || !assetRow.placid_render_id) {
+    return assetRow;
+  }
+  if (!isPlacidConfigured()) return assetRow;
+  try {
+    const renderResult = await getPlacidRenderResult(assetRow.placid_render_id);
+    const status = String(renderResult?.status || '').toLowerCase();
+    if (['queued', 'pending', 'processing', 'rendering'].includes(status) || !renderResult?.imageUrl) {
+      return assetRow;
+    }
+    if (['failed', 'error'].includes(status)) {
+      const { data } = await supabaseAdmin
+        .from('design_assets')
+        .update({ status: 'failed' })
+        .eq('id', assetRow.id)
+        .select('*')
+        .single();
+      return data || assetRow;
+    }
+    if (!isCloudinaryConfigured()) {
+      const { data } = await supabaseAdmin
+        .from('design_assets')
+        .update({ status: 'failed' })
+        .eq('id', assetRow.id)
+        .select('*')
+        .single();
+      return data || assetRow;
+    }
+    const upload = await uploadAssetFromUrl({ url: renderResult.imageUrl });
+    const updatedData = {
+      ...(assetRow.data || {}),
+      preview_url: upload.secureUrl || renderResult.imageUrl,
+    };
+    const { data, error } = await supabaseAdmin
+      .from('design_assets')
+      .update({
+        status: 'ready',
+        cloudinary_public_id: upload.publicId,
+        data: updatedData,
+      })
+      .eq('id', assetRow.id)
+      .select('*')
+      .single();
+    if (error) {
+      throw error;
+    }
+    return data || assetRow;
+  } catch (error) {
+    console.error('Design asset pipeline error:', error);
+    try {
+      const { data } = await supabaseAdmin
+        .from('design_assets')
+        .update({ status: 'failed' })
+        .eq('id', assetRow.id)
+        .select('*')
+        .single();
+      return data || assetRow;
+    } catch (writeErr) {
+      console.error('Unable to mark design asset as failed', writeErr);
+      return assetRow;
+    }
+  }
+}
+
+function buildCalendarDayId(payload = {}) {
+  if (payload.calendarDayId) return String(payload.calendarDayId);
+  const day = Number(payload.day || payload.linkedDay);
+  if (Number.isFinite(day) && day > 0) {
+    return `day-${String(day).padStart(2, '0')}`;
+  }
+  return `session-${Date.now()}`;
+}
+
+function buildPlacidPayload(data = {}) {
+  return {
+    title: data.title || '',
+    subtitle: data.subtitle || '',
+    cta: data.cta || '',
+    brand_color: data.brand_color || '#7f5af0',
+    logo: data.logo || '',
+    background_image: data.background_image || '',
+    platform: data.platform || 'instagram',
+  };
+}
+
+async function handleCreateDesignAsset(req, res) {
+  try {
+    if (!isDesignPipelineReady()) {
+      return sendJson(res, 501, { error: 'Design pipeline not configured' });
+    }
+    const user = await requireSupabaseUser(req);
+    const body = await readJsonBody(req);
+    const type = body.type || 'post_graphic';
+    if (type !== 'post_graphic') {
+      return sendJson(res, 400, { error: 'Only post_graphic assets are supported in this release.' });
+    }
+    const calendarDayId = buildCalendarDayId(body);
+    const linkedDay = Number(body.linkedDay || body.day || parseLinkedDayFromKey(calendarDayId)) || null;
+    const title =
+      (body.title || '').trim() ||
+      (body.subtitle || body.caption || '').trim() ||
+      (linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : 'Post Graphic');
+    const subtitle = (body.subtitle || body.caption || '').trim();
+    const cta = (body.cta || '').trim() || 'Learn more';
+    const brandColor = (body.brandColor || '').trim() || '#7f5af0';
+    const logoUrl = (body.logoUrl || '').trim();
+    const backgroundImageUrl = (body.backgroundImageUrl || '').trim();
+    const platform = (body.platform || 'instagram').toLowerCase();
+    const designData = {
+      title,
+      subtitle,
+      cta,
+      brand_color: brandColor,
+      logo: logoUrl,
+      background_image: backgroundImageUrl,
+      platform,
+      linked_day: linkedDay,
+      campaign: body.campaign || '',
+      tone: body.tone || '',
+    };
+    const { data: inserted, error } = await supabaseAdmin
+      .from('design_assets')
+      .insert({
+        user_id: user.id,
+        calendar_day_id: calendarDayId,
+        type: 'post_graphic',
+        placid_template_id: POST_GRAPHIC_TEMPLATE_ID,
+        status: 'rendering',
+        data: designData,
+      })
+      .select('*')
+      .single();
+    if (error || !inserted) {
+      console.error('Unable to insert design asset', error);
+      return sendJson(res, 500, { error: 'Unable to create design asset' });
+    }
+    let currentRow = inserted;
+    try {
+      const render = await createPlacidRender({
+        templateId: POST_GRAPHIC_TEMPLATE_ID,
+        data: buildPlacidPayload(designData),
+      });
+      if (!render?.renderId) {
+        await supabaseAdmin.from('design_assets').update({ status: 'failed' }).eq('id', inserted.id);
+        return sendJson(res, 502, { error: 'Unable to start render for this asset' });
+      }
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('design_assets')
+        .update({ placid_render_id: render.renderId })
+        .eq('id', inserted.id)
+        .select('*')
+        .single();
+      if (!updateError && updated) {
+        currentRow = updated;
+      }
+    } catch (err) {
+      console.error('Placid render error:', err);
+      await supabaseAdmin
+        .from('design_assets')
+        .update({ status: 'failed' })
+        .eq('id', inserted.id);
+      return sendJson(res, 502, { error: 'Unable to start render for this asset' });
+    }
+    return sendJson(res, 201, mapDesignAssetRow(currentRow));
+  } catch (error) {
+    const status = error.statusCode || 500;
+    console.error('Design asset create error:', error);
+    return sendJson(res, status, { error: error.message || 'Unknown error' });
+  }
+}
+
+async function handleListDesignAssets(req, res, query) {
+  try {
+    if (!supabaseAdmin) {
+      return sendJson(res, 501, { error: 'Supabase not configured' });
+    }
+    const user = await requireSupabaseUser(req);
+    let builder = supabaseAdmin
+      .from('design_assets')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (query.calendarDayId) {
+      builder = builder.eq('calendar_day_id', query.calendarDayId);
+    }
+    if (query.type) {
+      builder = builder.eq('type', query.type);
+    }
+    const { data, error } = await builder;
+    if (error) {
+      console.error('Design asset list error:', error);
+      return sendJson(res, 500, { error: 'Unable to load design assets' });
+    }
+    const payload = (data || []).map((row) => mapDesignAssetRow(row));
+    return sendJson(res, 200, payload);
+  } catch (error) {
+    const status = error.statusCode || 500;
+    console.error('Design asset list error:', error);
+    return sendJson(res, status, { error: error.message || 'Unable to list assets' });
+  }
+}
+
+async function handleGetDesignAsset(req, res, assetId) {
+  try {
+    if (!supabaseAdmin) {
+      return sendJson(res, 501, { error: 'Supabase not configured' });
+    }
+    const user = await requireSupabaseUser(req);
+    const { data, error } = await supabaseAdmin
+      .from('design_assets')
+      .select('*')
+      .eq('id', assetId)
+      .eq('user_id', user.id)
+      .single();
+    if (error || !data) {
+      return sendJson(res, 404, { error: 'Asset not found' });
+    }
+    const nextRow = await advanceDesignAssetPipeline(data);
+    return sendJson(res, 200, mapDesignAssetRow(nextRow));
+  } catch (error) {
+    const status = error.statusCode || 500;
+    console.error('Design asset fetch error:', error);
+    return sendJson(res, status, { error: error.message || 'Unable to load asset' });
+  }
 }
 
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
@@ -1022,7 +1355,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none';");
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
@@ -1209,6 +1542,22 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: errorMessage }));
       }
     });
+    return;
+  }
+
+  if (parsed.pathname === '/api/design-assets' && req.method === 'POST') {
+    handleCreateDesignAsset(req, res);
+    return;
+  }
+
+  if (parsed.pathname === '/api/design-assets' && req.method === 'GET') {
+    handleListDesignAssets(req, res, parsed.query || {});
+    return;
+  }
+
+  const designAssetMatch = parsed.pathname && parsed.pathname.match(/^\/api\/design-assets\/([a-f0-9-]+)$/i);
+  if (designAssetMatch && req.method === 'GET') {
+    handleGetDesignAsset(req, res, designAssetMatch[1]);
     return;
   }
 

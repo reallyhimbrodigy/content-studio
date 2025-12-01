@@ -85,3 +85,59 @@ CREATE TRIGGER on_auth_user_created
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_calendars_user_id ON public.calendars(user_id);
 CREATE INDEX IF NOT EXISTS idx_calendars_saved_at ON public.calendars(saved_at DESC);
+
+-- Design assets table
+CREATE TABLE IF NOT EXISTS public.design_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  calendar_day_id TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('post_graphic')),
+  placid_template_id TEXT NOT NULL,
+  placid_render_id TEXT,
+  cloudinary_public_id TEXT,
+  status TEXT NOT NULL DEFAULT 'rendering' CHECK (status IN ('draft','rendering','ready','failed')),
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Helper to keep updated_at in sync
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS on_design_assets_updated ON public.design_assets;
+CREATE TRIGGER on_design_assets_updated
+  BEFORE UPDATE ON public.design_assets
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_updated_at();
+
+ALTER TABLE public.design_assets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own design assets" ON public.design_assets;
+DROP POLICY IF EXISTS "Users can insert own design assets" ON public.design_assets;
+DROP POLICY IF EXISTS "Users can update own design assets" ON public.design_assets;
+DROP POLICY IF EXISTS "Users can delete own design assets" ON public.design_assets;
+
+CREATE POLICY "Users can view own design assets"
+  ON public.design_assets FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own design assets"
+  ON public.design_assets FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own design assets"
+  ON public.design_assets FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own design assets"
+  ON public.design_assets FOR DELETE
+  USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_design_assets_user_id ON public.design_assets(user_id);
+CREATE INDEX IF NOT EXISTS idx_design_assets_calendar_day ON public.design_assets(calendar_day_id);
