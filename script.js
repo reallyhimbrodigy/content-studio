@@ -6477,8 +6477,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       }
       
       const data = await response.json();
-      const batchPosts = Array.isArray(data.posts) ? data.posts : [];
-      
+      let batchPosts = Array.isArray(data.posts) ? data.posts : [];
+
       // Update progress UI as each batch completes
       completedBatches++;
       const btn = document.getElementById('generate-calendar');
@@ -6492,7 +6492,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       if (textSpan) textSpan.textContent = `Generating... (${progress}/${totalPosts} posts)`;
       if (pFill) pFill.style.width = `${percent}%`;
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
-      
+
+      if (userIsPro && batchPosts.length) {
+        try {
+          batchPosts = await generateVariantsForPosts(batchPosts, {
+            nicheStyle,
+            userId: currentUserEmail,
+            userIsPro: true,
+          });
+        } catch (variantErr) {
+          console.warn('Variant generation failed for batch', batchIndex + 1, variantErr);
+        }
+      }
+
       console.log(` Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts };
     };
@@ -6527,20 +6539,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
 
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
-      const btn = document.getElementById('generate-calendar');
-      const textSpan = btn?.querySelector('.btn-text');
-      const progressText = document.getElementById('progress-text');
-      if (textSpan) textSpan.textContent = 'Finalizing platform variants…';
-      if (progressText) progressText.textContent = 'Finalizing platform variants for your calendar…';
-      try {
-        allPosts = await generateVariantsForPosts(allPosts, {
-          nicheStyle,
-          userId: currentUserEmail,
-          userIsPro: true,
-        });
-      } catch (variantError) {
-        console.warn('Platform variants failed during calendar generation:', variantError);
-      }
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));
     }
