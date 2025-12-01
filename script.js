@@ -5217,6 +5217,48 @@ if (copyAllFullBtn) {
   });
 }
 
+async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIsPro } = {}) {
+  if (!Array.isArray(posts) || posts.length === 0) return posts;
+  const resolvedUserId = userId || activeUserEmail || (await getCurrentUser());
+  if (!resolvedUserId) return posts;
+  let resolvedIsPro;
+  if (typeof userIsPro === 'boolean') {
+    resolvedIsPro = userIsPro;
+  } else if (typeof cachedUserIsPro === 'boolean') {
+    resolvedIsPro = cachedUserIsPro;
+  } else {
+    resolvedIsPro = await isPro(resolvedUserId);
+  }
+  if (!resolvedIsPro) return posts;
+
+  const chunkSize = 15;
+  let merged = posts.map((post) => ({ ...post }));
+  for (let i = 0; i < merged.length; i += chunkSize) {
+    const chunk = merged.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const resp = await fetch('/api/generate-variants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        posts: chunk,
+        nicheStyle,
+        userId: resolvedUserId,
+      }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const error = new Error(body.error || 'Variant generation failed');
+      error.status = resp.status;
+      throw error;
+    }
+    const variantEntries = Array.isArray(body.variants) ? body.variants : [];
+    const byDay = new Map(variantEntries.map((entry) => [entry.day, entry.variants]));
+    merged = merged.map((post) => (byDay.has(post.day) ? { ...post, variants: byDay.get(post.day) } : post));
+  }
+
+  return merged;
+}
+
 async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
   if (platformVariantSyncPromise) return platformVariantSyncPromise;
   if (!Array.isArray(currentCalendar) || !currentCalendar.length) return;
@@ -5243,27 +5285,11 @@ async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
   }
 
   const runner = async () => {
-    const chunkSize = 15;
-    let merged = [...currentCalendar];
-    for (let i = 0; i < currentCalendar.length; i += chunkSize) {
-      const chunk = currentCalendar.slice(i, i + chunkSize);
-      if (!chunk.length) continue;
-      const resp = await fetch('/api/generate-variants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          posts: chunk,
-          nicheStyle: nicheInput?.value || currentNiche || '',
-          userId,
-        }),
-      });
-      const body = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(body.error || 'Variant generation failed');
-      }
-      const byDay = new Map((Array.isArray(body.variants) ? body.variants : []).map((v) => [v.day, v.variants]));
-      merged = merged.map((post) => (byDay.has(post.day) ? { ...post, variants: byDay.get(post.day) } : post));
-    }
+    const merged = await generateVariantsForPosts(currentCalendar, {
+      nicheStyle: nicheInput?.value || currentNiche || '',
+      userId,
+      userIsPro,
+    });
     currentCalendar = merged;
     if (currentFilter === 'all') {
       renderCards(currentCalendar);
@@ -6501,6 +6527,20 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
 
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
+      const btn = document.getElementById('generate-calendar');
+      const textSpan = btn?.querySelector('.btn-text');
+      const progressText = document.getElementById('progress-text');
+      if (textSpan) textSpan.textContent = 'Finalizing platform variants…';
+      if (progressText) progressText.textContent = 'Finalizing platform variants for your calendar…';
+      try {
+        allPosts = await generateVariantsForPosts(allPosts, {
+          nicheStyle,
+          userId: currentUserEmail,
+          userIsPro: true,
+        });
+      } catch (variantError) {
+        console.warn('Platform variants failed during calendar generation:', variantError);
+      }
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));
     }
@@ -6624,13 +6664,11 @@ if (generateBtn) {
       currentNiche = niche;
       renderCards(currentCalendar);
       applyFilter("all");
-      await ensurePlatformVariantsForCurrentCalendar('generate');
 
       hideGeneratingState(originalText);
       activeTab = 'plan';
       syncCalendarUIAfterDataChange({ scrollToCalendar: true });
       persistCurrentCalendarState();
-      await ensurePlatformVariantsForCurrentCalendar('auto');
       
       if (feedbackEl) {
         feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
