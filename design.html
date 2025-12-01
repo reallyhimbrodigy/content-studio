@@ -159,19 +159,27 @@
           </div>
           <button class="ghost icon-only" id="design-close-btn" aria-label="Close design modal">&times;</button>
         </div>
-        <form id="design-form" class="design-form">
+        <form id="design-form" class="design-form design-form--modern">
           <input type="hidden" id="design-day" />
           <p id="design-selected-post" class="design-selected-post"></p>
-          <div class="design-form__row">
-            <label for="design-asset-type">Asset type</label>
-            <select id="design-asset-type" required>
-              <option value="social-graphic">Social graphic</option>
-              <option value="carousel-template">Carousel template</option>
-              <option value="story-template">Story template</option>
-              <option value="video-snippet">Video snippet</option>
-            </select>
-          </div>
-          <div class="design-form__row design-template-picker">
+          <section class="design-form__section">
+            <label class="design-label" for="design-asset-type">Asset Type</label>
+            <div class="design-select design-select--icons">
+              <select id="design-asset-type" required>
+                <option value="social-graphic">Social graphic</option>
+                <option value="carousel-template">Carousel template</option>
+                <option value="story-template">Story template</option>
+                <option value="video-snippet">Video snippet</option>
+              </select>
+              <div class="design-select__legend">
+                <span data-icon="graphic">Graphic</span>
+                <span data-icon="carousel">Carousel</span>
+                <span data-icon="story">Story</span>
+                <span data-icon="video">Video</span>
+              </div>
+            </div>
+          </section>
+          <section class="design-form__section design-template-picker">
             <div class="design-template-picker__head">
               <label for="design-template-select">Saved layout</label>
               <button type="button" class="ghost small" id="design-template-clear" disabled>Clear</button>
@@ -179,48 +187,64 @@
             <select id="design-template-select" aria-label="Select saved layout" disabled>
               <option value="">No template</option>
             </select>
-            <p id="design-template-hint" class="design-template-hint">Save any generated design as a template to reuse it here.</p>
+            <p id="design-template-hint" class="design-template-hint">Reuse a saved layout whenever you need it.</p>
             <div class="design-template-shortcuts">
               <button type="button" id="design-use-last-template" class="ghost small" disabled>Use last template</button>
             </div>
             <div id="design-template-gallery" class="design-template-gallery" aria-live="polite"></div>
-          </div>
-          <div class="design-form__row">
-            <label for="design-concept">Concept</label>
-            <input type="text" id="design-concept" placeholder="What should this asset cover?" />
-          </div>
-          <div class="design-form__row design-form__row--columns">
-            <label>
-              Caption cue
-              <input type="text" id="design-caption-cue" placeholder="Hook or caption cue" />
-            </label>
-            <label>
-              CTA
-              <input type="text" id="design-cta" placeholder="Call-to-action" />
-            </label>
-          </div>
-          <div class="design-form__row">
-            <label for="design-tone">Creative direction</label>
+          </section>
+          <section class="design-form__section">
+            <label class="design-label" for="design-tone">Creative Direction</label>
             <select id="design-tone">
               <option value="bold">Bold & punchy</option>
               <option value="minimal">Minimal & clean</option>
               <option value="playful">Playful & colorful</option>
               <option value="elegant">Luxury & elegant</option>
             </select>
-          </div>
-          <div class="design-preview-panel">
+          </section>
+          <section class="design-form__section design-autofill-grid">
+            <div class="design-autofill" data-autofill="concept">
+              <div class="design-autofill__head">
+                <label for="design-concept">Concept</label>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="concept">Edit</button>
+              </div>
+              <div class="design-autofill__value" id="design-concept-display">Not set</div>
+              <input type="text" id="design-concept" class="design-autofill__input" />
+            </div>
+            <div class="design-autofill" data-autofill="caption">
+              <div class="design-autofill__head">
+                <label for="design-caption-cue">Caption Cue</label>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="caption">Edit</button>
+              </div>
+              <div class="design-autofill__value" id="design-caption-display">Not set</div>
+              <input type="text" id="design-caption-cue" class="design-autofill__input" />
+            </div>
+            <div class="design-autofill" data-autofill="cta">
+              <div class="design-autofill__head">
+                <label for="design-cta">CTA</label>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="cta">Edit</button>
+              </div>
+              <div class="design-autofill__value" id="design-cta-display">Not set</div>
+              <input type="text" id="design-cta" class="design-autofill__input" />
+            </div>
+          </section>
+          <section class="design-form__section design-notes-collapsible">
+            <button type="button" class="design-notes__toggle" id="design-notes-toggle" aria-expanded="false">
+              Add extra notes (optional)
+            </button>
+            <div class="design-notes__panel" id="design-notes-panel">
+              <textarea id="design-notes" rows="2" placeholder="Mention overlays, palette tweaks, or platform nuances."></textarea>
+            </div>
+          </section>
+          <div class="design-preview-panel design-preview-panel--modern">
             <div class="design-preview-head">
               <span>Live preview</span>
               <small>Updates as you tweak the settings</small>
             </div>
             <div id="design-preview" class="design-preview"></div>
           </div>
-          <div class="design-form__row">
-            <label for="design-notes">Notes for AI (optional)</label>
-            <textarea id="design-notes" rows="3" placeholder="Mention colors, calls-to-action, overlays, etc."></textarea>
-          </div>
           <div id="design-feedback" class="input-feedback" aria-live="polite"></div>
-          <div class="design-form__actions">
+          <div class="design-form__actions design-form__actions--sticky">
             <button type="button" class="ghost" id="design-cancel-btn">Cancel</button>
             <button type="submit" class="primary">Generate asset</button>
           </div>

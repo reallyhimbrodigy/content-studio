@@ -744,6 +744,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  background: #f9f9fb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  color: #0f172a;
 }
 
 .design-modal__header {
@@ -752,10 +756,214 @@ body {
   gap: 1rem;
 }
 
+.design-modal .modal-sub,
+.design-modal .design-selected-post {
+  color: #667085;
+}
+
 .design-form {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+.design-form--modern {
+  gap: 1rem;
+}
+
+.design-form__section {
+  background: #f9f9fb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  color: #0f172a;
+}
+
+.design-label {
+  display: block;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8c93a3;
+  margin-bottom: 0.4rem;
+}
+
+.design-select--icons select {
+  width: 100%;
+  border: 1px solid #d5d8e3;
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.design-select__legend {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: #8c93a3;
+  flex-wrap: wrap;
+}
+
+.design-select__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.design-select__legend span::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+.design-select__legend span[data-icon="graphic"]::before { background: #6366f1; }
+.design-select__legend span[data-icon="carousel"]::before { background: #f97316; }
+.design-select__legend span[data-icon="story"]::before { background: #10b981; }
+.design-select__legend span[data-icon="video"]::before { background: #ec4899; }
+
+.design-autofill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
+.design-autofill {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.design-autofill__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.design-autofill__head label {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8c93a3;
+  margin: 0;
+}
+
+.design-autofill__value {
+  font-size: 0.95rem;
+  color: #0f172a;
+  min-height: 1.2rem;
+  word-break: break-word;
+}
+
+.design-autofill__input {
+  display: none;
+  width: 100%;
+  border: 1px solid #d5d8e3;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.design-autofill.is-editing .design-autofill__value {
+  display: none;
+}
+
+.design-autofill.is-editing .design-autofill__input {
+  display: block;
+}
+
+.design-autofill__edit {
+  border: none;
+  background: transparent;
+  color: #475467;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.design-autofill__edit:hover {
+  color: #1d1f2b;
+}
+
+.design-notes-collapsible {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.design-notes__toggle {
+  width: 100%;
+  border: 1px dashed #d5d8e3;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  color: #475467;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.design-notes__panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+
+.design-notes__panel.is-collapsed {
+  max-height: 0;
+  margin-top: 0;
+}
+
+.design-notes__panel textarea {
+  width: 100%;
+  border: 1px solid #d5d8e3;
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.design-notes__panel.is-open {
+  max-height: 220px;
+  margin-top: 0.75rem;
+}
+
+.design-preview-panel--modern {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+}
+
+.design-form__actions--sticky {
+  position: sticky;
+  bottom: 0;
+  background: #f9f9fb;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.design-form__actions--sticky .ghost {
+  border: 1px solid #d0d5dd;
+  color: #475467;
+}
+
+.design-form__actions--sticky .primary {
+  flex: 1;
 }
 
 .asset-detail-modal {

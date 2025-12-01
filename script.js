@@ -102,11 +102,16 @@ const designNotesInput = document.getElementById('design-notes');
 const designConceptInput = document.getElementById('design-concept');
 const designCaptionCueInput = document.getElementById('design-caption-cue');
 const designCtaInput = document.getElementById('design-cta');
+const designConceptDisplay = document.getElementById('design-concept-display');
+const designCaptionDisplay = document.getElementById('design-caption-display');
+const designCtaDisplay = document.getElementById('design-cta-display');
 const designTemplateSelect = document.getElementById('design-template-select');
 const designTemplateClearBtn = document.getElementById('design-template-clear');
 const designTemplateHint = document.getElementById('design-template-hint');
 const designTemplateGallery = document.getElementById('design-template-gallery');
 const designUseLastTemplateBtn = document.getElementById('design-use-last-template');
+const designNotesToggle = document.getElementById('design-notes-toggle');
+const designNotesPanel = document.getElementById('design-notes-panel');
 const designViewGridBtn = document.getElementById('design-view-grid');
 const designViewListBtn = document.getElementById('design-view-list');
 const designFilterType = document.getElementById('design-filter-type');
@@ -276,6 +281,91 @@ function updateLastTemplateButtonThumbnail(templateId = '') {
     : `<span class="design-template-card__preview-text">${escapeHtml(tpl.label)}</span>`;
   designUseLastTemplateBtn.innerHTML = `<span class="design-use-last-thumb">${preview}</span><span>Reapply ${escapeHtml(tpl.label)}</span>`;
 }
+
+const designAutofillMap = {
+  concept: {
+    wrapper: document.querySelector('[data-autofill="concept"]'),
+    display: designConceptDisplay,
+    input: designConceptInput,
+    editBtn: document.querySelector('[data-autofill-edit="concept"]'),
+  },
+  caption: {
+    wrapper: document.querySelector('[data-autofill="caption"]'),
+    display: designCaptionDisplay,
+    input: designCaptionCueInput,
+    editBtn: document.querySelector('[data-autofill-edit="caption"]'),
+  },
+  cta: {
+    wrapper: document.querySelector('[data-autofill="cta"]'),
+    display: designCtaDisplay,
+    input: designCtaInput,
+    editBtn: document.querySelector('[data-autofill-edit="cta"]'),
+  },
+};
+
+function setAutofillField(field, value = '') {
+  const config = designAutofillMap[field];
+  if (!config) return;
+  const textValue = value ? value.trim() : '';
+  if (config.display) config.display.textContent = textValue || 'Not set';
+  if (config.input) {
+    config.input.value = value || '';
+    config.input.setAttribute('readonly', 'readonly');
+  }
+  if (config.wrapper) config.wrapper.classList.remove('is-editing');
+  if (config.editBtn) config.editBtn.textContent = 'Edit';
+}
+
+function toggleAutofillEditing(field) {
+  const config = designAutofillMap[field];
+  if (!config || !config.wrapper || !config.input || !config.editBtn) return;
+  const isEditing = !config.wrapper.classList.contains('is-editing');
+  if (isEditing) {
+    config.wrapper.classList.add('is-editing');
+    config.input.removeAttribute('readonly');
+    config.input.focus();
+    const length = config.input.value.length;
+    config.input.setSelectionRange(length, length);
+    config.editBtn.textContent = 'Done';
+  } else {
+    config.input.setAttribute('readonly', 'readonly');
+    config.wrapper.classList.remove('is-editing');
+    config.editBtn.textContent = 'Edit';
+    setAutofillField(field, config.input.value);
+  }
+}
+
+function applyAutofillDefaults(values = {}) {
+  setAutofillField('concept', values.concept ?? (designConceptInput?.value || ''));
+  setAutofillField('caption', values.caption ?? (designCaptionCueInput?.value || ''));
+  setAutofillField('cta', values.cta ?? (designCtaInput?.value || ''));
+}
+
+function initializeDesignAutofillFields() {
+  Object.entries(designAutofillMap).forEach(([field, config]) => {
+    if (config.input) config.input.setAttribute('readonly', 'readonly');
+    if (config.editBtn) {
+      config.editBtn.addEventListener('click', () => toggleAutofillEditing(field));
+    }
+    if (config.input) {
+      config.input.addEventListener('input', () => {
+        if (config.wrapper?.classList.contains('is-editing') && config.display) {
+          config.display.textContent = config.input.value.trim() || 'Not set';
+        }
+      });
+    }
+    setAutofillField(field, config.input?.value || '');
+  });
+}
+
+function setDesignNotesCollapsed(collapsed = true) {
+  if (!designNotesPanel || !designNotesToggle) return;
+  designNotesPanel.classList.toggle('is-open', !collapsed);
+  designNotesPanel.classList.toggle('is-collapsed', collapsed);
+  designNotesToggle.setAttribute('aria-expanded', (!collapsed).toString());
+}
+
+initializeDesignAutofillFields();
 
 function applyDesignViewMode(mode = 'grid') {
   designViewMode = mode === 'list' ? 'list' : 'grid';
@@ -905,12 +995,12 @@ function updateDesignTemplateHint(templateId = '') {
   if (templateId) {
     const tpl = designTemplates.find((item) => String(item?.id) === String(templateId));
     designTemplateHint.textContent = tpl
-      ? `Locked to "${tpl.label}" · every request will follow this layout until you clear it.`
+      ? `Locked to "${tpl.label}" until you clear it.`
       : 'Saved layouts ready to use.';
   } else if (designTemplates.length) {
-    designTemplateHint.textContent = 'Pick a saved layout to reuse its asset type, tone, and notes.';
+    designTemplateHint.textContent = 'Choose a saved layout to keep structure consistent.';
   } else {
-    designTemplateHint.textContent = 'Save any generated design as a template to reuse it across posts.';
+    designTemplateHint.textContent = 'Save a favorite layout from the Design Lab.';
   }
   if (designTemplateClearBtn) {
     designTemplateClearBtn.disabled = !templateId;
@@ -920,7 +1010,7 @@ function updateDesignTemplateHint(templateId = '') {
 function renderDesignTemplateGallery(selectedId = '') {
   if (!designTemplateGallery) return;
   if (!Array.isArray(designTemplates) || !designTemplates.length) {
-    designTemplateGallery.innerHTML = `<p class="design-template-hint">Save an asset to unlock reusable layouts.</p>`;
+    designTemplateGallery.innerHTML = `<p class="design-template-hint">No saved layouts yet.</p>`;
     return;
   }
   const grouped = {};
@@ -1044,6 +1134,9 @@ function applyDesignTemplateSelection(templateId) {
   }
   if (designNotesInput && template.notes) {
     designNotesInput.value = template.notes;
+  }
+  if (designNotesInput) {
+    setDesignNotesCollapsed(!(designNotesInput.value || '').trim());
   }
   updateDesignTemplateHint(template.id);
   renderDesignTemplateGallery(template.id);
@@ -2131,8 +2224,9 @@ async function startDesignModal(entry = null, entryDay = null) {
   }
   renderDesignTemplateOptions(activeTemplateId);
 
+    let preset = null;
     if (entry) {
-      const preset = deriveAssetPreset(entry);
+      preset = deriveAssetPreset(entry);
       if (designAssetTypeInput) {
         const hasOption = Array.from(designAssetTypeInput.options || []).some((opt) => opt.value === preset.assetType);
         designAssetTypeInput.value = hasOption ? preset.assetType : designAssetTypeInput.value;
@@ -2147,6 +2241,22 @@ async function startDesignModal(entry = null, entryDay = null) {
     } else if (designNotesInput) {
       designNotesInput.value = '';
     }
+    const conceptValue =
+      entry?.idea ||
+      entry?.title ||
+      designConceptInput?.value ||
+      '';
+    const captionValue =
+      entry?.caption ||
+      entry?.description ||
+      designCaptionCueInput?.value ||
+      '';
+    const ctaValue = entry?.cta || designCtaInput?.value || '';
+    applyAutofillDefaults({
+      concept: conceptValue,
+      caption: captionValue,
+      cta: ctaValue,
+    });
     if (activeTemplateId) {
       applyDesignTemplateSelection(activeTemplateId);
     } else {
@@ -2173,6 +2283,7 @@ async function startDesignModal(entry = null, entryDay = null) {
           : 'Free plan limit reached. Upgrade for unlimited AI assets.';
       designFeedbackEl.classList.toggle('error', remainingQuota <= 0);
     }
+    setDesignNotesCollapsed(!(designNotesInput?.value || '').trim());
     if (designModal) designModal.style.display = 'flex';
   }
 
@@ -2182,6 +2293,8 @@ function closeDesignModal() {
     if (designForm) designForm.reset();
     if (designDayInput) designDayInput.value = '';
     if (designSelectedPost) designSelectedPost.textContent = '';
+    applyAutofillDefaults({ concept: '', caption: '', cta: '' });
+    setDesignNotesCollapsed(true);
     renderDesignTemplateOptions(activeTemplateId);
     activeDesignContext = null;
   }
@@ -6153,6 +6266,20 @@ if (assetDetailUseLastTemplateBtn) {
     const lastId = getLastTemplateId();
     if (!lastId) return;
     populateAssetDetailTemplateOptions(lastId);
+  });
+}
+if (designNotesToggle && designNotesPanel) {
+  designNotesToggle.addEventListener('click', () => {
+    const isOpen = designNotesPanel.classList.contains('is-open');
+    setDesignNotesCollapsed(isOpen);
+  });
+  setDesignNotesCollapsed(true);
+}
+if (designNotesInput) {
+  designNotesInput.addEventListener('input', () => {
+    if (designNotesInput.value.trim()) {
+      setDesignNotesCollapsed(false);
+    }
   });
 }
 if (designViewGridBtn) {
