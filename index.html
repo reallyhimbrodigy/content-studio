@@ -451,8 +451,8 @@
             </div>
             <div class="design-filter-bar" role="group" aria-label="Design filters">
               <div class="design-view-toggle" role="group" aria-label="View mode">
-                <button type="button" id="design-view-grid" class="design-view-btn is-active">Grid</button>
-                <button type="button" id="design-view-list" class="design-view-btn">List</button>
+                <button type="button" id="design-view-grid" class="design-view-btn is-active" aria-pressed="true">Grid</button>
+                <button type="button" id="design-view-list" class="design-view-btn" aria-pressed="false">List</button>
               </div>
               <div class="design-filter-pills">
                 <label class="filter-pill">Asset Type
@@ -488,21 +488,147 @@
                     <option value="all">Any</option>
                   </select>
                 </label>
+                <label class="filter-pill filter-pill--search">
+                  <span class="sr-only">Search assets</span>
+                  <input type="search" id="design-filter-search" placeholder="Search assets…" />
+                </label>
               </div>
             </div>
           </div>
           <div id="design-empty" class="design-empty">
             <div class="design-empty__art" aria-hidden="true"></div>
             <h3>No assets yet — let’s bring your calendar to life.</h3>
-            <p>Pick an asset type below to see how AI can transform your posts.</p>
+            <p>Start from a template or request a custom asset using your Brand Brain.</p>
+            <!-- TODO: Wire quick-create buttons to create a new DesignAsset in a later milestone. -->
             <div class="design-empty__suggestions">
               <button class="design-suggestion" data-day="1" data-asset-type="social-graphic" data-caption="Swipe-worthy headline" data-notes="Gradient CTA badge, hero product photo." data-tone="bold">Social Graphic · Day 1</button>
               <button class="design-suggestion" data-day="3" data-asset-type="carousel-template" data-caption="Mini case study" data-notes="Headline slide + 3 supporting slides." data-tone="minimal">Carousel Template · Day 3</button>
               <button class="design-suggestion" data-day="5" data-asset-type="video-snippet" data-caption="Behind-the-scenes teaser" data-notes="Vertical reel storyboard with hook, proof, CTA frames." data-tone="playful">Video Snippet · Day 5</button>
             </div>
+            <!-- TODO: Wire the primary CTA to trigger the Request Asset flow in a later milestone. -->
             <button id="design-empty-cta" class="primary">Generate your first asset</button>
           </div>
-          <div class="design-lab__grid" id="design-grid"></div>
+          <div class="design-workspace" id="design-workspace" style="display:none">
+            <section class="design-assets-panel" aria-label="Assets">
+              <div class="design-assets-list" id="design-grid"></div>
+            </section>
+            <section class="design-editor-panel" id="design-editor-panel" aria-label="Asset editor">
+              <div class="design-create-panel" id="design-create-panel">
+                <div class="design-create-panel__head">
+                  <div>
+                    <h3>Request a new asset</h3>
+                    <p class="design-create-panel__sub">Describe what you need and we’ll prep it here. <span class="design-create-panel__note">TODO: Replace with backend asset request.</span></p>
+                  </div>
+                  <button type="button" class="ghost icon-only" id="design-create-close" aria-label="Close asset creation">&times;</button>
+                </div>
+                <form id="design-create-form" class="design-create-form">
+                  <div class="design-create-form__grid">
+                    <label>
+                      Type
+                      <select id="design-create-type">
+                        <option value="social-graphic">Social graphic</option>
+                        <option value="carousel-template">Carousel template</option>
+                        <option value="story-template">Story template</option>
+                        <option value="video-snippet">Video snippet</option>
+                      </select>
+                    </label>
+                    <label>
+                      Linked Day
+                      <select id="design-create-day">
+                        <option value="">Unassigned</option>
+                      </select>
+                    </label>
+                    <label>
+                      Tone
+                      <input type="text" id="design-create-tone" placeholder="Bold, minimal, playful..." />
+                    </label>
+                    <label>
+                      Campaign
+                      <input type="text" id="design-create-campaign" placeholder="Campaign or collection" />
+                    </label>
+                    <label>
+                      Month
+                      <select id="design-create-month">
+                        <option value="This Month">This Month</option>
+                        <option value="March 2026">March 2026</option>
+                        <option value="April 2026">April 2026</option>
+                        <option value="May 2026">May 2026</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="design-create-form__prompt">
+                    <span>Prompt</span>
+                    <textarea id="design-create-prompt" rows="3" placeholder="Describe what this asset should look or feel like."></textarea>
+                  </label>
+                  <div class="design-create-form__actions">
+                    <button type="button" class="ghost" id="design-create-cancel">Cancel</button>
+                    <button type="submit" class="primary">Create asset</button>
+                  </div>
+                </form>
+              </div>
+              <div id="design-editor-empty" class="design-editor-placeholder">
+                <h3>Asset editor coming next</h3>
+                <p>Select an asset on the left to view or edit details.</p>
+              </div>
+              <form id="design-editor-form" class="design-editor" style="display:none">
+                <div class="design-editor__header">
+                  <input type="text" id="design-editor-title" class="design-editor__title" placeholder="Untitled asset" />
+                  <select id="design-editor-status">
+                    <option value="draft">Draft</option>
+                    <option value="ready">Ready</option>
+                    <option value="exported">Exported</option>
+                  </select>
+                </div>
+                <div class="design-editor__grid">
+                  <label class="design-editor__field">
+                    <span>Asset Type</span>
+                    <select id="design-editor-type">
+                      <option value="social-graphic">Social graphic</option>
+                      <option value="carousel-template">Carousel template</option>
+                      <option value="story-template">Story template</option>
+                      <option value="video-snippet">Video snippet</option>
+                    </select>
+                  </label>
+                  <label class="design-editor__field">
+                    <span>Linked Day</span>
+                    <select id="design-editor-day">
+                      <option value="">Unassigned</option>
+                    </select>
+                  </label>
+                  <label class="design-editor__field">
+                    <span>Tone</span>
+                    <input type="text" id="design-editor-tone" placeholder="Bold, minimal, playful..." />
+                  </label>
+                  <label class="design-editor__field">
+                    <span>Campaign</span>
+                    <input type="text" id="design-editor-campaign" placeholder="Campaign or collection" />
+                  </label>
+                  <label class="design-editor__field">
+                    <span>Month</span>
+                    <select id="design-editor-month">
+                      <option value="This Month">This Month</option>
+                      <option value="March 2026">March 2026</option>
+                      <option value="April 2026">April 2026</option>
+                      <option value="May 2026">May 2026</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="design-editor__field design-editor__field--wide">
+                  <span>Prompt</span>
+                  <textarea id="design-editor-prompt" rows="4" placeholder="Adjust the prompt and regenerate to get a new variation."></textarea>
+                </label>
+                <div class="design-editor__preview" id="design-editor-preview">
+                  <img id="design-editor-preview-img" alt="Asset preview" />
+                  <div class="design-editor__preview-placeholder" id="design-editor-preview-placeholder">Preview will appear after generation.</div>
+                </div>
+                <div class="design-editor__actions">
+                  <button type="button" class="ghost" id="design-editor-save">Save</button>
+                  <button type="button" class="ghost" id="design-editor-duplicate">Duplicate</button>
+                  <button type="button" class="ghost danger" id="design-editor-delete">Delete</button>
+                </div>
+              </form>
+            </section>
+          </div>
         </section>
       </main>
 

@@ -85,6 +85,8 @@ let fontPickerListenersBound = false;
 const designSection = document.getElementById('design-lab');
 const designGrid = document.getElementById('design-grid');
 const designEmpty = document.getElementById('design-empty');
+const designWorkspace = document.getElementById('design-workspace');
+const designEditorPanel = document.getElementById('design-editor-panel');
 const designRequestBtn = document.getElementById('design-request-btn');
 const designEmptyCta = document.getElementById('design-empty-cta');
 const designModal = document.getElementById('design-modal');
@@ -117,6 +119,7 @@ const designFilterDay = document.getElementById('design-filter-day');
 const designFilterTone = document.getElementById('design-filter-tone');
 const designFilterCampaign = document.getElementById('design-filter-campaign');
 const designFilterMonth = document.getElementById('design-filter-month');
+const designFilterSearchInput = document.getElementById('design-filter-search');
 const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
@@ -149,6 +152,34 @@ const assetDetailSecondaryColor = document.getElementById('asset-detail-secondar
 const assetDetailAccentColor = document.getElementById('asset-detail-accent-color');
 const assetDetailHeadingFont = document.getElementById('asset-detail-heading-font');
 const assetDetailBodyFont = document.getElementById('asset-detail-body-font');
+const designWorkspaceEnabled = Boolean(designWorkspace && designEditorPanel);
+const designEditorForm = document.getElementById('design-editor-form');
+const designEditorEmpty = document.getElementById('design-editor-empty');
+const designEditorTitleInput = document.getElementById('design-editor-title');
+const designEditorStatusSelect = document.getElementById('design-editor-status');
+const designEditorTypeSelect = document.getElementById('design-editor-type');
+const designEditorDaySelect = document.getElementById('design-editor-day');
+const designEditorToneInput = document.getElementById('design-editor-tone');
+const designEditorCampaignInput = document.getElementById('design-editor-campaign');
+const designEditorMonthSelect = document.getElementById('design-editor-month');
+const designEditorPromptInput = document.getElementById('design-editor-prompt');
+const designEditorPreviewImg = document.getElementById('design-editor-preview-img');
+const designEditorPreviewPlaceholder = document.getElementById('design-editor-preview-placeholder');
+const designEditorSaveBtn = document.getElementById('design-editor-save');
+const designEditorDuplicateBtn = document.getElementById('design-editor-duplicate');
+const designEditorDeleteBtn = document.getElementById('design-editor-delete');
+const designCreatePanel = document.getElementById('design-create-panel');
+const designCreateForm = document.getElementById('design-create-form');
+const designCreateTypeInput = document.getElementById('design-create-type');
+const designCreateDayInput = document.getElementById('design-create-day');
+const designCreateToneInput = document.getElementById('design-create-tone');
+const designCreateCampaignInput = document.getElementById('design-create-campaign');
+const designCreateMonthInput = document.getElementById('design-create-month');
+const designCreatePromptInput = document.getElementById('design-create-prompt');
+const designCreateCancelBtn = document.getElementById('design-create-cancel');
+const designCreateCloseBtn = document.getElementById('design-create-close');
+populateLinkedDaySelect(designEditorDaySelect);
+populateLinkedDaySelect(designCreateDayInput);
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -208,6 +239,7 @@ let brandProfileLoaded = false;
 let currentBrandText = '';
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const selectedDesignAssetIds = new Set();
+let designFocusedAssetId = null;
 let draggedDesignAssetId = null;
 let platformVariantSyncPromise = null;
 const DESIGN_TEMPLATE_STORAGE_KEY = 'promptly_design_templates_v1';
@@ -219,6 +251,118 @@ const DESIGN_USAGE_STORAGE_PREFIX = 'promptly_design_usage_v1:';
 const DESIGN_FREE_MONTHLY_QUOTA = 3;
 const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
+
+/**
+ * @typedef {'draft'|'ready'|'exported'} AssetStatus
+ * @typedef {Object} DesignAsset
+ * @property {string} id
+ * @property {string} title
+ * @property {'social-graphic'|'carousel-template'|'video-snippet'|'story-template'|'other'} assetType
+ * @property {string} linkedDayLabel
+ * @property {number|null} linkedDay
+ * @property {string} tone
+ * @property {string} campaign
+ * @property {string} monthLabel
+ * @property {AssetStatus} status
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ * @property {string} prompt
+ * @property {string=} previewUrl
+ */
+
+// TODO: Replace mock assets with real data from the backend once asset APIs are available.
+const DESIGN_MOCK_ASSETS = [
+  {
+    id: 'mock-des-001',
+    title: 'Creator Launch Carousel',
+    assetType: 'carousel-template',
+    linkedDayLabel: 'Day 03',
+    linkedDay: 3,
+    tone: 'bold',
+    campaign: 'Spring Launch',
+    monthLabel: 'March 2026',
+    status: 'draft',
+    createdAt: '2026-03-01T09:00:00Z',
+    updatedAt: '2026-03-24T08:30:00Z',
+    prompt: 'Create a bold carousel with a hook slide and supporting proof points for the launch.',
+    previewUrl: '',
+  },
+  {
+    id: 'mock-des-002',
+    title: 'Behind-the-Scenes Reel',
+    assetType: 'video-snippet',
+    linkedDayLabel: 'Day 07',
+    linkedDay: 7,
+    tone: 'playful',
+    campaign: 'Creator Lab',
+    monthLabel: 'March 2026',
+    status: 'ready',
+    createdAt: '2026-03-10T14:00:00Z',
+    updatedAt: '2026-03-22T11:10:00Z',
+    prompt: 'Storyboard a playful vertical reel showing behind-the-scenes moments.',
+    previewUrl: '',
+  },
+  {
+    id: 'mock-des-003',
+    title: 'Testimonial Story Set',
+    assetType: 'story-template',
+    linkedDayLabel: 'Day 12',
+    linkedDay: 12,
+    tone: 'elegant',
+    campaign: 'Client Wins',
+    monthLabel: 'April 2026',
+    status: 'ready',
+    createdAt: '2026-04-02T12:00:00Z',
+    updatedAt: '2026-04-12T15:45:00Z',
+    prompt: 'Design a refined story series sharing client testimonial highlights.',
+    previewUrl: '',
+  },
+  {
+    id: 'mock-des-004',
+    title: 'Metrics Snapshot Graphic',
+    assetType: 'social-graphic',
+    linkedDayLabel: 'Day 18',
+    linkedDay: 18,
+    tone: 'minimal',
+    campaign: 'Growth Notebook',
+    monthLabel: 'April 2026',
+    status: 'exported',
+    createdAt: '2026-04-05T08:00:00Z',
+    updatedAt: '2026-04-18T09:30:00Z',
+    prompt: 'Showcase growth metrics with minimal typography and accent borders.',
+    previewUrl: '',
+  },
+  {
+    id: 'mock-des-005',
+    title: 'Product Drop Promo',
+    assetType: 'social-graphic',
+    linkedDayLabel: 'Day 21',
+    linkedDay: 21,
+    tone: 'bold',
+    campaign: 'Product Drop',
+    monthLabel: 'May 2026',
+    status: 'draft',
+    createdAt: '2026-05-01T10:00:00Z',
+    updatedAt: '2026-05-04T11:15:00Z',
+    prompt: 'Announce the product drop with bold color blocking and CTA badge.',
+    previewUrl: '',
+  },
+  {
+    id: 'mock-des-006',
+    title: 'Educational Carousel - Hooks',
+    assetType: 'carousel-template',
+    linkedDayLabel: 'Day 25',
+    linkedDay: 25,
+    tone: 'bold',
+    campaign: 'Hooks Library',
+    monthLabel: 'May 2026',
+    status: 'ready',
+    createdAt: '2026-05-06T13:00:00Z',
+    updatedAt: '2026-05-16T16:25:00Z',
+    prompt: 'Share educational hook examples with bold typography and numbered slides.',
+    previewUrl: '',
+  },
+];
 let designTemplates = loadDesignTemplates();
 let activeTemplateId = '';
 let highlightDesignAssetId = urlParams.get('asset');
@@ -231,6 +375,7 @@ let designFilterState = {
   tone: designFilterTone?.value || 'all',
   campaign: designFilterCampaign?.value || 'all',
   month: designFilterMonth?.value || 'all',
+  search: designFilterSearchInput?.value?.trim().toLowerCase() || '',
 };
 let designStorageDisabled = false;
 let calendarStorageDisabled = false;
@@ -243,6 +388,7 @@ let designViewMode = (() => {
 })();
 let activeAssetDetailId = null;
 let pendingAssetDetailId = null;
+let isDesignRegenerating = false;
 if (designSelectionCount) designSelectionCount.textContent = '0 selected';
 
 function getLastTemplateId() {
@@ -391,12 +537,17 @@ initializeDesignAutofillFields();
 
 function applyDesignViewMode(mode = 'grid') {
   designViewMode = mode === 'list' ? 'list' : 'grid';
-  if (designViewGridBtn) designViewGridBtn.classList.toggle('is-active', designViewMode === 'grid');
-  if (designViewListBtn) designViewListBtn.classList.toggle('is-active', designViewMode === 'list');
+  if (designViewGridBtn) {
+    designViewGridBtn.classList.toggle('is-active', designViewMode === 'grid');
+    designViewGridBtn.setAttribute('aria-pressed', String(designViewMode === 'grid'));
+  }
+  if (designViewListBtn) {
+    designViewListBtn.classList.toggle('is-active', designViewMode === 'list');
+    designViewListBtn.setAttribute('aria-pressed', String(designViewMode === 'list'));
+  }
   if (designGrid) {
-    designGrid.classList.toggle('design-grid', designViewMode === 'grid');
-    designGrid.classList.toggle('design-list', designViewMode === 'list');
-    designGrid.classList.toggle('design-view--list', designViewMode === 'list');
+    designGrid.classList.toggle('design-assets-list--grid', designViewMode === 'grid');
+    designGrid.classList.toggle('design-assets-list--list', designViewMode === 'list');
   }
   try {
     localStorage.setItem(DESIGN_VIEW_MODE_KEY, designViewMode);
@@ -478,8 +629,17 @@ function hydrateDesignAssetsFromStorage(force = false) {
       asset.cta = asset.cta || '';
       asset.tone = asset.tone || '';
       asset.notes = asset.notes || '';
+      asset.prompt = asset.prompt || '';
       asset.previewInlineUrl = asset.previewInlineUrl || '';
+      asset.previewUrl = asset.previewUrl || asset.previewInlineUrl || '';
       asset.campaign = asset.campaign || '';
+      if (!asset.linkedDayLabel) {
+        const resolvedDay = asset.linkedDay || asset.day;
+        asset.linkedDayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
+      }
+      if (!asset.monthLabel && asset.createdAt) {
+        asset.monthLabel = formatDesignAssetMonth(asset.createdAt) || 'This Month';
+      }
       asset.slides = normalizeSlides(asset.slides);
       const descriptor = buildAssetPreviewDescriptor(asset);
       asset.previewType = descriptor.kind;
@@ -584,6 +744,12 @@ populateAssetDetailTemplateOptions();
 updateAssetDetailTemplateShortcut();
 ingestFocusAssetSnapshot();
 
+if (!designAssets.length) {
+  designAssets = DESIGN_MOCK_ASSETS.map((asset) => ({ ...asset }));
+  designFocusedAssetId = designAssets[0]?.id || null;
+  renderDesignAssets();
+}
+
 function currentMonthToken() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -653,6 +819,7 @@ function normalizeAssetTypeKey(value = '') {
 function applyDesignFilters(list = []) {
   return list.filter((asset) => {
     if (!asset) return false;
+    const searchTerm = (designFilterState.search || '').trim().toLowerCase();
     const typeFilter = designFilterState.type;
     if (typeFilter && typeFilter !== 'all') {
       const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel);
@@ -676,6 +843,10 @@ function applyDesignFilters(list = []) {
       const createdAt = asset.createdAt || '';
       const month = createdAt ? String(createdAt).slice(0, 7) : '';
       if (month !== monthFilter) return false;
+    }
+    if (searchTerm) {
+      const haystack = (asset.title || '').toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
     }
     return true;
   });
@@ -1187,7 +1358,7 @@ function updateDesignSelectionUI() {
     designSelectionCount.textContent = `${count} selected`;
   }
   if (designExportSelectedBtn) designExportSelectedBtn.disabled = count === 0;
-  if (designRegenerateSelectedBtn) designRegenerateSelectedBtn.disabled = count === 0;
+  if (designRegenerateSelectedBtn) designRegenerateSelectedBtn.disabled = count !== 1 || isDesignRegenerating;
 }
 
 function toggleDesignAssetSelection(assetId, isSelected) {
@@ -1198,72 +1369,43 @@ function toggleDesignAssetSelection(assetId, isSelected) {
   updateDesignSelectionUI();
 }
 
-async function handleDesignExportSelected() {
-  const assets = designAssets.filter((asset) => selectedDesignAssetIds.has(String(asset.id)));
-  if (!assets.length) return;
-  try {
-    const JSZipLib = await ensureZip().catch(() => null);
-    if (!JSZipLib) throw new Error('Failed to load Zip library');
-    const zip = new JSZipLib();
-    for (const asset of assets) {
-      if (!asset.downloadUrl) continue;
-      const response = await fetch(asset.downloadUrl);
-      if (!response.ok) continue;
-      const blob = await response.blob();
-      const ext = getAssetExtension(asset) || 'bin';
-      const filename = `${slugify(asset.title || `asset-${asset.id}`)}.${ext}`;
-      zip.file(filename, blob);
-    }
-    const bundle = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(bundle);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `promptly-assets-${Date.now()}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error('Export selected assets failed', err);
-    alert('Unable to export selected assets right now.');
-  }
-}
-
-async function handleDesignRegenerateSelected() {
+function handleDesignExportSelected() {
   if (!selectedDesignAssetIds.size) return;
-  const allowed = await requireProAccess();
-  if (!allowed) {
-    showUpgradeModal();
-    return;
-  }
-  const currentUserId = activeUserEmail || (await getCurrentUser());
-  if (!currentUserId) {
-    alert('Sign in to regenerate assets.');
-    return;
-  }
-  const targets = designAssets.filter((asset) => selectedDesignAssetIds.has(String(asset.id)));
-  if (!targets.length) return;
-  showDesignSuccess(`Regenerating ${targets.length} asset${targets.length === 1 ? '' : 's'}...`);
-  for (const asset of targets) {
-    try {
-      await regenerateSingleDesignAsset(asset, currentUserId);
-    } catch (err) {
-      console.warn('Failed to regenerate asset', asset.id, err);
-    }
-  }
-  showDesignSuccess('Selected assets refreshed.');
+  const ids = Array.from(selectedDesignAssetIds);
+  ids.forEach((assetId) => {
+    const asset = designAssets.find((item) => String(item.id) === String(assetId));
+    if (!asset) return;
+    asset.status = 'exported';
+    asset.updatedAt = new Date().toISOString();
+  });
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
+  showDesignSuccess('Assets exported (local preview). TODO: Hook real export flow.');
   setTimeout(() => clearDesignFeedback(), 2000);
 }
 
-async function regenerateSingleDesignAsset(asset, currentUserId) {
-  const paletteDefaults = getBrandPaletteDefaults();
-  const palette = {
-    primary: asset.primaryColor || paletteDefaults.primaryColor,
-    secondary: asset.secondaryColor || paletteDefaults.secondaryColor,
-    accent: asset.accentColor || paletteDefaults.accentColor,
-    heading: asset.headingFont || paletteDefaults.headingFont,
-    body: asset.bodyFont || paletteDefaults.bodyFont,
-  };
+function handleDesignRegenerateSelected() {
+  if (isDesignRegenerating || selectedDesignAssetIds.size !== 1) return;
+  const assetId = Array.from(selectedDesignAssetIds)[0];
+  const asset = designAssets.find((item) => String(item.id) === String(assetId));
+  if (!asset) return;
+  isDesignRegenerating = true;
+  updateDesignSelectionUI();
+  setDesignRegeneratingState(true);
+  showDesignSuccess('Regenerating asset… TODO: connect to AI endpoint.');
+  setTimeout(() => {
+    asset.updatedAt = new Date().toISOString();
+    asset.previewUrl = generateMockPreviewUrl(asset);
+    asset.previewInlineUrl = asset.previewUrl;
+    isDesignRegenerating = false;
+    setDesignRegeneratingState(false);
+    persistDesignAssetsToStorage();
+    renderDesignAssets();
+    showDesignSuccess('Asset regenerated.');
+    setTimeout(() => clearDesignFeedback(), 2000);
+  }, 900 + Math.random() * 700);
+}
+;
   const payload = {
     day: asset.linkedDay || asset.day || null,
     assetType: asset.assetType || inferAssetTypeFromAsset(asset),
@@ -1996,9 +2138,6 @@ function updateTabs(){
 
 function renderDesignAssets() {
     if (!designGrid || !designEmpty) return;
-    designGrid.classList.toggle('design-grid', designViewMode === 'grid');
-    designGrid.classList.toggle('design-list', designViewMode === 'list');
-    designGrid.classList.toggle('design-view--list', designViewMode === 'list');
     const knownIds = new Set(designAssets.map((asset) => String(asset.id)));
     selectedDesignAssetIds.forEach((id) => {
       if (!knownIds.has(String(id))) selectedDesignAssetIds.delete(id);
@@ -2006,90 +2145,53 @@ function renderDesignAssets() {
     refreshDesignDayFilterOptions();
     refreshDesignCampaignFilterOptions();
     refreshDesignMonthFilterOptions();
+
     if (!designAssets.length) {
+      selectedDesignAssetIds.clear();
+      designFocusedAssetId = null;
+      if (designWorkspace) designWorkspace.style.display = 'none';
       designEmpty.style.display = '';
       designGrid.innerHTML = '';
+      renderDesignEditor();
+      updateDesignSelectionUI();
       return;
     }
-    let filteredAssets = applyDesignFilters(designAssets);
-    if (
-      highlightDesignAssetId &&
-      !filteredAssets.some((asset) => String(asset?.id) === String(highlightDesignAssetId))
-    ) {
-      designFilterState = { type: 'all', day: 'all' };
-      if (designFilterType) designFilterType.value = 'all';
-      if (designFilterDay) designFilterDay.value = 'all';
-      filteredAssets = applyDesignFilters(designAssets);
+
+    if (!designFocusedAssetId && designAssets.length) {
+      designFocusedAssetId = String(designAssets[0].id);
     }
-    if (!filteredAssets.length) {
-      designEmpty.style.display = 'none';
-      designGrid.innerHTML = `<div class="design-grid__empty">No assets match the selected filters.</div>`;
-      return;
-    }
+
+    if (designWorkspace) designWorkspace.style.display = '';
     designEmpty.style.display = 'none';
-    designGrid.innerHTML = filteredAssets
-      .map((asset) => {
-        const assetKey = String(asset.id);
-        const resolvedDay = asset.linkedDay || asset.day;
-        const dayLabel = resolvedDay ? `Day ${String(resolvedDay).padStart(2, '0')}` : 'Unassigned';
-        const previewBlock = buildDesignAssetPreviewBlock(asset);
-        const title = escapeHtml(asset.title || 'AI Asset');
-        const typeText = escapeHtml(asset.typeLabel || formatAssetTypeLabel(asset.assetType));
-        const status = escapeHtml(asset.status || 'Ready');
-        const brief = escapeHtml(asset.brief || asset.previewText || '');
-        const linkBadge = resolvedDay ? `<span class="design-asset__badge">Linked to Day ${String(resolvedDay).padStart(2, '0')}</span>` : '';
-        const campaignBadge = asset.campaign ? `<span class="design-asset__badge design-asset__badge--campaign">${escapeHtml(asset.campaign)}</span>` : '';
-        const templateBadge = asset.templateLabel ? `<span class="design-asset__badge">Template: ${escapeHtml(asset.templateLabel)}</span>` : '';
-        const typeBadge = `<span class="design-asset__badge">${typeText}</span>`;
-        const slideCount = Array.isArray(asset.slides) ? asset.slides.length : 0;
-        const slideBadge = slideCount ? `<span class="design-asset__badge">Slides: ${slideCount}</span>` : '';
-        const captionLine = asset.caption ? `<p class="design-asset__caption">${escapeHtml(asset.caption)}</p>` : '';
-        const ctaLine = asset.cta ? `<p class="design-asset__cta">CTA: ${escapeHtml(asset.cta)}</p>` : '';
-        const toneLine = asset.tone ? `<span class="design-asset__tone">${escapeHtml(asset.tone)}</span>` : '';
-        const isSelected = selectedDesignAssetIds.has(assetKey);
-        const slideChips = buildSlideChipRowHtml(asset.slides);
-        const downloadLabel = slideCount ? 'Download ZIP' : 'Download';
-        return `
-          <article class="design-asset" data-asset-id="${assetKey}" data-asset-type="${escapeHtml(asset.assetType || '')}" data-asset-day="${resolvedDay || ''}" draggable="true">
-            <label class="design-asset__select">
-              <input type="checkbox" data-asset-select="${assetKey}" ${isSelected ? 'checked' : ''}/>
-              <span>Select</span>
-            </label>
-            <div class="design-asset__preview-wrapper">
-              <div class="design-asset__preview${previewBlock.isMedia ? ' design-asset__preview--media' : ''}">${previewBlock.html}</div>
-              <div class="design-asset__hover">
-                <button type="button" class="primary" data-asset-action="edit" data-asset-id="${assetKey}">Edit</button>
-                <button type="button" class="ghost" data-asset-action="download" data-asset-id="${assetKey}">${downloadLabel}</button>
-                <button type="button" class="ghost" data-asset-action="copy" data-asset-id="${assetKey}">Copy Brief</button>
-                <button type="button" class="ghost" data-asset-action="template" data-asset-id="${assetKey}">Save Template</button>
-                <button type="button" class="ghost danger" data-asset-action="delete" data-asset-id="${assetKey}" data-asset-day="${resolvedDay || ''}">Delete</button>
-              </div>
-            </div>
-            <div class="design-asset__meta">
-              <strong>${title}</strong>
-              <div class="design-asset__badges">
-                ${typeBadge}
-                ${linkBadge}
-                ${campaignBadge}
-                ${templateBadge}
-                ${slideBadge}
-              </div>
-              <span>${escapeHtml(dayLabel)}</span>
-              <span>Status: ${status}</span>
-              ${toneLine}
-              ${captionLine}
-              ${ctaLine}
-              ${slideChips}
-            </div>
-          </article>
-        `;
-      })
-      .join('');
+    const filteredAssets = applyDesignFilters(designAssets);
+    const filteredHasFocus = filteredAssets.some((asset) => String(asset.id) === String(designFocusedAssetId));
+    if (!filteredHasFocus && filteredAssets.length) {
+      designFocusedAssetId = String(filteredAssets[0].id);
+    }
+
+    if (!filteredAssets.length) {
+      designGrid.innerHTML = `
+        <div class="design-assets__empty-results">
+          <p>No assets match your filters.</p>
+          <button type="button" class="link-button" data-clear-filters>Clear filters</button>
+        </div>
+      `;
+      renderDesignEditor();
+      updateDesignSelectionUI();
+      return;
+    }
+
+    const markup =
+      designViewMode === 'list'
+        ? buildDesignAssetListHtml(filteredAssets)
+        : buildDesignAssetGridHtml(filteredAssets);
+    designGrid.innerHTML = markup;
+
     if (highlightDesignAssetId) {
-      const highlightEl = designGrid.querySelector(`.design-asset[data-asset-id="${highlightDesignAssetId}"]`);
-      if (highlightEl) {
-        highlightEl.classList.add('design-asset--highlight');
-        highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const spotlight = designGrid.querySelector(`[data-design-asset-id="${highlightDesignAssetId}"]`);
+      if (spotlight) {
+        spotlight.classList.add('is-focused');
+        spotlight.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         highlightDesignAssetId = null;
         if (urlParams.has('asset')) {
           const newUrl = new URL(window.location.href);
@@ -2103,8 +2205,340 @@ function renderDesignAssets() {
       if (pendingAsset) openDesignAssetDetail(pendingAsset);
       pendingAssetDetailId = null;
     }
+    renderDesignEditor();
     updateDesignSelectionUI();
   }
+
+function buildDesignAssetGridHtml(list = []) {
+  const cards = list
+    .map((asset) => {
+      const assetId = String(asset.id);
+      const isFocused = String(assetId) === String(designFocusedAssetId);
+      const isSelected = selectedDesignAssetIds.has(assetId);
+      const typeLabel = formatAssetTypeLabel(asset.assetType || asset.typeLabel || asset.type || '');
+      const dayLabel = asset.linkedDayLabel || (asset.linkedDay ? `Day ${String(asset.linkedDay).padStart(2, '0')}` : 'Unassigned');
+      const campaignLabel = asset.campaign || 'General';
+      const statusLabel = formatDesignAssetStatusLabel(asset.status);
+      const updatedLabel = formatDesignAssetUpdatedLabel(asset.updatedAt);
+      const monthLabel = asset.monthLabel || '';
+      return `
+        <article class="design-asset-card${isFocused ? ' is-focused' : ''}" data-design-asset-id="${escapeHtml(assetId)}" tabindex="0" role="button" aria-pressed="${isFocused}">
+          <label class="design-asset-card__checkbox">
+            <input type="checkbox" data-asset-select="${escapeHtml(assetId)}" ${isSelected ? 'checked' : ''} />
+            <span class="sr-only">Select ${escapeHtml(asset.title || 'asset')}</span>
+          </label>
+          <div class="design-asset-card__body">
+            <div class="design-asset-card__title-row">
+              <h3>${escapeHtml(asset.title || 'AI Asset')}</h3>
+              <span class="design-asset-card__status design-asset-card__status--${escapeHtml(asset.status || 'draft')}">${statusLabel}</span>
+            </div>
+            <p class="design-asset-card__meta">${escapeHtml(typeLabel)} • ${escapeHtml(dayLabel)} • ${escapeHtml(monthLabel || formatDesignAssetMonth(asset.createdAt))}</p>
+            <p class="design-asset-card__campaign">${escapeHtml(campaignLabel)}</p>
+            <p class="design-asset-card__updated">${updatedLabel}</p>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+  return `<div class="design-assets-list design-assets-list--grid">${cards}</div>`;
+}
+
+function buildDesignAssetListHtml(list = []) {
+  const header = `
+    <div class="design-assets-row design-assets-row--head" role="row">
+      <span class="design-assets-cell design-assets-cell--checkbox"></span>
+      <span class="design-assets-cell">Title</span>
+      <span class="design-assets-cell">Type</span>
+      <span class="design-assets-cell">Linked Day</span>
+      <span class="design-assets-cell">Campaign</span>
+      <span class="design-assets-cell">Status</span>
+      <span class="design-assets-cell">Updated</span>
+    </div>
+  `;
+  const rows = list
+    .map((asset) => {
+      const assetId = String(asset.id);
+      const isFocused = String(assetId) === String(designFocusedAssetId);
+      const isSelected = selectedDesignAssetIds.has(assetId);
+      const typeLabel = formatAssetTypeLabel(asset.assetType || asset.typeLabel || asset.type || '');
+      const dayLabel = asset.linkedDayLabel || (asset.linkedDay ? `Day ${String(asset.linkedDay).padStart(2, '0')}` : 'Unassigned');
+      const statusLabel = formatDesignAssetStatusLabel(asset.status);
+      const updatedLabel = formatDesignAssetUpdatedLabel(asset.updatedAt);
+      return `
+        <div class="design-assets-row${isFocused ? ' is-focused' : ''}" data-design-asset-id="${escapeHtml(assetId)}" role="row" tabindex="0">
+          <span class="design-assets-cell design-assets-cell--checkbox">
+            <input type="checkbox" data-asset-select="${escapeHtml(assetId)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(asset.title || 'asset')}" />
+          </span>
+          <span class="design-assets-cell design-assets-cell--title">${escapeHtml(asset.title || 'AI Asset')}</span>
+          <span class="design-assets-cell">${escapeHtml(typeLabel)}</span>
+          <span class="design-assets-cell">${escapeHtml(dayLabel)}</span>
+          <span class="design-assets-cell">${escapeHtml(asset.campaign || 'General')}</span>
+          <span class="design-assets-cell">${statusLabel}</span>
+          <span class="design-assets-cell">${updatedLabel}</span>
+        </div>
+      `;
+    })
+    .join('');
+  return `<div class="design-assets-table" role="table">${header}${rows}</div>`;
+}
+
+function renderDesignEditor() {
+  if (!designWorkspaceEnabled || !designEditorPanel || !designEditorEmpty) return;
+  setDesignRegeneratingState(isDesignRegenerating);
+  const asset = designAssets.find((item) => String(item.id) === String(designFocusedAssetId));
+  if (!asset) {
+    if (designEditorForm) designEditorForm.style.display = 'none';
+    designEditorEmpty.style.display = '';
+    return;
+  }
+  designEditorEmpty.style.display = 'none';
+  if (designEditorForm) designEditorForm.style.display = 'flex';
+  if (designEditorTitleInput) designEditorTitleInput.value = asset.title || '';
+  if (designEditorStatusSelect) designEditorStatusSelect.value = asset.status || 'draft';
+  if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'social-graphic';
+  if (designEditorDaySelect) designEditorDaySelect.value = asset.linkedDay ? String(asset.linkedDay) : '';
+  if (designEditorToneInput) designEditorToneInput.value = asset.tone || '';
+  if (designEditorCampaignInput) designEditorCampaignInput.value = asset.campaign || '';
+  if (designEditorMonthSelect) designEditorMonthSelect.value = asset.monthLabel || 'This Month';
+  if (designEditorPromptInput) designEditorPromptInput.value = asset.prompt || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || '';
+  if (designEditorPreviewImg) {
+    if (previewSource) {
+      designEditorPreviewImg.src = previewSource;
+      designEditorPreviewImg.style.display = 'block';
+    } else {
+      designEditorPreviewImg.removeAttribute('src');
+      designEditorPreviewImg.style.display = 'none';
+    }
+  }
+  if (designEditorPreviewPlaceholder) {
+    designEditorPreviewPlaceholder.style.display = previewSource ? 'none' : 'flex';
+  }
+}
+
+function populateLinkedDaySelect(selectEl) {
+  if (!selectEl) return;
+  const previous = selectEl.value;
+  let options = '<option value="">Unassigned</option>';
+  for (let day = 1; day <= 30; day += 1) {
+    options += `<option value="${day}">Day ${String(day).padStart(2, '0')}</option>`;
+  }
+  selectEl.innerHTML = options;
+  if (previous) {
+    selectEl.value = previous;
+  }
+}
+
+function setDesignRegeneratingState(isLoading) {
+  if (!designWorkspaceEnabled || !designEditorPanel) return;
+  designEditorPanel.classList.toggle('is-regenerating', isLoading);
+  if (designEditorPreviewPlaceholder) {
+    designEditorPreviewPlaceholder.textContent = isLoading
+      ? 'Generating preview…'
+      : 'Preview will appear after generation.';
+  }
+}
+
+function generateMockPreviewUrl(asset = {}) {
+  const label = formatAssetTypeLabel(asset.assetType || asset.typeLabel || 'Asset');
+  return `https://placehold.co/600x800?text=${encodeURIComponent(label)}+${Date.now()}`;
+}
+
+function updateSelectedAssetField(field, rawValue) {
+  if (!designFocusedAssetId) return;
+  const idx = designAssets.findIndex((item) => String(item.id) === String(designFocusedAssetId));
+  if (idx === -1) return;
+  const next = { ...designAssets[idx] };
+  const value = typeof rawValue === 'string' ? rawValue : rawValue ?? '';
+  if (field === 'linkedDay') {
+    const normalized = value ? Number(value) : null;
+    next.linkedDay = Number.isFinite(normalized) ? normalized : null;
+    next.linkedDayLabel = next.linkedDay ? `Day ${String(next.linkedDay).padStart(2, '0')}` : 'Unassigned';
+  } else if (field === 'assetType') {
+    next.assetType = value || 'social-graphic';
+    next.typeLabel = formatAssetTypeLabel(next.assetType);
+  } else if (field === 'status') {
+    next.status = value || 'draft';
+  } else if (field === 'monthLabel') {
+    next.monthLabel = value || 'This Month';
+  } else if (field === 'title') {
+    next.title = value;
+  } else if (field === 'tone') {
+    next.tone = value;
+  } else if (field === 'campaign') {
+    next.campaign = value;
+  } else if (field === 'prompt') {
+    next.prompt = value;
+  }
+  next.updatedAt = new Date().toISOString();
+  designAssets[idx] = next;
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
+}
+
+function createDesignAsset(partial = {}) {
+  const now = new Date().toISOString();
+  const linkedDay = partial.linkedDay ?? null;
+  const linkedDayLabel = partial.linkedDayLabel || (linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : 'Unassigned');
+  return {
+    id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    title: partial.title || 'Untitled asset',
+    assetType: partial.assetType || 'social-graphic',
+    typeLabel: formatAssetTypeLabel(partial.assetType || 'social-graphic'),
+    linkedDay,
+    linkedDayLabel,
+    tone: partial.tone || 'Default',
+    campaign: partial.campaign || 'General',
+    monthLabel: partial.monthLabel || formatDesignAssetMonth(now) || 'This Month',
+    status: partial.status || 'draft',
+    createdAt: now,
+    updatedAt: now,
+    prompt: partial.prompt || '',
+    previewUrl: partial.previewUrl || '',
+    previewInlineUrl: partial.previewInlineUrl || '',
+  };
+}
+
+function addDesignAsset(asset, { select } = { select: true }) {
+  designAssets.unshift(asset);
+  persistDesignAssetsToStorage();
+  if (select) {
+    designFocusedAssetId = asset.id;
+    selectedDesignAssetIds.clear();
+  }
+  renderDesignAssets();
+}
+
+function duplicateFocusedAsset() {
+  if (!designFocusedAssetId) return;
+  const asset = designAssets.find((item) => String(item.id) === String(designFocusedAssetId));
+  if (!asset) return;
+  const now = new Date().toISOString();
+  const copy = {
+    ...asset,
+    id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    title: `${asset.title || 'AI Asset'} (Copy)`,
+    status: 'draft',
+    createdAt: now,
+    updatedAt: now,
+  };
+  addDesignAsset(copy);
+  showDesignSuccess('Asset duplicated.');
+  setTimeout(() => clearDesignFeedback(), 1800);
+}
+
+function deleteFocusedAsset() {
+  if (!designFocusedAssetId) return;
+  const idx = designAssets.findIndex((item) => String(item.id) === String(designFocusedAssetId));
+  if (idx === -1) return;
+  const asset = designAssets[idx];
+  const title = asset?.title || 'this asset';
+  if (!window.confirm(`Delete ${title}?`)) return;
+  designAssets.splice(idx, 1);
+  selectedDesignAssetIds.delete(String(asset.id));
+  designFocusedAssetId = designAssets[idx]?.id || designAssets[idx - 1]?.id || null;
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
+  showDesignSuccess('Asset deleted.');
+  setTimeout(() => clearDesignFeedback(), 1500);
+}
+
+function openDesignCreatePanel(preset = {}) {
+  if (!designWorkspaceEnabled || !designCreatePanel || !designEditorPanel) {
+    startDesignModal();
+    return;
+  }
+  designEditorPanel.classList.add('is-creating');
+  designCreatePanel.classList.add('is-visible');
+  if (designCreateTypeInput) designCreateTypeInput.value = preset.assetType || 'social-graphic';
+  if (designCreateDayInput) designCreateDayInput.value = preset.linkedDay ? String(preset.linkedDay) : '';
+  if (designCreateToneInput) designCreateToneInput.value = preset.tone || 'Default';
+  if (designCreateCampaignInput) designCreateCampaignInput.value = preset.campaign || 'General';
+  if (designCreateMonthInput) designCreateMonthInput.value = preset.monthLabel || 'This Month';
+  if (designCreatePromptInput) designCreatePromptInput.value = preset.prompt || '';
+}
+
+function closeDesignCreatePanel() {
+  if (!designCreatePanel || !designEditorPanel) return;
+  designEditorPanel.classList.remove('is-creating');
+  designCreatePanel.classList.remove('is-visible');
+  if (designCreateForm) designCreateForm.reset();
+}
+
+function handleDesignCreateSubmit(event) {
+  event.preventDefault();
+  const asset = createDesignAsset({
+    assetType: designCreateTypeInput?.value,
+    linkedDay: designCreateDayInput?.value ? Number(designCreateDayInput.value) : null,
+    tone: designCreateToneInput?.value || 'Default',
+    campaign: designCreateCampaignInput?.value || 'General',
+    monthLabel: designCreateMonthInput?.value || 'This Month',
+    prompt: designCreatePromptInput?.value || '',
+  });
+  addDesignAsset(asset);
+  closeDesignCreatePanel();
+  showDesignSuccess('Asset created.');
+  setTimeout(() => clearDesignFeedback(), 1800);
+}
+
+function handleDesignQuickCreate(preset = {}) {
+  const asset = createDesignAsset({
+    assetType: preset.assetType,
+    linkedDay: preset.linkedDay,
+    title: preset.title,
+    tone: preset.tone,
+    campaign: preset.campaign,
+    monthLabel: preset.monthLabel,
+    prompt: preset.prompt,
+  });
+  addDesignAsset(asset);
+  showDesignSuccess('Asset created.');
+  setTimeout(() => clearDesignFeedback(), 1800);
+}
+
+function formatDesignAssetStatusLabel(status = 'ready') {
+  const map = {
+    draft: 'Draft',
+    ready: 'Ready',
+    exported: 'Exported',
+  };
+  return map[status] || 'Draft';
+}
+
+function formatDesignAssetUpdatedLabel(value) {
+  if (!value) return 'Updated just now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Updated recently';
+  return `Updated ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function formatDesignAssetMonth(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function setDesignFocusedAsset(assetId) {
+  designFocusedAssetId = assetId ? String(assetId) : null;
+  renderDesignAssets();
+}
+
+function clearDesignFilters() {
+  designFilterState.type = 'all';
+  designFilterState.day = 'all';
+  designFilterState.campaign = 'all';
+  designFilterState.tone = 'all';
+  designFilterState.month = 'all';
+  designFilterState.search = '';
+  if (designFilterType) designFilterType.value = 'all';
+  if (designFilterDay) designFilterDay.value = 'all';
+  if (designFilterCampaign) designFilterCampaign.value = 'all';
+  if (designFilterTone) designFilterTone.value = 'all';
+  if (designFilterMonth) designFilterMonth.value = 'all';
+  if (designFilterSearchInput) designFilterSearchInput.value = '';
+  renderDesignAssets();
+}
 
 function getFileExtensionFromSource(source = '') {
   if (!source) return '';
@@ -6249,8 +6683,26 @@ if (hubEmptyGenBtn) {
 }
 
 // Design Lab events
-if (designRequestBtn) designRequestBtn.addEventListener('click', () => startDesignModal());
-if (designEmptyCta) designEmptyCta.addEventListener('click', () => startDesignModal());
+if (designRequestBtn) {
+  if (designWorkspaceEnabled) {
+    designRequestBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      openDesignCreatePanel();
+    });
+  } else {
+    designRequestBtn.addEventListener('click', () => startDesignModal());
+  }
+}
+if (designEmptyCta) {
+  if (designWorkspaceEnabled) {
+    designEmptyCta.addEventListener('click', (event) => {
+      event.preventDefault();
+      openDesignCreatePanel();
+    });
+  } else {
+    designEmptyCta.addEventListener('click', () => startDesignModal());
+  }
+}
 if (designCloseBtn) designCloseBtn.addEventListener('click', closeDesignModal);
 if (designCancelBtn) designCancelBtn.addEventListener('click', closeDesignModal);
 if (designTemplateSelect) {
@@ -6313,23 +6765,39 @@ if (designViewListBtn) {
 }
 if (designSuggestionButtons.length) {
   designSuggestionButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const assetType = button.dataset.assetType || 'social-graphic';
-      const caption = button.dataset.caption || '';
-      const notes = button.dataset.notes || '';
-      const day = Number(button.dataset.day) || null;
-      const entry = {
-        idea: button.textContent.trim(),
-        caption,
-        description: caption,
-        day,
-      };
-      if (designAssetTypeInput) designAssetTypeInput.value = assetType;
-      if (designToneInput && button.dataset.tone) designToneInput.value = button.dataset.tone;
-      if (designNotesInput) designNotesInput.value = notes;
-      renderDesignLivePreview();
-      startDesignModal(entry, day);
-    });
+    if (designWorkspaceEnabled) {
+      button.addEventListener('click', () => {
+        const day = Number(button.dataset.day) || null;
+        handleDesignQuickCreate({
+          assetType: button.dataset.assetType || 'social-graphic',
+          linkedDay: day,
+          linkedDayLabel: day ? `Day ${String(day).padStart(2, '0')}` : 'Unassigned',
+          tone: button.dataset.tone || 'Default',
+          campaign: 'General',
+          monthLabel: 'This Month',
+          title: button.textContent.trim(),
+          prompt: `Auto-generated starter prompt for ${formatAssetTypeLabel(button.dataset.assetType || 'social-graphic')}.`,
+        });
+      });
+    } else {
+      button.addEventListener('click', () => {
+        const assetType = button.dataset.assetType || 'social-graphic';
+        const caption = button.dataset.caption || '';
+        const notes = button.dataset.notes || '';
+        const day = Number(button.dataset.day) || null;
+        const entry = {
+          idea: button.textContent.trim(),
+          caption,
+          description: caption,
+          day,
+        };
+        if (designAssetTypeInput) designAssetTypeInput.value = assetType;
+        if (designToneInput && button.dataset.tone) designToneInput.value = button.dataset.tone;
+        if (designNotesInput) designNotesInput.value = notes;
+        renderDesignLivePreview();
+        startDesignModal(entry, day);
+      });
+    }
   });
 }
 if (designModal) {
@@ -6380,8 +6848,70 @@ if (designFilterTone) {
     renderDesignAssets();
   });
 }
+if (designFilterSearchInput) {
+  designFilterSearchInput.addEventListener('input', (event) => {
+    designFilterState.search = (event.target.value || '').trim().toLowerCase();
+    renderDesignAssets();
+  });
+}
+if (designWorkspaceEnabled && designEditorForm) {
+  designEditorForm.addEventListener('submit', (event) => event.preventDefault());
+}
+if (designWorkspaceEnabled && designEditorTitleInput) {
+  designEditorTitleInput.addEventListener('input', (event) => updateSelectedAssetField('title', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorStatusSelect) {
+  designEditorStatusSelect.addEventListener('change', (event) => updateSelectedAssetField('status', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorTypeSelect) {
+  designEditorTypeSelect.addEventListener('change', (event) => updateSelectedAssetField('assetType', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorDaySelect) {
+  designEditorDaySelect.addEventListener('change', (event) => updateSelectedAssetField('linkedDay', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorToneInput) {
+  designEditorToneInput.addEventListener('input', (event) => updateSelectedAssetField('tone', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorCampaignInput) {
+  designEditorCampaignInput.addEventListener('input', (event) => updateSelectedAssetField('campaign', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorMonthSelect) {
+  designEditorMonthSelect.addEventListener('change', (event) => updateSelectedAssetField('monthLabel', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorPromptInput) {
+  designEditorPromptInput.addEventListener('input', (event) => updateSelectedAssetField('prompt', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorSaveBtn) {
+  designEditorSaveBtn.addEventListener('click', () => {
+    showDesignSuccess('Changes saved.');
+    setTimeout(() => clearDesignFeedback(), 1500);
+  });
+}
+if (designWorkspaceEnabled && designEditorDuplicateBtn) {
+  designEditorDuplicateBtn.addEventListener('click', duplicateFocusedAsset);
+}
+if (designWorkspaceEnabled && designEditorDeleteBtn) {
+  designEditorDeleteBtn.addEventListener('click', deleteFocusedAsset);
+}
+if (designWorkspaceEnabled && designCreateForm) {
+  designCreateForm.addEventListener('submit', handleDesignCreateSubmit);
+}
+if (designWorkspaceEnabled && designCreateCancelBtn) {
+  designCreateCancelBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    closeDesignCreatePanel();
+  });
+}
+if (designWorkspaceEnabled && designCreateCloseBtn) {
+  designCreateCloseBtn.addEventListener('click', () => closeDesignCreatePanel());
+}
 if (designGrid) {
   designGrid.addEventListener('click', async (event) => {
+    const clearFiltersBtn = event.target.closest('[data-clear-filters]');
+    if (clearFiltersBtn) {
+      clearDesignFilters();
+      return;
+    }
     const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
     const actionBtn = actionTarget?.closest('[data-asset-action]');
     if (actionBtn) {
@@ -6409,6 +6939,16 @@ if (designGrid) {
         deleteDesignAsset(asset, actionBtn.dataset.assetDay);
       }
       return;
+    }
+    const card = event.target.closest('[data-design-asset-id]');
+    if (card) {
+      const clickedCheckbox = event.target instanceof HTMLInputElement && event.target.type === 'checkbox';
+      const withinCheckboxLabel =
+        !clickedCheckbox && event.target.closest('label')?.querySelector('input[type="checkbox"]');
+      if (!clickedCheckbox && !withinCheckboxLabel) {
+        const assetId = card.dataset.designAssetId || '';
+        if (assetId) setDesignFocusedAsset(assetId);
+      }
     }
   });
 
@@ -6470,6 +7010,17 @@ if (designGrid) {
       const id = String(checkbox.dataset.assetSelect ?? '').trim();
       toggleDesignAssetSelection(id, checkbox.checked);
       return;
+    }
+  });
+
+  designGrid.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target instanceof HTMLInputElement && event.target.type === 'checkbox') return;
+    const card = event.target.closest('[data-design-asset-id]');
+    if (card) {
+      event.preventDefault();
+      const assetId = card.dataset.designAssetId || '';
+      if (assetId) setDesignFocusedAsset(assetId);
     }
   });
 }
