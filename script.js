@@ -307,7 +307,9 @@ function setAutofillField(field, value = '') {
   const config = designAutofillMap[field];
   if (!config) return;
   const textValue = value ? value.trim() : '';
-  if (config.display) config.display.textContent = textValue || 'Not set';
+  const fallback =
+    (config.display && config.display.dataset && config.display.dataset.emptyLabel) || 'Tap Edit to add';
+  if (config.display) config.display.textContent = textValue || fallback;
   if (config.input) {
     config.input.value = value || '';
     config.input.setAttribute('readonly', 'readonly');
@@ -350,7 +352,9 @@ function initializeDesignAutofillFields() {
     if (config.input) {
       config.input.addEventListener('input', () => {
         if (config.wrapper?.classList.contains('is-editing') && config.display) {
-          config.display.textContent = config.input.value.trim() || 'Not set';
+          const fallback =
+            (config.display.dataset && config.display.dataset.emptyLabel) || 'Tap Edit to add';
+          config.display.textContent = config.input.value.trim() || fallback;
         }
       });
     }
@@ -1335,80 +1339,133 @@ function deleteDesignAsset(asset, assetDay) {
   showDesignSuccess('Asset deleted.');
 }
 
-function mapToneToTheme(tone = 'bold') {
-  const presets = {
-    bold: {
-      from: '#7f5af0',
-      to: '#ff7ac3',
-      text: '#ffffff',
-    },
+function hexToRgba(hex, alpha = 1) {
+  if (!hex) return `rgba(127,90,240,${alpha})`;
+  const normalized = hex.replace('#', '');
+  const isShort = normalized.length === 3;
+  if (![3, 6].includes(normalized.length)) return hex;
+  const expand = (str) => (isShort ? str + str : str);
+  const r = parseInt(expand(normalized.substring(0, isShort ? 1 : 2)), 16);
+  const g = parseInt(expand(normalized.substring(isShort ? 1 : 2, isShort ? 2 : 4)), 16);
+  const b = parseInt(expand(normalized.substring(isShort ? 2 : 4, isShort ? 3 : 6)), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getPreviewTheme(tone = 'bold') {
+  const palette = getBrandPaletteDefaults();
+  const base = {
+    from: palette.primaryColor || '#7f5af0',
+    to: palette.accentColor || '#ff7ac3',
+    textColor: '#f5f6f8',
+    canvas: `linear-gradient(145deg, rgba(4,6,20,0.95), ${hexToRgba(palette.accentColor || '#ff7ac3', 0.2)})`,
+  };
+  const toneMap = {
     minimal: {
-      from: '#0b1b2b',
-      to: '#1f3a5f',
-      text: '#f5f6f8',
+      from: hexToRgba(palette.secondaryColor || '#9ca3af', 0.45),
+      to: 'rgba(8,12,20,0.9)',
+      textColor: '#e2e8f0',
+      canvas: `linear-gradient(140deg, rgba(4,6,18,0.96), ${hexToRgba(palette.secondaryColor || '#9ca3af', 0.25)})`,
     },
     playful: {
-      from: '#ff9472',
-      to: '#f2709c',
-      text: '#1d1d1d',
+      from: palette.secondaryColor || '#2cb1bc',
+      to: palette.accentColor || '#ff7ac3',
+      textColor: '#181a27',
+      canvas: `linear-gradient(150deg, rgba(6,8,20,0.94), ${hexToRgba(palette.secondaryColor || '#2cb1bc', 0.25)})`,
     },
     elegant: {
       from: '#0f0c29',
-      to: '#302b63',
-      text: '#fdf6e3',
+      to: palette.primaryColor || '#7f5af0',
+      textColor: '#f7f3e9',
+      canvas: `linear-gradient(150deg, rgba(6,6,14,0.97), ${hexToRgba(palette.primaryColor || '#7f5af0', 0.2)})`,
     },
   };
-  return presets[tone] || presets.bold;
+  const resolved = { ...base, ...(toneMap[tone] || {}) };
+  return {
+    ...resolved,
+    headingFont: palette.headingFont || 'Inter Bold',
+    bodyFont: palette.bodyFont || 'Source Sans Pro',
+    logo: (currentBrandKit && (currentBrandKit.logoDataUrl || currentBrandKit.logoUrl)) || '',
+  };
+}
+
+function buildPreviewLogo(theme) {
+  if (!theme.logo) {
+    return `<span class="design-preview__logo">Logo</span>`;
+  }
+  return `<span class="design-preview__logo"><img src="${escapeHtml(theme.logo)}" alt="Brand logo" /></span>`;
 }
 
 function buildPreviewMarkup(type, tone) {
-  const theme = mapToneToTheme(tone);
-  const baseStyle = `background: linear-gradient(135deg, ${theme.from}, ${theme.to}); color: ${theme.text};`;
+  const theme = getPreviewTheme(tone);
+  const baseStyle = `background: linear-gradient(135deg, ${theme.from}, ${theme.to}); color: ${theme.textColor}; font-family: ${theme.headingFont}, 'Inter', sans-serif;`;
+  const secondaryStyle = `background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: ${theme.textColor}; font-family: ${theme.bodyFont}, 'Source Sans Pro', sans-serif;`;
+  const logo = buildPreviewLogo(theme);
+  const storySlides = ['Hook', 'Proof/Tip', 'CTA'];
   if (type === 'story-template') {
-    return `
-      <div class="design-preview__mock design-preview__story">
-        <div class="design-preview__story-frame" style="${baseStyle}">Hook: Show behind-the-scenes</div>
-        <div class="design-preview__story-frame" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Slide 2: Tip overlay</div>
-        <div class="design-preview__story-frame" style="${baseStyle}">Swipe up CTA</div>
-      </div>
-    `;
+    const slides = storySlides
+      .map((label, idx) => {
+        const frameStyle = idx === 1 ? secondaryStyle : `${baseStyle} font-family: ${theme.bodyFont}, 'Source Sans Pro', sans-serif;`;
+        return `<div class="design-preview__story-frame" style="${frameStyle}"><span class="design-preview__slide-label">Slide ${idx + 1}</span>${label}</div>`;
+      })
+      .join('');
+    return {
+      html: `<div class="design-preview__mock design-preview__story" style="font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;">${logo}${slides}</div>`,
+      background: theme.canvas,
+    };
   }
   if (type === 'carousel-template') {
-    return `
-      <div class="design-preview__mock design-preview__carousel">
-        <div class="design-preview__carousel-slide" style="${baseStyle}">Hook</div>
-        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Problem</div>
-        <div class="design-preview__carousel-slide" style="${baseStyle}">Solution</div>
-        <div class="design-preview__carousel-slide" style="background: rgba(255,255,255,0.08); color:#f5f6f8;">Result</div>
-      </div>
-    `;
+    const slides = ['Hook', 'Proof', 'Tip', 'CTA']
+      .map((text, idx) => {
+        const style =
+          idx % 2 === 0
+            ? `${baseStyle} font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;`
+            : secondaryStyle;
+        return `<div class="design-preview__carousel-slide" style="${style}"><span class="design-preview__slide-label">Slide ${idx + 1}</span>${text}</div>`;
+      })
+      .join('');
+    return {
+      html: `<div class="design-preview__mock design-preview__carousel" style="font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;">${logo}${slides}</div>`,
+      background: theme.canvas,
+    };
   }
   if (type === 'video-snippet') {
-    return `
-      <div class="design-preview__mock design-preview__video" style="${baseStyle}">
+    return {
+      html: `<div class="design-preview__mock design-preview__video" style="${baseStyle}">
+        ${logo}
+        <div class="design-preview__track" style="background: rgba(255,255,255,0.25);"></div>
         <div class="design-preview__track" style="background: rgba(255,255,255,0.3);"></div>
-        <div class="design-preview__track" style="background: rgba(255,255,255,0.3);"></div>
-        <div class="design-preview__track" style="background: rgba(255,255,255,0.65);"></div>
-        <span style="font-size:0.75rem;text-align:center;">Vertical reel storyboard</span>
-      </div>
-    `;
+        <div class="design-preview__track" style="background: rgba(255,255,255,0.55);"></div>
+        <span style="font-size:0.75rem;text-align:center;font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;">Vertical reel storyboard</span>
+      </div>`,
+      background: theme.canvas,
+    };
   }
-  return `
-    <div class="design-preview__mock">
-      <div class="design-preview__graphic" style="${baseStyle}">
-        <strong>Hook headline</strong>
-        <p>“Quote or caption preview”</p>
-        <div style="border-radius:999px;border:1px solid rgba(255,255,255,0.6);padding:0.2rem 0.9rem;font-size:0.8rem;">CTA Button</div>
+  const headlineFont = `${theme.headingFont}, 'Inter', sans-serif`;
+  const bodyFont = `${theme.bodyFont}, 'Source Sans Pro', sans-serif`;
+  return {
+    html: `
+      <div class="design-preview__mock">
+        ${logo}
+        <div class="design-preview__graphic" style="${baseStyle}">
+          <strong style="font-family:${headlineFont};">Hook headline</strong>
+          <p style="font-family:${bodyFont};">“Caption preview tied to your concept.”</p>
+          <div style="border-radius:999px;border:1px solid rgba(255,255,255,0.6);padding:0.2rem 0.9rem;font-size:0.8rem;">CTA Button</div>
+        </div>
       </div>
-    </div>
-  `;
+    `,
+    background: theme.canvas,
+  };
 }
 
 function renderDesignLivePreview() {
   if (!designPreviewEl) return;
   const type = designAssetTypeInput?.value || 'social-graphic';
   const tone = designToneInput?.value || 'bold';
-  designPreviewEl.innerHTML = buildPreviewMarkup(type, tone);
+  const preview = buildPreviewMarkup(type, tone);
+  designPreviewEl.innerHTML = preview.html;
+  if (preview.background) {
+    designPreviewEl.style.background = preview.background;
+  }
 }
 
 async function openDesignAssetDetail(target) {
@@ -3203,6 +3260,7 @@ function applyBrandKitToForm(kit) {
   updateFontPickerSelection('brand-heading-font', brandHeadingFontInput?.value || '');
   updateFontPickerSelection('brand-body-font', brandBodyFontInput?.value || '');
   updateBrandLogoPreview(kit?.logoDataUrl || '');
+  renderDesignLivePreview();
 }
 
 function serializeBrandKitForm() {
@@ -6279,6 +6337,8 @@ if (designNotesInput) {
   designNotesInput.addEventListener('input', () => {
     if (designNotesInput.value.trim()) {
       setDesignNotesCollapsed(false);
+    } else {
+      setDesignNotesCollapsed(true);
     }
   });
 }

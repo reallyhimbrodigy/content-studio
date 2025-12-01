@@ -163,7 +163,10 @@
           <input type="hidden" id="design-day" />
           <p id="design-selected-post" class="design-selected-post"></p>
           <section class="design-form__section">
-            <label class="design-label" for="design-asset-type">Asset Type</label>
+            <label class="design-label" for="design-asset-type">
+              Asset Type
+              <span class="design-label__tooltip" title="Pick the format that best matches your platform.">?</span>
+            </label>
             <div class="design-select design-select--icons">
               <select id="design-asset-type" required>
                 <option value="social-graphic">Social graphic</option>
@@ -172,10 +175,10 @@
                 <option value="video-snippet">Video snippet</option>
               </select>
               <div class="design-select__legend">
-                <span data-icon="graphic">Graphic</span>
-                <span data-icon="carousel">Carousel</span>
-                <span data-icon="story">Story</span>
-                <span data-icon="video">Video</span>
+                <span data-icon="graphic">🖼 Social Graphic</span>
+                <span data-icon="carousel">🗂 Carousel</span>
+                <span data-icon="story">📱 Story</span>
+                <span data-icon="video">🎬 Video</span>
               </div>
             </div>
           </section>
@@ -194,7 +197,10 @@
             <div id="design-template-gallery" class="design-template-gallery" aria-live="polite"></div>
           </section>
           <section class="design-form__section">
-            <label class="design-label" for="design-tone">Creative Direction</label>
+            <label class="design-label" for="design-tone">
+              Creative Direction
+              <span class="design-label__tooltip" title="Choose a preset style for typography, shapes, and energy.">?</span>
+            </label>
             <select id="design-tone">
               <option value="bold">Bold & punchy</option>
               <option value="minimal">Minimal & clean</option>
@@ -206,30 +212,30 @@
             <div class="design-autofill" data-autofill="concept">
               <div class="design-autofill__head">
                 <label for="design-concept">Concept</label>
-                <button type="button" class="design-autofill__edit" data-autofill-edit="concept">Edit</button>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="concept" title="Edit concept field">Edit</button>
               </div>
-              <div class="design-autofill__value" id="design-concept-display">Not set</div>
+              <div class="design-autofill__value" id="design-concept-display" data-empty-label="Tap Edit to add">Tap Edit to add</div>
               <input type="text" id="design-concept" class="design-autofill__input" />
             </div>
             <div class="design-autofill" data-autofill="caption">
               <div class="design-autofill__head">
                 <label for="design-caption-cue">Caption Cue</label>
-                <button type="button" class="design-autofill__edit" data-autofill-edit="caption">Edit</button>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="caption" title="Edit caption cue">Edit</button>
               </div>
-              <div class="design-autofill__value" id="design-caption-display">Not set</div>
+              <div class="design-autofill__value" id="design-caption-display" data-empty-label="Tap Edit to add">Tap Edit to add</div>
               <input type="text" id="design-caption-cue" class="design-autofill__input" />
             </div>
             <div class="design-autofill" data-autofill="cta">
               <div class="design-autofill__head">
                 <label for="design-cta">CTA</label>
-                <button type="button" class="design-autofill__edit" data-autofill-edit="cta">Edit</button>
+                <button type="button" class="design-autofill__edit" data-autofill-edit="cta" title="Edit call-to-action">Edit</button>
               </div>
-              <div class="design-autofill__value" id="design-cta-display">Not set</div>
+              <div class="design-autofill__value" id="design-cta-display" data-empty-label="Tap Edit to add">Tap Edit to add</div>
               <input type="text" id="design-cta" class="design-autofill__input" />
             </div>
           </section>
           <section class="design-form__section design-notes-collapsible">
-            <button type="button" class="design-notes__toggle" id="design-notes-toggle" aria-expanded="false">
+            <button type="button" class="design-notes__toggle" id="design-notes-toggle" aria-expanded="false" aria-controls="design-notes-panel">
               Add extra notes (optional)
             </button>
             <div class="design-notes__panel" id="design-notes-panel">
