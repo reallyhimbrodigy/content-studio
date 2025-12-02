@@ -408,7 +408,6 @@ async function handleCreateDesignAsset(req, res) {
       (linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : 'Post Graphic');
     const subtitle = (body.subtitle || body.caption || '').trim();
     const cta = (body.cta || '').trim() || 'Learn more';
-    const brandColor = (body.brandColor || '').trim() || '#7f5af0';
     const logoUrl = (body.logoUrl || '').trim();
     const backgroundImageUrl = (body.backgroundImageUrl || '').trim();
     const platform = (body.platform || 'instagram').toLowerCase();
@@ -416,7 +415,6 @@ async function handleCreateDesignAsset(req, res) {
       title,
       subtitle,
       cta,
-      brand_color: brandColor,
       logo: logoUrl,
       background_image: backgroundImageUrl,
       platform,
