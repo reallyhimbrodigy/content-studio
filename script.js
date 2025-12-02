@@ -246,6 +246,7 @@ let currentPostFrequency = 1;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
+let designAssetsApiDisabled = false;
 let isFetchingDesignAssets = false;
 let activeDesignContext = null;
 let currentBrandKit = null;
@@ -633,6 +634,11 @@ async function refreshDesignAssetById(assetId) {
   if (!assetId) return;
   try {
     const response = await fetchWithAuth(`/api/design-assets/${encodeURIComponent(assetId)}`, { method: 'GET' });
+    if (response.status === 501) {
+      designAssetsApiDisabled = true;
+      console.warn('Design asset detail API unavailable.');
+      return;
+    }
     if (!response.ok) return;
     const asset = await response.json();
     if (asset && asset.id) {
@@ -645,10 +651,15 @@ async function refreshDesignAssetById(assetId) {
       }
     }
   } catch (error) {
-    console.warn('Unable to refresh design asset', error);
     if (error?.status === 401) {
       return;
     }
+    if (error?.status === 501) {
+      designAssetsApiDisabled = true;
+      console.warn('Design asset detail API unavailable.');
+      return;
+    }
+    console.warn('Unable to refresh design asset', error);
     const existing = designAssets.find((item) => String(item.id) === String(assetId));
     if (existing && existing.status === 'rendering') {
       existing.status = 'failed';
@@ -684,6 +695,7 @@ function scheduleDesignAssetPoll(assetId, delay = 5000) {
 
 async function refreshDesignAssetsFromServer(filters = {}) {
   if (!designWorkspaceEnabled && !designSection) return;
+  if (designAssetsApiDisabled) return;
   if (isFetchingDesignAssets) return;
   isFetchingDesignAssets = true;
   try {
@@ -692,6 +704,11 @@ async function refreshDesignAssetsFromServer(filters = {}) {
     if (filters.type) params.set('type', filters.type);
     const suffix = params.toString() ? `?${params.toString()}` : '';
     const response = await fetchWithAuth(`/api/design-assets${suffix}`, { method: 'GET' });
+    if (response.status === 501) {
+      console.warn('Design asset API unavailable on this environment. Skipping remote assets.');
+      designAssetsApiDisabled = true;
+      return;
+    }
     if (!response.ok) {
       console.warn('Design assets API error', response.status);
       return;
@@ -719,6 +736,11 @@ async function refreshDesignAssetsFromServer(filters = {}) {
     }
   } catch (error) {
     if (error?.status === 401) {
+      return;
+    }
+    if (error?.status === 501) {
+      designAssetsApiDisabled = true;
+      console.warn('Design asset API unavailable on this environment.');
       return;
     }
     console.warn('Unable to fetch design assets from server', error);
@@ -4742,6 +4764,10 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+    if (response.status === 501) {
+      designAssetsApiDisabled = true;
+      throw new Error('Design pipeline is not available in this environment.');
+    }
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       const message = detail?.error || `Design API error ${response.status}`;
