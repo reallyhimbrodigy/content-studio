@@ -496,7 +496,7 @@ async function handleCreateDesignAsset(req, res) {
 async function handleListDesignAssets(req, res, query) {
   try {
     if (!supabaseAdmin) {
-      return sendJson(res, 501, { error: 'Supabase not configured' });
+      return sendJson(res, 200, []);
     }
     const user = await requireSupabaseUser(req);
     let builder = supabaseAdmin
@@ -529,7 +529,7 @@ async function handleListDesignAssets(req, res, query) {
 async function handleGetDesignAsset(req, res, assetId) {
   try {
     if (!supabaseAdmin) {
-      return sendJson(res, 501, { error: 'Supabase not configured' });
+      return sendJson(res, 404, { error: 'Asset not found' });
     }
     const user = await requireSupabaseUser(req);
     const { data, error } = await supabaseAdmin
