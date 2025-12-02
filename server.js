@@ -13,6 +13,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
+// NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
@@ -299,6 +300,26 @@ function mapDesignAssetRow(row) {
   };
 }
 
+async function markDesignAssetStatus(id, patch = {}) {
+  if (!supabaseAdmin || !id) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('design_assets')
+      .update(patch)
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) {
+      console.error('Unable to update design asset status', { id, error });
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.error('Design asset status update failed', { id, message: error?.message });
+    return null;
+  }
+}
+
 async function advanceDesignAssetPipeline(assetRow) {
   if (!assetRow || assetRow.status !== 'rendering' || !assetRow.placid_render_id) {
     return assetRow;
@@ -311,21 +332,17 @@ async function advanceDesignAssetPipeline(assetRow) {
       return assetRow;
     }
     if (['failed', 'error'].includes(status)) {
-      const { data } = await supabaseAdmin
-        .from('design_assets')
-        .update({ status: 'failed' })
-        .eq('id', assetRow.id)
-        .select('*')
-        .single();
+      const data = await markDesignAssetStatus(assetRow.id, {
+        status: 'failed',
+        data: { ...(assetRow.data || {}), error_code: 'placid_render_failed' },
+      });
       return data || assetRow;
     }
     if (!isCloudinaryConfigured()) {
-      const { data } = await supabaseAdmin
-        .from('design_assets')
-        .update({ status: 'failed' })
-        .eq('id', assetRow.id)
-        .select('*')
-        .single();
+      const data = await markDesignAssetStatus(assetRow.id, {
+        status: 'failed',
+        data: { ...(assetRow.data || {}), error_code: 'cloudinary_config_missing' },
+      });
       return data || assetRow;
     }
     const upload = await uploadAssetFromUrl({ url: renderResult.imageUrl });
@@ -333,34 +350,20 @@ async function advanceDesignAssetPipeline(assetRow) {
       ...(assetRow.data || {}),
       preview_url: upload.secureUrl || renderResult.imageUrl,
     };
-    const { data, error } = await supabaseAdmin
-      .from('design_assets')
-      .update({
-        status: 'ready',
-        cloudinary_public_id: upload.publicId,
-        data: updatedData,
-      })
-      .eq('id', assetRow.id)
-      .select('*')
-      .single();
-    if (error) {
-      throw error;
-    }
+    const data = await markDesignAssetStatus(assetRow.id, {
+      status: 'ready',
+      cloudinary_public_id: upload.publicId,
+      data: updatedData,
+    });
+    if (!data) return assetRow;
     return data || assetRow;
   } catch (error) {
     console.error('Design asset pipeline error:', error);
-    try {
-      const { data } = await supabaseAdmin
-        .from('design_assets')
-        .update({ status: 'failed' })
-        .eq('id', assetRow.id)
-        .select('*')
-        .single();
-      return data || assetRow;
-    } catch (writeErr) {
-      console.error('Unable to mark design asset as failed', writeErr);
-      return assetRow;
-    }
+    const data = await markDesignAssetStatus(assetRow.id, {
+      status: 'failed',
+      data: { ...(assetRow.data || {}), error_code: 'pipeline_failure' },
+    });
+    return data || assetRow;
   }
 }
 
@@ -420,10 +423,11 @@ async function handleCreateDesignAsset(req, res) {
       campaign: body.campaign || '',
       tone: body.tone || '',
     };
+    let insertedRow = null;
     const { data: inserted, error } = await supabaseAdmin
       .from('design_assets')
       .insert({
-        user_id: user.id,
+        user_id: user.id, // user_id stored so RLS can enforce ownership.
         calendar_day_id: calendarDayId,
         type: 'post_graphic',
         placid_template_id: POST_GRAPHIC_TEMPLATE_ID,
@@ -436,6 +440,7 @@ async function handleCreateDesignAsset(req, res) {
       console.error('Unable to insert design asset', error);
       return sendJson(res, 500, { error: 'Unable to create design asset' });
     }
+    insertedRow = inserted;
     let currentRow = inserted;
     try {
       const render = await createPlacidRender({
@@ -443,8 +448,11 @@ async function handleCreateDesignAsset(req, res) {
         data: buildPlacidPayload(designData),
       });
       if (!render?.renderId) {
-        await supabaseAdmin.from('design_assets').update({ status: 'failed' }).eq('id', inserted.id);
-        return sendJson(res, 502, { error: 'Unable to start render for this asset' });
+        await markDesignAssetStatus(inserted.id, {
+          status: 'failed',
+          data: { ...designData, error_code: 'placid_render_unavailable' },
+        });
+        return sendJson(res, 502, { error: 'Unable to start render for this asset', status: 'failed' });
       }
       const { data: updated, error: updateError } = await supabaseAdmin
         .from('design_assets')
@@ -457,17 +465,31 @@ async function handleCreateDesignAsset(req, res) {
       }
     } catch (err) {
       console.error('Placid render error:', err);
-      await supabaseAdmin
-        .from('design_assets')
-        .update({ status: 'failed' })
-        .eq('id', inserted.id);
-      return sendJson(res, 502, { error: 'Unable to start render for this asset' });
+      await markDesignAssetStatus(inserted.id, {
+        status: 'failed',
+        data: { ...designData, error_code: 'placid_render_failed' },
+      });
+      return sendJson(res, 502, { error: 'Unable to start render for this asset', status: 'failed' });
     }
     return sendJson(res, 201, mapDesignAssetRow(currentRow));
   } catch (error) {
-    const status = error.statusCode || 500;
     console.error('Design asset create error:', error);
-    return sendJson(res, status, { error: error.message || 'Unknown error' });
+    if (error?.statusCode === 401) {
+      return sendJson(res, 401, { error: 'Unauthorized' });
+    }
+    if (error?.statusCode === 501) {
+      return sendJson(res, 501, { error: 'Design pipeline not configured' });
+    }
+    if (error?.statusCode === 400) {
+      return sendJson(res, 400, { error: error.message || 'Invalid request' });
+    }
+    if (insertedRow?.id) {
+      await markDesignAssetStatus(insertedRow.id, {
+        status: 'failed',
+        data: { ...(insertedRow.data || {}), error_code: 'design_asset_create_failed' },
+      });
+    }
+    return sendJson(res, 500, { error: 'Unable to create design asset', status: 'failed' });
   }
 }
 
@@ -480,7 +502,7 @@ async function handleListDesignAssets(req, res, query) {
     let builder = supabaseAdmin
       .from('design_assets')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id) // RLS + explicit user_id filter ensure each user only sees their own assets.
       .order('created_at', { ascending: false });
     if (query.calendarDayId) {
       builder = builder.eq('calendar_day_id', query.calendarDayId);
@@ -496,9 +518,11 @@ async function handleListDesignAssets(req, res, query) {
     const payload = (data || []).map((row) => mapDesignAssetRow(row));
     return sendJson(res, 200, payload);
   } catch (error) {
-    const status = error.statusCode || 500;
     console.error('Design asset list error:', error);
-    return sendJson(res, status, { error: error.message || 'Unable to list assets' });
+    if (error?.statusCode === 401) {
+      return sendJson(res, 401, { error: 'Unauthorized' });
+    }
+    return sendJson(res, 500, { error: 'Unable to list assets' });
   }
 }
 
@@ -512,7 +536,7 @@ async function handleGetDesignAsset(req, res, assetId) {
       .from('design_assets')
       .select('*')
       .eq('id', assetId)
-      .eq('user_id', user.id)
+      .eq('user_id', user.id) // RLS + explicit user_id filter ensure each user only sees their own assets.
       .single();
     if (error || !data) {
       return sendJson(res, 404, { error: 'Asset not found' });
@@ -520,9 +544,11 @@ async function handleGetDesignAsset(req, res, assetId) {
     const nextRow = await advanceDesignAssetPipeline(data);
     return sendJson(res, 200, mapDesignAssetRow(nextRow));
   } catch (error) {
-    const status = error.statusCode || 500;
     console.error('Design asset fetch error:', error);
-    return sendJson(res, status, { error: error.message || 'Unable to load asset' });
+    if (error?.statusCode === 401) {
+      return sendJson(res, 401, { error: 'Unauthorized' });
+    }
+    return sendJson(res, 500, { error: 'Unable to load asset' });
   }
 }
 
@@ -1356,6 +1382,7 @@ const server = http.createServer((req, res) => {
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none';");
+  // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');

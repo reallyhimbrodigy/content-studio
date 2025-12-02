@@ -537,6 +537,23 @@ body {
   color: rgba(133, 190, 255, 0.95);
 }
 
+.design-asset-card__status--rendering {
+  border-color: rgba(255, 212, 128, 0.7);
+  color: rgba(255, 212, 128, 0.95);
+}
+
+.design-asset-card__status--failed {
+  border-color: rgba(255, 120, 120, 0.7);
+  color: rgba(255, 150, 150, 0.95);
+}
+
+.design-editor__status-note {
+  margin: 0.6rem 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  min-height: 1.2rem;
+}
+
 .design-asset-card__meta,
 .design-asset-card__campaign,
 .design-asset-card__updated {
@@ -4205,6 +4222,25 @@ body.prefers-reduced-motion *::after {
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin: 0;
+}
+
+.calendar-card__asset-status {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.calendar-card__asset-status--rendering {
+  color: rgba(255, 212, 128, 0.95);
+}
+
+.calendar-card__asset-status--failed {
+  color: rgba(255, 150, 150, 0.95);
+}
+
+.calendar-card__asset-note {
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
 }
 
 .calendar-card__asset-badge {

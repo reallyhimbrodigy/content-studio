@@ -176,6 +176,7 @@ const designEditorMonthSelect = document.getElementById('design-editor-month');
 const designEditorPromptInput = document.getElementById('design-editor-prompt');
 const designEditorPreviewImg = document.getElementById('design-editor-preview-img');
 const designEditorPreviewPlaceholder = document.getElementById('design-editor-preview-placeholder');
+const designEditorStatusNote = document.getElementById('design-editor-status-note');
 const designEditorSaveBtn = document.getElementById('design-editor-save');
 const designEditorDuplicateBtn = document.getElementById('design-editor-duplicate');
 const designEditorDeleteBtn = document.getElementById('design-editor-delete');
@@ -244,6 +245,7 @@ let cachedUserIsPro = false;
 let currentPostFrequency = 1;
 let designAssets = [];
 const designAssetPollTimers = new Map();
+const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
 let isFetchingDesignAssets = false;
 let activeDesignContext = null;
 let currentBrandKit = null;
@@ -644,32 +646,52 @@ async function refreshDesignAssetById(assetId) {
     }
   } catch (error) {
     console.warn('Unable to refresh design asset', error);
+    if (error?.status === 401) {
+      return;
+    }
+    const existing = designAssets.find((item) => String(item.id) === String(assetId));
+    if (existing && existing.status === 'rendering') {
+      existing.status = 'failed';
+      existing.previewText = 'This asset could not be rendered.';
+      renderDesignAssets();
+    }
   }
 }
 
 function scheduleDesignAssetPoll(assetId, delay = 5000) {
   if (!assetId || designAssetPollTimers.has(assetId)) return;
-  const timer = setTimeout(() => {
+  let attempt = 0;
+  const runPoll = () => {
+    attempt += 1;
     designAssetPollTimers.delete(assetId);
-    refreshDesignAssetById(assetId);
-  }, delay);
+    refreshDesignAssetById(assetId).finally(() => {
+      if (attempt >= MAX_DESIGN_POLL_ATTEMPTS) {
+        const pending = designAssets.find((asset) => String(asset.id) === String(assetId));
+        if (pending && pending.status === 'rendering') {
+          pending.status = 'failed';
+          pending.previewText = 'Rendering timed out. Try regenerating in Design Lab.';
+          renderDesignAssets();
+        }
+        return;
+      }
+      const timer = setTimeout(runPoll, delay);
+      designAssetPollTimers.set(assetId, timer);
+    });
+  };
+  const timer = setTimeout(runPoll, delay);
   designAssetPollTimers.set(assetId, timer);
 }
 
 async function refreshDesignAssetsFromServer(filters = {}) {
   if (!designWorkspaceEnabled && !designSection) return;
   if (isFetchingDesignAssets) return;
-  const token = await getSupabaseAccessToken();
-  if (!token) return;
   isFetchingDesignAssets = true;
   try {
     const params = new URLSearchParams();
     if (filters.calendarDayId) params.set('calendarDayId', filters.calendarDayId);
     if (filters.type) params.set('type', filters.type);
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    const response = await fetch(`/api/design-assets${suffix}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetchWithAuth(`/api/design-assets${suffix}`, { method: 'GET' });
     if (!response.ok) {
       console.warn('Design assets API error', response.status);
       return;
@@ -696,6 +718,9 @@ async function refreshDesignAssetsFromServer(filters = {}) {
       persistCurrentCalendarState();
     }
   } catch (error) {
+    if (error?.status === 401) {
+      return;
+    }
     console.warn('Unable to fetch design assets from server', error);
   } finally {
     isFetchingDesignAssets = false;
@@ -2320,12 +2345,19 @@ function renderDesignEditor() {
   if (!asset) {
     if (designEditorForm) designEditorForm.style.display = 'none';
     designEditorEmpty.style.display = '';
+    if (designEditorStatusNote) {
+      designEditorStatusNote.textContent = '';
+      designEditorStatusNote.style.display = 'none';
+    }
     return;
   }
   designEditorEmpty.style.display = 'none';
   if (designEditorForm) designEditorForm.style.display = 'flex';
   if (designEditorTitleInput) designEditorTitleInput.value = asset.title || '';
-  if (designEditorStatusSelect) designEditorStatusSelect.value = asset.status || 'draft';
+  if (designEditorStatusSelect) {
+    const editableStatuses = ['draft', 'ready', 'exported'];
+    designEditorStatusSelect.value = editableStatuses.includes(asset.status) ? asset.status : 'draft';
+  }
   if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'social-graphic';
   if (designEditorDaySelect) designEditorDaySelect.value = asset.linkedDay ? String(asset.linkedDay) : '';
   if (designEditorToneInput) designEditorToneInput.value = asset.tone || '';
@@ -2343,7 +2375,26 @@ function renderDesignEditor() {
     }
   }
   if (designEditorPreviewPlaceholder) {
-    designEditorPreviewPlaceholder.style.display = previewSource ? 'none' : 'flex';
+    if (asset.status === 'rendering') {
+      designEditorPreviewPlaceholder.style.display = 'flex';
+      designEditorPreviewPlaceholder.textContent = 'Rendering in progress. This may take a moment.';
+    } else if (asset.status === 'failed') {
+      designEditorPreviewPlaceholder.style.display = 'flex';
+      designEditorPreviewPlaceholder.textContent = 'Generation failed. You can adjust the prompt or try again.';
+    } else {
+      designEditorPreviewPlaceholder.style.display = previewSource ? 'none' : 'flex';
+      designEditorPreviewPlaceholder.textContent = 'Preview will appear after generation.';
+    }
+  }
+  if (designEditorStatusNote) {
+    let note = '';
+    if (asset.status === 'rendering') {
+      note = 'Rendering in progress. This may take a moment.';
+    } else if (asset.status === 'failed') {
+      note = 'Generation failed. You can adjust the prompt or try again.';
+    }
+    designEditorStatusNote.textContent = note;
+    designEditorStatusNote.style.display = note ? 'block' : 'none';
   }
 }
 
@@ -2532,7 +2583,7 @@ function formatDesignAssetStatusLabel(status = 'ready') {
     draft: 'Draft',
     ready: 'Ready',
     exported: 'Exported',
-    rendering: 'Rendering',
+    rendering: 'Rendering…',
     failed: 'Failed',
   };
   return map[status] || 'Draft';
@@ -4249,6 +4300,17 @@ const createCard = (post) => {
         const typeEl = document.createElement('strong');
         typeEl.textContent = asset.typeLabel || asset.title || 'AI Asset';
         meta.appendChild(typeEl);
+        if (asset.status === 'rendering') {
+          const renderingStatus = document.createElement('span');
+          renderingStatus.className = 'calendar-card__asset-status calendar-card__asset-status--rendering';
+          renderingStatus.textContent = 'Rendering…';
+          meta.appendChild(renderingStatus);
+        } else if (asset.status === 'failed') {
+          const failedStatus = document.createElement('span');
+          failedStatus.className = 'calendar-card__asset-status calendar-card__asset-status--failed';
+          failedStatus.textContent = 'Failed';
+          meta.appendChild(failedStatus);
+        }
         if (asset.title) {
           const titleLine = document.createElement('span');
           titleLine.textContent = asset.title;
@@ -4287,6 +4349,12 @@ const createCard = (post) => {
           viewLink.dataset.designUrl = asset.designUrl || `/design.html?asset=${asset.id}`;
           viewLink.dataset.asset = assetSnapshot;
           actions.appendChild(viewLink);
+        }
+        if (asset.status === 'failed') {
+          const failedNote = document.createElement('span');
+          failedNote.className = 'calendar-card__asset-note';
+          failedNote.textContent = 'Rendering failed. Try again in Design Lab.';
+          actions.appendChild(failedNote);
         }
         if (!(asset.status === 'rendering' && !asset.downloadUrl)) {
           const downloadLabel = Array.isArray(asset.slides) && asset.slides.length ? 'Download ZIP' : 'Download';
