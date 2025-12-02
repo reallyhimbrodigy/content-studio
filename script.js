@@ -6688,8 +6688,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       });
       
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || `API error: ${response.statusText}`);
+        let detail = '';
+        try {
+          detail = await response.text();
+        } catch (_) {}
+        const parsedDetail = (() => {
+          try {
+            return detail ? JSON.parse(detail) : null;
+          } catch {
+            return null;
+          }
+        })();
+        const hint = parsedDetail?.error || detail || response.statusText;
+        throw new Error(`API error: ${hint}`);
       }
       
       const data = await response.json();
