@@ -1,6 +1,7 @@
 const PLACID_API_KEY = process.env.PLACID_API_KEY || '';
 const PLACID_PROJECT_ID = process.env.PLACID_PROJECT_ID || '';
 const PLACID_API_BASE = process.env.PLACID_API_BASE || 'https://api.placid.app/api/v1';
+// NOTE: Placid secrets must never be exposed client-side.
 
 function ensurePlacidConfigured() {
   if (!PLACID_API_KEY) {
@@ -11,22 +12,37 @@ function ensurePlacidConfigured() {
 async function placidRequest(path, { method = 'GET', body } = {}) {
   ensurePlacidConfigured();
   const url = `${PLACID_API_BASE}${path}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${PLACID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const detail = await safeJson(response);
-    const error = new Error(detail?.message || detail?.error || `Placid error ${response.status}`);
-    error.statusCode = response.status;
-    error.details = detail;
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${PLACID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      const detail = await safeJson(response);
+      const error = new Error(detail?.message || detail?.error || `Placid error ${response.status}`);
+      error.statusCode = response.status;
+      error.details = detail;
+      console.error('Placid request failed', {
+        path,
+        method,
+        status: response.status,
+        detail,
+      });
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Placid request error', {
+      path,
+      method,
+      message: error?.message,
+    });
     throw error;
   }
-  return response.json();
 }
 
 async function safeJson(res) {

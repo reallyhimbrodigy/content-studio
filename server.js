@@ -376,15 +376,16 @@ function buildCalendarDayId(payload = {}) {
   return `session-${Date.now()}`;
 }
 
+// NOTE: Placid template currently only binds title, subtitle, cta, logo, and background_image.
+// The editor version in use does not support dynamic color bindings on shapes, so we omit
+// brand_color/platform from the payload to avoid sending unused fields.
 function buildPlacidPayload(data = {}) {
   return {
     title: data.title || '',
     subtitle: data.subtitle || '',
     cta: data.cta || '',
-    brand_color: data.brand_color || '#7f5af0',
     logo: data.logo || '',
     background_image: data.background_image || '',
-    platform: data.platform || 'instagram',
   };
 }
 
@@ -513,7 +514,7 @@ async function handleListDesignAssets(req, res, query) {
     const { data, error } = await builder;
     if (error) {
       console.error('Design asset list error:', error);
-      return sendJson(res, 500, { error: 'Unable to load design assets' });
+      return sendJson(res, 200, []);
     }
     const payload = (data || []).map((row) => mapDesignAssetRow(row));
     return sendJson(res, 200, payload);

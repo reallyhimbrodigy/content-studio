@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+// NOTE: Supabase service role key is only used on the server; never expose client-side.
 
 let supabaseAdmin = null;
 
