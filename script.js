@@ -177,6 +177,12 @@ const designEditorMonthSelect = document.getElementById('design-editor-month');
 const designEditorPromptInput = document.getElementById('design-editor-prompt');
 const designEditorPreviewImg = document.getElementById('design-editor-preview-img');
 const designEditorPreviewPlaceholder = document.getElementById('design-editor-preview-placeholder');
+const designEditorBrandSection = document.getElementById('design-editor-brand');
+const designEditorBrandPrimary = document.getElementById('design-editor-brand-primary');
+const designEditorBrandSecondary = document.getElementById('design-editor-brand-secondary');
+const designEditorBrandAccent = document.getElementById('design-editor-brand-accent');
+const designEditorBrandFonts = document.getElementById('design-editor-brand-fonts');
+const designEditorBrandVoice = document.getElementById('design-editor-brand-voice');
 const designEditorStatusBadge = document.getElementById('design-editor-status-badge');
 const designEditorStatusNote = document.getElementById('design-editor-status-note');
 const designEditorSaveBtn = document.getElementById('design-editor-save');
@@ -2297,7 +2303,57 @@ function renderDesignAssets() {
     }
     renderDesignEditor();
     updateDesignSelectionUI();
+}
+
+function truncateBrandVoiceText(value = '', limit = 220) {
+  if (!value) return '';
+  const clean = value.replace(/\s+/g, ' ').trim();
+  if (clean.length <= limit) return clean;
+  return `${clean.slice(0, limit - 1).trim()}…`;
+}
+
+function updateDesignEditorBrandMeta(asset) {
+  if (!designEditorBrandSection) return;
+  if (!asset) {
+    designEditorBrandSection.style.display = 'none';
+    return;
   }
+  const data = asset.data || {};
+  const swatches = [
+    { el: designEditorBrandPrimary, value: data.brand_primary_color },
+    { el: designEditorBrandSecondary, value: data.brand_secondary_color },
+    { el: designEditorBrandAccent, value: data.brand_accent_color },
+  ];
+  let hasSwatch = false;
+  swatches.forEach(({ el, value }) => {
+    if (!el) return;
+    const next = (value || '').trim();
+    if (next) {
+      el.textContent = next;
+      el.style.display = 'inline-flex';
+      el.style.backgroundColor = next;
+      el.style.borderColor = next;
+      el.style.color = '#050505';
+      hasSwatch = true;
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+      el.style.backgroundColor = '';
+      el.style.borderColor = '';
+      el.style.color = '';
+    }
+  });
+  const fonts = [data.brand_heading_font, data.brand_body_font].filter(Boolean).join(' / ');
+  if (designEditorBrandFonts) {
+    designEditorBrandFonts.textContent = fonts ? `Fonts: ${fonts}` : '';
+  }
+  const voice = (data.brand_voice || '').trim();
+  if (designEditorBrandVoice) {
+    designEditorBrandVoice.textContent = voice ? `Voice: ${truncateBrandVoiceText(voice)}` : '';
+  }
+  const shouldShow = hasSwatch || Boolean(fonts) || Boolean(voice);
+  designEditorBrandSection.style.display = shouldShow ? 'flex' : 'none';
+}
 
 function buildDesignAssetGridHtml(list = []) {
   const cards = list
@@ -2388,6 +2444,7 @@ function renderDesignEditor() {
       designEditorStatusNote.textContent = '';
       designEditorStatusNote.style.display = 'none';
     }
+    updateDesignEditorBrandMeta(null);
     return;
   }
   designEditorEmpty.style.display = 'none';
@@ -2449,6 +2506,7 @@ function renderDesignEditor() {
     designEditorStatusNote.textContent = note;
     designEditorStatusNote.style.display = note ? 'block' : 'none';
   }
+  updateDesignEditorBrandMeta(asset);
 }
 
 function populateLinkedDaySelect(selectEl) {
@@ -4713,8 +4771,19 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
     return;
   }
   cachedUserIsPro = true;
+  await Promise.all([
+    refreshBrandBrain().catch(() => ''),
+    refreshBrandKit().catch(() => null),
+  ]);
   const paletteDefaults = getBrandPaletteDefaults();
   const palette = currentBrandKit || paletteDefaults;
+  const brandVoice = (currentBrandText || '').trim();
+  const brandKitSnapshot = currentBrandKit || null;
+  const brandLogo = brandKitSnapshot?.logoUrl || brandKitSnapshot?.logoDataUrl || '';
+  const brandFonts = {
+    heading: brandKitSnapshot?.headingFont || paletteDefaults.headingFont,
+    body: brandKitSnapshot?.bodyFont || paletteDefaults.bodyFont,
+  };
   const title = entry?.idea || entry?.title || `Day ${String(resolvedDay).padStart(2, '0')}`;
   const subtitle = entry?.caption || entry?.description || '';
   const cta = entry?.cta || 'Learn more';
@@ -4726,11 +4795,18 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
     subtitle,
     cta,
     brandColor: palette.primaryColor || paletteDefaults.primaryColor,
-    logoUrl: currentBrandKit?.logoUrl || '',
+    logoUrl: brandLogo,
     backgroundImageUrl: entry?.heroImage || '',
     platform: (entry?.format || 'instagram').toLowerCase().includes('reel') ? 'reels' : 'instagram',
     campaign: entry?.campaign || '',
     tone: entry?.tone || '',
+    brand_voice: brandVoice,
+    brand_primary_color: palette.primaryColor || '',
+    brand_secondary_color: palette.secondaryColor || '',
+    brand_accent_color: palette.accentColor || '',
+    brand_heading_font: brandFonts.heading,
+    brand_body_font: brandFonts.body,
+    brand_logo_url: brandLogo,
   };
   const originalText = triggerButton?.textContent;
   if (triggerButton) {

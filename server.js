@@ -380,13 +380,14 @@ function buildCalendarDayId(payload = {}) {
 
 // NOTE: Placid template currently only binds title, subtitle, cta, logo, and background_image.
 // The editor version in use does not support dynamic color bindings on shapes, so we omit
-// brand_color/platform from the payload to avoid sending unused fields.
+// brand_color/platform from the payload to avoid sending unused fields. Brand metadata still
+// lives in design_assets.data for future template bindings.
 function buildPlacidPayload(data = {}) {
   return {
     title: data.title || '',
     subtitle: data.subtitle || '',
     cta: data.cta || '',
-    logo: data.logo || '',
+    logo: data.logo || data.brand_logo_url || '',
     background_image: data.background_image || '',
   };
 }
@@ -424,6 +425,34 @@ async function handleCreateDesignAsset(req, res) {
       campaign: body.campaign || '',
       tone: body.tone || '',
     };
+    const incomingBrand = normalizeIncomingBrandFields(body);
+    if (Object.keys(incomingBrand).length) {
+      Object.assign(designData, incomingBrand);
+      if (designData.brand_voice) {
+        designData.brand_voice = String(designData.brand_voice).slice(0, 2000);
+      }
+    }
+    const brandProfile = loadUserBrandProfile(user.id);
+    if (brandProfile) {
+      const brandVoiceText = brandProfile.voice || designData.brand_voice || '';
+      if (brandVoiceText) {
+        designData.brand_voice = brandVoiceText.slice(0, 2000);
+      }
+      designData.brand_primary_color = brandProfile.primaryColor || designData.brand_primary_color || '';
+      designData.brand_secondary_color = brandProfile.secondaryColor || designData.brand_secondary_color || '';
+      designData.brand_accent_color = brandProfile.accentColor || designData.brand_accent_color || '';
+      designData.brand_heading_font = brandProfile.headingFont || designData.brand_heading_font || '';
+      designData.brand_body_font = brandProfile.bodyFont || designData.brand_body_font || '';
+      const profileLogo = brandProfile.logoUrl || '';
+      if (profileLogo) {
+        designData.brand_logo_url = profileLogo;
+        if (!designData.logo) {
+          designData.logo = profileLogo;
+        }
+      }
+    } else if (designData.brand_logo_url && !designData.logo) {
+      designData.logo = designData.brand_logo_url;
+    }
     let insertedRow = null;
     const { data: inserted, error } = await supabaseAdmin
       .from('design_assets')
@@ -1185,6 +1214,57 @@ function loadBrand(userId) {
     console.error('Failed to load brand profile:', e);
     return null;
   }
+}
+
+function extractBrandVoiceText(brand) {
+  if (!brand?.chunks || !Array.isArray(brand.chunks)) return '';
+  return brand.chunks
+    .map((chunk) => (typeof chunk?.text === 'string' ? chunk.text.trim() : ''))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+}
+
+// Loads a normalized snapshot of the user's Brand Brain + Brand Design settings.
+function loadUserBrandProfile(userId) {
+  if (!userId) return null;
+  const brand = loadBrand(userId);
+  if (!brand) return null;
+  const kit = brand.kit || {};
+  return {
+    voice: extractBrandVoiceText(brand),
+    primaryColor: kit.primaryColor || '',
+    secondaryColor: kit.secondaryColor || '',
+    accentColor: kit.accentColor || '',
+    headingFont: kit.headingFont || '',
+    bodyFont: kit.bodyFont || '',
+    logoUrl: kit.logoUrl || kit.logoDataUrl || '',
+  };
+}
+
+const BRAND_FIELD_ALIASES = {
+  brand_voice: ['brand_voice', 'brandVoice'],
+  brand_primary_color: ['brand_primary_color', 'brandPrimaryColor'],
+  brand_secondary_color: ['brand_secondary_color', 'brandSecondaryColor'],
+  brand_accent_color: ['brand_accent_color', 'brandAccentColor'],
+  brand_heading_font: ['brand_heading_font', 'brandHeadingFont'],
+  brand_body_font: ['brand_body_font', 'brandBodyFont'],
+  brand_logo_url: ['brand_logo_url', 'brandLogoUrl'],
+};
+
+function normalizeIncomingBrandFields(payload = {}) {
+  const result = {};
+  if (!payload || typeof payload !== 'object') return result;
+  Object.entries(BRAND_FIELD_ALIASES).forEach(([target, aliases]) => {
+    for (const alias of aliases) {
+      const raw = payload[alias];
+      if (typeof raw === 'string' && raw.trim()) {
+        result[target] = raw.trim();
+        break;
+      }
+    }
+  });
+  return result;
 }
 
 function saveBrand(userId, chunksWithEmb) {
