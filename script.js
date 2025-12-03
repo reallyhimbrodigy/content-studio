@@ -96,10 +96,12 @@ let fontPickerListenersBound = false;
 const designSection = document.getElementById('design-lab');
 const designGrid = document.getElementById('design-grid');
 const designEmpty = document.getElementById('design-empty');
+const designEmptyGoCalendarBtn = document.getElementById('design-empty-go-calendar');
+const designEmptyTitle = document.getElementById('design-empty-title');
+const designEmptyBody = document.getElementById('design-empty-body');
+const designEmptyClearFiltersBtn = document.getElementById('design-empty-clear-filters');
 const designWorkspace = document.getElementById('design-workspace');
 const designEditorPanel = document.getElementById('design-editor-panel');
-const designRequestBtn = document.getElementById('design-request-btn');
-const designEmptyCta = document.getElementById('design-empty-cta');
 const designModal = document.getElementById('design-modal');
 const designForm = document.getElementById('design-form');
 const designCloseBtn = document.getElementById('design-close-btn');
@@ -135,7 +137,6 @@ const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
-const designSuggestionButtons = document.querySelectorAll('.design-suggestion');
 const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
@@ -176,22 +177,12 @@ const designEditorMonthSelect = document.getElementById('design-editor-month');
 const designEditorPromptInput = document.getElementById('design-editor-prompt');
 const designEditorPreviewImg = document.getElementById('design-editor-preview-img');
 const designEditorPreviewPlaceholder = document.getElementById('design-editor-preview-placeholder');
+const designEditorStatusBadge = document.getElementById('design-editor-status-badge');
 const designEditorStatusNote = document.getElementById('design-editor-status-note');
 const designEditorSaveBtn = document.getElementById('design-editor-save');
 const designEditorDuplicateBtn = document.getElementById('design-editor-duplicate');
 const designEditorDeleteBtn = document.getElementById('design-editor-delete');
-const designCreatePanel = document.getElementById('design-create-panel');
-const designCreateForm = document.getElementById('design-create-form');
-const designCreateTypeInput = document.getElementById('design-create-type');
-const designCreateDayInput = document.getElementById('design-create-day');
-const designCreateToneInput = document.getElementById('design-create-tone');
-const designCreateCampaignInput = document.getElementById('design-create-campaign');
-const designCreateMonthInput = document.getElementById('design-create-month');
-const designCreatePromptInput = document.getElementById('design-create-prompt');
-const designCreateCancelBtn = document.getElementById('design-create-cancel');
-const designCreateCloseBtn = document.getElementById('design-create-close');
 populateLinkedDaySelect(designEditorDaySelect);
-populateLinkedDaySelect(designCreateDayInput);
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -2214,6 +2205,33 @@ function updateTabs(){
     }
   }
 
+function setDesignEmptyState(reason = 'none') {
+  if (!designEmpty) return;
+  const isFilterReason = reason === 'filters';
+  if (designEmptyTitle) {
+    designEmptyTitle.textContent = isFilterReason ? 'Nothing matches these filters.' : 'No assets yet.';
+  }
+  if (designEmptyBody) {
+    designEmptyBody.textContent = isFilterReason
+      ? 'Adjust or clear your filters to keep editing existing assets.'
+      : 'Generate a post from your Content Calendar and it will appear here for editing.';
+  }
+  if (designEmptyClearFiltersBtn) {
+    designEmptyClearFiltersBtn.style.display = isFilterReason ? '' : 'none';
+  }
+}
+
+function showDesignEmptyState(reason = 'none') {
+  setDesignEmptyState(reason);
+  if (designEmpty) designEmpty.style.display = '';
+  if (designWorkspace) designWorkspace.style.display = 'none';
+}
+
+function hideDesignEmptyState() {
+  if (designEmpty) designEmpty.style.display = 'none';
+  if (designWorkspace) designWorkspace.style.display = '';
+}
+
 function renderDesignAssets() {
     if (!designGrid || !designEmpty) return;
     const knownIds = new Set(designAssets.map((asset) => String(asset.id)));
@@ -2227,8 +2245,7 @@ function renderDesignAssets() {
     if (!designAssets.length) {
       selectedDesignAssetIds.clear();
       designFocusedAssetId = null;
-      if (designWorkspace) designWorkspace.style.display = 'none';
-      designEmpty.style.display = '';
+      showDesignEmptyState('none');
       designGrid.innerHTML = '';
       renderDesignEditor();
       updateDesignSelectionUI();
@@ -2239,8 +2256,6 @@ function renderDesignAssets() {
       designFocusedAssetId = String(designAssets[0].id);
     }
 
-    if (designWorkspace) designWorkspace.style.display = '';
-    designEmpty.style.display = 'none';
     const filteredAssets = applyDesignFilters(designAssets);
     const filteredHasFocus = filteredAssets.some((asset) => String(asset.id) === String(designFocusedAssetId));
     if (!filteredHasFocus && filteredAssets.length) {
@@ -2248,17 +2263,14 @@ function renderDesignAssets() {
     }
 
     if (!filteredAssets.length) {
-      designGrid.innerHTML = `
-        <div class="design-assets__empty-results">
-          <p>No assets match your filters.</p>
-          <button type="button" class="link-button" data-clear-filters>Clear filters</button>
-        </div>
-      `;
+      showDesignEmptyState('filters');
+      designGrid.innerHTML = '';
       renderDesignEditor();
       updateDesignSelectionUI();
       return;
     }
 
+    hideDesignEmptyState();
     const markup =
       designViewMode === 'list'
         ? buildDesignAssetListHtml(filteredAssets)
@@ -2367,6 +2379,11 @@ function renderDesignEditor() {
   if (!asset) {
     if (designEditorForm) designEditorForm.style.display = 'none';
     designEditorEmpty.style.display = '';
+    if (designEditorStatusBadge) {
+      designEditorStatusBadge.textContent = 'No asset selected';
+      designEditorStatusBadge.classList.remove('is-ready', 'is-rendering', 'is-failed');
+      designEditorStatusBadge.classList.add('is-muted');
+    }
     if (designEditorStatusNote) {
       designEditorStatusNote.textContent = '';
       designEditorStatusNote.style.display = 'none';
@@ -2386,6 +2403,20 @@ function renderDesignEditor() {
   if (designEditorCampaignInput) designEditorCampaignInput.value = asset.campaign || '';
   if (designEditorMonthSelect) designEditorMonthSelect.value = asset.monthLabel || 'This Month';
   if (designEditorPromptInput) designEditorPromptInput.value = asset.prompt || '';
+  if (designEditorStatusBadge) {
+    const statusKey = String(asset.status || 'draft').toLowerCase();
+    designEditorStatusBadge.textContent = formatDesignAssetStatusLabel(statusKey);
+    designEditorStatusBadge.classList.remove('is-ready', 'is-rendering', 'is-failed', 'is-muted');
+    if (statusKey === 'rendering') {
+      designEditorStatusBadge.classList.add('is-rendering');
+    } else if (statusKey === 'failed') {
+      designEditorStatusBadge.classList.add('is-failed');
+    } else if (statusKey === 'ready') {
+      designEditorStatusBadge.classList.add('is-ready');
+    } else {
+      designEditorStatusBadge.classList.add('is-muted');
+    }
+  }
   const previewSource = asset.previewInlineUrl || asset.previewUrl || '';
   if (designEditorPreviewImg) {
     if (previewSource) {
@@ -2545,59 +2576,6 @@ function deleteFocusedAsset() {
   renderDesignAssets();
   showDesignSuccess('Asset deleted.');
   setTimeout(() => clearDesignFeedback(), 1500);
-}
-
-function openDesignCreatePanel(preset = {}) {
-  if (!designWorkspaceEnabled || !designCreatePanel || !designEditorPanel) {
-    startDesignModal();
-    return;
-  }
-  designEditorPanel.classList.add('is-creating');
-  designCreatePanel.classList.add('is-visible');
-  if (designCreateTypeInput) designCreateTypeInput.value = preset.assetType || 'social-graphic';
-  if (designCreateDayInput) designCreateDayInput.value = preset.linkedDay ? String(preset.linkedDay) : '';
-  if (designCreateToneInput) designCreateToneInput.value = preset.tone || 'Default';
-  if (designCreateCampaignInput) designCreateCampaignInput.value = preset.campaign || 'General';
-  if (designCreateMonthInput) designCreateMonthInput.value = preset.monthLabel || 'This Month';
-  if (designCreatePromptInput) designCreatePromptInput.value = preset.prompt || '';
-}
-
-function closeDesignCreatePanel() {
-  if (!designCreatePanel || !designEditorPanel) return;
-  designEditorPanel.classList.remove('is-creating');
-  designCreatePanel.classList.remove('is-visible');
-  if (designCreateForm) designCreateForm.reset();
-}
-
-function handleDesignCreateSubmit(event) {
-  event.preventDefault();
-  const asset = createDesignAsset({
-    assetType: designCreateTypeInput?.value,
-    linkedDay: designCreateDayInput?.value ? Number(designCreateDayInput.value) : null,
-    tone: designCreateToneInput?.value || 'Default',
-    campaign: designCreateCampaignInput?.value || 'General',
-    monthLabel: designCreateMonthInput?.value || 'This Month',
-    prompt: designCreatePromptInput?.value || '',
-  });
-  addDesignAsset(asset);
-  closeDesignCreatePanel();
-  showDesignSuccess('Asset created.');
-  setTimeout(() => clearDesignFeedback(), 1800);
-}
-
-function handleDesignQuickCreate(preset = {}) {
-  const asset = createDesignAsset({
-    assetType: preset.assetType,
-    linkedDay: preset.linkedDay,
-    title: preset.title,
-    tone: preset.tone,
-    campaign: preset.campaign,
-    monthLabel: preset.monthLabel,
-    prompt: preset.prompt,
-  });
-  addDesignAsset(asset);
-  showDesignSuccess('Asset created.');
-  setTimeout(() => clearDesignFeedback(), 1800);
 }
 
 function formatDesignAssetStatusLabel(status = 'ready') {
@@ -6973,25 +6951,15 @@ if (hubEmptyGenBtn) {
 }
 
 // Design Lab events
-if (designRequestBtn) {
-  if (designWorkspaceEnabled) {
-    designRequestBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      openDesignCreatePanel();
-    });
-  } else {
-    designRequestBtn.addEventListener('click', () => startDesignModal());
-  }
+if (designEmptyGoCalendarBtn) {
+  designEmptyGoCalendarBtn.addEventListener('click', () => {
+    window.location.href = '/';
+  });
 }
-if (designEmptyCta) {
-  if (designWorkspaceEnabled) {
-    designEmptyCta.addEventListener('click', (event) => {
-      event.preventDefault();
-      openDesignCreatePanel();
-    });
-  } else {
-    designEmptyCta.addEventListener('click', () => startDesignModal());
-  }
+if (designEmptyClearFiltersBtn) {
+  designEmptyClearFiltersBtn.addEventListener('click', () => {
+    clearDesignFilters();
+  });
 }
 if (designCloseBtn) designCloseBtn.addEventListener('click', closeDesignModal);
 if (designCancelBtn) designCancelBtn.addEventListener('click', closeDesignModal);
@@ -7052,43 +7020,6 @@ if (designViewGridBtn) {
 }
 if (designViewListBtn) {
   designViewListBtn.addEventListener('click', () => applyDesignViewMode('list'));
-}
-if (designSuggestionButtons.length) {
-  designSuggestionButtons.forEach((button) => {
-    if (designWorkspaceEnabled) {
-      button.addEventListener('click', () => {
-        const day = Number(button.dataset.day) || null;
-        handleDesignQuickCreate({
-          assetType: button.dataset.assetType || 'social-graphic',
-          linkedDay: day,
-          linkedDayLabel: day ? `Day ${String(day).padStart(2, '0')}` : 'Unassigned',
-          tone: button.dataset.tone || 'Default',
-          campaign: 'General',
-          monthLabel: 'This Month',
-          title: button.textContent.trim(),
-          prompt: `Auto-generated starter prompt for ${formatAssetTypeLabel(button.dataset.assetType || 'social-graphic')}.`,
-        });
-      });
-    } else {
-      button.addEventListener('click', () => {
-        const assetType = button.dataset.assetType || 'social-graphic';
-        const caption = button.dataset.caption || '';
-        const notes = button.dataset.notes || '';
-        const day = Number(button.dataset.day) || null;
-        const entry = {
-          idea: button.textContent.trim(),
-          caption,
-          description: caption,
-          day,
-        };
-        if (designAssetTypeInput) designAssetTypeInput.value = assetType;
-        if (designToneInput && button.dataset.tone) designToneInput.value = button.dataset.tone;
-        if (designNotesInput) designNotesInput.value = notes;
-        renderDesignLivePreview();
-        startDesignModal(entry, day);
-      });
-    }
-  });
 }
 if (designModal) {
   designModal.addEventListener('click', (event) => {
@@ -7183,25 +7114,8 @@ if (designWorkspaceEnabled && designEditorDuplicateBtn) {
 if (designWorkspaceEnabled && designEditorDeleteBtn) {
   designEditorDeleteBtn.addEventListener('click', deleteFocusedAsset);
 }
-if (designWorkspaceEnabled && designCreateForm) {
-  designCreateForm.addEventListener('submit', handleDesignCreateSubmit);
-}
-if (designWorkspaceEnabled && designCreateCancelBtn) {
-  designCreateCancelBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    closeDesignCreatePanel();
-  });
-}
-if (designWorkspaceEnabled && designCreateCloseBtn) {
-  designCreateCloseBtn.addEventListener('click', () => closeDesignCreatePanel());
-}
 if (designGrid) {
   designGrid.addEventListener('click', async (event) => {
-    const clearFiltersBtn = event.target.closest('[data-clear-filters]');
-    if (clearFiltersBtn) {
-      clearDesignFilters();
-      return;
-    }
     const actionTarget = event.target instanceof Element ? event.target : event.target?.parentElement;
     const actionBtn = actionTarget?.closest('[data-asset-action]');
     if (actionBtn) {
