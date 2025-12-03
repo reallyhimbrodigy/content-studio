@@ -4771,19 +4771,6 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
     return;
   }
   cachedUserIsPro = true;
-  await Promise.all([
-    refreshBrandBrain().catch(() => ''),
-    refreshBrandKit().catch(() => null),
-  ]);
-  const paletteDefaults = getBrandPaletteDefaults();
-  const palette = currentBrandKit || paletteDefaults;
-  const brandVoice = (currentBrandText || '').trim();
-  const brandKitSnapshot = currentBrandKit || null;
-  const brandLogo = brandKitSnapshot?.logoUrl || brandKitSnapshot?.logoDataUrl || '';
-  const brandFonts = {
-    heading: brandKitSnapshot?.headingFont || paletteDefaults.headingFont,
-    body: brandKitSnapshot?.bodyFont || paletteDefaults.bodyFont,
-  };
   const title = entry?.idea || entry?.title || `Day ${String(resolvedDay).padStart(2, '0')}`;
   const subtitle = entry?.caption || entry?.description || '';
   const cta = entry?.cta || 'Learn more';
@@ -4794,19 +4781,10 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
     title,
     subtitle,
     cta,
-    brandColor: palette.primaryColor || paletteDefaults.primaryColor,
-    logoUrl: brandLogo,
     backgroundImageUrl: entry?.heroImage || '',
     platform: (entry?.format || 'instagram').toLowerCase().includes('reel') ? 'reels' : 'instagram',
     campaign: entry?.campaign || '',
     tone: entry?.tone || '',
-    brand_voice: brandVoice,
-    brand_primary_color: palette.primaryColor || '',
-    brand_secondary_color: palette.secondaryColor || '',
-    brand_accent_color: palette.accentColor || '',
-    brand_heading_font: brandFonts.heading,
-    brand_body_font: brandFonts.body,
-    brand_logo_url: brandLogo,
   };
   const originalText = triggerButton?.textContent;
   if (triggerButton) {

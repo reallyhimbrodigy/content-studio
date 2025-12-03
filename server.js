@@ -214,14 +214,19 @@ function isDesignPipelineReady() {
   );
 }
 
+const MAX_JSON_BODY = 1 * 1024 * 1024; // 1MB cap to prevent oversized payloads.
+
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 2 * 1024 * 1024) {
-        reject(new Error('Payload too large'));
-        req.connection?.destroy();
+      if (body.length > MAX_JSON_BODY) {
+        const err = new Error('Payload too large');
+        err.statusCode = 413;
+        reject(err);
+        req.destroy();
+        return;
       }
     });
     req.on('end', () => {
@@ -393,6 +398,7 @@ function buildPlacidPayload(data = {}) {
 }
 
 async function handleCreateDesignAsset(req, res) {
+  let createdRow = null;
   try {
     if (!isDesignPipelineReady()) {
       return sendJson(res, 501, { error: 'Design pipeline not configured' });
@@ -432,7 +438,16 @@ async function handleCreateDesignAsset(req, res) {
         designData.brand_voice = String(designData.brand_voice).slice(0, 2000);
       }
     }
-    const brandProfile = loadUserBrandProfile(user.id);
+    let brandProfile = null;
+    try {
+      brandProfile = await loadUserBrandProfile(user.id);
+    } catch (brandErr) {
+      console.error('Brand profile load failed (non-fatal)', {
+        userId: user.id,
+        message: brandErr?.message,
+      });
+      brandProfile = null;
+    }
     if (brandProfile) {
       const brandVoiceText = brandProfile.voice || designData.brand_voice || '';
       if (brandVoiceText) {
@@ -453,7 +468,6 @@ async function handleCreateDesignAsset(req, res) {
     } else if (designData.brand_logo_url && !designData.logo) {
       designData.logo = designData.brand_logo_url;
     }
-    let insertedRow = null;
     const { data: inserted, error } = await supabaseAdmin
       .from('design_assets')
       .insert({
@@ -470,7 +484,7 @@ async function handleCreateDesignAsset(req, res) {
       console.error('Unable to insert design asset', error);
       return sendJson(res, 500, { error: 'Unable to create design asset' });
     }
-    insertedRow = inserted;
+    createdRow = inserted;
     let currentRow = inserted;
     try {
       const render = await createPlacidRender({
@@ -507,16 +521,19 @@ async function handleCreateDesignAsset(req, res) {
     if (error?.statusCode === 401) {
       return sendJson(res, 401, { error: 'Unauthorized' });
     }
+    if (error?.statusCode === 413) {
+      return sendJson(res, 413, { error: 'Request payload too large' });
+    }
     if (error?.statusCode === 501) {
       return sendJson(res, 501, { error: 'Design pipeline not configured' });
     }
     if (error?.statusCode === 400) {
       return sendJson(res, 400, { error: error.message || 'Invalid request' });
     }
-    if (insertedRow?.id) {
-      await markDesignAssetStatus(insertedRow.id, {
+    if (createdRow?.id) {
+      await markDesignAssetStatus(createdRow.id, {
         status: 'failed',
-        data: { ...(insertedRow.data || {}), error_code: 'design_asset_create_failed' },
+        data: { ...(createdRow.data || {}), error_code: 'design_asset_create_failed' },
       });
     }
     return sendJson(res, 500, { error: 'Unable to create design asset', status: 'failed' });
@@ -1226,20 +1243,25 @@ function extractBrandVoiceText(brand) {
 }
 
 // Loads a normalized snapshot of the user's Brand Brain + Brand Design settings.
-function loadUserBrandProfile(userId) {
+async function loadUserBrandProfile(userId) {
   if (!userId) return null;
-  const brand = loadBrand(userId);
-  if (!brand) return null;
-  const kit = brand.kit || {};
-  return {
-    voice: extractBrandVoiceText(brand),
-    primaryColor: kit.primaryColor || '',
-    secondaryColor: kit.secondaryColor || '',
-    accentColor: kit.accentColor || '',
-    headingFont: kit.headingFont || '',
-    bodyFont: kit.bodyFont || '',
-    logoUrl: kit.logoUrl || kit.logoDataUrl || '',
-  };
+  try {
+    const brand = loadBrand(userId);
+    if (!brand) return null;
+    const kit = brand.kit || {};
+    return {
+      voice: extractBrandVoiceText(brand) || '',
+      primaryColor: kit.primaryColor || '',
+      secondaryColor: kit.secondaryColor || '',
+      accentColor: kit.accentColor || '',
+      headingFont: kit.headingFont || '',
+      bodyFont: kit.bodyFont || '',
+      logoUrl: kit.logoUrl || kit.logoDataUrl || '',
+    };
+  } catch (err) {
+    console.error('loadUserBrandProfile error', { userId, message: err?.message });
+    return null;
+  }
 }
 
 const BRAND_FIELD_ALIASES = {
