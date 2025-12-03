@@ -204,6 +204,8 @@ function sendJson(res, statusCode, payload) {
 }
 
 function isDesignPipelineReady() {
+  // NOTE: We use the simple /templates/{templateId}/renders endpoint and do not require PLACID_PROJECT_ID.
+  // As long as the Placid API key, template id, and Cloudinary config are present, the design pipeline is ready.
   return Boolean(
     supabaseAdmin &&
       POST_GRAPHIC_TEMPLATE_ID &&

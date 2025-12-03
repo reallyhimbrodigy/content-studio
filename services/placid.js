@@ -27,6 +27,7 @@ async function placidRequest(path, { method = 'GET', body } = {}) {
       error.statusCode = response.status;
       error.details = detail;
       console.error('Placid request failed', {
+        base: PLACID_API_BASE,
         path,
         method,
         status: response.status,
