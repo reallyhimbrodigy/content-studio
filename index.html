@@ -458,10 +458,10 @@
                 <label class="filter-pill">Asset Type
                   <select id="design-filter-type">
                     <option value="all">All</option>
-                    <option value="social-graphic">Social graphic</option>
-                    <option value="carousel-template">Carousel template</option>
-                    <option value="story-template">Story template</option>
-                    <option value="video-snippet">Video snippet</option>
+                    <option value="post_graphic">Post</option>
+                    <option value="story">Story</option>
+                    <option value="carousel">Carousel</option>
+                    <option value="video_snippet">Video</option>
                   </select>
                 </label>
                 <label class="filter-pill">Linked Day
@@ -526,10 +526,10 @@
                     <label>
                       Type
                       <select id="design-create-type">
-                        <option value="social-graphic">Social graphic</option>
-                        <option value="carousel-template">Carousel template</option>
-                        <option value="story-template">Story template</option>
-                        <option value="video-snippet">Video snippet</option>
+                        <option value="post_graphic">Post</option>
+                        <option value="story">Story</option>
+                        <option value="carousel">Carousel</option>
+                        <option value="video_snippet">Video</option>
                       </select>
                     </label>
                     <label>
@@ -583,10 +583,10 @@
                   <label class="design-editor__field">
                     <span>Asset Type</span>
                     <select id="design-editor-type">
-                      <option value="social-graphic">Social graphic</option>
-                      <option value="carousel-template">Carousel template</option>
-                      <option value="story-template">Story template</option>
-                      <option value="video-snippet">Video snippet</option>
+                      <option value="post_graphic">Post</option>
+                      <option value="story">Story</option>
+                      <option value="carousel">Carousel</option>
+                      <option value="video_snippet">Video</option>
                     </select>
                   </label>
                   <label class="design-editor__field">
@@ -617,6 +617,37 @@
                   <span>Prompt</span>
                   <textarea id="design-editor-prompt" rows="4" placeholder="Adjust the prompt and regenerate to get a new variation."></textarea>
                 </label>
+                <div class="design-editor__type-panels">
+                  <div class="design-editor__type-panel" id="design-editor-story-panel" style="display:none">
+                    <label class="design-editor__field design-editor__field--wide">
+                      <span>Story Copy</span>
+                      <textarea id="design-editor-story-copy" rows="3" placeholder="Add notes for each story frame or caption overlays."></textarea>
+                    </label>
+                  </div>
+                  <div class="design-editor__type-panel" id="design-editor-carousel-panel" style="display:none">
+                    <p class="design-editor__type-label">Carousel Slides</p>
+                    <div class="design-editor__carousel-grid">
+                      <label class="design-editor__field">
+                        <span>Slide 1</span>
+                        <textarea id="design-editor-slide1" rows="2" placeholder="Hook or headline for slide 1."></textarea>
+                      </label>
+                      <label class="design-editor__field">
+                        <span>Slide 2</span>
+                        <textarea id="design-editor-slide2" rows="2" placeholder="Value or proof point for slide 2."></textarea>
+                      </label>
+                      <label class="design-editor__field">
+                        <span>Slide 3</span>
+                        <textarea id="design-editor-slide3" rows="2" placeholder="CTA or closer for slide 3."></textarea>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="design-editor__type-panel" id="design-editor-video-panel" style="display:none">
+                    <label class="design-editor__field design-editor__field--wide">
+                      <span>Video Script</span>
+                      <textarea id="design-editor-video-script" rows="3" placeholder="Outline the hook, body, and CTA for this clip."></textarea>
+                    </label>
+                  </div>
+                </div>
                 <div class="design-editor__preview" id="design-editor-preview">
                   <img id="design-editor-preview-img" alt="Asset preview" />
                   <div class="design-editor__preview-placeholder" id="design-editor-preview-placeholder">Preview will appear after generation.</div>
@@ -654,7 +685,7 @@
             <button class="ghost icon-only" id="asset-detail-close" aria-label="Close asset preview">&times;</button>
           </header>
           <div class="asset-detail__topline">
-            <span id="asset-detail-type-label" class="asset-detail__pill">Social Graphic</span>
+            <span id="asset-detail-type-label" class="asset-detail__pill">Post Graphic</span>
             <span id="asset-detail-day-label" class="asset-detail__pill asset-detail__pill--muted">Day 00</span>
             <p id="asset-detail-timestamp" class="asset-detail__timestamp"></p>
           </div>

@@ -13,6 +13,10 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
+const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
+const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
+const VIDEO_TEMPLATE_ID = process.env.PLACID_VIDEO_TEMPLATE_ID || '';
+const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel', 'video_snippet'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
@@ -20,6 +24,18 @@ if (!OPENAI_API_KEY) {
 }
 if (!STABILITY_API_KEY) {
   console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
+}
+if (!POST_GRAPHIC_TEMPLATE_ID) {
+  console.warn('Warning: PLACID_POST_GRAPHIC_TEMPLATE_ID is not set. Design pipeline will be disabled.');
+}
+if (!STORY_TEMPLATE_ID) {
+  console.warn('Notice: PLACID_STORY_TEMPLATE_ID is not set. Story assets will reuse the post graphic template.');
+}
+if (!CAROUSEL_TEMPLATE_ID) {
+  console.warn('Notice: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will reuse the post graphic template.');
+}
+if (!VIDEO_TEMPLATE_ID) {
+  console.warn('Notice: PLACID_VIDEO_TEMPLATE_ID is not set. Video snippet assets will reuse the post graphic template.');
 }
 
 // Simple local data directory for brand brains
@@ -90,6 +106,34 @@ const CAROUSEL_OUTPUT_FORMATS = [
   { key: 'instagram', label: 'Instagram', platform: 'Instagram', aspectRatio: '1:1', width: 1080, height: 1080 },
   { key: 'tiktok', label: 'TikTok', platform: 'TikTok', aspectRatio: '9:16', width: 1080, height: 1920 },
 ];
+
+function resolveTemplateIdForType(type) {
+  switch (String(type || '').toLowerCase()) {
+    case 'story':
+      return STORY_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
+    case 'carousel':
+      return CAROUSEL_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
+    case 'video_snippet':
+      return VIDEO_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
+    case 'post_graphic':
+    default:
+      return POST_GRAPHIC_TEMPLATE_ID;
+  }
+}
+
+function getDesignAssetTypeLabel(type) {
+  switch (String(type || '').toLowerCase()) {
+    case 'story':
+      return 'Story';
+    case 'carousel':
+      return 'Carousel';
+    case 'video_snippet':
+      return 'Video Snippet';
+    case 'post_graphic':
+    default:
+      return 'Post Graphic';
+  }
+}
 
 function stabilityJsonRequest({ path: apiPath, method = 'POST', payload, contentType }) {
   return new Promise((resolve, reject) => {
@@ -285,7 +329,7 @@ function mapDesignAssetRow(row) {
     id: row.id,
     type: row.type,
     assetType: row.type,
-    typeLabel: row.type === 'post_graphic' ? 'Post Graphic' : 'Design Asset',
+    typeLabel: getDesignAssetTypeLabel(row.type),
     status: row.status,
     calendarDayId: row.calendar_day_id,
     linkedDay,
@@ -383,6 +427,120 @@ function buildCalendarDayId(payload = {}) {
   return `session-${Date.now()}`;
 }
 
+function buildBaseDesignDataFromBody(body = {}, overrides = {}) {
+  const calendarDayId = overrides.calendarDayId || buildCalendarDayId(body);
+  const linkedDay =
+    overrides.linkedDay ??
+    Number(body.linkedDay || body.day || parseLinkedDayFromKey(calendarDayId)) ||
+    null;
+  const normalizedType = String(overrides.type || body.type || 'post_graphic').toLowerCase();
+  return {
+    calendar_day_id: calendarDayId,
+    type: normalizedType,
+    title: (body.title || '').trim(),
+    subtitle: (body.subtitle || body.caption || '').trim(),
+    cta: (body.cta || '').trim(),
+    prompt: body.prompt || '',
+    tone: body.tone || '',
+    campaign: body.campaign || '',
+    month: body.month || '',
+    linked_day: linkedDay,
+    platform: (body.platform || 'instagram').toLowerCase(),
+    background_image: (body.backgroundImageUrl || '').trim(),
+    logo: (body.logoUrl || '').trim(),
+    slides: body.slides || null,
+    video_script: body.video_script || '',
+    story_copy: body.story_copy || '',
+  };
+}
+
+function applyTypeSpecificDefaults(designData = {}, brandProfile, calendarDay) {
+  const result = { ...designData };
+  const voiceHint = (brandProfile?.voice || '').trim();
+  const dayData = calendarDay || {};
+
+  if (result.type === 'story') {
+    if (!result.title && dayData.title) result.title = dayData.title;
+    if (!result.subtitle && dayData.shortDescription) result.subtitle = dayData.shortDescription;
+    if (!result.story_copy) {
+      result.story_copy = dayData.story_copy || dayData.storyPrompt || result.subtitle || '';
+    }
+    if (!result.prompt && voiceHint) {
+      result.prompt = `Create Instagram story frames in this brand voice: ${voiceHint}`;
+    }
+  }
+
+  if (result.type === 'carousel') {
+    if (!result.title && dayData.title) result.title = dayData.title;
+    if (!result.subtitle && dayData.angle) result.subtitle = dayData.angle;
+    const slides = Object.assign(
+      {},
+      result.slides || {},
+      dayData.slides || {
+        slide1: dayData.slide1 || '',
+        slide2: dayData.slide2 || '',
+        slide3: dayData.slide3 || '',
+      }
+    );
+    result.slides = slides;
+  }
+
+  if (result.type === 'video_snippet') {
+    if (!result.title && dayData.title) result.title = dayData.title;
+    if (!result.subtitle && dayData.hook) result.subtitle = dayData.hook;
+    if (!result.video_script) {
+      result.video_script =
+        dayData.video_script ||
+        (dayData.videoScript && typeof dayData.videoScript === 'object'
+          ? JSON.stringify(dayData.videoScript)
+          : dayData.videoScript || '');
+    }
+  }
+
+  return result;
+}
+
+function resolveBackgroundAspectForType(type) {
+  const key = String(type || '').toLowerCase();
+  if (key === 'story' || key === 'video_snippet') return '9:16';
+  if (key === 'carousel') return '1:1';
+  return '4:5';
+}
+
+async function maybeAttachGeneratedBackground(designData, brandProfile) {
+  if (!STABILITY_API_KEY || designData.background_image) return designData;
+  const promptParts = [
+    'High-quality, abstract social media background graphic',
+    designData.title || '',
+    designData.campaign || '',
+    brandProfile?.voice ? `Brand voice: ${brandProfile.voice}` : '',
+    brandProfile?.primaryColor ? `Primary color ${brandProfile.primaryColor}` : '',
+    brandProfile?.secondaryColor ? `Secondary color ${brandProfile.secondaryColor}` : '',
+  ].filter(Boolean);
+  const prompt = promptParts.join('. ');
+  if (!prompt) return designData;
+  try {
+    const aspectRatio = resolveBackgroundAspectForType(designData.type);
+    const buffer = await generateStabilityImage(prompt, aspectRatio);
+    if (buffer && buffer.length) {
+      const dataUri = `data:image/png;base64,${buffer.toString('base64')}`;
+      const upload = await uploadAssetFromUrl({ url: dataUri });
+      if (upload?.secureUrl) {
+        return Object.assign({}, designData, { background_image: upload.secureUrl });
+      }
+    }
+  } catch (err) {
+    console.warn('Optional background generation failed', { message: err?.message });
+  }
+  return designData;
+}
+
+async function loadCalendarDay(calendarDayId, userId) {
+  // TODO: Wire to Supabase calendar data. For now, return null so type-specific
+  // defaults rely on request payload.
+  return null;
+}
+
 // NOTE: Placid template currently only binds title, subtitle, cta, logo, and background_image.
 // The editor version in use does not support dynamic color bindings on shapes, so we omit
 // brand_color/platform from the payload to avoid sending unused fields. Brand metadata still
@@ -405,32 +563,19 @@ async function handleCreateDesignAsset(req, res) {
     }
     const user = await requireSupabaseUser(req);
     const body = await readJsonBody(req);
-    const type = body.type || 'post_graphic';
-    if (type !== 'post_graphic') {
-      return sendJson(res, 400, { error: 'Only post_graphic assets are supported in this release.' });
+    const type = String(body.type || 'post_graphic').toLowerCase();
+    if (!ALLOWED_DESIGN_ASSET_TYPES.includes(type)) {
+      return sendJson(res, 400, { error: 'Unsupported asset type.' });
     }
     const calendarDayId = buildCalendarDayId(body);
     const linkedDay = Number(body.linkedDay || body.day || parseLinkedDayFromKey(calendarDayId)) || null;
-    const title =
-      (body.title || '').trim() ||
-      (body.subtitle || body.caption || '').trim() ||
-      (linkedDay ? `Day ${String(linkedDay).padStart(2, '0')}` : 'Post Graphic');
-    const subtitle = (body.subtitle || body.caption || '').trim();
-    const cta = (body.cta || '').trim() || 'Learn more';
-    const logoUrl = (body.logoUrl || '').trim();
-    const backgroundImageUrl = (body.backgroundImageUrl || '').trim();
-    const platform = (body.platform || 'instagram').toLowerCase();
-    const designData = {
-      title,
-      subtitle,
-      cta,
-      logo: logoUrl,
-      background_image: backgroundImageUrl,
-      platform,
-      linked_day: linkedDay,
-      campaign: body.campaign || '',
-      tone: body.tone || '',
-    };
+    const templateId = resolveTemplateIdForType(type);
+    if (!templateId) {
+      return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
+    }
+    const brandProfile = await loadUserBrandProfile(user.id);
+    const calendarDay = await loadCalendarDay(calendarDayId, user.id);
+    let designData = buildBaseDesignDataFromBody(body, { calendarDayId, linkedDay, type });
     const incomingBrand = normalizeIncomingBrandFields(body);
     if (Object.keys(incomingBrand).length) {
       Object.assign(designData, incomingBrand);
@@ -438,21 +583,9 @@ async function handleCreateDesignAsset(req, res) {
         designData.brand_voice = String(designData.brand_voice).slice(0, 2000);
       }
     }
-    let brandProfile = null;
-    try {
-      brandProfile = await loadUserBrandProfile(user.id);
-    } catch (brandErr) {
-      console.error('Brand profile load failed (non-fatal)', {
-        userId: user.id,
-        message: brandErr?.message,
-      });
-      brandProfile = null;
-    }
     if (brandProfile) {
-      const brandVoiceText = brandProfile.voice || designData.brand_voice || '';
-      if (brandVoiceText) {
-        designData.brand_voice = brandVoiceText.slice(0, 2000);
-      }
+      const voice = brandProfile.voice || designData.brand_voice || '';
+      if (voice) designData.brand_voice = voice.slice(0, 2000);
       designData.brand_primary_color = brandProfile.primaryColor || designData.brand_primary_color || '';
       designData.brand_secondary_color = brandProfile.secondaryColor || designData.brand_secondary_color || '';
       designData.brand_accent_color = brandProfile.accentColor || designData.brand_accent_color || '';
@@ -461,20 +594,21 @@ async function handleCreateDesignAsset(req, res) {
       const profileLogo = brandProfile.logoUrl || '';
       if (profileLogo) {
         designData.brand_logo_url = profileLogo;
-        if (!designData.logo) {
-          designData.logo = profileLogo;
-        }
+        if (!designData.logo) designData.logo = profileLogo;
       }
     } else if (designData.brand_logo_url && !designData.logo) {
       designData.logo = designData.brand_logo_url;
     }
+    designData.type = type;
+    designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
+    designData = await maybeAttachGeneratedBackground(designData, brandProfile);
     const { data: inserted, error } = await supabaseAdmin
       .from('design_assets')
       .insert({
-        user_id: user.id, // user_id stored so RLS can enforce ownership.
+        user_id: user.id,
         calendar_day_id: calendarDayId,
-        type: 'post_graphic',
-        placid_template_id: POST_GRAPHIC_TEMPLATE_ID,
+        type,
+        placid_template_id: templateId,
         status: 'rendering',
         data: designData,
       })
@@ -488,7 +622,7 @@ async function handleCreateDesignAsset(req, res) {
     let currentRow = inserted;
     try {
       const render = await createPlacidRender({
-        templateId: POST_GRAPHIC_TEMPLATE_ID,
+        templateId,
         data: buildPlacidPayload(designData),
       });
       if (!render?.renderId) {

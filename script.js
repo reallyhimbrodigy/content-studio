@@ -137,6 +137,7 @@ const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
+const VISUAL_KIT_TYPES = ['post_graphic', 'story', 'carousel', 'video_snippet'];
 const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
@@ -183,6 +184,16 @@ const designEditorBrandSecondary = document.getElementById('design-editor-brand-
 const designEditorBrandAccent = document.getElementById('design-editor-brand-accent');
 const designEditorBrandFonts = document.getElementById('design-editor-brand-fonts');
 const designEditorBrandVoice = document.getElementById('design-editor-brand-voice');
+const designEditorStoryPanel = document.getElementById('design-editor-story-panel');
+const designEditorStoryCopyInput = document.getElementById('design-editor-story-copy');
+const designEditorCarouselPanel = document.getElementById('design-editor-carousel-panel');
+const designEditorCarouselSlideInputs = {
+  slide1: document.getElementById('design-editor-slide1'),
+  slide2: document.getElementById('design-editor-slide2'),
+  slide3: document.getElementById('design-editor-slide3'),
+};
+const designEditorVideoPanel = document.getElementById('design-editor-video-panel');
+const designEditorVideoScriptInput = document.getElementById('design-editor-video-script');
 const designEditorStatusBadge = document.getElementById('design-editor-status-badge');
 const designEditorStatusNote = document.getElementById('design-editor-status-note');
 const designEditorSaveBtn = document.getElementById('design-editor-save');
@@ -270,7 +281,7 @@ const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
  * @typedef {Object} DesignAsset
  * @property {string} id
  * @property {string} title
- * @property {'social-graphic'|'carousel-template'|'video-snippet'|'story-template'|'other'} assetType
+ * @property {'post_graphic'|'carousel'|'video_snippet'|'story'|'other'} assetType
  * @property {string} linkedDayLabel
  * @property {number|null} linkedDay
  * @property {string} tone
@@ -317,6 +328,42 @@ function getLastTemplateId() {
     return localStorage.getItem(DESIGN_LAST_TEMPLATE_KEY) || '';
   } catch {
     return '';
+  }
+}
+
+async function triggerVisualKitGenerationForDay(entry, entryDay, triggerButton) {
+  const button = triggerButton || null;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Generating Kit…';
+  }
+  const queuedIds = [];
+  try {
+    for (const [index, type] of VISUAL_KIT_TYPES.entries()) {
+      try {
+        const result = await triggerCalendarAssetGeneration(entry, entryDay, null, {
+          type,
+          suppressRedirect: true,
+        });
+        if (result?.id) {
+          queuedIds.push(result.id);
+        }
+      } catch (err) {
+        console.error(`Visual kit generation failed for ${type}`, err);
+        showDesignError(`Unable to queue ${formatAssetTypeLabel(type)}`, err.message || 'Try again soon.');
+      }
+    }
+    if (queuedIds.length) {
+      showDesignSuccess('Visual kit queued in Design Lab.');
+      setTimeout(() => {
+        window.location.href = `/design.html?asset=${encodeURIComponent(queuedIds[0])}`;
+      }, 800);
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Generate Visual Kit';
+    }
   }
 }
 
@@ -885,7 +932,29 @@ function incrementDesignUsage(userId) {
 }
 
 function normalizeAssetTypeKey(value = '') {
-  return String(value || '').toLowerCase();
+  const raw = String(value || '').toLowerCase();
+  if (!raw) return '';
+  if (raw.includes('video')) return 'video_snippet';
+  if (raw.includes('carousel')) return 'carousel';
+  if (raw.includes('story')) return 'story';
+  if (raw.includes('graphic') || raw.includes('post') || raw.includes('social')) return 'post_graphic';
+  return raw.replace(/\s+/g, '_');
+}
+
+function buildEntryFromAsset(asset = {}) {
+  const data = asset.data || {};
+  return {
+    idea: asset.title || '',
+    title: asset.title || '',
+    caption: asset.subtitle || data.story_copy || '',
+    description: asset.subtitle || '',
+    cta: asset.cta || '',
+    heroImage: data.background_image || asset.previewInlineUrl || asset.previewUrl || '',
+    campaign: asset.campaign || '',
+    tone: asset.tone || '',
+    format: asset.assetType || asset.type || '',
+    prompt: data.prompt || asset.prompt || '',
+  };
 }
 
 function applyDesignFilters(list = []) {
@@ -894,7 +963,9 @@ function applyDesignFilters(list = []) {
     const searchTerm = (designFilterState.search || '').trim().toLowerCase();
     const typeFilter = designFilterState.type;
     if (typeFilter && typeFilter !== 'all') {
-      const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel);
+      const assetTypeKey = normalizeAssetTypeKey(
+        asset.assetType || asset.type || asset.typeLabel || asset.data?.type
+      );
       if (assetTypeKey !== typeFilter) return false;
     }
     const dayFilter = designFilterState.day;
@@ -994,22 +1065,22 @@ function refreshDesignMonthFilterOptions() {
 }
 const ASSET_PRESETS = {
   education: {
-    assetType: 'carousel-template',
+    assetType: 'carousel',
     tone: 'bold',
     note: 'Infographic flow with labeled data points and icon callouts.'
   },
   lifestyle: {
-    assetType: 'story-template',
+    assetType: 'story',
     tone: 'playful',
     note: 'Photo-first layout with candid lifestyle prompts and overlay captions.'
   },
   promotion: {
-    assetType: 'social-graphic',
+    assetType: 'post_graphic',
     tone: 'bold',
     note: 'Product mockup spotlight with price badge and urgent CTA ribbon.'
   },
   'social proof': {
-    assetType: 'social-graphic',
+    assetType: 'post_graphic',
     tone: 'elegant',
     note: 'Testimonial card featuring quote, avatar placeholder, and star accents.'
   }
@@ -1036,13 +1107,13 @@ function deriveAssetPreset(entry = {}) {
   if (!preset) {
     const format = String(entry.format || '').toLowerCase();
     if (format.includes('story')) {
-      preset = { assetType: 'story-template', tone: 'playful', note: 'Story-friendly vertical layout with photo prompts and sticker callouts.' };
+      preset = { assetType: 'story', tone: 'playful', note: 'Story-friendly vertical layout with photo prompts and sticker callouts.' };
     } else if (format.includes('reel') || format.includes('video')) {
-      preset = { assetType: 'video-snippet', tone: 'bold', note: 'Video frame storyboard with hook text, mid-scene overlay, and CTA end card.' };
+      preset = { assetType: 'video_snippet', tone: 'bold', note: 'Video frame storyboard with hook text, mid-scene overlay, and CTA end card.' };
     }
   }
   if (!preset) {
-    preset = { assetType: 'social-graphic', tone: 'bold', note: 'High-contrast CTA graphic anchored by branded gradients.' };
+    preset = { assetType: 'post_graphic', tone: 'bold', note: 'High-contrast CTA graphic anchored by branded gradients.' };
   }
   return preset;
 }
@@ -1166,7 +1237,7 @@ function inferAssetTypeFromAsset(asset = {}) {
   if (asset.typeLabel) {
     return asset.typeLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   }
-  return 'social-graphic';
+  return 'post_graphic';
 }
 
 async function handleDesignTemplateSave(asset) {
@@ -1461,68 +1532,38 @@ function handleDesignRegenerateSelected() {
   const assetId = Array.from(selectedDesignAssetIds)[0];
   const asset = designAssets.find((item) => String(item.id) === String(assetId));
   if (!asset) return;
+  const day = Number(asset.linkedDay || asset.day);
+  if (!day) {
+    showDesignError('Assign a day before regenerating.', '');
+    return;
+  }
   isDesignRegenerating = true;
   updateDesignSelectionUI();
   setDesignRegeneratingState(true);
-  showDesignSuccess('Regenerating asset… TODO: connect to AI endpoint.');
-  setTimeout(() => {
-    asset.updatedAt = new Date().toISOString();
-    asset.previewUrl = generateMockPreviewUrl(asset);
-    asset.previewInlineUrl = asset.previewUrl;
-    isDesignRegenerating = false;
-    setDesignRegeneratingState(false);
-    persistDesignAssetsToStorage();
-    renderDesignAssets();
-    showDesignSuccess('Asset regenerated.');
-    setTimeout(() => clearDesignFeedback(), 2000);
-  }, 900 + Math.random() * 700);
+  const entry = buildEntryFromAsset(asset);
+  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'post_graphic');
+  triggerCalendarAssetGeneration(entry, day, null, { type: assetTypeKey, suppressRedirect: true })
+    .then(() => {
+      showDesignSuccess('New version queued in Design Lab.');
+      setTimeout(() => clearDesignFeedback(), 1800);
+    })
+    .catch((err) => {
+      showDesignError('Unable to regenerate asset', err.message || 'Try again soon.');
+    })
+    .finally(() => {
+      isDesignRegenerating = false;
+      setDesignRegeneratingState(false);
+      updateDesignSelectionUI();
+    });
 }
 
-async function regenerateSingleDesignAsset(asset, currentUserId) {
-  if (!asset || !currentUserId) return;
-  const paletteDefaults = getBrandPaletteDefaults();
-  const payload = {
-    day: asset.linkedDay || asset.day || null,
-    assetType: asset.assetType || inferAssetTypeFromAsset(asset),
-    tone: asset.tone || 'bold',
-    notes: asset.notes || asset.brief || '',
-    userId: currentUserId,
-    caption: asset.caption || '',
-    cta: asset.cta || '',
-    campaign: asset.campaign || '',
-    title: asset.title || (asset.day ? `Day ${String(asset.day).padStart(2, '0')}` : 'AI Asset'),
-    templateId: asset.templateId || null,
-    templateLabel: asset.templateLabel || null,
-    primaryColor: paletteDefaults.primaryColor,
-    secondaryColor: paletteDefaults.secondaryColor,
-    accentColor: paletteDefaults.accentColor,
-    headingFont: paletteDefaults.headingFont,
-    bodyFont: paletteDefaults.bodyFont,
-    concept: asset.concept || '',
-    brandPalette: {
-      primaryColor: paletteDefaults.primaryColor,
-      secondaryColor: paletteDefaults.secondaryColor,
-      accentColor: paletteDefaults.accentColor,
-    },
-    fonts: {
-      heading: paletteDefaults.headingFont,
-      body: paletteDefaults.bodyFont,
-    },
-  };
-  let updated = await requestDesignAsset(payload);
-  updated = await ensureAssetInlinePreview(updated);
-  updated.linkedDay = payload.day;
-  updated.campaign = payload.campaign;
-  const idx = designAssets.findIndex((item) => item.id === asset.id);
-  if (idx !== -1) {
-    designAssets[idx] = { ...asset, ...updated };
-  } else {
-    designAssets.unshift(updated);
-  }
-  updated.lastEdited = new Date().toISOString();
-  persistDesignAssetsToStorage();
-  linkAssetToCalendarPost(updated);
-  renderDesignAssets();
+async function regenerateSingleDesignAsset(asset) {
+  if (!asset) return;
+  const day = Number(asset.linkedDay || asset.day);
+  if (!day) throw new Error('Linked day is required to regenerate this asset.');
+  const entry = buildEntryFromAsset(asset);
+  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'post_graphic');
+  return triggerCalendarAssetGeneration(entry, day, null, { type: assetTypeKey, suppressRedirect: true });
 }
 
 function deleteDesignAsset(asset, assetDay) {
@@ -1601,12 +1642,13 @@ function buildPreviewLogo(theme) {
 }
 
 function buildPreviewMarkup(type, tone) {
+  const typeKey = normalizeAssetTypeKey(type);
   const theme = getPreviewTheme(tone);
   const baseStyle = `background: linear-gradient(135deg, ${theme.from}, ${theme.to}); color: ${theme.textColor}; font-family: ${theme.headingFont}, 'Inter', sans-serif;`;
   const secondaryStyle = `background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: ${theme.textColor}; font-family: ${theme.bodyFont}, 'Source Sans Pro', sans-serif;`;
   const logo = buildPreviewLogo(theme);
   const storySlides = ['Hook', 'Proof/Tip', 'CTA'];
-  if (type === 'story-template') {
+  if (typeKey === 'story') {
     const slides = storySlides
       .map((label, idx) => {
         const frameStyle = idx === 1 ? secondaryStyle : `${baseStyle} font-family: ${theme.bodyFont}, 'Source Sans Pro', sans-serif;`;
@@ -1618,7 +1660,7 @@ function buildPreviewMarkup(type, tone) {
       background: theme.canvas,
     };
   }
-  if (type === 'carousel-template') {
+  if (typeKey === 'carousel') {
     const slides = ['Hook', 'Proof', 'Tip', 'CTA']
       .map((text, idx) => {
         const style =
@@ -1633,7 +1675,7 @@ function buildPreviewMarkup(type, tone) {
       background: theme.canvas,
     };
   }
-  if (type === 'video-snippet') {
+  if (typeKey === 'video_snippet') {
     return {
       html: `<div class="design-preview__mock design-preview__video" style="${baseStyle}">
         ${logo}
@@ -1664,7 +1706,7 @@ function buildPreviewMarkup(type, tone) {
 
 function renderDesignLivePreview() {
   if (!designPreviewEl) return;
-  const type = designAssetTypeInput?.value || 'social-graphic';
+  const type = designAssetTypeInput?.value || 'post_graphic';
   const tone = designToneInput?.value || 'bold';
   const preview = buildPreviewMarkup(type, tone);
   designPreviewEl.innerHTML = preview.html;
@@ -1674,7 +1716,7 @@ function renderDesignLivePreview() {
 }
 
 function buildAssetDetailBrandPreview(asset = {}) {
-  const typeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || inferAssetTypeFromAsset(asset) || 'social-graphic');
+  const typeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || inferAssetTypeFromAsset(asset) || 'post_graphic');
   const toneKey = asset.creativeDirection || asset.tone || 'bold';
   const theme = getPreviewTheme(toneKey || 'bold');
   const headingFont = `${theme.headingFont || 'Inter'}`;
@@ -1700,7 +1742,7 @@ function buildAssetDetailBrandPreview(asset = {}) {
   };
   const baseWrapper = (content) =>
     `<div class="asset-detail__brand-preview" data-preview-type="${typeKey}" style="background:${theme.canvas};">${logoMarkup}<div class="asset-detail__brand-preview-grid">${content}</div></div>`;
-  if (typeKey === 'story-template') {
+  if (typeKey === 'story') {
     const slides = [
       slideWrapper('Slide 01 • Hook', headline, true, 0),
       slideWrapper('Slide 02 • Proof/Tip', caption, false, 1),
@@ -1708,7 +1750,7 @@ function buildAssetDetailBrandPreview(asset = {}) {
     ].join('');
     return { html: baseWrapper(slides), background: theme.canvas };
   }
-  if (typeKey === 'carousel-template') {
+  if (typeKey === 'carousel') {
     const slides = [
       slideWrapper('Slide 01 • Hook', headline, true, 0),
       slideWrapper('Slide 02 • Value', caption, false, 1),
@@ -2374,11 +2416,14 @@ function buildDesignAssetGridHtml(list = []) {
             <span class="sr-only">Select ${escapeHtml(asset.title || 'asset')}</span>
           </label>
           <div class="design-asset-card__body">
-            <div class="design-asset-card__title-row">
-              <h3>${escapeHtml(asset.title || 'AI Asset')}</h3>
+            <div class="design-asset-card__labels">
+              <span class="design-asset-card__type">${escapeHtml(typeLabel)}</span>
               <span class="design-asset-card__status design-asset-card__status--${escapeHtml(asset.status || 'draft')}">${statusLabel}</span>
             </div>
-            <p class="design-asset-card__meta">${escapeHtml(typeLabel)} • ${escapeHtml(dayLabel)} • ${escapeHtml(monthLabel || formatDesignAssetMonth(asset.createdAt))}</p>
+            <div class="design-asset-card__title-row">
+              <h3>${escapeHtml(asset.title || 'AI Asset')}</h3>
+            </div>
+            <p class="design-asset-card__meta">${escapeHtml(dayLabel)} • ${escapeHtml(monthLabel || formatDesignAssetMonth(asset.createdAt))}</p>
             <p class="design-asset-card__campaign">${escapeHtml(campaignLabel)}</p>
             <p class="design-asset-card__updated">${updatedLabel}</p>
           </div>
@@ -2416,7 +2461,7 @@ function buildDesignAssetListHtml(list = []) {
             <input type="checkbox" data-asset-select="${escapeHtml(assetId)}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(asset.title || 'asset')}" />
           </span>
           <span class="design-assets-cell design-assets-cell--title">${escapeHtml(asset.title || 'AI Asset')}</span>
-          <span class="design-assets-cell">${escapeHtml(typeLabel)}</span>
+          <span class="design-assets-cell"><span class="design-assets-type-badge">${escapeHtml(typeLabel)}</span></span>
           <span class="design-assets-cell">${escapeHtml(dayLabel)}</span>
           <span class="design-assets-cell">${escapeHtml(asset.campaign || 'General')}</span>
           <span class="design-assets-cell">${statusLabel}</span>
@@ -2454,7 +2499,7 @@ function renderDesignEditor() {
     const editableStatuses = ['draft', 'ready', 'exported'];
     designEditorStatusSelect.value = editableStatuses.includes(asset.status) ? asset.status : 'draft';
   }
-  if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'social-graphic';
+  if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'post_graphic';
   if (designEditorDaySelect) designEditorDaySelect.value = asset.linkedDay ? String(asset.linkedDay) : '';
   if (designEditorToneInput) designEditorToneInput.value = asset.tone || '';
   if (designEditorCampaignInput) designEditorCampaignInput.value = asset.campaign || '';
@@ -2506,6 +2551,24 @@ function renderDesignEditor() {
     designEditorStatusNote.textContent = note;
     designEditorStatusNote.style.display = note ? 'block' : 'none';
   }
+  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || '');
+  if (designEditorStoryPanel) {
+    const storyValue = asset.data?.story_copy || asset.story_copy || asset.subtitle || '';
+    designEditorStoryPanel.style.display = assetTypeKey === 'story' ? 'flex' : 'none';
+    if (designEditorStoryCopyInput) designEditorStoryCopyInput.value = storyValue;
+  }
+  if (designEditorCarouselPanel) {
+    const slides = asset.data?.slides || asset.slides || {};
+    designEditorCarouselPanel.style.display = assetTypeKey === 'carousel' ? 'flex' : 'none';
+    Object.entries(designEditorCarouselSlideInputs).forEach(([key, input]) => {
+      if (input) input.value = slides?.[key] || '';
+    });
+  }
+  if (designEditorVideoPanel) {
+    const scriptValue = asset.data?.video_script || asset.video_script || '';
+    designEditorVideoPanel.style.display = assetTypeKey === 'video_snippet' ? 'flex' : 'none';
+    if (designEditorVideoScriptInput) designEditorVideoScriptInput.value = scriptValue;
+  }
   updateDesignEditorBrandMeta(asset);
 }
 
@@ -2548,8 +2611,9 @@ function updateSelectedAssetField(field, rawValue) {
     next.linkedDay = Number.isFinite(normalized) ? normalized : null;
     next.linkedDayLabel = next.linkedDay ? `Day ${String(next.linkedDay).padStart(2, '0')}` : 'Unassigned';
   } else if (field === 'assetType') {
-    next.assetType = value || 'social-graphic';
+    next.assetType = value || 'post_graphic';
     next.typeLabel = formatAssetTypeLabel(next.assetType);
+    next.data = Object.assign({}, next.data || {}, { type: next.assetType });
   } else if (field === 'status') {
     next.status = value || 'draft';
   } else if (field === 'monthLabel') {
@@ -2569,6 +2633,29 @@ function updateSelectedAssetField(field, rawValue) {
   renderDesignAssets();
 }
 
+function updateSelectedAssetDataField(path, value) {
+  if (!designFocusedAssetId) return;
+  const idx = designAssets.findIndex((item) => String(item.id) === String(designFocusedAssetId));
+  if (idx === -1) return;
+  const next = { ...designAssets[idx] };
+  const data = { ...(next.data || {}) };
+  if (path.startsWith('slides.')) {
+    const key = path.split('.')[1];
+    data.slides = Object.assign({}, data.slides || {});
+    data.slides[key] = value || '';
+    next.slides = data.slides;
+  } else {
+    data[path] = value || '';
+    if (path === 'story_copy') next.story_copy = value || '';
+    if (path === 'video_script') next.video_script = value || '';
+  }
+  next.data = data;
+  next.updatedAt = new Date().toISOString();
+  designAssets[idx] = next;
+  persistDesignAssetsToStorage();
+  renderDesignAssets();
+}
+
 function createDesignAsset(partial = {}) {
   const now = new Date().toISOString();
   const linkedDay = partial.linkedDay ?? null;
@@ -2576,8 +2663,8 @@ function createDesignAsset(partial = {}) {
   return {
     id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     title: partial.title || 'Untitled asset',
-    assetType: partial.assetType || 'social-graphic',
-    typeLabel: formatAssetTypeLabel(partial.assetType || 'social-graphic'),
+    assetType: partial.assetType || 'post_graphic',
+    typeLabel: formatAssetTypeLabel(partial.assetType || 'post_graphic'),
     linkedDay,
     linkedDayLabel,
     tone: partial.tone || 'Default',
@@ -2978,8 +3065,24 @@ function closeDesignModal() {
   }
 
 function formatAssetTypeLabel(type) {
-    return type ? type.replace(/[-_]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) : 'Asset';
+  const key = normalizeAssetTypeKey(type);
+  switch (key) {
+    case 'story':
+      return 'Story';
+    case 'carousel':
+      return 'Carousel';
+    case 'video_snippet':
+      return 'Video Snippet';
+    case 'post_graphic':
+      return 'Post Graphic';
+    default:
+      return type
+        ? String(type)
+            .replace(/[-_]/g, ' ')
+            .replace(/\b\w/g, (l) => l.toUpperCase())
+        : 'Asset';
   }
+}
 
 async function handleDesignFormSubmit(event) {
     event.preventDefault();
@@ -3019,7 +3122,7 @@ async function handleDesignFormSubmit(event) {
   const resolvedNiche = currentNiche || nicheInput?.value?.trim() || '';
   const payload = {
     day: Number(designDayInput?.value) || activeDesignContext?.day || null,
-    assetType: designAssetTypeInput?.value || 'social-graphic',
+    assetType: designAssetTypeInput?.value || 'post_graphic',
     tone: designToneInput?.value || 'bold',
     notes: designNotesInput?.value?.trim() || '',
     userId: currentUserId || '',
@@ -3172,7 +3275,7 @@ async function requestDesignAsset(payload) {
       previewText: `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`,
       status: 'Ready',
       brief: payload.notes || '',
-      assetType: payload.assetType || 'social-graphic',
+      assetType: payload.assetType || 'post_graphic',
       tone: payload.tone || 'bold',
       notes: payload.notes || '',
       templateId: payload.templateId || null,
@@ -4511,7 +4614,11 @@ const createCard = (post) => {
           showUpgradeModal();
           return;
         }
-        handler(event);
+        try {
+          await handler(event);
+        } catch (err) {
+          console.error('Pro action error', err);
+        }
       });
       return button;
     };
@@ -4610,6 +4717,9 @@ const createCard = (post) => {
     const assetBtn = makeBtn('Generate Asset');
     attachProAction(assetBtn, () => triggerCalendarAssetGeneration(entry, entryDay, assetBtn));
     actionsEl.appendChild(assetBtn);
+    const kitBtn = makeBtn('Generate Visual Kit');
+    attachProAction(kitBtn, () => triggerVisualKitGenerationForDay(entry, entryDay, kitBtn));
+    actionsEl.appendChild(kitBtn);
 
     if (entry.variants) {
       // variant captions still show in detail rows; copy buttons removed
@@ -4754,21 +4864,22 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
   }
 }
 
-async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
+async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, options = {}) {
+  const { type = 'post_graphic', suppressRedirect = false } = options;
   const resolvedDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   if (!resolvedDay) {
     showDesignError('Pick a calendar day first', 'Select a post and try again.');
-    return;
+    throw new Error('Missing calendar day');
   }
   const currentUserId = activeUserEmail || (await getCurrentUser());
   if (!currentUserId) {
     window.location.href = '/auth.html?mode=signup';
-    return;
+    throw new Error('Sign in required');
   }
   const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
   if (!userIsPro) {
     showUpgradeModal();
-    return;
+    throw new Error('Pro required');
   }
   cachedUserIsPro = true;
   const title = entry?.idea || entry?.title || `Day ${String(resolvedDay).padStart(2, '0')}`;
@@ -4777,7 +4888,7 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
   const payload = {
     calendarDayId: buildCalendarDayIdentifier(entry, resolvedDay),
     linkedDay: resolvedDay,
-    type: 'post_graphic',
+    type,
     title,
     subtitle,
     cta,
@@ -4808,8 +4919,8 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
     const result = await response.json();
     const placeholder = {
       id: result.id,
-      assetType: 'post_graphic',
-      typeLabel: 'Post Graphic',
+      assetType: type,
+      typeLabel: formatAssetTypeLabel(type),
       title: payload.title,
       linkedDay: resolvedDay,
       day: resolvedDay,
@@ -4819,17 +4930,22 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton) {
       origin: 'remote',
       createdAt: new Date().toISOString(),
       calendarDayId: payload.calendarDayId,
+      data: { type },
     };
     mergeDesignAsset(placeholder);
     pendingAssetDetailId = result.id;
     highlightDesignAssetId = result.id;
-    showDesignSuccess('Queued in Design Lab. Opening preview…');
-    setTimeout(() => {
-      window.location.href = `/design.html?asset=${encodeURIComponent(result.id)}`;
-    }, 600);
+    showDesignSuccess(`${formatAssetTypeLabel(type)} queued in Design Lab.`);
+    if (!suppressRedirect) {
+      setTimeout(() => {
+        window.location.href = `/design.html?asset=${encodeURIComponent(result.id)}`;
+      }, 600);
+    }
+    return result;
   } catch (error) {
     console.error('Calendar asset generation failed', error);
     showDesignError('Unable to generate asset', error.message || 'Try again soon.');
+    throw error;
   } finally {
     if (triggerButton) {
       triggerButton.disabled = false;
@@ -7156,6 +7272,18 @@ if (designWorkspaceEnabled && designEditorMonthSelect) {
 if (designWorkspaceEnabled && designEditorPromptInput) {
   designEditorPromptInput.addEventListener('input', (event) => updateSelectedAssetField('prompt', event.target.value));
 }
+if (designWorkspaceEnabled && designEditorStoryCopyInput) {
+  designEditorStoryCopyInput.addEventListener('input', (event) => updateSelectedAssetDataField('story_copy', event.target.value));
+}
+if (designWorkspaceEnabled && designEditorVideoScriptInput) {
+  designEditorVideoScriptInput.addEventListener('input', (event) => updateSelectedAssetDataField('video_script', event.target.value));
+}
+if (designWorkspaceEnabled) {
+  Object.entries(designEditorCarouselSlideInputs).forEach(([key, input]) => {
+    if (!input) return;
+    input.addEventListener('input', (event) => updateSelectedAssetDataField(`slides.${key}`, event.target.value));
+  });
+}
 if (designWorkspaceEnabled && designEditorSaveBtn) {
   designEditorSaveBtn.addEventListener('click', () => {
     showDesignSuccess('Changes saved.');
@@ -7329,12 +7457,14 @@ if (assetDetailRegenerateBtn) {
     assetDetailRegenerateBtn.disabled = true;
     assetDetailRegenerateBtn.textContent = 'Regenerating…';
     try {
-      await regenerateSingleDesignAsset(asset, userId);
+      await regenerateSingleDesignAsset(asset);
       const updated = designAssets.find((item) => String(item.id) === String(activeAssetDetailId));
       if (updated) {
         await ensureAssetInlinePreview(updated);
         renderAssetDetailPreview(updated);
       }
+    } catch (err) {
+      showDesignError('Unable to regenerate asset', err?.message || 'Try again soon.');
     } finally {
       assetDetailRegenerateBtn.disabled = false;
       assetDetailRegenerateBtn.textContent = originalLabel || 'Regenerate';
@@ -7656,10 +7786,14 @@ if (designSection && (!calendarSection || !hub)) {
   designSection.style.opacity = '1';
 }
 const TEMPLATE_CATEGORY_MAP = {
+  'post_graphic': 'Quotes & Tips',
   'social-graphic': 'Quotes & Tips',
   'carousel-template': 'Case Studies',
+  'carousel': 'Case Studies',
   'story-template': 'Behind-the-Scenes',
+  'story': 'Behind-the-Scenes',
   'video-snippet': 'Promos',
+  'video_snippet': 'Promos',
 };
 
 function createTemplateThumbnail(text, palette = ['#7f5af0', '#2cb1bc']) {
@@ -7681,62 +7815,62 @@ const BUILT_IN_TEMPLATES = [
   {
     id: 'preset_quote_card',
     label: 'Quote Spark',
-    assetType: 'social-graphic',
+    assetType: 'post_graphic',
     tone: 'elegant',
     notes: 'Centered quote overlay with drop shadow, quote icon, and author line.',
     previewText: '“Signature Quote”',
     previewInlineUrl: createTemplateThumbnail('Quote Spark', ['#141726', '#5a4ff0']),
     category: 'Quotes & Tips',
     tags: ['quote', 'minimal'],
-    recommendedFor: ['social-graphic'],
+    recommendedFor: ['post_graphic'],
   },
   {
     id: 'preset_testimonial',
     label: 'Testimonial Glow',
-    assetType: 'social-graphic',
+    assetType: 'post_graphic',
     tone: 'playful',
     notes: 'Avatar + quote + star rating, gradient background, pill CTA.',
     previewText: 'Testimonial',
     previewInlineUrl: createTemplateThumbnail('Testimonial', ['#ff8ba7', '#ffc3a0']),
     category: 'Testimonials',
     tags: ['testimonial', 'bold'],
-    recommendedFor: ['social-graphic', 'story-template'],
+    recommendedFor: ['post_graphic', 'story'],
   },
   {
     id: 'preset_promo_banner',
     label: 'Promo Countdown',
-    assetType: 'social-graphic',
+    assetType: 'post_graphic',
     tone: 'bold',
     notes: 'Big numeric countdown, gradient border, button CTA.',
     previewText: 'Promo Banner',
     previewInlineUrl: createTemplateThumbnail('Promo', ['#ff5f6d', '#ffc371']),
     category: 'Promos',
     tags: ['promo', 'cta'],
-    recommendedFor: ['social-graphic', 'video-snippet'],
+    recommendedFor: ['post_graphic', 'video_snippet'],
   },
   {
     id: 'preset_case_study',
     label: 'Case Study Carousel',
-    assetType: 'carousel-template',
+    assetType: 'carousel',
     tone: 'minimal',
     notes: 'Slide 1: hook. Slide 2: problem. Slide 3: process. Slide 4: result.',
     previewText: 'Case Study',
     previewInlineUrl: createTemplateThumbnail('Case Study', ['#0f2027', '#203a43']),
     category: 'Case Studies',
     tags: ['carousel', 'case study'],
-    recommendedFor: ['carousel-template'],
+    recommendedFor: ['carousel'],
   },
   {
     id: 'preset_story_bts',
     label: 'Behind-the-Scenes Story',
-    assetType: 'story-template',
+    assetType: 'story',
     tone: 'playful',
     notes: 'Top hook text, photo slot, sticker CTA, bottom caption overlay.',
     previewText: 'Story BTS',
     previewInlineUrl: createTemplateThumbnail('Story BTS', ['#f7971e', '#ffd200']),
     category: 'Behind-the-Scenes',
     tags: ['story', 'bts'],
-    recommendedFor: ['story-template'],
+    recommendedFor: ['story'],
   },
 ];
 const BUILT_IN_TEMPLATE_IDS = new Set(BUILT_IN_TEMPLATES.map((tpl) => String(tpl.id)));
