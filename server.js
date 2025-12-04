@@ -427,12 +427,23 @@ function buildCalendarDayId(payload = {}) {
   return `session-${Date.now()}`;
 }
 
+function parseRequestedDay(body = {}, calendarDayId) {
+  const raw =
+    body?.linkedDay ||
+    body?.day ||
+    (calendarDayId ? parseLinkedDayFromKey(calendarDayId) : null);
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) {
+    return n;
+  }
+  return null;
+}
+
 function buildBaseDesignDataFromBody(body = {}, overrides = {}) {
   const calendarDayId = overrides.calendarDayId || buildCalendarDayId(body);
   const linkedDay =
     overrides.linkedDay ??
-    Number(body.linkedDay || body.day || parseLinkedDayFromKey(calendarDayId)) ||
-    null;
+    parseRequestedDay(body, calendarDayId);
   const normalizedType = String(overrides.type || body.type || 'post_graphic').toLowerCase();
   return {
     calendar_day_id: calendarDayId,
@@ -568,7 +579,7 @@ async function handleCreateDesignAsset(req, res) {
       return sendJson(res, 400, { error: 'Unsupported asset type.' });
     }
     const calendarDayId = buildCalendarDayId(body);
-    const linkedDay = Number(body.linkedDay || body.day || parseLinkedDayFromKey(calendarDayId)) || null;
+    const linkedDay = parseRequestedDay(body, calendarDayId);
     const templateId = resolveTemplateIdForType(type);
     if (!templateId) {
       return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
