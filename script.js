@@ -631,6 +631,18 @@ async function deleteCalendarById(calendarId) {
   console.log('[Promptly] Calendar deleted', { calendarId });
 }
 
+async function deleteCalendarByIdIfPossible(calendarId) {
+  if (!calendarId) {
+    console.log('[Promptly] No calendar id to delete on backend, skipping server delete.');
+    return;
+  }
+  try {
+    await deleteCalendarById(calendarId);
+  } catch (error) {
+    console.warn('[Promptly] Backend calendar delete failed (non-blocking)', error?.message || error);
+  }
+}
+
 function mergeDesignAsset(asset, options = {}) {
   if (!asset || !asset.id) return;
   const normalized = normalizeDesignAsset(asset);
@@ -4946,11 +4958,6 @@ function extractCalendarId(record) {
 }
 
 function updateCalendarToolbarState() {
-  const hasRecord = Boolean(currentCalendarId);
-  if (deleteCalendarBtn) {
-    deleteCalendarBtn.disabled = !hasRecord;
-    deleteCalendarBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
-  }
   if (downloadCalendarFolderBtn) {
     const hasCalendar = Array.isArray(currentCalendar) && currentCalendar.length > 0;
     downloadCalendarFolderBtn.disabled = !hasCalendar;
@@ -5184,8 +5191,8 @@ try {
   console.error("❌ Error rendering initial cards:", err);
 }
 
-function handleCalendarDeleted() {
-  console.log('[Promptly] handleCalendarDeleted()');
+function clearCalendarUI() {
+  console.log('[Promptly] clearCalendarUI()');
   currentCalendar = [];
   currentNiche = '';
   setCurrentCalendarId(null);
@@ -6167,38 +6174,28 @@ function bindDeleteCalendarButton() {
     console.warn('[Promptly] Delete Calendar button not found in DOM.');
     return;
   }
-  console.log('[Promptly] Delete Calendar button found and binding handler.');
+  console.log('[Promptly] Binding Delete Calendar button handler.');
   deleteButton.addEventListener('click', async () => {
     console.log('[Promptly] Delete Calendar clicked', { currentCalendarId });
-    if (!currentCalendarId) {
-      alert('No active calendar id found. Please save or open a calendar first.');
-      return;
-    }
-    const confirmed = window.confirm('Delete this calendar? This cannot be undone.');
+    const confirmed = window.confirm('Delete this calendar from the page? This will clear all days from view.');
     if (!confirmed) return;
     const originalLabel = deleteButton.textContent;
     deleteButton.textContent = 'Deleting…';
     deleteButton.disabled = true;
-    try {
-      await deleteCalendarById(currentCalendarId);
-      handleCalendarDeleted();
-      if (feedbackEl) {
-        feedbackEl.textContent = 'Calendar deleted.';
-        feedbackEl.classList.remove('success');
-        setTimeout(() => {
-          if (feedbackEl && feedbackEl.textContent === 'Calendar deleted.') {
-            feedbackEl.textContent = '';
-          }
-        }, 2500);
-      }
-    } catch (error) {
-      console.error('[Promptly] Delete calendar error', error);
-      alert('Unable to delete calendar right now. Check console for details.');
-      deleteButton.disabled = false;
-      deleteButton.textContent = originalLabel || 'Delete Calendar';
-      return;
+    const idToDelete = currentCalendarId;
+    clearCalendarUI();
+    await deleteCalendarByIdIfPossible(idToDelete);
+    if (feedbackEl) {
+      feedbackEl.textContent = 'Calendar cleared from the page.';
+      feedbackEl.classList.remove('success');
+      setTimeout(() => {
+        if (feedbackEl && feedbackEl.textContent === 'Calendar cleared from the page.') {
+          feedbackEl.textContent = '';
+        }
+      }, 2500);
     }
     deleteButton.textContent = originalLabel || 'Delete Calendar';
+    deleteButton.disabled = false;
   });
 }
 
