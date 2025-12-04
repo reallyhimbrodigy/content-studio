@@ -6175,6 +6175,9 @@ function bindDeleteCalendarButton() {
     return;
   }
   console.log('[Promptly] Binding Delete Calendar button handler.');
+  deleteButton.style.outline = '2px solid rgba(255, 255, 255, 0.4)';
+  deleteButton.style.zIndex = '50';
+  deleteButton.style.position = 'relative';
   deleteButton.addEventListener('click', async () => {
     console.log('[Promptly] Delete Calendar clicked', { currentCalendarId });
     const confirmed = window.confirm('Delete this calendar from the page? This will clear all days from view.');
