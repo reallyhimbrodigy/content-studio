@@ -627,6 +627,50 @@ function closeAssetEditorModal() {
   currentDesignAsset = null;
 }
 
+function bindCalendarGenerateAssetClicks() {
+  const grid = document.getElementById('calendar-grid');
+  if (!grid) {
+    console.warn('[Promptly] calendar-grid not found; cannot bind Generate Asset buttons.');
+    return;
+  }
+  grid.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="calendar-generate-asset"]');
+    if (!button) return;
+    event.preventDefault();
+    const entryEl = button.closest('.calendar-card__entry');
+    const card = button.closest('.calendar-card');
+    const dayValue = Number(
+      button.dataset.calendarDay ||
+        entryEl?.dataset.day ||
+        card?.dataset.day
+    );
+    if (!dayValue) {
+      alert('Unable to determine which day to generate. Please try again.');
+      return;
+    }
+    const titleEl = entryEl?.querySelector('.calendar-card__title');
+    const captionEl = entryEl?.querySelector('.calendar-card__caption');
+    const ctaEl = entryEl?.querySelector('.calendar-card__cta');
+    const contextEntry = {
+      calendar_day_id: button.dataset.calendarDayId || '',
+      calendarDayId: button.dataset.calendarDayId || '',
+      idea: titleEl ? titleEl.textContent.trim() : '',
+      title: titleEl ? titleEl.textContent.trim() : '',
+      caption: captionEl ? captionEl.textContent.trim() : '',
+      description: captionEl ? captionEl.textContent.trim() : '',
+      cta: ctaEl ? ctaEl.textContent.replace(/^\s*CTA:\s*/i, '').trim() : '',
+      brand: currentBrandKit ? { ...currentBrandKit } : null,
+    };
+    console.log('[Promptly] Calendar Generate Asset button clicked', {
+      day: dayValue,
+      calendarDayId: contextEntry.calendarDayId,
+    });
+    beginGenerateAssetFlow(contextEntry, dayValue, button).catch((err) => {
+      console.error('Generate Asset flow failed', err);
+    });
+  });
+}
+
 async function handleAssetEditorRegenerate() {
   if (!currentDesignAsset || !assetEditorRegenerateButton) return;
   try {
@@ -4532,6 +4576,8 @@ const createCard = (post) => {
   function buildEntry(entry, idx) {
     const entryEl = document.createElement('div');
     entryEl.className = 'calendar-card__entry';
+    entryEl.dataset.entryIndex = String(idx);
+    entryEl.dataset.day = dayValue != null ? String(dayValue) : '';
 
     if (entries.length > 1) {
       const badge = document.createElement('div');
@@ -4815,7 +4861,7 @@ const createCard = (post) => {
     const makeBtn = (label) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'ghost';
+      b.className = 'calendar-card__action ghost';
       b.style.fontSize = '0.8rem';
       b.style.padding = '0.3rem 0.6rem';
       b.textContent = label;
@@ -4934,7 +4980,11 @@ const createCard = (post) => {
     actionsEl.appendChild(regenBtn);
 
     const assetBtn = makeBtn('Generate Asset');
-    attachProAction(assetBtn, () => beginGenerateAssetFlow(entry, entryDay, assetBtn));
+    assetBtn.classList.add('calendar-card__action--generate-asset');
+    assetBtn.dataset.action = 'calendar-generate-asset';
+    assetBtn.dataset.calendarDayId = buildCalendarDayIdentifier(entry, entryDay);
+    assetBtn.dataset.calendarDay = String(entryDay);
+    assetBtn.dataset.entryIndex = String(idx);
     actionsEl.appendChild(assetBtn);
 
     if (entry.variants) {
@@ -5436,6 +5486,7 @@ try {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  bindCalendarGenerateAssetClicks();
   document.querySelectorAll('[data-action="close-generate-asset-modal"]').forEach((btn) => {
     btn.addEventListener('click', () => closeGenerateAssetModal());
   });
