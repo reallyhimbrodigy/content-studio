@@ -1167,5 +1167,46 @@
     <script type="module" src="./footer.js?t=1763412925"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
+    <div id="generate-asset-modal" class="modal modal--hidden" aria-hidden="true">
+      <div class="modal__backdrop"></div>
+      <div class="modal__dialog">
+        <header class="modal__header">
+          <h2 class="modal__title">Generate Asset</h2>
+          <button type="button" class="modal__close" data-action="close-generate-asset-modal">×</button>
+        </header>
+        <div class="modal__body">
+          <p class="modal__description">
+            Choose the format you want for this post. You’ll customize the details in Design Lab after generation.
+          </p>
+
+          <div class="asset-type-selector">
+            <label class="asset-type-pill">
+              <input type="radio" name="asset-type" value="post_graphic" checked>
+              <span>Post Graphic</span>
+            </label>
+            <label class="asset-type-pill">
+              <input type="radio" name="asset-type" value="story">
+              <span>Story</span>
+            </label>
+            <label class="asset-type-pill">
+              <input type="radio" name="asset-type" value="carousel">
+              <span>Carousel</span>
+            </label>
+          </div>
+
+          <div class="modal__hint">
+            Assets will be generated in your Brand Brain style and appear in Design Lab.
+          </div>
+        </div>
+        <footer class="modal__footer">
+          <button type="button" class="button button--ghost" data-action="close-generate-asset-modal">
+            Cancel
+          </button>
+          <button type="button" class="button button--primary" id="confirm-generate-asset-button">
+            Generate Asset
+          </button>
+        </footer>
+      </div>
+    </div>
   </body>
 </html>

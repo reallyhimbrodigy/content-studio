@@ -440,11 +440,19 @@ function toggleAutofillEditing(field) {
 }
 
 function openGenerateAssetModal(context) {
-  pendingAssetGeneration = context;
+  pendingAssetGeneration = context || null;
+  console.log('[Promptly] openGenerateAssetModal called', pendingAssetGeneration);
   const modal = document.getElementById('generate-asset-modal');
-  if (!modal) return;
+  if (!modal) {
+    console.warn('[Promptly] generate-asset-modal not found.');
+    return;
+  }
   modal.classList.remove('modal--hidden');
-  modal.setAttribute('aria-hidden', 'false');
+  modal.removeAttribute('aria-hidden');
+  modal.style.display = 'flex';
+  modal.style.opacity = '1';
+  modal.style.pointerEvents = 'auto';
+  console.log('[Promptly] Generate Asset modal should now be visible');
 }
 
 function closeGenerateAssetModal() {
@@ -452,6 +460,10 @@ function closeGenerateAssetModal() {
   if (!modal) return;
   modal.classList.add('modal--hidden');
   modal.setAttribute('aria-hidden', 'true');
+  modal.style.display = '';
+  modal.style.opacity = '';
+  modal.style.pointerEvents = '';
+  console.log('[Promptly] Generate Asset modal closed');
   pendingAssetGeneration = null;
 }
 
