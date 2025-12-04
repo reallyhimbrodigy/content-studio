@@ -461,7 +461,6 @@
                     <option value="post_graphic">Post</option>
                     <option value="story">Story</option>
                     <option value="carousel">Carousel</option>
-                    <option value="video_snippet">Video</option>
                   </select>
                 </label>
                 <label class="filter-pill">Linked Day
@@ -502,8 +501,8 @@
             <!-- TODO: Wire quick-create buttons to create a new DesignAsset in a later milestone. -->
             <div class="design-empty__suggestions">
               <button class="design-suggestion" data-day="1" data-asset-type="social-graphic" data-caption="Swipe-worthy headline" data-notes="Gradient CTA badge, hero product photo." data-tone="bold">Social Graphic · Day 1</button>
-              <button class="design-suggestion" data-day="3" data-asset-type="carousel-template" data-caption="Mini case study" data-notes="Headline slide + 3 supporting slides." data-tone="minimal">Carousel Template · Day 3</button>
-              <button class="design-suggestion" data-day="5" data-asset-type="video-snippet" data-caption="Behind-the-scenes teaser" data-notes="Vertical reel storyboard with hook, proof, CTA frames." data-tone="playful">Video Snippet · Day 5</button>
+              <button class="design-suggestion" data-day="3" data-asset-type="carousel" data-caption="Mini case study" data-notes="Headline slide + 3 supporting slides." data-tone="minimal">Carousel Template · Day 3</button>
+              <button class="design-suggestion" data-day="5" data-asset-type="story" data-caption="Behind-the-scenes teaser" data-notes="Vertical story sequence with hook, proof, CTA frames." data-tone="playful">Story Template · Day 5</button>
             </div>
             <!-- TODO: Wire the primary CTA to trigger the Request Asset flow in a later milestone. -->
             <button id="design-empty-cta" class="primary">Generate your first asset</button>
@@ -529,7 +528,6 @@
                         <option value="post_graphic">Post</option>
                         <option value="story">Story</option>
                         <option value="carousel">Carousel</option>
-                        <option value="video_snippet">Video</option>
                       </select>
                     </label>
                     <label>
@@ -586,7 +584,6 @@
                       <option value="post_graphic">Post</option>
                       <option value="story">Story</option>
                       <option value="carousel">Carousel</option>
-                      <option value="video_snippet">Video</option>
                     </select>
                   </label>
                   <label class="design-editor__field">
@@ -640,12 +637,6 @@
                         <textarea id="design-editor-slide3" rows="2" placeholder="CTA or closer for slide 3."></textarea>
                       </label>
                     </div>
-                  </div>
-                  <div class="design-editor__type-panel" id="design-editor-video-panel" style="display:none">
-                    <label class="design-editor__field design-editor__field--wide">
-                      <span>Video Script</span>
-                      <textarea id="design-editor-video-script" rows="3" placeholder="Outline the hook, body, and CTA for this clip."></textarea>
-                    </label>
                   </div>
                 </div>
                 <div class="design-editor__preview" id="design-editor-preview">
@@ -840,15 +831,13 @@
             <div class="design-select design-select--icons">
               <select id="design-asset-type" required>
                 <option value="social-graphic">Social graphic</option>
-                <option value="carousel-template">Carousel template</option>
+                <option value="carousel">Carousel template</option>
                 <option value="story-template">Story template</option>
-                <option value="video-snippet">Video snippet</option>
               </select>
               <div class="design-select__legend">
                 <span data-icon="graphic">Social Graphic</span>
                 <span data-icon="carousel">Carousel</span>
                 <span data-icon="story">Story</span>
-                <span data-icon="video">Video</span>
               </div>
             </div>
           </section>

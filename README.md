@@ -246,7 +246,7 @@ Notes
 
 ## AI Design Lab (Stability integration)
 
-Promptly now includes a Pro-only “Design” tab so customers can request AI-generated graphics/templates/video snippets tied to their calendar posts.
+Promptly now includes a Pro-only “Design” tab so customers can request AI-generated graphics/templates tied to their calendar posts.
 
 ### Frontend flow
 - `script.js` wires the Design tab + modal (search for `design-lab`) so users can select a calendar entry and submit asset requests.
@@ -256,7 +256,7 @@ Promptly now includes a Pro-only “Design” tab so customers can request AI-ge
 ### Backend endpoint
 - Implemented in `server.js` around `/api/design/generate`.
 - Builds a descriptive Stability prompt via `buildDesignPrompt` using the selected post + custom notes.
-- Image-style requests hit `/v2beta/stable-image/generate/sd3`; anything containing “video/clip/snippet” uses `/v2beta/stable-video/async/text-to-video` with polling until the asset is ready.
+- Image-style requests hit `/v2beta/stable-image/generate/sd3`.
 - Buffers are saved to `data/design-assets/<timestamp>-<slug>.{png|mp4}`, and the response returns `{ downloadUrl: "/data/design-assets/..." }`.
 - Static serving already exposes `/data/design-assets/*`, so downloads work once the file lands on disk.
 

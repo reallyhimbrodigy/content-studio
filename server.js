@@ -15,8 +15,7 @@ const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
-const VIDEO_TEMPLATE_ID = process.env.PLACID_VIDEO_TEMPLATE_ID || '';
-const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel', 'video_snippet'];
+const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
@@ -33,9 +32,6 @@ if (!STORY_TEMPLATE_ID) {
 }
 if (!CAROUSEL_TEMPLATE_ID) {
   console.warn('Notice: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will reuse the post graphic template.');
-}
-if (!VIDEO_TEMPLATE_ID) {
-  console.warn('Notice: PLACID_VIDEO_TEMPLATE_ID is not set. Video snippet assets will reuse the post graphic template.');
 }
 
 // Simple local data directory for brand brains
@@ -113,8 +109,6 @@ function resolveTemplateIdForType(type) {
       return STORY_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
     case 'carousel':
       return CAROUSEL_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
-    case 'video_snippet':
-      return VIDEO_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
     case 'post_graphic':
     default:
       return POST_GRAPHIC_TEMPLATE_ID;
@@ -127,49 +121,10 @@ function getDesignAssetTypeLabel(type) {
       return 'Story';
     case 'carousel':
       return 'Carousel';
-    case 'video_snippet':
-      return 'Video Snippet';
     case 'post_graphic':
     default:
       return 'Post Graphic';
   }
-}
-
-function stabilityJsonRequest({ path: apiPath, method = 'POST', payload, contentType }) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.stability.ai',
-      path: apiPath,
-      method,
-      headers: {
-        'Authorization': `Bearer ${STABILITY_API_KEY}`,
-        'Accept': 'application/json',
-      },
-    };
-    if (payload) {
-      options.headers['Content-Type'] = contentType || 'application/json';
-    }
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const parsed = JSON.parse(data || '{}');
-            return resolve(parsed);
-          } catch (err) {
-            return reject(err);
-          }
-        }
-        const err = new Error(`Stability API error ${res.statusCode}: ${data}`);
-        err.statusCode = res.statusCode;
-        reject(err);
-      });
-    });
-    req.on('error', reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
 }
 
 function stabilityMultipartRequest({ path: apiPath, method = 'POST', fields = [] }) {
@@ -460,7 +415,6 @@ function buildBaseDesignDataFromBody(body = {}, overrides = {}) {
     background_image: (body.backgroundImageUrl || '').trim(),
     logo: (body.logoUrl || '').trim(),
     slides: body.slides || null,
-    video_script: body.video_script || '',
     story_copy: body.story_copy || '',
   };
 }
@@ -496,24 +450,12 @@ function applyTypeSpecificDefaults(designData = {}, brandProfile, calendarDay) {
     result.slides = slides;
   }
 
-  if (result.type === 'video_snippet') {
-    if (!result.title && dayData.title) result.title = dayData.title;
-    if (!result.subtitle && dayData.hook) result.subtitle = dayData.hook;
-    if (!result.video_script) {
-      result.video_script =
-        dayData.video_script ||
-        (dayData.videoScript && typeof dayData.videoScript === 'object'
-          ? JSON.stringify(dayData.videoScript)
-          : dayData.videoScript || '');
-    }
-  }
-
   return result;
 }
 
 function resolveBackgroundAspectForType(type) {
   const key = String(type || '').toLowerCase();
-  if (key === 'story' || key === 'video_snippet') return '9:16';
+  if (key === 'story') return '9:16';
   if (key === 'carousel') return '1:1';
   return '4:5';
 }
@@ -766,48 +708,6 @@ async function generateStabilityImage(prompt, aspectRatio = '9:16') {
   throw new Error(
     `Stability image generation returned unexpected payload: ${JSON.stringify(json).slice(0, 200)}`
   );
-}
-
-async function pollStabilityVideoTask(taskId) {
-  for (let i = 0; i < 30; i++) {
-    await wait(2000);
-    const status = await stabilityJsonRequest({
-      path: `/v2beta/stable-video/async/tasks/${taskId}`,
-      method: 'GET',
-    });
-    if (status && status.status === 'completed') {
-      const videoUrl =
-        status.result?.videos?.[0]?.video ||
-        status.result?.videos?.[0]?.video_url ||
-        status.result?.videos?.[0]?.url ||
-        status.result?.video_url ||
-        status.result?.video;
-      if (!videoUrl) throw new Error('Completed video task missing URL');
-      return downloadBinary(videoUrl);
-    }
-    if (status && status.status === 'failed') {
-      throw new Error('Stability video generation failed');
-    }
-  }
-  throw new Error('Timed out waiting for Stability video');
-}
-
-async function generateStabilityVideo(prompt, aspectRatio = '9:16') {
-  const body = JSON.stringify({
-    prompt,
-    aspect_ratio: aspectRatio,
-    cfg_scale: 1.8,
-    motion_bucket_id: 40,
-    seed: Math.floor(Math.random() * 1000000000),
-  });
-  const task = await stabilityJsonRequest({
-    path: '/v2beta/stable-video/async/generate',
-    method: 'POST',
-    payload: body,
-  });
-  const taskId = task && (task.id || task.result_id || task.result?.id);
-  if (!taskId) throw new Error('Stability video response missing task id');
-  return pollStabilityVideoTask(taskId);
 }
 
 function buildCarouselSlidePrompt({
@@ -1877,7 +1777,6 @@ const server = http.createServer((req, res) => {
           heading: fontsPayload.heading || payloadHeading || brandKit?.headingFont || 'Inter Bold',
           body: fontsPayload.body || payloadBody || brandKit?.bodyFont || 'Source Sans Pro',
         };
-        const wantsVideo = /video|clip|snippet/i.test(String(assetType || ''));
         const wantsCarousel = /carousel/i.test(String(assetType || ''));
         if (wantsCarousel) {
           try {
@@ -1932,13 +1831,8 @@ const server = http.createServer((req, res) => {
         let buffer;
         let extension;
         try {
-          if (wantsVideo) {
-            buffer = await generateStabilityVideo(prompt, aspectRatio);
-            extension = '.mp4';
-          } else {
-            buffer = await generateStabilityImage(prompt, aspectRatio);
-            extension = '.png';
-          }
+          buffer = await generateStabilityImage(prompt, aspectRatio);
+          extension = '.png';
         } catch (err) {
           console.error('Stability generation failed:', err);
           res.writeHead(502, { 'Content-Type': 'application/json' });

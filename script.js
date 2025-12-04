@@ -137,7 +137,7 @@ const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
-const VISUAL_KIT_TYPES = ['post_graphic', 'story', 'carousel', 'video_snippet'];
+const VISUAL_KIT_TYPES = ['post_graphic', 'story', 'carousel'];
 const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
@@ -192,8 +192,6 @@ const designEditorCarouselSlideInputs = {
   slide2: document.getElementById('design-editor-slide2'),
   slide3: document.getElementById('design-editor-slide3'),
 };
-const designEditorVideoPanel = document.getElementById('design-editor-video-panel');
-const designEditorVideoScriptInput = document.getElementById('design-editor-video-script');
 const designEditorStatusBadge = document.getElementById('design-editor-status-badge');
 const designEditorStatusNote = document.getElementById('design-editor-status-note');
 const designEditorSaveBtn = document.getElementById('design-editor-save');
@@ -281,7 +279,7 @@ const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
  * @typedef {Object} DesignAsset
  * @property {string} id
  * @property {string} title
- * @property {'post_graphic'|'carousel'|'video_snippet'|'story'|'other'} assetType
+ * @property {'post_graphic'|'carousel'|'story'|'other'} assetType
  * @property {string} linkedDayLabel
  * @property {number|null} linkedDay
  * @property {string} tone
@@ -339,7 +337,7 @@ async function triggerVisualKitGenerationForDay(entry, entryDay, triggerButton) 
   }
   const queuedIds = [];
   try {
-    for (const [index, type] of VISUAL_KIT_TYPES.entries()) {
+    for (const type of VISUAL_KIT_TYPES) {
       try {
         const result = await triggerCalendarAssetGeneration(entry, entryDay, null, {
           type,
@@ -934,7 +932,6 @@ function incrementDesignUsage(userId) {
 function normalizeAssetTypeKey(value = '') {
   const raw = String(value || '').toLowerCase();
   if (!raw) return '';
-  if (raw.includes('video')) return 'video_snippet';
   if (raw.includes('carousel')) return 'carousel';
   if (raw.includes('story')) return 'story';
   if (raw.includes('graphic') || raw.includes('post') || raw.includes('social')) return 'post_graphic';
@@ -960,12 +957,15 @@ function buildEntryFromAsset(asset = {}) {
 function applyDesignFilters(list = []) {
   return list.filter((asset) => {
     if (!asset) return false;
+    const normalizedType = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || asset.data?.type);
+    const allowedTypes = ['post_graphic', 'story', 'carousel'];
+    if (normalizedType && !allowedTypes.includes(normalizedType)) {
+      return false;
+    }
     const searchTerm = (designFilterState.search || '').trim().toLowerCase();
     const typeFilter = designFilterState.type;
     if (typeFilter && typeFilter !== 'all') {
-      const assetTypeKey = normalizeAssetTypeKey(
-        asset.assetType || asset.type || asset.typeLabel || asset.data?.type
-      );
+      const assetTypeKey = normalizedType;
       if (assetTypeKey !== typeFilter) return false;
     }
     const dayFilter = designFilterState.day;
@@ -1109,7 +1109,7 @@ function deriveAssetPreset(entry = {}) {
     if (format.includes('story')) {
       preset = { assetType: 'story', tone: 'playful', note: 'Story-friendly vertical layout with photo prompts and sticker callouts.' };
     } else if (format.includes('reel') || format.includes('video')) {
-      preset = { assetType: 'video_snippet', tone: 'bold', note: 'Video frame storyboard with hook text, mid-scene overlay, and CTA end card.' };
+      preset = { assetType: 'carousel', tone: 'bold', note: 'Turn video beats into a carousel storyboard with hook, proof, and CTA slides.' };
     }
   }
   if (!preset) {
@@ -1672,18 +1672,6 @@ function buildPreviewMarkup(type, tone) {
       .join('');
     return {
       html: `<div class="design-preview__mock design-preview__carousel" style="font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;">${logo}${slides}</div>`,
-      background: theme.canvas,
-    };
-  }
-  if (typeKey === 'video_snippet') {
-    return {
-      html: `<div class="design-preview__mock design-preview__video" style="${baseStyle}">
-        ${logo}
-        <div class="design-preview__track" style="background: rgba(255,255,255,0.25);"></div>
-        <div class="design-preview__track" style="background: rgba(255,255,255,0.3);"></div>
-        <div class="design-preview__track" style="background: rgba(255,255,255,0.55);"></div>
-        <span style="font-size:0.75rem;text-align:center;font-family:${theme.bodyFont}, 'Source Sans Pro', sans-serif;">Vertical reel storyboard</span>
-      </div>`,
       background: theme.canvas,
     };
   }
@@ -2564,11 +2552,6 @@ function renderDesignEditor() {
       if (input) input.value = slides?.[key] || '';
     });
   }
-  if (designEditorVideoPanel) {
-    const scriptValue = asset.data?.video_script || asset.video_script || '';
-    designEditorVideoPanel.style.display = assetTypeKey === 'video_snippet' ? 'flex' : 'none';
-    if (designEditorVideoScriptInput) designEditorVideoScriptInput.value = scriptValue;
-  }
   updateDesignEditorBrandMeta(asset);
 }
 
@@ -2647,7 +2630,6 @@ function updateSelectedAssetDataField(path, value) {
   } else {
     data[path] = value || '';
     if (path === 'story_copy') next.story_copy = value || '';
-    if (path === 'video_script') next.video_script = value || '';
   }
   next.data = data;
   next.updatedAt = new Date().toISOString();
@@ -3071,8 +3053,6 @@ function formatAssetTypeLabel(type) {
       return 'Story';
     case 'carousel':
       return 'Carousel';
-    case 'video_snippet':
-      return 'Video Snippet';
     case 'post_graphic':
       return 'Post Graphic';
     default:
@@ -7275,9 +7255,6 @@ if (designWorkspaceEnabled && designEditorPromptInput) {
 if (designWorkspaceEnabled && designEditorStoryCopyInput) {
   designEditorStoryCopyInput.addEventListener('input', (event) => updateSelectedAssetDataField('story_copy', event.target.value));
 }
-if (designWorkspaceEnabled && designEditorVideoScriptInput) {
-  designEditorVideoScriptInput.addEventListener('input', (event) => updateSelectedAssetDataField('video_script', event.target.value));
-}
 if (designWorkspaceEnabled) {
   Object.entries(designEditorCarouselSlideInputs).forEach(([key, input]) => {
     if (!input) return;
@@ -7792,8 +7769,6 @@ const TEMPLATE_CATEGORY_MAP = {
   'carousel': 'Case Studies',
   'story-template': 'Behind-the-Scenes',
   'story': 'Behind-the-Scenes',
-  'video-snippet': 'Promos',
-  'video_snippet': 'Promos',
 };
 
 function createTemplateThumbnail(text, palette = ['#7f5af0', '#2cb1bc']) {
@@ -7846,7 +7821,7 @@ const BUILT_IN_TEMPLATES = [
     previewInlineUrl: createTemplateThumbnail('Promo', ['#ff5f6d', '#ffc371']),
     category: 'Promos',
     tags: ['promo', 'cta'],
-    recommendedFor: ['post_graphic', 'video_snippet'],
+    recommendedFor: ['post_graphic'],
   },
   {
     id: 'preset_case_study',
