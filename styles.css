@@ -3236,6 +3236,12 @@ button.button--danger:hover {
   z-index: 5;
 }
 
+button[data-action="calendar-generate-asset"] {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
 .asset-editor__preview {
   flex: 1;
   min-height: 320px;

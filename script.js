@@ -648,18 +648,20 @@ function bindCalendarGenerateAssetClicks() {
       alert('Unable to determine which day to generate. Please try again.');
       return;
     }
-    const titleEl = entryEl?.querySelector('.calendar-card__title');
-    const captionEl = entryEl?.querySelector('.calendar-card__caption');
-    const ctaEl = entryEl?.querySelector('.calendar-card__cta');
+    const entryIndex = Number(entryEl?.dataset.entryIndex || 0);
+    const calendarEntry = findPostByDay(dayValue);
+    let baseEntry = calendarEntry || null;
+    if (Array.isArray(calendarEntry?.multiPosts) && calendarEntry.multiPosts.length) {
+      baseEntry = calendarEntry.multiPosts[entryIndex] || calendarEntry;
+    }
+    if (!baseEntry) {
+      console.warn('[Promptly] Unable to locate calendar entry for day', dayValue);
+      return;
+    }
     const contextEntry = {
-      calendar_day_id: button.dataset.calendarDayId || '',
-      calendarDayId: button.dataset.calendarDayId || '',
-      idea: titleEl ? titleEl.textContent.trim() : '',
-      title: titleEl ? titleEl.textContent.trim() : '',
-      caption: captionEl ? captionEl.textContent.trim() : '',
-      description: captionEl ? captionEl.textContent.trim() : '',
-      cta: ctaEl ? ctaEl.textContent.replace(/^\s*CTA:\s*/i, '').trim() : '',
-      brand: currentBrandKit ? { ...currentBrandKit } : null,
+      ...baseEntry,
+      calendarDayId: button.dataset.calendarDayId || baseEntry.calendar_day_id || baseEntry.calendarDayId,
+      calendar_day_id: button.dataset.calendarDayId || baseEntry.calendar_day_id || undefined,
     };
     console.log('[Promptly] Calendar Generate Asset button clicked', {
       day: dayValue,
@@ -4980,7 +4982,8 @@ const createCard = (post) => {
     actionsEl.appendChild(regenBtn);
 
     const assetBtn = makeBtn('Generate Asset');
-    assetBtn.classList.add('calendar-card__action--generate-asset');
+    assetBtn.classList.remove('ghost');
+    assetBtn.classList.add('calendar-card__action', 'calendar-card__action--primary', 'primary');
     assetBtn.dataset.action = 'calendar-generate-asset';
     assetBtn.dataset.calendarDayId = buildCalendarDayIdentifier(entry, entryDay);
     assetBtn.dataset.calendarDay = String(entryDay);
