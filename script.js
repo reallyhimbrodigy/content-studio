@@ -2,6 +2,7 @@ import {
   getCurrentUser,
   getCurrentUserDetails,
   saveUserCalendar,
+  deleteUserCalendar,
   signOut as storeSignOut,
   getUserTier,
   setUserTier,
@@ -90,6 +91,7 @@ let fontPickerListenersBound = false;
   const exportVariantsCsvBtn = document.getElementById('export-variants-csv');
   const downloadVariantsZipBtn = document.getElementById('download-variants-zip');
   const downloadCalendarFolderBtn = document.getElementById('download-calendar-folder');
+  const deleteCalendarBtn = document.getElementById('delete-calendar-button');
   const hub = document.getElementById('publish-hub');
   const hubNext = document.getElementById('hub-next');
   const hubAfter = document.getElementById('hub-after');
@@ -4917,8 +4919,26 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
 }
 
 let currentCalendar = []; // Store the current calendar data
+let currentCalendarRecordId = null; // Supabase calendars.id for the loaded calendar (if any)
 let currentNiche = ""; // Store the niche for the current calendar
 let regenDaySupported = true;
+
+function extractCalendarRecordId(record) {
+  if (!record || typeof record !== 'object') return null;
+  const rawId = record.id ?? record.calendar_id ?? record.calendarId ?? null;
+  if (rawId === null || typeof rawId === 'undefined') return null;
+  const normalized = String(rawId).trim();
+  return normalized ? normalized : null;
+}
+
+function updateDeleteCalendarButtonState() {
+  if (!deleteCalendarBtn) return;
+  const hasRecord = Boolean(currentCalendarRecordId);
+  deleteCalendarBtn.disabled = !hasRecord;
+  deleteCalendarBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
+}
+
+updateDeleteCalendarButtonState();
 
 function revealCalendarActionButtons() {
   const buttons = [
@@ -4932,6 +4952,7 @@ function revealCalendarActionButtons() {
     exportVariantsCsvBtn,
     downloadVariantsZipBtn,
     downloadCalendarFolderBtn,
+    deleteCalendarBtn,
   ];
   buttons.forEach((btn) => {
     if (btn) btn.style.display = 'inline-block';
@@ -4954,6 +4975,7 @@ function syncHubControls() {
 
 function syncCalendarUIAfterDataChange(options = {}) {
   revealCalendarActionButtons();
+  updateDeleteCalendarButtonState();
   syncHubControls();
   if (hub) renderPublishHub();
   updateTabs();
@@ -5000,6 +5022,8 @@ function hydrateCalendarFromStorage(force = false) {
         currentCalendar = [];
         renderCards(currentCalendar);
         updateTabs();
+        currentCalendarRecordId = null;
+        updateDeleteCalendarButtonState();
       }
       return false;
     }
@@ -5011,6 +5035,8 @@ function hydrateCalendarFromStorage(force = false) {
       currentNiche = storedNiche;
       if (nicheInput) nicheInput.value = storedNiche;
     }
+    currentCalendarRecordId = null;
+    updateDeleteCalendarButtonState();
     renderCards(currentCalendar);
     syncCalendarUIAfterDataChange();
     return true;
@@ -5128,6 +5154,19 @@ try {
   console.error("❌ Error rendering initial cards:", err);
 }
 
+function clearCalendarStateAfterDeletion() {
+  currentCalendar = [];
+  currentNiche = '';
+  currentCalendarRecordId = null;
+  updateDeleteCalendarButtonState();
+  renderCards(currentCalendar);
+  applyFilter("all");
+  syncHubControls();
+  if (hub) renderPublishHub();
+  updateTabs();
+  persistCurrentCalendarState();
+}
+
 const hydratedFromStorage = hydrateCalendarFromStorage();
 if (hydratedFromStorage) ensurePlatformVariantsForCurrentCalendar('hydrate');
 
@@ -5149,6 +5188,8 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
       console.warn(`⚠️ Fixed ${missingCount} posts missing videoScript (from library/load). All posts now have a Reel Script.`);
     }
     currentCalendar = posts;
+    currentCalendarRecordId = extractCalendarRecordId(cal);
+    updateDeleteCalendarButtonState();
     const loadedNiche = typeof cal.nicheStyle === 'string' ? cal.nicheStyle.trim() : '';
     currentNiche = loadedNiche;
     if (nicheInput) nicheInput.value = loadedNiche || '';
@@ -6071,18 +6112,56 @@ if (saveBtn) {
       return;
     }
     
-    // Reuse the saveUserCalendar function from auth.js
-    saveUserCalendar(currentUser, calendarData);
-    
-    if (feedbackEl) {
-      feedbackEl.textContent = `✓ Calendar saved for "${niche}"`;
-      feedbackEl.classList.add("success");
-      setTimeout(() => {
-        if (feedbackEl) {
-          feedbackEl.textContent = "";
-          feedbackEl.classList.remove("success");
-        }
-      }, 2500);
+    try {
+      const savedRecord = await saveUserCalendar(currentUser, calendarData);
+      currentCalendarRecordId = extractCalendarRecordId(savedRecord);
+      updateDeleteCalendarButtonState();
+      if (feedbackEl) {
+        feedbackEl.textContent = `✓ Calendar saved for "${niche}"`;
+        feedbackEl.classList.add("success");
+        setTimeout(() => {
+          if (feedbackEl) {
+            feedbackEl.textContent = "";
+            feedbackEl.classList.remove("success");
+          }
+        }, 2500);
+      }
+    } catch (error) {
+      console.error('saveUserCalendar failed', error);
+      alert(error?.message || "Failed to save calendar. Please try again.");
+    }
+  });
+}
+
+if (deleteCalendarBtn) {
+  deleteCalendarBtn.addEventListener('click', async () => {
+    if (!currentCalendarRecordId) return;
+    const confirmed = window.confirm('Delete this calendar? This cannot be undone.');
+    if (!confirmed) return;
+    const originalLabel = deleteCalendarBtn.textContent;
+    deleteCalendarBtn.textContent = 'Deleting…';
+    deleteCalendarBtn.disabled = true;
+    try {
+      const result = await deleteUserCalendar(currentCalendarRecordId);
+      if (!result?.ok) {
+        throw new Error(result?.msg || 'Unable to delete calendar.');
+      }
+      clearCalendarStateAfterDeletion();
+      if (feedbackEl) {
+        feedbackEl.textContent = 'Calendar deleted.';
+        feedbackEl.classList.remove('success');
+        setTimeout(() => {
+          if (feedbackEl && feedbackEl.textContent === 'Calendar deleted.') {
+            feedbackEl.textContent = '';
+          }
+        }, 2500);
+      }
+    } catch (error) {
+      console.error('deleteUserCalendar failed', error);
+      alert(error?.message || 'Unable to delete calendar. Please try again.');
+    } finally {
+      deleteCalendarBtn.textContent = originalLabel || 'Delete Calendar';
+      updateDeleteCalendarButtonState();
     }
   });
 }
@@ -6975,6 +7054,8 @@ if (generateBtn) {
       
       // Store the calendar and render it
       currentCalendar = aiGeneratedPosts;
+      currentCalendarRecordId = null;
+      updateDeleteCalendarButtonState();
       currentNiche = niche;
       renderCards(currentCalendar);
       applyFilter("all");

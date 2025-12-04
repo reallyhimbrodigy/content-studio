@@ -3234,6 +3234,28 @@ button.ghost:hover {
   transform: translateY(-2px);
 }
 
+button.btn-danger,
+.btn-danger {
+  background: radial-gradient(circle at top left, rgba(255, 96, 96, 0.24), transparent 55%), #1a0c12;
+  border: 1px solid rgba(255, 96, 96, 0.88);
+  color: #ffecec;
+  box-shadow: 0 12px 24px rgba(255, 96, 96, 0.25);
+}
+
+button.btn-danger:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
+  background: radial-gradient(circle at top left, rgba(255, 96, 96, 0.32), transparent 55%), #250f18;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(255, 96, 96, 0.35);
+}
+
+button.btn-danger:disabled,
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
 .pro-gradient-btn {
   background: linear-gradient(135deg, #7f5af0, #2cb1bc);
   color: #050509;
