@@ -686,6 +686,48 @@ async function handleGetDesignAsset(req, res, assetId) {
   }
 }
 
+async function handleDeleteCalendar(req, res, calendarId) {
+  if (!supabaseAdmin) {
+    return sendJson(res, 501, { error: 'Calendar storage not configured' });
+  }
+  if (!calendarId) {
+    return sendJson(res, 400, { error: 'calendarId required' });
+  }
+  let user;
+  try {
+    user = await requireSupabaseUser(req);
+  } catch (error) {
+    const status = error?.statusCode || 401;
+    return sendJson(res, status, { error: error?.message || 'Unauthorized' });
+  }
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('calendars')
+      .delete()
+      .eq('id', calendarId)
+      .eq('user_id', user.id)
+      .select('id')
+      .single();
+    if (error) {
+      const code = String(error.code || '').toLowerCase();
+      const message = String(error.message || '').toLowerCase();
+      if (code === 'pgrst116' || message.includes('row not found')) {
+        return sendJson(res, 404, { error: 'Calendar not found' });
+      }
+      console.error('Calendar delete error', { calendarId, message: error.message });
+      return sendJson(res, 500, { error: 'Unable to delete calendar' });
+    }
+    if (!data) {
+      return sendJson(res, 404, { error: 'Calendar not found' });
+    }
+    res.writeHead(204);
+    res.end();
+  } catch (error) {
+    console.error('Calendar delete error', { calendarId, message: error?.message });
+    return sendJson(res, 500, { error: 'Unable to delete calendar' });
+  }
+}
+
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
   const json = await stabilityMultipartRequest({
     path: '/v2beta/stable-image/generate/sd3',
@@ -1520,8 +1562,8 @@ function isBrandKitPath(pathname) {
 
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   // Security & professionalism headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -1733,6 +1775,13 @@ const server = http.createServer((req, res) => {
   const designAssetMatch = parsed.pathname && parsed.pathname.match(/^\/api\/design-assets\/([a-f0-9-]+)$/i);
   if (designAssetMatch && req.method === 'GET') {
     handleGetDesignAsset(req, res, designAssetMatch[1]);
+    return;
+  }
+
+  const calendarDeleteMatch =
+    parsed.pathname && parsed.pathname.match(/^\/api\/calendars\/([^/]+)$/i);
+  if (calendarDeleteMatch && req.method === 'DELETE') {
+    handleDeleteCalendar(req, res, calendarDeleteMatch[1]);
     return;
   }
 
