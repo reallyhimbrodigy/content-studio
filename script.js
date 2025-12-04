@@ -628,6 +628,7 @@ async function deleteCalendarById(calendarId) {
     error.status = response.status;
     throw error;
   }
+  console.log('[Promptly] Calendar deleted', { calendarId });
 }
 
 function mergeDesignAsset(asset, options = {}) {
@@ -4951,9 +4952,22 @@ function updateCalendarToolbarState() {
     deleteCalendarBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
   }
   if (downloadCalendarFolderBtn) {
-    downloadCalendarFolderBtn.disabled = !hasRecord;
-    downloadCalendarFolderBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
+    const hasCalendar = Array.isArray(currentCalendar) && currentCalendar.length > 0;
+    downloadCalendarFolderBtn.disabled = !hasCalendar;
+    downloadCalendarFolderBtn.setAttribute('aria-disabled', hasCalendar ? 'false' : 'true');
   }
+}
+
+function setCurrentCalendarId(id) {
+  const normalized =
+    typeof id === 'string'
+      ? id.trim()
+      : id
+      ? String(id).trim()
+      : null;
+  currentCalendarId = normalized || null;
+  console.log('[Promptly] Current calendar id set', { id: currentCalendarId });
+  updateCalendarToolbarState();
 }
 
 updateCalendarToolbarState();
@@ -5040,8 +5054,7 @@ function hydrateCalendarFromStorage(force = false) {
         currentCalendar = [];
         renderCards(currentCalendar);
         updateTabs();
-        currentCalendarId = null;
-        updateCalendarToolbarState();
+        setCurrentCalendarId(null);
       }
       return false;
     }
@@ -5053,8 +5066,7 @@ function hydrateCalendarFromStorage(force = false) {
       currentNiche = storedNiche;
       if (nicheInput) nicheInput.value = storedNiche;
     }
-    currentCalendarId = null;
-    updateCalendarToolbarState();
+    setCurrentCalendarId(null);
     renderCards(currentCalendar);
     syncCalendarUIAfterDataChange();
     return true;
@@ -5173,10 +5185,10 @@ try {
 }
 
 function handleCalendarDeleted() {
+  console.log('[Promptly] handleCalendarDeleted()');
   currentCalendar = [];
   currentNiche = '';
-  currentCalendarId = null;
-  updateCalendarToolbarState();
+  setCurrentCalendarId(null);
   renderCards(currentCalendar);
   applyFilter("all");
   syncHubControls();
@@ -5206,8 +5218,7 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
       console.warn(`⚠️ Fixed ${missingCount} posts missing videoScript (from library/load). All posts now have a Reel Script.`);
     }
     currentCalendar = posts;
-    currentCalendarId = extractCalendarId(cal);
-    updateCalendarToolbarState();
+    setCurrentCalendarId(extractCalendarId(cal));
     const loadedNiche = typeof cal.nicheStyle === 'string' ? cal.nicheStyle.trim() : '';
     currentNiche = loadedNiche;
     if (nicheInput) nicheInput.value = loadedNiche || '';
@@ -6132,8 +6143,7 @@ if (saveBtn) {
     
     try {
       const savedRecord = await saveUserCalendar(currentUser, calendarData);
-      currentCalendarId = extractCalendarId(savedRecord);
-      updateCalendarToolbarState();
+      setCurrentCalendarId(extractCalendarId(savedRecord));
       if (feedbackEl) {
         feedbackEl.textContent = `✓ Calendar saved for "${niche}"`;
         feedbackEl.classList.add("success");
@@ -6151,18 +6161,26 @@ if (saveBtn) {
   });
 }
 
-if (deleteCalendarBtn) {
-  deleteCalendarBtn.addEventListener('click', async () => {
+function bindDeleteCalendarButton() {
+  const deleteButton = deleteCalendarBtn || document.getElementById('delete-calendar-button');
+  if (!deleteButton) {
+    console.warn('[Promptly] Delete Calendar button not found in DOM.');
+    return;
+  }
+  console.log('[Promptly] Delete Calendar button found and binding handler.');
+  deleteButton.addEventListener('click', async () => {
     console.log('[Promptly] Delete Calendar clicked', { currentCalendarId });
-    if (!currentCalendarId) return;
+    if (!currentCalendarId) {
+      alert('No active calendar id found. Please save or open a calendar first.');
+      return;
+    }
     const confirmed = window.confirm('Delete this calendar? This cannot be undone.');
     if (!confirmed) return;
-    const originalLabel = deleteCalendarBtn.textContent;
-    deleteCalendarBtn.textContent = 'Deleting…';
-    deleteCalendarBtn.disabled = true;
+    const originalLabel = deleteButton.textContent;
+    deleteButton.textContent = 'Deleting…';
+    deleteButton.disabled = true;
     try {
       await deleteCalendarById(currentCalendarId);
-      console.log('[Promptly] Delete Calendar succeeded');
       handleCalendarDeleted();
       if (feedbackEl) {
         feedbackEl.textContent = 'Calendar deleted.';
@@ -6175,12 +6193,19 @@ if (deleteCalendarBtn) {
       }
     } catch (error) {
       console.error('[Promptly] Delete calendar error', error);
-      alert(error?.message || 'Unable to delete calendar. Please try again.');
-    } finally {
-      deleteCalendarBtn.textContent = originalLabel || 'Delete Calendar';
-      updateCalendarToolbarState();
+      alert('Unable to delete calendar right now. Check console for details.');
+      deleteButton.disabled = false;
+      deleteButton.textContent = originalLabel || 'Delete Calendar';
+      return;
     }
+    deleteButton.textContent = originalLabel || 'Delete Calendar';
   });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindDeleteCalendarButton);
+} else {
+  bindDeleteCalendarButton();
 }
 
 const DEFAULT_IDEA_TEXT = 'Engaging post idea';
@@ -7071,8 +7096,7 @@ if (generateBtn) {
       
       // Store the calendar and render it
       currentCalendar = aiGeneratedPosts;
-      currentCalendarId = null;
-      updateCalendarToolbarState();
+      setCurrentCalendarId(null);
       currentNiche = niche;
       renderCards(currentCalendar);
       applyFilter("all");
