@@ -4951,9 +4951,8 @@ function updateCalendarToolbarState() {
     deleteCalendarBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
   }
   if (downloadCalendarFolderBtn) {
-    const hasCalendar = Array.isArray(currentCalendar) && currentCalendar.length > 0;
-    downloadCalendarFolderBtn.disabled = !hasCalendar;
-    downloadCalendarFolderBtn.setAttribute('aria-disabled', hasCalendar ? 'false' : 'true');
+    downloadCalendarFolderBtn.disabled = !hasRecord;
+    downloadCalendarFolderBtn.setAttribute('aria-disabled', hasRecord ? 'false' : 'true');
   }
 }
 
@@ -5173,7 +5172,7 @@ try {
   console.error("❌ Error rendering initial cards:", err);
 }
 
-function clearCalendarStateAfterDeletion() {
+function handleCalendarDeleted() {
   currentCalendar = [];
   currentNiche = '';
   currentCalendarId = null;
@@ -6154,6 +6153,7 @@ if (saveBtn) {
 
 if (deleteCalendarBtn) {
   deleteCalendarBtn.addEventListener('click', async () => {
+    console.log('[Promptly] Delete Calendar clicked', { currentCalendarId });
     if (!currentCalendarId) return;
     const confirmed = window.confirm('Delete this calendar? This cannot be undone.');
     if (!confirmed) return;
@@ -6162,7 +6162,8 @@ if (deleteCalendarBtn) {
     deleteCalendarBtn.disabled = true;
     try {
       await deleteCalendarById(currentCalendarId);
-      clearCalendarStateAfterDeletion();
+      console.log('[Promptly] Delete Calendar succeeded');
+      handleCalendarDeleted();
       if (feedbackEl) {
         feedbackEl.textContent = 'Calendar deleted.';
         feedbackEl.classList.remove('success');
@@ -6173,7 +6174,7 @@ if (deleteCalendarBtn) {
         }, 2500);
       }
     } catch (error) {
-      console.error('deleteCalendarById failed', error);
+      console.error('[Promptly] Delete calendar error', error);
       alert(error?.message || 'Unable to delete calendar. Please try again.');
     } finally {
       deleteCalendarBtn.textContent = originalLabel || 'Delete Calendar';
