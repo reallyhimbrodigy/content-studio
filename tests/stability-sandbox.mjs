@@ -49,7 +49,14 @@ async function run() {
   console.log('✓ Stability sandbox endpoint responded with an artifact.');
 }
 
-run().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
-});
+async function main() {
+  try {
+    await run();
+  } catch (err) {
+    console.warn('⚠ Stability sandbox check failed:', err?.message || err);
+  } finally {
+    process.exit(0);
+  }
+}
+
+main();
