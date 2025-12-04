@@ -137,7 +137,6 @@ const designSelectionCount = document.getElementById('design-selection-count');
 const designExportSelectedBtn = document.getElementById('design-export-selected');
 const designRegenerateSelectedBtn = document.getElementById('design-regenerate-selected');
 const designPreviewEl = document.getElementById('design-preview');
-const VISUAL_KIT_TYPES = ['post_graphic', 'story', 'carousel'];
 const assetDetailModal = document.getElementById('asset-detail-modal');
 const assetDetailPreview = document.getElementById('asset-detail-preview');
 const assetDetailCloseBtn = document.getElementById('asset-detail-close');
@@ -329,41 +328,6 @@ function getLastTemplateId() {
   }
 }
 
-async function triggerVisualKitGenerationForDay(entry, entryDay, triggerButton) {
-  const button = triggerButton || null;
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Generating Kit…';
-  }
-  const queuedIds = [];
-  try {
-    for (const type of VISUAL_KIT_TYPES) {
-      try {
-        const result = await triggerCalendarAssetGeneration(entry, entryDay, null, {
-          type,
-          suppressRedirect: true,
-        });
-        if (result?.id) {
-          queuedIds.push(result.id);
-        }
-      } catch (err) {
-        console.error(`Visual kit generation failed for ${type}`, err);
-        showDesignError(`Unable to queue ${formatAssetTypeLabel(type)}`, err.message || 'Try again soon.');
-      }
-    }
-    if (queuedIds.length) {
-      showDesignSuccess('Visual kit queued in Design Lab.');
-      setTimeout(() => {
-        window.location.href = `/design.html?asset=${encodeURIComponent(queuedIds[0])}`;
-      }, 800);
-    }
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Generate Visual Kit';
-    }
-  }
-}
 
 function rememberLastTemplate(templateId) {
   if (!templateId) return;
@@ -4697,9 +4661,6 @@ const createCard = (post) => {
     const assetBtn = makeBtn('Generate Asset');
     attachProAction(assetBtn, () => triggerCalendarAssetGeneration(entry, entryDay, assetBtn));
     actionsEl.appendChild(assetBtn);
-    const kitBtn = makeBtn('Generate Visual Kit');
-    attachProAction(kitBtn, () => triggerVisualKitGenerationForDay(entry, entryDay, kitBtn));
-    actionsEl.appendChild(kitBtn);
 
     if (entry.variants) {
       // variant captions still show in detail rows; copy buttons removed
