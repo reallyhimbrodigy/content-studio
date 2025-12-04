@@ -15,7 +15,7 @@ const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
-const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel'];
+const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
@@ -338,16 +338,28 @@ async function advanceDesignAssetPipeline(assetRow) {
       return assetRow;
     }
     if (['failed', 'error'].includes(status)) {
+      const failureMessage =
+        renderResult?.raw?.message ||
+        renderResult?.raw?.error ||
+        'Placid reported a render failure';
       const data = await markDesignAssetStatus(assetRow.id, {
         status: 'failed',
-        data: { ...(assetRow.data || {}), error_code: 'placid_render_failed' },
+        data: {
+          ...(assetRow.data || {}),
+          error_code: 'placid_render_failed',
+          error_message: failureMessage,
+        },
       });
       return data || assetRow;
     }
     if (!isCloudinaryConfigured()) {
       const data = await markDesignAssetStatus(assetRow.id, {
         status: 'failed',
-        data: { ...(assetRow.data || {}), error_code: 'cloudinary_config_missing' },
+        data: {
+          ...(assetRow.data || {}),
+          error_code: 'cloudinary_config_missing',
+          error_message: 'Cloudinary configuration missing on server',
+        },
       });
       return data || assetRow;
     }
@@ -364,10 +376,17 @@ async function advanceDesignAssetPipeline(assetRow) {
     if (!data) return assetRow;
     return data || assetRow;
   } catch (error) {
-    console.error('Design asset pipeline error:', error);
+    console.error('Design asset pipeline error:', {
+      message: error?.message,
+      details: error?.details || null,
+    });
     const data = await markDesignAssetStatus(assetRow.id, {
       status: 'failed',
-      data: { ...(assetRow.data || {}), error_code: 'pipeline_failure' },
+      data: {
+        ...(assetRow.data || {}),
+        error_code: 'pipeline_failure',
+        error_message: error?.message || 'Design pipeline failed',
+      },
     });
     return data || assetRow;
   }
@@ -406,6 +425,7 @@ function buildBaseDesignDataFromBody(body = {}, overrides = {}) {
     title: (body.title || '').trim(),
     subtitle: (body.subtitle || body.caption || '').trim(),
     cta: (body.cta || '').trim(),
+    brand_color: (body.brand_color || body.brandColor || '').trim(),
     prompt: body.prompt || '',
     tone: body.tone || '',
     campaign: body.campaign || '',
@@ -494,15 +514,20 @@ async function loadCalendarDay(calendarDayId, userId) {
   return null;
 }
 
-// NOTE: Placid template currently only binds title, subtitle, cta, logo, and background_image.
-// The editor version in use does not support dynamic color bindings on shapes, so we omit
-// brand_color/platform from the payload to avoid sending unused fields. Brand metadata still
-// lives in design_assets.data for future template bindings.
+function safePlacidText(value, max = 300) {
+  if (!value) return '';
+  return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+// NOTE: Placid template currently only binds title, subtitle, cta, logo, background_image, brand_color, and platform.
+// Brand metadata still lives in design_assets.data for future template bindings.
 function buildPlacidPayload(data = {}) {
   return {
-    title: data.title || '',
-    subtitle: data.subtitle || '',
-    cta: data.cta || '',
+    title: safePlacidText(data.title, 120),
+    subtitle: safePlacidText(data.subtitle, 360),
+    cta: safePlacidText(data.cta, 80),
+    brand_color: data.brand_color || data.brand_primary_color || '#7f5af0',
+    platform: data.platform || 'instagram',
     logo: data.logo || data.brand_logo_url || '',
     background_image: data.background_image || '',
   };
@@ -544,6 +569,13 @@ async function handleCreateDesignAsset(req, res) {
       designData.brand_accent_color = brandProfile.accentColor || designData.brand_accent_color || '';
       designData.brand_heading_font = brandProfile.headingFont || designData.brand_heading_font || '';
       designData.brand_body_font = brandProfile.bodyFont || designData.brand_body_font || '';
+      if (!designData.brand_color) {
+        designData.brand_color =
+          brandProfile.primaryColor ||
+          brandProfile.accentColor ||
+          designData.brand_accent_color ||
+          '#7f5af0';
+      }
       const profileLogo = brandProfile.logoUrl || '';
       if (profileLogo) {
         designData.brand_logo_url = profileLogo;
@@ -551,6 +583,12 @@ async function handleCreateDesignAsset(req, res) {
       }
     } else if (designData.brand_logo_url && !designData.logo) {
       designData.logo = designData.brand_logo_url;
+    }
+    if (!designData.brand_color) {
+      designData.brand_color =
+        designData.brand_primary_color ||
+        designData.brand_accent_color ||
+        '#7f5af0';
     }
     designData.type = type;
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
@@ -581,7 +619,11 @@ async function handleCreateDesignAsset(req, res) {
       if (!render?.renderId) {
         await markDesignAssetStatus(inserted.id, {
           status: 'failed',
-          data: { ...designData, error_code: 'placid_render_unavailable' },
+          data: {
+            ...designData,
+            error_code: 'placid_render_unavailable',
+            error_message: 'Unable to obtain render id from Placid',
+          },
         });
         return sendJson(res, 502, { error: 'Unable to start render for this asset', status: 'failed' });
       }
@@ -595,12 +637,20 @@ async function handleCreateDesignAsset(req, res) {
         currentRow = updated;
       }
     } catch (err) {
-      console.error('Placid render error:', err);
+      const placidMessage = err?.details?.message || err?.details?.error || err?.message || 'Unknown Placid render error';
+      console.error('Placid render error:', {
+        message: err?.message,
+        details: err?.details || null,
+      });
       await markDesignAssetStatus(inserted.id, {
         status: 'failed',
-        data: { ...designData, error_code: 'placid_render_failed' },
+        data: {
+          ...designData,
+          error_code: 'placid_render_failed',
+          error_message: placidMessage,
+        },
       });
-      return sendJson(res, 502, { error: 'Unable to start render for this asset', status: 'failed' });
+      return sendJson(res, 502, { error: placidMessage, status: 'failed' });
     }
     return sendJson(res, 201, mapDesignAssetRow(currentRow));
   } catch (error) {
@@ -620,7 +670,11 @@ async function handleCreateDesignAsset(req, res) {
     if (createdRow?.id) {
       await markDesignAssetStatus(createdRow.id, {
         status: 'failed',
-        data: { ...(createdRow.data || {}), error_code: 'design_asset_create_failed' },
+        data: {
+          ...(createdRow.data || {}),
+          error_code: 'design_asset_create_failed',
+          error_message: error?.message || 'Design asset creation failed',
+        },
       });
     }
     return sendJson(res, 500, { error: 'Unable to create design asset', status: 'failed' });
@@ -725,6 +779,55 @@ async function handleDeleteCalendar(req, res, calendarId) {
   } catch (error) {
     console.error('Calendar delete error', { calendarId, message: error?.message });
     return sendJson(res, 500, { error: 'Unable to delete calendar' });
+  }
+}
+
+async function handleDebugDesignTest(req, res) {
+  try {
+    await requireSupabaseUser(req);
+  } catch (error) {
+    const status = error?.statusCode || 401;
+    return sendJson(res, status, { error: error?.message || 'Unauthorized' });
+  }
+  if (!POST_GRAPHIC_TEMPLATE_ID) {
+    return sendJson(res, 501, { error: 'POST_GRAPHIC_TEMPLATE_ID is not configured' });
+  }
+  try {
+    const payload = buildPlacidPayload({
+      title: 'Debug Title',
+      subtitle: 'Debug Subtitle',
+      cta: 'Tap to learn more',
+      brand_color: '#7f5af0',
+      platform: 'instagram',
+    });
+    const render = await createPlacidRender({
+      templateId: POST_GRAPHIC_TEMPLATE_ID,
+      data: payload,
+    });
+    if (!render?.renderId) {
+      return sendJson(res, 502, { error: 'Placid did not return a render id', payload: render });
+    }
+    let result = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      result = await getPlacidRenderResult(render.renderId);
+      const status = String(result?.status || '').toLowerCase();
+      if (result?.imageUrl && status === 'ready') break;
+      await wait(1000);
+    }
+    console.log('Design debug test result', {
+      render,
+      result,
+    });
+    return sendJson(res, 200, { render, result });
+  } catch (error) {
+    console.error('Design debug test error', {
+      message: error?.message,
+      details: error?.details || null,
+    });
+    return sendJson(res, error?.statusCode || 500, {
+      error: error?.message || 'Debug design test failed',
+      details: error?.details || null,
+    });
   }
 }
 
@@ -1775,6 +1878,11 @@ const server = http.createServer((req, res) => {
   const designAssetMatch = parsed.pathname && parsed.pathname.match(/^\/api\/design-assets\/([a-f0-9-]+)$/i);
   if (designAssetMatch && req.method === 'GET') {
     handleGetDesignAsset(req, res, designAssetMatch[1]);
+    return;
+  }
+
+  if (parsed.pathname === '/api/debug/design-test' && req.method === 'POST') {
+    handleDebugDesignTest(req, res);
     return;
   }
 

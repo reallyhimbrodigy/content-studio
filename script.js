@@ -198,6 +198,15 @@ const designEditorSaveBtn = document.getElementById('design-editor-save');
 const designEditorDuplicateBtn = document.getElementById('design-editor-duplicate');
 const designEditorDeleteBtn = document.getElementById('design-editor-delete');
 populateLinkedDaySelect(designEditorDaySelect);
+
+function getDesignFailureMessage(asset) {
+  if (!asset) return 'Generation failed. You can adjust the prompt or try again.';
+  return (
+    asset.data?.error_message ||
+    asset.error_message ||
+    'Generation failed. You can adjust the prompt or try again.'
+  );
+}
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
@@ -2515,7 +2524,7 @@ function renderDesignEditor() {
       designEditorPreviewPlaceholder.textContent = 'Rendering in progress. This may take a moment.';
     } else if (asset.status === 'failed') {
       designEditorPreviewPlaceholder.style.display = 'flex';
-      designEditorPreviewPlaceholder.textContent = 'Generation failed. You can adjust the prompt or try again.';
+      designEditorPreviewPlaceholder.textContent = getDesignFailureMessage(asset);
     } else {
       designEditorPreviewPlaceholder.style.display = previewSource ? 'none' : 'flex';
       designEditorPreviewPlaceholder.textContent = 'Preview will appear after generation.';
@@ -2526,7 +2535,7 @@ function renderDesignEditor() {
     if (asset.status === 'rendering') {
       note = 'Rendering in progress. This may take a moment.';
     } else if (asset.status === 'failed') {
-      note = 'Generation failed. You can adjust the prompt or try again.';
+      note = getDesignFailureMessage(asset);
     }
     designEditorStatusNote.textContent = note;
     designEditorStatusNote.style.display = note ? 'block' : 'none';

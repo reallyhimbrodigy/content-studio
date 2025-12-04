@@ -58,6 +58,7 @@ async function placidRequest(path, { method = 'GET', body } = {}) {
       path,
       method,
       message: error?.message,
+      detail: error?.details || null,
     });
     throw error;
   }
