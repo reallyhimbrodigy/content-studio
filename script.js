@@ -197,6 +197,18 @@ const designEditorStatusNote = document.getElementById('design-editor-status-not
 const designEditorSaveBtn = document.getElementById('design-editor-save');
 const designEditorDuplicateBtn = document.getElementById('design-editor-duplicate');
 const designEditorDeleteBtn = document.getElementById('design-editor-delete');
+const assetEditorModal = document.getElementById('asset-editor-modal');
+const assetEditorTitle = document.getElementById('asset-editor-title');
+const assetEditorPreviewImage = document.getElementById('asset-editor-preview-image');
+const assetEditorPreviewPlaceholder = document.getElementById('asset-editor-preview-placeholder');
+const assetEditorTitleInput = document.getElementById('asset-editor-title-input');
+const assetEditorSubtitleInput = document.getElementById('asset-editor-subtitle-input');
+const assetEditorCtaInput = document.getElementById('asset-editor-cta-input');
+const assetEditorNotesInput = document.getElementById('asset-editor-notes-input');
+const assetEditorStatus = document.getElementById('asset-editor-status');
+const assetEditorSaveButton = document.getElementById('asset-editor-save-button');
+const assetEditorRegenerateButton = document.getElementById('asset-editor-regenerate-button');
+const assetEditorDownloadButton = document.getElementById('asset-editor-download-button');
 populateLinkedDaySelect(designEditorDaySelect);
 
 function getDesignFailureMessage(asset) {
@@ -258,6 +270,7 @@ let activeTab = 'plan';
 let isCompact = false;
 let cachedUserIsPro = false;
 let currentPostFrequency = 1;
+let pendingAssetGeneration = null;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
@@ -328,6 +341,7 @@ let designViewMode = (() => {
 let activeAssetDetailId = null;
 let pendingAssetDetailId = null;
 let isDesignRegenerating = false;
+let currentDesignAsset = null;
 if (designSelectionCount) designSelectionCount.textContent = '0 selected';
 
 function getLastTemplateId() {
@@ -423,6 +437,230 @@ function toggleAutofillEditing(field) {
     config.editBtn.textContent = 'Edit';
     setAutofillField(field, config.input.value);
   }
+}
+
+function openGenerateAssetModal(context) {
+  pendingAssetGeneration = context;
+  const modal = document.getElementById('generate-asset-modal');
+  if (!modal) return;
+  modal.classList.remove('modal--hidden');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeGenerateAssetModal() {
+  const modal = document.getElementById('generate-asset-modal');
+  if (!modal) return;
+  modal.classList.add('modal--hidden');
+  modal.setAttribute('aria-hidden', 'true');
+  pendingAssetGeneration = null;
+}
+
+async function createDesignAssetFromCalendar(context, type) {
+  if (!context) throw new Error('Missing calendar context');
+  const payload = {
+    calendarDayId: context.calendarDayId,
+    linkedDay: context.linkedDay,
+    type,
+    title: context.title || '',
+    subtitle: context.subtitle || '',
+    cta: context.cta || '',
+    prompt: context.prompt || '',
+    tone: context.tone || '',
+    campaign: context.campaign || '',
+    month: context.month || '',
+    brand_color:
+      context.brand?.primaryColor ||
+      context.brand?.accentColor ||
+      '',
+    logoUrl: context.brand?.logoUrl || '',
+    platform: context.platform || 'instagram',
+  };
+  const response = await fetchWithAuth('/api/design-assets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 501) {
+    designAssetsApiDisabled = true;
+    throw new Error('Design pipeline is not available in this environment.');
+  }
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail?.error || `Design API error ${response.status}`);
+  }
+  const asset = await response.json();
+  if (asset?.id) {
+    const placeholder = {
+      id: asset.id,
+      assetType: type,
+      typeLabel: formatAssetTypeLabel(type),
+      title: payload.title,
+      linkedDay: payload.linkedDay,
+      day: payload.linkedDay,
+      status: asset.status || 'rendering',
+      previewText: 'Rendering in Placid…',
+      designUrl: `/design.html?asset=${encodeURIComponent(asset.id)}`,
+      origin: 'remote',
+      createdAt: new Date().toISOString(),
+      calendarDayId: payload.calendarDayId,
+      data: { type },
+    };
+    mergeDesignAsset(placeholder);
+    pendingAssetDetailId = asset.id;
+    highlightDesignAssetId = asset.id;
+    showDesignSuccess(`${formatAssetTypeLabel(type)} queued in Design Lab.`);
+  }
+  return asset?.id || null;
+}
+
+function buildAssetContextFromEntry(entry = {}, day) {
+  return {
+    calendarDayId: buildCalendarDayIdentifier(entry, day),
+    linkedDay: day,
+    title: entry?.idea || entry?.title || `Day ${String(day).padStart(2, '0')}`,
+    subtitle: entry?.caption || entry?.description || '',
+    cta: entry?.cta || 'Learn more',
+    prompt: entry?.prompt || '',
+    tone: entry?.tone || '',
+    campaign: entry?.campaign || '',
+    month: entry?.month || '',
+    platform: (entry?.format || 'instagram').toLowerCase().includes('story') ? 'stories' : 'instagram',
+    brand: {
+      primaryColor: entry?.brand?.primaryColor || entry?.brand_color || '',
+      accentColor: entry?.brand?.accentColor || '',
+      logoUrl: entry?.brand?.logoUrl || '',
+    },
+  };
+}
+
+async function beginGenerateAssetFlow(entry, entryDay, triggerButton) {
+  const resolvedDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
+  if (!resolvedDay) {
+    showDesignError('Pick a calendar day first', 'Select a post and try again.');
+    return;
+  }
+  const buttonLabel = triggerButton?.textContent;
+  if (triggerButton) {
+    triggerButton.disabled = true;
+    triggerButton.textContent = 'Preparing…';
+  }
+  try {
+    const currentUserId = activeUserEmail || (await getCurrentUser());
+    if (!currentUserId) {
+      window.location.href = '/auth.html?mode=signup';
+      return;
+    }
+    const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
+    if (!userIsPro) {
+      showUpgradeModal();
+      return;
+    }
+    cachedUserIsPro = true;
+    const context = buildAssetContextFromEntry(entry, resolvedDay);
+    openGenerateAssetModal(context);
+  } finally {
+    if (triggerButton) {
+      triggerButton.disabled = false;
+      triggerButton.textContent = buttonLabel || 'Generate Asset';
+    }
+  }
+}
+
+function getDesignAssetById(assetId) {
+  return designAssets.find((item) => String(item.id) === String(assetId));
+}
+
+function applyAssetEditorFormValues(asset) {
+  if (!asset) return;
+  asset.title = assetEditorTitleInput?.value?.trim() || '';
+  asset.subtitle = assetEditorSubtitleInput?.value?.trim() || '';
+  asset.cta = assetEditorCtaInput?.value?.trim() || '';
+  asset.notes = assetEditorNotesInput?.value?.trim() || '';
+  asset.previewText = asset.title || asset.subtitle || asset.previewText || '';
+  asset.lastEdited = new Date().toISOString();
+  asset.data = asset.data || {};
+  asset.data.title = asset.title;
+  asset.data.subtitle = asset.subtitle;
+  asset.data.cta = asset.cta;
+  asset.data.notes = asset.notes;
+}
+
+function openAssetEditorModal(asset) {
+  if (!assetEditorModal || !asset) return;
+  currentDesignAsset = asset;
+  if (assetEditorTitle) assetEditorTitle.textContent = asset.title || asset.name || 'Edit Asset';
+  if (assetEditorTitleInput) assetEditorTitleInput.value = asset.data?.title || asset.title || '';
+  if (assetEditorSubtitleInput) assetEditorSubtitleInput.value = asset.data?.subtitle || asset.subtitle || '';
+  if (assetEditorCtaInput) assetEditorCtaInput.value = asset.data?.cta || asset.cta || '';
+  if (assetEditorNotesInput) assetEditorNotesInput.value = asset.data?.notes || asset.notes || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || '';
+  if (previewSource && assetEditorPreviewImage) {
+    assetEditorPreviewImage.src = previewSource;
+    assetEditorPreviewImage.style.display = 'block';
+    if (assetEditorPreviewPlaceholder) assetEditorPreviewPlaceholder.style.display = 'none';
+  } else {
+    if (assetEditorPreviewImage) {
+      assetEditorPreviewImage.removeAttribute('src');
+      assetEditorPreviewImage.style.display = 'none';
+    }
+    if (assetEditorPreviewPlaceholder) assetEditorPreviewPlaceholder.style.display = 'flex';
+  }
+  if (assetEditorStatus) {
+    if (asset.status === 'ready') {
+      assetEditorStatus.textContent = 'Ready to export';
+    } else if (asset.status === 'rendering') {
+      assetEditorStatus.textContent = 'Rendering…';
+    } else if (asset.status === 'failed') {
+      assetEditorStatus.textContent = getDesignFailureMessage(asset);
+    } else {
+      assetEditorStatus.textContent = '';
+    }
+  }
+  assetEditorModal.classList.remove('modal--hidden');
+  assetEditorModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeAssetEditorModal() {
+  if (!assetEditorModal) return;
+  assetEditorModal.classList.add('modal--hidden');
+  assetEditorModal.setAttribute('aria-hidden', 'true');
+  currentDesignAsset = null;
+}
+
+async function handleAssetEditorRegenerate() {
+  if (!currentDesignAsset || !assetEditorRegenerateButton) return;
+  try {
+    applyAssetEditorFormValues(currentDesignAsset);
+    persistDesignAssetsToStorage();
+    linkAssetToCalendarPost(currentDesignAsset);
+    renderDesignAssets();
+    assetEditorRegenerateButton.disabled = true;
+    assetEditorRegenerateButton.textContent = 'Regenerating…';
+    await regenerateSingleDesignAsset(currentDesignAsset);
+    showDesignSuccess('New version queued in Design Lab.');
+    closeAssetEditorModal();
+  } catch (error) {
+    console.error('Asset regenerate failed', error);
+    alert(error?.message || 'Unable to regenerate asset right now.');
+  } finally {
+    assetEditorRegenerateButton.disabled = false;
+    assetEditorRegenerateButton.textContent = 'Regenerate';
+  }
+}
+
+function handleAssetEditorSave() {
+  if (!currentDesignAsset) return;
+  applyAssetEditorFormValues(currentDesignAsset);
+  persistDesignAssetsToStorage();
+  linkAssetToCalendarPost(currentDesignAsset);
+  renderDesignAssets();
+  showDesignSuccess('Asset updated.');
+  closeAssetEditorModal();
+}
+
+function handleAssetEditorDownload() {
+  if (!currentDesignAsset) return;
+  handleDesignAssetDownload(currentDesignAsset);
 }
 
 function applyAutofillDefaults(values = {}) {
@@ -4696,7 +4934,7 @@ const createCard = (post) => {
     actionsEl.appendChild(regenBtn);
 
     const assetBtn = makeBtn('Generate Asset');
-    attachProAction(assetBtn, () => triggerCalendarAssetGeneration(entry, entryDay, assetBtn));
+    attachProAction(assetBtn, () => beginGenerateAssetFlow(entry, entryDay, assetBtn));
     actionsEl.appendChild(assetBtn);
 
     if (entry.variants) {
@@ -4849,40 +5087,37 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, op
     showDesignError('Pick a calendar day first', 'Select a post and try again.');
     throw new Error('Missing calendar day');
   }
-  const currentUserId = activeUserEmail || (await getCurrentUser());
-  if (!currentUserId) {
-    window.location.href = '/auth.html?mode=signup';
-    throw new Error('Sign in required');
+  if (designAssetsApiDisabled) {
+    alert('Design pipeline is not available in this environment.');
+    throw new Error('Design pipeline disabled');
   }
-  const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
-  if (!userIsPro) {
-    showUpgradeModal();
-    throw new Error('Pro required');
-  }
-  cachedUserIsPro = true;
-  const title = entry?.idea || entry?.title || `Day ${String(resolvedDay).padStart(2, '0')}`;
-  const subtitle = entry?.caption || entry?.description || '';
-  const cta = entry?.cta || 'Learn more';
-  const payload = {
-    calendarDayId: buildCalendarDayIdentifier(entry, resolvedDay),
-    linkedDay: resolvedDay,
-    type,
-    title,
-    subtitle,
-    cta,
-    backgroundImageUrl: entry?.heroImage || '',
-    platform: (entry?.format || 'instagram').toLowerCase().includes('reel') ? 'reels' : 'instagram',
-    campaign: entry?.campaign || '',
-    tone: entry?.tone || '',
-  };
-  const originalText = triggerButton?.textContent;
+  const payloadPost = { ...(entry || {}) };
+  const triggerButtonText = triggerButton ? triggerButton.textContent : null;
   if (triggerButton) {
     triggerButton.disabled = true;
-    triggerButton.textContent = 'Generating…';
+    triggerButton.textContent = 'Queued…';
   }
+  const payload = {
+    type,
+    calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || `day-${String(resolvedDay).padStart(2, '0')}`,
+    day: resolvedDay,
+    linkedDay: resolvedDay,
+    title: entry?.title || entry?.idea || '',
+    subtitle: entry?.subtitle || entry?.caption || '',
+    cta: entry?.cta || '',
+    prompt: entry?.prompt || '',
+    tone: entry?.tone || '',
+    campaign: entry?.campaign || '',
+    month: entry?.month || '',
+    backgroundImageUrl: entry?.backgroundImageUrl || entry?.heroImage || '',
+    logoUrl: entry?.brand?.logoUrl || '',
+    brandVoice: entry?.brandVoice || '',
+    brand_color: entry?.brand_color || entry?.brand?.primaryColor || entry?.brand?.accentColor || '',
+  };
   try {
     const response = await fetchWithAuth('/api/design-assets', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (response.status === 501) {
@@ -4927,7 +5162,7 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, op
   } finally {
     if (triggerButton) {
       triggerButton.disabled = false;
-      triggerButton.textContent = originalText || 'Generate Asset';
+      triggerButton.textContent = triggerButtonText || 'Generate Asset';
     }
   }
 }
@@ -5199,6 +5434,62 @@ try {
 } catch (err) {
   console.error("❌ Error rendering initial cards:", err);
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-action="close-generate-asset-modal"]').forEach((btn) => {
+    btn.addEventListener('click', () => closeGenerateAssetModal());
+  });
+  const confirmBtn = document.getElementById('confirm-generate-asset-button');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+      if (!pendingAssetGeneration) {
+        closeGenerateAssetModal();
+        return;
+      }
+      const selected = document.querySelector('input[name="asset-type"]:checked');
+      const type = selected ? selected.value : 'post_graphic';
+      confirmBtn.disabled = true;
+      try {
+        const assetId = await createDesignAssetFromCalendar(pendingAssetGeneration, type);
+        closeGenerateAssetModal();
+        if (assetId) {
+          window.location.href = `/design.html?asset=${encodeURIComponent(assetId)}`;
+        } else {
+          window.location.href = `/design.html`;
+        }
+      } catch (err) {
+        console.error('Calendar asset generation failed', err);
+        alert('Unable to generate this asset right now. Please try again.');
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    });
+  }
+  const assetTypeInputs = document.querySelectorAll('.asset-type-pill input[name="asset-type"]');
+  const syncAssetTypePills = () => {
+    document.querySelectorAll('.asset-type-pill').forEach((label) => label.classList.remove('is-selected'));
+    const checked = document.querySelector('.asset-type-pill input[name="asset-type"]:checked');
+    if (checked) {
+      checked.closest('.asset-type-pill')?.classList.add('is-selected');
+    }
+  };
+  assetTypeInputs.forEach((input) => {
+    input.addEventListener('change', syncAssetTypePills);
+  });
+  syncAssetTypePills();
+  document.querySelectorAll('[data-action="close-asset-editor-modal"]').forEach((btn) => {
+    btn.addEventListener('click', () => closeAssetEditorModal());
+  });
+  if (assetEditorSaveButton) {
+    assetEditorSaveButton.addEventListener('click', () => handleAssetEditorSave());
+  }
+  if (assetEditorRegenerateButton) {
+    assetEditorRegenerateButton.addEventListener('click', () => handleAssetEditorRegenerate());
+  }
+  if (assetEditorDownloadButton) {
+    assetEditorDownloadButton.addEventListener('click', () => handleAssetEditorDownload());
+  }
+});
 
 function clearCalendarUI() {
   console.log('[Promptly] clearCalendarUI()');
@@ -7403,6 +7694,10 @@ if (designGrid) {
       if (!clickedCheckbox && !withinCheckboxLabel) {
         const assetId = card.dataset.designAssetId || '';
         if (assetId) setDesignFocusedAsset(assetId);
+        const asset = assetId ? getDesignAssetById(assetId) : null;
+        if (asset) {
+          openAssetEditorModal(asset);
+        }
       }
     }
   });
