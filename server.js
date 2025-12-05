@@ -15,7 +15,7 @@ const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
-const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic'];
+const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
