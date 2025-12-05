@@ -332,90 +332,6 @@ async function markDesignAssetStatus(id, patch = {}) {
   }
 }
 
-async function advanceDesignAssetPipeline(assetRow) {
-  if (!assetRow || assetRow.status !== 'rendering' || !assetRow.placid_render_id) {
-    return assetRow;
-  }
-  if (!isPlacidConfigured()) return assetRow;
-  console.log('[DesignPipeline] Checking asset render', {
-    assetId: assetRow.id,
-    status: assetRow.status,
-    renderId: assetRow.placid_render_id,
-  });
-  try {
-    const renderResult = await getPlacidRenderResult(assetRow.placid_render_id);
-    const status = String(renderResult?.status || '').toLowerCase();
-    console.log('[DesignPipeline] Render status', {
-      assetId: assetRow.id,
-      renderStatus: status,
-      imageUrl: Boolean(renderResult?.imageUrl),
-    });
-    if (['queued', 'pending', 'processing', 'rendering'].includes(status) || !renderResult?.imageUrl) {
-      return assetRow;
-    }
-    if (['failed', 'error'].includes(status)) {
-      const failureMessage =
-        renderResult?.raw?.message ||
-        renderResult?.raw?.error ||
-        'Placid reported a render failure';
-      const data = await markDesignAssetStatus(assetRow.id, {
-        status: 'failed',
-        data: {
-          ...(assetRow.data || {}),
-          error_code: 'placid_render_failed',
-          error_message: failureMessage,
-        },
-      });
-      return data || assetRow;
-    }
-    if (!isCloudinaryConfigured()) {
-      const data = await markDesignAssetStatus(assetRow.id, {
-        status: 'failed',
-        data: {
-          ...(assetRow.data || {}),
-          error_code: 'cloudinary_config_missing',
-          error_message: 'Cloudinary configuration missing on server',
-        },
-      });
-      return data || assetRow;
-    }
-    console.log('[DesignPipeline] Uploading render to Cloudinary', {
-      assetId: assetRow.id,
-    });
-    const upload = await uploadAssetFromUrl({ url: renderResult.imageUrl });
-    const updatedData = {
-      ...(assetRow.data || {}),
-      preview_url: upload.secureUrl || renderResult.imageUrl,
-    };
-    const data = await markDesignAssetStatus(assetRow.id, {
-      status: 'ready',
-      cloudinary_public_id: upload.publicId,
-      data: updatedData,
-    });
-    if (!data) return assetRow;
-    console.log('[DesignPipeline] Asset ready', {
-      assetId: assetRow.id,
-      cloudinaryPublicId: upload.publicId,
-    });
-    return data || assetRow;
-  } catch (error) {
-    console.error('Design asset pipeline error:', {
-      message: error?.message,
-      details: error?.details || null,
-      assetId: assetRow?.id,
-    });
-    const data = await markDesignAssetStatus(assetRow.id, {
-      status: 'failed',
-      data: {
-        ...(assetRow.data || {}),
-        error_code: 'pipeline_failure',
-        error_message: error?.message || 'Design pipeline failed',
-      },
-    });
-    return data || assetRow;
-  }
-}
-
 function buildCalendarDayId(payload = {}) {
   if (payload.calendar_day_id) return String(payload.calendar_day_id);
   if (payload.calendarDayId) return String(payload.calendarDayId);
@@ -823,8 +739,17 @@ async function handleGetDesignAsset(req, res, assetId) {
     if (error || !data) {
       return sendJson(res, 404, { error: 'Asset not found' });
     }
-    const nextRow = await advanceDesignAssetPipeline(data);
-    return sendJson(res, 200, mapDesignAssetRow(nextRow));
+    let assetRow = data;
+    if (assetRow.status === 'rendering' || assetRow.status === 'queued') {
+      try {
+        await advanceDesignAssetPipeline();
+        const refreshed = await getDesignAssetById(assetId, user.id);
+        if (refreshed) assetRow = refreshed;
+      } catch (pipelineError) {
+        console.warn('Design asset inline pipeline tick failed', pipelineError?.message || pipelineError);
+      }
+    }
+    return sendJson(res, 200, mapDesignAssetRow(assetRow));
   } catch (error) {
     console.error('Design asset fetch error:', error);
     if (error?.statusCode === 401) {
