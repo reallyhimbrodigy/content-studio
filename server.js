@@ -851,7 +851,7 @@ async function handlePatchDesignAsset(req, res, assetId) {
     const status = error?.statusCode || 400;
     return sendJson(res, status, { error: error?.message || 'Invalid request' });
   }
-  const dataPatch = body.data || {};
+  const dataPatch = body.data && typeof body.data === 'object' ? body.data : {};
   const regenerate = Boolean(body.regenerate);
   let existing;
   try {
@@ -889,12 +889,13 @@ async function handlePatchDesignAsset(req, res, assetId) {
   try {
     updatedRow = await updateDesignAsset(assetId, baseUpdate, user.id);
   } catch (error) {
+    const statusCode = error?.statusCode || 500;
     console.error('[ERROR] PATCH /api/design-assets/:id update failed', {
       message: error?.message,
       assetId,
       userId: user.id,
     });
-    return sendJson(res, 500, { error: 'unable_to_update_asset', details: error?.message || 'Update failed' });
+    return sendJson(res, statusCode, { error: statusCode === 404 ? 'asset_not_found' : 'unable_to_update_asset', details: error?.message || 'Update failed' });
   }
   if (regenerate) {
     if (!isDesignPipelineReady()) {

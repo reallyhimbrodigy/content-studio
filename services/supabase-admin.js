@@ -26,6 +26,7 @@ async function getDesignAssetById(id, userId = null) {
   }
   const { data, error } = await builder.single();
   if (error || !data) {
+    console.error('[Supabase] getDesignAssetById error', { id, error });
     const err = new Error(error?.message || 'Design asset not found');
     if (error?.code === 'PGRST116' || error?.details?.includes('Results contain 0 rows')) {
       err.statusCode = 404;
@@ -43,8 +44,11 @@ async function updateDesignAsset(id, payload, userId = null) {
   }
   const { data, error } = await builder.select('*').single();
   if (error || !data) {
-    console.error('[Supabase] updateDesignAsset error', { id, error });
+    console.error('[Supabase] updateDesignAsset error', { id, error, payload });
     const err = new Error(error?.message || 'Unable to update design asset');
+    if (error?.code === 'PGRST116' || error?.details?.includes('Results contain 0 rows')) {
+      err.statusCode = 404;
+    }
     throw err;
   }
   return data;
