@@ -872,13 +872,12 @@ async function handlePatchDesignAsset(req, res, assetId) {
     data: mergedData,
   };
   if (regenerate) {
-    baseUpdate.status = 'queued';
+    baseUpdate.status = 'rendering';
     baseUpdate.placid_render_id = null;
     baseUpdate.cloudinary_public_id = null;
     baseUpdate.data = {
       ...mergedData,
       preview_url: null,
-      cloudinary_url: null,
       cloudinary_public_id: null,
       error_code: null,
     };
@@ -889,31 +888,12 @@ async function handlePatchDesignAsset(req, res, assetId) {
   } catch (error) {
     const statusCode = error?.statusCode || 500;
     const message = error?.message || '';
-    const isStatusConstraint = regenerate && /status/i.test(message) && /queued/i.test(message);
-    if (isStatusConstraint) {
-      try {
-        updatedRow = await updateDesignAsset(
-          assetId,
-          { ...baseUpdate, status: 'rendering' },
-          user.id
-        );
-      } catch (retryError) {
-        const retryStatus = retryError?.statusCode || statusCode;
-        console.error('[ERROR] PATCH /api/design-assets/:id update retry failed', {
-          message: retryError?.message,
-          assetId,
-          userId: user.id,
-        });
-        return sendJson(res, retryStatus, { error: retryStatus === 404 ? 'asset_not_found' : 'unable_to_update_asset', details: retryError?.message || 'Update failed' });
-      }
-    } else {
-      console.error('[ERROR] PATCH /api/design-assets/:id update failed', {
-        message: error?.message,
-        assetId,
-        userId: user.id,
-      });
-      return sendJson(res, statusCode, { error: statusCode === 404 ? 'asset_not_found' : 'unable_to_update_asset', details: message || 'Update failed' });
-    }
+    console.error('[ERROR] PATCH /api/design-assets/:id update failed', {
+      message: error?.message,
+      assetId,
+      userId: user.id,
+    });
+    return sendJson(res, statusCode, { error: statusCode === 404 ? 'asset_not_found' : 'unable_to_update_asset', details: message || 'Update failed' });
   }
   if (regenerate) {
     if (!isDesignPipelineReady()) {

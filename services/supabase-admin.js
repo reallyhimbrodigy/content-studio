@@ -43,7 +43,6 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (payload.status !== undefined) safePayload.status = payload.status;
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
   if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
-  if (payload.cloudinary_url !== undefined) safePayload.cloudinary_url = payload.cloudinary_url;
   let builder = supabaseAdmin.from('design_assets').update(safePayload).eq('id', id);
   if (userId) {
     builder = builder.eq('user_id', userId);
