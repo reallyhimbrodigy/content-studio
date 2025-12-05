@@ -272,6 +272,7 @@ let isCompact = false;
 let cachedUserIsPro = false;
 let currentPostFrequency = 1;
 let pendingAssetGeneration = null;
+let lastGenerateAssetOpener = null;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
@@ -448,19 +449,29 @@ function openGenerateAssetModal(context) {
     console.warn('[Promptly] generate-asset-modal not found.');
     return;
   }
+  lastGenerateAssetOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   modal.classList.remove('modal--hidden');
-  modal.removeAttribute('aria-hidden');
+  modal.setAttribute('aria-hidden', 'false');
   modal.style.display = 'flex';
   modal.style.opacity = '1';
   modal.style.pointerEvents = 'auto';
-  modal.focus();
+  const initialFocusTarget =
+    modal.querySelector('input[name="asset-type"]:checked') ||
+    modal.querySelector('input[name="asset-type"]') ||
+    modal.querySelector('#confirm-generate-asset-button') ||
+    modal;
+  if (initialFocusTarget && typeof initialFocusTarget.focus === 'function') {
+    initialFocusTarget.focus();
+  } else {
+    modal.focus();
+  }
   console.log('[Promptly] Generate Asset modal should now be visible');
 }
 
 function closeGenerateAssetModal() {
   const modal = document.getElementById('generate-asset-modal');
   if (!modal) return;
-  if (modal.contains(document.activeElement)) {
+  if (modal.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
     document.activeElement.blur();
   }
   modal.classList.add('modal--hidden');
@@ -470,6 +481,10 @@ function closeGenerateAssetModal() {
   modal.style.pointerEvents = '';
   console.log('[Promptly] Generate Asset modal closed');
   pendingAssetGeneration = null;
+  if (lastGenerateAssetOpener && typeof lastGenerateAssetOpener.focus === 'function') {
+    lastGenerateAssetOpener.focus();
+  }
+  lastGenerateAssetOpener = null;
 }
 
 async function createDesignAssetFromCalendar(context, type) {
