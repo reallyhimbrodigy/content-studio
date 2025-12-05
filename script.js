@@ -639,14 +639,18 @@ function applyAssetEditorFormValues(asset) {
   asset.title = assetEditorTitleInput?.value?.trim() || '';
   asset.subtitle = assetEditorSubtitleInput?.value?.trim() || '';
   asset.cta = assetEditorCtaInput?.value?.trim() || '';
-  asset.notes = assetEditorNotesInput?.value?.trim() || '';
+  const notesForAi = assetEditorNotesInput?.value?.trim() || '';
+  asset.notes = notesForAi;
+  asset.notesForAi = notesForAi;
+  asset.notes_for_ai = notesForAi;
   asset.previewText = asset.title || asset.subtitle || asset.previewText || '';
   asset.lastEdited = new Date().toISOString();
   asset.data = asset.data || {};
   asset.data.title = asset.title;
   asset.data.subtitle = asset.subtitle;
   asset.data.cta = asset.cta;
-  asset.data.notes = asset.notes;
+  asset.data.notes = asset.data.notes ?? notesForAi;
+  asset.data.notes_for_ai = notesForAi;
 }
 
 function openAssetEditorModal(asset) {
@@ -656,7 +660,15 @@ function openAssetEditorModal(asset) {
   if (assetEditorTitleInput) assetEditorTitleInput.value = asset.data?.title || asset.title || '';
   if (assetEditorSubtitleInput) assetEditorSubtitleInput.value = asset.data?.subtitle || asset.subtitle || '';
   if (assetEditorCtaInput) assetEditorCtaInput.value = asset.data?.cta || asset.cta || '';
-  if (assetEditorNotesInput) assetEditorNotesInput.value = asset.data?.notes || asset.notes || '';
+  if (assetEditorNotesInput) {
+    const notesForAi =
+      asset.data?.notes_for_ai ??
+      asset.data?.notes ??
+      asset.notesForAi ??
+      asset.notes ??
+      '';
+    assetEditorNotesInput.value = notesForAi;
+  }
   const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.cloudinaryUrl || '';
   if (previewSource && assetEditorPreviewImage) {
     assetEditorPreviewImage.src = previewSource;
@@ -759,35 +771,91 @@ function bindCalendarGenerateAssetClicks() {
   });
 }
 
+function buildAssetEditorPatchPayload(regenerate = false) {
+  const notesValue = assetEditorNotesInput?.value?.trim() || '';
+  return {
+    data: {
+      title: assetEditorTitleInput?.value?.trim() || '',
+      subtitle: assetEditorSubtitleInput?.value?.trim() || '',
+      cta: assetEditorCtaInput?.value?.trim() || '',
+      notes_for_ai: notesValue || null,
+    },
+    regenerate,
+  };
+}
+
+async function persistAssetEditorChanges(regenerate = false) {
+  if (!currentDesignAsset) return null;
+  const payload = buildAssetEditorPatchPayload(regenerate);
+  const response = await fetchWithAuth(`/api/design-assets/${encodeURIComponent(currentDesignAsset.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (json?.asset) {
+      const erroredAsset = normalizeDesignAsset({ ...(json.asset || {}), origin: 'remote' });
+      mergeDesignAsset(erroredAsset);
+      currentDesignAsset = erroredAsset;
+    }
+    const error = new Error(json.error || 'asset_update_failed');
+    error.status = response.status;
+    error.details = json.details || null;
+    throw error;
+  }
+  const updatedAsset = normalizeDesignAsset({ ...(json.asset || json), origin: 'remote' });
+  mergeDesignAsset(updatedAsset);
+  currentDesignAsset = updatedAsset;
+  return updatedAsset;
+}
+
 async function handleAssetEditorRegenerate() {
   if (!currentDesignAsset || !assetEditorRegenerateButton) return;
   try {
-    applyAssetEditorFormValues(currentDesignAsset);
-    persistDesignAssetsToStorage();
-    linkAssetToCalendarPost(currentDesignAsset);
-    renderDesignAssets();
     assetEditorRegenerateButton.disabled = true;
     assetEditorRegenerateButton.textContent = 'Regenerating…';
-    await regenerateSingleDesignAsset(currentDesignAsset);
+    if (assetEditorSaveButton) {
+      assetEditorSaveButton.disabled = true;
+    }
+    const updated = await persistAssetEditorChanges(true);
+    if (assetEditorStatus) {
+      assetEditorStatus.textContent = 'Rendering…';
+    }
+    if (assetEditorPreviewPlaceholder) {
+      assetEditorPreviewPlaceholder.style.display = 'flex';
+      assetEditorPreviewPlaceholder.textContent = 'Rendering in progress. This may take a moment.';
+    }
+    openAssetEditorModal(updated);
     showDesignSuccess('New version queued in Design Lab.');
-    closeAssetEditorModal();
   } catch (error) {
     console.error('Asset regenerate failed', error);
     alert(error?.message || 'Unable to regenerate asset right now.');
   } finally {
     assetEditorRegenerateButton.disabled = false;
     assetEditorRegenerateButton.textContent = 'Regenerate';
+    if (assetEditorSaveButton) {
+      assetEditorSaveButton.disabled = false;
+    }
   }
 }
 
-function handleAssetEditorSave() {
-  if (!currentDesignAsset) return;
-  applyAssetEditorFormValues(currentDesignAsset);
-  persistDesignAssetsToStorage();
-  linkAssetToCalendarPost(currentDesignAsset);
-  renderDesignAssets();
-  showDesignSuccess('Asset updated.');
-  closeAssetEditorModal();
+async function handleAssetEditorSave() {
+  if (!currentDesignAsset || !assetEditorSaveButton) return;
+  const previousLabel = assetEditorSaveButton.textContent;
+  try {
+    assetEditorSaveButton.disabled = true;
+    assetEditorSaveButton.textContent = 'Saving…';
+    const updated = await persistAssetEditorChanges(false);
+    openAssetEditorModal(updated);
+    showDesignSuccess('Asset updated.');
+  } catch (error) {
+    console.error('Asset save failed', error);
+    alert(error?.message || 'Unable to save asset right now.');
+  } finally {
+    assetEditorSaveButton.disabled = false;
+    assetEditorSaveButton.textContent = previousLabel || 'Save';
+  }
 }
 
 function handleAssetEditorDownload() {
@@ -935,7 +1003,16 @@ function normalizeDesignAsset(asset = {}) {
   normalized.caption = normalized.caption || '';
   normalized.cta = normalized.cta || '';
   normalized.tone = normalized.tone || '';
-  normalized.notes = normalized.notes || '';
+  const normalizedNotes =
+    normalized.notes_for_ai ??
+    normalized.notesForAi ??
+    normalized.notes ??
+    normalized.data?.notes_for_ai ??
+    normalized.data?.notes ??
+    '';
+  normalized.notes_for_ai = normalizedNotes || '';
+  normalized.notesForAi = normalizedNotes || '';
+  normalized.notes = normalized.notes || normalizedNotes || '';
   normalized.prompt = normalized.prompt || '';
   normalized.previewInlineUrl = normalized.previewInlineUrl || normalized.previewUrl || '';
   normalized.previewUrl = normalized.previewUrl || normalized.previewInlineUrl || '';
@@ -950,6 +1027,13 @@ function normalizeDesignAsset(asset = {}) {
     normalized.previewUrl = normalized.cloudinaryUrl;
   }
   normalized.data = normalized.data || null;
+  if (normalized.data) {
+    const notesForAi = normalized.data.notes_for_ai ?? normalizedNotes ?? '';
+    normalized.data.notes_for_ai = notesForAi;
+    if (normalized.data.notes === undefined) {
+      normalized.data.notes = notesForAi;
+    }
+  }
   normalized.linkedDay = normalized.linkedDay || normalized.day || null;
   normalized.day = normalized.linkedDay || normalized.day || null;
   if (!normalized.linkedDayLabel) {

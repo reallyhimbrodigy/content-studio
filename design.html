@@ -622,7 +622,14 @@
     <div class="modal__dialog modal__dialog--wide">
       <header class="modal__header">
         <h2 class="modal__title" id="asset-editor-title">Edit Asset</h2>
-        <button type="button" class="modal__close" data-action="close-asset-editor-modal">×</button>
+        <button
+          type="button"
+          class="modal__close"
+          data-action="close-asset-editor-modal"
+          aria-label="Close asset editor"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
       </header>
       <div class="modal__body modal__body--split">
         <div class="asset-editor__preview">

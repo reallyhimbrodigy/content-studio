@@ -3437,6 +3437,12 @@ button.btn-danger:disabled,
   border: none;
   font-size: 1.3rem;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .modal__body {

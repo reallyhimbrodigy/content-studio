@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
-const { supabaseAdmin } = require('./services/supabase-admin');
+const { supabaseAdmin, getDesignAssetById, updateDesignAsset } = require('./services/supabase-admin');
 const { createPlacidRender, getPlacidRenderResult, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
 
@@ -280,6 +280,7 @@ function mapDesignAssetRow(row) {
   const cloudinaryUrl = row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '';
   const previewUrl = data.preview_url || cloudinaryUrl;
   const errorMessage = data.error_message || row.error_message || '';
+  const notesForAi = data.notes_for_ai ?? data.notes ?? '';
   return {
     id: row.id,
     type: row.type,
@@ -292,6 +293,8 @@ function mapDesignAssetRow(row) {
     title: data.title || 'Post Graphic',
     subtitle: data.subtitle || '',
     cta: data.cta || '',
+    notes: notesForAi,
+    notesForAi,
     campaign: data.campaign || 'General',
     tone: data.tone || '',
     previewUrl,
@@ -828,6 +831,130 @@ async function handleGetDesignAsset(req, res, assetId) {
     }
     return sendJson(res, 500, { error: 'Unable to load asset' });
   }
+}
+
+async function handlePatchDesignAsset(req, res, assetId) {
+  if (!supabaseAdmin) {
+    return sendJson(res, 501, { error: 'Design pipeline not configured' });
+  }
+  let user = null;
+  try {
+    user = await requireSupabaseUser(req);
+  } catch (error) {
+    const status = error?.statusCode || 401;
+    return sendJson(res, status, { error: error?.message || 'Unauthorized' });
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    const status = error?.statusCode || 400;
+    return sendJson(res, status, { error: error?.message || 'Invalid request' });
+  }
+  const dataPatch = body.data || {};
+  const regenerate = Boolean(body.regenerate);
+  let existing;
+  try {
+    existing = await getDesignAssetById(assetId, user.id);
+  } catch (error) {
+    const status = error?.statusCode || 404;
+    return sendJson(res, status, { error: 'asset_not_found', details: error?.message });
+  }
+  const mergedData = { ...(existing.data || {}), ...dataPatch };
+  mergedData.type = mergedData.type || existing.type;
+  if (typeof mergedData.title === 'string') mergedData.title = mergedData.title.trim();
+  if (typeof mergedData.subtitle === 'string') mergedData.subtitle = mergedData.subtitle.trim();
+  if (typeof mergedData.cta === 'string') mergedData.cta = mergedData.cta.trim();
+  if (typeof mergedData.notes_for_ai === 'string') {
+    mergedData.notes_for_ai = mergedData.notes_for_ai.trim() || null;
+  }
+  const baseUpdate = {
+    data: mergedData,
+  };
+  if (regenerate) {
+    baseUpdate.status = 'queued';
+    baseUpdate.placid_render_id = null;
+    baseUpdate.cloudinary_public_id = null;
+    baseUpdate.error_message = null;
+    baseUpdate.data = {
+      ...mergedData,
+      preview_url: null,
+      cloudinary_url: null,
+      cloudinary_public_id: null,
+      error_message: null,
+      error_code: null,
+    };
+  }
+  let updatedRow = null;
+  try {
+    updatedRow = await updateDesignAsset(assetId, baseUpdate, user.id);
+  } catch (error) {
+    return sendJson(res, 500, { error: 'unable_to_update_asset', details: error?.message || 'Update failed' });
+  }
+  if (regenerate) {
+    if (!isDesignPipelineReady()) {
+      return sendJson(res, 501, { error: 'design_pipeline_not_configured', asset: mapDesignAssetRow(updatedRow) });
+    }
+    const templateId = existing.placid_template_id || resolveTemplateIdForType(existing.type);
+    if (!templateId) {
+      const failedRow = await updateDesignAsset(
+        assetId,
+        {
+          status: 'failed',
+          data: {
+            ...baseUpdate.data,
+            error_code: 'template_missing',
+            error_message: 'Template not configured for this asset type',
+          },
+        },
+        user.id
+      ).catch(() => updatedRow);
+      return sendJson(res, 501, { error: 'design_template_missing', asset: mapDesignAssetRow(failedRow || updatedRow) });
+    }
+    try {
+      const render = await createPlacidRender({
+        templateId,
+        data: buildPlacidPayload(baseUpdate.data),
+      });
+      if (!render?.renderId) {
+        const failedRow = await updateDesignAsset(
+          assetId,
+          {
+            status: 'failed',
+            data: {
+              ...baseUpdate.data,
+              error_code: 'placid_render_unavailable',
+              error_message: 'Unable to obtain render id from Placid',
+            },
+          },
+          user.id
+        ).catch(() => updatedRow);
+        return sendJson(res, 502, { error: 'render_unavailable', asset: mapDesignAssetRow(failedRow || updatedRow) });
+      }
+      const renderingRow = await updateDesignAsset(
+        assetId,
+        { placid_render_id: render.renderId, status: 'rendering' },
+        user.id
+      );
+      updatedRow = renderingRow || updatedRow;
+    } catch (error) {
+      const failedRow = await updateDesignAsset(
+        assetId,
+        {
+          status: 'failed',
+          data: {
+            ...baseUpdate.data,
+            error_code: 'placid_render_failed',
+            error_message: error?.message || 'Unable to start render',
+          },
+        },
+        user.id
+      ).catch(() => updatedRow);
+      return sendJson(res, 502, { error: 'placid_render_failed', details: error?.message, asset: mapDesignAssetRow(failedRow || updatedRow) });
+    }
+  }
+  const mapped = mapDesignAssetRow(updatedRow);
+  return sendJson(res, 200, { asset: mapped });
 }
 
 async function handleDeleteCalendar(req, res, calendarId) {
@@ -1968,6 +2095,10 @@ const server = http.createServer((req, res) => {
   const designAssetMatch = parsed.pathname && parsed.pathname.match(/^\/api\/design-assets\/([a-f0-9-]+)$/i);
   if (designAssetMatch && req.method === 'GET') {
     handleGetDesignAsset(req, res, designAssetMatch[1]);
+    return;
+  }
+  if (designAssetMatch && req.method === 'PATCH') {
+    handlePatchDesignAsset(req, res, designAssetMatch[1]);
     return;
   }
 
