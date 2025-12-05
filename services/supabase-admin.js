@@ -43,6 +43,7 @@ async function updateDesignAsset(id, payload, userId = null) {
   }
   const { data, error } = await builder.select('*').single();
   if (error || !data) {
+    console.error('[Supabase] updateDesignAsset error', { id, error });
     const err = new Error(error?.message || 'Unable to update design asset');
     throw err;
   }

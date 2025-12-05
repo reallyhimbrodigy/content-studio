@@ -872,7 +872,7 @@ async function handlePatchDesignAsset(req, res, assetId) {
     data: mergedData,
   };
   if (regenerate) {
-    baseUpdate.status = 'queued';
+    baseUpdate.status = 'rendering';
     baseUpdate.placid_render_id = null;
     baseUpdate.cloudinary_public_id = null;
     baseUpdate.error_message = null;
@@ -889,6 +889,11 @@ async function handlePatchDesignAsset(req, res, assetId) {
   try {
     updatedRow = await updateDesignAsset(assetId, baseUpdate, user.id);
   } catch (error) {
+    console.error('[ERROR] PATCH /api/design-assets/:id update failed', {
+      message: error?.message,
+      assetId,
+      userId: user.id,
+    });
     return sendJson(res, 500, { error: 'unable_to_update_asset', details: error?.message || 'Update failed' });
   }
   if (regenerate) {

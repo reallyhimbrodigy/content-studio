@@ -799,7 +799,12 @@ async function persistAssetEditorChanges(regenerate = false) {
       mergeDesignAsset(erroredAsset);
       currentDesignAsset = erroredAsset;
     }
-    const error = new Error(json.error || 'asset_update_failed');
+    console.error('[Promptly] Asset update failed', { status: response.status, body: json });
+    const error = new Error(
+      json.error ||
+        json.details ||
+        (regenerate ? `asset_regenerate_failed_${response.status}` : `asset_update_failed_${response.status}`)
+    );
     error.status = response.status;
     error.details = json.details || null;
     throw error;
