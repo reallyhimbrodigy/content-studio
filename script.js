@@ -490,8 +490,8 @@ async function createDesignAssetFromCalendar(context, type) {
       context.brandColor ||
       context.brand?.primaryColor ||
       context.brand?.accentColor ||
-      '',
-    background_image: context.backgroundImageUrl || '',
+      '#7f5af0',
+    background_image: context.backgroundImageUrl || null,
     logo: context.logoUrl || context.brand?.logoUrl || '',
     platform: context.platform || 'instagram',
   };
@@ -551,8 +551,13 @@ async function createDesignAssetFromCalendar(context, type) {
 }
 
 function buildAssetContextFromEntry(entry = {}, day) {
+  const resolvedCalendarId =
+    entry?.calendar_day_id ||
+    entry?.calendarDayId ||
+    entry?.id ||
+    buildCalendarDayIdentifier(entry, day);
   return {
-    calendarDayId: buildCalendarDayIdentifier(entry, day),
+    calendarDayId: resolvedCalendarId,
     linkedDay: day,
     title: entry?.idea || entry?.title || `Day ${String(day).padStart(2, '0')}`,
     subtitle: entry?.caption || entry?.description || '',
@@ -698,10 +703,17 @@ function bindCalendarGenerateAssetClicks() {
       console.warn('[Promptly] Unable to locate calendar entry for day', dayValue);
       return;
     }
+    const resolvedCalendarDayId =
+      button.dataset.calendarDayId ||
+      card?.dataset.calendarDayId ||
+      baseEntry?.calendar_day_id ||
+      baseEntry?.calendarDayId ||
+      baseEntry?.id ||
+      null;
     const contextEntry = {
       ...baseEntry,
-      calendarDayId: button.dataset.calendarDayId || baseEntry.calendar_day_id || baseEntry.calendarDayId,
-      calendar_day_id: button.dataset.calendarDayId || baseEntry.calendar_day_id || undefined,
+      calendarDayId: resolvedCalendarDayId || buildCalendarDayIdentifier(baseEntry, dayValue),
+      calendar_day_id: resolvedCalendarDayId || undefined,
     };
     console.log('[Promptly] Calendar Generate Asset button clicked', {
       day: dayValue,
@@ -3912,7 +3924,9 @@ function findPostByDay(day) {
 }
 
 function buildCalendarDayIdentifier(entry, day) {
+  if (entry?.calendar_day_id) return String(entry.calendar_day_id);
   if (entry?.calendarDayId) return String(entry.calendarDayId);
+  if (entry?.id) return String(entry.id);
   if (Number.isFinite(day) && day > 0) {
     const slotSuffix = entry && entry.slot ? `-slot-${entry.slot}` : '';
     return `day-${String(day).padStart(2, '0')}${slotSuffix}`;
@@ -4600,6 +4614,14 @@ const createCard = (post) => {
   card.className = 'calendar-card';
   card.dataset.pillar = primary.pillar || '';
   card.dataset.day = dayValue != null ? String(dayValue) : '';
+  const resolvedCalendarId =
+    primary.calendar_day_id ||
+    primary.calendarDayId ||
+    primary.id ||
+    null;
+  if (resolvedCalendarId) {
+    card.dataset.calendarDayId = String(resolvedCalendarId);
+  }
   if (isPosted(dayValue)) card.classList.add('posted');
 
   const dayEl = document.createElement('div');

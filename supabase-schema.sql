@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.design_assets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   calendar_day_id TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('post_graphic')),
+  type TEXT NOT NULL CHECK (type IN ('post_graphic', 'story', 'carousel')),
   placid_template_id TEXT NOT NULL,
   placid_render_id TEXT,
   cloudinary_public_id TEXT,

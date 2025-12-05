@@ -393,7 +393,9 @@ async function advanceDesignAssetPipeline(assetRow) {
 }
 
 function buildCalendarDayId(payload = {}) {
+  if (payload.calendar_day_id) return String(payload.calendar_day_id);
   if (payload.calendarDayId) return String(payload.calendarDayId);
+  if (payload.id) return String(payload.id);
   const day = Number(payload.day || payload.linkedDay);
   if (Number.isFinite(day) && day > 0) {
     return `day-${String(day).padStart(2, '0')}`;
@@ -641,8 +643,30 @@ async function handleCreateDesignAsset(req, res) {
       .select('*')
       .single();
     if (error || !inserted) {
-      console.error('Unable to insert design asset', error);
-      return sendJson(res, 500, { error: 'Unable to create design asset' });
+      const supabaseError = error
+        ? {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          }
+        : null;
+      console.error('Unable to insert design asset', {
+        type,
+        calendarDayId,
+        supabaseError,
+      });
+      if (error?.message && /design_assets_type_check/i.test(error.message)) {
+        return sendJson(res, 400, {
+          error: 'invalid_asset_type_storage',
+          details:
+            'Supabase design_assets.type constraint rejected this value. Ensure the schema allows post_graphic, story, carousel.',
+        });
+      }
+      return sendJson(res, 500, {
+        error: 'internal_error',
+        details: error?.message || 'Unable to create design asset',
+      });
     }
     createdRow = inserted;
     let currentRow = inserted;
