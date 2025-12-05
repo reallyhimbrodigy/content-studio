@@ -22,14 +22,15 @@ async function uploadAssetFromUrl({ url, folder = CLOUDINARY_FOLDER }) {
   ensureCloudinaryConfigured();
   if (!url) throw new Error('Source URL required');
   const timestamp = Math.floor(Date.now() / 1000);
-  const params = {
-    file: url,
+  const unsignedParams = {
     folder,
     timestamp,
   };
-  const signature = buildSignature(params);
+  const signature = buildSignature(unsignedParams);
   const form = new URLSearchParams({
-    ...params,
+    file: url,
+    folder,
+    timestamp,
     api_key: CLOUDINARY_API_KEY,
     signature,
   });

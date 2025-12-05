@@ -617,13 +617,13 @@
     <script type="module" src="./footer.js"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
-  <div id="asset-editor-modal" class="modal modal--hidden" aria-hidden="true">
-  <div class="modal__backdrop"></div>
-  <div class="modal__dialog modal__dialog--wide">
-    <header class="modal__header">
-      <h2 class="modal__title" id="asset-editor-title">Edit Asset</h2>
-      <button type="button" class="modal__close" data-action="close-asset-editor-modal">×</button>
-    </header>
+  <div id="asset-editor-modal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1">
+    <div class="modal__backdrop"></div>
+    <div class="modal__dialog modal__dialog--wide">
+      <header class="modal__header">
+        <h2 class="modal__title" id="asset-editor-title">Edit Asset</h2>
+        <button type="button" class="modal__close" data-action="close-asset-editor-modal">×</button>
+      </header>
       <div class="modal__body modal__body--split">
         <div class="asset-editor__preview">
           <div id="asset-editor-preview-placeholder">Preview will appear after generation.</div>
@@ -634,39 +634,39 @@
             <span>Headline / Title</span>
             <input id="asset-editor-title-input" type="text" />
           </label>
-        <label class="form-field">
-          <span>Subtitle / Body</span>
-          <textarea id="asset-editor-subtitle-input" rows="4"></textarea>
-        </label>
-        <label class="form-field">
-          <span>CTA</span>
-          <input id="asset-editor-cta-input" type="text" />
-        </label>
-        <label class="form-field">
-          <span>Notes for AI (optional)</span>
-          <textarea id="asset-editor-notes-input" rows="3"></textarea>
-        </label>
+          <label class="form-field">
+            <span>Subtitle / Body</span>
+            <textarea id="asset-editor-subtitle-input" rows="4"></textarea>
+          </label>
+          <label class="form-field">
+            <span>CTA</span>
+            <input id="asset-editor-cta-input" type="text" />
+          </label>
+          <label class="form-field">
+            <span>Notes for AI (optional)</span>
+            <textarea id="asset-editor-notes-input" rows="3"></textarea>
+          </label>
+        </div>
       </div>
+      <footer class="modal__footer">
+        <div class="asset-editor__status" id="asset-editor-status"></div>
+        <div class="asset-editor__actions">
+          <button type="button" class="button button--ghost" data-action="close-asset-editor-modal">
+            Cancel
+          </button>
+          <button type="button" class="button" id="asset-editor-save-button">
+            Save
+          </button>
+          <button type="button" class="button" id="asset-editor-regenerate-button">
+            Regenerate
+          </button>
+          <button type="button" class="button" id="asset-editor-download-button">
+            Download
+          </button>
+        </div>
+      </footer>
     </div>
-    <footer class="modal__footer">
-      <div class="asset-editor__status" id="asset-editor-status"></div>
-      <div class="asset-editor__actions">
-        <button type="button" class="button button--ghost" data-action="close-asset-editor-modal">
-          Cancel
-        </button>
-        <button type="button" class="button" id="asset-editor-save-button">
-          Save
-        </button>
-        <button type="button" class="button" id="asset-editor-regenerate-button">
-          Regenerate
-        </button>
-        <button type="button" class="button" id="asset-editor-download-button">
-          Download
-        </button>
-      </div>
-    </footer>
   </div>
-</div>
 
 </body>
 </html>

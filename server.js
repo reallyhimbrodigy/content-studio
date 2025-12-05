@@ -277,9 +277,9 @@ function mapDesignAssetRow(row) {
   if (!row) return null;
   const data = row.data || {};
   const linkedDay = data.linked_day || parseLinkedDayFromKey(row.calendar_day_id);
-  const previewUrl =
-    data.preview_url ||
-    (row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '');
+  const cloudinaryUrl = row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '';
+  const previewUrl = data.preview_url || cloudinaryUrl;
+  const errorMessage = data.error_message || row.error_message || '';
   return {
     id: row.id,
     type: row.type,
@@ -297,11 +297,13 @@ function mapDesignAssetRow(row) {
     previewUrl,
     previewInlineUrl: previewUrl,
     downloadUrl: previewUrl,
+    cloudinaryUrl,
     designUrl: `/design.html?asset=${encodeURIComponent(row.id)}`,
     cloudinaryPublicId: row.cloudinary_public_id || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     data,
+    error_message: errorMessage,
     origin: 'remote',
   };
 }
@@ -331,9 +333,19 @@ async function advanceDesignAssetPipeline(assetRow) {
     return assetRow;
   }
   if (!isPlacidConfigured()) return assetRow;
+  console.log('[DesignPipeline] Checking asset render', {
+    assetId: assetRow.id,
+    status: assetRow.status,
+    renderId: assetRow.placid_render_id,
+  });
   try {
     const renderResult = await getPlacidRenderResult(assetRow.placid_render_id);
     const status = String(renderResult?.status || '').toLowerCase();
+    console.log('[DesignPipeline] Render status', {
+      assetId: assetRow.id,
+      renderStatus: status,
+      imageUrl: Boolean(renderResult?.imageUrl),
+    });
     if (['queued', 'pending', 'processing', 'rendering'].includes(status) || !renderResult?.imageUrl) {
       return assetRow;
     }
@@ -363,6 +375,9 @@ async function advanceDesignAssetPipeline(assetRow) {
       });
       return data || assetRow;
     }
+    console.log('[DesignPipeline] Uploading render to Cloudinary', {
+      assetId: assetRow.id,
+    });
     const upload = await uploadAssetFromUrl({ url: renderResult.imageUrl });
     const updatedData = {
       ...(assetRow.data || {}),
@@ -374,11 +389,16 @@ async function advanceDesignAssetPipeline(assetRow) {
       data: updatedData,
     });
     if (!data) return assetRow;
+    console.log('[DesignPipeline] Asset ready', {
+      assetId: assetRow.id,
+      cloudinaryPublicId: upload.publicId,
+    });
     return data || assetRow;
   } catch (error) {
     console.error('Design asset pipeline error:', {
       message: error?.message,
       details: error?.details || null,
+      assetId: assetRow?.id,
     });
     const data = await markDesignAssetStatus(assetRow.id, {
       status: 'failed',

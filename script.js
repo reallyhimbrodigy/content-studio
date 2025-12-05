@@ -453,12 +453,16 @@ function openGenerateAssetModal(context) {
   modal.style.display = 'flex';
   modal.style.opacity = '1';
   modal.style.pointerEvents = 'auto';
+  modal.focus();
   console.log('[Promptly] Generate Asset modal should now be visible');
 }
 
 function closeGenerateAssetModal() {
   const modal = document.getElementById('generate-asset-modal');
   if (!modal) return;
+  if (modal.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
   modal.classList.add('modal--hidden');
   modal.setAttribute('aria-hidden', 'true');
   modal.style.display = '';
@@ -638,7 +642,7 @@ function openAssetEditorModal(asset) {
   if (assetEditorSubtitleInput) assetEditorSubtitleInput.value = asset.data?.subtitle || asset.subtitle || '';
   if (assetEditorCtaInput) assetEditorCtaInput.value = asset.data?.cta || asset.cta || '';
   if (assetEditorNotesInput) assetEditorNotesInput.value = asset.data?.notes || asset.notes || '';
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.cloudinaryUrl || '';
   if (previewSource && assetEditorPreviewImage) {
     assetEditorPreviewImage.src = previewSource;
     assetEditorPreviewImage.style.display = 'block';
@@ -648,14 +652,25 @@ function openAssetEditorModal(asset) {
       assetEditorPreviewImage.removeAttribute('src');
       assetEditorPreviewImage.style.display = 'none';
     }
-    if (assetEditorPreviewPlaceholder) assetEditorPreviewPlaceholder.style.display = 'flex';
+    if (assetEditorPreviewPlaceholder) {
+      assetEditorPreviewPlaceholder.style.display = 'flex';
+      const statusKey = String(asset.status || '').toLowerCase();
+      if (statusKey === 'failed') {
+        assetEditorPreviewPlaceholder.textContent = getDesignFailureMessage(asset);
+      } else if (statusKey === 'rendering' || statusKey === 'queued') {
+        assetEditorPreviewPlaceholder.textContent = 'Rendering in progress. This may take a moment.';
+      } else {
+        assetEditorPreviewPlaceholder.textContent = 'Preview will appear after generation.';
+      }
+    }
   }
   if (assetEditorStatus) {
-    if (asset.status === 'ready') {
+    const statusKey = String(asset.status || '').toLowerCase();
+    if (statusKey === 'ready') {
       assetEditorStatus.textContent = 'Ready to export';
-    } else if (asset.status === 'rendering') {
+    } else if (statusKey === 'rendering' || statusKey === 'queued') {
       assetEditorStatus.textContent = 'Rendering…';
-    } else if (asset.status === 'failed') {
+    } else if (statusKey === 'failed') {
       assetEditorStatus.textContent = getDesignFailureMessage(asset);
     } else {
       assetEditorStatus.textContent = '';
@@ -663,10 +678,14 @@ function openAssetEditorModal(asset) {
   }
   assetEditorModal.classList.remove('modal--hidden');
   assetEditorModal.setAttribute('aria-hidden', 'false');
+  assetEditorModal.focus();
 }
 
 function closeAssetEditorModal() {
   if (!assetEditorModal) return;
+  if (assetEditorModal.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
   assetEditorModal.classList.add('modal--hidden');
   assetEditorModal.setAttribute('aria-hidden', 'true');
   currentDesignAsset = null;
@@ -908,6 +927,13 @@ function normalizeDesignAsset(asset = {}) {
   normalized.campaign = normalized.campaign || '';
   normalized.calendarDayId = normalized.calendarDayId || '';
   normalized.cloudinaryPublicId = normalized.cloudinaryPublicId || '';
+  normalized.cloudinaryUrl = normalized.cloudinaryUrl || '';
+  if (!normalized.previewInlineUrl && normalized.cloudinaryUrl) {
+    normalized.previewInlineUrl = normalized.cloudinaryUrl;
+  }
+  if (!normalized.previewUrl && normalized.cloudinaryUrl) {
+    normalized.previewUrl = normalized.cloudinaryUrl;
+  }
   normalized.data = normalized.data || null;
   normalized.linkedDay = normalized.linkedDay || normalized.day || null;
   normalized.day = normalized.linkedDay || normalized.day || null;
@@ -997,7 +1023,8 @@ function mergeDesignAsset(asset, options = {}) {
   } else {
     designAssets.unshift(normalized);
   }
-  if (normalized.status === 'rendering') {
+  const normalizedStatus = String(normalized.status || '').toLowerCase();
+  if (normalizedStatus === 'rendering' || normalizedStatus === 'queued') {
     scheduleDesignAssetPoll(normalized.id, 3000);
   }
   if (!options.skipPersist) {
@@ -1023,7 +1050,8 @@ async function refreshDesignAssetById(assetId) {
     if (asset && asset.id) {
       asset.origin = 'remote';
       mergeDesignAsset(asset);
-      if (asset.status === 'rendering') {
+      const statusKey = String(asset.status || '').toLowerCase();
+      if (statusKey === 'rendering' || statusKey === 'queued') {
         scheduleDesignAssetPoll(asset.id);
       } else {
         designAssetPollTimers.delete(asset.id);
@@ -1040,7 +1068,7 @@ async function refreshDesignAssetById(assetId) {
     }
     console.warn('Unable to refresh design asset', error);
     const existing = designAssets.find((item) => String(item.id) === String(assetId));
-    if (existing && existing.status === 'rendering') {
+    if (existing && (existing.status === 'rendering' || existing.status === 'queued')) {
       existing.status = 'failed';
       existing.previewText = 'This asset could not be rendered.';
       renderDesignAssets();
@@ -1057,7 +1085,7 @@ function scheduleDesignAssetPoll(assetId, delay = 5000) {
     refreshDesignAssetById(assetId).finally(() => {
       if (attempt >= MAX_DESIGN_POLL_ATTEMPTS) {
         const pending = designAssets.find((asset) => String(asset.id) === String(assetId));
-        if (pending && pending.status === 'rendering') {
+        if (pending && (pending.status === 'rendering' || pending.status === 'queued')) {
           pending.status = 'failed';
           pending.previewText = 'Rendering timed out. Try regenerating in Design Lab.';
           renderDesignAssets();
@@ -1097,7 +1125,8 @@ async function refreshDesignAssetsFromServer(filters = {}) {
     const localAssets = designAssets.filter((asset) => asset && asset.origin === 'local');
     designAssets = [...remoteAssets.map((asset) => normalizeDesignAsset(asset)), ...localAssets];
     remoteAssets.forEach((asset) => {
-      if (asset.id && asset.status === 'rendering') {
+      const statusKey = String(asset.status || '').toLowerCase();
+      if (asset.id && (statusKey === 'rendering' || statusKey === 'queued')) {
         scheduleDesignAssetPoll(asset.id, 2500);
       }
     });
@@ -2834,7 +2863,7 @@ function renderDesignEditor() {
     const statusKey = String(asset.status || 'draft').toLowerCase();
     designEditorStatusBadge.textContent = formatDesignAssetStatusLabel(statusKey);
     designEditorStatusBadge.classList.remove('is-ready', 'is-rendering', 'is-failed', 'is-muted');
-    if (statusKey === 'rendering') {
+    if (statusKey === 'rendering' || statusKey === 'queued') {
       designEditorStatusBadge.classList.add('is-rendering');
     } else if (statusKey === 'failed') {
       designEditorStatusBadge.classList.add('is-failed');
@@ -2844,7 +2873,7 @@ function renderDesignEditor() {
       designEditorStatusBadge.classList.add('is-muted');
     }
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.cloudinaryUrl || '';
   if (designEditorPreviewImg) {
     if (previewSource) {
       designEditorPreviewImg.src = previewSource;
@@ -2855,7 +2884,7 @@ function renderDesignEditor() {
     }
   }
   if (designEditorPreviewPlaceholder) {
-    if (asset.status === 'rendering') {
+    if (asset.status === 'rendering' || asset.status === 'queued') {
       designEditorPreviewPlaceholder.style.display = 'flex';
       designEditorPreviewPlaceholder.textContent = 'Rendering in progress. This may take a moment.';
     } else if (asset.status === 'failed') {
@@ -2868,7 +2897,7 @@ function renderDesignEditor() {
   }
   if (designEditorStatusNote) {
     let note = '';
-    if (asset.status === 'rendering') {
+    if (asset.status === 'rendering' || asset.status === 'queued') {
       note = 'Rendering in progress. This may take a moment.';
     } else if (asset.status === 'failed') {
       note = getDesignFailureMessage(asset);
@@ -3048,6 +3077,7 @@ function formatDesignAssetStatusLabel(status = 'ready') {
     ready: 'Ready',
     exported: 'Exported',
     rendering: 'Rendering…',
+    queued: 'Queued',
     failed: 'Failed',
   };
   return map[status] || 'Draft';
@@ -3133,7 +3163,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
       return { kind: 'carousel', slides, url: first.previewUrl || first.downloadUrl || '' };
     }
   }
-  const inline = asset.previewInlineUrl || '';
+  const inline = asset.previewInlineUrl || asset.cloudinaryUrl || '';
   if (inline) {
     const lower = inline.slice(0, 30).toLowerCase();
     if (lower.includes('video')) {
@@ -3141,7 +3171,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
     }
     return { kind: 'image', url: inline };
   }
-  const url = asset.previewUrl || '';
+  const url = asset.previewUrl || asset.cloudinaryUrl || '';
   if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
     const lower = url.slice(0, 30).toLowerCase();
     if (lower.includes('video')) return { kind: 'video', url };
@@ -4790,7 +4820,7 @@ const createCard = (post) => {
         const typeEl = document.createElement('strong');
         typeEl.textContent = asset.typeLabel || asset.title || 'AI Asset';
         meta.appendChild(typeEl);
-        if (asset.status === 'rendering') {
+        if (asset.status === 'rendering' || asset.status === 'queued') {
           const renderingStatus = document.createElement('span');
           renderingStatus.className = 'calendar-card__asset-status calendar-card__asset-status--rendering';
           renderingStatus.textContent = 'Rendering…';
@@ -4846,7 +4876,7 @@ const createCard = (post) => {
           failedNote.textContent = 'Rendering failed. Try again in Design Lab.';
           actions.appendChild(failedNote);
         }
-        if (!(asset.status === 'rendering' && !asset.downloadUrl)) {
+        if (!((asset.status === 'rendering' || asset.status === 'queued') && !asset.downloadUrl)) {
           const downloadLabel = Array.isArray(asset.slides) && asset.slides.length ? 'Download ZIP' : 'Download';
           const downloadBtn = document.createElement('button');
           downloadBtn.type = 'button';
@@ -8240,6 +8270,7 @@ function sanitizeAssetForStorage(asset = {}) {
     concept: asset.concept || '',
     bundleUrl: asset.bundleUrl || '',
     cloudinaryPublicId: asset.cloudinaryPublicId || '',
+    cloudinaryUrl: asset.cloudinaryUrl || '',
     origin: asset.origin || 'local',
     data: asset.data || null,
     slides: sanitizeSlidesForStorage(asset.slides),
