@@ -787,12 +787,18 @@ function buildAssetEditorPatchPayload(regenerate = false) {
 async function persistAssetEditorChanges(regenerate = false) {
   if (!currentDesignAsset) return null;
   const payload = buildAssetEditorPatchPayload(regenerate);
+  console.log('[Promptly] PATCH asset', currentDesignAsset.id, payload);
   const response = await fetchWithAuth(`/api/design-assets/${encodeURIComponent(currentDesignAsset.id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const json = await response.json().catch(() => ({}));
+  let json = null;
+  try {
+    json = await response.json();
+  } catch (_) {
+    json = {};
+  }
   if (!response.ok) {
     if (json?.asset) {
       const erroredAsset = normalizeDesignAsset({ ...(json.asset || {}), origin: 'remote' });
