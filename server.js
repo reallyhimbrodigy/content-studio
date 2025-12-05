@@ -535,26 +535,31 @@ function buildPlacidPayload(data = {}) {
 
 async function handleCreateDesignAsset(req, res) {
   let createdRow = null;
+  let requestBody = null;
+  let user = null;
   try {
     if (!isDesignPipelineReady()) {
       return sendJson(res, 501, { error: 'Design pipeline not configured' });
     }
-    const user = await requireSupabaseUser(req);
-    const body = await readJsonBody(req);
-    const type = String(body.type || 'post_graphic').toLowerCase();
+    user = await requireSupabaseUser(req);
+    requestBody = await readJsonBody(req);
+    const type = String(requestBody.type || 'post_graphic').toLowerCase();
     if (!ALLOWED_DESIGN_ASSET_TYPES.includes(type)) {
-      return sendJson(res, 400, { error: 'Unsupported asset type.' });
+      return sendJson(res, 400, {
+        error: 'unsupported_asset_type',
+        supported: ALLOWED_DESIGN_ASSET_TYPES,
+      });
     }
-    const calendarDayId = buildCalendarDayId(body);
-    const linkedDay = parseRequestedDay(body, calendarDayId);
+    const calendarDayId = buildCalendarDayId(requestBody);
+    const linkedDay = parseRequestedDay(requestBody, calendarDayId);
     const templateId = resolveTemplateIdForType(type);
     if (!templateId) {
       return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
     }
     const brandProfile = await loadUserBrandProfile(user.id);
     const calendarDay = await loadCalendarDay(calendarDayId, user.id);
-    let designData = buildBaseDesignDataFromBody(body, { calendarDayId, linkedDay, type });
-    const incomingBrand = normalizeIncomingBrandFields(body);
+    let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
+    const incomingBrand = normalizeIncomingBrandFields(requestBody);
     if (Object.keys(incomingBrand).length) {
       Object.assign(designData, incomingBrand);
       if (designData.brand_voice) {
@@ -652,20 +657,31 @@ async function handleCreateDesignAsset(req, res) {
       });
       return sendJson(res, 502, { error: placidMessage, status: 'failed' });
     }
-    return sendJson(res, 201, mapDesignAssetRow(currentRow));
+    return sendJson(res, 201, { assetId: currentRow.id });
   } catch (error) {
-    console.error('Design asset create error:', error);
+    const safeBody = requestBody
+      ? {
+          type: requestBody.type,
+          calendarDayId: requestBody.calendarDayId || requestBody.calendar_day_id,
+        }
+      : null;
+    console.error('[ERROR] /api/design-assets', {
+      message: error?.message,
+      stack: error?.stack,
+      body: safeBody,
+      userId: user?.id || null,
+    });
     if (error?.statusCode === 401) {
-      return sendJson(res, 401, { error: 'Unauthorized' });
+      return sendJson(res, 401, { error: 'unauthorized', details: error?.message || 'Unauthorized' });
     }
     if (error?.statusCode === 413) {
-      return sendJson(res, 413, { error: 'Request payload too large' });
+      return sendJson(res, 413, { error: 'payload_too_large', details: error?.message || 'Request payload too large' });
     }
     if (error?.statusCode === 501) {
-      return sendJson(res, 501, { error: 'Design pipeline not configured' });
+      return sendJson(res, 501, { error: 'design_pipeline_unavailable', details: error?.message || 'Design pipeline not configured' });
     }
     if (error?.statusCode === 400) {
-      return sendJson(res, 400, { error: error.message || 'Invalid request' });
+      return sendJson(res, 400, { error: 'invalid_request', details: error.message || 'Invalid request' });
     }
     if (createdRow?.id) {
       await markDesignAssetStatus(createdRow.id, {
@@ -677,7 +693,7 @@ async function handleCreateDesignAsset(req, res) {
         },
       });
     }
-    return sendJson(res, 500, { error: 'Unable to create design asset', status: 'failed' });
+    return sendJson(res, 500, { error: 'internal_error', details: error?.message || 'Unable to create design asset' });
   }
 }
 

@@ -487,42 +487,63 @@ async function createDesignAssetFromCalendar(context, type) {
     logoUrl: context.brand?.logoUrl || '',
     platform: context.platform || 'instagram',
   };
+  console.log('[Promptly] Creating design asset from calendar', {
+    type,
+    calendarDayId: payload.calendarDayId,
+    linkedDay: payload.linkedDay,
+  });
   const response = await fetchWithAuth('/api/design-assets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  let result = null;
+  try {
+    result = await response.json();
+  } catch (_) {
+    result = null;
+  }
   if (response.status === 501) {
     designAssetsApiDisabled = true;
-    throw new Error('Design pipeline is not available in this environment.');
+    const message = result?.error || 'Design pipeline is not available in this environment.';
+    console.error('[Promptly] Design assets API disabled', { status: response.status, body: result });
+    throw new Error(message);
   }
   if (!response.ok) {
-    const detail = await response.json().catch(() => ({}));
-    throw new Error(detail?.error || `Design API error ${response.status}`);
+    console.error('[Promptly] Design assets API failed', {
+      status: response.status,
+      body: result,
+    });
+    const message = result?.details || result?.error || `Design API error ${response.status}`;
+    throw new Error(message);
   }
-  const asset = await response.json();
-  if (asset?.id) {
+  console.log('[Promptly] Design asset created', {
+    status: response.status,
+    payload: result,
+  });
+  const assetId = result?.assetId || result?.id || null;
+  if (assetId) {
     const placeholder = {
-      id: asset.id,
+      id: assetId,
       assetType: type,
       typeLabel: formatAssetTypeLabel(type),
       title: payload.title,
       linkedDay: payload.linkedDay,
       day: payload.linkedDay,
-      status: asset.status || 'rendering',
+      status: 'rendering',
       previewText: 'Rendering in Placid…',
-      designUrl: `/design.html?asset=${encodeURIComponent(asset.id)}`,
+      designUrl: `/design.html?asset=${encodeURIComponent(assetId)}`,
       origin: 'remote',
       createdAt: new Date().toISOString(),
       calendarDayId: payload.calendarDayId,
       data: { type },
     };
     mergeDesignAsset(placeholder);
-    pendingAssetDetailId = asset.id;
-    highlightDesignAssetId = asset.id;
+    pendingAssetDetailId = assetId;
+    highlightDesignAssetId = assetId;
     showDesignSuccess(`${formatAssetTypeLabel(type)} queued in Design Lab.`);
   }
-  return asset?.id || null;
+  return assetId;
 }
 
 function buildAssetContextFromEntry(entry = {}, day) {
