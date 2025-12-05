@@ -849,6 +849,9 @@ async function handleAssetEditorRegenerate() {
       assetEditorSaveButton.disabled = false;
     }
   }
+  if (currentDesignAsset && (currentDesignAsset.status === 'queued' || currentDesignAsset.status === 'rendering')) {
+    scheduleDesignAssetPoll(currentDesignAsset.id, 2500);
+  }
 }
 
 async function handleAssetEditorSave() {

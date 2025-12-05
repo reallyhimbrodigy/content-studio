@@ -59,4 +59,45 @@ async function updateDesignAsset(id, payload, userId = null) {
   return data;
 }
 
-module.exports = { supabaseAdmin, getDesignAssetById, updateDesignAsset };
+async function getQueuedOrRenderingAssets() {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  const { data, error } = await supabaseAdmin
+    .from('design_assets')
+    .select('*')
+    .in('status', ['queued', 'rendering']);
+  if (error) {
+    console.error('[Supabase] getQueuedOrRenderingAssets error', error);
+    throw new Error(error.message || 'Unable to load queued assets');
+  }
+  return data || [];
+}
+
+async function updateDesignAssetStatus(id, partial) {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  const safePartial = {};
+  if (partial.status !== undefined) safePartial.status = partial.status;
+  if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
+  if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
+  if (partial.error_message !== undefined) safePartial.error_message = partial.error_message;
+  if (partial.data !== undefined) safePartial.data = partial.data;
+  const { data, error } = await supabaseAdmin
+    .from('design_assets')
+    .update(safePartial)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error || !data) {
+    console.error('[Supabase] updateDesignAssetStatus error', { id, error });
+    const err = new Error(error?.message || 'Unable to update design asset status');
+    throw err;
+  }
+  return data;
+}
+
+module.exports = {
+  supabaseAdmin,
+  getDesignAssetById,
+  updateDesignAsset,
+  getQueuedOrRenderingAssets,
+  updateDesignAssetStatus,
+};

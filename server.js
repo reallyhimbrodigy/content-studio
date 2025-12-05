@@ -6,6 +6,7 @@ const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset } = require('./services/supabase-admin');
+const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const { createPlacidRender, getPlacidRenderResult, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
 
@@ -2913,6 +2914,13 @@ function serveFile(filePath, res) {
 }
 
 const PORT = process.env.PORT || 8000;
+// Run design asset pipeline on interval to progress renders.
+setInterval(() => {
+  advanceDesignAssetPipeline().catch((err) => {
+    console.error('[Pipeline] Tick error', err);
+  });
+}, 20000);
+
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
 process.on('uncaughtException', (err) => console.error('Uncaught:', err));
