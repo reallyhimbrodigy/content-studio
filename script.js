@@ -1,5 +1,6 @@
 import {
   getCurrentUser,
+  getCurrentUserId,
   getCurrentUserDetails,
   saveUserCalendar,
   signOut as storeSignOut,
@@ -469,10 +470,15 @@ function closeGenerateAssetModal() {
 
 async function createDesignAssetFromCalendar(context, type) {
   if (!context) throw new Error('Missing calendar context');
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) {
+    throw new Error('You must be signed in to generate assets.');
+  }
   const payload = {
+    type,
     calendarDayId: context.calendarDayId,
     linkedDay: context.linkedDay,
-    type,
+    userId: currentUserId,
     title: context.title || '',
     subtitle: context.subtitle || '',
     cta: context.cta || '',
@@ -481,17 +487,15 @@ async function createDesignAssetFromCalendar(context, type) {
     campaign: context.campaign || '',
     month: context.month || '',
     brand_color:
+      context.brandColor ||
       context.brand?.primaryColor ||
       context.brand?.accentColor ||
       '',
-    logoUrl: context.brand?.logoUrl || '',
+    background_image: context.backgroundImageUrl || '',
+    logo: context.logoUrl || context.brand?.logoUrl || '',
     platform: context.platform || 'instagram',
   };
-  console.log('[Promptly] Creating design asset from calendar', {
-    type,
-    calendarDayId: payload.calendarDayId,
-    linkedDay: payload.linkedDay,
-  });
+  console.log('[Promptly] Creating design asset from calendar', payload);
   const response = await fetchWithAuth('/api/design-assets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -514,7 +518,7 @@ async function createDesignAssetFromCalendar(context, type) {
       status: response.status,
       body: result,
     });
-    const message = result?.details || result?.error || `Design API error ${response.status}`;
+    const message = result?.details || result?.error || `design_assets_api_error_${response.status}`;
     throw new Error(message);
   }
   console.log('[Promptly] Design asset created', {
@@ -558,6 +562,9 @@ function buildAssetContextFromEntry(entry = {}, day) {
     campaign: entry?.campaign || '',
     month: entry?.month || '',
     platform: (entry?.format || 'instagram').toLowerCase().includes('story') ? 'stories' : 'instagram',
+    backgroundImageUrl: entry?.backgroundImageUrl || entry?.heroImage || '',
+    logoUrl: entry?.brand?.logoUrl || entry?.logoUrl || '',
+    brandColor: entry?.brand_color || entry?.brand?.primaryColor || entry?.brand?.accentColor || '',
     brand: {
       primaryColor: entry?.brand?.primaryColor || entry?.brand_color || '',
       accentColor: entry?.brand?.accentColor || '',

@@ -550,8 +550,35 @@ async function handleCreateDesignAsset(req, res) {
         supported: ALLOWED_DESIGN_ASSET_TYPES,
       });
     }
+    const bodyCalendarId = requestBody.calendarDayId || requestBody.calendar_day_id || '';
+    if (!bodyCalendarId) {
+      return sendJson(res, 400, { error: 'missing_calendar_day_id', details: 'calendarDayId is required' });
+    }
+    if (requestBody.userId && requestBody.userId !== user.id) {
+      console.warn('Design asset request userId mismatch', {
+        bodyUserId: requestBody.userId,
+        authUserId: user.id,
+      });
+    }
     const calendarDayId = buildCalendarDayId(requestBody);
     const linkedDay = parseRequestedDay(requestBody, calendarDayId);
+    const title = (requestBody.title || requestBody.idea || '').trim();
+    const subtitle = (requestBody.subtitle || requestBody.caption || '').trim();
+    const cta = (requestBody.cta || '').trim();
+    const backgroundImage = requestBody.background_image || requestBody.backgroundImageUrl || requestBody.heroImage || '';
+    const logo = requestBody.logo || requestBody.logoUrl || '';
+    const brandColor =
+      requestBody.brand_color ||
+      requestBody.brandColor ||
+      requestBody.brand_primary_color ||
+      requestBody.brand_accent_color ||
+      '';
+    requestBody.title = title;
+    requestBody.subtitle = subtitle;
+    requestBody.cta = cta;
+    requestBody.backgroundImageUrl = backgroundImage;
+    requestBody.logoUrl = logo;
+    requestBody.brand_color = brandColor;
     const templateId = resolveTemplateIdForType(type);
     if (!templateId) {
       return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
@@ -565,6 +592,9 @@ async function handleCreateDesignAsset(req, res) {
       if (designData.brand_voice) {
         designData.brand_voice = String(designData.brand_voice).slice(0, 2000);
       }
+    }
+    if (brandColor) {
+      designData.brand_color = brandColor;
     }
     if (brandProfile) {
       const voice = brandProfile.voice || designData.brand_voice || '';
