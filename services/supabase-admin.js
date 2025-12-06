@@ -147,4 +147,5 @@ module.exports = {
   getQueuedOrRenderingAssets,
   updateDesignAssetStatus,
   createDesignAsset,
+  DESIGN_ASSET_URL_COLUMN,
 };
