@@ -726,7 +726,7 @@ function closeAssetEditorModal() {
 function bindCalendarGenerateAssetClicks() {
   const grid = document.getElementById('calendar-grid');
   if (!grid) {
-    console.warn('[Promptly] calendar-grid not found; cannot bind Generate Asset buttons.');
+    // Not on calendar page; nothing to bind.
     return;
   }
   grid.addEventListener('click', (event) => {
