@@ -543,9 +543,8 @@ async function handleCreateDesignAsset(req, res) {
       user_id: user.id,
       calendar_day_id: calendarDayId,
       data: designData,
-      status: 'queued',
+      status: 'rendering',
     };
-    console.log('[Supabase] createDesignAsset payload', insertPayload);
     const inserted = await createDesignAsset(insertPayload);
     console.log('[Supabase] createDesignAsset inserted', inserted);
 

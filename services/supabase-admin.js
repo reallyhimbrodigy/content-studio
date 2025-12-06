@@ -7,12 +7,14 @@ const SUPABASE_SERVICE_ROLE_KEY =
 // NOTE: Supabase service role key is only used on the server; never expose client-side.
 
 const DESIGN_ASSET_URL_COLUMN = 'cloudinary_public_id';
-const ALLOWED_STATUSES = ['queued', 'rendering', 'ready', 'failed'];
+const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
 
 function normalizeDesignAssetStatus(raw) {
-  if (!raw) return 'queued';
+  if (!raw) return 'rendering';
   const value = String(raw).trim().toLowerCase();
-  return ALLOWED_STATUSES.includes(value) ? value : 'queued';
+  // map legacy/unsupported values into an allowed in-progress state
+  if (value === 'queued') return 'rendering';
+  return ALLOWED_STATUSES.includes(value) ? value : 'rendering';
 }
 
 let supabaseAdmin = null;
@@ -75,7 +77,7 @@ async function getQueuedOrRenderingAssets() {
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .select('*')
-    .in('status', ['queued', 'rendering'])
+    .in('status', ['draft', 'rendering'])
     .order('created_at', { ascending: true })
     .limit(10);
   if (error) {
@@ -115,7 +117,7 @@ async function createDesignAsset(payload) {
     console.error('[Supabase] Missing placid_template_id for type', payload.type);
     throw new Error(`missing_placid_template_id_for_type_${payload.type}`);
   }
-  const status = normalizeDesignAssetStatus(payload.status || 'queued');
+  const status = normalizeDesignAssetStatus(payload.status || 'rendering');
   const insertPayload = {
     type: payload.type,
     user_id: payload.user_id,
