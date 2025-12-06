@@ -6742,7 +6742,6 @@ if (saveBtn) {
 function bindDeleteCalendarButton() {
   const deleteButton = deleteCalendarBtn || document.getElementById('delete-calendar-button');
   if (!deleteButton) {
-    console.warn('[Promptly] Delete Calendar button not found in DOM.');
     return;
   }
   console.log('[Promptly] Binding Delete Calendar button handler.');
