@@ -4,6 +4,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 // NOTE: Supabase service role key is only used on the server; never expose client-side.
+const { resolvePlacidTemplateId } = require('./placid-templates');
 
 let supabaseAdmin = null;
 
@@ -96,6 +97,11 @@ async function updateDesignAssetStatus(id, partial) {
 async function createDesignAsset(payload) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
   console.log('[Supabase] createDesignAsset payload', payload);
+  const templateId = payload.placid_template_id || resolvePlacidTemplateId(payload.type);
+  if (!templateId) {
+    console.error('[Supabase] Missing placid_template_id for type', payload.type);
+    throw new Error(`missing_placid_template_id_for_type_${payload.type}`);
+  }
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .insert({
@@ -105,6 +111,7 @@ async function createDesignAsset(payload) {
       data: payload.data,
       placid_render_id: payload.placid_render_id ?? null,
       status: payload.status || 'rendering',
+      placid_template_id: templateId,
     })
     .select('*')
     .single();
