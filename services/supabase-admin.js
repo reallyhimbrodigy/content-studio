@@ -1,10 +1,19 @@
 const { createClient } = require('@supabase/supabase-js');
+const { resolvePlacidTemplateId } = require('./placid-templates');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 // NOTE: Supabase service role key is only used on the server; never expose client-side.
-const { resolvePlacidTemplateId } = require('./placid-templates');
+
+const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
+
+function normalizeDesignAssetStatus(raw) {
+  if (!raw) return 'queued'.replace('queued', 'draft'); // schema allows draft/rendering/ready/failed; default to draft
+  const value = String(raw).trim().toLowerCase();
+  if (value === 'queued') return 'rendering'; // queued not allowed by constraint; map to rendering start state
+  return ALLOWED_STATUSES.includes(value) ? value : 'draft';
+}
 
 let supabaseAdmin = null;
 
@@ -41,7 +50,7 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
   const safePayload = {};
   if (payload.data !== undefined) safePayload.data = payload.data;
-  if (payload.status !== undefined) safePayload.status = payload.status;
+  if (payload.status !== undefined) safePayload.status = normalizeDesignAssetStatus(payload.status);
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
   if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
   if (payload.placid_template_id !== undefined) safePayload.placid_template_id = payload.placid_template_id;
@@ -77,7 +86,7 @@ async function getQueuedOrRenderingAssets() {
 async function updateDesignAssetStatus(id, partial) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
   const safePartial = {};
-  if (partial.status !== undefined) safePartial.status = partial.status;
+  if (partial.status !== undefined) safePartial.status = normalizeDesignAssetStatus(partial.status);
   if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
   if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
   if (partial.placid_template_id !== undefined) safePartial.placid_template_id = partial.placid_template_id;
@@ -104,13 +113,14 @@ async function createDesignAsset(payload) {
     console.error('[Supabase] Missing placid_template_id for type', payload.type);
     throw new Error(`missing_placid_template_id_for_type_${payload.type}`);
   }
+  const status = normalizeDesignAssetStatus(payload.status);
   const insertPayload = {
     type: payload.type,
     user_id: payload.user_id,
     calendar_day_id: payload.calendar_day_id,
     data: payload.data,
     placid_render_id: payload.placid_render_id ?? null,
-    status: payload.status || 'queued',
+    status,
     placid_template_id: templateId,
   };
   const { data, error } = await supabaseAdmin

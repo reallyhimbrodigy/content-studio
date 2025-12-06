@@ -574,7 +574,7 @@ async function handleCreateDesignAsset(req, res) {
       calendar_day_id: calendarDayId,
       data: designData,
       placid_render_id: null,
-      status: 'queued',
+      status: 'draft',
     });
 
     return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
