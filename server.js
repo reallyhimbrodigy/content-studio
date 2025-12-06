@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
-const { supabaseAdmin, getDesignAssetById, updateDesignAsset } = require('./services/supabase-admin');
+const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const { createPlacidRender, getPlacidRenderResult, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
@@ -574,7 +574,7 @@ async function handleCreateDesignAsset(req, res) {
       data: designData,
       placid_render_id: null,
       cloudinary_url: null,
-      status: 'queued',
+      status: 'rendering',
       error_message: null,
     });
 

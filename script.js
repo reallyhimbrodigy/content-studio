@@ -565,6 +565,7 @@ async function createDesignAssetFromCalendar(context, type) {
     pendingAssetDetailId = assetId;
     highlightDesignAssetId = assetId;
     showDesignSuccess(`${formatAssetTypeLabel(type)} queued in Design Lab.`);
+    window.location.href = `design.html?asset=${encodeURIComponent(assetId)}`;
   }
   return assetId;
 }
