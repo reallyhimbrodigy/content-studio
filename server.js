@@ -35,6 +35,11 @@ if (!STORY_TEMPLATE_ID) {
 if (!CAROUSEL_TEMPLATE_ID) {
   console.warn('Notice: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will reuse the post graphic template.');
 }
+console.log('[Placid config]', {
+  POST_GRAPHIC_TEMPLATE_ID: POST_GRAPHIC_TEMPLATE_ID ? '[set]' : '[missing]',
+  STORY_TEMPLATE_ID: STORY_TEMPLATE_ID ? '[set]' : '[missing]',
+  CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
+});
 validatePlacidTemplateConfig().catch((err) => {
   console.error('[Placid] Template validation failed', err);
 });
@@ -789,6 +794,38 @@ async function handleDebugDesignTest(req, res) {
       details: error?.details || null,
     });
   }
+}
+
+async function handlePlacidTemplateDebug(req, res) {
+  const types = ['post_graphic', 'story', 'carousel'];
+  const results = [];
+  for (const type of types) {
+    const templateId = resolveTemplateIdForType(type);
+    if (!templateId) {
+      results.push({ type, templateId: null, ok: false, error: 'No template id configured' });
+      continue;
+    }
+    try {
+      const testPayload = {
+        title: `Debug ${type} title`,
+        subtitle: `Debug ${type} subtitle`,
+        cta: 'Learn more',
+        background_image: '',
+      };
+      const render = await createPlacidRender({ templateId, data: testPayload });
+      results.push({ type, templateId, ok: true, renderId: render.renderId || render.id, status: render.status });
+    } catch (err) {
+      results.push({
+        type,
+        templateId,
+        ok: false,
+        error: err?.message || 'Error',
+        status: err?.response?.status,
+        body: err?.response?.data,
+      });
+    }
+  }
+  return sendJson(res, 200, { results });
 }
 
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
@@ -1847,6 +1884,11 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/debug/design-test' && req.method === 'POST') {
     handleDebugDesignTest(req, res);
+    return;
+  }
+
+  if (parsed.pathname === '/api/debug/placid-templates' && req.method === 'GET') {
+    handlePlacidTemplateDebug(req, res);
     return;
   }
 
