@@ -573,8 +573,7 @@ async function handleCreateDesignAsset(req, res) {
       calendar_day_id: calendarDayId,
       data: designData,
       placid_render_id: null,
-      cloudinary_url: null,
-      status: 'rendering',
+      status: 'queued',
       error_message: null,
     });
 
@@ -718,7 +717,6 @@ async function handlePatchDesignAsset(req, res, assetId) {
     baseUpdate.status = 'queued';
     baseUpdate.placid_render_id = null;
     baseUpdate.cloudinary_public_id = null;
-    baseUpdate.cloudinary_url = null;
     baseUpdate.data = {
       ...mergedData,
       preview_url: null,

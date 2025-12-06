@@ -43,7 +43,6 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (payload.status !== undefined) safePayload.status = payload.status;
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
   if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
-  if (payload.cloudinary_url !== undefined) safePayload.cloudinary_url = payload.cloudinary_url;
   let builder = supabaseAdmin.from('design_assets').update(safePayload).eq('id', id);
   if (userId) {
     builder = builder.eq('user_id', userId);
@@ -79,7 +78,6 @@ async function updateDesignAssetStatus(id, partial) {
   if (partial.status !== undefined) safePartial.status = partial.status;
   if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
   if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
-  if (partial.cloudinary_url !== undefined) safePartial.cloudinary_url = partial.cloudinary_url;
   if (partial.error_message !== undefined) safePartial.error_message = partial.error_message;
   if (partial.data !== undefined) safePartial.data = partial.data;
   const { data, error } = await supabaseAdmin
@@ -106,7 +104,6 @@ async function createDesignAsset(payload) {
       calendar_day_id: payload.calendar_day_id,
       data: payload.data,
       placid_render_id: payload.placid_render_id ?? null,
-      cloudinary_url: payload.cloudinary_url ?? null,
       status: payload.status || 'queued',
       error_message: payload.error_message ?? null,
     })
