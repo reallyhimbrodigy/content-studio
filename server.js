@@ -7,7 +7,7 @@ const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
-const { createPlacidRender, getPlacidRenderResult, isPlacidConfigured } = require('./services/placid');
+const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -501,83 +501,104 @@ async function handleCreateDesignAsset(req, res) {
         authUserId: user.id,
       });
     }
+
+    const templateId = resolveTemplateIdForType(type);
+    if (!templateId) {
+      return sendJson(res, 500, { error: 'missing_placid_template_id', details: `Template not configured for type ${type}` });
+    }
+
     const calendarDayId = buildCalendarDayId(requestBody);
-    const linkedDay = parseRequestedDay(requestBody, calendarDayId);
     const title = (requestBody.title || requestBody.idea || '').trim();
     const subtitle = (requestBody.subtitle || requestBody.caption || '').trim();
     const cta = (requestBody.cta || '').trim();
     const backgroundImage = requestBody.background_image || requestBody.backgroundImageUrl || requestBody.heroImage || '';
-    const logo = requestBody.logo || requestBody.logoUrl || '';
-    const brandColor =
-      requestBody.brand_color ||
-      requestBody.brandColor ||
-      requestBody.brand_primary_color ||
-      requestBody.brand_accent_color ||
-      '';
-    requestBody.title = title;
-    requestBody.subtitle = subtitle;
-    requestBody.cta = cta;
-    requestBody.backgroundImageUrl = backgroundImage;
-    requestBody.logoUrl = logo;
-    requestBody.brand_color = brandColor;
-    const templateId = resolveTemplateIdForType(type);
-    if (!templateId) {
-      return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
-    }
-    const brandProfile = await loadUserBrandProfile(user.id);
-    const calendarDay = await loadCalendarDay(calendarDayId, user.id);
-    let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
-    const incomingBrand = normalizeIncomingBrandFields(requestBody);
-    if (Object.keys(incomingBrand).length) {
-      Object.assign(designData, incomingBrand);
-      if (designData.brand_voice) {
-        designData.brand_voice = String(designData.brand_voice).slice(0, 2000);
-      }
-    }
-    if (brandColor) {
-      designData.brand_color = brandColor;
-    }
-    if (brandProfile) {
-      const voice = brandProfile.voice || designData.brand_voice || '';
-      if (voice) designData.brand_voice = voice.slice(0, 2000);
-      designData.brand_primary_color = brandProfile.primaryColor || designData.brand_primary_color || '';
-      designData.brand_secondary_color = brandProfile.secondaryColor || designData.brand_secondary_color || '';
-      designData.brand_accent_color = brandProfile.accentColor || designData.brand_accent_color || '';
-      designData.brand_heading_font = brandProfile.headingFont || designData.brand_heading_font || '';
-      designData.brand_body_font = brandProfile.bodyFont || designData.brand_body_font || '';
-      if (!designData.brand_color) {
-        designData.brand_color =
-          brandProfile.primaryColor ||
-          brandProfile.accentColor ||
-          designData.brand_accent_color ||
-          '#7f5af0';
-      }
-      const profileLogo = brandProfile.logoUrl || '';
-      if (profileLogo) {
-        designData.brand_logo_url = profileLogo;
-        if (!designData.logo) designData.logo = profileLogo;
-      }
-    } else if (designData.brand_logo_url && !designData.logo) {
-      designData.logo = designData.brand_logo_url;
-    }
-    if (!designData.brand_color) {
-      designData.brand_color =
-        designData.brand_primary_color ||
-        designData.brand_accent_color ||
-        '#7f5af0';
-    }
-    designData.type = type;
-    designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
-    designData = await maybeAttachGeneratedBackground(designData, brandProfile);
 
-    const inserted = await createDesignAsset({
+    const data = {
+      title,
+      subtitle,
+      cta,
+      background_image: backgroundImage || null,
+      notes_for_ai: requestBody.notes_for_ai || null,
+    };
+
+    // 1) Create Placid render
+    const placidRender = await createPlacidRender({
+      templateId,
+      variables: {
+        title: data.title,
+        subtitle: data.subtitle,
+        cta: data.cta,
+        background_image: data.background_image,
+      },
+    });
+    const placidRenderId = placidRender?.id || placidRender?.renderId || placidRender?.render_id;
+    if (!placidRenderId) {
+      return sendJson(res, 502, { error: 'placid_no_render_id', details: placidRender });
+    }
+
+    // 2) Poll Placid synchronously
+    let finalRender = null;
+    const maxAttempts = 20;
+    const delayMs = 1500;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const statusRes = await getPlacidRenderStatus(placidRenderId);
+      const s = String(statusRes?.status || '').toLowerCase();
+      if (['queued', 'pending', 'processing', 'running', 'rendering'].includes(s)) {
+        await wait(delayMs);
+        continue;
+      }
+      if (['done', 'completed', 'success', 'rendered', 'finished'].includes(s)) {
+        finalRender = statusRes;
+        break;
+      }
+      if (['failed', 'error'].includes(s)) {
+        return sendJson(res, 502, { error: 'placid_render_failed', details: statusRes });
+      }
+      return sendJson(res, 502, { error: 'placid_unknown_status', details: statusRes });
+    }
+    if (!finalRender) {
+      return sendJson(res, 504, { error: 'placid_timeout', details: { renderId: placidRenderId } });
+    }
+
+    const renderUrl =
+      finalRender.url ||
+      finalRender.image_url ||
+      (Array.isArray(finalRender.files) && finalRender.files[0] && finalRender.files[0].url) ||
+      null;
+    if (!renderUrl) {
+      return sendJson(res, 502, { error: 'placid_missing_final_url', details: finalRender });
+    }
+
+    // 3) Upload to Cloudinary
+    const upload = await uploadAssetFromUrl({
+      url: renderUrl,
+      folder: 'promptly/design-assets',
+    });
+    if (!upload?.publicId) {
+      return sendJson(res, 502, { error: 'cloudinary_upload_failed', details: upload });
+    }
+
+    // 4) Insert row as READY
+    const insertPayload = {
       type,
       user_id: user.id,
       calendar_day_id: calendarDayId,
-      data: designData,
-      placid_render_id: null,
-      status: 'rendering',
-    });
+      data: Object.assign({}, data, { preview_url: upload.secureUrl || renderUrl }),
+      status: 'ready',
+      placid_template_id: templateId,
+      placid_render_id: placidRenderId,
+      cloudinary_public_id: upload.publicId,
+    };
+
+    const { data: inserted, error } = await supabaseAdmin
+      .from('design_assets')
+      .insert(insertPayload)
+      .select('*')
+      .single();
+    if (error || !inserted) {
+      console.error('[Supabase] insert design_assets error', error);
+      return sendJson(res, 500, { error: 'supabase_insert_failed', details: error?.message || 'Insert failed' });
+    }
 
     return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
   } catch (error) {
@@ -813,9 +834,9 @@ async function handleDebugDesignTest(req, res) {
     }
     let result = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      result = await getPlacidRenderResult(render.renderId);
+      result = await getPlacidRenderStatus(render.renderId);
       const status = String(result?.status || '').toLowerCase();
-      if (result?.imageUrl && status === 'ready') break;
+      if ((result?.image_url || result?.url) && (status === 'done' || status === 'ready' || status === 'success')) break;
       await wait(1000);
     }
     console.log('Design debug test result', {
@@ -2696,12 +2717,12 @@ function serveFile(filePath, res) {
 }
 
 const PORT = process.env.PORT || 8000;
-// Run design asset pipeline on interval to progress renders.
-setInterval(() => {
-  advanceDesignAssetPipeline().catch((err) => {
-    console.error('[Pipeline] Tick error', err);
-  });
-}, 20000);
+// Legacy pipeline disabled; synchronous generation now handled in POST /api/design-assets.
+// setInterval(() => {
+//   advanceDesignAssetPipeline().catch((err) => {
+//     console.error('[Pipeline] Tick error', err);
+//   });
+// }, 20000);
 
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
