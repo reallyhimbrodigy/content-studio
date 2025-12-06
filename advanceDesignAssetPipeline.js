@@ -32,16 +32,14 @@ async function advanceDesignAssetPipeline() {
         placid_template_id: asset.placid_template_id,
       });
 
+      const templateId = resolveTemplateId(asset.type);
+      if (!templateId) {
+        console.error('[Pipeline] FAIL: missing template id for asset type', { assetId: asset.id, type: asset.type });
+        await updateDesignAssetStatus(asset.id, { status: 'failed' });
+        continue;
+      }
+
       if (!asset.placid_render_id) {
-        const templateId = asset.placid_template_id || resolveTemplateId(asset.type);
-        if (!templateId) {
-          console.error('[Pipeline] Missing templateId for asset', asset.id);
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...data, error_message: 'missing_template_id' },
-          });
-          continue;
-        }
         const vars = {
           title: data.title || '',
           subtitle: data.subtitle || '',
@@ -52,6 +50,7 @@ async function advanceDesignAssetPipeline() {
         await updateDesignAssetStatus(asset.id, {
           status: 'rendering',
           placid_render_id: render.id || render.renderId || render.render_id || null,
+          placid_template_id: templateId,
           data: { ...data, error_message: null },
         });
         continue;
