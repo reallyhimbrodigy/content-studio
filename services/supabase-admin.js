@@ -78,7 +78,6 @@ async function updateDesignAssetStatus(id, partial) {
   if (partial.status !== undefined) safePartial.status = partial.status;
   if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
   if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
-  if (partial.error_message !== undefined) safePartial.error_message = partial.error_message;
   if (partial.data !== undefined) safePartial.data = partial.data;
   const { data, error } = await supabaseAdmin
     .from('design_assets')
@@ -106,7 +105,6 @@ async function createDesignAsset(payload) {
       data: payload.data,
       placid_render_id: payload.placid_render_id ?? null,
       status: payload.status || 'rendering',
-      error_message: payload.error_message ?? null,
     })
     .select('*')
     .single();

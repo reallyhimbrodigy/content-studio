@@ -35,7 +35,7 @@ async function advanceDesignAssetPipeline() {
           console.error('[Pipeline] Missing templateId for asset type', asset.type, 'asset', asset.id);
           await updateDesignAssetStatus(asset.id, {
             status: 'failed',
-            error_message: 'missing_template_id',
+            data: { ...(asset.data || {}), error_message: 'missing_template_id' },
           });
           continue;
         }
@@ -46,7 +46,7 @@ async function advanceDesignAssetPipeline() {
         await updateDesignAssetStatus(asset.id, {
           status: 'rendering',
           placid_render_id: placidRender.id || placidRender.renderId || null,
-          error_message: null,
+          data: { ...(asset.data || {}), error_message: null },
         });
         continue;
       }
@@ -66,7 +66,7 @@ async function advanceDesignAssetPipeline() {
       if (status === 'failed' || status === 'error') {
         await updateDesignAssetStatus(asset.id, {
           status: 'failed',
-          error_message: 'placid_render_failed',
+          data: { ...(asset.data || {}), error_message: 'placid_render_failed' },
         });
         continue;
       }
@@ -75,7 +75,7 @@ async function advanceDesignAssetPipeline() {
         if (!render.url) {
           await updateDesignAssetStatus(asset.id, {
             status: 'failed',
-            error_message: 'placid_missing_url',
+            data: { ...(asset.data || {}), error_message: 'placid_missing_url' },
           });
           continue;
         }
@@ -90,7 +90,6 @@ async function advanceDesignAssetPipeline() {
         await updateDesignAssetStatus(asset.id, {
           status: 'ready',
           cloudinary_public_id: upload.publicId,
-          error_message: null,
           data: nextData,
         });
         continue;
@@ -104,7 +103,7 @@ async function advanceDesignAssetPipeline() {
       console.error('[Pipeline] Error processing asset', asset.id, err);
       await updateDesignAssetStatus(asset.id, {
         status: 'failed',
-        error_message: err.message || 'pipeline_error',
+        data: { ...(asset.data || {}), error_message: err.message || 'pipeline_error' },
       });
     }
   }

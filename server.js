@@ -575,7 +575,6 @@ async function handleCreateDesignAsset(req, res) {
       data: designData,
       placid_render_id: null,
       status: 'rendering',
-      error_message: null,
     });
 
     return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
