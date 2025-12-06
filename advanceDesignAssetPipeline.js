@@ -1,5 +1,10 @@
 const { getQueuedOrRenderingAssets, updateDesignAssetStatus } = require('./services/supabase-admin');
-const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
+const {
+  createPlacidRender,
+  getPlacidRenderStatus,
+  isPlacidConfigured,
+  resolvePlacidTemplateId,
+} = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
 
 async function advanceDesignAssetPipeline() {
@@ -28,11 +33,18 @@ async function advanceDesignAssetPipeline() {
       });
 
       if (!asset.placid_render_id) {
-        const templateId = asset.placid_template_id;
+        const resolvedTemplate = resolvePlacidTemplateId(asset.type);
+        const templateId = resolvedTemplate || asset.placid_template_id || '';
         if (!templateId) {
           console.error('[Pipeline] FAIL: missing template id for asset', { assetId: asset.id, type: asset.type });
-          await updateDesignAssetStatus(asset.id, { status: 'failed' });
+          await updateDesignAssetStatus(asset.id, {
+            status: 'failed',
+            data: { ...data, error_message: 'No Placid template configured for this asset type.' },
+          });
           continue;
+        }
+        if (asset.placid_template_id !== templateId) {
+          await updateDesignAssetStatus(asset.id, { placid_template_id: templateId });
         }
         const vars = {
           title: data.title || '',
@@ -40,7 +52,27 @@ async function advanceDesignAssetPipeline() {
           cta: data.cta || '',
           background_image: data.background_image || null,
         };
-        const render = await createPlacidRender({ templateId, variables: vars });
+        let render;
+        try {
+          render = await createPlacidRender({ templateId, variables: vars });
+        } catch (err) {
+          const msg =
+            err?.response?.data?.message ||
+            err?.message ||
+            'Unable to render this asset with Placid.';
+          await updateDesignAssetStatus(asset.id, {
+            status: 'failed',
+            data: { ...data, error_message: msg },
+          });
+          console.error('[Pipeline] Placid render failed', {
+            assetId: asset.id,
+            templateId,
+            message: err?.message,
+            status: err?.response?.status,
+            data: err?.response?.data,
+          });
+          continue;
+        }
         await updateDesignAssetStatus(asset.id, {
           status: 'rendering',
           placid_render_id: render.id || render.renderId || render.render_id || null,
