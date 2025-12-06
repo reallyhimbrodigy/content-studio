@@ -214,11 +214,15 @@ populateLinkedDaySelect(designEditorDaySelect);
 
 function getDesignFailureMessage(asset) {
   if (!asset) return 'Generation failed. You can adjust the prompt or try again.';
-  return (
+  const message =
     asset.data?.error_message ||
     asset.error_message ||
-    'Generation failed. You can adjust the prompt or try again.'
-  );
+    '';
+  if (!message) return 'Generation failed. You can adjust the prompt or try again.';
+  if (/request failed/i.test(message)) {
+    return 'Generation failed. Check your template settings or try regenerating.';
+  }
+  return message;
 }
 const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');

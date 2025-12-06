@@ -4,12 +4,10 @@ const {
 } = require('./services/supabase-admin');
 const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
+const { resolvePlacidTemplateId } = require('./services/placid-templates');
 
 function resolveTemplateId(type) {
-  const key = String(type || '').toLowerCase();
-  if (key === 'story') return process.env.PLACID_STORY_TEMPLATE_ID;
-  if (key === 'carousel') return process.env.PLACID_CAROUSEL_TEMPLATE_ID;
-  return process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID;
+  return resolvePlacidTemplateId(type);
 }
 
 async function advanceDesignAssetPipeline() {
@@ -30,7 +28,7 @@ async function advanceDesignAssetPipeline() {
       // Start a render if none exists
       if (!asset.placid_render_id) {
         console.log('[Pipeline] Starting Placid render for asset', asset.id, 'type=', asset.type);
-        const templateId = resolveTemplateId(asset.type);
+        const templateId = asset.placid_template_id || resolveTemplateId(asset.type);
         if (!templateId) {
           console.error('[Pipeline] Missing templateId for asset type', asset.type, 'asset', asset.id);
           await updateDesignAssetStatus(asset.id, {

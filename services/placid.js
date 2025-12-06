@@ -30,31 +30,51 @@ async function createPlacidRender({ templateId, data, variables }) {
       background_image: src.background_image || null,
     },
   };
-  const { data: response } = await axios.post(`${PLACID_API_BASE}/renders`, payload, {
-    headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-    timeout: 20000,
-  });
-  return {
-    id: response?.id || response?.renderId || null,
-    status: response?.status || 'queued',
-    url: response?.url || response?.image_url || null,
-    renderId: response?.id || response?.renderId || null,
-  };
+  try {
+    const { data: response } = await axios.post(`${PLACID_API_BASE}/renders`, payload, {
+      headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
+      timeout: 20000,
+    });
+    return {
+      id: response?.id || response?.renderId || null,
+      status: response?.status || 'queued',
+      url: response?.url || response?.image_url || null,
+      renderId: response?.id || response?.renderId || null,
+    };
+  } catch (err) {
+    console.error('[Placid] createPlacidRender error', {
+      message: err?.message,
+      status: err?.response?.status,
+      data: err?.response?.data,
+      url: err?.config?.url,
+    });
+    throw err;
+  }
 }
 
 async function getPlacidRenderStatus(renderId) {
   ensurePlacidConfigured();
   if (!renderId) throw new Error('renderId required');
-  const { data: response } = await axios.get(`${PLACID_API_BASE}/renders/${encodeURIComponent(renderId)}`, {
-    headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-    timeout: 15000,
-  });
-  return {
-    id: response?.id || renderId,
-    status: response?.status || 'queued',
-    url: response?.url || response?.image_url || response?.result_url || null,
-    raw: response,
-  };
+  try {
+    const { data: response } = await axios.get(`${PLACID_API_BASE}/renders/${encodeURIComponent(renderId)}`, {
+      headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
+      timeout: 15000,
+    });
+    return {
+      id: response?.id || renderId,
+      status: response?.status || 'queued',
+      url: response?.url || response?.image_url || response?.result_url || null,
+      raw: response,
+    };
+  } catch (err) {
+    console.error('[Placid] getPlacidRenderStatus error', {
+      message: err?.message,
+      status: err?.response?.status,
+      data: err?.response?.data,
+      url: err?.config?.url,
+    });
+    throw err;
+  }
 }
 
 async function getPlacidRenderResult(renderId) {
