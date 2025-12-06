@@ -44,6 +44,7 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (payload.status !== undefined) safePayload.status = payload.status;
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
   if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
+  if (payload.placid_template_id !== undefined) safePayload.placid_template_id = payload.placid_template_id;
   let builder = supabaseAdmin.from('design_assets').update(safePayload).eq('id', id);
   if (userId) {
     builder = builder.eq('user_id', userId);
@@ -79,6 +80,7 @@ async function updateDesignAssetStatus(id, partial) {
   if (partial.status !== undefined) safePartial.status = partial.status;
   if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
   if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
+  if (partial.placid_template_id !== undefined) safePartial.placid_template_id = partial.placid_template_id;
   if (partial.data !== undefined) safePartial.data = partial.data;
   const { data, error } = await supabaseAdmin
     .from('design_assets')
@@ -102,17 +104,18 @@ async function createDesignAsset(payload) {
     console.error('[Supabase] Missing placid_template_id for type', payload.type);
     throw new Error(`missing_placid_template_id_for_type_${payload.type}`);
   }
+  const insertPayload = {
+    type: payload.type,
+    user_id: payload.user_id,
+    calendar_day_id: payload.calendar_day_id,
+    data: payload.data,
+    placid_render_id: payload.placid_render_id ?? null,
+    status: payload.status || 'queued',
+    placid_template_id: templateId,
+  };
   const { data, error } = await supabaseAdmin
     .from('design_assets')
-    .insert({
-      type: payload.type,
-      user_id: payload.user_id,
-      calendar_day_id: payload.calendar_day_id,
-      data: payload.data,
-      placid_render_id: payload.placid_render_id ?? null,
-      status: payload.status || 'rendering',
-      placid_template_id: templateId,
-    })
+    .insert(insertPayload)
     .select('*')
     .single();
   if (error || !data) {
