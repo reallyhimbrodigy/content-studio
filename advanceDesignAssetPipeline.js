@@ -1,11 +1,6 @@
 const { getQueuedOrRenderingAssets, updateDesignAssetStatus } = require('./services/supabase-admin');
 const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
-const { resolvePlacidTemplateId } = require('./services/placid-templates');
-
-function resolveTemplateId(type) {
-  return resolvePlacidTemplateId(type);
-}
 
 async function advanceDesignAssetPipeline() {
   if (!isPlacidConfigured()) return;
@@ -32,14 +27,13 @@ async function advanceDesignAssetPipeline() {
         placid_template_id: asset.placid_template_id,
       });
 
-      const templateId = resolveTemplateId(asset.type);
-      if (!templateId) {
-        console.error('[Pipeline] FAIL: missing template id for asset type', { assetId: asset.id, type: asset.type });
-        await updateDesignAssetStatus(asset.id, { status: 'failed' });
-        continue;
-      }
-
       if (!asset.placid_render_id) {
+        const templateId = asset.placid_template_id;
+        if (!templateId) {
+          console.error('[Pipeline] FAIL: missing template id for asset', { assetId: asset.id, type: asset.type });
+          await updateDesignAssetStatus(asset.id, { status: 'failed' });
+          continue;
+        }
         const vars = {
           title: data.title || '',
           subtitle: data.subtitle || '',

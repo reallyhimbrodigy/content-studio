@@ -109,12 +109,12 @@ async function updateDesignAssetStatus(id, partial) {
 async function createDesignAsset(payload) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
   console.log('[Supabase] createDesignAsset payload', payload);
-  const templateId = payload.placid_template_id || resolvePlacidTemplateId(payload.type);
+  const templateId = resolvePlacidTemplateId(payload.type);
   if (!templateId) {
     console.error('[Supabase] Missing placid_template_id for type', payload.type);
     throw new Error(`missing_placid_template_id_for_type_${payload.type}`);
   }
-  const status = normalizeDesignAssetStatus(payload.status);
+  const status = normalizeDesignAssetStatus(payload.status || 'queued');
   const insertPayload = {
     type: payload.type,
     user_id: payload.user_id,
