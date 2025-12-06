@@ -128,6 +128,7 @@ async function createDesignAsset(payload) {
     placid_render_id: payload.placid_render_id ?? null,
     status,
     placid_template_id: templateId,
+    image_url: payload.image_url ?? payload.cloudinary_url ?? null,
   };
   if (payload.image_url !== undefined || payload.cloudinary_url !== undefined) {
     insertPayload.image_url = payload.image_url ?? payload.cloudinary_url ?? null;

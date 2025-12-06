@@ -18,7 +18,7 @@ function isPlacidConfigured() {
 async function createPlacidRender({ templateId, data, variables }) {
   ensurePlacidConfigured();
   if (!templateId) throw new Error('missing_template_id');
-  const src = data || variables || {};
+  const src = variables || data || {};
   const payload = {
     template_id: templateId,
     data: {
@@ -36,10 +36,11 @@ async function createPlacidRender({ templateId, data, variables }) {
       timeout: 20000,
     });
     return {
-      id: response?.id || response?.renderId || null,
+      id: response?.id || response?.renderId || response?.render_id || null,
       status: response?.status || 'queued',
-      url: response?.url || response?.image_url || null,
-      renderId: response?.id || response?.renderId || null,
+      url: response?.url || response?.image_url || response?.result_url || null,
+      renderId: response?.id || response?.renderId || response?.render_id || null,
+      raw: response,
     };
   } catch (err) {
     console.error('[Placid] createPlacidRender error', {
@@ -47,6 +48,8 @@ async function createPlacidRender({ templateId, data, variables }) {
       status: err?.response?.status,
       data: err?.response?.data,
       url: err?.config?.url,
+      templateId,
+      payload,
     });
     throw err;
   }
@@ -61,7 +64,7 @@ async function getPlacidRenderStatus(renderId) {
       timeout: 15000,
     });
     return {
-      id: response?.id || renderId,
+      id: response?.id || response?.renderId || response?.render_id || renderId,
       status: response?.status || 'queued',
       url: response?.url || response?.image_url || response?.result_url || null,
       raw: response,
