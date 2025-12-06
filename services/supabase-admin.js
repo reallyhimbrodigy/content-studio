@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const { resolvePlacidTemplateId } = require('./placid-templates');
+const { resolvePlacidTemplateId } = require('./placid');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY =

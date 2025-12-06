@@ -9,7 +9,7 @@ const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset 
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
-const { resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid-templates');
+const { validatePlacidTemplateConfig } = require('./services/placid');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -35,7 +35,9 @@ if (!STORY_TEMPLATE_ID) {
 if (!CAROUSEL_TEMPLATE_ID) {
   console.warn('Notice: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will reuse the post graphic template.');
 }
-validatePlacidTemplateConfig();
+validatePlacidTemplateConfig().catch((err) => {
+  console.error('[Placid] Template validation failed', err);
+});
 
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
