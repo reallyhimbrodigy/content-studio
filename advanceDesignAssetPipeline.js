@@ -48,9 +48,16 @@ async function advanceDesignAssetPipeline() {
             });
             continue;
           }
+          const base = asset.data || {};
+          const renderVariables = {
+            title: base.title || '',
+            subtitle: base.subtitle || '',
+            cta: base.cta || '',
+            background_image: base.background_image || null,
+          };
           const placidRender = await createPlacidRender({
             templateId,
-            variables: asset.data || {},
+            variables: renderVariables,
           });
           await updateDesignAssetStatus(asset.id, {
             status: 'rendering',

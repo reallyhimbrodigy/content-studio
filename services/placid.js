@@ -25,8 +25,6 @@ async function createPlacidRender({ templateId, data, variables }) {
       title: src.title || '',
       subtitle: src.subtitle || '',
       cta: src.cta || '',
-      brand_color: src.brand_color || src.brand_primary_color || '#000000',
-      logo: src.logo || src.brand_logo_url || null,
       background_image: src.background_image || null,
     },
   };

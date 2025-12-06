@@ -5714,7 +5714,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const selected = document.querySelector('input[name="asset-type"]:checked');
       const type = selected ? selected.value : 'post_graphic';
+      const originalText = confirmBtn.textContent;
       confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Generating asset...';
+      confirmBtn.setAttribute('aria-busy', 'true');
       try {
         const assetId = await createDesignAssetFromCalendar(pendingAssetGeneration, type);
         closeGenerateAssetModal();
@@ -5728,6 +5731,8 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Unable to generate this asset right now. Please try again.');
       } finally {
         confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+        confirmBtn.removeAttribute('aria-busy');
       }
     });
   }
