@@ -4893,6 +4893,7 @@ const createCard = (post) => {
       return row;
     };
     const buildLinkedAssetsRow = (entryData) => {
+      if (true) return null; // hide calendar-surface AI assets
       const assets = Array.isArray(entryData?.assets) ? entryData.assets : [];
       if (!assets.length) return null;
       const container = document.createElement('div');
@@ -5066,7 +5067,7 @@ const createCard = (post) => {
             .join(' | ')
         : '';
     const variantsEl = variantText ? createDetailRow('Platform Variants', variantText, 'calendar-card__variants') : null;
-    const assetsEl = buildLinkedAssetsRow(entry);
+    const assetsEl = null; // Calendar asset cards hidden
 
     const actionsEl = document.createElement('div');
     actionsEl.className = 'calendar-card__actions';
