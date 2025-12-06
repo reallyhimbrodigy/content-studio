@@ -798,9 +798,10 @@ async function handlePatchDesignAsset(req, res, assetId) {
     data: mergedData,
   };
   if (regenerate) {
-    baseUpdate.status = 'rendering';
+    baseUpdate.status = 'queued';
     baseUpdate.placid_render_id = null;
     baseUpdate.cloudinary_public_id = null;
+    baseUpdate.cloudinary_url = null;
     baseUpdate.data = {
       ...mergedData,
       preview_url: null,
@@ -821,68 +822,7 @@ async function handlePatchDesignAsset(req, res, assetId) {
     });
     return sendJson(res, statusCode, { error: statusCode === 404 ? 'asset_not_found' : 'unable_to_update_asset', details: message || 'Update failed' });
   }
-  if (regenerate) {
-    if (!isDesignPipelineReady()) {
-      return sendJson(res, 501, { error: 'design_pipeline_not_configured', asset: mapDesignAssetRow(updatedRow) });
-    }
-    const templateId = existing.placid_template_id || resolveTemplateIdForType(existing.type);
-    if (!templateId) {
-      const failedRow = await updateDesignAsset(
-        assetId,
-        {
-          status: 'failed',
-          data: {
-            ...baseUpdate.data,
-            error_code: 'template_missing',
-            error_message: 'Template not configured for this asset type',
-          },
-        },
-        user.id
-      ).catch(() => updatedRow);
-      return sendJson(res, 501, { error: 'design_template_missing', asset: mapDesignAssetRow(failedRow || updatedRow) });
-    }
-    try {
-      const render = await createPlacidRender({
-        templateId,
-        data: buildPlacidPayload(baseUpdate.data),
-      });
-      if (!render?.renderId) {
-        const failedRow = await updateDesignAsset(
-          assetId,
-          {
-            status: 'failed',
-            data: {
-              ...baseUpdate.data,
-              error_code: 'placid_render_unavailable',
-              error_message: 'Unable to obtain render id from Placid',
-            },
-          },
-          user.id
-        ).catch(() => updatedRow);
-        return sendJson(res, 502, { error: 'render_unavailable', asset: mapDesignAssetRow(failedRow || updatedRow) });
-      }
-      const renderingRow = await updateDesignAsset(
-        assetId,
-        { placid_render_id: render.renderId, status: 'rendering' },
-        user.id
-      );
-      updatedRow = renderingRow || updatedRow;
-    } catch (error) {
-      const failedRow = await updateDesignAsset(
-        assetId,
-        {
-          status: 'failed',
-          data: {
-            ...baseUpdate.data,
-            error_code: 'placid_render_failed',
-            error_message: error?.message || 'Unable to start render',
-          },
-        },
-        user.id
-      ).catch(() => updatedRow);
-      return sendJson(res, 502, { error: 'placid_render_failed', details: error?.message, asset: mapDesignAssetRow(failedRow || updatedRow) });
-    }
-  }
+  // Pipeline will pick up queued/rendering assets; no direct render here.
   const mapped = mapDesignAssetRow(updatedRow);
   return sendJson(res, 200, { asset: mapped });
 }
