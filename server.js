@@ -501,104 +501,37 @@ async function handleCreateDesignAsset(req, res) {
         authUserId: user.id,
       });
     }
-
-    const templateId = resolveTemplateIdForType(type);
-    if (!templateId) {
-      return sendJson(res, 500, { error: 'missing_placid_template_id', details: `Template not configured for type ${type}` });
-    }
-
     const calendarDayId = buildCalendarDayId(requestBody);
+    const linkedDay = parseRequestedDay(requestBody, calendarDayId);
     const title = (requestBody.title || requestBody.idea || '').trim();
     const subtitle = (requestBody.subtitle || requestBody.caption || '').trim();
     const cta = (requestBody.cta || '').trim();
     const backgroundImage = requestBody.background_image || requestBody.backgroundImageUrl || requestBody.heroImage || '';
+    requestBody.title = title;
+    requestBody.subtitle = subtitle;
+    requestBody.cta = cta;
+    requestBody.backgroundImageUrl = backgroundImage;
 
-    const data = {
-      title,
-      subtitle,
-      cta,
-      background_image: backgroundImage || null,
-      notes_for_ai: requestBody.notes_for_ai || null,
-    };
-
-    // 1) Create Placid render
-    const placidRender = await createPlacidRender({
-      templateId,
-      variables: {
-        title: data.title,
-        subtitle: data.subtitle,
-        cta: data.cta,
-        background_image: data.background_image,
-      },
-    });
-    const placidRenderId = placidRender?.id || placidRender?.renderId || placidRender?.render_id;
-    if (!placidRenderId) {
-      return sendJson(res, 502, { error: 'placid_no_render_id', details: placidRender });
+    const templateId = resolveTemplateIdForType(type);
+    if (!templateId) {
+      return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
     }
 
-    // 2) Poll Placid synchronously
-    let finalRender = null;
-    const maxAttempts = 20;
-    const delayMs = 1500;
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const statusRes = await getPlacidRenderStatus(placidRenderId);
-      const s = String(statusRes?.status || '').toLowerCase();
-      if (['queued', 'pending', 'processing', 'running', 'rendering'].includes(s)) {
-        await wait(delayMs);
-        continue;
-      }
-      if (['done', 'completed', 'success', 'rendered', 'finished'].includes(s)) {
-        finalRender = statusRes;
-        break;
-      }
-      if (['failed', 'error'].includes(s)) {
-        return sendJson(res, 502, { error: 'placid_render_failed', details: statusRes });
-      }
-      return sendJson(res, 502, { error: 'placid_unknown_status', details: statusRes });
-    }
-    if (!finalRender) {
-      return sendJson(res, 504, { error: 'placid_timeout', details: { renderId: placidRenderId } });
-    }
+    const brandProfile = await loadUserBrandProfile(user.id);
+    const calendarDay = await loadCalendarDay(calendarDayId, user.id);
+    let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
+    designData.type = type;
+    designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
+    designData = await maybeAttachGeneratedBackground(designData, brandProfile);
 
-    const renderUrl =
-      finalRender.url ||
-      finalRender.image_url ||
-      (Array.isArray(finalRender.files) && finalRender.files[0] && finalRender.files[0].url) ||
-      null;
-    if (!renderUrl) {
-      return sendJson(res, 502, { error: 'placid_missing_final_url', details: finalRender });
-    }
-
-    // 3) Upload to Cloudinary
-    const upload = await uploadAssetFromUrl({
-      url: renderUrl,
-      folder: 'promptly/design-assets',
-    });
-    if (!upload?.publicId) {
-      return sendJson(res, 502, { error: 'cloudinary_upload_failed', details: upload });
-    }
-
-    // 4) Insert row as READY
-    const insertPayload = {
+    const inserted = await createDesignAsset({
       type,
       user_id: user.id,
       calendar_day_id: calendarDayId,
-      data: Object.assign({}, data, { preview_url: upload.secureUrl || renderUrl }),
-      status: 'ready',
-      placid_template_id: templateId,
-      placid_render_id: placidRenderId,
-      cloudinary_public_id: upload.publicId,
-    };
-
-    const { data: inserted, error } = await supabaseAdmin
-      .from('design_assets')
-      .insert(insertPayload)
-      .select('*')
-      .single();
-    if (error || !inserted) {
-      console.error('[Supabase] insert design_assets error', error);
-      return sendJson(res, 500, { error: 'supabase_insert_failed', details: error?.message || 'Insert failed' });
-    }
+      data: designData,
+      placid_render_id: null,
+      status: 'rendering',
+    });
 
     return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
   } catch (error) {
@@ -2717,12 +2650,12 @@ function serveFile(filePath, res) {
 }
 
 const PORT = process.env.PORT || 8000;
-// Legacy pipeline disabled; synchronous generation now handled in POST /api/design-assets.
-// setInterval(() => {
-//   advanceDesignAssetPipeline().catch((err) => {
-//     console.error('[Pipeline] Tick error', err);
-//   });
-// }, 20000);
+// Run design asset pipeline on interval to progress renders.
+setInterval(() => {
+  advanceDesignAssetPipeline().catch((err) => {
+    console.error('[Pipeline] Tick error', err);
+  });
+}, 20000);
 
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
