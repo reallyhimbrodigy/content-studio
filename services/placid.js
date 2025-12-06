@@ -13,10 +13,11 @@ const VALID_TYPES = ['post_graphic', 'story', 'carousel'];
 
 function resolvePlacidTemplateId(type) {
   const key = String(type || '').toLowerCase();
-  if (key === 'story') return PLACID_STORY_TEMPLATE_ID || null;
-  if (key === 'carousel') return PLACID_CAROUSEL_TEMPLATE_ID || null;
+  // Always fall back to POST_GRAPHIC template if specific template is not set
+  if (key === 'story') return PLACID_STORY_TEMPLATE_ID || PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
+  if (key === 'carousel') return PLACID_CAROUSEL_TEMPLATE_ID || PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
   if (key === 'post_graphic') return PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
-  return null;
+  return PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
 }
 
 async function verifyTemplateId(templateId) {
@@ -59,6 +60,11 @@ async function validatePlacidTemplateConfig() {
         status: result.status,
         body: result.body,
       });
+      
+      // Warn about fallback behavior
+      if (cfg.type !== 'post_graphic' && PLACID_POST_GRAPHIC_TEMPLATE_ID) {
+        console.warn(`[Placid] ${cfg.type} assets will fall back to post_graphic template (${PLACID_POST_GRAPHIC_TEMPLATE_ID})`);
+      }
     } else {
       console.log('[Placid] Template verified', {
         type: cfg.type,
