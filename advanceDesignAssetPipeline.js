@@ -71,12 +71,12 @@ async function advanceDesignAssetPipeline() {
 
       if (['done', 'completed', 'success'].includes(status)) {
         if (!render.url) {
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...(asset.data || {}), error_message: 'placid_missing_url' },
-          });
-          continue;
-        }
+        await updateDesignAssetStatus(asset.id, {
+          status: 'failed',
+          data: { ...(asset.data || {}), error_message: 'placid_missing_url' },
+        });
+        continue;
+      }
         console.log('[Pipeline] Uploading to Cloudinary for asset', asset.id);
         const upload = await uploadAssetFromUrl({
           url: render.url,
@@ -88,6 +88,7 @@ async function advanceDesignAssetPipeline() {
         await updateDesignAssetStatus(asset.id, {
           status: 'ready',
           cloudinary_public_id: upload.publicId,
+          image_url: upload.secureUrl || render.url,
           data: nextData,
         });
         continue;

@@ -9,9 +9,9 @@ const SUPABASE_SERVICE_ROLE_KEY =
 const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
 
 function normalizeDesignAssetStatus(raw) {
-  if (!raw) return 'queued'.replace('queued', 'draft'); // schema allows draft/rendering/ready/failed; default to draft
+  if (!raw) return 'draft';
   const value = String(raw).trim().toLowerCase();
-  if (value === 'queued') return 'rendering'; // queued not allowed by constraint; map to rendering start state
+  if (value === 'queued') return 'draft'; // map legacy value into allowed set
   return ALLOWED_STATUSES.includes(value) ? value : 'draft';
 }
 
@@ -54,6 +54,9 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
   if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
   if (payload.placid_template_id !== undefined) safePayload.placid_template_id = payload.placid_template_id;
+  if (payload.image_url !== undefined || payload.cloudinary_url !== undefined) {
+    safePayload.image_url = payload.image_url ?? payload.cloudinary_url ?? null;
+  }
   let builder = supabaseAdmin.from('design_assets').update(safePayload).eq('id', id);
   if (userId) {
     builder = builder.eq('user_id', userId);
@@ -75,7 +78,7 @@ async function getQueuedOrRenderingAssets() {
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .select('*')
-    .in('status', ['queued', 'rendering']);
+    .in('status', ['draft', 'rendering']);
   if (error) {
     console.error('[Supabase] getQueuedOrRenderingAssets error', error);
     throw new Error(error.message || 'Unable to load queued assets');
@@ -91,6 +94,9 @@ async function updateDesignAssetStatus(id, partial) {
   if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
   if (partial.placid_template_id !== undefined) safePartial.placid_template_id = partial.placid_template_id;
   if (partial.data !== undefined) safePartial.data = partial.data;
+  if (partial.image_url !== undefined || partial.cloudinary_url !== undefined) {
+    safePartial.image_url = partial.image_url ?? partial.cloudinary_url ?? null;
+  }
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .update(safePartial)
@@ -123,6 +129,9 @@ async function createDesignAsset(payload) {
     status,
     placid_template_id: templateId,
   };
+  if (payload.image_url !== undefined || payload.cloudinary_url !== undefined) {
+    insertPayload.image_url = payload.image_url ?? payload.cloudinary_url ?? null;
+  }
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .insert(insertPayload)

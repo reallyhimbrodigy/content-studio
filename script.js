@@ -674,7 +674,7 @@ function openAssetEditorModal(asset) {
       '';
     assetEditorNotesInput.value = notesForAi;
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.cloudinaryUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
   if (previewSource && assetEditorPreviewImage) {
     assetEditorPreviewImage.src = previewSource;
     assetEditorPreviewImage.style.display = 'block';
@@ -1038,12 +1038,13 @@ function normalizeDesignAsset(asset = {}) {
   normalized.campaign = normalized.campaign || '';
   normalized.calendarDayId = normalized.calendarDayId || '';
   normalized.cloudinaryPublicId = normalized.cloudinaryPublicId || '';
-  normalized.cloudinaryUrl = normalized.cloudinaryUrl || '';
-  if (!normalized.previewInlineUrl && normalized.cloudinaryUrl) {
-    normalized.previewInlineUrl = normalized.cloudinaryUrl;
+  normalized.image_url = normalized.image_url || normalized.cloudinaryUrl || '';
+  normalized.cloudinaryUrl = normalized.cloudinaryUrl || normalized.image_url || '';
+  if (!normalized.previewInlineUrl && (normalized.cloudinaryUrl || normalized.image_url)) {
+    normalized.previewInlineUrl = normalized.cloudinaryUrl || normalized.image_url;
   }
-  if (!normalized.previewUrl && normalized.cloudinaryUrl) {
-    normalized.previewUrl = normalized.cloudinaryUrl;
+  if (!normalized.previewUrl && (normalized.cloudinaryUrl || normalized.image_url)) {
+    normalized.previewUrl = normalized.cloudinaryUrl || normalized.image_url;
   }
   normalized.data = normalized.data || null;
   if (normalized.data) {
@@ -2991,7 +2992,7 @@ function renderDesignEditor() {
       designEditorStatusBadge.classList.add('is-muted');
     }
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.cloudinaryUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
   if (designEditorPreviewImg) {
     if (previewSource) {
       designEditorPreviewImg.src = previewSource;
@@ -3281,7 +3282,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
       return { kind: 'carousel', slides, url: first.previewUrl || first.downloadUrl || '' };
     }
   }
-  const inline = asset.previewInlineUrl || asset.cloudinaryUrl || '';
+  const inline = asset.previewInlineUrl || asset.image_url || asset.cloudinaryUrl || '';
   if (inline) {
     const lower = inline.slice(0, 30).toLowerCase();
     if (lower.includes('video')) {
@@ -3289,7 +3290,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
     }
     return { kind: 'image', url: inline };
   }
-  const url = asset.previewUrl || asset.cloudinaryUrl || '';
+  const url = asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
   if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
     const lower = url.slice(0, 30).toLowerCase();
     if (lower.includes('video')) return { kind: 'video', url };
@@ -8389,7 +8390,8 @@ function sanitizeAssetForStorage(asset = {}) {
     concept: asset.concept || '',
     bundleUrl: asset.bundleUrl || '',
     cloudinaryPublicId: asset.cloudinaryPublicId || '',
-    cloudinaryUrl: asset.cloudinaryUrl || '',
+    cloudinaryUrl: asset.cloudinaryUrl || asset.image_url || '',
+    image_url: asset.image_url || asset.cloudinaryUrl || '',
     origin: asset.origin || 'local',
     data: asset.data || null,
     slides: sanitizeSlidesForStorage(asset.slides),
