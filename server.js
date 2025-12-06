@@ -476,13 +476,9 @@ function buildPlacidPayload(data = {}) {
 }
 
 async function handleCreateDesignAsset(req, res) {
-  let createdRow = null;
   let requestBody = null;
   let user = null;
   try {
-    if (!isDesignPipelineReady()) {
-      return sendJson(res, 501, { error: 'Design pipeline not configured' });
-    }
     user = await requireSupabaseUser(req);
     requestBody = await readJsonBody(req);
     const type = String(requestBody.type || 'post_graphic').toLowerCase();
@@ -570,88 +566,19 @@ async function handleCreateDesignAsset(req, res) {
     designData.type = type;
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
     designData = await maybeAttachGeneratedBackground(designData, brandProfile);
-    const { data: inserted, error } = await supabaseAdmin
-      .from('design_assets')
-      .insert({
-        user_id: user.id,
-        calendar_day_id: calendarDayId,
-        type,
-        placid_template_id: templateId,
-        status: 'rendering',
-        data: designData,
-      })
-      .select('*')
-      .single();
-    if (error || !inserted) {
-      const supabaseError = error
-        ? {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          }
-        : null;
-      console.error('Unable to insert design asset', {
-        type,
-        calendarDayId,
-        supabaseError,
-      });
-      if (error?.message && /design_assets_type_check/i.test(error.message)) {
-        return sendJson(res, 400, {
-          error: 'invalid_asset_type_storage',
-          details:
-            'Supabase design_assets.type constraint rejected this value. Ensure the schema allows post_graphic, story, carousel.',
-        });
-      }
-      return sendJson(res, 500, {
-        error: 'internal_error',
-        details: error?.message || 'Unable to create design asset',
-      });
-    }
-    createdRow = inserted;
-    let currentRow = inserted;
-    try {
-      const render = await createPlacidRender({
-        templateId,
-        data: buildPlacidPayload(designData),
-      });
-      if (!render?.renderId) {
-        await markDesignAssetStatus(inserted.id, {
-          status: 'failed',
-          data: {
-            ...designData,
-            error_code: 'placid_render_unavailable',
-            error_message: 'Unable to obtain render id from Placid',
-          },
-        });
-        return sendJson(res, 502, { error: 'Unable to start render for this asset', status: 'failed' });
-      }
-      const { data: updated, error: updateError } = await supabaseAdmin
-        .from('design_assets')
-        .update({ placid_render_id: render.renderId })
-        .eq('id', inserted.id)
-        .select('*')
-        .single();
-      if (!updateError && updated) {
-        currentRow = updated;
-      }
-    } catch (err) {
-      const placidMessage = err?.details?.message || err?.details?.error || err?.message || 'Unknown Placid render error';
-      console.error('Placid render error:', {
-        message: err?.message,
-        details: err?.details || null,
-      });
-      await markDesignAssetStatus(inserted.id, {
-        status: 'failed',
-        data: {
-          ...designData,
-          error_code: 'placid_render_failed',
-          error_message: placidMessage,
-        },
-      });
-      return sendJson(res, 502, { error: placidMessage, status: 'failed' });
-    }
-    return sendJson(res, 201, { assetId: currentRow.id });
+
+    const inserted = await createDesignAsset({
+      type,
+      user_id: user.id,
+      calendar_day_id: calendarDayId,
+      data: designData,
+      placid_render_id: null,
+      cloudinary_url: null,
+      status: 'queued',
+      error_message: null,
+    });
+
+    return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
   } catch (error) {
     const safeBody = requestBody
       ? {
@@ -676,16 +603,6 @@ async function handleCreateDesignAsset(req, res) {
     }
     if (error?.statusCode === 400) {
       return sendJson(res, 400, { error: 'invalid_request', details: error.message || 'Invalid request' });
-    }
-    if (createdRow?.id) {
-      await markDesignAssetStatus(createdRow.id, {
-        status: 'failed',
-        data: {
-          ...(createdRow.data || {}),
-          error_code: 'design_asset_create_failed',
-          error_message: error?.message || 'Design asset creation failed',
-        },
-      });
     }
     return sendJson(res, 500, { error: 'internal_error', details: error?.message || 'Unable to create design asset' });
   }

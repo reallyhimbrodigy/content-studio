@@ -96,10 +96,34 @@ async function updateDesignAssetStatus(id, partial) {
   return data;
 }
 
+async function createDesignAsset(payload) {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  const { data, error } = await supabaseAdmin
+    .from('design_assets')
+    .insert({
+      type: payload.type,
+      user_id: payload.user_id,
+      calendar_day_id: payload.calendar_day_id,
+      data: payload.data,
+      placid_render_id: payload.placid_render_id ?? null,
+      cloudinary_url: payload.cloudinary_url ?? null,
+      status: payload.status || 'queued',
+      error_message: payload.error_message ?? null,
+    })
+    .select('*')
+    .single();
+  if (error || !data) {
+    console.error('[Supabase] createDesignAsset error', error);
+    throw new Error(error?.message || 'Unable to create design asset');
+  }
+  return data;
+}
+
 module.exports = {
   supabaseAdmin,
   getDesignAssetById,
   updateDesignAsset,
   getQueuedOrRenderingAssets,
   updateDesignAssetStatus,
+  createDesignAsset,
 };

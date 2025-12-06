@@ -15,18 +15,19 @@ function isPlacidConfigured() {
   return Boolean(PLACID_API_KEY);
 }
 
-async function createPlacidRender({ templateId, data }) {
+async function createPlacidRender({ templateId, data, variables }) {
   ensurePlacidConfigured();
   if (!templateId) throw new Error('missing_template_id');
+  const src = data || variables || {};
   const payload = {
     template_id: templateId,
     data: {
-      title: data?.title || '',
-      subtitle: data?.subtitle || '',
-      cta: data?.cta || '',
-      brand_color: data?.brand_color || data?.brand_primary_color || '#000000',
-      logo: data?.logo || data?.brand_logo_url || null,
-      background_image: data?.background_image || null,
+      title: src.title || '',
+      subtitle: src.subtitle || '',
+      cta: src.cta || '',
+      brand_color: src.brand_color || src.brand_primary_color || '#000000',
+      logo: src.logo || src.brand_logo_url || null,
+      background_image: src.background_image || null,
     },
   };
   const { data: response } = await axios.post(`${PLACID_API_BASE}/renders`, payload, {
