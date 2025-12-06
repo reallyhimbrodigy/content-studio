@@ -96,6 +96,7 @@ async function updateDesignAssetStatus(id, partial) {
 
 async function createDesignAsset(payload) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  console.log('[Supabase] createDesignAsset payload', payload);
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .insert({
@@ -104,7 +105,7 @@ async function createDesignAsset(payload) {
       calendar_day_id: payload.calendar_day_id,
       data: payload.data,
       placid_render_id: payload.placid_render_id ?? null,
-      status: payload.status || 'queued',
+      status: payload.status || 'rendering',
       error_message: payload.error_message ?? null,
     })
     .select('*')

@@ -481,6 +481,7 @@ async function handleCreateDesignAsset(req, res) {
   try {
     user = await requireSupabaseUser(req);
     requestBody = await readJsonBody(req);
+    console.log('[Promptly] POST /api/design-assets body:', requestBody);
     const type = String(requestBody.type || 'post_graphic').toLowerCase();
     if (!ALLOWED_DESIGN_ASSET_TYPES.includes(type)) {
       return sendJson(res, 400, {
@@ -573,7 +574,7 @@ async function handleCreateDesignAsset(req, res) {
       calendar_day_id: calendarDayId,
       data: designData,
       placid_render_id: null,
-      status: 'queued',
+      status: 'rendering',
       error_message: null,
     });
 
@@ -603,7 +604,7 @@ async function handleCreateDesignAsset(req, res) {
     if (error?.statusCode === 400) {
       return sendJson(res, 400, { error: 'invalid_request', details: error.message || 'Invalid request' });
     }
-    return sendJson(res, 500, { error: 'internal_error', details: error?.message || 'Unable to create design asset' });
+    return sendJson(res, 500, { error: 'unable_to_create_design_asset', details: error?.message || 'Unable to create design asset' });
   }
 }
 
@@ -714,7 +715,7 @@ async function handlePatchDesignAsset(req, res, assetId) {
     data: mergedData,
   };
   if (regenerate) {
-    baseUpdate.status = 'queued';
+    baseUpdate.status = 'rendering';
     baseUpdate.placid_render_id = null;
     baseUpdate.cloudinary_public_id = null;
     baseUpdate.data = {
