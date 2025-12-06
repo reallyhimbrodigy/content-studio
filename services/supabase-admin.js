@@ -9,10 +9,10 @@ const SUPABASE_SERVICE_ROLE_KEY =
 const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
 
 function normalizeDesignAssetStatus(raw) {
-  if (!raw) return 'draft';
+  if (!raw) return 'rendering';
   const value = String(raw).trim().toLowerCase();
-  if (value === 'queued') return 'draft'; // map legacy value into allowed set
-  return ALLOWED_STATUSES.includes(value) ? value : 'draft';
+  if (value === 'queued') return 'rendering'; // map legacy value into allowed set
+  return ALLOWED_STATUSES.includes(value) ? value : 'rendering';
 }
 
 let supabaseAdmin = null;

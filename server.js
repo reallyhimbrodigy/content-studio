@@ -279,7 +279,8 @@ function mapDesignAssetRow(row) {
   const data = row.data || {};
   const linkedDay = data.linked_day || parseLinkedDayFromKey(row.calendar_day_id);
   const cloudinaryUrl = row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '';
-  const previewUrl = data.preview_url || cloudinaryUrl;
+  const imageUrl = row.image_url || cloudinaryUrl;
+  const previewUrl = data.preview_url || imageUrl || cloudinaryUrl;
   const errorMessage = data.error_message || '';
   const notesForAi = data.notes_for_ai ?? data.notes ?? '';
   return {
@@ -301,6 +302,7 @@ function mapDesignAssetRow(row) {
     previewUrl,
     previewInlineUrl: previewUrl,
     downloadUrl: previewUrl,
+    image_url: imageUrl,
     cloudinaryUrl,
     designUrl: `/design.html?asset=${encodeURIComponent(row.id)}`,
     cloudinaryPublicId: row.cloudinary_public_id || '',
@@ -574,7 +576,7 @@ async function handleCreateDesignAsset(req, res) {
       calendar_day_id: calendarDayId,
       data: designData,
       placid_render_id: null,
-      status: 'draft',
+      status: 'rendering',
     });
 
     return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
