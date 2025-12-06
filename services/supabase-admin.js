@@ -7,13 +7,12 @@ const SUPABASE_SERVICE_ROLE_KEY =
 // NOTE: Supabase service role key is only used on the server; never expose client-side.
 
 const DESIGN_ASSET_URL_COLUMN = 'cloudinary_public_id';
-const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
+const ALLOWED_STATUSES = ['queued', 'rendering', 'ready', 'failed'];
 
 function normalizeDesignAssetStatus(raw) {
-  if (!raw) return 'rendering';
+  if (!raw) return 'queued';
   const value = String(raw).trim().toLowerCase();
-  if (value === 'queued') return 'rendering'; // map legacy value into allowed set
-  return ALLOWED_STATUSES.includes(value) ? value : 'rendering';
+  return ALLOWED_STATUSES.includes(value) ? value : 'queued';
 }
 
 let supabaseAdmin = null;
@@ -76,7 +75,9 @@ async function getQueuedOrRenderingAssets() {
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .select('*')
-    .in('status', ['draft', 'rendering']);
+    .in('status', ['queued', 'rendering'])
+    .order('created_at', { ascending: true })
+    .limit(10);
   if (error) {
     console.error('[Supabase] getQueuedOrRenderingAssets error', error);
     throw new Error(error.message || 'Unable to load queued assets');

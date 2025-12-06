@@ -21,6 +21,10 @@ async function advanceDesignAssetPipeline() {
     console.log('[Pipeline] No assets to process');
     return;
   }
+  console.log(
+    '[Pipeline] Assets to process',
+    assets.map((a) => ({ id: a.id, type: a.type, status: a.status }))
+  );
 
   for (const asset of assets) {
     const data = asset.data || {};

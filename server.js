@@ -502,6 +502,7 @@ async function handleCreateDesignAsset(req, res) {
     }
     const bodyCalendarId = requestBody.calendarDayId || requestBody.calendar_day_id || '';
     if (!bodyCalendarId) {
+      console.error('[DesignAssets] missing_calendar_day_id');
       return sendJson(res, 400, { error: 'missing_calendar_day_id', details: 'calendarDayId is required' });
     }
     if (requestBody.userId && requestBody.userId !== user.id) {
@@ -523,7 +524,11 @@ async function handleCreateDesignAsset(req, res) {
 
     const templateId = resolveTemplateIdForType(type);
     if (!templateId) {
-      return sendJson(res, 501, { error: 'Placid template not configured for this asset type.' });
+      console.error('[DesignAssets] Missing template id for type', type);
+      return sendJson(res, 501, {
+        error: 'Design pipeline not configured: missing Placid template id for this asset type.',
+        status: 'failed',
+      });
     }
 
     const brandProfile = await loadUserBrandProfile(user.id);
@@ -533,14 +538,18 @@ async function handleCreateDesignAsset(req, res) {
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
     designData = await maybeAttachGeneratedBackground(designData, brandProfile);
 
-    const inserted = await createDesignAsset({
+    const insertPayload = {
       type,
       user_id: user.id,
       calendar_day_id: calendarDayId,
       data: designData,
-    });
+      status: 'queued',
+    };
+    console.log('[Supabase] createDesignAsset payload', insertPayload);
+    const inserted = await createDesignAsset(insertPayload);
+    console.log('[Supabase] createDesignAsset inserted', inserted);
 
-    return sendJson(res, 201, { assetId: inserted.id, asset: inserted });
+    return sendJson(res, 201, mapDesignAssetRow(inserted));
   } catch (error) {
     const safeBody = requestBody
       ? {
@@ -826,6 +835,27 @@ async function handlePlacidTemplateDebug(req, res) {
     }
   }
   return sendJson(res, 200, { results });
+}
+
+async function handleDebugDesignAssets(req, res) {
+  try {
+    if (!supabaseAdmin) {
+      return sendJson(res, 500, { error: 'supabaseAdmin not configured' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('design_assets')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (error) {
+      console.error('[Debug] design_assets query error', error);
+      return sendJson(res, 500, { error: 'Debug design_assets query failed' });
+    }
+    return sendJson(res, 200, { rows: data });
+  } catch (err) {
+    console.error('[Debug] design_assets unhandled error', err);
+    return sendJson(res, 500, { error: 'Debug design_assets unhandled error' });
+  }
 }
 
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
@@ -1884,6 +1914,11 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/debug/design-test' && req.method === 'POST') {
     handleDebugDesignTest(req, res);
+    return;
+  }
+
+  if (parsed.pathname === '/api/debug/design-assets' && req.method === 'GET') {
+    handleDebugDesignAssets(req, res);
     return;
   }
 
