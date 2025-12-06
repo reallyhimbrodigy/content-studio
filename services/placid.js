@@ -33,6 +33,11 @@ async function createPlacidRender({ templateId, data, variables }) {
       headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
       timeout: 20000,
     });
+    try {
+      console.log('[Placid] createPlacidRender response', JSON.stringify(response));
+    } catch (_) {
+      console.log('[Placid] createPlacidRender response (non-serializable)');
+    }
     return {
       id: response?.id || response?.renderId || response?.render_id || null,
       status: response?.status || 'queued',
@@ -61,6 +66,11 @@ async function getPlacidRenderStatus(renderId) {
       headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
       timeout: 15000,
     });
+    try {
+      console.log('[Placid] getPlacidRenderStatus response', JSON.stringify(response));
+    } catch (_) {
+      console.log('[Placid] getPlacidRenderStatus response (non-serializable)');
+    }
     return {
       id: response?.id || response?.renderId || response?.render_id || renderId,
       status: response?.status || 'queued',

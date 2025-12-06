@@ -1,6 +1,7 @@
 const {
   getQueuedOrRenderingAssets,
   updateDesignAssetStatus,
+  DESIGN_ASSET_URL_COLUMN,
 } = require('./services/supabase-admin');
 const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
@@ -66,7 +67,7 @@ async function advanceDesignAssetPipeline() {
           });
           continue;
         } catch (err) {
-          console.error('[Pipeline] Failed to start render', {
+          console.error('[Pipeline] FAIL_REASON: placid_render_start_error', {
             assetId: asset.id,
             message: err?.message,
             status: err?.response?.status,
@@ -97,6 +98,11 @@ async function advanceDesignAssetPipeline() {
       }
 
       if (status === 'failed' || status === 'error') {
+        console.error('[Pipeline] FAIL_REASON: placid_render_failed', {
+          assetId: asset.id,
+          renderId: asset.placid_render_id,
+          render,
+        });
         await updateDesignAssetStatus(asset.id, {
           status: 'failed',
           data: { ...(asset.data || {}), error_message: 'placid_render_failed' },
@@ -104,9 +110,19 @@ async function advanceDesignAssetPipeline() {
         continue;
       }
 
-      if (['done', 'completed', 'success'].includes(status)) {
-        const renderUrl = render.url || render?.raw?.url || render?.raw?.image_url || render?.raw?.result_url || null;
+      if (['done', 'completed', 'success', 'rendered', 'finished'].includes(status)) {
+        const renderUrl =
+          render.url ||
+          render?.raw?.url ||
+          render?.raw?.image_url ||
+          render?.raw?.result_url ||
+          (Array.isArray(render?.raw?.files) && render.raw.files[0] && render.raw.files[0].url) ||
+          null;
         if (!renderUrl) {
+          console.error('[Pipeline] FAIL_REASON: completed_but_missing_url', {
+            assetId: asset.id,
+            render,
+          });
           await updateDesignAssetStatus(asset.id, {
             status: 'failed',
             data: { ...(asset.data || {}), error_message: 'placid_missing_url' },
@@ -131,7 +147,7 @@ async function advanceDesignAssetPipeline() {
           console.log('[Pipeline] Asset marked ready', { assetId: asset.id, imageUrl: upload.secureUrl || renderUrl });
           continue;
         } catch (err) {
-          console.error('[Pipeline] Cloudinary upload failed', {
+          console.error('[Pipeline] FAIL_REASON: cloudinary_upload_error', {
             assetId: asset.id,
             message: err?.message,
             status: err?.statusCode || err?.response?.status,
