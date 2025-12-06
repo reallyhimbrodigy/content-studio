@@ -6,6 +6,7 @@ const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 // NOTE: Supabase service role key is only used on the server; never expose client-side.
 
+const DESIGN_ASSET_URL_COLUMN = 'cloudinary_public_id';
 const ALLOWED_STATUSES = ['draft', 'rendering', 'ready', 'failed'];
 
 function normalizeDesignAssetStatus(raw) {
@@ -52,11 +53,8 @@ async function updateDesignAsset(id, payload, userId = null) {
   if (payload.data !== undefined) safePayload.data = payload.data;
   if (payload.status !== undefined) safePayload.status = normalizeDesignAssetStatus(payload.status);
   if (payload.placid_render_id !== undefined) safePayload.placid_render_id = payload.placid_render_id;
-  if (payload.cloudinary_public_id !== undefined) safePayload.cloudinary_public_id = payload.cloudinary_public_id;
+  if (payload[DESIGN_ASSET_URL_COLUMN] !== undefined) safePayload[DESIGN_ASSET_URL_COLUMN] = payload[DESIGN_ASSET_URL_COLUMN];
   if (payload.placid_template_id !== undefined) safePayload.placid_template_id = payload.placid_template_id;
-  if (payload.image_url !== undefined || payload.cloudinary_url !== undefined) {
-    safePayload.image_url = payload.image_url ?? payload.cloudinary_url ?? null;
-  }
   let builder = supabaseAdmin.from('design_assets').update(safePayload).eq('id', id);
   if (userId) {
     builder = builder.eq('user_id', userId);
@@ -91,12 +89,9 @@ async function updateDesignAssetStatus(id, partial) {
   const safePartial = {};
   if (partial.status !== undefined) safePartial.status = normalizeDesignAssetStatus(partial.status);
   if (partial.placid_render_id !== undefined) safePartial.placid_render_id = partial.placid_render_id;
-  if (partial.cloudinary_public_id !== undefined) safePartial.cloudinary_public_id = partial.cloudinary_public_id;
+  if (partial[DESIGN_ASSET_URL_COLUMN] !== undefined) safePartial[DESIGN_ASSET_URL_COLUMN] = partial[DESIGN_ASSET_URL_COLUMN];
   if (partial.placid_template_id !== undefined) safePartial.placid_template_id = partial.placid_template_id;
   if (partial.data !== undefined) safePartial.data = partial.data;
-  if (partial.image_url !== undefined || partial.cloudinary_url !== undefined) {
-    safePartial.image_url = partial.image_url ?? partial.cloudinary_url ?? null;
-  }
   const { data, error } = await supabaseAdmin
     .from('design_assets')
     .update(safePartial)
@@ -128,10 +123,10 @@ async function createDesignAsset(payload) {
     placid_render_id: payload.placid_render_id ?? null,
     status,
     placid_template_id: templateId,
-    image_url: payload.image_url ?? payload.cloudinary_url ?? null,
+    [DESIGN_ASSET_URL_COLUMN]: null,
   };
-  if (payload.image_url !== undefined || payload.cloudinary_url !== undefined) {
-    insertPayload.image_url = payload.image_url ?? payload.cloudinary_url ?? null;
+  if (payload[DESIGN_ASSET_URL_COLUMN] !== undefined) {
+    insertPayload[DESIGN_ASSET_URL_COLUMN] = payload[DESIGN_ASSET_URL_COLUMN];
   }
   const { data, error } = await supabaseAdmin
     .from('design_assets')

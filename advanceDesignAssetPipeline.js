@@ -119,7 +119,6 @@ async function advanceDesignAssetPipeline() {
           await updateDesignAssetStatus(asset.id, {
             status: 'ready',
             cloudinary_public_id: upload.publicId,
-            image_url: upload.secureUrl || renderUrl,
             data: nextData,
           });
           console.log('[Pipeline] Asset marked ready', { assetId: asset.id, imageUrl: upload.secureUrl || renderUrl });
@@ -139,7 +138,6 @@ async function advanceDesignAssetPipeline() {
             await updateDesignAssetStatus(asset.id, {
               status: 'ready',
               cloudinary_public_id: null,
-              image_url: renderUrl,
               data: fallbackData,
             });
             console.log('[Pipeline] Asset marked ready with Placid URL fallback', { assetId: asset.id });
