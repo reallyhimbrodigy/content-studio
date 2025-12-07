@@ -196,7 +196,6 @@ function sendJson(res, statusCode, payload) {
 }
 
 function isDesignPipelineReady() {
-  // NOTE: We use the simple /templates/{templateId}/renders endpoint and do not require PLACID_PROJECT_ID.
   // As long as the Placid API key, at least one template ID, and Cloudinary config are present, the design pipeline is ready.
   return Boolean(
     supabaseAdmin &&
@@ -743,8 +742,9 @@ async function handleDebugDesignTest(req, res) {
     const status = error?.statusCode || 401;
     return sendJson(res, status, { error: error?.message || 'Unauthorized' });
   }
-  if (!POST_GRAPHIC_TEMPLATE_ID) {
-    return sendJson(res, 501, { error: 'POST_GRAPHIC_TEMPLATE_ID is not configured' });
+  const debugTemplateId = STORY_TEMPLATE_ID || CAROUSEL_TEMPLATE_ID;
+  if (!debugTemplateId) {
+    return sendJson(res, 501, { error: 'No Placid template id is configured for debug render' });
   }
   try {
     const payload = buildPlacidPayload({
@@ -755,18 +755,13 @@ async function handleDebugDesignTest(req, res) {
       platform: 'instagram',
     });
     const render = await createPlacidRender({
-      templateId: POST_GRAPHIC_TEMPLATE_ID,
+      templateId: debugTemplateId,
       data: payload,
     });
-    if (!render?.renderId) {
-      return sendJson(res, 502, { error: 'Placid did not return a render id', payload: render });
-    }
-    const result = render;
     console.log('Design debug test result', {
       render,
-      result,
     });
-    return sendJson(res, 200, { render, result });
+    return sendJson(res, 200, { render });
   } catch (error) {
     console.error('Design debug test error', {
       message: error?.message,

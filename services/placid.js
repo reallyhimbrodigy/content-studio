@@ -15,55 +15,6 @@ function resolvePlacidTemplateId(type) {
   return null;
 }
 
-async function verifyTemplateId(templateId) {
-  if (!templateId) return { ok: false, reason: 'missing_id' };
-  try {
-    const { data } = await axios.get(`${PLACID_API_BASE}/templates/${templateId}`, {
-      headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-      timeout: 15000,
-    });
-    return { ok: true, data };
-  } catch (err) {
-    return {
-      ok: false,
-      reason: 'http_error',
-      status: err.response?.status,
-      body: err.response?.data,
-    };
-  }
-}
-
-async function validatePlacidTemplateConfig() {
-  if (!PLACID_API_KEY) {
-    console.error('[Placid] PLACID_API_KEY is missing – image generation will fail.');
-    return;
-  }
-
-  const configs = [
-    { type: 'story', id: PLACID_STORY_TEMPLATE_ID },
-    { type: 'carousel', id: PLACID_CAROUSEL_TEMPLATE_ID },
-  ];
-
-  for (const cfg of configs) {
-    const result = await verifyTemplateId(cfg.id);
-    if (!result.ok) {
-      console.error('[Placid] INVALID template config', {
-        type: cfg.type,
-        templateId: cfg.id,
-        reason: result.reason,
-        status: result.status,
-        body: result.body,
-      });
-    } else {
-      console.log('[Placid] Template verified', {
-        type: cfg.type,
-        templateId: cfg.id,
-        name: result.data?.name,
-      });
-    }
-  }
-}
-
 function ensurePlacidConfigured() {
   if (!PLACID_API_KEY) {
     const err = new Error('Placid is not configured');
@@ -76,18 +27,26 @@ function isPlacidConfigured() {
   return Boolean(PLACID_API_KEY);
 }
 
+function buildPlacidLayers(variables = {}) {
+  const layers = {
+    title: { text: variables.title || '' },
+    subtitle: { text: variables.subtitle || '' },
+    cta: { text: variables.cta || '' },
+  };
+
+  if (variables.background_image) {
+    layers.background_image = { image_url: variables.background_image };
+  }
+
+  return layers;
+}
+
 async function createPlacidRender({ templateId, data, variables }) {
   ensurePlacidConfigured();
   if (!templateId) throw new Error('missing_placid_template_id');
-  const src = variables || data || {};
   const payload = {
     template_uuid: templateId,
-    layers: {
-      title: { text: src.title || '' },
-      subtitle: { text: src.subtitle || '' },
-      cta: { text: src.cta || '' },
-      ...(src.background_image ? { background_image: { image_url: src.background_image } } : {}),
-    },
+    layers: buildPlacidLayers(variables || data || {}),
   };
   console.log('[Placid] createPlacidRender payload', { templateId, payload });
   try {
@@ -115,9 +74,21 @@ async function createPlacidRender({ templateId, data, variables }) {
   }
 }
 
+function validatePlacidTemplateConfig() {
+  const states = {
+    STORY_TEMPLATE_ID: PLACID_STORY_TEMPLATE_ID ? '[set]' : '[missing]',
+    CAROUSEL_TEMPLATE_ID: PLACID_CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
+  };
+  if (!PLACID_API_KEY) {
+    console.error('[Placid] PLACID_API_KEY is missing – image generation will fail.');
+  }
+  console.log('[Placid] Template env state', states);
+}
+
 module.exports = {
   createPlacidRender,
   isPlacidConfigured,
   resolvePlacidTemplateId,
   validatePlacidTemplateConfig,
+  buildPlacidLayers,
 };
