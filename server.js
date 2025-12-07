@@ -14,6 +14,7 @@ const {
   isCloudinaryConfigured,
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
+const { getBrandBrainForUser } = require('./services/brand-brain');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -462,13 +463,19 @@ function safePlacidText(value, max = 300) {
 function mergeBrandProfileIntoDesignData(designData = {}, brandProfile = null) {
   if (!brandProfile) return designData;
   const next = { ...designData };
-  if (brandProfile.logoUrl && !next.logo) next.logo = brandProfile.logoUrl;
-  if (brandProfile.headingFont && !next.heading_font) next.heading_font = brandProfile.headingFont;
-  if (brandProfile.bodyFont && !next.body_font) next.body_font = brandProfile.bodyFont;
-  if (brandProfile.primaryColor && !next.primary_color) next.primary_color = brandProfile.primaryColor;
-  if (brandProfile.secondaryColor && !next.secondary_color) next.secondary_color = brandProfile.secondaryColor;
-  if (brandProfile.accentColor && !next.accent_color) next.accent_color = brandProfile.accentColor;
-  if (!next.brand_color) next.brand_color = next.primary_color || brandProfile.primaryColor || next.brand_primary_color;
+  const logo = brandProfile.logo_url || brandProfile.logoUrl;
+  const heading = brandProfile.heading_font || brandProfile.headingFont;
+  const body = brandProfile.body_font || brandProfile.bodyFont;
+  const primary = brandProfile.primary_color || brandProfile.primaryColor;
+  const secondary = brandProfile.secondary_color || brandProfile.secondaryColor;
+  const accent = brandProfile.accent_color || brandProfile.accentColor;
+  if (logo && !next.logo) next.logo = logo;
+  if (heading && !next.heading_font) next.heading_font = heading;
+  if (body && !next.body_font) next.body_font = body;
+  if (primary && !next.primary_color) next.primary_color = primary;
+  if (secondary && !next.secondary_color) next.secondary_color = secondary;
+  if (accent && !next.accent_color) next.accent_color = accent;
+  if (!next.brand_color) next.brand_color = next.primary_color || primary || next.brand_primary_color;
   return next;
 }
 
