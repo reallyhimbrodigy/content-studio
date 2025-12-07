@@ -41,6 +41,43 @@ function buildPlacidLayers(variables = {}) {
   return layers;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollPlacidImage(pollingUrl, maxAttempts = 20, delayMs = 1000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let res;
+    try {
+      res = await axios.get(pollingUrl, {
+        headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
+        timeout: 20000,
+      });
+    } catch (err) {
+      console.error('[Placid] pollPlacidImage error', {
+        attempt,
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+      });
+      throw err;
+    }
+
+    const data = res?.data || {};
+    const url = data.image_url || data.transfer_url || null;
+    console.log('[Placid] pollPlacidImage attempt', {
+      attempt,
+      status: data.status,
+      hasUrl: Boolean(url),
+    });
+
+    if (url) return data;
+
+    await sleep(delayMs);
+  }
+  return null;
+}
+
 async function createPlacidRender({ templateId, data, variables }) {
   ensurePlacidConfigured();
   if (!templateId) throw new Error('missing_placid_template_id');
@@ -49,6 +86,7 @@ async function createPlacidRender({ templateId, data, variables }) {
     layers: buildPlacidLayers(variables || data || {}),
   };
   console.log('[Placid] createPlacidRender payload', { templateId, payload });
+  let initial;
   try {
     const { data: response } = await axios.post(PLACID_REST_URL, payload, {
       headers: {
@@ -57,13 +95,8 @@ async function createPlacidRender({ templateId, data, variables }) {
       },
       timeout: 30000,
     });
+    initial = response;
     console.log('[Placid] createPlacidRender response', response);
-    return {
-      id: response?.id || null,
-      status: 'ready',
-      url: response?.url || response?.image_url || response?.image?.url || null,
-      raw: response,
-    };
   } catch (err) {
     console.error('[Placid] createPlacidRender error', {
       message: err?.message,
@@ -72,6 +105,42 @@ async function createPlacidRender({ templateId, data, variables }) {
     });
     throw err;
   }
+
+  const immediateUrl = initial?.image_url || initial?.transfer_url || initial?.url || initial?.image?.url || null;
+  if (immediateUrl) {
+    return {
+      id: initial?.id || null,
+      status: initial?.status || 'ready',
+      url: immediateUrl,
+      raw: initial,
+    };
+  }
+
+  if (!initial?.polling_url) {
+    return {
+      id: initial?.id || null,
+      status: initial?.status || 'unknown',
+      url: null,
+      raw: initial,
+    };
+  }
+
+  const finalData = await pollPlacidImage(initial.polling_url);
+  if (!finalData) {
+    return {
+      id: initial?.id || null,
+      status: 'timeout',
+      url: null,
+      raw: initial,
+    };
+  }
+
+  return {
+    id: finalData?.id || initial?.id || null,
+    status: finalData?.status || 'ready',
+    url: finalData?.image_url || finalData?.transfer_url || finalData?.url || finalData?.image?.url || null,
+    raw: finalData,
+  };
 }
 
 async function validatePlacidTemplateConfig() {

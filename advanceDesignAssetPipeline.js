@@ -75,8 +75,7 @@ async function advanceDesignAssetPipeline() {
         render?.url ||
         render?.image_url ||
         render?.image?.url ||
-        (Array.isArray(render?.files) && render.files[0] && render.files[0].url) ||
-        (render?.raw && (render.raw.url || render.raw.image_url || (Array.isArray(render.raw.files) && render.raw.files[0] && render.raw.files[0].url))) ||
+        (render?.raw && (render.raw.url || render.raw.image_url || render.raw.transfer_url || render.raw.image?.url)) ||
         null;
 
       if (!renderUrl) {
