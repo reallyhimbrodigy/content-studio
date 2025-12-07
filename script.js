@@ -288,6 +288,7 @@ let brandKitLoaded = false;
 let brandProfileLoaded = false;
 let currentBrandText = '';
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
+const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
 const selectedDesignAssetIds = new Set();
 let designFocusedAssetId = null;
 let draggedDesignAssetId = null;
@@ -4486,6 +4487,31 @@ function persistBrandBrainLocal(text, email = activeUserEmail) {
   } catch (_) {}
 }
 
+function brandKitLocalKey(email = activeUserEmail) {
+  const normalized = (email || 'guest').toString().trim().toLowerCase();
+  return `${BRAND_KIT_LOCAL_PREFIX}${normalized || 'guest'}`;
+}
+
+function loadBrandKitLocal(email = activeUserEmail) {
+  try {
+    const raw = localStorage.getItem(brandKitLocalKey(email));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistBrandKitLocal(kit, email = activeUserEmail) {
+  try {
+    const key = brandKitLocalKey(email);
+    if (!kit) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(kit));
+    }
+  } catch (_) {}
+}
+
 async function refreshBrandBrain(force = false) {
   if (brandProfileLoaded && !force) return currentBrandText;
   const userId = activeUserEmail || (await getCurrentUser());
@@ -4519,11 +4545,17 @@ async function refreshBrandKit(force = false) {
   if (brandKitLoaded && !force) return currentBrandKit;
   const userId = activeUserEmail || await getCurrentUser();
   if (!userId) return null;
+  const localKit = loadBrandKitLocal(userId);
+  if (!brandKitLoaded && localKit) {
+    currentBrandKit = localKit;
+    applyBrandKitToForm(currentBrandKit);
+  }
   try {
     const resp = await fetch(`/api/brand/kit?userId=${encodeURIComponent(userId)}`, { cache: 'no-store', redirect: 'manual' });
     if (resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      currentBrandKit = data.kit || null;
+      currentBrandKit = data.kit || localKit || null;
+      persistBrandKitLocal(currentBrandKit, userId);
       applyBrandKitToForm(currentBrandKit);
     } else {
       throw new Error('kit endpoint unavailable');
@@ -4532,7 +4564,8 @@ async function refreshBrandKit(force = false) {
     console.warn('Brand Design fetch failed, falling back to profile preferences:', err?.message || err);
     try {
       const prefs = await getProfilePreferences();
-      currentBrandKit = prefs?.brandKit || null;
+      currentBrandKit = prefs?.brandKit || localKit || null;
+      persistBrandKitLocal(currentBrandKit, userId);
       applyBrandKitToForm(currentBrandKit);
     } catch (fallbackErr) {
       console.warn('Unable to load Brand Design from preferences:', fallbackErr?.message || fallbackErr);
@@ -4566,6 +4599,7 @@ async function handleBrandKitSave() {
       const data = await resp.json().catch(() => ({}));
       currentBrandKit = data.kit || kitPayload;
       saved = true;
+      persistBrandKitLocal(currentBrandKit, userId);
     } else {
       throw new Error('Kit API unavailable');
     }
@@ -4577,12 +4611,18 @@ async function handleBrandKitSave() {
       await saveProfilePreferences(nextPrefs);
       currentBrandKit = kitPayload;
       saved = true;
+      persistBrandKitLocal(currentBrandKit, userId);
     } catch (fallbackErr) {
       console.error('Brand Design fallback save failed:', fallbackErr);
       if (brandKitStatus) {
         brandKitStatus.textContent = fallbackErr.message || 'Unable to save Brand Design';
         brandKitStatus.classList.remove('success');
       }
+    }
+    if (!saved) {
+      currentBrandKit = kitPayload;
+      persistBrandKitLocal(currentBrandKit, userId);
+      saved = true;
     }
   } finally {
     if (brandKitSaveBtn) brandKitSaveBtn.disabled = false;
