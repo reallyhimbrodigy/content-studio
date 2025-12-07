@@ -307,7 +307,7 @@ const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
  * @typedef {Object} DesignAsset
  * @property {string} id
  * @property {string} title
- * @property {'post_graphic'|'carousel'|'story'|'other'} assetType
+ * @property {'carousel'|'story'|'other'} assetType
  * @property {string} linkedDayLabel
  * @property {number|null} linkedDay
  * @property {string} tone
@@ -1016,7 +1016,7 @@ function hydrateDesignAssetsFromStorage(force = false) {
 function normalizeDesignAsset(asset = {}) {
   const normalized = { ...asset };
   normalized.id = String(normalized.id || Date.now());
-  normalized.assetType = normalized.assetType || normalized.type || normalized.typeLabel || 'post_graphic';
+  normalized.assetType = normalized.assetType || normalized.type || normalized.typeLabel || 'story';
   normalized.typeLabel = normalized.typeLabel || formatAssetTypeLabel(normalized.assetType);
   normalized.origin = normalized.origin || 'local';
   normalized.caption = normalized.caption || '';
@@ -1419,7 +1419,7 @@ function normalizeAssetTypeKey(value = '') {
   if (!raw) return '';
   if (raw.includes('carousel')) return 'carousel';
   if (raw.includes('story')) return 'story';
-  if (raw.includes('graphic') || raw.includes('post') || raw.includes('social')) return 'post_graphic';
+  if (raw.includes('graphic') || raw.includes('post') || raw.includes('social')) return 'story';
   return raw.replace(/\s+/g, '_');
 }
 
@@ -1443,7 +1443,7 @@ function applyDesignFilters(list = []) {
   return list.filter((asset) => {
     if (!asset) return false;
     const normalizedType = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || asset.data?.type);
-    const allowedTypes = ['post_graphic', 'story', 'carousel'];
+    const allowedTypes = ['story', 'carousel'];
     if (normalizedType && !allowedTypes.includes(normalizedType)) {
       return false;
     }
@@ -1560,12 +1560,12 @@ const ASSET_PRESETS = {
     note: 'Photo-first layout with candid lifestyle prompts and overlay captions.'
   },
   promotion: {
-    assetType: 'post_graphic',
+    assetType: 'story',
     tone: 'bold',
     note: 'Product mockup spotlight with price badge and urgent CTA ribbon.'
   },
   'social proof': {
-    assetType: 'post_graphic',
+    assetType: 'story',
     tone: 'elegant',
     note: 'Testimonial card featuring quote, avatar placeholder, and star accents.'
   }
@@ -1598,7 +1598,7 @@ function deriveAssetPreset(entry = {}) {
     }
   }
   if (!preset) {
-    preset = { assetType: 'post_graphic', tone: 'bold', note: 'High-contrast CTA graphic anchored by branded gradients.' };
+    preset = { assetType: 'story', tone: 'bold', note: 'High-contrast CTA graphic anchored by branded gradients.' };
   }
   return preset;
 }
@@ -1722,7 +1722,7 @@ function inferAssetTypeFromAsset(asset = {}) {
   if (asset.typeLabel) {
     return asset.typeLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   }
-  return 'post_graphic';
+  return 'story';
 }
 
 async function handleDesignTemplateSave(asset) {
@@ -2026,7 +2026,7 @@ function handleDesignRegenerateSelected() {
   updateDesignSelectionUI();
   setDesignRegeneratingState(true);
   const entry = buildEntryFromAsset(asset);
-  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'post_graphic');
+  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'story');
   triggerCalendarAssetGeneration(entry, day, null, { type: assetTypeKey, suppressRedirect: true })
     .then(() => {
       showDesignSuccess('New version queued in Design Lab.');
@@ -2047,7 +2047,7 @@ async function regenerateSingleDesignAsset(asset) {
   const day = Number(asset.linkedDay || asset.day);
   if (!day) throw new Error('Linked day is required to regenerate this asset.');
   const entry = buildEntryFromAsset(asset);
-  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'post_graphic');
+  const assetTypeKey = normalizeAssetTypeKey(asset.assetType || asset.type || 'story');
   return triggerCalendarAssetGeneration(entry, day, null, { type: assetTypeKey, suppressRedirect: true });
 }
 
@@ -2179,7 +2179,7 @@ function buildPreviewMarkup(type, tone) {
 
 function renderDesignLivePreview() {
   if (!designPreviewEl) return;
-  const type = designAssetTypeInput?.value || 'post_graphic';
+  const type = designAssetTypeInput?.value || 'story';
   const tone = designToneInput?.value || 'bold';
   const preview = buildPreviewMarkup(type, tone);
   designPreviewEl.innerHTML = preview.html;
@@ -2189,7 +2189,7 @@ function renderDesignLivePreview() {
 }
 
 function buildAssetDetailBrandPreview(asset = {}) {
-  const typeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || inferAssetTypeFromAsset(asset) || 'post_graphic');
+  const typeKey = normalizeAssetTypeKey(asset.assetType || asset.type || asset.typeLabel || inferAssetTypeFromAsset(asset) || 'story');
   const toneKey = asset.creativeDirection || asset.tone || 'bold';
   const theme = getPreviewTheme(toneKey || 'bold');
   const headingFont = `${theme.headingFont || 'Inter'}`;
@@ -2972,7 +2972,7 @@ function renderDesignEditor() {
     const editableStatuses = ['draft', 'ready', 'exported'];
     designEditorStatusSelect.value = editableStatuses.includes(asset.status) ? asset.status : 'draft';
   }
-  if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'post_graphic';
+  if (designEditorTypeSelect) designEditorTypeSelect.value = asset.assetType || 'story';
   if (designEditorDaySelect) designEditorDaySelect.value = asset.linkedDay ? String(asset.linkedDay) : '';
   if (designEditorToneInput) designEditorToneInput.value = asset.tone || '';
   if (designEditorCampaignInput) designEditorCampaignInput.value = asset.campaign || '';
@@ -3079,7 +3079,7 @@ function updateSelectedAssetField(field, rawValue) {
     next.linkedDay = Number.isFinite(normalized) ? normalized : null;
     next.linkedDayLabel = next.linkedDay ? `Day ${String(next.linkedDay).padStart(2, '0')}` : 'Unassigned';
   } else if (field === 'assetType') {
-    next.assetType = value || 'post_graphic';
+    next.assetType = value || 'story';
     next.typeLabel = formatAssetTypeLabel(next.assetType);
     next.data = Object.assign({}, next.data || {}, { type: next.assetType });
   } else if (field === 'status') {
@@ -3130,8 +3130,8 @@ function createDesignAsset(partial = {}) {
   return {
     id: `asset-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     title: partial.title || 'Untitled asset',
-    assetType: partial.assetType || 'post_graphic',
-    typeLabel: formatAssetTypeLabel(partial.assetType || 'post_graphic'),
+    assetType: partial.assetType || 'story',
+    typeLabel: formatAssetTypeLabel(partial.assetType || 'story'),
     linkedDay,
     linkedDayLabel,
     tone: partial.tone || 'Default',
@@ -3588,7 +3588,7 @@ async function handleDesignFormSubmit(event) {
   const resolvedNiche = currentNiche || nicheInput?.value?.trim() || '';
   const payload = {
     day: Number(designDayInput?.value) || activeDesignContext?.day || null,
-    assetType: designAssetTypeInput?.value || 'post_graphic',
+    assetType: designAssetTypeInput?.value || 'story',
     tone: designToneInput?.value || 'bold',
     notes: designNotesInput?.value?.trim() || '',
     userId: currentUserId || '',
@@ -3741,7 +3741,7 @@ async function requestDesignAsset(payload) {
       previewText: `${formatAssetTypeLabel(payload.assetType)} • ${payload.tone}`,
       status: 'Ready',
       brief: payload.notes || '',
-      assetType: payload.assetType || 'post_graphic',
+    assetType: payload.assetType || 'story',
       tone: payload.tone || 'bold',
       notes: payload.notes || '',
       templateId: payload.templateId || null,
@@ -5346,7 +5346,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
 }
 
 async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, options = {}) {
-  const { type = 'post_graphic', suppressRedirect = false } = options;
+  const { type = 'story', suppressRedirect = false } = options;
   const resolvedDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   if (!resolvedDay) {
     showDesignError('Pick a calendar day first', 'Select a post and try again.');
@@ -5713,7 +5713,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       const selected = document.querySelector('input[name="asset-type"]:checked');
-      const type = selected ? selected.value : 'post_graphic';
+      const type = selected ? selected.value : 'story';
       const originalText = confirmBtn.textContent;
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Generating asset...';
@@ -8449,38 +8449,38 @@ const BUILT_IN_TEMPLATES = [
   {
     id: 'preset_quote_card',
     label: 'Quote Spark',
-    assetType: 'post_graphic',
+    assetType: 'story',
     tone: 'elegant',
     notes: 'Centered quote overlay with drop shadow, quote icon, and author line.',
     previewText: '“Signature Quote”',
     previewInlineUrl: createTemplateThumbnail('Quote Spark', ['#141726', '#5a4ff0']),
     category: 'Quotes & Tips',
     tags: ['quote', 'minimal'],
-    recommendedFor: ['post_graphic'],
+    recommendedFor: ['story'],
   },
   {
     id: 'preset_testimonial',
     label: 'Testimonial Glow',
-    assetType: 'post_graphic',
+    assetType: 'story',
     tone: 'playful',
     notes: 'Avatar + quote + star rating, gradient background, pill CTA.',
     previewText: 'Testimonial',
     previewInlineUrl: createTemplateThumbnail('Testimonial', ['#ff8ba7', '#ffc3a0']),
     category: 'Testimonials',
     tags: ['testimonial', 'bold'],
-    recommendedFor: ['post_graphic', 'story'],
+    recommendedFor: ['story'],
   },
   {
     id: 'preset_promo_banner',
     label: 'Promo Countdown',
-    assetType: 'post_graphic',
+    assetType: 'story',
     tone: 'bold',
     notes: 'Big numeric countdown, gradient border, button CTA.',
     previewText: 'Promo Banner',
     previewInlineUrl: createTemplateThumbnail('Promo', ['#ff5f6d', '#ffc371']),
     category: 'Promos',
     tags: ['promo', 'cta'],
-    recommendedFor: ['post_graphic'],
+    recommendedFor: ['story'],
   },
   {
     id: 'preset_case_study',

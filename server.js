@@ -17,7 +17,7 @@ const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
 const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
-const ALLOWED_DESIGN_ASSET_TYPES = ['post_graphic', 'story', 'carousel'];
+const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 
 if (!OPENAI_API_KEY) {
@@ -116,12 +116,11 @@ const CAROUSEL_OUTPUT_FORMATS = [
 function resolveTemplateIdForType(type) {
   switch (String(type || '').toLowerCase()) {
     case 'story':
-      return STORY_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
+      return STORY_TEMPLATE_ID || '';
     case 'carousel':
-      return CAROUSEL_TEMPLATE_ID || POST_GRAPHIC_TEMPLATE_ID;
-    case 'post_graphic':
+      return CAROUSEL_TEMPLATE_ID || STORY_TEMPLATE_ID || '';
     default:
-      return POST_GRAPHIC_TEMPLATE_ID;
+      return STORY_TEMPLATE_ID || '';
   }
 }
 
@@ -493,7 +492,7 @@ async function handleCreateDesignAsset(req, res) {
     user = await requireSupabaseUser(req);
     requestBody = await readJsonBody(req);
     console.log('[Promptly] POST /api/design-assets body:', requestBody);
-    const type = String(requestBody.type || 'post_graphic').toLowerCase();
+    const type = String(requestBody.type || 'story').toLowerCase();
     if (!ALLOWED_DESIGN_ASSET_TYPES.includes(type)) {
       return sendJson(res, 400, {
         error: 'unsupported_asset_type',
