@@ -7,14 +7,12 @@ const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
-const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured } = require('./services/placid');
+const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured, resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
-const { validatePlacidTemplateConfig } = require('./services/placid');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
-const POST_GRAPHIC_TEMPLATE_ID = process.env.PLACID_POST_GRAPHIC_TEMPLATE_ID || '';
 const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
 const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
@@ -26,17 +24,13 @@ if (!OPENAI_API_KEY) {
 if (!STABILITY_API_KEY) {
   console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
 }
-if (!POST_GRAPHIC_TEMPLATE_ID) {
-  console.warn('Warning: PLACID_POST_GRAPHIC_TEMPLATE_ID is not set. Design pipeline will be disabled.');
-}
 if (!STORY_TEMPLATE_ID) {
-  console.warn('Notice: PLACID_STORY_TEMPLATE_ID is not set. Story assets will reuse the post graphic template.');
+  console.warn('Warning: PLACID_STORY_TEMPLATE_ID is not set. Story assets will fail to render.');
 }
 if (!CAROUSEL_TEMPLATE_ID) {
-  console.warn('Notice: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will reuse the post graphic template.');
+  console.warn('Warning: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will fail to render.');
 }
 console.log('[Placid config]', {
-  POST_GRAPHIC_TEMPLATE_ID: POST_GRAPHIC_TEMPLATE_ID ? '[set]' : '[missing]',
   STORY_TEMPLATE_ID: STORY_TEMPLATE_ID ? '[set]' : '[missing]',
   CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
 });
@@ -113,16 +107,7 @@ const CAROUSEL_OUTPUT_FORMATS = [
   { key: 'tiktok', label: 'TikTok', platform: 'TikTok', aspectRatio: '9:16', width: 1080, height: 1920 },
 ];
 
-function resolveTemplateIdForType(type) {
-  switch (String(type || '').toLowerCase()) {
-    case 'story':
-      return STORY_TEMPLATE_ID || '';
-    case 'carousel':
-      return CAROUSEL_TEMPLATE_ID || STORY_TEMPLATE_ID || '';
-    default:
-      return STORY_TEMPLATE_ID || '';
-  }
-}
+// Template ID resolution is handled by services/placid.js resolvePlacidTemplateId()
 
 function getDesignAssetTypeLabel(type) {
   switch (String(type || '').toLowerCase()) {
@@ -212,10 +197,10 @@ function sendJson(res, statusCode, payload) {
 
 function isDesignPipelineReady() {
   // NOTE: We use the simple /templates/{templateId}/renders endpoint and do not require PLACID_PROJECT_ID.
-  // As long as the Placid API key, template id, and Cloudinary config are present, the design pipeline is ready.
+  // As long as the Placid API key, at least one template ID, and Cloudinary config are present, the design pipeline is ready.
   return Boolean(
     supabaseAdmin &&
-      POST_GRAPHIC_TEMPLATE_ID &&
+      (STORY_TEMPLATE_ID || CAROUSEL_TEMPLATE_ID) &&
       isPlacidConfigured() &&
       isCloudinaryConfigured()
   );
@@ -520,7 +505,7 @@ async function handleCreateDesignAsset(req, res) {
     requestBody.cta = cta;
     requestBody.backgroundImageUrl = backgroundImage;
 
-    const templateId = resolveTemplateIdForType(type);
+    const templateId = resolvePlacidTemplateId(type);
     if (!templateId) {
       console.error('[DesignAssets] Missing template id for type', type);
       return sendJson(res, 501, {
@@ -804,7 +789,7 @@ async function handlePlacidTemplateDebug(req, res) {
   const types = ['story', 'carousel'];
   const results = [];
   for (const type of types) {
-    const templateId = resolveTemplateIdForType(type);
+    const templateId = resolvePlacidTemplateId(type);
     if (!templateId) {
       results.push({ type, templateId: null, ok: false, error: 'No template id configured' });
       continue;
@@ -861,8 +846,8 @@ async function handleDebugPlacidConfig(req, res) {
       PLACID_CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID || 'NOT SET',
     },
     resolvedTemplateIds: {
-      story: resolveTemplateIdForType('story'),
-      carousel: resolveTemplateIdForType('carousel'),
+      story: resolvePlacidTemplateId('story'),
+      carousel: resolvePlacidTemplateId('carousel'),
     },
     note: 'Check your Placid dashboard at https://placid.app to get valid template IDs'
   });
