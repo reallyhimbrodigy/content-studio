@@ -857,6 +857,23 @@ async function handleDebugDesignAssets(req, res) {
   }
 }
 
+async function handleDebugPlacidConfig(req, res) {
+  return sendJson(res, 200, {
+    configured: {
+      PLACID_API_KEY: process.env.PLACID_API_KEY ? 'SET' : 'MISSING',
+      PLACID_POST_GRAPHIC_TEMPLATE_ID: POST_GRAPHIC_TEMPLATE_ID || 'NOT SET',
+      PLACID_STORY_TEMPLATE_ID: STORY_TEMPLATE_ID || 'NOT SET',
+      PLACID_CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID || 'NOT SET',
+    },
+    resolvedTemplateIds: {
+      post_graphic: resolveTemplateIdForType('post_graphic'),
+      story: resolveTemplateIdForType('story'),
+      carousel: resolveTemplateIdForType('carousel'),
+    },
+    note: 'Check your Placid dashboard at https://placid.app to get valid template IDs'
+  });
+}
+
 async function generateStabilityImage(prompt, aspectRatio = '9:16') {
   const json = await stabilityMultipartRequest({
     path: '/v2beta/stable-image/generate/sd3',
@@ -1923,6 +1940,11 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/debug/placid-templates' && req.method === 'GET') {
     handlePlacidTemplateDebug(req, res);
+    return;
+  }
+
+  if (parsed.pathname === '/api/debug/placid-config' && req.method === 'GET') {
+    handleDebugPlacidConfig(req, res);
     return;
   }
 
