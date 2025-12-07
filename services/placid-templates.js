@@ -8,7 +8,6 @@ function resolvePlacidTemplateId(type) {
   const key = String(type || '').toLowerCase();
   if (key === 'story') return PLACID_STORY_TEMPLATE_ID || null;
   if (key === 'carousel') return PLACID_CAROUSEL_TEMPLATE_ID || null;
-  if (key === 'post_graphic') return PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
   return null;
 }
 

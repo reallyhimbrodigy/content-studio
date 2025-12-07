@@ -2,22 +2,17 @@ const axios = require('axios');
 
 const {
   PLACID_API_KEY,
-  PLACID_POST_GRAPHIC_TEMPLATE_ID,
   PLACID_STORY_TEMPLATE_ID,
   PLACID_CAROUSEL_TEMPLATE_ID,
 } = process.env;
 
 const PLACID_API_BASE = 'https://api.placid.app/api/rest';
 
-const VALID_TYPES = ['post_graphic', 'story', 'carousel'];
-
 function resolvePlacidTemplateId(type) {
   const key = String(type || '').toLowerCase();
-  // Always fall back to POST_GRAPHIC template if specific template is not set
-  if (key === 'story') return PLACID_STORY_TEMPLATE_ID || PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
-  if (key === 'carousel') return PLACID_CAROUSEL_TEMPLATE_ID || PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
-  if (key === 'post_graphic') return PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
-  return PLACID_POST_GRAPHIC_TEMPLATE_ID || null;
+  if (key === 'story') return PLACID_STORY_TEMPLATE_ID || null;
+  if (key === 'carousel') return PLACID_CAROUSEL_TEMPLATE_ID || null;
+  return null;
 }
 
 async function verifyTemplateId(templateId) {
