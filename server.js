@@ -538,28 +538,32 @@ async function handleCreateDesignAsset(req, res) {
       });
     }
 
-  const brandProfile = await loadUserBrandProfile(user.id);
-  const calendarDay = await loadCalendarDay(calendarDayId, user.id);
-  let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
-  designData.type = type;
-  designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
-  designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
-  // Ensure we have a branded background image
-  if (!designData.background_image) {
-    try {
-      designData.background_image = await generateBrandedBackgroundImage({
-        title: designData.title,
-        subtitle: designData.subtitle,
-        cta: designData.cta,
-        primaryColor: designData.primary_color || designData.brand_color,
-        secondaryColor: designData.secondary_color,
-        accentColor: designData.accent_color,
-      });
-    } catch (err) {
-      console.warn('Branded background generation failed, falling back to existing logic', err?.message);
-      designData = await maybeAttachGeneratedBackground(designData, brandProfile);
+    const brandProfile = await getBrandBrainForUser(user.id);
+    console.log('[BrandBrain] for user', user.id, brandProfile);
+    const calendarDay = await loadCalendarDay(calendarDayId, user.id);
+    let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
+    designData.type = type;
+    designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
+    designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
+    if (!designData.logo) {
+      designData.logo = 'https://res.cloudinary.com/demo/image/upload/cloudinary_logo.png';
     }
-  }
+    // Ensure we have a branded background image
+    if (!designData.background_image) {
+      try {
+        designData.background_image = await generateBrandedBackgroundImage({
+          title: designData.title,
+          subtitle: designData.subtitle,
+          cta: designData.cta,
+          primaryColor: designData.primary_color || designData.brand_color,
+          secondaryColor: designData.secondary_color,
+          accentColor: designData.accent_color,
+        });
+      } catch (err) {
+        console.warn('Branded background generation failed, falling back to existing logic', err?.message);
+        designData = await maybeAttachGeneratedBackground(designData, brandProfile);
+      }
+    }
 
     const inserted = await createDesignAsset({
       type,

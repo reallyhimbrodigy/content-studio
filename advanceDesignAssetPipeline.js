@@ -26,7 +26,9 @@ async function advanceDesignAssetPipeline() {
     try {
       console.log('[Pipeline] asset data before Placid', {
         id: asset.id,
-        data,
+        logo: data.logo,
+        background_image: data.background_image,
+        primary_color: data.primary_color,
       });
       console.log('[Pipeline] Processing asset', {
         id: asset.id,
@@ -44,6 +46,14 @@ async function advanceDesignAssetPipeline() {
           data: { ...(data || {}), error_message: 'No Placid template configured for this asset type.' },
         });
         continue;
+      }
+
+      // Ensure we always send something visible for debugging
+      if (!data.background_image) {
+        data.background_image = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
+      }
+      if (!data.logo) {
+        data.logo = 'https://res.cloudinary.com/demo/image/upload/cloudinary_logo.png';
       }
 
       const vars = {

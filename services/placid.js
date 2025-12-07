@@ -34,13 +34,17 @@ function buildPlacidLayers(variables = {}) {
     cta: { text: variables.cta || '' },
   };
 
-  // Image layers: use image_url as Placid expects for image layers
+  // Image layers: use multiple property names to be safe across templates
   if (variables.background_image) {
-    layers.background_image = { image_url: variables.background_image };
+    const bgUrl = variables.background_image;
+    layers.background_image = { image_url: bgUrl, image: bgUrl, src: bgUrl };
+    layers.bg = { image_url: bgUrl, image: bgUrl, src: bgUrl };
   }
 
   if (variables.logo) {
-    layers.logo = { image_url: variables.logo };
+    const logoUrl = variables.logo;
+    layers.logo = { image_url: logoUrl, image: logoUrl, src: logoUrl };
+    layers.brand_logo = { image_url: logoUrl, image: logoUrl, src: logoUrl };
   }
 
   // Colors
