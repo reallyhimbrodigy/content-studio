@@ -7,7 +7,7 @@ const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
-const { createPlacidRender, getPlacidRenderStatus, isPlacidConfigured, resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid');
+const { createPlacidRender, isPlacidConfigured, resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid');
 const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -761,13 +761,7 @@ async function handleDebugDesignTest(req, res) {
     if (!render?.renderId) {
       return sendJson(res, 502, { error: 'Placid did not return a render id', payload: render });
     }
-    let result = null;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      result = await getPlacidRenderStatus(render.renderId);
-      const status = String(result?.status || '').toLowerCase();
-      if ((result?.image_url || result?.url) && (status === 'done' || status === 'ready' || status === 'success')) break;
-      await wait(1000);
-    }
+    const result = render;
     console.log('Design debug test result', {
       render,
       result,

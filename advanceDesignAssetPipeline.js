@@ -1,10 +1,5 @@
 const { getQueuedOrRenderingAssets, updateDesignAssetStatus } = require('./services/supabase-admin');
-const {
-  createPlacidRender,
-  getPlacidRenderStatus,
-  isPlacidConfigured,
-  resolvePlacidTemplateId,
-} = require('./services/placid');
+const { createPlacidRender, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
 
 async function advanceDesignAssetPipeline() {
@@ -37,114 +32,80 @@ async function advanceDesignAssetPipeline() {
         placid_template_id: asset.placid_template_id,
       });
 
-      if (!asset.placid_render_id) {
-        const templateId = asset.placid_template_id;
-        if (!templateId) {
-          console.error('[Pipeline] FAIL: missing template id for asset', { assetId: asset.id, type: asset.type });
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...(data || {}), error_message: 'No Placid template configured for this asset type.' },
-          });
-          continue;
-        }
-        const vars = {
-          title: data.title || '',
-          subtitle: data.subtitle || '',
-          cta: data.cta || '',
-          background_image: data.background_image || null,
-        };
-        let render;
-        try {
-          render = await createPlacidRender({ templateId, variables: vars });
-        } catch (err) {
-          const msg =
-            err?.response?.data?.message ||
-            err?.message ||
-            'Unable to render this asset with Placid.';
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...(data || {}), error_message: msg },
-          });
-          console.error('[Pipeline] Placid render failed', {
-            assetId: asset.id,
-            templateId,
-            message: err?.message,
-            status: err?.response?.status,
-            data: err?.response?.data,
-          });
-          continue;
-        }
-        await updateDesignAssetStatus(asset.id, {
-          status: 'rendering',
-          placid_render_id: render.id || render.renderId || render.render_id || null,
-          placid_template_id: templateId,
-          data: { ...(data || {}), error_message: null },
-        });
-        continue;
-      }
-
-      const render = await getPlacidRenderStatus(asset.placid_render_id);
-      const status = String(render?.status || '').toLowerCase();
-      console.log('[Pipeline] Placid render status', { assetId: asset.id, status });
-
-      if (['queued', 'pending', 'processing', 'rendering', 'running'].includes(status)) {
-        if (asset.status !== 'rendering') {
-          await updateDesignAssetStatus(asset.id, { status: 'rendering' });
-        }
-        continue;
-      }
-
-      if (['failed', 'error'].includes(status)) {
-        console.error('[Pipeline] Render failed', { assetId: asset.id, render });
+      const templateId = asset.placid_template_id;
+      if (!templateId) {
+        console.error('[Pipeline] FAIL: missing template id for asset', { assetId: asset.id, type: asset.type });
         await updateDesignAssetStatus(asset.id, {
           status: 'failed',
-          data: { ...data, error_message: 'placid_render_failed' },
+          data: { ...(data || {}), error_message: 'No Placid template configured for this asset type.' },
         });
         continue;
       }
 
-      if (['done', 'completed', 'success', 'rendered', 'finished'].includes(status)) {
-        const renderUrl =
-          render.url ||
-          render.image_url ||
-          (Array.isArray(render.files) && render.files[0] && render.files[0].url) ||
-          render?.raw?.url ||
-          render?.raw?.image_url ||
-          (Array.isArray(render?.raw?.files) && render.raw.files[0] && render.raw.files[0].url) ||
-          null;
-        if (!renderUrl) {
-          console.error('[Pipeline] Completed render missing url', { assetId: asset.id, render });
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...data, error_message: 'placid_missing_url' },
-          });
-          continue;
-        }
-        try {
-          const upload = await uploadAssetFromUrl({
-            url: renderUrl,
-            folder: 'promptly/design-assets',
-          });
-          const nextData = { ...data, preview_url: upload.secureUrl || renderUrl, error_message: null };
-          await updateDesignAssetStatus(asset.id, {
-            status: 'ready',
-            cloudinary_public_id: upload.publicId,
-            data: nextData,
-          });
-          console.log('[Pipeline] Asset ready', { assetId: asset.id });
-        } catch (err) {
-          console.error('[Pipeline] Cloudinary upload failed', { assetId: asset.id, message: err?.message });
-          await updateDesignAssetStatus(asset.id, {
-            status: 'failed',
-            data: { ...data, error_message: err?.message || 'cloudinary_upload_failed' },
-          });
-        }
+      const vars = {
+        title: data.title || '',
+        subtitle: data.subtitle || '',
+        cta: data.cta || '',
+        background_image: data.background_image || null,
+      };
+
+      let render;
+      try {
+        render = await createPlacidRender({ templateId, variables: vars });
+      } catch (err) {
+        const msg =
+          err?.response?.data?.message ||
+          err?.message ||
+          'Unable to render this asset with Placid.';
+        await updateDesignAssetStatus(asset.id, {
+          status: 'failed',
+          data: { ...(data || {}), error_message: msg },
+        });
+        console.error('[Pipeline] Placid render failed', {
+          assetId: asset.id,
+          templateId,
+          message: err?.message,
+          status: err?.response?.status,
+          data: err?.response?.data,
+        });
         continue;
       }
 
-      console.warn('[Pipeline] Unknown render status', { assetId: asset.id, status });
-      if (asset.status !== 'rendering') {
-        await updateDesignAssetStatus(asset.id, { status: 'rendering' });
+      const renderUrl =
+        render?.url ||
+        render?.image_url ||
+        render?.image?.url ||
+        (Array.isArray(render?.files) && render.files[0] && render.files[0].url) ||
+        (render?.raw && (render.raw.url || render.raw.image_url || (Array.isArray(render.raw.files) && render.raw.files[0] && render.raw.files[0].url))) ||
+        null;
+
+      if (!renderUrl) {
+        console.error('[Pipeline] Missing URL in Placid response', { assetId: asset.id, render });
+        await updateDesignAssetStatus(asset.id, {
+          status: 'failed',
+          data: { ...(data || {}), error_message: 'Placid did not return an image URL.' },
+        });
+        continue;
+      }
+
+      try {
+        const upload = await uploadAssetFromUrl({
+          url: renderUrl,
+          folder: 'promptly/design-assets',
+        });
+        const nextData = { ...(data || {}), preview_url: upload.secureUrl || renderUrl, error_message: null };
+        await updateDesignAssetStatus(asset.id, {
+          status: 'ready',
+          cloudinary_public_id: upload.publicId,
+          data: nextData,
+        });
+        console.log('[Pipeline] Asset ready', { assetId: asset.id });
+      } catch (err) {
+        console.error('[Pipeline] Cloudinary upload failed', { assetId: asset.id, message: err?.message });
+        await updateDesignAssetStatus(asset.id, {
+          status: 'failed',
+          data: { ...(data || {}), error_message: err?.message || 'cloudinary_upload_failed' },
+        });
       }
     } catch (err) {
       console.error('[Pipeline] Error processing asset', { assetId: asset.id, message: err?.message });

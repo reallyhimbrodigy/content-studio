@@ -6,7 +6,7 @@ const {
   PLACID_CAROUSEL_TEMPLATE_ID,
 } = process.env;
 
-const PLACID_API_BASE = 'https://api.placid.app/api/rest';
+const PLACID_REST_URL = 'https://api.placid.app/api/rest/images';
 
 function resolvePlacidTemplateId(type) {
   const key = String(type || '').toLowerCase();
@@ -78,31 +78,31 @@ function isPlacidConfigured() {
 
 async function createPlacidRender({ templateId, data, variables }) {
   ensurePlacidConfigured();
-  if (!templateId) throw new Error('missing_template_id');
+  if (!templateId) throw new Error('missing_placid_template_id');
   const src = variables || data || {};
   const payload = {
-    data: {
-      title: src.title || '',
-      subtitle: src.subtitle || '',
-      cta: src.cta || '',
-      background_image: src.background_image || null,
+    template_uuid: templateId,
+    layers: {
+      title: { text: src.title || '' },
+      subtitle: { text: src.subtitle || '' },
+      cta: { text: src.cta || '' },
+      ...(src.background_image ? { background_image: { image_url: src.background_image } } : {}),
     },
   };
+  console.log('[Placid] createPlacidRender payload', { templateId, payload });
   try {
-    const { data: response } = await axios.post(`${PLACID_API_BASE}/templates/${templateId}/renders`, payload, {
-      headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-      timeout: 20000,
+    const { data: response } = await axios.post(PLACID_REST_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${PLACID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
     });
-    try {
-      console.log('[Placid] createPlacidRender response', JSON.stringify(response));
-    } catch (_) {
-      console.log('[Placid] createPlacidRender response (non-serializable)');
-    }
+    console.log('[Placid] createPlacidRender response', response);
     return {
-      id: response?.id || response?.renderId || response?.render_id || null,
-      status: response?.status || 'queued',
-      url: response?.url || response?.image_url || response?.result_url || null,
-      renderId: response?.id || response?.renderId || response?.render_id || null,
+      id: response?.id || null,
+      status: 'ready',
+      url: response?.url || response?.image_url || response?.image?.url || null,
       raw: response,
     };
   } catch (err) {
@@ -110,52 +110,13 @@ async function createPlacidRender({ templateId, data, variables }) {
       message: err?.message,
       status: err?.response?.status,
       data: err?.response?.data,
-      url: err?.config?.url,
-      templateId,
-      payload,
     });
     throw err;
   }
-}
-
-async function getPlacidRenderStatus(renderId) {
-  ensurePlacidConfigured();
-  if (!renderId) throw new Error('renderId required');
-  try {
-    const { data: response } = await axios.get(`${PLACID_API_BASE}/renders/${encodeURIComponent(renderId)}`, {
-      headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-      timeout: 15000,
-    });
-    try {
-      console.log('[Placid] getPlacidRenderStatus response', JSON.stringify(response));
-    } catch (_) {
-      console.log('[Placid] getPlacidRenderStatus response (non-serializable)');
-    }
-    return {
-      id: response?.id || response?.renderId || response?.render_id || renderId,
-      status: response?.status || 'queued',
-      url: response?.url || response?.image_url || response?.result_url || null,
-      raw: response,
-    };
-  } catch (err) {
-    console.error('[Placid] getPlacidRenderStatus error', {
-      message: err?.message,
-      status: err?.response?.status,
-      data: err?.response?.data,
-      url: err?.config?.url,
-    });
-    throw err;
-  }
-}
-
-async function getPlacidRenderResult(renderId) {
-  return getPlacidRenderStatus(renderId);
 }
 
 module.exports = {
   createPlacidRender,
-  getPlacidRenderStatus,
-  getPlacidRenderResult,
   isPlacidConfigured,
   resolvePlacidTemplateId,
   validatePlacidTemplateConfig,
