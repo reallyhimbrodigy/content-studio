@@ -74,7 +74,7 @@ async function createPlacidRender({ templateId, data, variables }) {
   }
 }
 
-function validatePlacidTemplateConfig() {
+async function validatePlacidTemplateConfig() {
   const states = {
     STORY_TEMPLATE_ID: PLACID_STORY_TEMPLATE_ID ? '[set]' : '[missing]',
     CAROUSEL_TEMPLATE_ID: PLACID_CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
