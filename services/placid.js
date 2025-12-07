@@ -54,11 +54,6 @@ async function validatePlacidTemplateConfig() {
         status: result.status,
         body: result.body,
       });
-      
-      // Warn about fallback behavior
-      if (cfg.type !== 'post_graphic' && PLACID_POST_GRAPHIC_TEMPLATE_ID) {
-        console.warn(`[Placid] ${cfg.type} assets will fall back to post_graphic template (${PLACID_POST_GRAPHIC_TEMPLATE_ID})`);
-      }
     } else {
       console.log('[Placid] Template verified', {
         type: cfg.type,

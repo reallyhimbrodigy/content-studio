@@ -31,13 +31,14 @@ async function advanceDesignAssetPipeline() {
     try {
       console.log('[Pipeline] Processing asset', {
         id: asset.id,
+        type: asset.type,
         status: asset.status,
         placid_render_id: asset.placid_render_id,
         placid_template_id: asset.placid_template_id,
       });
 
       if (!asset.placid_render_id) {
-        const templateId = resolvePlacidTemplateId(asset.type) || asset.placid_template_id || '';
+        const templateId = asset.placid_template_id;
         if (!templateId) {
           console.error('[Pipeline] FAIL: missing template id for asset', { assetId: asset.id, type: asset.type });
           await updateDesignAssetStatus(asset.id, {
@@ -45,9 +46,6 @@ async function advanceDesignAssetPipeline() {
             data: { ...(data || {}), error_message: 'No Placid template configured for this asset type.' },
           });
           continue;
-        }
-        if (asset.placid_template_id !== templateId) {
-          await updateDesignAssetStatus(asset.id, { placid_template_id: templateId });
         }
         const vars = {
           title: data.title || '',

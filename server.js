@@ -536,14 +536,12 @@ async function handleCreateDesignAsset(req, res) {
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
     designData = await maybeAttachGeneratedBackground(designData, brandProfile);
 
-    const insertPayload = {
+    const inserted = await createDesignAsset({
       type,
       user_id: user.id,
       calendar_day_id: calendarDayId,
       data: designData,
-      status: 'rendering',
-    };
-    const inserted = await createDesignAsset(insertPayload);
+    });
     console.log('[Supabase] createDesignAsset inserted', inserted);
 
     return sendJson(res, 201, mapDesignAssetRow(inserted));
