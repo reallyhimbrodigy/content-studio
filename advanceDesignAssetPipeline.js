@@ -48,14 +48,6 @@ async function advanceDesignAssetPipeline() {
         continue;
       }
 
-      // Ensure we always send something visible for debugging
-      if (!data.background_image) {
-        data.background_image = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
-      }
-      if (!data.logo) {
-        data.logo = 'https://res.cloudinary.com/demo/image/upload/cloudinary_logo.png';
-      }
-
       const vars = {
         title: data.title || '',
         subtitle: data.subtitle || '',
