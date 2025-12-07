@@ -38,6 +38,30 @@ function buildPlacidLayers(variables = {}) {
     layers.background_image = { image_url: variables.background_image };
   }
 
+  if (variables.logo) {
+    layers.logo = { image_url: variables.logo };
+  }
+
+  if (variables.primary_color) {
+    layers.primary_color = { color: variables.primary_color };
+  }
+  if (variables.secondary_color) {
+    layers.secondary_color = { color: variables.secondary_color };
+  }
+  if (variables.accent_color) {
+    layers.accent_color = { color: variables.accent_color };
+  }
+  if (variables.brand_color) {
+    layers.brand_color = { color: variables.brand_color };
+  }
+
+  if (variables.heading_font) {
+    layers.heading_font = { text: variables.heading_font };
+  }
+  if (variables.body_font) {
+    layers.body_font = { text: variables.body_font };
+  }
+
   return layers;
 }
 

@@ -47,6 +47,12 @@ async function advanceDesignAssetPipeline() {
         subtitle: data.subtitle || '',
         cta: data.cta || '',
         background_image: data.background_image || null,
+        logo: data.logo || null,
+        primary_color: data.primary_color || data.brand_color || null,
+        secondary_color: data.secondary_color || null,
+        accent_color: data.accent_color || null,
+        heading_font: data.heading_font || null,
+        body_font: data.body_font || null,
       };
 
       let render;
