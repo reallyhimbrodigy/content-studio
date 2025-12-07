@@ -34,6 +34,7 @@ function buildPlacidLayers(variables = {}) {
     cta: { text: variables.cta || '' },
   };
 
+  // Image layers: use image_url as Placid expects for image layers
   if (variables.background_image) {
     layers.background_image = { image_url: variables.background_image };
   }
@@ -42,6 +43,7 @@ function buildPlacidLayers(variables = {}) {
     layers.logo = { image_url: variables.logo };
   }
 
+  // Colors
   if (variables.primary_color) {
     layers.primary_color = { color: variables.primary_color };
   }
@@ -55,6 +57,7 @@ function buildPlacidLayers(variables = {}) {
     layers.brand_color = { color: variables.brand_color };
   }
 
+  // Fonts
   if (variables.heading_font) {
     layers.heading_font = { text: variables.heading_font };
   }

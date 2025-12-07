@@ -24,6 +24,10 @@ async function advanceDesignAssetPipeline() {
   for (const asset of assets) {
     const data = asset.data || {};
     try {
+      console.log('[Pipeline] asset data before Placid', {
+        id: asset.id,
+        data,
+      });
       console.log('[Pipeline] Processing asset', {
         id: asset.id,
         type: asset.type,
