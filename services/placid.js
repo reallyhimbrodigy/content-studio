@@ -45,7 +45,6 @@ async function validatePlacidTemplateConfig() {
   }
 
   const configs = [
-    { type: 'post_graphic', id: PLACID_POST_GRAPHIC_TEMPLATE_ID },
     { type: 'story', id: PLACID_STORY_TEMPLATE_ID },
     { type: 'carousel', id: PLACID_CAROUSEL_TEMPLATE_ID },
   ];

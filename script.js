@@ -3539,8 +3539,6 @@ function formatAssetTypeLabel(type) {
       return 'Story';
     case 'carousel':
       return 'Carousel';
-    case 'post_graphic':
-      return 'Post Graphic';
     default:
       return type
         ? String(type)
@@ -8422,7 +8420,6 @@ if (designSection && (!calendarSection || !hub)) {
   designSection.style.opacity = '1';
 }
 const TEMPLATE_CATEGORY_MAP = {
-  'post_graphic': 'Quotes & Tips',
   'social-graphic': 'Quotes & Tips',
   'carousel-template': 'Case Studies',
   'carousel': 'Case Studies',

@@ -130,9 +130,8 @@ function getDesignAssetTypeLabel(type) {
       return 'Story';
     case 'carousel':
       return 'Carousel';
-    case 'post_graphic':
     default:
-      return 'Post Graphic';
+      return 'Asset';
   }
 }
 
@@ -370,7 +369,7 @@ function buildBaseDesignDataFromBody(body = {}, overrides = {}) {
   const linkedDay =
     overrides.linkedDay ??
     parseRequestedDay(body, calendarDayId);
-  const normalizedType = String(overrides.type || body.type || 'post_graphic').toLowerCase();
+  const normalizedType = String(overrides.type || body.type || 'story').toLowerCase();
   return {
     calendar_day_id: calendarDayId,
     type: normalizedType,
@@ -804,7 +803,7 @@ async function handleDebugDesignTest(req, res) {
 }
 
 async function handlePlacidTemplateDebug(req, res) {
-  const types = ['post_graphic', 'story', 'carousel'];
+  const types = ['story', 'carousel'];
   const results = [];
   for (const type of types) {
     const templateId = resolveTemplateIdForType(type);
@@ -860,12 +859,10 @@ async function handleDebugPlacidConfig(req, res) {
   return sendJson(res, 200, {
     configured: {
       PLACID_API_KEY: process.env.PLACID_API_KEY ? 'SET' : 'MISSING',
-      PLACID_POST_GRAPHIC_TEMPLATE_ID: POST_GRAPHIC_TEMPLATE_ID || 'NOT SET',
       PLACID_STORY_TEMPLATE_ID: STORY_TEMPLATE_ID || 'NOT SET',
       PLACID_CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID || 'NOT SET',
     },
     resolvedTemplateIds: {
-      post_graphic: resolveTemplateIdForType('post_graphic'),
       story: resolveTemplateIdForType('story'),
       carousel: resolveTemplateIdForType('carousel'),
     },
