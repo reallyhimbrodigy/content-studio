@@ -4381,7 +4381,8 @@ window.showUpgradeModal = showUpgradeModal;
 
 // Brand Brain modal handlers
 function openBrandModal() {
-  if (brandModal) brandModal.style.display = 'grid';
+  // Use flex to take advantage of modal-overlay centering styles
+  if (brandModal) brandModal.style.display = 'flex';
 }
 function closeBrandModal() {
   if (brandModal) brandModal.style.display = 'none';
