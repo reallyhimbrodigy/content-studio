@@ -571,6 +571,7 @@ async function handleCreateDesignAsset(req, res) {
           secondaryColor: designData.secondary_color,
           accentColor: designData.accent_color,
         });
+        console.log('[DesignAssets] Generated branded background', { background_image: designData.background_image });
       } catch (err) {
         console.warn('Branded background generation failed, falling back to existing logic', err?.message);
         designData = await maybeAttachGeneratedBackground(designData, brandProfile);

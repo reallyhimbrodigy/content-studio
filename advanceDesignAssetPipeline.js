@@ -60,6 +60,7 @@ async function advanceDesignAssetPipeline() {
         heading_font: data.heading_font || null,
         body_font: data.body_font || null,
       };
+      console.log('[Pipeline] Placid vars', { assetId: asset.id, vars });
 
       let render;
       try {
