@@ -110,23 +110,17 @@ async function generateBrandedBackgroundImage({
   const seedUrl = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
   const prompt = [title, subtitle, cta, primaryColor, secondaryColor, accentColor].filter(Boolean).join(', ');
   // Colorize using primary color if available; otherwise simple upload.
-  const transformation = primaryColor
-    ? [{ effect: 'colorize', color: primaryColor }]
-    : [];
-
   const upload = await uploadAssetFromUrl({
     url: seedUrl,
     folder: CLOUDINARY_FOLDER,
   });
 
-  // If colorize was requested, rebuild a URL with that transformation.
-  if (primaryColor) {
+  if (primaryColor || secondaryColor || accentColor) {
     const publicId = upload.publicId;
-    const colorizedUrl = buildCloudinaryUrl(publicId, { width: 1920, height: 1080, crop: 'fill' }).replace(
-      '/image/upload/',
-      `/image/upload/e_colorize:${primaryColor}/`
-    );
-    return colorizedUrl;
+    const baseUrl = buildCloudinaryUrl(publicId, { width: 1920, height: 1080, crop: 'fill' });
+    const color = primaryColor || secondaryColor || accentColor;
+    const transformed = baseUrl.replace('/image/upload/', `/image/upload/e_colorize:${color || 'blue'}/`);
+    return transformed;
   }
 
   return upload.secureUrl || upload.secure_url || '';

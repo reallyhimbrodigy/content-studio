@@ -545,8 +545,20 @@ async function handleCreateDesignAsset(req, res) {
     designData.type = type;
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
     designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
-    if (!designData.logo) {
-      designData.logo = 'https://res.cloudinary.com/demo/image/upload/cloudinary_logo.png';
+
+    // Ensure logo is a publicly reachable URL
+    if (designData.logo && designData.logo.startsWith('data:image/')) {
+      try {
+        const uploadedLogo = await uploadAssetFromUrl({
+          url: designData.logo,
+          folder: 'promptly/brand-logos',
+        });
+        if (uploadedLogo?.secureUrl) {
+          designData.logo = uploadedLogo.secureUrl;
+        }
+      } catch (logoErr) {
+        console.warn('Brand logo upload failed, keeping existing logo value', logoErr?.message);
+      }
     }
     // Ensure we have a branded background image
     if (!designData.background_image) {
