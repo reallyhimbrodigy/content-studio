@@ -92,7 +92,6 @@ async function createPlacidRender({ templateId, data, variables }) {
   if (!templateId) throw new Error('missing_template_id');
   const src = variables || data || {};
   const payload = {
-    template_id: templateId,
     data: {
       title: src.title || '',
       subtitle: src.subtitle || '',
@@ -101,7 +100,7 @@ async function createPlacidRender({ templateId, data, variables }) {
     },
   };
   try {
-    const { data: response } = await axios.post(`${PLACID_API_BASE}/renders`, payload, {
+    const { data: response } = await axios.post(`${PLACID_API_BASE}/templates/${templateId}/renders`, payload, {
       headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
       timeout: 20000,
     });
