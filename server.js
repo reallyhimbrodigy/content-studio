@@ -8,7 +8,12 @@ const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const { createPlacidRender, isPlacidConfigured, resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid');
-const { uploadAssetFromUrl, buildCloudinaryUrl, isCloudinaryConfigured } = require('./services/cloudinary');
+const {
+  uploadAssetFromUrl,
+  buildCloudinaryUrl,
+  isCloudinaryConfigured,
+  generateBrandedBackgroundImage,
+} = require('./services/cloudinary');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -526,13 +531,28 @@ async function handleCreateDesignAsset(req, res) {
       });
     }
 
-    const brandProfile = await loadUserBrandProfile(user.id);
-    const calendarDay = await loadCalendarDay(calendarDayId, user.id);
-    let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
-    designData.type = type;
-    designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
-    designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
-    designData = await maybeAttachGeneratedBackground(designData, brandProfile);
+  const brandProfile = await loadUserBrandProfile(user.id);
+  const calendarDay = await loadCalendarDay(calendarDayId, user.id);
+  let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
+  designData.type = type;
+  designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
+  designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
+  // Ensure we have a branded background image
+  if (!designData.background_image) {
+    try {
+      designData.background_image = await generateBrandedBackgroundImage({
+        title: designData.title,
+        subtitle: designData.subtitle,
+        cta: designData.cta,
+        primaryColor: designData.primary_color || designData.brand_color,
+        secondaryColor: designData.secondary_color,
+        accentColor: designData.accent_color,
+      });
+    } catch (err) {
+      console.warn('Branded background generation failed, falling back to existing logic', err?.message);
+      designData = await maybeAttachGeneratedBackground(designData, brandProfile);
+    }
+  }
 
     const inserted = await createDesignAsset({
       type,

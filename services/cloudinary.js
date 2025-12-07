@@ -97,8 +97,44 @@ function isCloudinaryConfigured() {
   return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 }
 
+// Generates a branded background image by applying a simple Cloudinary transformation seeded with colors.
+async function generateBrandedBackgroundImage({
+  title = '',
+  subtitle = '',
+  cta = '',
+  primaryColor = '',
+  secondaryColor = '',
+  accentColor = '',
+} = {}) {
+  // Fallback seed image; ideally replace with a more on-brand base.
+  const seedUrl = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
+  const prompt = [title, subtitle, cta, primaryColor, secondaryColor, accentColor].filter(Boolean).join(', ');
+  // Colorize using primary color if available; otherwise simple upload.
+  const transformation = primaryColor
+    ? [{ effect: 'colorize', color: primaryColor }]
+    : [];
+
+  const upload = await uploadAssetFromUrl({
+    url: seedUrl,
+    folder: CLOUDINARY_FOLDER,
+  });
+
+  // If colorize was requested, rebuild a URL with that transformation.
+  if (primaryColor) {
+    const publicId = upload.publicId;
+    const colorizedUrl = buildCloudinaryUrl(publicId, { width: 1920, height: 1080, crop: 'fill' }).replace(
+      '/image/upload/',
+      `/image/upload/e_colorize:${primaryColor}/`
+    );
+    return colorizedUrl;
+  }
+
+  return upload.secureUrl || upload.secure_url || '';
+}
+
 module.exports = {
   uploadAssetFromUrl,
   buildCloudinaryUrl,
   isCloudinaryConfigured,
+  generateBrandedBackgroundImage,
 };
