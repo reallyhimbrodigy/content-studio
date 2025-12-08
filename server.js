@@ -7,7 +7,6 @@ const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
-const { createPlacidRender, isPlacidConfigured, resolvePlacidTemplateId, validatePlacidTemplateConfig } = require('./services/placid');
 const {
   uploadAssetFromUrl,
   buildCloudinaryUrl,
@@ -16,6 +15,11 @@ const {
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
+// Design Lab has been removed; provide stubs so legacy code paths do not break.
+const createPlacidRender = async () => ({ id: null, status: 'disabled' });
+const resolvePlacidTemplateId = () => null;
+const validatePlacidTemplateConfig = async () => {};
+const isPlacidConfigured = () => false;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -200,16 +204,6 @@ function wait(ms) {
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(payload));
-}
-
-function isDesignPipelineReady() {
-  // As long as the Placid API key, at least one template ID, and Cloudinary config are present, the design pipeline is ready.
-  return Boolean(
-    supabaseAdmin &&
-      (STORY_TEMPLATE_ID || CAROUSEL_TEMPLATE_ID) &&
-      isPlacidConfigured() &&
-      isCloudinaryConfigured()
-  );
 }
 
 const MAX_JSON_BODY = 1 * 1024 * 1024; // 1MB cap to prevent oversized payloads.
