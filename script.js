@@ -75,15 +75,15 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
   const brandStatus = document.getElementById("brand-status");
-  const brandPrimaryColorInput = document.getElementById('brand-primary-color');
-  const brandSecondaryColorInput = document.getElementById('brand-secondary-color');
-  const brandAccentColorInput = document.getElementById('brand-accent-color');
-  const brandHeadingFontInput = document.getElementById('brand-heading-font');
-  const brandBodyFontInput = document.getElementById('brand-body-font');
-  const brandLogoInput = document.getElementById('brand-logo-input');
-  const brandLogoPreview = document.getElementById('brand-logo-preview');
-  const brandLogoPlaceholder = document.getElementById('brand-logo-placeholder');
-const brandLogoClearBtn = document.getElementById('brand-logo-clear');
+  const brandPrimaryColorInput = null;
+  const brandSecondaryColorInput = null;
+  const brandAccentColorInput = null;
+  const brandHeadingFontInput = null;
+  const brandBodyFontInput = null;
+  const brandLogoInput = null;
+  const brandLogoPreview = null;
+  const brandLogoPlaceholder = null;
+const brandLogoClearBtn = null;
 const brandKitSaveBtn = document.getElementById('brand-kit-save-btn');
 const brandKitStatus = document.getElementById('brand-kit-status');
 const appLayout = document.querySelector('.app-layout');
@@ -4419,25 +4419,19 @@ function applyBrandKitToForm(kit) {
     secondaryColor: '#2cb1bc',
     accentColor: '#ff7ac3',
   };
-  if (brandPrimaryColorInput) brandPrimaryColorInput.value = kit?.primaryColor || defaults.primaryColor;
-  if (brandSecondaryColorInput) brandSecondaryColorInput.value = kit?.secondaryColor || defaults.secondaryColor;
-  if (brandAccentColorInput) brandAccentColorInput.value = kit?.accentColor || defaults.accentColor;
-  if (brandHeadingFontInput) brandHeadingFontInput.value = kit?.headingFont || '';
-  if (brandBodyFontInput) brandBodyFontInput.value = kit?.bodyFont || '';
-  updateFontPickerSelection('brand-heading-font', brandHeadingFontInput?.value || '');
-  updateFontPickerSelection('brand-body-font', brandBodyFontInput?.value || '');
-  updateBrandLogoPreview(kit?.logoDataUrl || '');
+  // Brand Design inputs removed
+  // Brand Design controls removed
   renderDesignLivePreview();
 }
 
 function serializeBrandKitForm() {
   return {
-    primaryColor: brandPrimaryColorInput?.value || '',
-    secondaryColor: brandSecondaryColorInput?.value || '',
-    accentColor: brandAccentColorInput?.value || '',
-    headingFont: brandHeadingFontInput?.value?.trim() || '',
-    bodyFont: brandBodyFontInput?.value?.trim() || '',
-    logoDataUrl: brandLogoPreview?.dataset.logo ?? '',
+    primaryColor: '',
+    secondaryColor: '',
+    accentColor: '',
+    headingFont: '',
+    bodyFont: '',
+    logoDataUrl: '',
   };
 }
 
@@ -4553,180 +4547,25 @@ async function refreshBrandBrain(force = false) {
 }
 
 async function refreshBrandKit(force = false) {
-  if (brandKitLoaded && !force) return currentBrandKit;
-  const userId = activeUserEmail || await getCurrentUser();
-  if (!userId) return null;
-  const localKit = loadBrandKitLocal(userId);
-  if (!brandKitLoaded && localKit) {
-    currentBrandKit = localKit;
-    applyBrandKitToForm(currentBrandKit);
-  }
-  try {
-    const resp = await fetch(`/api/brand/kit?userId=${encodeURIComponent(userId)}`, { cache: 'no-store', redirect: 'manual' });
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      currentBrandKit = data.kit || localKit || null;
-      persistBrandKitLocal(currentBrandKit, userId);
-      applyBrandKitToForm(currentBrandKit);
-    } else {
-      throw new Error('kit endpoint unavailable');
-    }
-  } catch (err) {
-    console.warn('Brand Design fetch failed, falling back to profile preferences:', err?.message || err);
-    try {
-      const prefs = await getProfilePreferences();
-      currentBrandKit = prefs?.brandKit || localKit || null;
-      persistBrandKitLocal(currentBrandKit, userId);
-      applyBrandKitToForm(currentBrandKit);
-    } catch (fallbackErr) {
-      console.warn('Unable to load Brand Design from preferences:', fallbackErr?.message || fallbackErr);
-    }
-  }
   brandKitLoaded = true;
-  return currentBrandKit;
+  currentBrandKit = null;
+  return null;
 }
 
 async function handleBrandKitSave() {
-  const userId = activeUserEmail || await getCurrentUser();
-  if (!userId) {
-    if (brandKitStatus) brandKitStatus.textContent = 'Sign in to save your Brand Design.';
-    return;
-  }
-  const kitPayload = serializeBrandKitForm();
-  if (brandKitStatus) {
-    brandKitStatus.textContent = 'Saving Brand Design...';
-    brandKitStatus.classList.remove('success');
-  }
-  if (brandKitSaveBtn) brandKitSaveBtn.disabled = true;
-  let saved = false;
-  try {
-    const resp = await fetch('/api/brand/kit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, kit: kitPayload }),
-      redirect: 'manual',
-    });
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      currentBrandKit = data.kit || kitPayload;
-      saved = true;
-      persistBrandKitLocal(currentBrandKit, userId);
-    } else {
-      throw new Error('Kit API unavailable');
-    }
-  } catch (err) {
-    console.warn('Brand Design save via API failed, falling back to profile preferences:', err?.message || err);
-    try {
-      const prefs = await getProfilePreferences();
-      const nextPrefs = Object.assign({}, prefs, { brandKit: kitPayload });
-      await saveProfilePreferences(nextPrefs);
-      currentBrandKit = kitPayload;
-      saved = true;
-      persistBrandKitLocal(currentBrandKit, userId);
-    } catch (fallbackErr) {
-      console.error('Brand Design fallback save failed:', fallbackErr);
-      if (brandKitStatus) {
-        brandKitStatus.textContent = fallbackErr.message || 'Unable to save Brand Design';
-        brandKitStatus.classList.remove('success');
-      }
-    }
-    if (!saved) {
-      currentBrandKit = kitPayload;
-      persistBrandKitLocal(currentBrandKit, userId);
-      saved = true;
-    }
-  } finally {
-    if (brandKitSaveBtn) brandKitSaveBtn.disabled = false;
-    if (brandKitStatus) {
-      if (saved) {
-        brandKitStatus.textContent = '✓ Brand design saved';
-        brandKitStatus.classList.add('success');
-        brandKitLoaded = true;
-        applyBrandKitToForm(currentBrandKit);
-        closeBrandModal();
-      }
-      setTimeout(() => {
-        brandKitStatus.textContent = '';
-        brandKitStatus.classList.remove('success');
-      }, 2600);
-    }
-  }
+  // Brand Design removed; no-op
+  return;
 }
 
 function handleBrandLogoUpload(event) {
-  const file = event?.target?.files?.[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    if (brandKitStatus) {
-      brandKitStatus.textContent = 'Logo is too large (max 2MB).';
-      brandKitStatus.classList.remove('success');
-    }
-    event.target.value = '';
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    const result = reader.result;
-    if (typeof result === 'string' && result.startsWith('data:image/')) {
-      updateBrandLogoPreview(result);
-    } else if (brandKitStatus) {
-      brandKitStatus.textContent = 'Unsupported logo format.';
-    }
-  };
-  reader.readAsDataURL(file);
+  return;
 }
 
 function clearBrandLogoPreview() {
-  if (brandLogoInput) brandLogoInput.value = '';
-  updateBrandLogoPreview('');
+  // Brand Design logo controls removed
 }
 
-if (brandPrimaryColorInput || brandSecondaryColorInput || brandAccentColorInput) {
-  applyBrandKitToForm(null);
-}
-
-fontPickers = Array.from(document.querySelectorAll('.font-picker'));
-if (fontPickers.length) {
-  const closeAllFontPickers = () => fontPickers.forEach((picker) => picker.classList.remove('is-open'));
-
-  document.addEventListener('click', (event) => {
-    const trigger = event.target.closest('.font-picker__trigger');
-    if (trigger) {
-      event.preventDefault();
-      const picker = trigger.closest('.font-picker');
-      if (!picker) return;
-      const targetId = picker.dataset.target;
-      const isOpen = picker.classList.contains('is-open');
-      closeAllFontPickers();
-      if (!isOpen) {
-        picker.classList.add('is-open');
-        const currentValue = document.getElementById(targetId)?.value || '';
-        updateFontPickerSelection(targetId, currentValue);
-      }
-      return;
-    }
-
-    const option = event.target.closest('.font-picker__option');
-    if (option && option.closest('.font-picker')) {
-      const picker = option.closest('.font-picker');
-      const targetId = picker?.dataset.target;
-      if (targetId) {
-        const targetInput = document.getElementById(targetId);
-        if (targetInput) targetInput.value = option.dataset.font || '';
-        updateFontPickerSelection(targetId, option.dataset.font || '');
-        picker.classList.remove('is-open');
-      }
-      return;
-    }
-
-    if (!event.target.closest('.font-picker')) {
-      closeAllFontPickers();
-    }
-  });
-
-  updateFontPickerSelection('brand-heading-font', brandHeadingFontInput?.value || '');
-  updateFontPickerSelection('brand-body-font', brandBodyFontInput?.value || '');
-}
+// Brand Design controls removed entirely
 
 if (brandBtn && brandModal) {
   brandBtn.addEventListener('click', async () => {

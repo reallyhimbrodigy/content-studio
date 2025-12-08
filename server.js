@@ -2625,47 +2625,10 @@ ${JSON.stringify(compactPosts)}`;
     return (trimmed || '/').toLowerCase();
   })();
 
-  if (isBrandKitPath(normalizedPath) && req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
-      try {
-        const { userId, kit } = JSON.parse(body || '{}');
-        if (!userId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'userId required' }));
-        }
-        if (!kit || typeof kit !== 'object') {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'kit payload required' }));
-        }
-        const saved = saveBrandKit(userId, kit);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ ok: true, kit: saved.kit || null }));
-      } catch (err) {
-        console.error('Brand Design save error:', err);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: err.message || 'Unable to save Brand Design' }));
-      }
-    });
+  if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
+    res.writeHead(410, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Brand Design has been removed.' }));
     return;
-  }
-
-  if (isBrandKitPath(normalizedPath) && req.method === 'GET') {
-    const userId = parsed.query.userId;
-    if (!userId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'userId required' }));
-    }
-    try {
-      const brand = loadBrand(userId);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ ok: true, kit: brand?.kit || null }));
-    } catch (err) {
-      console.error('Brand Design fetch error:', err);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Unable to load Brand Design' }));
-    }
   }
 
   if (parsed.pathname === '/api/brand/ingest' && req.method === 'POST') {
