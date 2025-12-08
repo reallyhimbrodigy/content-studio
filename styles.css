@@ -4569,6 +4569,20 @@ body.prefers-reduced-motion *::after {
   align-self: start;
 }
 
+/* Masonry-style override to prevent gaps when cards expand */
+.calendar__grid {
+  display: block;
+  column-count: 4;
+  column-gap: 24px;
+}
+
+.calendar-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 24px;
+  break-inside: avoid;
+}
+
 .calendar-card::after {
   content: attr(data-pillar);
   position: absolute;
