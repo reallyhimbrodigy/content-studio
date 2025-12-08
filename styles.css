@@ -4565,35 +4565,6 @@ body.prefers-reduced-motion *::after {
   position: relative;
   isolation: isolate;
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
-  height: auto;
-  align-self: start;
-}
-
-/* Masonry-style override to prevent gaps when cards expand */
-/* Calendar layout: uniform, fixed-height cards */
-.calendar__grid {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 24px;
-}
-
-.calendar-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 360px;
-  height: 360px;
-  flex: 1 1 260px;
-  overflow: hidden;
-}
-
-.calendar-card__title,
-.calendar-card__caption,
-.calendar-card__detail-row .detail-text,
-.calendar-card__entry {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .calendar-card::after {
@@ -6194,11 +6165,3 @@ html.no-scroll,
 body.no-scroll {
   overflow: hidden !important;
 }
-
-
-/* Prevent calendar cards from stretching when a neighbor expands */
-.calendar__grid { align-items: start; }
-
-.calendar-card { height: auto; flex: 0 0 auto; }
-
-.calendar-card.expanded { height: auto; }
