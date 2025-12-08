@@ -2522,7 +2522,7 @@ body {
 .calendar-card details { margin-top: 0.5rem; }
 .calendar-card details > summary { cursor: pointer; color: var(--text-primary); font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.4rem 0.6rem; width: fit-content; transition: all 0.2s ease; }
 .calendar-card details[open] > summary { background: var(--accent-soft); border-color: var(--accent-strong); }
-.calendar-card .details-body { margin-top: 0.5rem; display: grid; gap: 0.35rem; animation: fadeInSlide 0.25s ease; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.calendar-card .details-body { margin-top: 0.5rem; display: grid; gap: 0.35rem; animation: fadeInSlide 0.25s ease; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); height: auto; }
 
 @keyframes fadeInSlide {
   from { opacity: 0; transform: translateY(-4px); }
@@ -4565,7 +4565,7 @@ body.prefers-reduced-motion *::after {
   position: relative;
   isolation: isolate;
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
-  min-height: 340px;
+  min-height: 360px;
   height: auto;
 }
 
