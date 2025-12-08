@@ -111,20 +111,20 @@ async function createPlacidRender({ templateId, data, variables }) {
   }
 }
 
-async function pollPlacidImage(imageId) {
+async function pollPlacidImage(imageId, maxAttempts = 20, delayMs = 1500) {
   ensurePlacidConfigured();
   if (!imageId) throw new Error('missing_placid_image_id');
   const url = `${PLACID_API_BASE}/images/${imageId}`;
   let lastData = null;
   console.log('[Placid] pollPlacidImage start', { imageId });
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
         timeout: 10000,
       });
       lastData = data;
-      const hasUrl = Boolean(data.image_url || data.transfer_url);
+      const hasUrl = Boolean(data.image_url || data.transfer_url || data.url);
       console.log('[Placid] pollPlacidImage attempt', {
         attempt,
         status: data.status,
@@ -132,11 +132,11 @@ async function pollPlacidImage(imageId) {
         errors: data.errors,
       });
 
-      if (data.status === 'ready' && hasUrl) {
+      if ((data.status === 'ready' || data.status === 'finished') && hasUrl) {
         return {
           id: data.id,
-          status: 'ready',
-          url: data.image_url || data.transfer_url,
+          status: 'finished',
+          url: data.image_url || data.transfer_url || data.url,
           raw: data,
         };
       }
@@ -163,7 +163,7 @@ async function pollPlacidImage(imageId) {
         raw: err?.response?.data || null,
       };
     }
-    await wait(1500);
+    await wait(delayMs);
   }
 
   return {

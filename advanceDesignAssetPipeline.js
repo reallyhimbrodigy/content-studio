@@ -116,7 +116,7 @@ async function advanceDesignAssetPipeline() {
         continue;
       }
 
-      if (renderResult?.status === 'ready' && renderResult?.url) {
+      if ((renderResult?.status === 'finished' || renderResult?.status === 'ready') && renderResult?.url) {
         try {
           const upload = await uploadAssetFromUrl({
             url: renderResult.url,
