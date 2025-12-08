@@ -43,12 +43,20 @@ const grid = document.getElementById("calendar-grid");
   const accountEmailCopyBtn = document.getElementById('account-email-copy');
   const accountPasswordManageBtn = document.getElementById('account-password-manage');
   const accountPlanStatusEl = document.getElementById('account-plan-status');
-  const accountPlanLimitsEl = document.getElementById('account-plan-limits');
-  const accountLastLoginEl = document.getElementById('account-last-login');
-  const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
-  const settingsPanels = document.querySelectorAll('[data-settings-panel]');
-  const postFrequencyDisplay = document.getElementById('post-frequency-display');
-  const postFrequencySelect = document.getElementById('post-frequency-select');
+const accountPlanLimitsEl = document.getElementById('account-plan-limits');
+const accountLastLoginEl = document.getElementById('account-last-login');
+const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+const settingsPanels = document.querySelectorAll('[data-settings-panel]');
+const postFrequencyDisplay = document.getElementById('post-frequency-display');
+const postFrequencySelect = document.getElementById('post-frequency-select');
+const DESIGN_FEATURES_ENABLED = false;
+
+if (!DESIGN_FEATURES_ENABLED) {
+  const generateAssetModal = document.getElementById('generate-asset-modal');
+  if (generateAssetModal) generateAssetModal.remove();
+  const designLabSection = document.getElementById('design-lab');
+  if (designLabSection) designLabSection.style.display = 'none';
+}
 const landingNavLinks = document.querySelector('.landing-nav__links');
 const landingNavAnchors = document.querySelectorAll('.landing-nav__links a[href^="#"]');
 const landingSampleActionButtons = document.querySelectorAll('.landing-samples__cards .calendar-card__actions button');
@@ -604,6 +612,7 @@ function buildAssetContextFromEntry(entry = {}, day) {
 }
 
 async function beginGenerateAssetFlow(entry, entryDay, triggerButton) {
+  if (!DESIGN_FEATURES_ENABLED) return;
   const resolvedDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   if (!resolvedDay) {
     showDesignError('Pick a calendar day first', 'Select a post and try again.');
@@ -725,6 +734,7 @@ function closeAssetEditorModal() {
 }
 
 function bindCalendarGenerateAssetClicks() {
+  if (!DESIGN_FEATURES_ENABLED) return;
   const grid = document.getElementById('calendar-grid');
   if (!grid) {
     // Not on calendar page; nothing to bind.
@@ -5231,15 +5241,6 @@ const createCard = (post) => {
     const regenBtn = makeBtn('Regenerate');
     attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
     actionsEl.appendChild(regenBtn);
-
-    const assetBtn = makeBtn('Generate Asset');
-    assetBtn.classList.remove('ghost');
-    assetBtn.classList.add('calendar-card__action', 'calendar-card__action--primary', 'primary');
-    assetBtn.dataset.action = 'calendar-generate-asset';
-    assetBtn.dataset.calendarDayId = buildCalendarDayIdentifier(entry, entryDay);
-    assetBtn.dataset.calendarDay = String(entryDay);
-    assetBtn.dataset.entryIndex = String(idx);
-    actionsEl.appendChild(assetBtn);
 
     if (entry.variants) {
       // variant captions still show in detail rows; copy buttons removed

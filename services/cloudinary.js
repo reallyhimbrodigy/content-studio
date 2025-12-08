@@ -4,6 +4,7 @@ const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || '';
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || '';
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || '';
 const CLOUDINARY_FOLDER = process.env.CLOUDINARY_DESIGN_FOLDER || 'promptly/design-assets';
+const { ENABLE_DESIGN_LAB } = require('../config/flags');
 // NOTE: Cloudinary secrets must never be exposed client-side.
 
 function ensureCloudinaryConfigured() {
@@ -106,6 +107,7 @@ async function generateBrandedBackgroundImage({
   secondaryColor = '',
   accentColor = '',
 } = {}) {
+  if (!ENABLE_DESIGN_LAB) return null;
   // Fallback seed image; ideally replace with a more on-brand base.
   const seedUrl = 'https://res.cloudinary.com/demo/image/upload/sample.jpg';
   const prompt = [title, subtitle, cta, primaryColor, secondaryColor, accentColor].filter(Boolean).join(', ');

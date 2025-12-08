@@ -15,6 +15,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
+const { ENABLE_DESIGN_LAB } = require('./config/flags');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
@@ -1779,7 +1780,13 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
+  // Short-circuit legacy Design Lab page when disabled
   const parsed = url.parse(req.url, true);
+  if (!ENABLE_DESIGN_LAB && parsed.pathname === '/design.html') {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('Not found');
+  }
+
   // Serve favicon from SVG asset to avoid 404s
   if (parsed.pathname === '/favicon.ico') {
     const fav = path.join(__dirname, 'assets', 'promptly-icon.svg');
@@ -1959,41 +1966,49 @@ const server = http.createServer((req, res) => {
   }
 
   if (parsed.pathname === '/api/design-assets' && req.method === 'POST') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleCreateDesignAsset(req, res);
     return;
   }
 
   if (parsed.pathname === '/api/design-assets' && req.method === 'GET') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleListDesignAssets(req, res, parsed.query || {});
     return;
   }
 
   const designAssetMatch = parsed.pathname && parsed.pathname.match(/^\/api\/design-assets\/([a-f0-9-]+)$/i);
   if (designAssetMatch && req.method === 'GET') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleGetDesignAsset(req, res, designAssetMatch[1]);
     return;
   }
   if (designAssetMatch && req.method === 'PATCH') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handlePatchDesignAsset(req, res, designAssetMatch[1]);
     return;
   }
 
   if (parsed.pathname === '/api/debug/design-test' && req.method === 'POST') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleDebugDesignTest(req, res);
     return;
   }
 
   if (parsed.pathname === '/api/debug/design-assets' && req.method === 'GET') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleDebugDesignAssets(req, res);
     return;
   }
 
   if (parsed.pathname === '/api/debug/placid-templates' && req.method === 'GET') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handlePlacidTemplateDebug(req, res);
     return;
   }
 
   if (parsed.pathname === '/api/debug/placid-config' && req.method === 'GET') {
+    if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleDebugPlacidConfig(req, res);
     return;
   }
@@ -2006,6 +2021,9 @@ const server = http.createServer((req, res) => {
   }
 
   if (parsed.pathname === '/api/design/generate' && req.method === 'POST') {
+    if (!ENABLE_DESIGN_LAB) {
+      return sendJson(res, 410, { error: 'Design Lab has been removed.' });
+    }
     if (!STABILITY_API_KEY) {
       res.writeHead(501, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'Design generation not configured', hint: 'Set STABILITY_API_KEY on the server.' }));
@@ -2800,12 +2818,14 @@ function serveFile(filePath, res) {
 }
 
 const PORT = process.env.PORT || 8000;
-// Run design asset pipeline on interval to progress renders.
-setInterval(() => {
-  advanceDesignAssetPipeline().catch((err) => {
-    console.error('[Pipeline] Tick error', err);
-  });
-}, 20000);
+// Run design asset pipeline on interval to progress renders (disabled when design lab is off).
+if (ENABLE_DESIGN_LAB) {
+  setInterval(() => {
+    advanceDesignAssetPipeline().catch((err) => {
+      console.error('[Pipeline] Tick error', err);
+    });
+  }, 20000);
+}
 
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 

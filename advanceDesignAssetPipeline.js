@@ -1,8 +1,10 @@
 const { getQueuedOrRenderingAssets, updateDesignAssetStatus } = require('./services/supabase-admin');
 const { createPlacidRender, pollPlacidImage, isPlacidConfigured } = require('./services/placid');
 const { uploadAssetFromUrl } = require('./services/cloudinary');
+const { ENABLE_DESIGN_LAB } = require('./config/flags');
 
 async function advanceDesignAssetPipeline() {
+  if (!ENABLE_DESIGN_LAB) return;
   if (!isPlacidConfigured()) return;
   console.log('[Pipeline] Tick starting');
   let assets = [];

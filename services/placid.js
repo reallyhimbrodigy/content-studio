@@ -5,6 +5,7 @@ const {
   PLACID_STORY_TEMPLATE_ID,
   PLACID_CAROUSEL_TEMPLATE_ID,
 } = process.env;
+const { ENABLE_DESIGN_LAB } = require('../config/flags');
 
 const PLACID_API_BASE = 'https://api.placid.app/api/rest';
 const PLACID_REST_URL = `${PLACID_API_BASE}/images`;
@@ -17,6 +18,11 @@ function resolvePlacidTemplateId(type) {
 }
 
 function ensurePlacidConfigured() {
+  if (!ENABLE_DESIGN_LAB) {
+    const err = new Error('Design Lab disabled');
+    err.statusCode = 410;
+    throw err;
+  }
   if (!PLACID_API_KEY) {
     const err = new Error('Placid is not configured');
     err.statusCode = 501;
@@ -82,6 +88,9 @@ function wait(ms) {
 }
 
 async function createPlacidRender({ templateId, data, variables }) {
+  if (!ENABLE_DESIGN_LAB) {
+    return { id: null, status: 'disabled', polling_url: null, raw: null };
+  }
   ensurePlacidConfigured();
   if (!templateId) throw new Error('missing_placid_template_id');
   const payload = {
@@ -115,6 +124,9 @@ async function createPlacidRender({ templateId, data, variables }) {
 }
 
 async function pollPlacidImage(imageId, maxAttempts = 20, delayMs = 1500) {
+  if (!ENABLE_DESIGN_LAB) {
+    return { id: imageId, status: 'disabled', url: null, raw: null };
+  }
   ensurePlacidConfigured();
   if (!imageId) throw new Error('missing_placid_image_id');
   const url = `${PLACID_API_BASE}/images/${imageId}`;
