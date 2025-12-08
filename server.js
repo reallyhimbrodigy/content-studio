@@ -14,7 +14,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const { createPhylloUser, createSdkToken } = require('./services/phyllo');
+const { createPhylloUser, createSdkToken, fetchAccountContents, fetchAccountEngagement } = require('./services/phyllo');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -2629,8 +2629,51 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/webhook' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
-        console.log('[Phyllo] Webhook event received:', body?.type || 'unknown', body);
-        // TODO: handle account mapping and metric sync when moving out of sandbox.
+        const eventType = body?.type || 'unknown';
+        console.log('[Phyllo] Webhook event received:', eventType, body);
+
+        if (eventType === 'ACCOUNTS.CONNECTED' && supabaseAdmin) {
+          const account = body?.data?.account;
+          if (account && account.id) {
+            const phylloAccountId = account.id;
+            const phylloUserId = account.user_id;
+            const platform = account.work_platform_id;
+            const username = account.username || null;
+            const profileName = account.profile_name || null;
+
+            supabaseAdmin
+              .from('phyllo_users')
+              .select('promptly_user_id')
+              .eq('phyllo_user_id', phylloUserId)
+              .single()
+              .then(({ data: userRow }) => {
+                if (!userRow) {
+                  console.warn('[Phyllo] No promptly user mapping for phyllo_user_id', phylloUserId);
+                  return;
+                }
+                const promptlyUserId = userRow.promptly_user_id;
+                return supabaseAdmin
+                  .from('phyllo_accounts')
+                  .upsert({
+                    phyllo_account_id: phylloAccountId,
+                    phyllo_user_id: phylloUserId,
+                    promptly_user_id: promptlyUserId,
+                    work_platform_id: platform,
+                    username,
+                    profile_name: profileName,
+                  }, { onConflict: 'phyllo_account_id' })
+                  .then(({ error }) => {
+                    if (error) {
+                      console.error('[Phyllo] upsert phyllo_accounts error', error);
+                    } else {
+                      console.log('[Phyllo] phyllo_account stored', phylloAccountId);
+                    }
+                  });
+              })
+              .catch((err) => console.error('[Phyllo] lookup phyllo_users failed', err));
+          }
+        }
+
         sendJson(res, 200, { received: true });
       })
       .catch((err) => {
@@ -2644,13 +2687,34 @@ ${JSON.stringify(compactPosts)}`;
     (async () => {
       try {
         const promptlyUserId = (req.user && req.user.id) || 'demo-user';
-        const phylloUser = await createPhylloUser({
-          name: 'Promptly User',
-          externalId: promptlyUserId,
-        });
-        const sdkToken = await createSdkToken({ userId: phylloUser.id });
+        let phylloUserId = null;
+        if (supabaseAdmin) {
+          const { data: existing } = await supabaseAdmin
+            .from('phyllo_users')
+            .select('*')
+            .eq('promptly_user_id', promptlyUserId)
+            .single();
+          if (existing?.phyllo_user_id) {
+            phylloUserId = existing.phyllo_user_id;
+          }
+        }
+        if (!phylloUserId) {
+          const phylloUser = await createPhylloUser({
+            name: 'Promptly User',
+            externalId: promptlyUserId,
+          });
+          phylloUserId = phylloUser.id;
+          if (supabaseAdmin) {
+            await supabaseAdmin.from('phyllo_users').upsert({
+              promptly_user_id: promptlyUserId,
+              phyllo_user_id: phylloUserId,
+            }, { onConflict: 'promptly_user_id' });
+          }
+        }
+
+        const sdkToken = await createSdkToken({ userId: phylloUserId });
         sendJson(res, 200, {
-          userId: phylloUser.id,
+          userId: phylloUserId,
           token: sdkToken.token,
           environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
           clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
@@ -2660,6 +2724,331 @@ ${JSON.stringify(compactPosts)}`;
         sendJson(res, 500, { error: 'phyllo_sdk_config_failed' });
       }
     })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) {
+          sendJson(res, 401, { error: 'unauthorized' });
+          return;
+        }
+        const plan = (req.user && req.user.plan) || 'free';
+        const windowDays = plan === 'pro' || plan === 'teams' ? 365 : 30;
+        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+        let accountsQuery = supabaseAdmin.from('phyllo_accounts').select('*').eq('promptly_user_id', userId);
+        const { data: accounts } = await accountsQuery;
+        const accountIds = (accounts || []).map((a) => a.phyllo_account_id);
+        if (!accountIds.length) {
+          sendJson(res, 200, { followers_total: 0, followers_growth_30d: 0, avg_engagement_rate: 0, retention_rate: 0 });
+          return;
+        }
+        const limitedAccounts = plan === 'free' ? accountIds.slice(0, 1) : accountIds;
+        const { data: daily } = await supabaseAdmin
+          .from('phyllo_account_daily')
+          .select('*')
+          .in('phyllo_account_id', limitedAccounts)
+          .gte('date', since.toISOString().slice(0, 10));
+        if (!daily || !daily.length) {
+          sendJson(res, 200, { followers_total: 0, followers_growth_30d: 0, avg_engagement_rate: 0, retention_rate: 0 });
+          return;
+        }
+        const latestByAccount = {};
+        const earliestByAccount = {};
+        daily.forEach((row) => {
+          const key = row.phyllo_account_id;
+          if (!latestByAccount[key] || new Date(row.date) > new Date(latestByAccount[key].date)) latestByAccount[key] = row;
+          if (!earliestByAccount[key] || new Date(row.date) < new Date(earliestByAccount[key].date)) earliestByAccount[key] = row;
+        });
+        const followersTotal = Object.values(latestByAccount).reduce((sum, r) => sum + Number(r.followers || 0), 0);
+        const followersPast = Object.values(earliestByAccount).reduce((sum, r) => sum + Number(r.followers || 0), 0);
+        const followersGrowth = followersTotal - followersPast;
+        const engagementRates = daily.map((r) => Number(r.engagement_rate || 0)).filter((n) => !isNaN(n));
+        const avgEngagement = engagementRates.length ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length : 0;
+        const retentionRate = followersPast ? followersTotal / followersPast : 0;
+        sendJson(res, 200, {
+          followers_total: followersTotal,
+          followers_growth_30d: followersGrowth,
+          avg_engagement_rate: avgEngagement,
+          retention_rate: retentionRate,
+        });
+      } catch (err) {
+        console.error('[Analytics overview] error', err);
+        sendJson(res, 500, { error: 'analytics_overview_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/posts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        const plan = (req.user && req.user.plan) || 'free';
+        const windowDays = plan === 'pro' || plan === 'teams' ? 365 : 30;
+        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+        const limit = Math.min(parseInt(parsed.query?.limit, 10) || 50, 200);
+        const offset = parseInt(parsed.query?.offset, 10) || 0;
+        const { data: posts } = await supabaseAdmin
+          .from('phyllo_posts')
+          .select('*')
+          .eq('promptly_user_id', userId)
+          .gte('published_at', since.toISOString())
+          .order('published_at', { ascending: false })
+          .range(offset, offset + limit - 1);
+        const ids = (posts || []).map((p) => p.phyllo_content_id);
+        if (!ids.length) return sendJson(res, 200, []);
+        const { data: metrics } = await supabaseAdmin
+          .from('phyllo_post_metrics')
+          .select('*')
+          .in('phyllo_content_id', ids)
+          .order('collected_at', { ascending: false });
+        const latest = {};
+        (metrics || []).forEach((m) => {
+          if (!latest[m.phyllo_content_id]) latest[m.phyllo_content_id] = m;
+        });
+        const result = (posts || []).map((p) => {
+          const m = latest[p.phyllo_content_id] || {};
+          const engagement = Number(m.views || 0) > 0
+            ? ((Number(m.likes || 0) + Number(m.comments || 0) + Number(m.shares || 0) + Number(m.saves || 0)) / Number(m.views || 1))
+            : 0;
+          return {
+            platform: p.platform,
+            title: p.title,
+            views: Number(m.views || 0),
+            engagement_rate: engagement,
+            published_at: p.published_at,
+          };
+        });
+        sendJson(res, 200, result);
+      } catch (err) {
+        console.error('[Analytics posts] error', err);
+        sendJson(res, 500, { error: 'analytics_posts_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        const { data: rows } = await supabaseAdmin
+          .from('growth_insights')
+          .select('*')
+          .eq('promptly_user_id', userId)
+          .order('week_start', { ascending: false })
+          .limit(4);
+        sendJson(res, 200, rows || []);
+      } catch (err) {
+        console.error('[Analytics insights] error', err);
+        sendJson(res, 500, { error: 'analytics_insights_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/internal/phyllo/sync' && req.method === 'POST') {
+    const token = req.headers['x-internal-token'] || '';
+    if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
+      sendJson(res, 401, { error: 'unauthorized' });
+      return;
+    }
+    if (!supabaseAdmin) {
+      sendJson(res, 500, { error: 'supabase_not_configured' });
+      return;
+    }
+    try {
+      const { data: accounts } = await supabaseAdmin.from('phyllo_accounts').select('*');
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const until = new Date();
+      for (const acct of accounts || []) {
+        try {
+          const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
+          const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
+          const items = contents?.data || contents?.items || contents || [];
+          const metricsByDay = {};
+          for (const item of items) {
+            const contentId = item.id || item.content_id;
+            if (!contentId) continue;
+            const platform = item.platform || acct.work_platform_id || 'unknown';
+            const publishedAt = item.published_at || item.posted_at || item.created_at || null;
+            await supabaseAdmin.from('phyllo_posts').upsert({
+              phyllo_content_id: contentId,
+              phyllo_account_id: acct.phyllo_account_id,
+              promptly_user_id: acct.promptly_user_id,
+              platform,
+              title: item.title || item.caption || null,
+              caption: item.caption || null,
+              url: item.url || item.link || null,
+              published_at: publishedAt,
+            }, { onConflict: 'phyllo_content_id' });
+            const metrics = item.metrics || item.stats || item;
+            const views = Number(metrics.views || metrics.impressions || 0);
+            const likes = Number(metrics.likes || 0);
+            const comments = Number(metrics.comments || 0);
+            const shares = Number(metrics.shares || metrics.reposts || 0);
+            const saves = Number(metrics.saves || 0);
+            await supabaseAdmin.from('phyllo_post_metrics').insert({
+              phyllo_content_id: contentId,
+              collected_at: new Date().toISOString(),
+              views,
+              likes,
+              comments,
+              shares,
+              saves,
+            });
+            const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
+            if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+            metricsByDay[dateKey].views += views;
+            metricsByDay[dateKey].likes += likes;
+            metricsByDay[dateKey].comments += comments;
+            metricsByDay[dateKey].shares += shares;
+            metricsByDay[dateKey].saves += saves;
+          }
+          const engagementData = engagement?.data || engagement?.items || engagement || [];
+          engagementData.forEach((row) => {
+            const dateKey = row.date || row.day || row.collected_at;
+            if (!dateKey) return;
+            if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
+            metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
+            metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
+            metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
+          });
+          for (const [dateKey, agg] of Object.entries(metricsByDay)) {
+            await supabaseAdmin.from('phyllo_account_daily').upsert({
+              phyllo_account_id: acct.phyllo_account_id,
+              date: dateKey,
+              followers: agg.followers || null,
+              impressions: agg.impressions || agg.views || null,
+              engagement_rate: agg.engagement_rate || null,
+            }, { onConflict: 'phyllo_account_id,date' });
+          }
+        } catch (err) {
+          console.error('[Phyllo Sync] account failed', acct.phyllo_account_id, err?.response?.data || err);
+        }
+      }
+      sendJson(res, 200, { ok: true, accounts: (accounts || []).length });
+    } catch (err) {
+      console.error('[Phyllo Sync] error', err);
+      sendJson(res, 500, { error: 'sync_failed' });
+    }
+    return;
+  }
+
+  if (parsed.pathname === '/internal/analytics/insights' && req.method === 'POST') {
+    const token = req.headers['x-internal-token'] || '';
+    if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
+      sendJson(res, 401, { error: 'unauthorized' });
+      return;
+    }
+    if (!supabaseAdmin || !OPENAI_API_KEY) {
+      sendJson(res, 500, { error: 'missing_openai_or_supabase' });
+      return;
+    }
+    try {
+      const { data: users } = await supabaseAdmin
+        .from('phyllo_posts')
+        .select('promptly_user_id')
+        .not('promptly_user_id', 'is', null);
+      const userIds = Array.from(new Set((users || []).map((r) => r.promptly_user_id))).filter(Boolean);
+      const weekStart = (() => {
+        const d = new Date();
+        const day = d.getUTCDay();
+        const diff = (day === 0 ? -6 : 1) - day;
+        d.setUTCDate(d.getUTCDate() + diff);
+        d.setUTCHours(0, 0, 0, 0);
+        return d.toISOString().slice(0, 10);
+      })();
+
+      for (const userId of userIds) {
+        try {
+          const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          const { data: posts } = await supabaseAdmin
+            .from('phyllo_posts')
+            .select('*')
+            .eq('promptly_user_id', userId)
+            .gte('published_at', since.toISOString());
+          if (!posts || !posts.length) continue;
+          const ids = posts.map((p) => p.phyllo_content_id);
+          const { data: metrics } = await supabaseAdmin
+            .from('phyllo_post_metrics')
+            .select('*')
+            .in('phyllo_content_id', ids)
+            .order('collected_at', { ascending: false });
+          const latest = {};
+          (metrics || []).forEach((m) => {
+            if (!latest[m.phyllo_content_id]) latest[m.phyllo_content_id] = m;
+          });
+          const payload = {
+            posts: posts.map((p) => {
+              const m = latest[p.phyllo_content_id] || {};
+              return {
+                platform: p.platform,
+                views: Number(m.views || 0),
+                likes: Number(m.likes || 0),
+                comments: Number(m.comments || 0),
+                shares: Number(m.shares || 0),
+                saves: Number(m.saves || 0),
+                published_at: p.published_at,
+                title: p.title,
+                caption: p.caption,
+              };
+            }),
+          };
+          const prompt = [
+            { role: 'system', content: 'You are an analytics assistant for content creators.' },
+            {
+              role: 'user',
+              content: `Analyze these posts and return JSON { "summary": string, "recommendations": [ { "title": string, "description": string } ] }. Data: ${JSON.stringify(payload)}`,
+            },
+          ];
+          const payloadJson = JSON.stringify({
+            model: process.env.OPENAI_MODEL_ANALYTICS || 'gpt-4o-mini',
+            messages: prompt,
+            temperature: 0.4,
+            max_tokens: 800,
+          });
+          const options = {
+            hostname: 'api.openai.com',
+            path: '/v1/chat/completions',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payloadJson),
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+            },
+          };
+          const completion = await openAIRequest(options, payloadJson);
+          const content = completion.choices?.[0]?.message?.content || '';
+          let summary = '';
+          let recommendations = [];
+          try {
+            const parsed = JSON.parse(content);
+            summary = parsed.summary || content;
+            recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+          } catch (e) {
+            summary = content;
+          }
+          await supabaseAdmin.from('growth_insights').upsert({
+            promptly_user_id: userId,
+            week_start: weekStart,
+            summary: summary || 'No insights generated.',
+            recommendations,
+          }, { onConflict: 'promptly_user_id,week_start' });
+        } catch (err) {
+          console.error('[Insights] user failed', userId, err?.response?.data || err);
+        }
+      }
+      sendJson(res, 200, { ok: true, users: userIds.length });
+    } catch (err) {
+      console.error('[Insights] error', err);
+      sendJson(res, 500, { error: 'insights_failed' });
+    }
     return;
   }
 

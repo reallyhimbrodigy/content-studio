@@ -141,3 +141,71 @@ CREATE POLICY "Users can delete own design assets"
 
 CREATE INDEX IF NOT EXISTS idx_design_assets_user_id ON public.design_assets(user_id);
 CREATE INDEX IF NOT EXISTS idx_design_assets_calendar_day ON public.design_assets(calendar_day_id);
+
+-- Phyllo / Growth Analytics tables
+CREATE TABLE IF NOT EXISTS phyllo_users (
+  id uuid primary key default gen_random_uuid(),
+  promptly_user_id uuid not null,
+  phyllo_user_id text not null,
+  created_at timestamptz default now(),
+  unique (promptly_user_id),
+  unique (phyllo_user_id)
+);
+
+CREATE TABLE IF NOT EXISTS phyllo_accounts (
+  id uuid primary key default gen_random_uuid(),
+  phyllo_account_id text not null,
+  phyllo_user_id text not null,
+  promptly_user_id uuid not null,
+  work_platform_id text not null,
+  username text,
+  profile_name text,
+  created_at timestamptz default now(),
+  unique (phyllo_account_id)
+);
+
+CREATE TABLE IF NOT EXISTS phyllo_posts (
+  id uuid primary key default gen_random_uuid(),
+  phyllo_content_id text not null,
+  phyllo_account_id text not null,
+  promptly_user_id uuid not null,
+  platform text not null,
+  title text,
+  caption text,
+  url text,
+  published_at timestamptz,
+  created_at timestamptz default now(),
+  unique (phyllo_content_id)
+);
+
+CREATE TABLE IF NOT EXISTS phyllo_post_metrics (
+  id uuid primary key default gen_random_uuid(),
+  phyllo_content_id text not null,
+  collected_at timestamptz default now(),
+  views bigint,
+  likes bigint,
+  comments bigint,
+  shares bigint,
+  saves bigint
+);
+
+CREATE TABLE IF NOT EXISTS phyllo_account_daily (
+  id uuid primary key default gen_random_uuid(),
+  phyllo_account_id text not null,
+  date date not null,
+  followers bigint,
+  impressions bigint,
+  engagement_rate numeric,
+  created_at timestamptz default now(),
+  unique (phyllo_account_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS growth_insights (
+  id uuid primary key default gen_random_uuid(),
+  promptly_user_id uuid not null,
+  week_start date not null,
+  summary text not null,
+  recommendations jsonb,
+  created_at timestamptz default now(),
+  unique (promptly_user_id, week_start)
+);

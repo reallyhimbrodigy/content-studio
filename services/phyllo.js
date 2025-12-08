@@ -38,7 +38,27 @@ async function createSdkToken({ userId }) {
   return res.data;
 }
 
+async function fetchAccountContents({ accountId, since, until }) {
+  const client = getClient();
+  const params = {};
+  if (since) params.from_date = since.toISOString();
+  if (until) params.to_date = until.toISOString();
+  const res = await client.get(`/v1/accounts/${accountId}/contents`, { params });
+  return res.data;
+}
+
+async function fetchAccountEngagement({ accountId, since, until }) {
+  const client = getClient();
+  const params = {};
+  if (since) params.from_date = since.toISOString();
+  if (until) params.to_date = until.toISOString();
+  const res = await client.get(`/v1/accounts/${accountId}/engagement`, { params });
+  return res.data;
+}
+
 module.exports = {
   createPhylloUser,
   createSdkToken,
+  fetchAccountContents,
+  fetchAccountEngagement,
 };
