@@ -4565,6 +4565,8 @@ body.prefers-reduced-motion *::after {
   position: relative;
   isolation: isolate;
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
+  min-height: 340px;
+  height: auto;
 }
 
 .calendar-card::after {
