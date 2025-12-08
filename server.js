@@ -479,8 +479,13 @@ function safePlacidText(value, max = 300) {
   return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-function mergeBrandProfileIntoDesignData(designData = {}, brandProfile = null) {
-  if (!brandProfile) return designData;
+function mergeBrandProfileIntoDesignData(designData = {}, brandProfile = null, fallbackBrandColor = '') {
+  if (!brandProfile) {
+    if (fallbackBrandColor && !designData.primary_color) {
+      return { ...designData, primary_color: fallbackBrandColor, brand_color: designData.brand_color || fallbackBrandColor };
+    }
+    return designData;
+  }
   const next = { ...designData };
   const logo = brandProfile.logo_url || brandProfile.logoUrl;
   const heading = brandProfile.heading_font || brandProfile.headingFont;
@@ -494,7 +499,7 @@ function mergeBrandProfileIntoDesignData(designData = {}, brandProfile = null) {
   if (primary && !next.primary_color) next.primary_color = primary;
   if (secondary && !next.secondary_color) next.secondary_color = secondary;
   if (accent && !next.accent_color) next.accent_color = accent;
-  if (!next.brand_color) next.brand_color = next.primary_color || primary || next.brand_primary_color;
+  if (!next.brand_color) next.brand_color = next.primary_color || primary || next.brand_primary_color || fallbackBrandColor;
   return next;
 }
 
@@ -563,7 +568,7 @@ async function handleCreateDesignAsset(req, res) {
     let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
     designData.type = type;
     designData = applyTypeSpecificDefaults(designData, brandProfile, calendarDay);
-    designData = mergeBrandProfileIntoDesignData(designData, brandProfile);
+    designData = mergeBrandProfileIntoDesignData(designData, brandProfile, requestBody.brand_color || requestBody.brandColor || '');
 
     // Ensure logo is a publicly reachable URL
     if (designData.logo && designData.logo.startsWith('data:image/')) {

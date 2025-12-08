@@ -35,7 +35,7 @@ function buildPlacidLayers(variables = {}) {
     cta: { text: variables.cta || '' },
   };
 
-  // Image layers – use exact template layer names
+  // Image layers – use exact template layer names; include brand_logo as alias if template uses it
   if (variables.background_image) {
     layers.background_image = {
       image_url: variables.background_image,
@@ -44,6 +44,9 @@ function buildPlacidLayers(variables = {}) {
 
   if (variables.logo) {
     layers.logo = {
+      image_url: variables.logo,
+    };
+    layers.brand_logo = {
       image_url: variables.logo,
     };
   }
