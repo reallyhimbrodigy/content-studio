@@ -6,7 +6,8 @@ const {
   PLACID_CAROUSEL_TEMPLATE_ID,
 } = process.env;
 
-const PLACID_REST_URL = 'https://api.placid.app/api/rest/images';
+const PLACID_API_BASE = 'https://api.placid.app/api/rest';
+const PLACID_REST_URL = `${PLACID_API_BASE}/images`;
 
 function resolvePlacidTemplateId(type) {
   const key = String(type || '').toLowerCase();
@@ -34,17 +35,17 @@ function buildPlacidLayers(variables = {}) {
     cta: { text: variables.cta || '' },
   };
 
-  // Image layers: include common aliases/properties to match template configuration
+  // Image layers – use exact template layer names
   if (variables.background_image) {
-    const bgUrl = variables.background_image;
-    layers.background_image = { image_url: bgUrl, image: bgUrl, src: bgUrl };
-    layers.bg = { image_url: bgUrl, image: bgUrl, src: bgUrl };
+    layers.background_image = {
+      image_url: variables.background_image,
+    };
   }
 
   if (variables.logo) {
-    const logoUrl = variables.logo;
-    layers.logo = { image_url: logoUrl, image: logoUrl, src: logoUrl };
-    layers.brand_logo = { image_url: logoUrl, image: logoUrl, src: logoUrl };
+    layers.logo = {
+      image_url: variables.logo,
+    };
   }
 
   // Colors
@@ -69,44 +70,12 @@ function buildPlacidLayers(variables = {}) {
     layers.body_font = { text: variables.body_font };
   }
 
+  console.log('[Placid] buildPlacidLayers', layers);
   return layers;
 }
 
-function sleep(ms) {
+function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function pollPlacidImage(pollingUrl, maxAttempts = 20, delayMs = 1000) {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    let res;
-    try {
-      res = await axios.get(pollingUrl, {
-        headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
-        timeout: 20000,
-      });
-    } catch (err) {
-      console.error('[Placid] pollPlacidImage error', {
-        attempt,
-        message: err.message,
-        status: err.response?.status,
-        data: err.response?.data,
-      });
-      throw err;
-    }
-
-    const data = res?.data || {};
-    const url = data.image_url || data.transfer_url || null;
-    console.log('[Placid] pollPlacidImage attempt', {
-      attempt,
-      status: data.status,
-      hasUrl: Boolean(url),
-    });
-
-    if (url) return data;
-
-    await sleep(delayMs);
-  }
-  return null;
 }
 
 async function createPlacidRender({ templateId, data, variables }) {
@@ -117,17 +86,21 @@ async function createPlacidRender({ templateId, data, variables }) {
     layers: buildPlacidLayers(variables || data || {}),
   };
   console.log('[Placid] createPlacidRender payload', { templateId, payload });
-  let initial;
   try {
-    const { data: response } = await axios.post(PLACID_REST_URL, payload, {
+    const { data: response } = await axios.post(`${PLACID_API_BASE}/images`, payload, {
       headers: {
         Authorization: `Bearer ${PLACID_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000,
+      timeout: 15000,
     });
-    initial = response;
     console.log('[Placid] createPlacidRender response', response);
+    return {
+      id: response?.id || null,
+      status: response?.status || 'queued',
+      polling_url: response?.polling_url || null,
+      raw: response,
+    };
   } catch (err) {
     console.error('[Placid] createPlacidRender error', {
       message: err?.message,
@@ -136,41 +109,68 @@ async function createPlacidRender({ templateId, data, variables }) {
     });
     throw err;
   }
+}
 
-  const immediateUrl = initial?.image_url || initial?.transfer_url || initial?.url || initial?.image?.url || null;
-  if (immediateUrl) {
-    return {
-      id: initial?.id || null,
-      status: initial?.status || 'ready',
-      url: immediateUrl,
-      raw: initial,
-    };
-  }
+async function pollPlacidImage(imageId) {
+  ensurePlacidConfigured();
+  if (!imageId) throw new Error('missing_placid_image_id');
+  const url = `${PLACID_API_BASE}/images/${imageId}`;
+  let lastData = null;
+  console.log('[Placid] pollPlacidImage start', { imageId });
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      const { data } = await axios.get(url, {
+        headers: { Authorization: `Bearer ${PLACID_API_KEY}` },
+        timeout: 10000,
+      });
+      lastData = data;
+      const hasUrl = Boolean(data.image_url || data.transfer_url);
+      console.log('[Placid] pollPlacidImage attempt', {
+        attempt,
+        status: data.status,
+        hasUrl,
+        errors: data.errors,
+      });
 
-  if (!initial?.polling_url) {
-    return {
-      id: initial?.id || null,
-      status: initial?.status || 'unknown',
-      url: null,
-      raw: initial,
-    };
-  }
+      if (data.status === 'ready' && hasUrl) {
+        return {
+          id: data.id,
+          status: 'ready',
+          url: data.image_url || data.transfer_url,
+          raw: data,
+        };
+      }
 
-  const finalData = await pollPlacidImage(initial.polling_url);
-  if (!finalData) {
-    return {
-      id: initial?.id || null,
-      status: 'timeout',
-      url: null,
-      raw: initial,
-    };
+      if (data.status === 'error') {
+        return {
+          id: data.id,
+          status: 'error',
+          url: null,
+          raw: data,
+        };
+      }
+    } catch (err) {
+      console.error('[Placid] pollPlacidImage error', {
+        attempt,
+        message: err?.message,
+        status: err?.response?.status,
+        data: err?.response?.data,
+      });
+      return {
+        id: imageId,
+        status: 'error',
+        url: null,
+        raw: err?.response?.data || null,
+      };
+    }
+    await wait(1500);
   }
 
   return {
-    id: finalData?.id || initial?.id || null,
-    status: finalData?.status || 'ready',
-    url: finalData?.image_url || finalData?.transfer_url || finalData?.url || finalData?.image?.url || null,
-    raw: finalData,
+    id: imageId,
+    status: 'timeout',
+    url: null,
+    raw: lastData,
   };
 }
 
@@ -187,6 +187,7 @@ async function validatePlacidTemplateConfig() {
 
 module.exports = {
   createPlacidRender,
+  pollPlacidImage,
   isPlacidConfigured,
   resolvePlacidTemplateId,
   validatePlacidTemplateConfig,
