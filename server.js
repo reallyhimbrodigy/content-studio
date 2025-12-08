@@ -2853,90 +2853,92 @@ ${JSON.stringify(compactPosts)}`;
   }
 
   if (parsed.pathname === '/internal/phyllo/sync' && req.method === 'POST') {
-    const token = req.headers['x-internal-token'] || '';
-    if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
-      sendJson(res, 401, { error: 'unauthorized' });
-      return;
-    }
-    if (!supabaseAdmin) {
-      sendJson(res, 500, { error: 'supabase_not_configured' });
-      return;
-    }
-    try {
-      const { data: accounts } = await supabaseAdmin.from('phyllo_accounts').select('*');
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const until = new Date();
-      for (const acct of accounts || []) {
-        try {
-          const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
-          const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
-          const items = contents?.data || contents?.items || contents || [];
-          const metricsByDay = {};
-          for (const item of items) {
-            const contentId = item.id || item.content_id;
-            if (!contentId) continue;
-            const platform = item.platform || acct.work_platform_id || 'unknown';
-            const publishedAt = item.published_at || item.posted_at || item.created_at || null;
-            await supabaseAdmin.from('phyllo_posts').upsert({
-              phyllo_content_id: contentId,
-              phyllo_account_id: acct.phyllo_account_id,
-              promptly_user_id: acct.promptly_user_id,
-              platform,
-              title: item.title || item.caption || null,
-              caption: item.caption || null,
-              url: item.url || item.link || null,
-              published_at: publishedAt,
-            }, { onConflict: 'phyllo_content_id' });
-            const metrics = item.metrics || item.stats || item;
-            const views = Number(metrics.views || metrics.impressions || 0);
-            const likes = Number(metrics.likes || 0);
-            const comments = Number(metrics.comments || 0);
-            const shares = Number(metrics.shares || metrics.reposts || 0);
-            const saves = Number(metrics.saves || 0);
-            await supabaseAdmin.from('phyllo_post_metrics').insert({
-              phyllo_content_id: contentId,
-              collected_at: new Date().toISOString(),
-              views,
-              likes,
-              comments,
-              shares,
-              saves,
-            });
-            const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
-            if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
-            metricsByDay[dateKey].views += views;
-            metricsByDay[dateKey].likes += likes;
-            metricsByDay[dateKey].comments += comments;
-            metricsByDay[dateKey].shares += shares;
-            metricsByDay[dateKey].saves += saves;
-          }
-          const engagementData = engagement?.data || engagement?.items || engagement || [];
-          engagementData.forEach((row) => {
-            const dateKey = row.date || row.day || row.collected_at;
-            if (!dateKey) return;
-            if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
-            metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
-            metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
-            metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
-          });
-          for (const [dateKey, agg] of Object.entries(metricsByDay)) {
-            await supabaseAdmin.from('phyllo_account_daily').upsert({
-              phyllo_account_id: acct.phyllo_account_id,
-              date: dateKey,
-              followers: agg.followers || null,
-              impressions: agg.impressions || agg.views || null,
-              engagement_rate: agg.engagement_rate || null,
-            }, { onConflict: 'phyllo_account_id,date' });
-          }
-        } catch (err) {
-          console.error('[Phyllo Sync] account failed', acct.phyllo_account_id, err?.response?.data || err);
-        }
+    (async () => {
+      const token = req.headers['x-internal-token'] || '';
+      if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
+        sendJson(res, 401, { error: 'unauthorized' });
+        return;
       }
-      sendJson(res, 200, { ok: true, accounts: (accounts || []).length });
-    } catch (err) {
-      console.error('[Phyllo Sync] error', err);
-      sendJson(res, 500, { error: 'sync_failed' });
-    }
+      if (!supabaseAdmin) {
+        sendJson(res, 500, { error: 'supabase_not_configured' });
+        return;
+      }
+      try {
+        const { data: accounts } = await supabaseAdmin.from('phyllo_accounts').select('*');
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const until = new Date();
+        for (const acct of accounts || []) {
+          try {
+            const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
+            const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
+            const items = contents?.data || contents?.items || contents || [];
+            const metricsByDay = {};
+            for (const item of items) {
+              const contentId = item.id || item.content_id;
+              if (!contentId) continue;
+              const platform = item.platform || acct.work_platform_id || 'unknown';
+              const publishedAt = item.published_at || item.posted_at || item.created_at || null;
+              await supabaseAdmin.from('phyllo_posts').upsert({
+                phyllo_content_id: contentId,
+                phyllo_account_id: acct.phyllo_account_id,
+                promptly_user_id: acct.promptly_user_id,
+                platform,
+                title: item.title || item.caption || null,
+                caption: item.caption || null,
+                url: item.url || item.link || null,
+                published_at: publishedAt,
+              }, { onConflict: 'phyllo_content_id' });
+              const metrics = item.metrics || item.stats || item;
+              const views = Number(metrics.views || metrics.impressions || 0);
+              const likes = Number(metrics.likes || 0);
+              const comments = Number(metrics.comments || 0);
+              const shares = Number(metrics.shares || metrics.reposts || 0);
+              const saves = Number(metrics.saves || 0);
+              await supabaseAdmin.from('phyllo_post_metrics').insert({
+                phyllo_content_id: contentId,
+                collected_at: new Date().toISOString(),
+                views,
+                likes,
+                comments,
+                shares,
+                saves,
+              });
+              const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
+              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+              metricsByDay[dateKey].views += views;
+              metricsByDay[dateKey].likes += likes;
+              metricsByDay[dateKey].comments += comments;
+              metricsByDay[dateKey].shares += shares;
+              metricsByDay[dateKey].saves += saves;
+            }
+            const engagementData = engagement?.data || engagement?.items || engagement || [];
+            engagementData.forEach((row) => {
+              const dateKey = row.date || row.day || row.collected_at;
+              if (!dateKey) return;
+              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
+              metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
+              metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
+              metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
+            });
+            for (const [dateKey, agg] of Object.entries(metricsByDay)) {
+              await supabaseAdmin.from('phyllo_account_daily').upsert({
+                phyllo_account_id: acct.phyllo_account_id,
+                date: dateKey,
+                followers: agg.followers || null,
+                impressions: agg.impressions || agg.views || null,
+                engagement_rate: agg.engagement_rate || null,
+              }, { onConflict: 'phyllo_account_id,date' });
+            }
+          } catch (err) {
+            console.error('[Phyllo Sync] account failed', acct.phyllo_account_id, err?.response?.data || err);
+          }
+        }
+        sendJson(res, 200, { ok: true, accounts: (accounts || []).length });
+      } catch (err) {
+        console.error('[Phyllo Sync] error', err);
+        sendJson(res, 500, { error: 'sync_failed' });
+      }
+    })();
     return;
   }
 
