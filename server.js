@@ -421,6 +421,25 @@ function resolveBackgroundAspectForType(type) {
   return '4:5';
 }
 
+async function fetchBrandBrainRow(userId) {
+  if (!supabaseAdmin || !userId) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('brand_brains')
+      .select('logo_url,heading_font,body_font,primary_color,secondary_color,accent_color')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      console.warn('[BrandBrain] Supabase fetch error', { userId, message: error.message });
+      return null;
+    }
+    return data || null;
+  } catch (err) {
+    console.warn('[BrandBrain] Supabase fetch exception', { userId, message: err?.message });
+    return null;
+  }
+}
+
 async function maybeAttachGeneratedBackground(designData, brandProfile) {
   if (!STABILITY_API_KEY || designData.background_image) return designData;
   const promptParts = [
@@ -538,7 +557,7 @@ async function handleCreateDesignAsset(req, res) {
       });
     }
 
-    const brandProfile = await getBrandBrainForUser(user.id);
+    const brandProfile = (await fetchBrandBrainRow(user.id)) || (await getBrandBrainForUser(user.id));
     console.log('[BrandBrain] for user', user.id, brandProfile);
     const calendarDay = await loadCalendarDay(calendarDayId, user.id);
     let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
