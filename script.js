@@ -4414,11 +4414,17 @@ window.showUpgradeModal = showUpgradeModal;
 function openBrandModal() {
   // Use flex to take advantage of modal-overlay centering styles
   if (brandModal) brandModal.style.display = 'flex';
-  if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
+  // Explicitly lock page scroll while Brand Brain is open
+  document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
+  document.body.dataset.prevOverflow = document.body.style.overflow || '';
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
 }
 function closeBrandModal() {
   if (brandModal) brandModal.style.display = 'none';
-  if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll();
+  // Restore previous overflow values to re-enable scroll
+  document.documentElement.style.overflow = document.documentElement.dataset.prevOverflow || '';
+  document.body.style.overflow = document.body.dataset.prevOverflow || '';
 }
 
 function updateBrandLogoPreview(src) {
