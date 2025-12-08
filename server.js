@@ -14,6 +14,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
+const { createPhylloUser, createSdkToken } = require('./services/phyllo');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -2624,6 +2625,43 @@ ${JSON.stringify(compactPosts)}`;
     const trimmed = rawPath.replace(/\/+$/, '');
     return (trimmed || '/').toLowerCase();
   })();
+
+  if (parsed.pathname === '/api/phyllo/webhook' && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        console.log('[Phyllo] Webhook event received:', body?.type || 'unknown', body);
+        // TODO: handle account mapping and metric sync when moving out of sandbox.
+        sendJson(res, 200, { received: true });
+      })
+      .catch((err) => {
+        console.error('[Phyllo] Webhook handler error:', err);
+        sendJson(res, 500, { error: 'phyllo_webhook_error' });
+      });
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
+    (async () => {
+      try {
+        const promptlyUserId = (req.user && req.user.id) || 'demo-user';
+        const phylloUser = await createPhylloUser({
+          name: 'Promptly User',
+          externalId: promptlyUserId,
+        });
+        const sdkToken = await createSdkToken({ userId: phylloUser.id });
+        sendJson(res, 200, {
+          userId: phylloUser.id,
+          token: sdkToken.token,
+          environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
+          clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
+        });
+      } catch (err) {
+        console.error('[Phyllo] sdk-config error:', err?.response?.data || err);
+        sendJson(res, 500, { error: 'phyllo_sdk_config_failed' });
+      }
+    })();
+    return;
+  }
 
   if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
     res.writeHead(410, { 'Content-Type': 'application/json' });
