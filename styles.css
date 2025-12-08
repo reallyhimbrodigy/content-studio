@@ -6162,3 +6162,11 @@ html.no-scroll,
 body.no-scroll {
   overflow: hidden !important;
 }
+
+
+/* Prevent calendar cards from stretching when a neighbor expands */
+.calendar__grid { align-items: start; }
+
+.calendar-card { height: auto; flex: 0 0 auto; }
+
+.calendar-card.expanded { height: auto; }
