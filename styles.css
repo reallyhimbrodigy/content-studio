@@ -5521,6 +5521,73 @@ body.prefers-reduced-motion *::after {
   margin-top: 1rem;
 }
 
+.brand-brain-modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-brain-content {
+  width: 100%;
+  max-width: 560px;
+  padding: 28px 32px;
+  border-radius: 24px;
+  background: rgba(10, 10, 20, 0.96);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brand-brain-content h2,
+.brand-brain-content h3,
+.brand-brain-content .brand-brain-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.brand-brain-content .brand-brain-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.brand-brain-content textarea {
+  width: 100%;
+  min-height: 160px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(5, 5, 15, 0.9);
+  padding: 10px 12px;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.brand-brain-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.brand-brain-actions .btn,
+.brand-brain-actions button {
+  min-width: 120px;
+  height: 36px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .brand-brain-content {
+    padding: 20px 18px;
+    border-radius: 18px;
+  }
+}
+
 .brand-modal {
   width: min(1680px, 99vw);
   max-height: 82vh;
