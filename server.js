@@ -2943,114 +2943,116 @@ ${JSON.stringify(compactPosts)}`;
   }
 
   if (parsed.pathname === '/internal/analytics/insights' && req.method === 'POST') {
-    const token = req.headers['x-internal-token'] || '';
-    if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
-      sendJson(res, 401, { error: 'unauthorized' });
-      return;
-    }
-    if (!supabaseAdmin || !OPENAI_API_KEY) {
-      sendJson(res, 500, { error: 'missing_openai_or_supabase' });
-      return;
-    }
-    try {
-      const { data: users } = await supabaseAdmin
-        .from('phyllo_posts')
-        .select('promptly_user_id')
-        .not('promptly_user_id', 'is', null);
-      const userIds = Array.from(new Set((users || []).map((r) => r.promptly_user_id))).filter(Boolean);
-      const weekStart = (() => {
-        const d = new Date();
-        const day = d.getUTCDay();
-        const diff = (day === 0 ? -6 : 1) - day;
-        d.setUTCDate(d.getUTCDate() + diff);
-        d.setUTCHours(0, 0, 0, 0);
-        return d.toISOString().slice(0, 10);
-      })();
-
-      for (const userId of userIds) {
-        try {
-          const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-          const { data: posts } = await supabaseAdmin
-            .from('phyllo_posts')
-            .select('*')
-            .eq('promptly_user_id', userId)
-            .gte('published_at', since.toISOString());
-          if (!posts || !posts.length) continue;
-          const ids = posts.map((p) => p.phyllo_content_id);
-          const { data: metrics } = await supabaseAdmin
-            .from('phyllo_post_metrics')
-            .select('*')
-            .in('phyllo_content_id', ids)
-            .order('collected_at', { ascending: false });
-          const latest = {};
-          (metrics || []).forEach((m) => {
-            if (!latest[m.phyllo_content_id]) latest[m.phyllo_content_id] = m;
-          });
-          const payload = {
-            posts: posts.map((p) => {
-              const m = latest[p.phyllo_content_id] || {};
-              return {
-                platform: p.platform,
-                views: Number(m.views || 0),
-                likes: Number(m.likes || 0),
-                comments: Number(m.comments || 0),
-                shares: Number(m.shares || 0),
-                saves: Number(m.saves || 0),
-                published_at: p.published_at,
-                title: p.title,
-                caption: p.caption,
-              };
-            }),
-          };
-          const prompt = [
-            { role: 'system', content: 'You are an analytics assistant for content creators.' },
-            {
-              role: 'user',
-              content: `Analyze these posts and return JSON { "summary": string, "recommendations": [ { "title": string, "description": string } ] }. Data: ${JSON.stringify(payload)}`,
-            },
-          ];
-          const payloadJson = JSON.stringify({
-            model: process.env.OPENAI_MODEL_ANALYTICS || 'gpt-4o-mini',
-            messages: prompt,
-            temperature: 0.4,
-            max_tokens: 800,
-          });
-          const options = {
-            hostname: 'api.openai.com',
-            path: '/v1/chat/completions',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payloadJson),
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-            },
-          };
-          const completion = await openAIRequest(options, payloadJson);
-          const content = completion.choices?.[0]?.message?.content || '';
-          let summary = '';
-          let recommendations = [];
-          try {
-            const parsed = JSON.parse(content);
-            summary = parsed.summary || content;
-            recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
-          } catch (e) {
-            summary = content;
-          }
-          await supabaseAdmin.from('growth_insights').upsert({
-            promptly_user_id: userId,
-            week_start: weekStart,
-            summary: summary || 'No insights generated.',
-            recommendations,
-          }, { onConflict: 'promptly_user_id,week_start' });
-        } catch (err) {
-          console.error('[Insights] user failed', userId, err?.response?.data || err);
-        }
+    (async () => {
+      const token = req.headers['x-internal-token'] || '';
+      if (!process.env.INTERNAL_SYNC_TOKEN || token !== process.env.INTERNAL_SYNC_TOKEN) {
+        sendJson(res, 401, { error: 'unauthorized' });
+        return;
       }
-      sendJson(res, 200, { ok: true, users: userIds.length });
-    } catch (err) {
-      console.error('[Insights] error', err);
-      sendJson(res, 500, { error: 'insights_failed' });
-    }
+      if (!supabaseAdmin || !OPENAI_API_KEY) {
+        sendJson(res, 500, { error: 'missing_openai_or_supabase' });
+        return;
+      }
+      try {
+        const { data: users } = await supabaseAdmin
+          .from('phyllo_posts')
+          .select('promptly_user_id')
+          .not('promptly_user_id', 'is', null);
+        const userIds = Array.from(new Set((users || []).map((r) => r.promptly_user_id))).filter(Boolean);
+        const weekStart = (() => {
+          const d = new Date();
+          const day = d.getUTCDay();
+          const diff = (day === 0 ? -6 : 1) - day;
+          d.setUTCDate(d.getUTCDate() + diff);
+          d.setUTCHours(0, 0, 0, 0);
+          return d.toISOString().slice(0, 10);
+        })();
+
+        for (const userId of userIds) {
+          try {
+            const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const { data: posts } = await supabaseAdmin
+              .from('phyllo_posts')
+              .select('*')
+              .eq('promptly_user_id', userId)
+              .gte('published_at', since.toISOString());
+            if (!posts || !posts.length) continue;
+            const ids = posts.map((p) => p.phyllo_content_id);
+            const { data: metrics } = await supabaseAdmin
+              .from('phyllo_post_metrics')
+              .select('*')
+              .in('phyllo_content_id', ids)
+              .order('collected_at', { ascending: false });
+            const latest = {};
+            (metrics || []).forEach((m) => {
+              if (!latest[m.phyllo_content_id]) latest[m.phyllo_content_id] = m;
+            });
+            const payload = {
+              posts: posts.map((p) => {
+                const m = latest[p.phyllo_content_id] || {};
+                return {
+                  platform: p.platform,
+                  views: Number(m.views || 0),
+                  likes: Number(m.likes || 0),
+                  comments: Number(m.comments || 0),
+                  shares: Number(m.shares || 0),
+                  saves: Number(m.saves || 0),
+                  published_at: p.published_at,
+                  title: p.title,
+                  caption: p.caption,
+                };
+              }),
+            };
+            const prompt = [
+              { role: 'system', content: 'You are an analytics assistant for content creators.' },
+              {
+                role: 'user',
+                content: `Analyze these posts and return JSON { "summary": string, "recommendations": [ { "title": string, "description": string } ] }. Data: ${JSON.stringify(payload)}`,
+              },
+            ];
+            const payloadJson = JSON.stringify({
+              model: process.env.OPENAI_MODEL_ANALYTICS || 'gpt-4o-mini',
+              messages: prompt,
+              temperature: 0.4,
+              max_tokens: 800,
+            });
+            const options = {
+              hostname: 'api.openai.com',
+              path: '/v1/chat/completions',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payloadJson),
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+            };
+            const completion = await openAIRequest(options, payloadJson);
+            const content = completion.choices?.[0]?.message?.content || '';
+            let summary = '';
+            let recommendations = [];
+            try {
+              const parsed = JSON.parse(content);
+              summary = parsed.summary || content;
+              recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+            } catch (e) {
+              summary = content;
+            }
+            await supabaseAdmin.from('growth_insights').upsert({
+              promptly_user_id: userId,
+              week_start: weekStart,
+              summary: summary || 'No insights generated.',
+              recommendations,
+            }, { onConflict: 'promptly_user_id,week_start' });
+          } catch (err) {
+            console.error('[Insights] user failed', userId, err?.response?.data || err);
+          }
+        }
+        sendJson(res, 200, { ok: true, users: userIds.length });
+      } catch (err) {
+        console.error('[Insights] error', err);
+        sendJson(res, 500, { error: 'insights_failed' });
+      }
+    })();
     return;
   }
 
