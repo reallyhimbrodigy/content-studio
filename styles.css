@@ -6154,3 +6154,11 @@ body.prefers-reduced-motion *::after {
   grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
   gap: 0.5rem;
 }
+body.overlay-open {
+  overflow: hidden;
+}
+
+html.no-scroll,
+body.no-scroll {
+  overflow: hidden !important;
+}

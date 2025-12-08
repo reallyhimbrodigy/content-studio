@@ -12,6 +12,25 @@ import {
   supabase
 } from './user-store.js';
 
+// Global scroll lock helpers
+window.__modalOpenCount = 0;
+window.lockBodyScroll = function () {
+  window.__modalOpenCount += 1;
+  if (window.__modalOpenCount === 1) {
+    document.documentElement.classList.add('no-scroll');
+    document.body.classList.add('no-scroll');
+  }
+};
+window.unlockBodyScroll = function () {
+  if (window.__modalOpenCount > 0) {
+    window.__modalOpenCount -= 1;
+    if (window.__modalOpenCount === 0) {
+      document.documentElement.classList.remove('no-scroll');
+      document.body.classList.remove('no-scroll');
+    }
+  }
+};
+
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
   const pillarFilterMenu = document.getElementById("pillar-filter-menu");
@@ -4341,10 +4360,12 @@ setupLandingSampleActionRedirects();
 // Upgrade modal handlers
 function showUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'flex';
+  if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
 }
 
 function hideUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'none';
+  if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll();
 }
 
 if (upgradeClose) {
@@ -4393,9 +4414,11 @@ window.showUpgradeModal = showUpgradeModal;
 function openBrandModal() {
   // Use flex to take advantage of modal-overlay centering styles
   if (brandModal) brandModal.style.display = 'flex';
+  if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
 }
 function closeBrandModal() {
   if (brandModal) brandModal.style.display = 'none';
+  if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll();
 }
 
 function updateBrandLogoPreview(src) {
