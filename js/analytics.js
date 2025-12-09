@@ -1,7 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const btnTikTok = document.getElementById('connect-tiktok');
-  const btnInstagram = document.getElementById('connect-instagram');
-  const btnYouTube = document.getElementById('connect-youtube');
+  const connectBtn = document.getElementById('connect-account');
 
   let phylloConnectInstance = null;
 
@@ -68,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  if (btnTikTok) btnTikTok.addEventListener('click', openPhyllo);
-  if (btnInstagram) btnInstagram.addEventListener('click', openPhyllo);
-  if (btnYouTube) btnYouTube.addEventListener('click', openPhyllo);
+  if (connectBtn) {
+    connectBtn.addEventListener('click', openPhyllo);
+  }
 });
