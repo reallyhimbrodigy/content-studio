@@ -6357,16 +6357,3 @@ body.no-scroll {
     grid-template-columns: 1fr;
   }
 }
-
-.connect-btn {
-  margin-top: 1rem;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  background: linear-gradient(90deg, #6a5acd, #7f5af0);
-  color: white;
-  display: inline-block;
-}
