@@ -142,6 +142,36 @@ async function createDesignAsset(payload) {
   return data;
 }
 
+async function upsertPhylloAccount({
+  userId,
+  phylloUserId,
+  platform,
+  accountId,
+  workPlatformId,
+  handle,
+  displayName,
+  avatarUrl,
+}) {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  return supabaseAdmin
+    .from('phyllo_accounts')
+    .upsert(
+      {
+        user_id: userId,
+        phyllo_user_id: phylloUserId,
+        platform,
+        account_id: accountId,
+        work_platform_id: workPlatformId,
+        handle,
+        display_name: displayName,
+        avatar_url: avatarUrl,
+        status: 'connected',
+        connected_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,account_id' }
+    );
+}
+
 module.exports = {
   supabaseAdmin,
   getDesignAssetById,
@@ -150,4 +180,5 @@ module.exports = {
   updateDesignAssetStatus,
   createDesignAsset,
   DESIGN_ASSET_URL_COLUMN,
+  upsertPhylloAccount,
 };

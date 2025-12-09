@@ -33,6 +33,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     instance.on('accountConnected', function (accountId, workPlatformId, userId) {
       console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
+
+      // Persist connection server-side (fire-and-forget)
+      fetch('/api/phyllo/account-connected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phylloUserId: userId,
+          accountId,
+          workPlatformId,
+          platform: 'unknown',
+          handle: null,
+          displayName: null,
+          avatarUrl: null,
+        }),
+      }).catch((err) => console.error('[Phyllo] failed to persist accountConnected', err));
     });
 
     instance.on('accountDisconnected', function (accountId, workPlatformId, userId) {

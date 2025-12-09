@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
-const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset } = require('./services/supabase-admin');
+const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset, upsertPhylloAccount } = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const {
   uploadAssetFromUrl,
@@ -2776,6 +2776,56 @@ ${JSON.stringify(compactPosts)}`;
   }
 
   // Mock analytics endpoints (no Supabase/OpenAI yet)
+  if (parsed.pathname === '/api/phyllo/account-connected' && req.method === 'POST') {
+    readJsonBody(req)
+      .then(async (body) => {
+        try {
+          const promptlyUserId = req.user && req.user.id;
+          if (!promptlyUserId) {
+            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          }
+          const {
+            phylloUserId,
+            accountId,
+            workPlatformId,
+            platform,
+            handle,
+            displayName,
+            avatarUrl,
+          } = body || {};
+          if (!phylloUserId || !accountId || !platform) {
+            return sendJson(res, 400, { ok: false, error: 'missing_fields' });
+          }
+          if (!supabaseAdmin || !upsertPhylloAccount) {
+            return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+          }
+          const { error } = await upsertPhylloAccount({
+            userId: promptlyUserId,
+            phylloUserId,
+            platform,
+            accountId,
+            workPlatformId,
+            handle,
+            displayName,
+            avatarUrl,
+          });
+          if (error) {
+            console.error('[Phyllo] upsertPhylloAccount error', error);
+            return sendJson(res, 500, { ok: false, error: 'db_error' });
+          }
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error('[Phyllo] account-connected route error', err);
+          return sendJson(res, 500, { ok: false, error: 'server_error' });
+        }
+      })
+      .catch((err) => {
+        console.error('[Phyllo] account-connected parse error', err);
+        sendJson(res, 500, { ok: false, error: 'parse_error' });
+      });
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
     return sendJson(res, 200, {
       ok: true,
