@@ -14,6 +14,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
+const { getPhylloPosts, getPhylloPostMetrics } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
   createSdkToken,
@@ -2853,6 +2854,75 @@ ${JSON.stringify(compactPosts)}`;
         return sendJson(res, 200, { ok: true, data: data || [] });
       } catch (err) {
         console.error('[Phyllo] fetch accounts error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/data' && req.method === 'GET') {
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data: accounts, error: accErr } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .eq('status', 'connected');
+
+        if (accErr) {
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          data: {
+            accounts: accounts || [],
+            posts: [],
+            insights: [],
+            alerts: [],
+            overview: {
+              followerGrowth: null,
+              engagementRate: null,
+              avgViewsPerPost: null,
+              retentionPct: null,
+            },
+          },
+        });
+      } catch (err) {
+        console.error('[Analytics data] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/test-posts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+
+        const { data: accounts } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'connected');
+
+        if (!accounts || accounts.length === 0) {
+          return sendJson(res, 200, { ok: true, data: [] });
+        }
+
+        const first = accounts[0];
+        const posts = await getPhylloPosts(first.account_id);
+
+        return sendJson(res, 200, { ok: true, data: posts.data || [] });
+      } catch (err) {
+        console.error('[Phyllo] test-posts error', err);
         return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();

@@ -247,6 +247,17 @@ document.addEventListener('DOMContentLoaded', () => {
   loadInsights();
   loadAlerts();
 
+  function loadFullAnalytics() {
+    fetch('/api/analytics/data')
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res || res.ok === false) return;
+        console.log('[Analytics] full dataset', res.data);
+      })
+      .catch((err) => console.error('[Analytics] loadFullAnalytics error', err));
+  }
+
+  loadFullAnalytics();
   function loadConnectedAccounts() {
     fetch('/api/phyllo/accounts')
       .then((r) => r.json())
