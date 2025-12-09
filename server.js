@@ -2686,7 +2686,8 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
       try {
-        const promptlyUserId = (req.user && req.user.id) || 'demo-user';
+        // Sandbox: no auth required
+        const promptlyUserId = 'demo-user';
 
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('phyllo_users')
