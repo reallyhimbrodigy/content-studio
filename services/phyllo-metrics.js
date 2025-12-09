@@ -1,5 +1,6 @@
 async function getPhylloPosts(accountId) {
-  const url = `https://api.sandbox.getphyllo.com/v1/posts?account_id=${accountId}`;
+  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const url = `${base}/v1/posts?account_id=${accountId}`;
   const resp = await fetch(url, {
     headers: {
       'Client-Id': process.env.PHYLLO_CLIENT_ID,
@@ -11,7 +12,8 @@ async function getPhylloPosts(accountId) {
 }
 
 async function getPhylloPostMetrics(postId) {
-  const url = `https://api.sandbox.getphyllo.com/v1/posts/${postId}/metrics`;
+  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const url = `${base}/v1/posts/${postId}/metrics`;
   const resp = await fetch(url, {
     headers: {
       'Client-Id': process.env.PHYLLO_CLIENT_ID,
@@ -99,4 +101,30 @@ async function getUserPostMetrics(accounts = []) {
   };
 }
 
-module.exports = { getPhylloPosts, getPhylloPostMetrics, getUserPostMetrics };
+async function getAudienceDemographics(accounts = []) {
+  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const results = [];
+
+  for (const acc of accounts) {
+    if (!acc || !acc.creator_id) continue;
+    try {
+      const url = `${base}/v1/creators/${acc.creator_id}/audience`;
+      const resp = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'phyllo-client-id': process.env.PHYLLO_CLIENT_ID,
+          'phyllo-client-secret': process.env.PHYLLO_CLIENT_SECRET,
+        },
+      });
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: json });
+    } catch (err) {
+      // ignore per-account errors for now
+    }
+  }
+
+  return results;
+}
+
+module.exports = { getPhylloPosts, getPhylloPostMetrics, getUserPostMetrics, getAudienceDemographics };

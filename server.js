@@ -14,7 +14,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const { getPhylloPosts, getPhylloPostMetrics } = require('./services/phyllo-metrics');
+const { getPhylloPosts, getPhylloPostMetrics, getAudienceDemographics } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
   createSdkToken,
@@ -2879,6 +2879,7 @@ ${JSON.stringify(compactPosts)}`;
         }
 
         const metrics = await getUserPostMetrics(accounts || []);
+        const demographics = await getAudienceDemographics(accounts || []);
         const overview = {
           followerGrowth: metrics?.summary?.followerGrowth || 0,
           engagementRate: metrics?.summary?.engagementRate || 0,
@@ -2891,6 +2892,7 @@ ${JSON.stringify(compactPosts)}`;
           data: {
             accounts: accounts || [],
             posts: metrics.posts || [],
+            demographics,
             insights: [],
             alerts: [],
             overview,
@@ -3018,6 +3020,77 @@ ${JSON.stringify(compactPosts)}`;
         return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/insights' && req.method === 'POST') {
+    readJsonBody(req)
+      .then(async (body) => {
+        try {
+          const userId = req.user && req.user.id;
+          if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          if (!OPENAI_API_KEY) return sendJson(res, 500, { ok: false, error: 'openai_not_configured' });
+
+          const posts = Array.isArray(body?.posts) ? body.posts : null;
+          if (!posts) {
+            return sendJson(res, 400, { ok: false, error: 'invalid_posts_array' });
+          }
+
+          const promptText = `
+You are an analytics engine. Analyze the following posts and produce 3 actionable insights with clear reasoning.
+
+Posts JSON:
+${JSON.stringify(posts, null, 2)}
+
+Output format:
+[
+  { "title": "...", "detail": "..." },
+  { "title": "...", "detail": "..." },
+  { "title": "...", "detail": "..." }
+]
+`;
+
+          const payload = JSON.stringify({
+            model: process.env.OPENAI_MODEL_ANALYTICS || 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'You are an analytics assistant.' },
+              { role: 'user', content: promptText },
+            ],
+            temperature: 0.4,
+            max_tokens: 600,
+          });
+
+          const options = {
+            hostname: 'api.openai.com',
+            path: '/v1/chat/completions',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload),
+              Authorization: `Bearer ${OPENAI_API_KEY}`,
+            },
+          };
+
+          const completion = await openAIRequest(options, payload);
+          const content = completion?.choices?.[0]?.message?.content || '';
+          let insights = [];
+          try {
+            const parsed = JSON.parse(content);
+            if (Array.isArray(parsed)) insights = parsed;
+          } catch (e) {
+            insights = [{ title: 'Unable to parse model response', detail: content || 'No content' }];
+          }
+
+          return sendJson(res, 200, { ok: true, data: insights });
+        } catch (err) {
+          console.error('[Analytics insights generation] error', err);
+          return sendJson(res, 500, { ok: false, error: 'server_error' });
+        }
+      })
+      .catch((err) => {
+        console.error('[Analytics insights generation] parse error', err);
+        sendJson(res, 500, { ok: false, error: 'parse_error' });
+      });
     return;
   }
 
