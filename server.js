@@ -14,7 +14,7 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const { getPhylloPosts, getPhylloPostMetrics, getAudienceDemographics } = require('./services/phyllo-metrics');
+const { getPhylloPosts, getPhylloPostMetrics, getUserPostMetrics, getAudienceDemographics } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
   createSdkToken,
@@ -78,6 +78,35 @@ function slugify(s = '') {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
     .slice(0, 80);
+}
+
+async function generateAlertsForUser(userId, metrics) {
+  if (!supabaseAdmin || !userId) return;
+  const alerts = [];
+
+  if (metrics?.summary?.retentionDropPct >= 20) {
+    alerts.push({
+      user_id: userId,
+      message: `Retention dropped ${metrics.summary.retentionDropPct}% vs last month.`,
+      severity: 'warning',
+    });
+  }
+
+  if (metrics?.summary?.audienceShiftPct >= 10) {
+    alerts.push({
+      user_id: userId,
+      message: `Audience shift detected: +${metrics.summary.audienceShiftPct}% viewers from new regions.`,
+      severity: 'info',
+    });
+  }
+
+  if (alerts.length > 0) {
+    try {
+      await supabaseAdmin.from('analytics_alerts').insert(alerts);
+    } catch (err) {
+      console.error('[Analytics alerts] insert failed', err);
+    }
+  }
 }
 
 function chunkText(input, maxLen = 800) {
@@ -2886,6 +2915,7 @@ ${JSON.stringify(compactPosts)}`;
           avgViewsPerPost: metrics?.summary?.avgViews || 0,
           retentionPct: metrics?.summary?.retention || 0,
         };
+        await generateAlertsForUser(promptlyUserId, metrics);
 
         return sendJson(res, 200, {
           ok: true,
@@ -3187,23 +3217,28 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
-    return sendJson(res, 200, {
-      ok: true,
-      data: [
-        {
-          id: 'alert-1',
-          type: 'drop_retention',
-          createdAt: '2025-11-23T10:00:00Z',
-          message: 'Retention dropped 18% vs last week.',
-        },
-        {
-          id: 'alert-2',
-          type: 'audience_shift',
-          createdAt: '2025-11-24T09:30:00Z',
-          message: 'Audience shift: +15% viewers from UK.',
-        },
-      ],
-    });
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('analytics_alerts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'alerts_fetch_failed' });
+        }
+        return sendJson(res, 200, { ok: true, alerts: data || [] });
+      } catch (err) {
+        console.error('[Analytics alerts] fetch error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
   }
 
   if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
@@ -3413,78 +3448,6 @@ Output format:
       } catch (err) {
         console.error('[Analytics posts] error', err);
         sendJson(res, 500, { error: 'analytics_posts_failed' });
-      }
-    })();
-    return;
-  }
-
-  if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
-    (async () => {
-      try {
-        const userId = (req.user && req.user.id) || null;
-        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
-        const { data: rows } = await supabaseAdmin
-          .from('growth_insights')
-          .select('*')
-          .eq('promptly_user_id', userId)
-          .order('week_start', { ascending: false })
-          .limit(4);
-        sendJson(res, 200, { ok: true, data: rows || [] });
-      } catch (err) {
-        console.error('[Analytics insights] error', err);
-        sendJson(res, 500, { error: 'analytics_insights_failed' });
-      }
-    })();
-    return;
-  }
-
-  if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
-    (async () => {
-      try {
-        const userId = (req.user && req.user.id) || null;
-        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-        const alerts = [];
-        const { data: storedAlerts } = await supabaseAdmin
-          .from('analytics_alerts')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20);
-
-        if (storedAlerts && storedAlerts.length) {
-          storedAlerts.forEach((a) => alerts.push({
-            id: a.id,
-            type: a.type,
-            created_at: a.created_at,
-            payload: a.payload_json || {},
-            is_read: !!a.is_read,
-          }));
-        } else {
-          const { data: recent } = await supabaseAdmin
-            .from('phyllo_account_daily')
-            .select('*')
-            .gte('date', sevenDaysAgo.toISOString().slice(0, 10));
-          const { data: previous } = await supabaseAdmin
-            .from('phyllo_account_daily')
-            .select('*')
-            .gte('date', twoWeeksAgo.toISOString().slice(0, 10))
-            .lt('date', sevenDaysAgo.toISOString().slice(0, 10));
-          const avgRecentEng = recent && recent.length
-            ? recent.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / recent.length
-            : null;
-          const avgPrevEng = previous && previous.length
-            ? previous.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / previous.length
-            : null;
-          if (avgRecentEng != null && avgPrevEng != null && avgPrevEng > 0 && (avgPrevEng - avgRecentEng) / avgPrevEng > 0.2) {
-            alerts.push({ type: 'warning', message: 'Engagement dropped more than 20% week over week.' });
-          }
-        }
-        sendJson(res, 200, { ok: true, data: alerts });
-      } catch (err) {
-        console.error('[Analytics alerts] error', err);
-        sendJson(res, 500, { error: 'analytics_alerts_failed' });
       }
     })();
     return;

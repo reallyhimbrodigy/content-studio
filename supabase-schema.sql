@@ -224,6 +224,15 @@ CREATE TABLE IF NOT EXISTS analytics_insights (
   created_at timestamptz default now()
 );
 
+-- Analytics alerts (persisted)
+CREATE TABLE IF NOT EXISTS analytics_alerts (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  message text,
+  severity text,
+  created_at timestamptz default now()
+);
+
 -- Additional profile-level metrics
 CREATE TABLE IF NOT EXISTS phyllo_profile_metrics (
   id uuid primary key default gen_random_uuid(),
