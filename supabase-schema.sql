@@ -160,6 +160,10 @@ CREATE TABLE IF NOT EXISTS phyllo_accounts (
   work_platform_id text not null,
   username text,
   profile_name text,
+  account_id text,
+  avatar_url text,
+  status text,
+  connected_at timestamptz,
   created_at timestamptz default now(),
   unique (phyllo_account_id)
 );
@@ -186,7 +190,9 @@ CREATE TABLE IF NOT EXISTS phyllo_post_metrics (
   likes bigint,
   comments bigint,
   shares bigint,
-  saves bigint
+  saves bigint,
+  watch_time_seconds bigint,
+  retention_pct numeric
 );
 
 CREATE TABLE IF NOT EXISTS phyllo_account_daily (
@@ -208,4 +214,27 @@ CREATE TABLE IF NOT EXISTS growth_insights (
   recommendations jsonb,
   created_at timestamptz default now(),
   unique (promptly_user_id, week_start)
+);
+
+-- Additional profile-level metrics
+CREATE TABLE IF NOT EXISTS phyllo_profile_metrics (
+  id uuid primary key default gen_random_uuid(),
+  phyllo_account_id text not null,
+  captured_at timestamptz default now(),
+  followers bigint,
+  following bigint,
+  views_last_30 bigint,
+  engagement_rate_last_30 numeric,
+  avg_views_per_post_last_30 numeric,
+  retention_pct_last_30 numeric
+);
+
+-- Alerts generated from analytics/insights
+CREATE TABLE IF NOT EXISTS analytics_alerts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  created_at timestamptz default now(),
+  type text,
+  payload_json jsonb,
+  is_read boolean default false
 );

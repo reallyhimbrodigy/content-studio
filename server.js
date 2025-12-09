@@ -2775,6 +2775,96 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  // Mock analytics endpoints (no Supabase/OpenAI yet)
+  if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      data: {
+        followerGrowth: 1250,
+        engagementRate: 0.072,
+        avgViewsPerPost: 5400,
+        retentionPct: 0.61,
+      },
+    });
+  }
+
+  if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      data: [
+        { day: 0, hour: 19, engagement: 0.8 },
+        { day: 1, hour: 20, engagement: 0.9 },
+        { day: 3, hour: 15, engagement: 0.5 },
+      ],
+    });
+  }
+
+  if (parsed.pathname === '/api/analytics/posts' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      data: [
+        {
+          id: 'mock-1',
+          title: 'Top 3 Dribbling Drills',
+          platform: 'TikTok',
+          views: 12000,
+          likes: 800,
+          retentionPct: 0.68,
+          shares: 30,
+          saves: 45,
+          url: 'https://tiktok.com/@demo/video/1',
+          publishedAt: '2025-11-20T19:00:00Z',
+        },
+        {
+          id: 'mock-2',
+          title: 'IG Study Hack Reel',
+          platform: 'Instagram',
+          views: 5000,
+          likes: 320,
+          retentionPct: 0.72,
+          shares: 18,
+          saves: 60,
+          url: 'https://instagram.com/p/demo2',
+          publishedAt: '2025-11-21T16:00:00Z',
+        },
+      ],
+    });
+  }
+
+  if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      data: {
+        weekStart: '2025-11-17',
+        summaryText: 'Evening how-to posts are your strongest performers this week.',
+        experiments: [
+          'Post 3 how-to clips at 7 PM PST over the next 7 days.',
+          'Test shorter 5-second hooks on your next 5 TikToks.',
+        ],
+      },
+    });
+  }
+
+  if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
+    return sendJson(res, 200, {
+      ok: true,
+      data: [
+        {
+          id: 'alert-1',
+          type: 'drop_retention',
+          createdAt: '2025-11-23T10:00:00Z',
+          message: 'Retention dropped 18% vs last week.',
+        },
+        {
+          id: 'alert-2',
+          type: 'audience_shift',
+          createdAt: '2025-11-24T09:30:00Z',
+          message: 'Audience shift: +15% viewers from UK.',
+        },
+      ],
+    });
+  }
+
   if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
     (async () => {
       try {
@@ -2828,7 +2918,7 @@ ${JSON.stringify(compactPosts)}`;
           .in('phyllo_account_id', limitedAccounts)
           .gte('date', since.toISOString().slice(0, 10));
         if (!daily || !daily.length) {
-          sendJson(res, 200, { followers_total: 0, followers_growth_30d: 0, avg_engagement_rate: 0, retention_rate: 0 });
+          sendJson(res, 200, { follower_growth: 0, engagement_rate: 0, avg_views_per_post: 0, retention_pct: 0 });
           return;
         }
         const latestByAccount = {};
@@ -2869,14 +2959,63 @@ ${JSON.stringify(compactPosts)}`;
           }
         }
         sendJson(res, 200, {
-          follower_growth: followersGrowth,
-          engagement_rate: avgEngagement,
-          avg_views_per_post: avgViewsPerPost,
-          retention_pct: retentionRate,
+          ok: true,
+          data: {
+            follower_growth: followersGrowth,
+            engagement_rate: avgEngagement,
+            avg_views_per_post: avgViewsPerPost,
+            retention_pct: retentionRate,
+          },
         });
       } catch (err) {
         console.error('[Analytics overview] error', err);
         sendJson(res, 500, { error: 'analytics_overview_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        const plan = (req.user && req.user.plan) || 'free';
+        const windowDays = plan === 'pro' || plan === 'teams' ? 365 : 30;
+        const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+        const { data: posts } = await supabaseAdmin
+          .from('phyllo_posts')
+          .select('phyllo_content_id,published_at')
+          .eq('promptly_user_id', userId)
+          .gte('published_at', since.toISOString());
+        if (!posts || !posts.length) return sendJson(res, 200, { ok: true, data: [] });
+        const ids = posts.map((p) => p.phyllo_content_id);
+        const { data: metrics } = await supabaseAdmin
+          .from('phyllo_post_metrics')
+          .select('*')
+          .in('phyllo_content_id', ids)
+          .order('collected_at', { ascending: false });
+        const latest = {};
+        (metrics || []).forEach((m) => {
+          if (!latest[m.phyllo_content_id]) latest[m.phyllo_content_id] = m;
+        });
+        const buckets = {};
+        posts.forEach((p) => {
+          if (!p.published_at) return;
+          const m = latest[p.phyllo_content_id] || {};
+          const engagement = Number(m.likes || 0) + Number(m.comments || 0) + Number(m.shares || 0) + Number(m.saves || 0);
+          const dt = new Date(p.published_at);
+          const day = dt.getUTCDay();
+          const hour = dt.getUTCHours();
+          const key = `${day}-${hour}`;
+          if (!buckets[key]) buckets[key] = { day, hour, engagement: 0 };
+          buckets[key].engagement += engagement;
+        });
+        const data = Object.values(buckets).sort((a, b) => a.day - b.day || a.hour - b.hour);
+        sendJson(res, 200, { ok: true, data });
+      } catch (err) {
+        console.error('[Analytics heatmap] error', err);
+        sendJson(res, 500, { error: 'analytics_heatmap_failed' });
       }
     })();
     return;
@@ -2900,7 +3039,7 @@ ${JSON.stringify(compactPosts)}`;
           .order('published_at', { ascending: false })
           .range(offset, offset + limit - 1);
         const ids = (posts || []).map((p) => p.phyllo_content_id);
-        if (!ids.length) return sendJson(res, 200, []);
+        if (!ids.length) return sendJson(res, 200, { ok: true, data: [] });
         const { data: metrics } = await supabaseAdmin
           .from('phyllo_post_metrics')
           .select('*')
@@ -2929,7 +3068,7 @@ ${JSON.stringify(compactPosts)}`;
             post_url: p.url || null,
           };
         });
-        sendJson(res, 200, result);
+        sendJson(res, 200, { ok: true, data: result, total: result.length, limit, offset });
       } catch (err) {
         console.error('[Analytics posts] error', err);
         sendJson(res, 500, { error: 'analytics_posts_failed' });
@@ -2949,7 +3088,7 @@ ${JSON.stringify(compactPosts)}`;
           .eq('promptly_user_id', userId)
           .order('week_start', { ascending: false })
           .limit(4);
-        sendJson(res, 200, rows || []);
+        sendJson(res, 200, { ok: true, data: rows || [] });
       } catch (err) {
         console.error('[Analytics insights] error', err);
         sendJson(res, 500, { error: 'analytics_insights_failed' });
@@ -2965,26 +3104,43 @@ ${JSON.stringify(compactPosts)}`;
         if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-        const { data: recent } = await supabaseAdmin
-          .from('phyllo_account_daily')
-          .select('*')
-          .gte('date', sevenDaysAgo.toISOString().slice(0, 10));
-        const { data: previous } = await supabaseAdmin
-          .from('phyllo_account_daily')
-          .select('*')
-          .gte('date', twoWeeksAgo.toISOString().slice(0, 10))
-          .lt('date', sevenDaysAgo.toISOString().slice(0, 10));
         const alerts = [];
-        const avgRecentEng = recent && recent.length
-          ? recent.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / recent.length
-          : null;
-        const avgPrevEng = previous && previous.length
-          ? previous.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / previous.length
-          : null;
-        if (avgRecentEng != null && avgPrevEng != null && avgPrevEng > 0 && (avgPrevEng - avgRecentEng) / avgPrevEng > 0.2) {
-          alerts.push({ type: 'warning', message: 'Engagement dropped more than 20% week over week.' });
+        const { data: storedAlerts } = await supabaseAdmin
+          .from('analytics_alerts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (storedAlerts && storedAlerts.length) {
+          storedAlerts.forEach((a) => alerts.push({
+            id: a.id,
+            type: a.type,
+            created_at: a.created_at,
+            payload: a.payload_json || {},
+            is_read: !!a.is_read,
+          }));
+        } else {
+          const { data: recent } = await supabaseAdmin
+            .from('phyllo_account_daily')
+            .select('*')
+            .gte('date', sevenDaysAgo.toISOString().slice(0, 10));
+          const { data: previous } = await supabaseAdmin
+            .from('phyllo_account_daily')
+            .select('*')
+            .gte('date', twoWeeksAgo.toISOString().slice(0, 10))
+            .lt('date', sevenDaysAgo.toISOString().slice(0, 10));
+          const avgRecentEng = recent && recent.length
+            ? recent.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / recent.length
+            : null;
+          const avgPrevEng = previous && previous.length
+            ? previous.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / previous.length
+            : null;
+          if (avgRecentEng != null && avgPrevEng != null && avgPrevEng > 0 && (avgPrevEng - avgRecentEng) / avgPrevEng > 0.2) {
+            alerts.push({ type: 'warning', message: 'Engagement dropped more than 20% week over week.' });
+          }
         }
-        sendJson(res, 200, alerts);
+        sendJson(res, 200, { ok: true, data: alerts });
       } catch (err) {
         console.error('[Analytics alerts] error', err);
         sendJson(res, 500, { error: 'analytics_alerts_failed' });
