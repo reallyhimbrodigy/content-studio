@@ -2687,6 +2687,7 @@ ${JSON.stringify(compactPosts)}`;
     (async () => {
       try {
         const promptlyUserId = (req.user && req.user.id) || 'demo-user';
+        console.log('[Phyllo] sdk-config for user', promptlyUserId);
         let phylloUserId = null;
         if (supabaseAdmin) {
           const { data: existing } = await supabaseAdmin

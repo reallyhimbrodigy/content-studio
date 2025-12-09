@@ -1,17 +1,34 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const btns = [
-    document.getElementById('connect-tiktok'),
-    document.getElementById('connect-instagram'),
-    document.getElementById('connect-youtube'),
-  ];
+console.log('[Analytics] script loaded');
 
-  async function openConnect() {
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('[Analytics] DOMContentLoaded');
+
+  const btnTikTok = document.getElementById('connect-tiktok');
+  const btnInstagram = document.getElementById('connect-instagram');
+  const btnYouTube = document.getElementById('connect-youtube');
+
+  console.log('[Analytics] buttons:', { btnTikTok, btnInstagram, btnYouTube });
+  console.log('[Analytics] PhylloConnect global:', !!window.PhylloConnect);
+
+  async function openPhylloConnect() {
+    console.log('[Analytics] openPhylloConnect() called');
+
     try {
       const res = await fetch('/api/phyllo/sdk-config', { credentials: 'include' });
-      if (!res.ok) return console.error('Bad SDK config response');
-      const cfg = await res.json();
+      console.log('[Analytics] /api/phyllo/sdk-config status:', res.status);
 
-      if (!window.PhylloConnect) return console.error('PhylloConnect not loaded');
+      if (!res.ok) {
+        console.error('[Analytics] sdk-config failed');
+        return;
+      }
+
+      const cfg = await res.json();
+      console.log('[Analytics] sdk-config payload:', cfg);
+
+      if (!window.PhylloConnect) {
+        console.error('[Analytics] window.PhylloConnect is missing');
+        return;
+      }
 
       const connect = window.PhylloConnect.initialize({
         userId: cfg.userId,
@@ -20,172 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
         clientDisplayName: cfg.clientDisplayName,
       });
 
+      console.log('[Analytics] opening Phyllo Connect');
       connect.open();
     } catch (err) {
-      console.error('Phyllo Connect error:', err);
+      console.error('[Analytics] Phyllo Connect error', err);
     }
   }
 
-  btns.forEach((btn) => btn && btn.addEventListener('click', openConnect));
-
-  async function fetchJSON(url) {
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) throw new Error(`Request failed ${res.status}`);
-    return res.json();
-  }
-
-  function renderAccounts(accounts) {
-    const strip = document.getElementById('connected-accounts');
-    if (!strip) return;
-    const cards = strip.querySelectorAll('.analytics-connected-card');
-    cards.forEach((card) => {
-      const platform = card.getAttribute('data-platform');
-      const match = accounts.find((a) => a.platform === platform);
-      const statusEl = card.querySelector('.analytics-connected-status');
-      if (match) {
-        statusEl.textContent = `@${match.username || match.profile_name || 'connected'}`;
-      } else {
-        statusEl.textContent = 'Not connected';
-      }
-    });
-  }
-
-  function formatNumber(val) {
-    if (val === null || val === undefined) return '—';
-    if (Math.abs(val) >= 1000) return `${(val / 1000).toFixed(1)}k`;
-    return `${val}`;
-  }
-
-  function renderKPIs(data) {
-    const fg = document.getElementById('kpi-follower-growth');
-    const eng = document.getElementById('kpi-engagement');
-    const views = document.getElementById('kpi-views');
-    const ret = document.getElementById('kpi-retention');
-    if (fg) fg.textContent = data.follower_growth != null ? `+${formatNumber(data.follower_growth)}` : '—';
-    if (eng) eng.textContent = data.engagement_rate != null ? `${(data.engagement_rate * 100).toFixed(1)} %` : '—';
-    if (views) views.textContent = data.avg_views_per_post != null ? formatNumber(data.avg_views_per_post) : '—';
-    if (ret) ret.textContent = data.retention_pct != null ? `${(data.retention_pct * 100).toFixed(1)} %` : '—';
-  }
-
-  function renderPosts(rows) {
-    const tbody = document.getElementById('analytics-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    rows.forEach((row) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><a href="${row.post_url || '#'}">${row.title || 'Untitled post'}</a></td>
-        <td>${row.platform || '—'}</td>
-        <td>${formatNumber(row.views)}</td>
-        <td>${formatNumber(row.likes)}</td>
-        <td>${row.retention != null ? `${(row.retention * 100).toFixed(1)}%` : '—'}</td>
-        <td>${formatNumber(row.shares)}</td>
-        <td>${formatNumber(row.saves)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  function renderInsights(items) {
-    const container = document.getElementById('analytics-insights');
-    if (!container) return;
-    container.innerHTML = '';
-    items.forEach((insight) => {
-      (insight.recommendations || []).forEach((rec) => {
-        const card = document.createElement('div');
-        card.className = 'analytics-card insight-card';
-        card.innerHTML = `
-          <h3>${rec.title || 'Experiment'}</h3>
-          <p>${rec.description || insight.summary || ''}</p>
-          <button class="primary">Try This Experiment</button>
-        `;
-        container.appendChild(card);
-      });
-    });
-    if (!items.length) {
-      container.innerHTML = '<p style="opacity:0.7;">Insights will appear once data is available.</p>';
-    }
-  }
-
-  function renderAlerts(alerts) {
-    const container = document.getElementById('analytics-alerts');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!alerts.length) {
-      container.innerHTML = '<p style="opacity:0.7;">No alerts right now.</p>';
-      return;
-    }
-    alerts.forEach((alert) => {
-      const card = document.createElement('div');
-      card.className = 'analytics-card alert-card';
-      card.innerHTML = `
-        <span class="alert-icon">${alert.type === 'warning' ? '⚠' : 'ℹ'}</span>
-        <div class="alert-text">${alert.message}</div>
-      `;
-      container.appendChild(card);
-    });
-  }
-
-  function wireTableSorting() {
-    const headers = document.querySelectorAll('.analytics-table th[data-sort]');
-    headers.forEach((th) => {
-      th.style.cursor = 'pointer';
-      th.addEventListener('click', () => {
-        const sort = th.getAttribute('data-sort');
-        loadPosts(sort);
-      });
-    });
-  }
-
-  async function loadAccounts() {
-    try {
-      const data = await fetchJSON('/api/analytics/accounts');
-      renderAccounts(data || []);
-    } catch (err) {
-      console.error('[Analytics] accounts load failed', err);
-    }
-  }
-
-  async function loadKPIs() {
-    try {
-      const data = await fetchJSON('/api/analytics/overview');
-      renderKPIs(data || {});
-    } catch (err) {
-      console.error('[Analytics] overview load failed', err);
-    }
-  }
-
-  async function loadPosts(sort = 'views') {
-    try {
-      const data = await fetchJSON(`/api/analytics/posts?sort=${encodeURIComponent(sort)}`);
-      renderPosts(data || []);
-    } catch (err) {
-      console.error('[Analytics] posts load failed', err);
-    }
-  }
-
-  async function loadInsights() {
-    try {
-      const data = await fetchJSON('/api/analytics/insights');
-      renderInsights(data || []);
-    } catch (err) {
-      console.error('[Analytics] insights load failed', err);
-    }
-  }
-
-  async function loadAlerts() {
-    try {
-      const data = await fetchJSON('/api/analytics/alerts');
-      renderAlerts(data || []);
-    } catch (err) {
-      console.error('[Analytics] alerts load failed', err);
-    }
-  }
-
-  wireTableSorting();
-  loadAccounts();
-  loadKPIs();
-  loadPosts();
-  loadInsights();
-  loadAlerts();
+  [btnTikTok, btnInstagram, btnYouTube].forEach((btn) => {
+    if (!btn) return;
+    btn.addEventListener('click', openPhylloConnect);
+    console.log('[Analytics] attached click handler to', btn.id);
+  });
 });
