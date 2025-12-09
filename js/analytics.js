@@ -37,8 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('[Phyllo] accountDisconnected', { accountId, workPlatformId, userId });
     });
 
-    instance.on('tokenExpired', () => {
-      console.log('[Phyllo] tokenExpired');
+    instance.on('tokenExpired', function (userId) {
+      console.log('[Phyllo] tokenExpired for user', userId);
     });
 
     instance.on('exit', () => {
