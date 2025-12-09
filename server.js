@@ -2727,6 +2727,34 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        const { data: accounts, error: accountsError } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('work_platform_id, username, profile_name, avatar_url')
+          .eq('promptly_user_id', userId);
+        if (accountsError) {
+          console.error('[Analytics accounts] error', accountsError);
+          return sendJson(res, 500, { error: 'accounts_failed' });
+        }
+        const mapped = (accounts || []).map((a) => ({
+          platform: a.work_platform_id,
+          username: a.username,
+          profile_name: a.profile_name,
+          avatar_url: a.avatar_url || null,
+        }));
+        sendJson(res, 200, mapped);
+      } catch (err) {
+        console.error('[Analytics accounts] error', err);
+        sendJson(res, 500, { error: 'accounts_failed' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
     (async () => {
       try {
@@ -2768,11 +2796,35 @@ ${JSON.stringify(compactPosts)}`;
         const engagementRates = daily.map((r) => Number(r.engagement_rate || 0)).filter((n) => !isNaN(n));
         const avgEngagement = engagementRates.length ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length : 0;
         const retentionRate = followersPast ? followersTotal / followersPast : 0;
+        // avg views per post (last windowDays)
+        let avgViewsPerPost = null;
+        const { data: postsWindow } = await supabaseAdmin
+          .from('phyllo_posts')
+          .select('phyllo_content_id, promptly_user_id, platform')
+          .eq('promptly_user_id', userId)
+          .gte('published_at', since.toISOString());
+        const postIds = (postsWindow || []).map((p) => p.phyllo_content_id);
+        if (postIds.length) {
+          const { data: metricsWindow } = await supabaseAdmin
+            .from('phyllo_post_metrics')
+            .select('*')
+            .in('phyllo_content_id', postIds)
+            .order('collected_at', { ascending: false });
+          const latestMetrics = {};
+          (metricsWindow || []).forEach((m) => {
+            if (!latestMetrics[m.phyllo_content_id]) latestMetrics[m.phyllo_content_id] = m;
+          });
+          const viewsArray = Object.values(latestMetrics).map((m) => Number(m.views || 0));
+          if (viewsArray.length) {
+            const totalViews = viewsArray.reduce((a, b) => a + b, 0);
+            avgViewsPerPost = totalViews / viewsArray.length;
+          }
+        }
         sendJson(res, 200, {
-          followers_total: followersTotal,
-          followers_growth_30d: followersGrowth,
-          avg_engagement_rate: avgEngagement,
-          retention_rate: retentionRate,
+          follower_growth: followersGrowth,
+          engagement_rate: avgEngagement,
+          avg_views_per_post: avgViewsPerPost,
+          retention_pct: retentionRate,
         });
       } catch (err) {
         console.error('[Analytics overview] error', err);
@@ -2816,11 +2868,17 @@ ${JSON.stringify(compactPosts)}`;
             ? ((Number(m.likes || 0) + Number(m.comments || 0) + Number(m.shares || 0) + Number(m.saves || 0)) / Number(m.views || 1))
             : 0;
           return {
+            id: p.id,
             platform: p.platform,
             title: p.title,
             views: Number(m.views || 0),
+            likes: Number(m.likes || 0),
+            retention: m.retention != null ? Number(m.retention) : null,
+            shares: Number(m.shares || 0),
+            saves: Number(m.saves || 0),
             engagement_rate: engagement,
             published_at: p.published_at,
+            post_url: p.url || null,
           };
         });
         sendJson(res, 200, result);
@@ -2847,6 +2905,41 @@ ${JSON.stringify(compactPosts)}`;
       } catch (err) {
         console.error('[Analytics insights] error', err);
         sendJson(res, 500, { error: 'analytics_insights_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = (req.user && req.user.id) || null;
+        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        const { data: recent } = await supabaseAdmin
+          .from('phyllo_account_daily')
+          .select('*')
+          .gte('date', sevenDaysAgo.toISOString().slice(0, 10));
+        const { data: previous } = await supabaseAdmin
+          .from('phyllo_account_daily')
+          .select('*')
+          .gte('date', twoWeeksAgo.toISOString().slice(0, 10))
+          .lt('date', sevenDaysAgo.toISOString().slice(0, 10));
+        const alerts = [];
+        const avgRecentEng = recent && recent.length
+          ? recent.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / recent.length
+          : null;
+        const avgPrevEng = previous && previous.length
+          ? previous.reduce((a, b) => a + Number(b.engagement_rate || 0), 0) / previous.length
+          : null;
+        if (avgRecentEng != null && avgPrevEng != null && avgPrevEng > 0 && (avgPrevEng - avgRecentEng) / avgPrevEng > 0.2) {
+          alerts.push({ type: 'warning', message: 'Engagement dropped more than 20% week over week.' });
+        }
+        sendJson(res, 200, alerts);
+      } catch (err) {
+        console.error('[Analytics alerts] error', err);
+        sendJson(res, 500, { error: 'analytics_alerts_failed' });
       }
     })();
     return;

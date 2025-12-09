@@ -41,16 +41,16 @@
                 <button class="primary" id="connect-youtube">Connect YouTube</button>
               </div>
             </div>
-            <div class="analytics-connected-strip" aria-label="Connected accounts">
-              <div class="analytics-connected-card">
+            <div class="analytics-connected-strip" aria-label="Connected accounts" id="connected-accounts">
+              <div class="analytics-connected-card" data-platform="tiktok">
                 <div class="analytics-connected-label">TikTok</div>
                 <div class="analytics-connected-status">Not connected</div>
               </div>
-              <div class="analytics-connected-card">
+              <div class="analytics-connected-card" data-platform="instagram">
                 <div class="analytics-connected-label">Instagram</div>
                 <div class="analytics-connected-status">Not connected</div>
               </div>
-              <div class="analytics-connected-card">
+              <div class="analytics-connected-card" data-platform="youtube">
                 <div class="analytics-connected-label">YouTube</div>
                 <div class="analytics-connected-status">Not connected</div>
               </div>
@@ -61,22 +61,22 @@
             <section class="analytics-kpis" aria-label="Key metrics">
               <div class="analytics-kpi-card">
                 <p class="analytics-kpi-label">Follower Growth</p>
-                <p class="analytics-kpi-value">+— this month</p>
+                <p class="analytics-kpi-value" id="kpi-follower-growth">—</p>
                 <p class="analytics-kpi-helper">Last 30 days</p>
               </div>
               <div class="analytics-kpi-card">
                 <p class="analytics-kpi-label">Engagement Rate</p>
-                <p class="analytics-kpi-value">— %</p>
+                <p class="analytics-kpi-value" id="kpi-engagement">—</p>
                 <p class="analytics-kpi-helper">Last 30 days</p>
               </div>
               <div class="analytics-kpi-card">
                 <p class="analytics-kpi-label">Average Views per Post</p>
-                <p class="analytics-kpi-value">—</p>
+                <p class="analytics-kpi-value" id="kpi-views">—</p>
                 <p class="analytics-kpi-helper">Across connected accounts</p>
               </div>
               <div class="analytics-kpi-card">
                 <p class="analytics-kpi-label">Retention % (watch time)</p>
-                <p class="analytics-kpi-value">— %</p>
+                <p class="analytics-kpi-value" id="kpi-retention">—</p>
                 <p class="analytics-kpi-helper">Last 30 days</p>
               </div>
             </section>
@@ -106,62 +106,16 @@
                 <table class="analytics-table" aria-label="Content performance table">
                   <thead>
                     <tr>
-                      <th scope="col">Post Title</th>
-                      <th scope="col">Platform</th>
-                      <th scope="col">Views</th>
-                      <th scope="col">Likes</th>
-                      <th scope="col">Retention</th>
-                      <th scope="col">Shares</th>
-                      <th scope="col">Saves</th>
+                      <th scope="col" data-sort="title">Post Title</th>
+                      <th scope="col" data-sort="platform">Platform</th>
+                      <th scope="col" data-sort="views">Views</th>
+                      <th scope="col" data-sort="likes">Likes</th>
+                      <th scope="col" data-sort="retention">Retention</th>
+                      <th scope="col" data-sort="shares">Shares</th>
+                      <th scope="col" data-sort="saves">Saves</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    <tr>
-                      <td><a href="#">Top 3 Dribbling Drills</a></td>
-                      <td>Instagram</td>
-                      <td>12.3k</td>
-                      <td>1.1k</td>
-                      <td>42%</td>
-                      <td>210</td>
-                      <td>180</td>
-                    </tr>
-                    <tr>
-                      <td><a href="#">Behind-the-Scenes: Training Day</a></td>
-                      <td>TikTok</td>
-                      <td>19.8k</td>
-                      <td>1.9k</td>
-                      <td>38%</td>
-                      <td>340</td>
-                      <td>260</td>
-                    </tr>
-                    <tr>
-                      <td><a href="#">Coach Q&A Live</a></td>
-                      <td>YouTube</td>
-                      <td>8.4k</td>
-                      <td>620</td>
-                      <td>51%</td>
-                      <td>120</td>
-                      <td>95</td>
-                    </tr>
-                    <tr>
-                      <td><a href="#">Footwork Mini Series</a></td>
-                      <td>TikTok</td>
-                      <td>15.1k</td>
-                      <td>1.3k</td>
-                      <td>44%</td>
-                      <td>275</td>
-                      <td>210</td>
-                    </tr>
-                    <tr>
-                      <td><a href="#">Recovery Routine</a></td>
-                      <td>Instagram</td>
-                      <td>9.2k</td>
-                      <td>740</td>
-                      <td>47%</td>
-                      <td>130</td>
-                      <td>105</td>
-                    </tr>
-                  </tbody>
+                  <tbody id="analytics-table-body"></tbody>
                 </table>
               </div>
             </section>
@@ -171,41 +125,14 @@
                 <div class="section-header">
                   <h2>AI Insights</h2>
                 </div>
-                <div class="analytics-insights-grid">
-                  <div class="analytics-card insight-card">
-                    <h3>Post at 7 PM PST</h3>
-                    <p>Evening posts are trending +18% engagement.</p>
-                    <button class="primary">Try This Experiment</button>
-                  </div>
-                  <div class="analytics-card insight-card">
-                    <h3>Double down on training tips</h3>
-                    <p>How-to clips drive stronger completion rates.</p>
-                    <button class="primary">Try This Experiment</button>
-                  </div>
-                  <div class="analytics-card insight-card">
-                    <h3>Experiment with shorter hooks</h3>
-                    <p>Test 3–5 second openings to boost watch time.</p>
-                    <button class="primary">Try This Experiment</button>
-                  </div>
-                </div>
+                <div class="analytics-insights-grid" id="analytics-insights"></div>
               </div>
 
               <aside class="analytics-alerts">
                 <div class="section-header">
                   <h2>Alerts</h2>
                 </div>
-                <div class="analytics-card alert-card">
-                  <span class="alert-icon">⚠</span>
-                  <div class="alert-text">Retention dropped 20% vs. last month.</div>
-                </div>
-                <div class="analytics-card alert-card">
-                  <span class="alert-icon">⚠</span>
-                  <div class="alert-text">Audience shift: +15% viewers from UK.</div>
-                </div>
-                <div class="analytics-card alert-card">
-                  <span class="alert-icon">⚠</span>
-                  <div class="alert-text">Engagement dip on weekend posts.</div>
-                </div>
+                <div id="analytics-alerts"></div>
               </aside>
             </section>
           </main>
@@ -218,6 +145,7 @@
     </div>
 
     <script src="script.js"></script>
+    <script src="https://cdn.getphyllo.com/connect/v2/phyllo-connect.js"></script>
     <script src="analytics.js"></script>
   </body>
 </html>
