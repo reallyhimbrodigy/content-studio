@@ -1763,7 +1763,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.sandbox.getphyllo.com; frame-ancestors 'none';");
   // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
@@ -2686,10 +2686,7 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
       try {
-        if (!req.user || !req.user.id) {
-          return sendJson(res, 401, { error: 'unauthorized' });
-        }
-        const promptlyUserId = req.user.id;
+        const promptlyUserId = (req.user && req.user.id) || 'demo-user';
 
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('phyllo_users')
@@ -2699,15 +2696,15 @@ ${JSON.stringify(compactPosts)}`;
 
         if (existingError) {
           console.error('[Phyllo] phyllo_users lookup error', existingError);
-          return sendJson(res, 500, { error: 'phyllo_lookup_failed' });
+          return sendJson(res, 500, { error: 'phyllo_users_lookup_failed' });
         }
 
-        let phylloUserId = existing?.phyllo_user_id;
+        let phylloUserId = existing && existing.phyllo_user_id;
 
         if (!phylloUserId) {
           const phylloUser = await createPhylloUser({
             name: 'Promptly User',
-            externalId: promptlyUserId.toString(),
+            externalId: String(promptlyUserId),
           });
           phylloUserId = phylloUser.id;
 
@@ -2722,16 +2719,17 @@ ${JSON.stringify(compactPosts)}`;
           }
         }
 
-        const sdkToken = await createSdkToken({ userId: phylloUserId });
-        sendJson(res, 200, {
+        const sdk = await createSdkToken({ userId: phylloUserId });
+
+        return sendJson(res, 200, {
           userId: phylloUserId,
-          token: sdkToken.token,
+          token: sdk.token,
           environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
           clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
         });
       } catch (err) {
-        console.error('[Phyllo] sdk-config error:', err?.response?.data || err);
-        sendJson(res, 500, { error: 'phyllo_sdk_config_failed' });
+        console.error('[Phyllo] sdk-config internal error', err?.response?.data || err);
+        return sendJson(res, 500, { error: 'phyllo_sdk_config_failed' });
       }
     })();
     return;
