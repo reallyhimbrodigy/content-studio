@@ -2686,30 +2686,39 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
       try {
-        const promptlyUserId = (req.user && req.user.id) || 'demo-user';
-        console.log('[Phyllo] sdk-config for user', promptlyUserId);
-        let phylloUserId = null;
-        if (supabaseAdmin) {
-          const { data: existing } = await supabaseAdmin
-            .from('phyllo_users')
-            .select('*')
-            .eq('promptly_user_id', promptlyUserId)
-            .single();
-          if (existing?.phyllo_user_id) {
-            phylloUserId = existing.phyllo_user_id;
-          }
+        if (!req.user || !req.user.id) {
+          return sendJson(res, 401, { error: 'unauthorized' });
         }
+        const promptlyUserId = req.user.id;
+
+        const { data: existing, error: existingError } = await supabaseAdmin
+          .from('phyllo_users')
+          .select('phyllo_user_id')
+          .eq('promptly_user_id', promptlyUserId)
+          .maybeSingle();
+
+        if (existingError) {
+          console.error('[Phyllo] phyllo_users lookup error', existingError);
+          return sendJson(res, 500, { error: 'phyllo_lookup_failed' });
+        }
+
+        let phylloUserId = existing?.phyllo_user_id;
+
         if (!phylloUserId) {
           const phylloUser = await createPhylloUser({
             name: 'Promptly User',
-            externalId: promptlyUserId,
+            externalId: promptlyUserId.toString(),
           });
           phylloUserId = phylloUser.id;
-          if (supabaseAdmin) {
-            await supabaseAdmin.from('phyllo_users').upsert({
+
+          const { error: insertError } = await supabaseAdmin
+            .from('phyllo_users')
+            .insert({
               promptly_user_id: promptlyUserId,
               phyllo_user_id: phylloUserId,
-            }, { onConflict: 'promptly_user_id' });
+            });
+          if (insertError) {
+            console.error('[Phyllo] phyllo_users insert error', insertError);
           }
         }
 
