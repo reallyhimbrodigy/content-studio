@@ -14,7 +14,13 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const { createPhylloUser, createSdkToken, fetchAccountContents, fetchAccountEngagement } = require('./services/phyllo');
+const {
+  createPhylloUser,
+  createSdkToken,
+  fetchAccountContents,
+  fetchAccountEngagement,
+  getPhylloUserByExternalId,
+} = require('./services/phyllo');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
