@@ -2686,44 +2686,15 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
       try {
-        // Sandbox: no auth required
-        const promptlyUserId = 'demo-user';
-
-        const { data: existing, error: existingError } = await supabaseAdmin
-          .from('phyllo_users')
-          .select('phyllo_user_id')
-          .eq('promptly_user_id', promptlyUserId)
-          .maybeSingle();
-
-        if (existingError) {
-          console.error('[Phyllo] phyllo_users lookup error', existingError);
-          return sendJson(res, 500, { error: 'phyllo_users_lookup_failed' });
-        }
-
-        let phylloUserId = existing && existing.phyllo_user_id;
-
-        if (!phylloUserId) {
-          const phylloUser = await createPhylloUser({
-            name: 'Promptly User',
-            externalId: String(promptlyUserId),
-          });
-          phylloUserId = phylloUser.id;
-
-          const { error: insertError } = await supabaseAdmin
-            .from('phyllo_users')
-            .insert({
-              promptly_user_id: promptlyUserId,
-              phyllo_user_id: phylloUserId,
-            });
-          if (insertError) {
-            console.error('[Phyllo] phyllo_users insert error', insertError);
-          }
-        }
-
-        const sdk = await createSdkToken({ userId: phylloUserId });
+        const externalId = 'sandbox-demo-user';
+        const phylloUser = await createPhylloUser({
+          name: 'Promptly Sandbox User',
+          externalId,
+        });
+        const sdk = await createSdkToken({ userId: phylloUser.id });
 
         return sendJson(res, 200, {
-          userId: phylloUserId,
+          userId: phylloUser.id,
           token: sdk.token,
           environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
           clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
