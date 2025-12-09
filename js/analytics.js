@@ -242,10 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadAccounts();
   loadOverview();
-  loadHeatmap();
-  loadPosts();
-  loadInsights();
-  loadAlerts();
+  // legacy individual loaders removed in favor of loadAnalytics()
 
   function loadFullAnalytics() {
     fetch('/api/analytics/data')
@@ -277,4 +274,158 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadConnectedAccounts();
+
+  async function fetchAnalyticsData() {
+    const res = await fetch('/api/analytics/data');
+    if (!res.ok) throw new Error('analytics/data failed ' + res.status);
+    const json = await res.json();
+    if (!json.ok) throw new Error('analytics/data error');
+    return json.data;
+  }
+
+  async function fetchInsights() {
+    const res = await fetch('/api/analytics/insights');
+    if (!res.ok) throw new Error('insights failed ' + res.status);
+    const json = await res.json();
+    if (!json.ok) throw new Error('insights error');
+    return json.insights || [];
+  }
+
+  async function fetchAlerts() {
+    const res = await fetch('/api/analytics/alerts');
+    if (!res.ok) throw new Error('alerts failed ' + res.status);
+    const json = await res.json();
+    if (!json.ok) throw new Error('alerts error');
+    return json.alerts || json.data || [];
+  }
+
+  function renderOverview(overview = {}) {
+    const fg = document.getElementById('kpi-follower-growth');
+    const eng = document.getElementById('kpi-engagement');
+    const views = document.getElementById('kpi-views');
+    const ret = document.getElementById('kpi-retention');
+    if (fg) fg.textContent = overview.followerGrowth != null ? `${numberFmt(overview.followerGrowth)}${overview.followerGrowth > 0 ? '+' : ''}` : '—';
+    if (eng) eng.textContent = overview.engagementRate != null ? `${numberFmt(overview.engagementRate * 100, { maximumFractionDigits: 2 })}%` : '—';
+    if (views) views.textContent = overview.avgViewsPerPost != null ? numberFmt(overview.avgViewsPerPost) : '—';
+    if (ret) ret.textContent = overview.retentionPct != null ? `${numberFmt(overview.retentionPct * 100, { maximumFractionDigits: 1 })}%` : '—';
+  }
+
+  function renderPosts(posts = []) {
+    const tbody = document.getElementById('analytics-table-body');
+    if (!tbody) return;
+    if (!posts.length) {
+      tbody.innerHTML = '<tr><td colspan="7">No data yet – connect an account.</td></tr>';
+      return;
+    }
+    const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
+    tbody.innerHTML = posts
+      .map((p) => `
+        <tr>
+          <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : (p.title || 'Untitled')}</td>
+          <td>${p.platform || '—'}</td>
+          <td>${numberFmt(p.views)}</td>
+          <td>${numberFmt(p.likes)}</td>
+          <td>${fmtPct(p.retention_pct || p.retentionPct)}</td>
+          <td>${numberFmt(p.shares)}</td>
+          <td>${numberFmt(p.saves)}</td>
+        </tr>
+      `)
+      .join('');
+  }
+
+  function renderHeatmapFromPosts(posts = []) {
+    const grid = document.querySelector('.analytics-heatmap-grid');
+    if (!grid) return;
+    const buckets = [
+      { label: 'Midnight-4a', hours: [0, 1, 2, 3] },
+      { label: '4a-8a', hours: [4, 5, 6, 7] },
+      { label: '8a-Noon', hours: [8, 9, 10, 11] },
+      { label: 'Noon-4p', hours: [12, 13, 14, 15] },
+      { label: '4p-8p', hours: [16, 17, 18, 19] },
+      { label: '8p-Mid', hours: [20, 21, 22, 23] },
+    ];
+    const agg = {};
+    posts.forEach((p) => {
+      if (!p.published_at && !p.publishedAt) return;
+      const dt = new Date(p.published_at || p.publishedAt);
+      const day = dt.getUTCDay();
+      const hour = dt.getUTCHours();
+      const bucketIdx = buckets.findIndex((b) => b.hours.includes(hour));
+      if (bucketIdx === -1) return;
+      const key = `${day}-${bucketIdx}`;
+      const engagement =
+        Number(p.likes || 0) + Number(p.comments || 0) + Number(p.shares || 0) + Number(p.saves || 0);
+      agg[key] = (agg[key] || 0) + engagement;
+    });
+    const maxEng = Object.values(agg).length ? Math.max(...Object.values(agg)) : 0;
+    grid.innerHTML = '';
+    buckets.forEach((bucket, bIdx) => {
+      for (let day = 0; day < 7; day++) {
+        const key = `${day}-${bIdx}`;
+        const engagement = agg[key] || 0;
+        const intensity = maxEng ? Math.min(1, engagement / maxEng) : 0;
+        const cell = document.createElement('span');
+        cell.className = 'heatmap-cell';
+        cell.style.opacity = `${0.2 + intensity * 0.8}`;
+        cell.title = `Day ${day}, ${bucket.label}: ${Math.round(engagement)} engagement`;
+        grid.appendChild(cell);
+      }
+    });
+  }
+
+  function renderInsights(insights = []) {
+    const container = document.getElementById('analytics-insights');
+    if (!container) return;
+    if (!insights.length) {
+      container.innerHTML = '<p class="muted">No insights yet.</p>';
+      return;
+    }
+    container.innerHTML = insights
+      .map(
+        (ins) => `
+        <div class="analytics-card insight-card">
+          <h3>${ins.title || 'Insight'}</h3>
+          <p>${ins.detail || ins.description || ''}</p>
+          <button class="secondary-btn" type="button">Try This Experiment</button>
+        </div>`
+      )
+      .join('');
+  }
+
+  function renderAlerts(alerts = []) {
+    const container = document.getElementById('analytics-alerts');
+    if (!container) return;
+    if (!alerts.length) {
+      container.innerHTML = '<p class="muted">No alerts yet.</p>';
+      return;
+    }
+    container.innerHTML = alerts
+      .map(
+        (a) => `
+        <div class="alert-card">
+          <span class="alert-icon">${a.type === 'warning' ? '⚠' : 'ℹ'}</span>
+          <span class="alert-text">${a.message || a.detail || a.type}</span>
+        </div>`
+      )
+      .join('');
+  }
+
+  async function loadAnalytics() {
+    try {
+      const data = await fetchAnalyticsData();
+      renderOverview(data.overview || {});
+      renderPosts(data.posts || []);
+      renderHeatmapFromPosts(data.posts || []);
+
+      const insights = await fetchInsights();
+      renderInsights(insights);
+
+      const alerts = await fetchAlerts();
+      renderAlerts(alerts);
+    } catch (err) {
+      console.error('[Analytics] loadAnalytics error', err);
+    }
+  }
+
+  loadAnalytics();
 });
