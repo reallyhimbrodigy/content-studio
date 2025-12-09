@@ -172,6 +172,57 @@ async function upsertPhylloAccount({
     );
 }
 
+async function upsertPhylloPost({
+  phylloAccountId,
+  platform,
+  platformPostId,
+  title,
+  caption,
+  url,
+  publishedAt,
+}) {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  return supabaseAdmin
+    .from('phyllo_posts')
+    .upsert(
+      {
+        phyllo_account_id: phylloAccountId,
+        platform,
+        platform_post_id: platformPostId,
+        title,
+        caption,
+        url,
+        published_at: publishedAt,
+      },
+      { onConflict: 'phyllo_account_id,platform_post_id' }
+    );
+}
+
+async function insertPhylloPostMetrics({
+  phylloPostId,
+  capturedAt,
+  views,
+  likes,
+  comments,
+  shares,
+  saves,
+  watchTimeSeconds,
+  retentionPct,
+}) {
+  if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
+  return supabaseAdmin.from('phyllo_post_metrics').insert({
+    phyllo_post_id: phylloPostId,
+    captured_at: capturedAt,
+    views,
+    likes,
+    comments,
+    shares,
+    saves,
+    watch_time_seconds: watchTimeSeconds,
+    retention_pct: retentionPct,
+  });
+}
+
 module.exports = {
   supabaseAdmin,
   getDesignAssetById,
@@ -181,4 +232,6 @@ module.exports = {
   createDesignAsset,
   DESIGN_ASSET_URL_COLUMN,
   upsertPhylloAccount,
+  upsertPhylloPost,
+  insertPhylloPostMetrics,
 };

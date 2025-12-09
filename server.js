@@ -2901,6 +2901,95 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  if (parsed.pathname === '/api/phyllo/sync-posts' && req.method === 'POST') {
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data: accounts, error: accErr } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .eq('status', 'connected');
+
+        if (accErr) {
+          console.error('[Phyllo] load accounts error', accErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+
+        if (!accounts || accounts.length === 0) {
+          return sendJson(res, 200, { ok: true, syncedPosts: 0 });
+        }
+
+        let totalSynced = 0;
+
+        for (const acc of accounts) {
+          const postsResp = await getPhylloPosts(acc.account_id);
+          const posts = postsResp.data || [];
+
+          for (const p of posts) {
+            const { data: postRows, error: postErr } = await upsertPhylloPost({
+              phylloAccountId: acc.id,
+              platform: acc.platform || p.platform,
+              platformPostId: p.id,
+              title: p.title || null,
+              caption: p.caption || null,
+              url: p.url || null,
+              publishedAt: p.published_at || null,
+            });
+
+            if (postErr) {
+              console.error('[Phyllo] upsertPhylloPost error', postErr);
+              continue;
+            }
+
+            const postRow = Array.isArray(postRows) ? postRows[0] : postRows;
+            if (!postRow || !postRow.id) continue;
+
+            const metricsResp = await getPhylloPostMetrics(p.id);
+            const m = metricsResp.data || {};
+
+            const views = m.views || 0;
+            const likes = m.likes || 0;
+            const comments = m.comments || 0;
+            const shares = m.shares || 0;
+            const saves = m.saves || 0;
+            const watchTimeSeconds = m.watch_time_seconds || 0;
+            const retentionPct = m.retention_pct || null;
+
+            const { error: metricsErr } = await insertPhylloPostMetrics({
+              phylloPostId: postRow.id,
+              capturedAt: new Date().toISOString(),
+              views,
+              likes,
+              comments,
+              shares,
+              saves,
+              watchTimeSeconds,
+              retentionPct,
+            });
+
+            if (metricsErr) {
+              console.error('[Phyllo] insertPhylloPostMetrics error', metricsErr);
+              continue;
+            }
+
+            totalSynced += 1;
+          }
+        }
+
+        return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
+      } catch (err) {
+        console.error('[Phyllo] /api/phyllo/sync-posts error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/phyllo/test-posts' && req.method === 'GET') {
     (async () => {
       try {
