@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Analytics • Promptly</title>
+    <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="assets/vendor/supabase.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="app-layout">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
+          <span class="sidebar-toggle__bars" aria-hidden="true"></span>
+        </button>
+        <aside class="app-sidebar" id="app-sidebar">
+          <nav class="sidebar-nav" aria-label="Workspace navigation">
+            <a href="/" class="sidebar-link">
+              <span>Content Calendar</span>
+            </a>
+            <a href="/library.html" class="sidebar-link">
+              <span>Library</span>
+            </a>
+            <a href="/analytics.html" class="sidebar-link is-active" aria-current="page" data-nav="analytics">
+              <span>Analytics</span>
+            </a>
+          </nav>
+        </aside>
+
+        <div class="app-main">
+          <header class="hero analytics-hero">
+            <div class="hero-top">
+              <div>
+                <h1>Analytics</h1>
+                <p>Track your content performance and get AI-powered recommendations.</p>
+              </div>
+              <div class="analytics-connect-actions">
+                <button class="primary" id="connect-tiktok">Connect TikTok</button>
+                <button class="primary" id="connect-instagram">Connect Instagram</button>
+                <button class="primary" id="connect-youtube">Connect YouTube</button>
+              </div>
+            </div>
+            <div class="analytics-connected-strip" aria-label="Connected accounts">
+              <div class="analytics-connected-card">
+                <div class="analytics-connected-label">TikTok</div>
+                <div class="analytics-connected-status">Not connected</div>
+              </div>
+              <div class="analytics-connected-card">
+                <div class="analytics-connected-label">Instagram</div>
+                <div class="analytics-connected-status">Not connected</div>
+              </div>
+              <div class="analytics-connected-card">
+                <div class="analytics-connected-label">YouTube</div>
+                <div class="analytics-connected-status">Not connected</div>
+              </div>
+            </div>
+          </header>
+
+          <main class="analytics-page">
+            <section class="analytics-kpis" aria-label="Key metrics">
+              <div class="analytics-kpi-card">
+                <p class="analytics-kpi-label">Follower Growth</p>
+                <p class="analytics-kpi-value">+— this month</p>
+                <p class="analytics-kpi-helper">Last 30 days</p>
+              </div>
+              <div class="analytics-kpi-card">
+                <p class="analytics-kpi-label">Engagement Rate</p>
+                <p class="analytics-kpi-value">— %</p>
+                <p class="analytics-kpi-helper">Last 30 days</p>
+              </div>
+              <div class="analytics-kpi-card">
+                <p class="analytics-kpi-label">Average Views per Post</p>
+                <p class="analytics-kpi-value">—</p>
+                <p class="analytics-kpi-helper">Across connected accounts</p>
+              </div>
+              <div class="analytics-kpi-card">
+                <p class="analytics-kpi-label">Retention % (watch time)</p>
+                <p class="analytics-kpi-value">— %</p>
+                <p class="analytics-kpi-helper">Last 30 days</p>
+              </div>
+            </section>
+
+            <section class="analytics-section">
+              <div class="section-header">
+                <h2>Best Posting Times</h2>
+                <p>Heatmap will populate when accounts are connected. AI will highlight recommended posting slots here.</p>
+              </div>
+              <div class="analytics-card analytics-heatmap-card">
+                <div class="analytics-heatmap-grid">
+                  <!-- 7 columns × 5 rows placeholder -->
+                  <span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span>
+                  <span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span>
+                  <span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span>
+                  <span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span>
+                  <span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span><span class="heatmap-cell"></span>
+                </div>
+              </div>
+            </section>
+
+            <section class="analytics-section">
+              <div class="section-header">
+                <h2>Content Performance</h2>
+              </div>
+              <div class="analytics-card analytics-table-card">
+                <table class="analytics-table" aria-label="Content performance table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Post Title</th>
+                      <th scope="col">Platform</th>
+                      <th scope="col">Views</th>
+                      <th scope="col">Likes</th>
+                      <th scope="col">Retention</th>
+                      <th scope="col">Shares</th>
+                      <th scope="col">Saves</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><a href="#">Top 3 Dribbling Drills</a></td>
+                      <td>Instagram</td>
+                      <td>12.3k</td>
+                      <td>1.1k</td>
+                      <td>42%</td>
+                      <td>210</td>
+                      <td>180</td>
+                    </tr>
+                    <tr>
+                      <td><a href="#">Behind-the-Scenes: Training Day</a></td>
+                      <td>TikTok</td>
+                      <td>19.8k</td>
+                      <td>1.9k</td>
+                      <td>38%</td>
+                      <td>340</td>
+                      <td>260</td>
+                    </tr>
+                    <tr>
+                      <td><a href="#">Coach Q&A Live</a></td>
+                      <td>YouTube</td>
+                      <td>8.4k</td>
+                      <td>620</td>
+                      <td>51%</td>
+                      <td>120</td>
+                      <td>95</td>
+                    </tr>
+                    <tr>
+                      <td><a href="#">Footwork Mini Series</a></td>
+                      <td>TikTok</td>
+                      <td>15.1k</td>
+                      <td>1.3k</td>
+                      <td>44%</td>
+                      <td>275</td>
+                      <td>210</td>
+                    </tr>
+                    <tr>
+                      <td><a href="#">Recovery Routine</a></td>
+                      <td>Instagram</td>
+                      <td>9.2k</td>
+                      <td>740</td>
+                      <td>47%</td>
+                      <td>130</td>
+                      <td>105</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="analytics-section analytics-bottom">
+              <div class="analytics-insights">
+                <div class="section-header">
+                  <h2>AI Insights</h2>
+                </div>
+                <div class="analytics-insights-grid">
+                  <div class="analytics-card insight-card">
+                    <h3>Post at 7 PM PST</h3>
+                    <p>Evening posts are trending +18% engagement.</p>
+                    <button class="primary">Try This Experiment</button>
+                  </div>
+                  <div class="analytics-card insight-card">
+                    <h3>Double down on training tips</h3>
+                    <p>How-to clips drive stronger completion rates.</p>
+                    <button class="primary">Try This Experiment</button>
+                  </div>
+                  <div class="analytics-card insight-card">
+                    <h3>Experiment with shorter hooks</h3>
+                    <p>Test 3–5 second openings to boost watch time.</p>
+                    <button class="primary">Try This Experiment</button>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="analytics-alerts">
+                <div class="section-header">
+                  <h2>Alerts</h2>
+                </div>
+                <div class="analytics-card alert-card">
+                  <span class="alert-icon">⚠</span>
+                  <div class="alert-text">Retention dropped 20% vs. last month.</div>
+                </div>
+                <div class="analytics-card alert-card">
+                  <span class="alert-icon">⚠</span>
+                  <div class="alert-text">Audience shift: +15% viewers from UK.</div>
+                </div>
+                <div class="analytics-card alert-card">
+                  <span class="alert-icon">⚠</span>
+                  <div class="alert-text">Engagement dip on weekend posts.</div>
+                </div>
+              </aside>
+            </section>
+          </main>
+
+          <footer class="footer">
+            <p>Content studio that keeps campaigns organized, aligned, and moving fast.</p>
+          </footer>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="analytics.js"></script>
+  </body>
+</html>
