@@ -13,6 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       const cfg = await res.json();
+      if (!cfg || !cfg.token) {
+        console.error('[Phyllo] Missing token in sdk-config response', cfg);
+        return;
+      }
       if (!window.PhylloConnect) {
         console.error('PhylloConnect global missing');
         return;
