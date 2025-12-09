@@ -17,20 +17,29 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('[Phyllo] Missing token in sdk-config response', cfg);
         return;
       }
-      if (!window.PhylloConnect) {
-        console.error('PhylloConnect global missing');
-        return;
-      }
-      const connect = window.PhylloConnect.initialize({
-        userId: cfg.userId,
-        token: cfg.token,
-        environment: cfg.environment,
-        clientDisplayName: cfg.clientDisplayName,
-      });
-      connect.open();
-    } catch (err) {
-      console.error('[Phyllo] connect error', err);
+    if (!window.PhylloConnect) {
+      console.error('PhylloConnect global missing');
+      return;
     }
+    const connect = window.PhylloConnect.initialize({
+      userId: cfg.userId,
+      token: cfg.token,
+      environment: cfg.environment,
+      clientDisplayName: cfg.clientDisplayName,
+      accountConnected: (account) => {
+        console.log('[Phyllo] accountConnected', account);
+      },
+      accountDisconnected: (account) => {
+        console.log('[Phyllo] accountDisconnected', account);
+      },
+      exit: () => {
+        console.log('[Phyllo] connect widget closed');
+      },
+    });
+    connect.open();
+  } catch (err) {
+    console.error('[Phyllo] connect error', err);
+  }
   }
 
   buttons.forEach((btn) => {
