@@ -1,52 +1,26 @@
-console.log('[Analytics] script loaded');
+document.addEventListener("DOMContentLoaded", () => {
+  const buttons = [
+    document.getElementById("connect-tiktok"),
+    document.getElementById("connect-instagram"),
+    document.getElementById("connect-youtube")
+  ];
 
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[Analytics] DOMContentLoaded');
+  async function launchPhyllo() {
+    const res = await fetch("/api/phyllo/sdk-config", { credentials: "include" });
+    if (!res.ok) return;
+    const cfg = await res.json();
 
-  const btnTikTok = document.getElementById('connect-tiktok');
-  const btnInstagram = document.getElementById('connect-instagram');
-  const btnYouTube = document.getElementById('connect-youtube');
+    const connect = window.PhylloConnect.initialize({
+      userId: cfg.userId,
+      token: cfg.token,
+      environment: "sandbox",
+      clientDisplayName: cfg.clientDisplayName
+    });
 
-  console.log('[Analytics] buttons:', { btnTikTok, btnInstagram, btnYouTube });
-  console.log('[Analytics] PhylloConnect global:', !!window.PhylloConnect);
-
-  async function openPhylloConnect() {
-    console.log('[Analytics] openPhylloConnect() called');
-
-    try {
-      const res = await fetch('/api/phyllo/sdk-config', { credentials: 'include' });
-      console.log('[Analytics] /api/phyllo/sdk-config status:', res.status);
-
-      if (!res.ok) {
-        console.error('[Analytics] sdk-config failed');
-        return;
-      }
-
-      const cfg = await res.json();
-      console.log('[Analytics] sdk-config payload:', cfg);
-
-      if (!window.PhylloConnect) {
-        console.error('[Analytics] window.PhylloConnect is missing');
-        return;
-      }
-
-      const connect = window.PhylloConnect.initialize({
-        userId: cfg.userId,
-        token: cfg.token,
-        environment: cfg.environment,
-        clientDisplayName: cfg.clientDisplayName,
-      });
-
-      console.log('[Analytics] opening Phyllo Connect');
-      connect.open();
-    } catch (err) {
-      console.error('[Analytics] Phyllo Connect error', err);
-    }
+    connect.open();
   }
 
-  [btnTikTok, btnInstagram, btnYouTube].forEach((btn) => {
-    if (!btn) return;
-    btn.addEventListener('click', openPhylloConnect);
-    console.log('[Analytics] attached click handler to', btn.id);
+  buttons.forEach(btn => {
+    if (btn) btn.addEventListener("click", launchPhyllo);
   });
 });
