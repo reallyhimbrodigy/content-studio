@@ -2878,19 +2878,22 @@ ${JSON.stringify(compactPosts)}`;
           return sendJson(res, 500, { ok: false, error: 'db_error' });
         }
 
+        const metrics = await getUserPostMetrics(accounts || []);
+        const overview = {
+          followerGrowth: metrics?.summary?.followerGrowth || 0,
+          engagementRate: metrics?.summary?.engagementRate || 0,
+          avgViewsPerPost: metrics?.summary?.avgViews || 0,
+          retentionPct: metrics?.summary?.retention || 0,
+        };
+
         return sendJson(res, 200, {
           ok: true,
           data: {
             accounts: accounts || [],
-            posts: [],
+            posts: metrics.posts || [],
             insights: [],
             alerts: [],
-            overview: {
-              followerGrowth: null,
-              engagementRate: null,
-              avgViewsPerPost: null,
-              retentionPct: null,
-            },
+            overview,
           },
         });
       } catch (err) {
