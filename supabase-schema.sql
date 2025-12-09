@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS growth_insights (
   unique (promptly_user_id, week_start)
 );
 
+-- Analytics insights (AI-generated, persisted)
+CREATE TABLE IF NOT EXISTS analytics_insights (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  insights jsonb not null default '[]'::jsonb,
+  created_at timestamptz default now()
+);
+
 -- Additional profile-level metrics
 CREATE TABLE IF NOT EXISTS phyllo_profile_metrics (
   id uuid primary key default gen_random_uuid(),

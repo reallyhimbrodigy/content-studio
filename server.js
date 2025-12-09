@@ -3081,7 +3081,18 @@ Output format:
             insights = [{ title: 'Unable to parse model response', detail: content || 'No content' }];
           }
 
-          return sendJson(res, 200, { ok: true, data: insights });
+          if (supabaseAdmin) {
+            try {
+              await supabaseAdmin.from('analytics_insights').insert({
+                user_id: userId,
+                insights,
+              });
+            } catch (insertErr) {
+              console.error('[Analytics insights] insert failed', insertErr);
+            }
+          }
+
+          return sendJson(res, 200, { ok: true, insights });
         } catch (err) {
           console.error('[Analytics insights generation] error', err);
           return sendJson(res, 500, { ok: false, error: 'server_error' });
@@ -3150,17 +3161,29 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
-    return sendJson(res, 200, {
-      ok: true,
-      data: {
-        weekStart: '2025-11-17',
-        summaryText: 'Evening how-to posts are your strongest performers this week.',
-        experiments: [
-          'Post 3 how-to clips at 7 PM PST over the next 7 days.',
-          'Test shorter 5-second hooks on your next 5 TikToks.',
-        ],
-      },
-    });
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('analytics_insights')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'insights_fetch_failed' });
+        }
+        const insights = (data && data[0] && data[0].insights) || [];
+        return sendJson(res, 200, { ok: true, insights });
+      } catch (err) {
+        console.error('[Analytics insights fetch] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
   }
 
   if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
