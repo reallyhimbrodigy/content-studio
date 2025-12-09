@@ -26,15 +26,18 @@ document.addEventListener('DOMContentLoaded', () => {
       token: cfg.token,
       environment: cfg.environment,
       clientDisplayName: cfg.clientDisplayName,
-      accountConnected: (account) => {
+      accountConnected: function (account) {
         console.log('[Phyllo] accountConnected', account);
       },
-      accountDisconnected: (account) => {
+      accountDisconnected: function (account) {
         console.log('[Phyllo] accountDisconnected', account);
       },
-      exit: () => {
-        console.log('[Phyllo] connect widget closed');
+      tokenExpired: function () {
+        console.log('[Phyllo] tokenExpired');
       },
+      exit: function () {
+        console.log('[Phyllo] exit');
+      }
     });
     connect.open();
   } catch (err) {
