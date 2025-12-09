@@ -45,6 +45,12 @@ async function createSdkToken({ userId }) {
   return res.data;
 }
 
+async function getPhylloAccountDetails(accountId) {
+  const client = getClient();
+  const res = await client.get(`/v1/accounts/${accountId}`);
+  return res.data;
+}
+
 async function fetchAccountContents({ accountId, since, until }) {
   const client = getClient();
   const params = {};
@@ -67,6 +73,7 @@ module.exports = {
   createPhylloUser,
   createSdkToken,
   getPhylloUserByExternalId,
+  getPhylloAccountDetails,
   fetchAccountContents,
   fetchAccountEngagement,
 };

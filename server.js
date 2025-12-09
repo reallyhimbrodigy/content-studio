@@ -20,6 +20,7 @@ const {
   fetchAccountContents,
   fetchAccountEngagement,
   getPhylloUserByExternalId,
+  getPhylloAccountDetails,
 } = require('./services/phyllo');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
@@ -2799,15 +2800,23 @@ ${JSON.stringify(compactPosts)}`;
           if (!supabaseAdmin || !upsertPhylloAccount) {
             return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
           }
+          let profile = {};
+          try {
+            const details = await getPhylloAccountDetails(accountId);
+            profile = (details && details.data) || details || {};
+          } catch (e) {
+            console.warn('[Phyllo] getPhylloAccountDetails failed', e?.response?.data || e);
+          }
+
           const { error } = await upsertPhylloAccount({
             userId: promptlyUserId,
             phylloUserId,
-            platform,
+            platform: profile.platform || platform,
             accountId,
             workPlatformId,
-            handle,
-            displayName,
-            avatarUrl,
+            handle: profile.username || handle,
+            displayName: profile.full_name || displayName,
+            avatarUrl: profile.avatar_url || avatarUrl,
           });
           if (error) {
             console.error('[Phyllo] upsertPhylloAccount error', error);
