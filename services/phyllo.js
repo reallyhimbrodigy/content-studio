@@ -24,6 +24,18 @@ async function createPhylloUser({ name, externalId }) {
   return res.data;
 }
 
+async function getPhylloUserByExternalId(externalId) {
+  const client = getClient();
+  const res = await client.get('/v1/users', {
+    params: { external_id: externalId },
+  });
+  const data = res.data && (res.data.data || res.data);
+  if (Array.isArray(data) && data.length > 0) {
+    return data[0];
+  }
+  return null;
+}
+
 async function createSdkToken({ userId }) {
   const client = getClient();
   const res = await client.post('/v1/sdk-tokens', {
@@ -54,6 +66,7 @@ async function fetchAccountEngagement({ accountId, since, until }) {
 module.exports = {
   createPhylloUser,
   createSdkToken,
+  getPhylloUserByExternalId,
   fetchAccountContents,
   fetchAccountEngagement,
 };

@@ -2697,23 +2697,28 @@ ${JSON.stringify(compactPosts)}`;
       try {
         const externalId = 'sandbox-demo-user';
 
-        let phylloUser;
-        try {
-          phylloUser = await createPhylloUser({
-            name: 'Promptly Sandbox User',
-            externalId,
-          });
-        } catch (err) {
-          const status = err.response?.status;
-          const data = err.response?.data;
-          console.error('[Phyllo] createPhylloUser failed', status, data || err.message);
+        // 1) try to find existing user
+        let phylloUser = await getPhylloUserByExternalId(externalId);
 
-          return sendJson(res, 200, {
-            ok: false,
-            error: 'phyllo_create_user_failed',
-            status,
-            details: data || err.message,
-          });
+        // 2) create if not found
+        if (!phylloUser) {
+          try {
+            phylloUser = await createPhylloUser({
+              name: 'Promptly Sandbox User',
+              externalId,
+            });
+          } catch (err) {
+            const status = err.response?.status;
+            const data = err.response?.data;
+            console.error('[Phyllo] createPhylloUser failed', status, data || err.message);
+
+            return sendJson(res, 200, {
+              ok: false,
+              error: 'phyllo_create_user_failed',
+              status,
+              details: data || err.message,
+            });
+          }
         }
 
         let sdk;
