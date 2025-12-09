@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const cfg = await res.json();
+    if (!cfg || cfg.ok === false) {
+      console.error('[Phyllo] sdk-config error', cfg);
+      return null;
+    }
+
     if (!window.PhylloConnect) {
       console.error('[Phyllo] PhylloConnect not available');
       return null;

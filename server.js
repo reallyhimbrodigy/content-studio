@@ -2687,7 +2687,8 @@ ${JSON.stringify(compactPosts)}`;
     (async () => {
       if (!process.env.PHYLLO_CLIENT_ID || !process.env.PHYLLO_CLIENT_SECRET) {
         console.error('[Phyllo] Missing PHYLLO_CLIENT_ID or PHYLLO_CLIENT_SECRET env vars');
-        return sendJson(res, 500, {
+        return sendJson(res, 200, {
+          ok: false,
           error: 'phyllo_env_missing',
           message: 'PHYLLO_CLIENT_ID/PHYLLO_CLIENT_SECRET are not set on the server.',
         });
@@ -2695,6 +2696,7 @@ ${JSON.stringify(compactPosts)}`;
 
       try {
         const externalId = 'sandbox-demo-user';
+
         let phylloUser;
         try {
           phylloUser = await createPhylloUser({
@@ -2704,18 +2706,10 @@ ${JSON.stringify(compactPosts)}`;
         } catch (err) {
           const status = err.response?.status;
           const data = err.response?.data;
-
-          if (status === 409 || status === 400) {
-            console.warn('[Phyllo] createPhylloUser conflict, adjust to reuse existing user', data);
-            return sendJson(res, 500, {
-              error: 'phyllo_user_conflict',
-              message: 'Phyllo user already exists for this externalId. Adjust the code to reuse it.',
-              details: data,
-            });
-          }
-
           console.error('[Phyllo] createPhylloUser failed', status, data || err.message);
-          return sendJson(res, 500, {
+
+          return sendJson(res, 200, {
+            ok: false,
             error: 'phyllo_create_user_failed',
             status,
             details: data || err.message,
@@ -2730,17 +2724,9 @@ ${JSON.stringify(compactPosts)}`;
           const data = err.response?.data;
           console.error('[Phyllo] createSdkToken failed', status, data || err.message);
 
-          if (status === 401 || status === 403) {
-            return sendJson(res, 500, {
-              error: 'phyllo_auth_failed',
-              status,
-              message: 'Phyllo rejected the client credentials. Check PHYLLO_CLIENT_ID/SECRET.',
-              details: data,
-            });
-          }
-
-          return sendJson(res, 500, {
-            error: 'phyllo_sdk_token_failed',
+          return sendJson(res, 200, {
+            ok: false,
+            error: 'phyllo_create_sdk_token_failed',
             status,
             details: data || err.message,
           });
@@ -2752,13 +2738,15 @@ ${JSON.stringify(compactPosts)}`;
 
         if (!token) {
           console.error('[Phyllo] SDK token missing in response:', sdk);
-          return sendJson(res, 500, {
+          return sendJson(res, 200, {
+            ok: false,
             error: 'phyllo_sdk_token_missing',
             details: sdk,
           });
         }
 
         return sendJson(res, 200, {
+          ok: true,
           userId: phylloUser.id,
           token,
           environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
@@ -2766,7 +2754,8 @@ ${JSON.stringify(compactPosts)}`;
         });
       } catch (err) {
         console.error('[Phyllo] sdk-config unexpected error', err);
-        return sendJson(res, 500, {
+        return sendJson(res, 200, {
+          ok: false,
           error: 'phyllo_sdk_config_failed',
           message: err.message,
         });
