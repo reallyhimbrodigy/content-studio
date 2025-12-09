@@ -386,7 +386,14 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="analytics-card insight-card">
           <h3>${ins.title || 'Insight'}</h3>
           <p>${ins.detail || ins.description || ''}</p>
-          <button class="secondary-btn" type="button">Try This Experiment</button>
+          <button
+            class="secondary-btn experiment-btn"
+            type="button"
+            data-title="${(ins.title || 'Experiment').replace(/"/g, '&quot;')}"
+            data-description="${(ins.detail || ins.description || '').replace(/"/g, '&quot;')}"
+          >
+            Try This Experiment
+          </button>
         </div>`
       )
       .join('');
@@ -428,4 +435,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadAnalytics();
+
+  document.addEventListener('click', async (e) => {
+    if (!e.target.classList.contains('experiment-btn')) return;
+    const title = e.target.dataset.title || 'Experiment';
+    const description = e.target.dataset.description || '';
+    try {
+      const res = await fetch('/api/analytics/experiments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('experiment_create_failed');
+      console.log('[Analytics] Experiment created', json.experiment);
+      alert('Experiment started for the next 7 days.');
+    } catch (err) {
+      console.error('[Analytics] experiment create error', err);
+      alert('Could not start experiment.');
+    }
+  });
 });

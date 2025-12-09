@@ -14,7 +14,13 @@ const {
   generateBrandedBackgroundImage,
 } = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const { getPhylloPosts, getPhylloPostMetrics, getUserPostMetrics, getAudienceDemographics } = require('./services/phyllo-metrics');
+const {
+  getPhylloPosts,
+  getPhylloPostMetrics,
+  getUserPostMetrics,
+  getAudienceDemographics,
+  buildWeeklyReport,
+} = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
   createSdkToken,
@@ -3235,6 +3241,181 @@ Output format:
         return sendJson(res, 200, { ok: true, alerts: data || [] });
       } catch (err) {
         console.error('[Analytics alerts] fetch error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/experiments' && req.method === 'POST') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { title, description } = await parseJson(req);
+        if (!title || !description) {
+          return sendJson(res, 400, { ok: false, error: 'missing_fields' });
+        }
+        const start = new Date();
+        const end = new Date();
+        end.setDate(end.getDate() + 7);
+        const { data, error } = await supabaseAdmin
+          .from('analytics_experiments')
+          .insert({
+            user_id: userId,
+            title,
+            description,
+            status: 'active',
+            start_date: start.toISOString().slice(0, 10),
+            end_date: end.toISOString().slice(0, 10),
+          })
+          .select()
+          .single();
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'experiment_create_failed' });
+        }
+        return sendJson(res, 200, { ok: true, experiment: data });
+      } catch (err) {
+        console.error('[Analytics experiments create] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/experiments' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('analytics_experiments')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'experiment_fetch_failed' });
+        }
+        return sendJson(res, 200, { ok: true, experiments: data || [] });
+      } catch (err) {
+        console.error('[Analytics experiments fetch] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname.startsWith('/api/analytics/experiments/') && req.method === 'PATCH') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const id = parsed.pathname.split('/').pop();
+        if (!id) {
+          return sendJson(res, 400, { ok: false, error: 'missing_id' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('analytics_experiments')
+          .update({ status: 'completed' })
+          .eq('id', id)
+          .eq('user_id', userId)
+          .select()
+          .single();
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'experiment_update_failed' });
+        }
+        return sendJson(res, 200, { ok: true, experiment: data });
+      } catch (err) {
+        console.error('[Analytics experiments update] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/reports' && req.method === 'POST') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data: analyticsData } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        const { data: insightsRows } = await supabaseAdmin
+          .from('analytics_insights')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const { data: alertsRows } = await supabaseAdmin
+          .from('analytics_alerts')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        const report = await buildWeeklyReport({
+          posts: (analyticsData && analyticsData.posts) || [],
+          overview: (analyticsData && analyticsData.overview) || {},
+          insights: (insightsRows && insightsRows[0] && insightsRows[0].insights) || [],
+          alerts: alertsRows || [],
+        });
+
+        const { error } = await supabaseAdmin
+          .from('analytics_reports')
+          .insert({
+            user_id: userId,
+            report,
+          });
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'report_create_failed' });
+        }
+
+        return sendJson(res, 200, { ok: true, report });
+      } catch (err) {
+        console.error('[Analytics reports create] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/reports/latest' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('analytics_reports')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'report_fetch_failed' });
+        }
+
+        return sendJson(res, 200, { ok: true, report: (data && data[0] && data[0].report) || null });
+      } catch (err) {
+        console.error('[Analytics reports fetch] error', err);
         return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();

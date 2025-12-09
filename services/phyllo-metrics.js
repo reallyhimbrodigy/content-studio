@@ -127,4 +127,24 @@ async function getAudienceDemographics(accounts = []) {
   return results;
 }
 
-module.exports = { getPhylloPosts, getPhylloPostMetrics, getUserPostMetrics, getAudienceDemographics };
+async function buildWeeklyReport({ posts = [], overview = {}, insights = [], alerts = [] }) {
+  return {
+    weekStart: new Date().toISOString().slice(0, 10),
+    overview,
+    topPosts: posts.slice(0, 5),
+    insights,
+    alerts,
+    highlights: {
+      fastestGrowingPlatform: overview.fastestGrowingPlatform || null,
+      bestPostingTime: overview.bestPostingTime || null,
+    },
+  };
+}
+
+module.exports = {
+  getPhylloPosts,
+  getPhylloPostMetrics,
+  getUserPostMetrics,
+  getAudienceDemographics,
+  buildWeeklyReport,
+};
