@@ -509,9 +509,71 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  async function loadDemographics() {
+    try {
+      const res = await fetch('/api/analytics/demographics');
+      const json = await res.json();
+      if (!json.ok) throw new Error('demographics fetch failed');
+      renderDemographics(json.demographics || {});
+    } catch (err) {
+      console.error('[Analytics] loadDemographics error', err);
+      ['demographics-age', 'demographics-gender', 'demographics-location', 'demographics-language'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'No demographic data yet.';
+      });
+    }
+  }
+
+  function renderDemographics(demo = {}) {
+    renderKeyValueBlock('demographics-age', 'Age', demo.age);
+    renderKeyValueBlock('demographics-gender', 'Gender', demo.gender);
+    renderKeyValueBlock('demographics-location', 'Location', demo.location);
+    renderKeyValueBlock('demographics-language', 'Language', demo.language);
+  }
+
+  function renderKeyValueBlock(containerId, title, data) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '';
+
+    const entries = data && Object.entries(data);
+    if (!entries || !entries.length) {
+      el.textContent = `No ${title.toLowerCase()} data yet.`;
+      return;
+    }
+
+    const header = document.createElement('h3');
+    header.textContent = title;
+    el.appendChild(header);
+
+    const list = document.createElement('ul');
+    entries.forEach(([key, value]) => {
+      const li = document.createElement('li');
+      li.textContent = `${key}: ${value}`;
+      list.appendChild(li);
+    });
+    el.appendChild(list);
+  }
+
+  async function loadEngagement() {
+    try {
+      const res = await fetch('/api/analytics/engagement');
+      const json = await res.json();
+      if (!json.ok) throw new Error('engagement_fetch_failed');
+      const el = document.getElementById('kpi-engagement');
+      if (el) el.textContent = `${json.engagement}%`;
+    } catch (err) {
+      console.error('[Analytics] loadEngagement error', err);
+      const el = document.getElementById('kpi-engagement');
+      if (el) el.textContent = '--%';
+    }
+  }
+
   loadAnalytics();
   loadExperiments();
   loadTopPosts();
+  loadDemographics();
+  loadEngagement();
 
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('experiment-btn')) return;

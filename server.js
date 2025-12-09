@@ -3222,6 +3222,45 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/engagement' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('posts')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'engagement_fetch_failed' });
+        }
+
+        const posts = (data && data.posts) || [];
+        if (!posts.length) return sendJson(res, 200, { ok: true, engagement: 0 });
+
+        let totalViews = 0;
+        let totalEngagement = 0;
+        posts.forEach((p) => {
+          totalViews += Number(p.views || 0);
+          totalEngagement += Number(p.likes || 0) + Number(p.comments || 0) + Number(p.shares || 0);
+        });
+
+        const engagementRate = totalViews > 0 ? Number(((totalEngagement / totalViews) * 100).toFixed(2)) : 0;
+
+        return sendJson(res, 200, { ok: true, engagement: engagementRate });
+      } catch (err) {
+        console.error('[Analytics engagement] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
     (async () => {
       try {
@@ -3315,6 +3354,108 @@ Output format:
         return sendJson(res, 200, { ok: true, posts: sorted });
       } catch (err) {
         console.error('[Analytics top posts] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'heatmap_fetch_failed' });
+        }
+
+        const posts = (data && data.posts) || [];
+        const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+
+        posts.forEach((p) => {
+          if (!p.published_at && !p.publishedAt) return;
+          const date = new Date(p.published_at || p.publishedAt);
+          const day = date.getDay();
+          const hour = date.getHours();
+          const score = (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+          if (day >= 0 && day < 7 && hour >= 0 && hour < 24) {
+            heatmap[day][hour] += score;
+          }
+        });
+
+        return sendJson(res, 200, { ok: true, heatmap });
+      } catch (err) {
+        console.error('[Analytics heatmap] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/followers' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'followers_fetch_failed' });
+        }
+
+        const trends = (data && data.followers) || [];
+        const sorted = trends.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        return sendJson(res, 200, { ok: true, trends: sorted });
+      } catch (err) {
+        console.error('[Analytics followers] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/demographics' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('demographics')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'demographics_fetch_failed' });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          demographics:
+            (data && data.demographics) || { age: {}, gender: {}, location: {}, language: {} },
+        });
+      } catch (err) {
+        console.error('[Analytics demographics] error', err);
         return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();
