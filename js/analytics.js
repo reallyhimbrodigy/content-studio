@@ -20,29 +20,33 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
 
-    // Initialize Phyllo Connect
     const instance = window.PhylloConnect.initialize({
+      clientDisplayName: cfg.clientDisplayName,
+      environment: cfg.environment,
       userId: cfg.userId,
       token: cfg.token,
-      environment: cfg.environment,
-      clientDisplayName: cfg.clientDisplayName
+      // no callbacks here
     });
 
-    // REQUIRED callbacks registered with .on()
-    instance.on('accountConnected', (accountId, workPlatformId, userId) => {
+    instance.on('accountConnected', function (accountId, workPlatformId, userId) {
       console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
     });
 
-    instance.on('accountDisconnected', (accountId, workPlatformId, userId) => {
+    instance.on('accountDisconnected', function (accountId, workPlatformId, userId) {
       console.log('[Phyllo] accountDisconnected', { accountId, workPlatformId, userId });
     });
 
     instance.on('tokenExpired', function (userId) {
       console.log('[Phyllo] tokenExpired for user', userId);
+      // later: refresh token via /api/phyllo/sdk-config
     });
 
-    instance.on('exit', () => {
-      console.log('[Phyllo] exit');
+    instance.on('exit', function (reason, userId) {
+      console.log('[Phyllo] exit', { reason, userId });
+    });
+
+    instance.on('connectionFailure', function (reason, workPlatformId, userId) {
+      console.log('[Phyllo] connectionFailure', { reason, workPlatformId, userId });
     });
 
     phylloConnectInstance = instance;
