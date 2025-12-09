@@ -227,17 +227,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadAlerts() {
-    const container = document.getElementById('analytics-alerts');
-    if (!container) return;
-    const data = await safeFetch('/api/analytics/alerts');
-    const rows = data && (data.data || data);
-    if (!rows || !rows.length) {
-      container.innerHTML = '<p class="muted">No alerts yet.</p>';
-      return;
+    try {
+      const res = await fetch('/api/analytics/alerts');
+      const json = await res.json();
+      if (!json.ok) throw new Error('alerts_fetch_failed');
+      renderAlerts(json.alerts || []);
+    } catch (err) {
+      console.error('[Analytics] loadAlerts error', err);
+      const el = document.getElementById('alerts-list');
+      if (el) el.textContent = 'No alerts available.';
     }
-    container.innerHTML = rows
-      .map((a) => `<div class="alert-card"><span class="alert-icon">${a.type === 'warning' ? '⚠' : 'ℹ'}</span><span class="alert-text">${a.message || (a.payload && a.payload.message) || a.type}</span></div>`)
-      .join('');
   }
 
   loadAccounts();
@@ -373,6 +372,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  async function loadHeatmap() {
+    try {
+      const res = await fetch('/api/analytics/heatmap');
+      const json = await res.json();
+      if (!json.ok) throw new Error('heatmap_fetch_failed');
+      renderHeatmap(json.heatmap || []);
+    } catch (err) {
+      console.error('[Analytics] loadHeatmap error', err);
+      const grid = document.getElementById('heatmap-grid');
+      if (grid) grid.textContent = 'No heatmap data yet.';
+    }
+  }
+
+  function renderHeatmap(matrix = []) {
+    const grid = document.getElementById('heatmap-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    if (!matrix.length) {
+      grid.textContent = 'No heatmap data yet.';
+      return;
+    }
+    const flat = matrix.flat();
+    const max = flat.length ? Math.max(...flat) : 0;
+    matrix.forEach((row, day) => {
+      row.forEach((score, hour) => {
+        const cell = document.createElement('div');
+        cell.className = 'heatmap-cell';
+        cell.dataset.score = `${score} engagement`;
+        const intensity = max > 0 ? score / max : 0;
+        cell.style.background = `rgba(127, 90, 240, ${intensity})`;
+        cell.title = `Day ${day}, Hour ${hour}: ${score}`;
+        grid.appendChild(cell);
+      });
+    });
+  }
+
   function renderInsights(insights = []) {
     const container = document.getElementById('analytics-insights');
     if (!container) return;
@@ -400,21 +435,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderAlerts(alerts = []) {
-    const container = document.getElementById('analytics-alerts');
+    const container = document.getElementById('alerts-list');
     if (!container) return;
     if (!alerts.length) {
-      container.innerHTML = '<p class="muted">No alerts yet.</p>';
+      container.textContent = 'No alerts available.';
       return;
     }
-    container.innerHTML = alerts
-      .map(
-        (a) => `
-        <div class="alert-card">
-          <span class="alert-icon">${a.type === 'warning' ? '⚠' : 'ℹ'}</span>
-          <span class="alert-text">${a.message || a.detail || a.type}</span>
-        </div>`
-      )
-      .join('');
+    container.innerHTML = '';
+    alerts.forEach((a) => {
+      const div = document.createElement('div');
+      div.className = `alert-card ${a.severity || ''}`;
+      div.innerHTML = `
+        <div>${a.message || a.detail || a.type}</div>
+        <div class="alert-timestamp">${a.created_at ? new Date(a.created_at).toLocaleString() : ''}</div>
+      `;
+      container.appendChild(div);
+    });
   }
 
   function renderExperiments(experiments = []) {
@@ -569,11 +605,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function loadFollowerGrowth() {
+    try {
+      const res = await fetch('/api/analytics/followers');
+      const json = await res.json();
+      if (!json.ok) throw new Error('followers_fetch_failed');
+      renderFollowerGrowth(json.trends || []);
+    } catch (err) {
+      console.error('[Analytics] loadFollowerGrowth error', err);
+      const el = document.getElementById('followers-chart');
+      if (el) el.textContent = 'No follower data yet.';
+    }
+  }
+
+  function renderFollowerGrowth(trends = []) {
+    const container = document.getElementById('followers-chart');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!trends.length) {
+      container.textContent = 'No follower data yet.';
+      return;
+    }
+    const max = Math.max(...trends.map((t) => t.count || 0)) || 1;
+    trends.forEach((t) => {
+      const bar = document.createElement('div');
+      bar.className = 'followers-bar';
+      const heightPct = ((t.count || 0) / max) * 100;
+      bar.style.height = `${heightPct}%`;
+      bar.dataset.label = t.date;
+      container.appendChild(bar);
+    });
+  }
+
   loadAnalytics();
   loadExperiments();
   loadTopPosts();
   loadDemographics();
   loadEngagement();
+  loadHeatmap();
+  loadAlerts();
+  loadFollowerGrowth();
 
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('experiment-btn')) return;
