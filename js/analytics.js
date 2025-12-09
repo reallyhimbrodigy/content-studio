@@ -417,6 +417,44 @@ document.addEventListener('DOMContentLoaded', () => {
       .join('');
   }
 
+  function renderExperiments(experiments = []) {
+    const container = document.getElementById('experiments-list');
+    if (!container) return;
+    if (!experiments.length) {
+      container.textContent = 'No experiments yet.';
+      return;
+    }
+    container.innerHTML = '';
+    experiments.forEach((exp) => {
+      const div = document.createElement('div');
+      div.className = 'experiment-card';
+      div.innerHTML = `
+        <div class="experiment-header">
+          <span class="experiment-title">${exp.title || 'Experiment'}</span>
+          <span class="experiment-status">${exp.status || 'active'}</span>
+        </div>
+        <div class="experiment-body">
+          <p>${exp.description || ''}</p>
+          <small>${exp.start_date || ''} → ${exp.end_date || ''}</small>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  async function loadExperiments() {
+    try {
+      const res = await fetch('/api/analytics/experiments');
+      const json = await res.json();
+      if (!json.ok) throw new Error('experiments fetch failed');
+      renderExperiments(json.experiments || []);
+    } catch (err) {
+      console.error('[Analytics] loadExperiments error', err);
+      const container = document.getElementById('experiments-list');
+      if (container) container.textContent = 'No experiments yet.';
+    }
+  }
+
   async function loadAnalytics() {
     try {
       const data = await fetchAnalyticsData();
@@ -434,7 +472,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function loadTopPosts() {
+    try {
+      const res = await fetch('/api/analytics/top-posts');
+      const json = await res.json();
+      if (!json.ok) throw new Error('top posts failed');
+      renderTopPosts(json.posts || []);
+    } catch (err) {
+      console.error('[Analytics] loadTopPosts error', err);
+      const container = document.getElementById('top-posts-list');
+      if (container) container.textContent = 'No post data yet.';
+    }
+  }
+
+  function renderTopPosts(posts = []) {
+    const container = document.getElementById('top-posts-list');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!posts.length) {
+      container.textContent = 'No post data yet.';
+      return;
+    }
+    posts.forEach((p) => {
+      const div = document.createElement('div');
+      div.className = 'top-post-card';
+      div.innerHTML = `
+        <div class="top-post-title">${p.title || '(Untitled Post)'}</div>
+        <div class="top-post-metrics">
+          <span>Views: ${p.views || 0}</span>
+          <span>Likes: ${p.likes || 0}</span>
+          <span>Comments: ${p.comments || 0}</span>
+          <span>Shares: ${p.shares || 0}</span>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
   loadAnalytics();
+  loadExperiments();
+  loadTopPosts();
 
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('experiment-btn')) return;

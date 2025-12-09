@@ -3285,6 +3285,42 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/top-posts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'top_posts_fetch_failed' });
+        }
+
+        const posts = (data && data.posts) || [];
+        const sorted = posts
+          .map((p) => ({
+            ...p,
+            score: (p.likes || 0) + (p.comments || 0) + (p.shares || 0),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        return sendJson(res, 200, { ok: true, posts: sorted });
+      } catch (err) {
+        console.error('[Analytics top posts] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'GET') {
     (async () => {
       try {
