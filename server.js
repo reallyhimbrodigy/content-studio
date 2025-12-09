@@ -2684,35 +2684,12 @@ ${JSON.stringify(compactPosts)}`;
   }
 
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
-    (async () => {
-      try {
-        const externalId = 'sandbox-demo-user';
-        const phylloUser = await createPhylloUser({
-          name: 'Promptly Sandbox User',
-          externalId,
-        });
-        const sdk = await createSdkToken({ userId: phylloUser.id });
-        const token =
-          (sdk && (sdk.token || sdk.sdk_token || sdk.access_token)) ||
-          (sdk?.data && (sdk.data.token || sdk.data.sdk_token || sdk.data.access_token));
-
-        if (!token) {
-          console.error('[Phyllo] SDK token missing in response:', sdk);
-          return sendJson(res, 500, { error: 'phyllo_sdk_token_missing' });
-        }
-
-        return sendJson(res, 200, {
-          userId: phylloUser.id,
-          token,
-          environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
-          clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
-        });
-      } catch (err) {
-        console.error('[Phyllo] sdk-config internal error', err?.response?.data || err);
-        return sendJson(res, 500, { error: 'phyllo_sdk_config_failed' });
-      }
-    })();
-    return;
+    return sendJson(res, 200, {
+      userId: 'sandbox-demo-user',
+      token: 'sandbox-demo-token',
+      environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
+      clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
+    });
   }
 
   if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
