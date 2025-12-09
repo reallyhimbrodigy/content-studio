@@ -3462,6 +3462,63 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/sync-status' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('analytics_sync_status')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+        if (error) {
+          return sendJson(res, 200, {
+            ok: true,
+            status: {
+              last_sync: null,
+              status: 'never',
+              message: null,
+            },
+          });
+        }
+        return sendJson(res, 200, { ok: true, status: data });
+      } catch (err) {
+        console.error('[Analytics sync status] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/analytics/sync-status/update' && req.method === 'POST') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { status, message } = await parseJson(req);
+        const { error } = await supabaseAdmin.from('analytics_sync_status').upsert({
+          user_id: userId,
+          last_sync: new Date().toISOString(),
+          status,
+          message,
+        });
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'sync_update_failed' });
+        }
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[Analytics sync status update] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'GET') {
     (async () => {
       try {

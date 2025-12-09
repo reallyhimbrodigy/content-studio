@@ -6325,6 +6325,12 @@ body.no-scroll {
   white-space: nowrap;
 }
 
+.sync-status {
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
 #alerts-list {
   display: flex;
   flex-direction: column;

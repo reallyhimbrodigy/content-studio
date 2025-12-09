@@ -637,6 +637,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  async function loadSyncStatus() {
+    try {
+      const res = await fetch('/api/analytics/sync-status');
+      const json = await res.json();
+      const el = document.getElementById('sync-status');
+      if (!el) return;
+      const s = json.status;
+      if (s && s.status === 'never') {
+        el.textContent = 'No sync has occurred yet.';
+      } else if (s && s.last_sync) {
+        el.textContent = `Last Sync: ${new Date(s.last_sync).toLocaleString()} (${s.status})`;
+      } else {
+        el.textContent = 'No sync has occurred yet.';
+      }
+    } catch (err) {
+      console.error('[Analytics] sync-status error', err);
+      const el = document.getElementById('sync-status');
+      if (el) el.textContent = 'No sync has occurred yet.';
+    }
+  }
+
   loadAnalytics();
   loadExperiments();
   loadTopPosts();
@@ -645,6 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadHeatmap();
   loadAlerts();
   loadFollowerGrowth();
+  loadSyncStatus();
 
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('experiment-btn')) return;
