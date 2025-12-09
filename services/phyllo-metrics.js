@@ -1,5 +1,3 @@
-const fetch = require('node-fetch');
-
 async function getPhylloPosts(accountId) {
   const url = `https://api.sandbox.getphyllo.com/v1/posts?account_id=${accountId}`;
   const resp = await fetch(url, {
