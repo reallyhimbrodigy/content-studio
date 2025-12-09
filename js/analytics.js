@@ -246,4 +246,24 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPosts();
   loadInsights();
   loadAlerts();
+
+  function loadConnectedAccounts() {
+    fetch('/api/phyllo/accounts')
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res || res.ok === false) return;
+        const list = document.getElementById('connected-accounts');
+        if (!list) return;
+        list.innerHTML = '';
+        (res.data || []).forEach((acc) => {
+          const li = document.createElement('div');
+          li.className = 'connected-account';
+          li.textContent = `${acc.platform || 'Platform'} — ${acc.handle || acc.username || 'Unknown handle'}`;
+          list.appendChild(li);
+        });
+      })
+      .catch((err) => console.error('[Phyllo] loadConnectedAccounts error', err));
+  }
+
+  loadConnectedAccounts();
 });

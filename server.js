@@ -2826,6 +2826,30 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  if (parsed.pathname === '/api/phyllo/accounts' && req.method === 'GET') {
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .eq('status', 'connected');
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+        return sendJson(res, 200, { ok: true, data: data || [] });
+      } catch (err) {
+        console.error('[Phyllo] fetch accounts error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
     return sendJson(res, 200, {
       ok: true,
