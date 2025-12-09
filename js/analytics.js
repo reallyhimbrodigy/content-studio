@@ -20,13 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
 
+    // Initialize Phyllo Connect
     const instance = window.PhylloConnect.initialize({
       userId: cfg.userId,
       token: cfg.token,
       environment: cfg.environment,
-      clientDisplayName: cfg.clientDisplayName,
+      clientDisplayName: cfg.clientDisplayName
     });
 
+    // REQUIRED callbacks registered with .on()
     instance.on('accountConnected', (accountId, workPlatformId, userId) => {
       console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
     });
