@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analytics • Promptly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
     <link rel="stylesheet" href="styles.css" />
     <script src="assets/vendor/supabase.js"></script>
@@ -144,8 +147,11 @@
       </div>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
     <script src="https://cdn.getphyllo.com/connect/v2/phyllo-connect.js"></script>
     <script src="analytics.js"></script>
+    <script type="module" src="./footer.js"></script>
+    <script src="/sw-register.js" defer></script>
+    <script src="/pwa-install.js" defer></script>
   </body>
 </html>
