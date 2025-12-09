@@ -3,10 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnInstagram = document.getElementById('connect-instagram');
   const btnYouTube = document.getElementById('connect-youtube');
 
-  let phylloInstance = null;
+  let phylloConnectInstance = null;
 
-  async function ensurePhylloInstance() {
-    if (phylloInstance) return phylloInstance;
+  async function getPhylloInstance() {
+    if (phylloConnectInstance) return phylloConnectInstance;
 
     const res = await fetch('/api/phyllo/sdk-config');
     if (!res.ok) {
@@ -15,43 +15,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const cfg = await res.json();
-    if (!cfg || !cfg.token) {
-      console.error('[Phyllo] Missing token in sdk-config response', cfg);
-      return null;
-    }
-
     if (!window.PhylloConnect) {
       console.error('[Phyllo] PhylloConnect not available');
       return null;
     }
 
-    phylloInstance = window.PhylloConnect.initialize({
+    const instance = window.PhylloConnect.initialize({
       userId: cfg.userId,
       token: cfg.token,
       environment: cfg.environment,
       clientDisplayName: cfg.clientDisplayName,
-      callbacks: {
-        accountConnected: function (account) {
-          console.log('[Phyllo] accountConnected', account);
-        },
-        accountDisconnected: function (account) {
-          console.log('[Phyllo] accountDisconnected', account);
-        },
-        tokenExpired: function () {
-          console.log('[Phyllo] tokenExpired');
-        },
-        exit: function () {
-          console.log('[Phyllo] exit');
-        },
-      },
     });
 
-    return phylloInstance;
+    instance.on('accountConnected', (accountId, workPlatformId, userId) => {
+      console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
+    });
+
+    instance.on('accountDisconnected', (accountId, workPlatformId, userId) => {
+      console.log('[Phyllo] accountDisconnected', { accountId, workPlatformId, userId });
+    });
+
+    instance.on('tokenExpired', () => {
+      console.log('[Phyllo] tokenExpired');
+    });
+
+    instance.on('exit', () => {
+      console.log('[Phyllo] exit');
+    });
+
+    phylloConnectInstance = instance;
+    return instance;
   }
 
   async function openPhyllo() {
     try {
-      const instance = await ensurePhylloInstance();
+      const instance = await getPhylloInstance();
       if (!instance) return;
       instance.open();
     } catch (err) {
