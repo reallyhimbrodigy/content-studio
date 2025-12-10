@@ -409,29 +409,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderInsights(insights = []) {
-    const container = document.getElementById('analytics-insights');
+    const container = document.getElementById('insights-list');
     if (!container) return;
+    container.innerHTML = '';
     if (!insights.length) {
-      container.innerHTML = '<p class="muted">No insights yet.</p>';
+      container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
       return;
     }
-    container.innerHTML = insights
-      .map(
-        (ins) => `
-        <div class="analytics-card insight-card">
-          <h3>${ins.title || 'Insight'}</h3>
-          <p>${ins.detail || ins.description || ''}</p>
-          <button
-            class="secondary-btn experiment-btn"
-            type="button"
-            data-title="${(ins.title || 'Experiment').replace(/"/g, '&quot;')}"
-            data-description="${(ins.detail || ins.description || '').replace(/"/g, '&quot;')}"
-          >
-            Try This Experiment
-          </button>
-        </div>`
-      )
-      .join('');
+    insights.forEach((ins, idx) => {
+      const card = document.createElement('div');
+      card.className = 'insight-card';
+      card.innerHTML = `
+        <div class="insight-title">${ins.title || 'Insight ' + (idx + 1)}</div>
+        <div class="insight-detail">${ins.detail || ins.description || ''}</div>
+        <button
+          class="secondary-btn experiment-btn"
+          type="button"
+          data-title="${(ins.title || 'Experiment').replace(/"/g, '&quot;')}"
+          data-description="${(ins.detail || ins.description || '').replace(/"/g, '&quot;')}"
+        >
+          Try This Experiment
+        </button>
+      `;
+      container.appendChild(card);
+    });
   }
 
   function renderAlerts(alerts = []) {
@@ -618,6 +619,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function loadFollowerGrowthChart() {
+    try {
+      const res = await fetch('/api/analytics/overview');
+      const json = await res.json();
+      if (!json.ok) throw new Error('followers_fetch_failed');
+      const followers = json.followers || [];
+      const el = document.getElementById('follower-growth-chart');
+      if (!el) return;
+      el.innerHTML = followers.length
+        ? `Latest follower count: ${followers[followers.length - 1].followers}`
+        : 'No follower data yet.';
+    } catch (err) {
+      console.error('[Analytics] follower chart error', err);
+      const el = document.getElementById('follower-growth-chart');
+      if (el) el.textContent = 'No follower data yet.';
+    }
+  }
+
   function renderFollowerGrowth(trends = []) {
     const container = document.getElementById('followers-chart');
     if (!container) return;
@@ -667,6 +686,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAlerts();
   loadFollowerGrowth();
   loadSyncStatus();
+  loadFollowerGrowthChart();
+  const genBtn = document.getElementById('generate-insights-btn');
+  if (genBtn) {
+    genBtn.addEventListener('click', generateInsights);
+  }
 
   const syncNowBtn = document.getElementById('sync-now-btn');
   if (syncNowBtn) {
@@ -741,6 +765,42 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('[Analytics] audience sync result:', json);
     } catch (err) {
       console.error('[Analytics] audience sync error', err);
+    }
+  }
+
+  async function generateInsights() {
+    const btn = document.getElementById('generate-insights-btn');
+    const list = document.getElementById('insights-list');
+    try {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+      }
+      if (list) {
+        list.textContent = 'Analyzing your posts...';
+      }
+
+      const res = await fetch('/api/analytics/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts: [] }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error('insights_generate_failed');
+
+      const latest = await fetch('/api/analytics/insights');
+      const latestJson = await latest.json();
+      if (latestJson.ok) {
+        renderInsights(latestJson.insights || []);
+      }
+    } catch (err) {
+      console.error('[Analytics] generateInsights error', err);
+      if (list) list.textContent = 'Could not generate insights. Try again later.';
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Generate Insights';
+      }
     }
   }
 });

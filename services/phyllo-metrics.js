@@ -147,6 +147,67 @@ async function syncAudience(userId) {
   return { updated: 0 };
 }
 
+async function syncFollowerMetrics(userId) {
+  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  let total = 0;
+  const followerSeries = [];
+
+  try {
+    // Load connected accounts for this user
+    const { supabaseAdmin } = require('./supabase-admin');
+    const { data: accounts, error } = await supabaseAdmin
+      .from('phyllo_accounts')
+      .select('account_id, platform')
+      .eq('user_id', userId)
+      .eq('status', 'connected');
+
+    if (error || !accounts || !accounts.length) {
+      if (error) {
+        console.error('[Phyllo] syncFollowerMetrics accounts error', error);
+      }
+      return { total, followerSeries };
+    }
+
+    for (const acc of accounts) {
+      if (!acc || !acc.account_id) continue;
+      try {
+        const url = `${base}/v1/accounts/${acc.account_id}/followers`;
+        const resp = await fetch(url, {
+          headers: {
+            'Client-Id': process.env.PHYLLO_CLIENT_ID,
+            'Client-Secret': process.env.PHYLLO_CLIENT_SECRET,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!resp.ok) {
+          console.warn('[Phyllo] followers fetch failed', acc.account_id, resp.status);
+          continue;
+        }
+
+        const json = await resp.json();
+        const list = json?.data || json || [];
+
+        list.forEach((item) => {
+          followerSeries.push({
+            platform: acc.platform || 'unknown',
+            account_id: acc.account_id,
+            followers: item.followers || item.follower_count || item.count || 0,
+            captured_at: item.captured_at || item.timestamp || item.date || null,
+          });
+          total += 1;
+        });
+      } catch (err) {
+        console.error('[Phyllo] followers fetch error', acc.account_id, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Phyllo] syncFollowerMetrics unexpected error', err);
+  }
+
+  return { total, followerSeries };
+}
+
 module.exports = {
   getPhylloPosts,
   getPhylloPostMetrics,
@@ -154,4 +215,5 @@ module.exports = {
   getAudienceDemographics,
   buildWeeklyReport,
   syncAudience,
+  syncFollowerMetrics,
 };

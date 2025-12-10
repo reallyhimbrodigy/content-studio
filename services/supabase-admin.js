@@ -16,6 +16,106 @@ function normalizeDesignAssetStatus(raw) {
   return ALLOWED_STATUSES.includes(value) ? value : 'rendering';
 }
 
+async function updateCachedAnalyticsForUser(userId) {
+  // 1) Connected accounts
+  const { data: accounts, error: accErr } = await supabaseAdmin
+    .from('phyllo_accounts')
+    .select('id, platform')
+    .eq('user_id', userId)
+    .eq('status', 'connected');
+
+  if (accErr || !accounts || !accounts.length) {
+    console.error('[Analytics] updateCachedAnalyticsForUser accounts error', accErr);
+    await supabaseAdmin
+      .from('cached_analytics')
+      .upsert({
+        user_id: userId,
+        posts: [],
+        followers: [],
+        demographics: {},
+        overview: {},
+      });
+    return;
+  }
+
+  const accountIds = accounts.map((a) => a.id);
+
+  // 2) Posts
+  const { data: posts, error: postsErr } = await supabaseAdmin
+    .from('phyllo_posts')
+    .select('id, phyllo_account_id, platform, title, url, published_at')
+    .in('phyllo_account_id', accountIds);
+
+  if (postsErr) {
+    console.error('[Analytics] posts error', postsErr);
+    return;
+  }
+
+  const postIds = posts.map((p) => p.id);
+
+  // 3) Metrics (latest per post)
+  const { data: metrics, error: metricsErr } = await supabaseAdmin
+    .from('phyllo_post_metrics')
+    .select('*')
+    .in('phyllo_post_id', postIds)
+    .order('captured_at', { ascending: false });
+
+  if (metricsErr) {
+    console.error('[Analytics] metrics error', metricsErr);
+    return;
+  }
+
+  const latestMetricsByPost = {};
+  for (const m of metrics || []) {
+    if (!latestMetricsByPost[m.phyllo_post_id]) {
+      latestMetricsByPost[m.phyllo_post_id] = m;
+    }
+  }
+
+  const flatPosts = posts.map((p) => {
+    const m = latestMetricsByPost[p.id] || {};
+    return {
+      id: p.id,
+      platform: p.platform,
+      title: p.title,
+      url: p.url,
+      published_at: p.published_at,
+      views: m.views || 0,
+      likes: m.likes || 0,
+      comments: m.comments || 0,
+      shares: m.shares || 0,
+      saves: m.saves || 0,
+      retention_pct: m.retention_pct || null,
+    };
+  });
+
+  let totalViews = 0;
+  let totalEngagement = 0;
+  flatPosts.forEach((p) => {
+    totalViews += p.views || 0;
+    totalEngagement += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+  });
+
+  const engagementRate = totalViews > 0 ? Number(((totalEngagement / totalViews) * 100).toFixed(2)) : 0;
+  const overview = {
+    followerGrowth: null,
+    engagementRate,
+    avgViewsPerPost: flatPosts.length ? Math.round(totalViews / flatPosts.length) : 0,
+    retentionPct: null,
+  };
+
+  await supabaseAdmin
+    .from('cached_analytics')
+    .upsert({
+      user_id: userId,
+      posts: flatPosts,
+      followers: [],
+      demographics: {},
+      overview,
+      updated_at: new Date().toISOString(),
+    });
+}
+
 let supabaseAdmin = null;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -234,4 +334,5 @@ module.exports = {
   upsertPhylloAccount,
   upsertPhylloPost,
   insertPhylloPostMetrics,
+  updateCachedAnalyticsForUser,
 };

@@ -5,7 +5,16 @@ const fs = require('fs');
 const path = require('path');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
-const { supabaseAdmin, getDesignAssetById, updateDesignAsset, createDesignAsset, upsertPhylloAccount } = require('./services/supabase-admin');
+const {
+  supabaseAdmin,
+  getDesignAssetById,
+  updateDesignAsset,
+  createDesignAsset,
+  upsertPhylloAccount,
+  upsertPhylloPost,
+  insertPhylloPostMetrics,
+  updateCachedAnalyticsForUser,
+} = require('./services/supabase-admin');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const {
   uploadAssetFromUrl,
@@ -21,6 +30,7 @@ const {
   getAudienceDemographics,
   buildWeeklyReport,
   syncAudience,
+  syncFollowerMetrics,
 } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
@@ -2968,9 +2978,9 @@ ${JSON.stringify(compactPosts)}`;
 
         let totalSynced = 0;
 
-        for (const acc of accounts) {
-          const postsResp = await getPhylloPosts(acc.account_id);
-          const posts = postsResp.data || [];
+      for (const acc of accounts) {
+        const postsResp = await getPhylloPosts(acc.account_id);
+        const posts = postsResp.data || [];
 
           for (const p of posts) {
             const { data: postRows, error: postErr } = await upsertPhylloPost({
@@ -3020,14 +3030,16 @@ ${JSON.stringify(compactPosts)}`;
             }
 
             totalSynced += 1;
-          }
-        }
-
-        return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
-      } catch (err) {
-        console.error('[Phyllo] /api/phyllo/sync-posts error', err);
-        return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
+    }
+
+    await updateCachedAnalyticsForUser(promptlyUserId);
+
+    return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
+  } catch (err) {
+    console.error('[Phyllo] /api/phyllo/sync-posts error', err);
+    return sendJson(res, 500, { ok: false, error: 'server_error' });
+  }
     })();
     return;
   }
@@ -3506,6 +3518,42 @@ Output format:
       } catch (err) {
         console.error('[Phyllo] sync-audience error', err);
         return sendJson(res, 500, { ok: false, error: 'phyllo_sync_audience_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/sync-followers' && req.method === 'POST') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const result = await syncFollowerMetrics(userId);
+
+        // Update cached analytics with new followers; preserve other fields if present
+        const { data: existing } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('posts, demographics, overview')
+          .eq('user_id', userId)
+          .single();
+
+        await supabaseAdmin
+          .from('cached_analytics')
+          .upsert({
+            user_id: userId,
+            followers: (result && result.followerSeries) || [],
+            posts: existing?.posts || [],
+            demographics: existing?.demographics || {},
+            overview: existing?.overview || {},
+            updated_at: new Date().toISOString(),
+          });
+
+        return sendJson(res, 200, { ok: true, updated: result.total || 0 });
+      } catch (err) {
+        console.error('[Phyllo] sync-followers error', err);
+        return sendJson(res, 500, { ok: false, error: 'phyllo_sync_followers_failed' });
       }
     })();
     return;
