@@ -264,4 +264,36 @@ module.exports = {
   syncAudience,
   syncFollowerMetrics,
   syncDemographics,
+  getAudienceDemographics,
 };
+
+async function getAudienceDemographics(phylloUserId) {
+  try {
+    const base = process.env.PHY_PRODUCTION_BASE_URL;
+    const clientId = process.env.PHY_PRODUCTION_CLIENT_ID;
+    const clientSecret = process.env.PHY_PRODUCTION_CLIENT_SECRET;
+
+    if (!base || !clientId || !clientSecret) {
+      console.error('[Phyllo] Missing production audience env vars');
+      return null;
+    }
+
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const resp = await fetch(`${base}/v1/users/${phylloUserId}/audience-demographics`, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!resp.ok) {
+      console.error('[Phyllo] audience demographics fetch failed', resp.status);
+      return null;
+    }
+
+    return await resp.json();
+  } catch (err) {
+    console.error('[Phyllo] audience demographics error', err);
+    return null;
+  }
+}
