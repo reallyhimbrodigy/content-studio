@@ -1,6 +1,7 @@
 let currentPostSort = { key: 'views', direction: 'desc' };
 let cachedPosts = [];
 let lastSortedPosts = [];
+let currentPlatformFilter = 'all';
 
 const numberFmt = (n, opts = {}) => {
   if (n == null || isNaN(n)) return '—';
@@ -48,7 +49,13 @@ export function renderPosts(posts = []) {
   }
 
   cachedPosts = [...posts];
-  const sorted = sortPosts(cachedPosts, currentPostSort.key, currentPostSort.direction);
+
+  const filtered = cachedPosts.filter((p) => {
+    if (currentPlatformFilter === 'all') return true;
+    return (p.platform || '').toLowerCase() === currentPlatformFilter;
+  });
+
+  const sorted = sortPosts(filtered, currentPostSort.key, currentPostSort.direction);
   lastSortedPosts = sorted;
 
   const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
@@ -352,6 +359,17 @@ export function initPostTableSorting() {
         renderPosts(cachedPosts);
       }
     });
+  });
+}
+
+export function initPlatformFilter() {
+  const select = document.getElementById('platform-filter');
+  if (!select) return;
+  select.addEventListener('change', () => {
+    currentPlatformFilter = select.value;
+    if (cachedPosts.length) {
+      renderPosts(cachedPosts);
+    }
   });
 }
 

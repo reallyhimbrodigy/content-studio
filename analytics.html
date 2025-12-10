@@ -113,7 +113,15 @@
                 <section class="analytics-section">
                   <div class="content-performance-header">
                     <h2>Content Performance</h2>
-                    <button id="export-posts-csv" class="secondary-btn">Export CSV</button>
+                    <div class="content-performance-actions">
+                      <select id="platform-filter">
+                        <option value="all">All Platforms</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="youtube">YouTube</option>
+                      </select>
+                      <button id="export-posts-csv" class="secondary-btn">Export CSV</button>
+                    </div>
                   </div>
                   <div class="analytics-card analytics-table-card">
                     <table id="content-performance-table" class="analytics-table" aria-label="Content performance table">

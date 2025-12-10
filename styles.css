@@ -6336,6 +6336,19 @@ body.no-scroll {
   margin-bottom: 8px;
 }
 
+.content-performance-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#platform-filter {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+
 .secondary-btn {
   padding: 6px 10px;
   border-radius: 6px;

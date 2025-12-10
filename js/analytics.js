@@ -10,6 +10,7 @@ import {
   initPostTableSorting,
   renderDemoBadge,
   exportPostsToCSV,
+  initPlatformFilter,
   applyAnalyticsAccess,
 } from './analytics-render.js';
 
@@ -226,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initPostTableSorting();
+  initPlatformFilter();
   loadSubscriptionAndAnalytics();
   loadConnectedAccounts();
   function loadConnectedAccounts() {
