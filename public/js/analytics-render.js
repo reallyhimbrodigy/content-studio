@@ -10,22 +10,30 @@ export function renderOverview(overview = {}) {
   const views = document.getElementById('kpi-views');
   const ret = document.getElementById('kpi-retention');
 
+  const loading = overview.__loading === true;
+
   const fgVal = overview.follower_growth ?? overview.followerGrowth ?? null;
   const engVal = overview.engagement_rate ?? overview.engagementRate ?? null;
   const viewsVal = overview.avg_views ?? overview.avgViewsPerPost ?? null;
   const retVal = overview.retention ?? overview.retentionPct ?? null;
 
-  if (fg) fg.textContent = fgVal != null ? `${numberFmt(fgVal)}${fgVal > 0 ? '+' : ''}` : '—';
-  if (eng) eng.textContent = engVal != null ? `${numberFmt(engVal, { maximumFractionDigits: 2 })}%` : '—';
-  if (views) views.textContent = viewsVal != null ? numberFmt(viewsVal) : '—';
-  if (ret) ret.textContent = retVal != null ? `${numberFmt(retVal, { maximumFractionDigits: 1 })}%` : '—';
+  if (fg) fg.textContent = loading ? '—' : fgVal != null ? `${numberFmt(fgVal)}${fgVal > 0 ? '+' : ''}` : '—';
+  if (eng) eng.textContent = loading ? '—' : engVal != null ? `${numberFmt(engVal, { maximumFractionDigits: 2 })}%` : '—';
+  if (views) views.textContent = loading ? '—' : viewsVal != null ? numberFmt(viewsVal) : '—';
+  if (ret) ret.textContent = loading ? '—' : retVal != null ? `${numberFmt(retVal, { maximumFractionDigits: 1 })}%` : '—';
 }
 
 export function renderPosts(posts = []) {
   const tbody = document.getElementById('analytics-table-body');
   if (!tbody) return;
+  if (posts === '__loading') {
+    tbody.innerHTML = Array.from({ length: 3 })
+      .map(() => '<tr>' + Array.from({ length: 7 }).map(() => '<td class="analytics-skeleton">&nbsp;</td>').join('') + '</tr>')
+      .join('');
+    return;
+  }
   if (!posts.length) {
-    tbody.innerHTML = '<tr><td colspan="7">No data yet – connect an account.</td></tr>';
+    tbody.innerHTML = '<tr><td class="analytics-empty" colspan="7">No post data yet.</td></tr>';
     return;
   }
   const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
@@ -47,6 +55,16 @@ export function renderPosts(posts = []) {
 }
 
 export function renderDemographics(demo = {}) {
+  if (demo === '__loading') {
+    ['demographics-age', 'demographics-gender', 'demographics-location', 'demographics-language'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.innerHTML =
+          '<div class="analytics-skeleton" style="height:16px;margin:4px 0;"></div><div class="analytics-skeleton" style="height:16px;margin:4px 0;"></div>';
+      }
+    });
+    return;
+  }
   renderKeyValueBlock('demographics-age', 'Age', demo.age_groups || demo.age);
   renderKeyValueBlock('demographics-gender', 'Gender', demo.genders || demo.gender);
   renderKeyValueBlock('demographics-location', 'Location', demo.countries || demo.location);
@@ -61,8 +79,10 @@ function renderKeyValueBlock(containerId, title, data) {
   const entries = data && Object.entries(data);
   if (!entries || !entries.length) {
     el.textContent = `No ${title.toLowerCase()} data yet.`;
+    el.classList.add('analytics-empty');
     return;
   }
+  el.classList.remove('analytics-empty');
 
   const header = document.createElement('h3');
   header.textContent = title;
@@ -82,10 +102,18 @@ export function renderInsights(insights = []) {
   if (!container) return;
   container.innerHTML = '';
 
-  if (!insights.length) {
-    container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
+  if (insights === '__loading') {
+    container.innerHTML =
+      '<div class="insight-card analytics-skeleton" style="height:80px;"></div><div class="insight-card analytics-skeleton" style="height:80px;"></div>';
     return;
   }
+
+  if (!insights.length) {
+    container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
+    container.classList.add('analytics-empty');
+    return;
+  }
+  container.classList.remove('analytics-empty');
 
   insights.forEach((insight, idx) => {
     const card = document.createElement('div');
@@ -173,10 +201,18 @@ export function renderGrowthReport(report) {
   const card = document.getElementById('growth-report-card');
   if (!card) return;
 
-  if (!report) {
-    card.textContent = 'No weekly report generated yet.';
+  if (report === '__loading') {
+    card.innerHTML =
+      '<div class="analytics-skeleton" style="height:16px;margin-bottom:10px;"></div><div class="analytics-skeleton" style="height:14px;margin-bottom:6px;"></div><div class="analytics-skeleton" style="height:14px;width:60%;"></div>';
     return;
   }
+
+  if (!report) {
+    card.textContent = 'No weekly report generated yet.';
+    card.classList.add('analytics-empty');
+    return;
+  }
+  card.classList.remove('analytics-empty');
 
   const weekLabel = report.weekStart || 'This week';
   const overview = report.overview || {};

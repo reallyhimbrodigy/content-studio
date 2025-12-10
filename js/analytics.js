@@ -145,8 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderInsights(json.insights || []);
     } catch (err) {
       console.error('[Analytics] loadInsights error', err);
-      const container = document.getElementById('insights-list');
-      if (container) container.textContent = 'No insights yet.';
+      renderInsights([]);
     }
   }
 
@@ -186,6 +185,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadFullAnalytics() {
     try {
+      renderOverview({ __loading: true });
+      renderPosts('__loading');
+      renderDemographics('__loading');
+      renderInsights('__loading');
+      renderGrowthReport('__loading');
+
       const res = await fetch('/api/analytics/full');
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error('analytics/full failed');
@@ -199,6 +204,11 @@ document.addEventListener('DOMContentLoaded', () => {
       renderGrowthReport(data.report || data.growth_report || null);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
+      renderOverview({});
+      renderPosts([]);
+      renderDemographics({});
+      renderInsights([]);
+      renderGrowthReport(null);
     }
   }
 
@@ -371,8 +381,19 @@ document.addEventListener('DOMContentLoaded', () => {
       renderExperiments(json.experiments || []);
     } catch (err) {
       console.error('[Analytics] loadExperiments error', err);
-      const container = document.getElementById('experiments-list');
-      if (container) container.textContent = 'No experiments yet.';
+      renderExperiments([]);
+    }
+  }
+
+  async function loadAlerts() {
+    try {
+      const res = await fetch('/api/analytics/alerts');
+      const json = await res.json();
+      if (!json.ok) throw new Error('alerts_fetch_failed');
+      renderAlerts(json.alerts || json.data || []);
+    } catch (err) {
+      console.error('[Analytics] loadAlerts error', err);
+      renderAlerts([]);
     }
   }
 
@@ -384,8 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTopPosts(json.posts || []);
     } catch (err) {
       console.error('[Analytics] loadTopPosts error', err);
-      const container = document.getElementById('top-posts-list');
-      if (container) container.textContent = 'No post data yet.';
+      renderTopPosts([]);
     }
   }
 
@@ -421,12 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDemographics(json.demographics || {});
     } catch (err) {
       console.error('[Analytics] loadDemographics error', err);
-      ['demographics-age', 'demographics-gender', 'demographics-location', 'demographics-language'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = 'No demographic data yet.';
-      });
-      const panel = document.getElementById('demographics-panel');
-      if (panel) panel.textContent = 'No demographic data yet.';
+      renderDemographics({});
     }
   }
 
