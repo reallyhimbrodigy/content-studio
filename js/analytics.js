@@ -1,4 +1,12 @@
-import { renderOverview, renderPosts, renderDemographics, renderInsights, renderLastSync } from './analytics-render.js';
+import {
+  renderOverview,
+  renderPosts,
+  renderDemographics,
+  renderInsights,
+  renderLastSync,
+  renderConnectedAccounts,
+  renderGrowthReport,
+} from './analytics-render.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
@@ -142,27 +150,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  loadAccounts();
   loadFullAnalytics();
+  loadConnectedAccounts();
   function loadConnectedAccounts() {
     fetch('/api/phyllo/accounts')
       .then((r) => r.json())
       .then((res) => {
-        if (!res || res.ok === false) return;
-        const list = document.getElementById('connected-accounts');
-        if (!list) return;
-        list.innerHTML = '';
-        (res.data || []).forEach((acc) => {
-          const li = document.createElement('div');
-          li.className = 'connected-account';
-          li.textContent = `${acc.platform || 'Platform'} — ${acc.handle || acc.username || 'Unknown handle'}`;
-          list.appendChild(li);
-        });
+        if (!res || res.ok === false) {
+          renderConnectedAccounts([]);
+          return;
+        }
+        renderConnectedAccounts(res.data || []);
       })
-      .catch((err) => console.error('[Phyllo] loadConnectedAccounts error', err));
+      .catch((err) => {
+        console.error('[Phyllo] loadConnectedAccounts error', err);
+        renderConnectedAccounts([]);
+      });
   }
-
-  loadConnectedAccounts();
 
   async function fetchInsights() {
     const res = await fetch('/api/analytics/insights');
@@ -192,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDemographics(data.demographics || {});
       renderInsights(data.insights || []);
       renderLastSync(data.last_sync);
+      renderGrowthReport(data.report || data.growth_report || null);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
     }
@@ -411,6 +416,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function loadGrowthReport() {
+    try {
+      const res = await fetch('/api/analytics/reports/latest');
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error('report_fetch_failed');
+      renderGrowthReport(json.report || null);
+    } catch (err) {
+      console.error('[Analytics] loadGrowthReport error', err);
+      renderGrowthReport(null);
+    }
+  }
+
   function renderDemographics(demo = {}) {
     renderKeyValueBlock('demographics-age', 'Age', demo.age);
     renderKeyValueBlock('demographics-gender', 'Gender', demo.gender);
@@ -563,6 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFollowerGrowthChart();
   loadExperiments();
   loadDemographics();
+  loadGrowthReport();
   const refreshBtn = document.getElementById('refresh-all-btn');
   if (refreshBtn) {
     refreshBtn.addEventListener('click', refreshAllData);
@@ -608,24 +626,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (statusEl) statusEl.textContent = 'Sync in progress...';
 
     try {
-      const syncRes = await fetch('/api/phyllo/sync-posts', {
+      const syncRes = await fetch('/api/analytics/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
       const syncJson = await syncRes.json();
       const success = syncRes.ok && syncJson.ok;
 
-      await fetch('/api/analytics/sync-status/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: success ? 'success' : 'failed',
-          message: success ? `Synced ${syncJson.syncedPosts || 0} posts` : 'Sync failed',
-        }),
-      });
+      if (!success) {
+        throw new Error('sync_failed');
+      }
 
       await loadSyncStatus();
-      await loadAnalytics();
+      await loadFullAnalytics();
+      await loadConnectedAccounts();
     } catch (err) {
       console.error('[Analytics] handleSyncNow error', err);
       if (statusEl) statusEl.textContent = 'Sync failed. Try again later.';
@@ -655,7 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       await loadSyncStatus();
-      await loadAnalytics();
+      await loadFullAnalytics();
       await loadFollowerGrowthChart();
       await loadDemographics();
       await loadInsights();

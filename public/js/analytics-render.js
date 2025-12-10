@@ -114,3 +114,52 @@ export function renderLastSync(ts) {
   }
   syncEl.textContent = `Last Sync: ${new Date(ts).toLocaleString()}`;
 }
+
+export function renderConnectedAccounts(accounts = []) {
+  const container = document.getElementById('connected-accounts-list');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (!accounts || !accounts.length) {
+    container.textContent = 'No accounts connected yet.';
+    return;
+  }
+
+  accounts.forEach((acc) => {
+    const div = document.createElement('div');
+    div.className = 'connected-account-pill';
+    const platform = (acc.platform || 'platform').toUpperCase();
+    const handle = acc.handle || acc.username || 'Unknown handle';
+    div.textContent = `${platform} · ${handle}`;
+    container.appendChild(div);
+  });
+}
+
+export function renderGrowthReport(report) {
+  const card = document.getElementById('growth-report-card');
+  if (!card) return;
+
+  if (!report) {
+    card.textContent = 'No weekly report generated yet.';
+    return;
+  }
+
+  const weekLabel = report.weekStart || 'This week';
+  const overview = report.overview || {};
+  const highlights = report.highlights || {};
+
+  card.innerHTML = `
+    <h3>${weekLabel}</h3>
+    <div class="growth-report-metrics">
+      <div class="growth-report-metric">Follower Growth: ${overview.followerGrowth ?? '—'}</div>
+      <div class="growth-report-metric">Engagement Rate: ${overview.engagementRate ?? '—'}%</div>
+      <div class="growth-report-metric">Avg Views/Post: ${overview.avgViewsPerPost ?? '—'}</div>
+      <div class="growth-report-metric">Retention: ${overview.retentionPct ?? '—'}%</div>
+    </div>
+    <div class="growth-report-highlights">
+      <div>Fastest Growing Platform: ${highlights.fastestGrowingPlatform ?? '—'}</div>
+      <div>Best Posting Time: ${highlights.bestPostingTime ?? '—'}</div>
+    </div>
+  `;
+}

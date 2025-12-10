@@ -6359,6 +6359,53 @@ body.no-scroll {
   margin-top: 4px;
 }
 
+.connected-accounts-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.connected-account-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f4f4f7;
+  font-size: 12px;
+  color: #333;
+}
+
+.growth-report-card {
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #f9fafb;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.growth-report-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.growth-report-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.growth-report-metric {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.growth-report-highlights {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
 /* New detailed heatmap grid (7×24) */
 .heatmap-grid {
   display: grid;
