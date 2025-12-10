@@ -1,0 +1,116 @@
+const numberFmt = (n, opts = {}) => {
+  if (n == null || isNaN(n)) return '—';
+  const formatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, ...opts });
+  return formatter.format(n);
+};
+
+export function renderOverview(overview = {}) {
+  const fg = document.getElementById('kpi-follower-growth');
+  const eng = document.getElementById('kpi-engagement');
+  const views = document.getElementById('kpi-views');
+  const ret = document.getElementById('kpi-retention');
+
+  const fgVal = overview.follower_growth ?? overview.followerGrowth ?? null;
+  const engVal = overview.engagement_rate ?? overview.engagementRate ?? null;
+  const viewsVal = overview.avg_views ?? overview.avgViewsPerPost ?? null;
+  const retVal = overview.retention ?? overview.retentionPct ?? null;
+
+  if (fg) fg.textContent = fgVal != null ? `${numberFmt(fgVal)}${fgVal > 0 ? '+' : ''}` : '—';
+  if (eng) eng.textContent = engVal != null ? `${numberFmt(engVal, { maximumFractionDigits: 2 })}%` : '—';
+  if (views) views.textContent = viewsVal != null ? numberFmt(viewsVal) : '—';
+  if (ret) ret.textContent = retVal != null ? `${numberFmt(retVal, { maximumFractionDigits: 1 })}%` : '—';
+}
+
+export function renderPosts(posts = []) {
+  const tbody = document.getElementById('analytics-table-body');
+  if (!tbody) return;
+  if (!posts.length) {
+    tbody.innerHTML = '<tr><td colspan="7">No data yet – connect an account.</td></tr>';
+    return;
+  }
+  const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
+  tbody.innerHTML = posts
+    .map(
+      (p) => `
+        <tr>
+          <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : p.title || 'Untitled'}</td>
+          <td>${p.platform || '—'}</td>
+          <td>${numberFmt(p.views)}</td>
+          <td>${numberFmt(p.likes)}</td>
+          <td>${fmtPct(p.retention_pct || p.retentionPct)}</td>
+          <td>${numberFmt(p.shares)}</td>
+          <td>${numberFmt(p.saves)}</td>
+        </tr>
+      `
+    )
+    .join('');
+}
+
+export function renderDemographics(demo = {}) {
+  renderKeyValueBlock('demographics-age', 'Age', demo.age_groups || demo.age);
+  renderKeyValueBlock('demographics-gender', 'Gender', demo.genders || demo.gender);
+  renderKeyValueBlock('demographics-location', 'Location', demo.countries || demo.location);
+  renderKeyValueBlock('demographics-language', 'Language', demo.languages || demo.language);
+}
+
+function renderKeyValueBlock(containerId, title, data) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '';
+
+  const entries = data && Object.entries(data);
+  if (!entries || !entries.length) {
+    el.textContent = `No ${title.toLowerCase()} data yet.`;
+    return;
+  }
+
+  const header = document.createElement('h3');
+  header.textContent = title;
+  el.appendChild(header);
+
+  const list = document.createElement('ul');
+  entries.forEach(([key, value]) => {
+    const li = document.createElement('li');
+    li.textContent = `${key}: ${value}`;
+    list.appendChild(li);
+  });
+  el.appendChild(list);
+}
+
+export function renderInsights(insights = []) {
+  const container = document.getElementById('insights-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!insights.length) {
+    container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
+    return;
+  }
+
+  insights.forEach((insight, idx) => {
+    const card = document.createElement('div');
+    card.className = 'insight-card';
+    card.innerHTML = `
+      <div class="insight-title">${insight.title || 'Insight ' + (idx + 1)}</div>
+      <div class="insight-detail">${insight.detail || insight.summaryText || ''}</div>
+      <button
+        class="experiment-btn"
+        data-title="${insight.title || 'Experiment'}"
+        data-description="${insight.detail || ''}"
+      >
+        Try This Experiment
+      </button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+export function renderLastSync(ts) {
+  const syncEl = document.getElementById('sync-status');
+  if (!syncEl) return;
+  if (!ts) {
+    syncEl.textContent = 'No sync has occurred yet.';
+    return;
+  }
+  syncEl.textContent = `Last Sync: ${new Date(ts).toLocaleString()}`;
+}

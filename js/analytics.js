@@ -1,3 +1,5 @@
+import { renderOverview, renderPosts, renderDemographics, renderInsights, renderLastSync } from './analytics-render.js';
+
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
@@ -85,12 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
     connectBtn.addEventListener('click', openPhyllo);
   }
 
-  const numberFmt = (n, opts = {}) => {
-    if (n == null || isNaN(n)) return '—';
-    const formatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, ...opts });
-    return formatter.format(n);
-  };
-
   function renderHeatmapGrid(data) {
     const grid = document.querySelector('.analytics-heatmap-grid');
     if (!grid) return;
@@ -147,19 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadAccounts();
-  loadOverview();
-  // legacy individual loaders removed in favor of loadAnalytics()
-
-  function loadFullAnalytics() {
-    fetch('/api/analytics/data')
-      .then((r) => r.json())
-      .then((res) => {
-        if (!res || res.ok === false) return;
-        console.log('[Analytics] full dataset', res.data);
-      })
-      .catch((err) => console.error('[Analytics] loadFullAnalytics error', err));
-  }
-
   loadFullAnalytics();
   function loadConnectedAccounts() {
     fetch('/api/phyllo/accounts')
@@ -180,14 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadConnectedAccounts();
-
-  async function fetchAnalyticsData() {
-    const res = await fetch('/api/analytics/data');
-    if (!res.ok) throw new Error('analytics/data failed ' + res.status);
-    const json = await res.json();
-    if (!json.ok) throw new Error('analytics/data error');
-    return json.data;
-  }
 
   async function fetchInsights() {
     const res = await fetch('/api/analytics/insights');
@@ -212,63 +187,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok || !json.ok) throw new Error('analytics/full failed');
       const data = json;
 
-      if (typeof renderOverview === 'function') {
-        renderOverview(data.overview || {});
-      }
-      if (typeof renderPosts === 'function') {
-        renderPosts(data.posts || []);
-      }
-      if (typeof renderTopPosts === 'function') {
-        renderTopPosts(data.posts || []);
-      }
-      if (typeof renderDemographics === 'function') {
-        renderDemographics(data.demographics || {});
-      }
-      if (typeof renderInsights === 'function') {
-        renderInsights(data.insights || []);
-      }
-
-      const syncEl = document.getElementById('sync-status');
-      if (syncEl && data.last_sync) {
-        syncEl.textContent = `Last Sync: ${new Date(data.last_sync).toLocaleString()}`;
-      }
+      renderOverview(data.overview || {});
+      renderPosts(data.posts || []);
+      renderDemographics(data.demographics || {});
+      renderInsights(data.insights || []);
+      renderLastSync(data.last_sync);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
     }
-  }
-
-  function renderOverview(overview = {}) {
-    const fg = document.getElementById('kpi-follower-growth');
-    const eng = document.getElementById('kpi-engagement');
-    const views = document.getElementById('kpi-views');
-    const ret = document.getElementById('kpi-retention');
-    if (fg) fg.textContent = overview.followerGrowth != null ? `${numberFmt(overview.followerGrowth)}${overview.followerGrowth > 0 ? '+' : ''}` : '—';
-    if (eng) eng.textContent = overview.engagementRate != null ? `${numberFmt(overview.engagementRate * 100, { maximumFractionDigits: 2 })}%` : '—';
-    if (views) views.textContent = overview.avgViewsPerPost != null ? numberFmt(overview.avgViewsPerPost) : '—';
-    if (ret) ret.textContent = overview.retentionPct != null ? `${numberFmt(overview.retentionPct * 100, { maximumFractionDigits: 1 })}%` : '—';
-  }
-
-  function renderPosts(posts = []) {
-    const tbody = document.getElementById('analytics-table-body');
-    if (!tbody) return;
-    if (!posts.length) {
-      tbody.innerHTML = '<tr><td colspan="7">No data yet – connect an account.</td></tr>';
-      return;
-    }
-    const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
-    tbody.innerHTML = posts
-      .map((p) => `
-        <tr>
-          <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : (p.title || 'Untitled')}</td>
-          <td>${p.platform || '—'}</td>
-          <td>${numberFmt(p.views)}</td>
-          <td>${numberFmt(p.likes)}</td>
-          <td>${fmtPct(p.retention_pct || p.retentionPct)}</td>
-          <td>${numberFmt(p.shares)}</td>
-          <td>${numberFmt(p.saves)}</td>
-        </tr>
-      `)
-      .join('');
   }
 
   function renderHeatmapFromPosts(posts = []) {
@@ -428,23 +354,6 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Analytics] loadExperiments error', err);
       const container = document.getElementById('experiments-list');
       if (container) container.textContent = 'No experiments yet.';
-    }
-  }
-
-  async function loadAnalytics() {
-    try {
-      const data = await fetchAnalyticsData();
-      renderOverview(data.overview || {});
-      renderPosts(data.posts || []);
-      renderHeatmapFromPosts(data.posts || []);
-
-      const insights = await fetchInsights();
-      renderInsights(insights);
-
-      const alerts = await fetchAlerts();
-      renderAlerts(alerts);
-    } catch (err) {
-      console.error('[Analytics] loadAnalytics error', err);
     }
   }
 
@@ -647,12 +556,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadFullAnalytics();
-  loadExperiments();
   loadHeatmap();
   loadAlerts();
   loadFollowerGrowth();
   loadSyncStatus();
   loadFollowerGrowthChart();
+  loadExperiments();
   loadDemographics();
   const refreshBtn = document.getElementById('refresh-all-btn');
   if (refreshBtn) {
