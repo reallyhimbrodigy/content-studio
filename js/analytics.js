@@ -668,6 +668,15 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFollowerGrowth();
   loadSyncStatus();
 
+  const syncNowBtn = document.getElementById('sync-now-btn');
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener('click', handleSyncNow);
+  }
+  const audienceBtn = document.getElementById('sync-audience-btn');
+  if (audienceBtn) {
+    audienceBtn.addEventListener('click', handleAudienceSync);
+  }
+
   document.addEventListener('click', async (e) => {
     if (!e.target.classList.contains('experiment-btn')) return;
     const title = e.target.dataset.title || 'Experiment';
@@ -687,4 +696,51 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Could not start experiment.');
     }
   });
+
+  async function handleSyncNow() {
+    const btn = document.getElementById('sync-now-btn');
+    const statusEl = document.getElementById('sync-status');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Sync in progress...';
+
+    try {
+      const syncRes = await fetch('/api/phyllo/sync-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const syncJson = await syncRes.json();
+      const success = syncRes.ok && syncJson.ok;
+
+      await fetch('/api/analytics/sync-status/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: success ? 'success' : 'failed',
+          message: success ? `Synced ${syncJson.syncedPosts || 0} posts` : 'Sync failed',
+        }),
+      });
+
+      await loadSyncStatus();
+      await loadAnalytics();
+    } catch (err) {
+      console.error('[Analytics] handleSyncNow error', err);
+      if (statusEl) statusEl.textContent = 'Sync failed. Try again later.';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleAudienceSync() {
+    try {
+      const res = await fetch('/api/phyllo/sync-audience', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: window.USER_ID }),
+      });
+      const json = await res.json();
+      console.log('[Analytics] audience sync result:', json);
+    } catch (err) {
+      console.error('[Analytics] audience sync error', err);
+    }
+  }
 });

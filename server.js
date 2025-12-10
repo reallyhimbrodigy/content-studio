@@ -20,6 +20,7 @@ const {
   getUserPostMetrics,
   getAudienceDemographics,
   buildWeeklyReport,
+  syncAudience,
 } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
@@ -3488,6 +3489,23 @@ Output format:
       } catch (err) {
         console.error('[Analytics sync status] error', err);
         return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/sync-audience' && req.method === 'POST') {
+    (async () => {
+      try {
+        const { user_id } = await parseJson(req);
+        if (!user_id) {
+          return sendJson(res, 400, { ok: false, error: 'missing_user_id' });
+        }
+        const result = await syncAudience(user_id);
+        return sendJson(res, 200, { ok: true, ...result });
+      } catch (err) {
+        console.error('[Phyllo] sync-audience error', err);
+        return sendJson(res, 500, { ok: false, error: 'phyllo_sync_audience_failed' });
       }
     })();
     return;

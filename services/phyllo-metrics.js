@@ -141,10 +141,17 @@ async function buildWeeklyReport({ posts = [], overview = {}, insights = [], ale
   };
 }
 
+async function syncAudience(userId) {
+  // Placeholder audience sync; expand with real Phyllo calls and Supabase writes as needed.
+  console.warn('[Phyllo] syncAudience placeholder for user', userId);
+  return { updated: 0 };
+}
+
 module.exports = {
   getPhylloPosts,
   getPhylloPostMetrics,
   getUserPostMetrics,
   getAudienceDemographics,
   buildWeeklyReport,
+  syncAudience,
 };
