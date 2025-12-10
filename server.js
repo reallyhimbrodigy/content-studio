@@ -3446,6 +3446,101 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/full' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data: overviewRow, error: overviewErr } = await supabaseAdmin
+          .from('cached_analytics_overview')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const { data: postsRows, error: postsErr } = await supabaseAdmin
+          .from('cached_analytics_posts')
+          .select('*')
+          .eq('user_id', userId);
+
+        const { data: demoRow, error: demoErr } = await supabaseAdmin
+          .from('phyllo_demographics')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const { data: insightsRows, error: insightsErr } = await supabaseAdmin
+          .from('analytics_ai_insights')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        const { data: syncRow } = await supabaseAdmin
+          .from('analytics_sync_status')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (overviewErr || postsErr || demoErr || insightsErr) {
+          console.error('[Analytics full] fetch error', overviewErr || postsErr || demoErr || insightsErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+
+        const overview =
+          overviewRow && Object.keys(overviewRow).length > 0
+            ? {
+                follower_growth: overviewRow.follower_growth ?? null,
+                avg_views: overviewRow.avg_views ?? null,
+                engagement_rate: overviewRow.engagement_rate ?? null,
+                retention: overviewRow.retention ?? null,
+              }
+            : null;
+
+        const posts = postsRows || [];
+        const demographics = demoRow
+          ? {
+              age_groups: demoRow.age_groups || {},
+              genders: demoRow.genders || {},
+              countries: demoRow.countries || {},
+              languages: demoRow.languages || {},
+            }
+          : {
+              age_groups: {},
+              genders: {},
+              countries: {},
+              languages: {},
+            };
+
+        const insights = insightsRows || [];
+
+        const hasData =
+          (overview && Object.values(overview).some((v) => v != null)) ||
+          (posts && posts.length) ||
+          (demoRow && Object.keys(demographics.age_groups || {}).length) ||
+          (insights && insights.length);
+
+        if (!hasData) {
+          return sendJson(res, 404, { ok: false, error: 'no_analytics' });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          overview,
+          posts,
+          demographics,
+          insights,
+          last_sync: syncRow?.last_sync || null,
+        });
+      } catch (err) {
+        console.error('[Analytics full] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/followers' && req.method === 'GET') {
     (async () => {
       try {
