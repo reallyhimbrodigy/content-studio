@@ -6325,6 +6325,74 @@ body.no-scroll {
   white-space: nowrap;
 }
 
+.page-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.page-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.analytics-section {
+  margin-bottom: 24px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.analytics-section h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.kpi-row,
+.growth-report-metrics,
+.followers-chart,
+.heatmap-grid,
+.connected-accounts-list {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .page-content {
+    padding: 16px;
+  }
+
+  .analytics-section {
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .followers-chart {
+    height: 120px;
+  }
+
+  .heatmap-grid {
+    grid-template-columns: repeat(12, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .heatmap-grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+}
+
 .sync-status {
   margin-top: 0.5rem;
   font-size: 0.95rem;
@@ -6339,10 +6407,11 @@ body.no-scroll {
 
 .alert-card {
   padding: 12px 14px;
-  border-radius: 6px;
-  background: #f4f4f7;
-  border-left: 4px solid #7f5af0;
-  font-size: 14px;
+  border-radius: 8px;
+  background: #fff4f4;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  font-size: 13px;
 }
 
 .alert-card.warning {
@@ -6357,6 +6426,12 @@ body.no-scroll {
   font-size: 11px;
   color: #666;
   margin-top: 4px;
+}
+
+.alert-empty {
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
 }
 
 .connected-accounts-list {

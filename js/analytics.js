@@ -6,6 +6,9 @@ import {
   renderLastSync,
   renderConnectedAccounts,
   renderGrowthReport,
+  renderAlerts,
+  initPostTableSorting,
+  applyAnalyticsAccess,
 } from './analytics-render.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -149,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  initPostTableSorting();
   loadSubscriptionAndAnalytics();
   loadConnectedAccounts();
   function loadConnectedAccounts() {
@@ -302,52 +306,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderInsights(insights = []) {
-    const container = document.getElementById('insights-list');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!insights.length) {
-      container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
-      return;
-    }
-    insights.forEach((ins, idx) => {
-      const card = document.createElement('div');
-      card.className = 'insight-card';
-      card.innerHTML = `
-        <div class="insight-title">${ins.title || 'Insight ' + (idx + 1)}</div>
-        <div class="insight-detail">${ins.detail || ins.description || ''}</div>
-        <button
-          class="secondary-btn experiment-btn"
-          type="button"
-          data-title="${(ins.title || 'Experiment').replace(/"/g, '&quot;')}"
-          data-description="${(ins.detail || ins.description || '').replace(/"/g, '&quot;')}"
-        >
-          Try This Experiment
-        </button>
-      `;
-      container.appendChild(card);
-    });
-  }
-
-  function renderAlerts(alerts = []) {
-    const container = document.getElementById('alerts-list');
-    if (!container) return;
-    if (!alerts.length) {
-      container.textContent = 'No alerts available.';
-      return;
-    }
-    container.innerHTML = '';
-    alerts.forEach((a) => {
-      const div = document.createElement('div');
-      div.className = `alert-card ${a.severity || ''}`;
-      div.innerHTML = `
-        <div>${a.message || a.detail || a.type}</div>
-        <div class="alert-timestamp">${a.created_at ? new Date(a.created_at).toLocaleString() : ''}</div>
-      `;
-      container.appendChild(div);
-    });
-  }
-
   function renderExperiments(experiments = []) {
     const container = document.getElementById('experiments-list');
     if (!container) return;
@@ -387,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadAlerts() {
     try {
+      renderAlerts('__loading');
       const res = await fetch('/api/analytics/alerts');
       const json = await res.json();
       if (!json.ok) throw new Error('alerts_fetch_failed');

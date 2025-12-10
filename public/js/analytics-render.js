@@ -1,3 +1,6 @@
+let currentPostSort = { key: 'views', direction: 'desc' };
+let cachedPosts = [];
+
 const numberFmt = (n, opts = {}) => {
   if (n == null || isNaN(n)) return '—';
   const formatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, ...opts });
@@ -24,34 +27,55 @@ export function renderOverview(overview = {}) {
 }
 
 export function renderPosts(posts = []) {
-  const tbody = document.getElementById('analytics-table-body');
+  const table = document.getElementById('content-performance-table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
   if (!tbody) return;
+
   if (posts === '__loading') {
-    tbody.innerHTML = Array.from({ length: 3 })
-      .map(() => '<tr>' + Array.from({ length: 7 }).map(() => '<td class="analytics-skeleton">&nbsp;</td>').join('') + '</tr>')
-      .join('');
+    tbody.innerHTML = `
+      <tr><td colspan="7" class="analytics-skeleton">&nbsp;</td></tr>
+      <tr><td colspan="7" class="analytics-skeleton">&nbsp;</td></tr>
+    `;
     return;
   }
-  if (!posts.length) {
+
+  if (!Array.isArray(posts) || !posts.length) {
     tbody.innerHTML = '<tr><td class="analytics-empty" colspan="7">No post data yet.</td></tr>';
+    cachedPosts = [];
     return;
   }
+
+  cachedPosts = [...posts];
+  const sorted = sortPosts(cachedPosts, currentPostSort.key, currentPostSort.direction);
+
   const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
-  tbody.innerHTML = posts
-    .map(
-      (p) => `
-        <tr>
-          <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : p.title || 'Untitled'}</td>
-          <td>${p.platform || '—'}</td>
-          <td>${numberFmt(p.views)}</td>
-          <td>${numberFmt(p.likes)}</td>
-          <td>${fmtPct(p.retention_pct || p.retentionPct)}</td>
-          <td>${numberFmt(p.shares)}</td>
-          <td>${numberFmt(p.saves)}</td>
-        </tr>
-      `
-    )
-    .join('');
+  tbody.innerHTML = '';
+  sorted.forEach((p) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : p.title || 'Untitled'}</td>
+      <td>${p.platform || '—'}</td>
+      <td>${numberFmt(p.views)}</td>
+      <td>${numberFmt(p.likes)}</td>
+      <td>${fmtPct(p.retention_pct || p.retentionPct)}</td>
+      <td>${numberFmt(p.shares)}</td>
+      <td>${numberFmt(p.saves)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function sortPosts(posts, key, direction) {
+  const dir = direction === 'asc' ? 1 : -1;
+  return [...posts].sort((a, b) => {
+    const va = a[key] ?? 0;
+    const vb = b[key] ?? 0;
+    if (typeof va === 'string' || typeof vb === 'string') {
+      return va.toString().localeCompare(vb.toString()) * dir;
+    }
+    return (va - vb) * dir;
+  });
 }
 
 export function renderDemographics(demo = {}) {
@@ -231,4 +255,49 @@ export function renderGrowthReport(report) {
       <div>Best Posting Time: ${highlights.bestPostingTime ?? '—'}</div>
     </div>
   `;
+}
+
+export function initPostTableSorting() {
+  const table = document.getElementById('content-performance-table');
+  if (!table) return;
+  const headers = table.querySelectorAll('thead th[data-sort-key]');
+  headers.forEach((th) => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-sort-key');
+      if (!key) return;
+      if (currentPostSort.key === key) {
+        currentPostSort.direction = currentPostSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentPostSort.key = key;
+        currentPostSort.direction = 'desc';
+      }
+      if (cachedPosts.length) {
+        renderPosts(cachedPosts);
+      }
+    });
+  });
+}
+
+export function renderAlerts(alerts) {
+  const container = document.getElementById('alerts-list');
+  if (!container) return;
+
+  if (alerts === '__loading') {
+    container.innerHTML = '<div class="alert-card analytics-skeleton" style="height:20px;"></div>';
+    return;
+  }
+
+  if (!alerts || alerts.length === 0) {
+    container.innerHTML = '<div class="alert-empty">No alerts available.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  alerts.forEach((a) => {
+    const div = document.createElement('div');
+    div.className = 'alert-card';
+    div.textContent = a.message || a.detail || a.type || 'Alert';
+    container.appendChild(div);
+  });
 }
