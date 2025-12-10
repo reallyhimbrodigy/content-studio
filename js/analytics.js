@@ -11,6 +11,7 @@ import {
   renderDemoBadge,
   exportPostsToCSV,
   initPlatformFilter,
+  renderPlatformBreakdown,
   applyAnalyticsAccess,
 } from './analytics-render.js';
 
@@ -269,6 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDemographics('__loading');
       renderInsights('__loading');
       renderGrowthReport('__loading');
+      renderPlatformBreakdown('__loading');
       renderDemoBadge(false);
 
       const res = await fetch('/api/analytics/full');
@@ -286,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderInsights(data.insights || []);
       renderLastSync(data.last_sync);
       renderGrowthReport(data.report || data.growth_report || null);
+      renderPlatformBreakdown(data.posts || []);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
       renderOverview({});
@@ -294,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderInsights([]);
       renderGrowthReport(null);
       renderDemoBadge(false);
+      renderPlatformBreakdown([]);
     }
   }
 

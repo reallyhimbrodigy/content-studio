@@ -321,6 +321,59 @@ function escapeCSV(value) {
   return str;
 }
 
+export function renderPlatformBreakdown(posts) {
+  const container = document.getElementById('platform-breakdown');
+  if (!container) return;
+
+  if (posts === '__loading') {
+    container.innerHTML = '<div class="platform-breakdown-card analytics-skeleton" style="height:60px;"></div>';
+    return;
+  }
+
+  if (!Array.isArray(posts) || !posts.length) {
+    container.innerHTML = '<div class="analytics-empty">No platform data yet.</div>';
+    return;
+  }
+
+  const summary = {};
+  posts.forEach((p) => {
+    const key = (p.platform || 'unknown').toLowerCase();
+    if (!summary[key]) {
+      summary[key] = { posts: 0, views: 0, likes: 0, comments: 0, shares: 0 };
+    }
+    const s = summary[key];
+    s.posts += 1;
+    s.views += p.views || 0;
+    s.likes += p.likes || 0;
+    s.comments += p.comments || 0;
+    s.shares += p.shares || 0;
+  });
+
+  container.innerHTML = '';
+  Object.keys(summary).forEach((platform) => {
+    const s = summary[platform];
+    const engagementRate = s.views > 0 ? (((s.likes + s.comments + s.shares) / s.views) * 100).toFixed(2) : '0.00';
+
+    const card = document.createElement('div');
+    card.className = 'platform-breakdown-card';
+    card.innerHTML = `
+      <h3>${platformLabel(platform)}</h3>
+      <div class="platform-breakdown-metric">Posts: ${s.posts}</div>
+      <div class="platform-breakdown-metric">Total Views: ${s.views}</div>
+      <div class="platform-breakdown-metric">Engagement Rate: ${engagementRate}%</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function platformLabel(key) {
+  const k = key.toLowerCase();
+  if (k === 'tiktok') return 'TikTok';
+  if (k === 'instagram') return 'Instagram';
+  if (k === 'youtube') return 'YouTube';
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 export function renderDemoBadge(isDemo) {
   const titleEl = document.getElementById('analytics-title');
   if (!titleEl) return;

@@ -6342,6 +6342,32 @@ body.no-scroll {
   align-items: center;
 }
 
+.platform-breakdown-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.platform-breakdown-card {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+
+.platform-breakdown-card h3 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+}
+
+.platform-breakdown-metric {
+  font-size: 12px;
+  color: #4b5563;
+}
+
 #platform-filter {
   padding: 4px 8px;
   border-radius: 6px;
