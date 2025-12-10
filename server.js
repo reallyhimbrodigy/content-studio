@@ -3359,6 +3359,40 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/api/analytics/report/latest' && req.method === 'GET') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('analytics_growth_reports')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error('latest report fetch error', error);
+          return sendJson(res, 500, { ok: false, error: 'internal_error' });
+        }
+
+        if (!data) {
+          return sendJson(res, 404, { ok: false, error: 'not_found' });
+        }
+
+        return sendJson(res, 200, { ok: true, report: data });
+      } catch (err) {
+        console.error('latest report unexpected error', err);
+        return sendJson(res, 500, { ok: false, error: 'internal_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'POST') {
     (async () => {
       try {
