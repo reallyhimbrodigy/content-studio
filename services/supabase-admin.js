@@ -91,17 +91,25 @@ async function updateCachedAnalyticsForUser(userId) {
 
   let totalViews = 0;
   let totalEngagement = 0;
+  let totalRetention = 0;
+  let retentionCount = 0;
   flatPosts.forEach((p) => {
     totalViews += p.views || 0;
     totalEngagement += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+    const r = p.retention_pct ?? p.retention ?? null;
+    if (typeof r === 'number') {
+      totalRetention += r;
+      retentionCount += 1;
+    }
   });
 
   const engagementRate = totalViews > 0 ? Number(((totalEngagement / totalViews) * 100).toFixed(2)) : 0;
+  const retentionPct = retentionCount > 0 ? Number((totalRetention / retentionCount).toFixed(2)) : null;
   const overview = {
     followerGrowth: null,
     engagementRate,
     avgViewsPerPost: flatPosts.length ? Math.round(totalViews / flatPosts.length) : 0,
-    retentionPct: null,
+    retentionPct,
   };
 
   await supabaseAdmin

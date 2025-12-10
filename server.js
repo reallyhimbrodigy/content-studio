@@ -3827,6 +3827,36 @@ Output format:
   }
 
   if (parsed.pathname.startsWith('/api/analytics/experiments/') && req.method === 'PATCH') {
+    // Specific complete endpoint
+    if (parsed.pathname.endsWith('/complete')) {
+      (async () => {
+        try {
+          const userId = req.user && req.user.id;
+          if (!userId || !supabaseAdmin) {
+            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          }
+          const segments = parsed.pathname.split('/');
+          const id = segments[segments.length - 2];
+          if (!id) {
+            return sendJson(res, 400, { ok: false, error: 'missing_id' });
+          }
+          const { data, error } = await supabaseAdmin
+            .from('analytics_experiments')
+            .update({ status: 'completed', end_date: new Date().toISOString() })
+            .eq('id', id)
+            .eq('user_id', userId)
+            .select('*')
+            .single();
+          if (error) return sendJson(res, 500, { ok: false, error: 'update_failed' });
+          return sendJson(res, 200, { ok: true, experiment: data });
+        } catch (err) {
+          console.error('[Analytics experiments complete] error', err);
+          return sendJson(res, 500, { ok: false, error: 'server_error' });
+        }
+      })();
+      return;
+    }
+
     (async () => {
       try {
         const userId = req.user && req.user.id;
@@ -3850,6 +3880,36 @@ Output format:
         return sendJson(res, 200, { ok: true, experiment: data });
       } catch (err) {
         console.error('[Analytics experiments update] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname.startsWith('/api/analytics/experiments/') && req.method === 'DELETE') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const id = parsed.pathname.split('/').pop();
+        if (!id) {
+          return sendJson(res, 400, { ok: false, error: 'missing_id' });
+        }
+        const { error } = await supabaseAdmin
+          .from('analytics_experiments')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', userId);
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'delete_failed' });
+        }
+
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[Analytics experiments delete] error', err);
         return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();

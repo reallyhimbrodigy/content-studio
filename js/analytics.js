@@ -404,6 +404,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="experiment-body">
           <p>${exp.description || ''}</p>
           <small>${exp.start_date || ''} → ${exp.end_date || ''}</small>
+          <div>
+            <button class="complete-experiment-btn secondary-btn" data-id="${exp.id}">Mark as Complete</button>
+            <button class="delete-experiment-btn secondary-btn" data-id="${exp.id}">Delete</button>
+          </div>
         </div>
       `;
       container.appendChild(div);
@@ -698,6 +702,46 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Analytics] experiment create error', err);
       btn.textContent = originalText;
       btn.disabled = false;
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.delete-experiment-btn');
+    if (!btn) return;
+
+    const id = btn.dataset.id;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Removing…';
+
+    try {
+      const res = await fetch(`/api/analytics/experiments/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error('delete_failed');
+      if (typeof loadExperiments === 'function') await loadExperiments();
+    } catch (err) {
+      console.error('[Analytics] delete experiment error', err);
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.complete-experiment-btn');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Updating...';
+    try {
+      const res = await fetch(`/api/analytics/experiments/${id}/complete`, { method: 'PATCH' });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error('complete_failed');
+      if (typeof loadExperiments === 'function') await loadExperiments();
+    } catch (err) {
+      console.error('[Analytics] complete experiment error', err);
+      btn.disabled = false;
+      btn.textContent = original;
     }
   });
 
