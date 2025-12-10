@@ -8,8 +8,80 @@ import {
   renderGrowthReport,
   renderAlerts,
   initPostTableSorting,
+  renderDemoBadge,
   applyAnalyticsAccess,
 } from './analytics-render.js';
+
+const DEMO_ANALYTICS = {
+  overview: {
+    followerGrowth: '+1,250 this month',
+    engagementRate: 5.8,
+    avgViewsPerPost: 7200,
+    retentionPct: 68,
+  },
+  posts: [
+    {
+      title: 'Study Hack Short',
+      platform: 'TikTok',
+      views: 15000,
+      likes: 1200,
+      comments: 95,
+      shares: 40,
+      saves: 80,
+      retention_pct: 72,
+    },
+    {
+      title: 'Morning Routine Reel',
+      platform: 'Instagram',
+      views: 9800,
+      likes: 640,
+      comments: 30,
+      shares: 18,
+      saves: 50,
+      retention_pct: 65,
+    },
+    {
+      title: 'Deep Work Tips',
+      platform: 'YouTube',
+      views: 21000,
+      likes: 1300,
+      comments: 110,
+      shares: 55,
+      saves: 120,
+      retention_pct: 70,
+    },
+  ],
+  demographics: {
+    age: { '18-24': 54, '25-34': 32, '35-44': 10 },
+    gender: { male: 48, female: 50, other: 2 },
+    location: { US: 60, UK: 15, CA: 10, DE: 5 },
+    language: { en: 80, es: 10, fr: 5 },
+  },
+  insights: [
+    { title: 'Best Posting Time', detail: 'Your audience is most active at 7 PM PST on weekdays.' },
+    { title: 'Content Theme', detail: 'Study hacks and productivity tips have 72% average retention.' },
+  ],
+  report: {
+    weekStart: 'This Week',
+    overview: {
+      followerGrowth: '+1,250',
+      engagementRate: 5.8,
+      avgViewsPerPost: 7200,
+      retentionPct: 68,
+    },
+    highlights: {
+      fastestGrowingPlatform: 'TikTok',
+      bestPostingTime: '7 PM PST (Weekdays)',
+    },
+  },
+};
+
+function shouldUseDemo(data) {
+  if (!data || !data.overview) return true;
+  const hasPosts = Array.isArray(data.posts) && data.posts.length > 0;
+  const hasViews = data.overview.avgViewsPerPost && data.overview.avgViewsPerPost > 0;
+  return !hasPosts && !hasViews;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
@@ -194,11 +266,16 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDemographics('__loading');
       renderInsights('__loading');
       renderGrowthReport('__loading');
+      renderDemoBadge(false);
 
       const res = await fetch('/api/analytics/full');
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error('analytics/full failed');
-      const data = json;
+      let data = json;
+      const useDemo = !res.ok || !json.ok || shouldUseDemo(json);
+      if (useDemo) {
+        data = DEMO_ANALYTICS;
+        renderDemoBadge(true);
+      }
 
       renderOverview(data.overview || {});
       renderPosts(data.posts || []);
@@ -213,6 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderDemographics({});
       renderInsights([]);
       renderGrowthReport(null);
+      renderDemoBadge(false);
     }
   }
 

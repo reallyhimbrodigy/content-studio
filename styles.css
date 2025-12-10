@@ -6325,6 +6325,10 @@ body.no-scroll {
   white-space: nowrap;
 }
 
+#content-performance-table tbody tr.content-row:hover {
+  background-color: #f9fafb;
+}
+
 .page-container {
   display: flex;
   min-height: 100vh;
@@ -6488,6 +6492,17 @@ body.no-scroll {
   background: #f4f4f7;
   font-size: 13px;
   color: #111827;
+}
+
+.analytics-demo-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #bfdbfe;
 }
 
 .analytics-loading {

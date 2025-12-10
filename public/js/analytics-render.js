@@ -53,8 +53,11 @@ export function renderPosts(posts = []) {
   tbody.innerHTML = '';
   sorted.forEach((p) => {
     const tr = document.createElement('tr');
+    tr.dataset.url = p.url || '';
+    tr.classList.add('content-row');
+
     tr.innerHTML = `
-      <td>${p.url ? `<a href="${p.url}" target="_blank" rel="noreferrer">${p.title || 'Untitled'}</a>` : p.title || 'Untitled'}</td>
+      <td>${p.title || 'Untitled'}</td>
       <td>${p.platform || '—'}</td>
       <td>${numberFmt(p.views)}</td>
       <td>${numberFmt(p.likes)}</td>
@@ -62,6 +65,14 @@ export function renderPosts(posts = []) {
       <td>${numberFmt(p.shares)}</td>
       <td>${numberFmt(p.saves)}</td>
     `;
+
+    if (p.url) {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => {
+        window.open(p.url, '_blank', 'noopener,noreferrer');
+      });
+    }
+
     tbody.appendChild(tr);
   });
 }
@@ -255,6 +266,25 @@ export function renderGrowthReport(report) {
       <div>Best Posting Time: ${highlights.bestPostingTime ?? '—'}</div>
     </div>
   `;
+}
+
+export function renderDemoBadge(isDemo) {
+  const titleEl = document.getElementById('analytics-title');
+  if (!titleEl) return;
+
+  let badge = document.getElementById('analytics-demo-badge');
+  if (!isDemo) {
+    if (badge) badge.remove();
+    return;
+  }
+
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'analytics-demo-badge';
+    badge.className = 'analytics-demo-badge';
+    badge.textContent = 'Demo Data';
+    titleEl.appendChild(badge);
+  }
 }
 
 export function initPostTableSorting() {
