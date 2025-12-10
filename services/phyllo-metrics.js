@@ -102,6 +102,40 @@ async function getUserPostMetrics(accounts = []) {
 }
 
 async function getAudienceDemographics(accounts = []) {
+  // Overloaded helper:
+  // - If an array is provided, use legacy creator_id flow (sandbox)
+  // - If a string is provided, treat it as phylloUserId and call production audience-demographics endpoint
+  if (!accounts) return null;
+
+  // string: new single-user helper
+  if (typeof accounts === 'string') {
+    try {
+      const base = process.env.PHY_PRODUCTION_BASE_URL;
+      const clientId = process.env.PHY_PRODUCTION_CLIENT_ID;
+      const clientSecret = process.env.PHY_PRODUCTION_CLIENT_SECRET;
+      if (!base || !clientId || !clientSecret) {
+        console.error('[Phyllo] Missing production audience env vars');
+        return null;
+      }
+      const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const resp = await fetch(`${base}/v1/users/${accounts}/audience-demographics`, {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!resp.ok) {
+        console.error('[Phyllo] audience demographics fetch failed', resp.status);
+        return null;
+      }
+      return await resp.json();
+    } catch (err) {
+      console.error('[Phyllo] audience demographics error', err);
+      return null;
+    }
+  }
+
+  // array: legacy multi-account helper
   const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
   const results = [];
 

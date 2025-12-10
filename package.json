@@ -13,7 +13,8 @@
   "dependencies": {
     "axios": "^1.6.8",
     "@supabase/supabase-js": "^2.81.1",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "sharp": "^0.32.4"

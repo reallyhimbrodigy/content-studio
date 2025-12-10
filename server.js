@@ -15,6 +15,7 @@ const {
   insertPhylloPostMetrics,
   updateCachedAnalyticsForUser,
 } = require('./services/supabase-admin');
+const cron = require('node-cron');
 const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const {
   uploadAssetFromUrl,
@@ -3034,6 +3035,36 @@ ${JSON.stringify(compactPosts)}`;
       }
     }
 
+    // Demographics sync per account
+    for (const acc of accounts) {
+      try {
+        const demoResp = await getAudienceDemographics(acc.phyllo_user_id);
+        if (!demoResp) continue;
+        const payload = demoResp.data || demoResp;
+        const age_groups = payload.age_groups || payload.age || {};
+        const countries = payload.countries || payload.location || {};
+        const languages = payload.languages || payload.language || {};
+        const genders = payload.genders || payload.gender || {};
+
+        const { error: demoErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
+          user_id: promptlyUserId,
+          phyllo_user_id: acc.phyllo_user_id,
+          account_id: acc.account_id,
+          platform: acc.platform || acc.work_platform_id || 'unknown',
+          age_groups,
+          countries,
+          languages,
+          genders,
+          updated_at: new Date().toISOString(),
+        });
+        if (demoErr) {
+          console.error('[Phyllo] demographics upsert error', demoErr);
+        }
+      } catch (err) {
+        console.error('[Phyllo] demographics sync error', err);
+      }
+    }
+
     await updateCachedAnalyticsForUser(promptlyUserId);
 
     return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
@@ -4359,6 +4390,57 @@ if (ENABLE_DESIGN_LAB) {
     });
   }, 20000);
 }
+
+// Daily analytics sync (06:00 America/Los_Angeles)
+cron.schedule(
+  '0 6 * * *',
+  async () => {
+    console.log('[Cron] Daily analytics sync started');
+    try {
+      const { data: rows, error } = await supabaseAdmin
+        .from('phyllo_accounts')
+        .select('user_id')
+        .eq('status', 'connected');
+
+      if (error || !rows || !rows.length) {
+        console.error('[Cron] No accounts or error:', error);
+        return;
+      }
+
+      const userIds = [...new Set(rows.map((r) => r.user_id))];
+
+      for (const userId of userIds) {
+        try {
+          console.log('[Cron] Sync user', userId);
+          await syncFollowerMetrics(userId);
+          await syncDemographics(userId);
+          await updateCachedAnalyticsForUser(userId);
+          await supabaseAdmin.from('analytics_sync_status').upsert({
+            user_id: userId,
+            last_sync: new Date().toISOString(),
+            status: 'success',
+            message: 'Daily cron sync completed',
+          });
+        } catch (userErr) {
+          console.error('[Cron] Error syncing user', userId, userErr);
+          await supabaseAdmin.from('analytics_sync_status').upsert({
+            user_id: userId,
+            last_sync: new Date().toISOString(),
+            status: 'failed',
+            message: 'Daily cron sync failed',
+          });
+        }
+      }
+
+      console.log('[Cron] Daily analytics sync finished');
+    } catch (err) {
+      console.error('[Cron] Fatal error in daily analytics sync', err);
+    }
+  },
+  {
+    timezone: 'America/Los_Angeles',
+  }
+);
 
 server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
