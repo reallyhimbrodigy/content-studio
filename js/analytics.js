@@ -91,58 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return formatter.format(n);
   };
 
-  async function safeFetch(url) {
-    try {
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      console.error('[Analytics] fetch failed', url, err);
-      return null;
-    }
-  }
-
-  async function loadAccounts() {
-    const strip = document.getElementById('connected-accounts');
-    const data = await safeFetch('/api/analytics/accounts');
-    if (!strip || !data) return;
-    const list = Array.isArray(data) ? data : data.data || [];
-    const statusByPlatform = {};
-    list.forEach((acct) => {
-      const platform = (acct.platform || '').toLowerCase();
-      statusByPlatform[platform] = acct;
-    });
-    strip.querySelectorAll('.analytics-connected-card').forEach((card) => {
-      const platform = (card.dataset.platform || '').toLowerCase();
-      const info = statusByPlatform[platform];
-      const statusEl = card.querySelector('.analytics-connected-status');
-      if (info) {
-        statusEl.textContent = info.username ? `@${info.username}` : 'Connected';
-      } else {
-        statusEl.textContent = 'Not connected';
-      }
-    });
-  }
-
-  async function loadOverview() {
-    const data = await safeFetch('/api/analytics/overview');
-    const payload = data && (data.data || data);
-    if (!payload) return;
-    const fg = document.getElementById('kpi-follower-growth');
-    const eng = document.getElementById('kpi-engagement');
-    const views = document.getElementById('kpi-views');
-    const ret = document.getElementById('kpi-retention');
-    const fgVal = payload.followerGrowth ?? payload.follower_growth;
-    const engVal = payload.engagementRate ?? payload.engagement_rate;
-    const viewsVal = payload.avgViewsPerPost ?? payload.avg_views_per_post;
-    const retVal = payload.retentionPct ?? payload.retention_pct;
-    if (fg) fg.textContent = `${numberFmt(fgVal)}${fgVal > 0 ? '+' : ''}`;
-    if (eng) eng.textContent = engVal != null ? `${numberFmt(engVal * 100, { maximumFractionDigits: 2 })}%` : '—';
-    if (views) views.textContent = numberFmt(viewsVal);
-    if (ret) ret.textContent = retVal != null ? `${numberFmt(retVal * 100, { maximumFractionDigits: 1 })}%` : '—';
-  }
-
   function renderHeatmapGrid(data) {
     const grid = document.querySelector('.analytics-heatmap-grid');
     if (!grid) return;
@@ -173,69 +121,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadHeatmap() {
-    const data = await safeFetch('/api/analytics/heatmap');
-    const rows = data && (data.data || data);
-    if (!rows || !Array.isArray(rows) || !rows.length) return;
-    renderHeatmapGrid(rows);
-  }
-
-  async function loadPosts() {
-    const tbody = document.getElementById('analytics-table-body');
-    if (!tbody) return;
-    const data = await safeFetch('/api/analytics/posts');
-    const rows = data && (data.data || data);
-    if (!rows || !rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7">No data yet – connect an account.</td></tr>';
-      return;
+    try {
+      const res = await fetch('/api/analytics/heatmap');
+      const json = await res.json();
+      if (!json.ok) throw new Error('heatmap_fetch_failed');
+      renderHeatmap(json.heatmap || []);
+    } catch (err) {
+      console.error('[Analytics] loadHeatmap error', err);
+      const grid = document.getElementById('heatmap-grid');
+      if (grid) grid.textContent = 'No heatmap data yet.';
     }
-    const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
-    const html = rows
-      .map((r) => `
-        <tr>
-          <td>${r.post_url ? `<a href="${r.post_url}" target="_blank" rel="noreferrer">${r.title || 'Untitled'}</a>` : (r.title || 'Untitled')}</td>
-          <td>${r.platform || '—'}</td>
-          <td>${numberFmt(r.views)}</td>
-          <td>${numberFmt(r.likes)}</td>
-          <td>${fmtPct(r.retention)}</td>
-          <td>${numberFmt(r.shares)}</td>
-          <td>${numberFmt(r.saves)}</td>
-        </tr>
-      `)
-      .join('');
-    tbody.innerHTML = html;
   }
 
   async function loadInsights() {
-    const container = document.getElementById('analytics-insights');
-    if (!container) return;
-    const data = await safeFetch('/api/analytics/insights');
-    const items = data && (data.data || data);
-    if (!items || (Array.isArray(items) && !items.length)) {
-      container.innerHTML = '<p class="muted">No insights yet – generate after syncing data.</p>';
-      return;
-    }
-    const insight = Array.isArray(items) ? items[0] : items;
-    const recs = Array.isArray(insight.experiments) ? insight.experiments : [];
-    const recHtml = recs.map((rec) => `<li>${rec}</li>`).join('');
-    container.innerHTML = `
-      <div class="analytics-card insight-card">
-        <h3>${insight.summaryText || insight.summary || 'Insight'}</h3>
-        ${recHtml ? `<ul>${recHtml}</ul>` : '<p class="muted">No experiments yet.</p>'}
-        <button class="secondary-btn" type="button">Try This Experiment</button>
-      </div>
-    `;
-  }
-
-  async function loadAlerts() {
     try {
-      const res = await fetch('/api/analytics/alerts');
+      const res = await fetch('/api/analytics/insights');
       const json = await res.json();
-      if (!json.ok) throw new Error('alerts_fetch_failed');
-      renderAlerts(json.alerts || []);
+      if (!json.ok) throw new Error('insights fetch failed');
+      renderInsights(json.insights || []);
     } catch (err) {
-      console.error('[Analytics] loadAlerts error', err);
-      const el = document.getElementById('alerts-list');
-      if (el) el.textContent = 'No alerts available.';
+      console.error('[Analytics] loadInsights error', err);
+      const container = document.getElementById('insights-list');
+      if (container) container.textContent = 'No insights yet.';
     }
   }
 
@@ -296,6 +203,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const json = await res.json();
     if (!json.ok) throw new Error('alerts error');
     return json.alerts || json.data || [];
+  }
+
+  async function loadFullAnalytics() {
+    try {
+      const res = await fetch('/api/analytics/full');
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error('analytics/full failed');
+      const data = json;
+
+      if (typeof renderOverview === 'function') {
+        renderOverview(data.overview || {});
+      }
+      if (typeof renderPosts === 'function') {
+        renderPosts(data.posts || []);
+      }
+      if (typeof renderTopPosts === 'function') {
+        renderTopPosts(data.posts || []);
+      }
+      if (typeof renderDemographics === 'function') {
+        renderDemographics(data.demographics || {});
+      }
+      if (typeof renderInsights === 'function') {
+        renderInsights(data.insights || []);
+      }
+
+      const syncEl = document.getElementById('sync-status');
+      if (syncEl && data.last_sync) {
+        syncEl.textContent = `Last Sync: ${new Date(data.last_sync).toLocaleString()}`;
+      }
+    } catch (err) {
+      console.error('[Analytics] loadFullAnalytics error', err);
+    }
   }
 
   function renderOverview(overview = {}) {
@@ -707,16 +646,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  loadAnalytics();
+  loadFullAnalytics();
   loadExperiments();
-  loadTopPosts();
-  loadDemographics();
-  loadEngagement();
   loadHeatmap();
   loadAlerts();
   loadFollowerGrowth();
   loadSyncStatus();
   loadFollowerGrowthChart();
+  loadDemographics();
   const refreshBtn = document.getElementById('refresh-all-btn');
   if (refreshBtn) {
     refreshBtn.addEventListener('click', refreshAllData);
