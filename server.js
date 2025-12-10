@@ -3567,26 +3567,53 @@ Output format:
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
-        const demo = await syncDemographics(userId);
-
-        const { data: existing } = await supabaseAdmin
-          .from('cached_analytics')
-          .select('posts, followers, overview')
+        // Load connected accounts
+        const { data: accounts, error: accErr } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
           .eq('user_id', userId)
-          .single();
+          .eq('status', 'connected');
 
-        await supabaseAdmin
-          .from('cached_analytics')
-          .upsert({
-            user_id: userId,
-            demographics: demo || {},
-            posts: existing?.posts || [],
-            followers: existing?.followers || [],
-            overview: existing?.overview || {},
-            updated_at: new Date().toISOString(),
-          });
+        if (accErr) {
+          console.error('[Phyllo] sync-demographics accounts error', accErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
 
-        return sendJson(res, 200, { ok: true, demographics: demo || {} });
+        if (!accounts || !accounts.length) {
+          return sendJson(res, 200, { ok: true, demographics: {} });
+        }
+
+        for (const acc of accounts) {
+          try {
+            const audience = await getAudienceDemographics(acc.phyllo_user_id || acc.creator_id ? [{ creator_id: acc.creator_id, platform: acc.platform, work_platform_id: acc.work_platform_id }] : []);
+            const payload = audience && audience[0] ? audience[0].audience || {} : {};
+
+            const age_groups = payload.age || payload.age_groups || {};
+            const countries = payload.location || payload.countries || {};
+            const languages = payload.language || payload.languages || {};
+            const genders = payload.gender || payload.genders || {};
+
+            const { error: upsertErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
+              user_id: userId,
+              phyllo_user_id: acc.phyllo_user_id,
+              account_id: acc.account_id,
+              platform: acc.platform || acc.work_platform_id || 'unknown',
+              age_groups,
+              countries,
+              languages,
+              genders,
+              updated_at: new Date().toISOString(),
+            });
+
+            if (upsertErr) {
+              console.error('[Phyllo] demographics upsert error', upsertErr);
+            }
+          } catch (err) {
+            console.error('[Phyllo] sync-demographics per-account error', err);
+          }
+        }
+
+        return sendJson(res, 200, { ok: true });
       } catch (err) {
         console.error('[Phyllo] sync-demographics error', err);
         return sendJson(res, 500, { ok: false, error: 'phyllo_sync_demographics_failed' });
