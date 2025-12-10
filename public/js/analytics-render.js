@@ -1,5 +1,6 @@
 let currentPostSort = { key: 'views', direction: 'desc' };
 let cachedPosts = [];
+let lastSortedPosts = [];
 
 const numberFmt = (n, opts = {}) => {
   if (n == null || isNaN(n)) return '—';
@@ -48,6 +49,7 @@ export function renderPosts(posts = []) {
 
   cachedPosts = [...posts];
   const sorted = sortPosts(cachedPosts, currentPostSort.key, currentPostSort.direction);
+  lastSortedPosts = sorted;
 
   const fmtPct = (v) => (v == null ? '—' : `${numberFmt(v * 100, { maximumFractionDigits: 1 })}%`);
   tbody.innerHTML = '';
@@ -266,6 +268,50 @@ export function renderGrowthReport(report) {
       <div>Best Posting Time: ${highlights.bestPostingTime ?? '—'}</div>
     </div>
   `;
+}
+
+export function exportPostsToCSV() {
+  const rows = (lastSortedPosts && lastSortedPosts.length ? lastSortedPosts : cachedPosts) || [];
+  if (!rows.length) {
+    alert('No post data to export.');
+    return;
+  }
+
+  const headers = ['Title', 'Platform', 'Views', 'Likes', 'Comments', 'Shares', 'Saves', 'RetentionPct', 'URL'];
+  const lines = [headers.join(',')];
+
+  rows.forEach((p) => {
+    const line = [
+      escapeCSV(p.title || ''),
+      escapeCSV(p.platform || ''),
+      p.views ?? 0,
+      p.likes ?? 0,
+      p.comments ?? 0,
+      p.shares ?? 0,
+      p.saves ?? 0,
+      p.retention_pct ?? p.retentionPct ?? '',
+      escapeCSV(p.url || ''),
+    ].join(',');
+    lines.push(line);
+  });
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'content-performance.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escapeCSV(value) {
+  const str = String(value).replace(/"/g, '""');
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str}"`;
+  }
+  return str;
 }
 
 export function renderDemoBadge(isDemo) {

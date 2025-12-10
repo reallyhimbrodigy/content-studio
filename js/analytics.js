@@ -9,6 +9,7 @@ import {
   renderAlerts,
   initPostTableSorting,
   renderDemoBadge,
+  exportPostsToCSV,
   applyAnalyticsAccess,
 } from './analytics-render.js';
 
@@ -646,6 +647,10 @@ document.addEventListener('DOMContentLoaded', () => {
   loadExperiments();
   loadDemographics();
   loadGrowthReport();
+  const exportBtn = document.getElementById('export-posts-csv');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportPostsToCSV);
+  }
   const refreshBtn = document.getElementById('refresh-all-btn');
   if (refreshBtn) {
     refreshBtn.addEventListener('click', refreshAllData);
