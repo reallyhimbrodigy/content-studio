@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  loadFullAnalytics();
+  loadSubscriptionAndAnalytics();
   loadConnectedAccounts();
   function loadConnectedAccounts() {
     fetch('/api/phyllo/accounts')
@@ -199,6 +199,20 @@ document.addEventListener('DOMContentLoaded', () => {
       renderGrowthReport(data.report || data.growth_report || null);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
+    }
+  }
+
+  async function loadSubscriptionAndAnalytics() {
+    try {
+      const res = await fetch('/api/user/subscription');
+      const json = await res.json();
+      const plan = json.plan || 'free';
+      applyAnalyticsAccess(plan);
+      await loadFullAnalytics();
+    } catch (err) {
+      console.error('[Analytics] subscription load error', err);
+      applyAnalyticsAccess('free');
+      await loadFullAnalytics();
     }
   }
 
@@ -572,7 +586,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  loadFullAnalytics();
   loadHeatmap();
   loadAlerts();
   loadFollowerGrowth();

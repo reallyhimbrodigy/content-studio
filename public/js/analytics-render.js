@@ -136,6 +136,39 @@ export function renderConnectedAccounts(accounts = []) {
   });
 }
 
+export function applyAnalyticsAccess(plan) {
+  const isPro = plan === 'pro' || plan === 'teams';
+
+  toggleSection('insights-section', isPro, 'Upgrade to Promptly Pro to unlock AI Insights.');
+  toggleSection('experiments-section', isPro, 'Upgrade to run 7-day content experiments.');
+  toggleSection('alerts-section', isPro, 'Upgrade to see real-time performance alerts.');
+  toggleSection('growth-report-section', isPro, 'Upgrade to get weekly growth reports.');
+}
+
+function toggleSection(id, isVisible, upsellText) {
+  const section = document.getElementById(id);
+  if (!section) return;
+
+  const upsellId = `${id}-upsell`;
+  let upsell = document.getElementById(upsellId);
+
+  if (isVisible) {
+    section.style.display = '';
+    if (upsell) upsell.remove();
+    return;
+  }
+
+  section.style.display = 'none';
+
+  if (!upsell && section.parentNode) {
+    upsell = document.createElement('div');
+    upsell.id = upsellId;
+    upsell.className = 'analytics-upsell';
+    upsell.textContent = upsellText;
+    section.parentNode.insertBefore(upsell, section);
+  }
+}
+
 export function renderGrowthReport(report) {
   const card = document.getElementById('growth-report-card');
   if (!card) return;

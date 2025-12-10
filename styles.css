@@ -6406,6 +6406,15 @@ body.no-scroll {
   opacity: 0.9;
 }
 
+.analytics-upsell {
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f4f4f7;
+  font-size: 13px;
+  color: #111827;
+}
+
 /* New detailed heatmap grid (7×24) */
 .heatmap-grid {
   display: grid;

@@ -1838,6 +1838,34 @@ const server = http.createServer((req, res) => {
     return res.end('Not found');
   }
 
+  if (parsed.pathname === '/api/user/subscription' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!user || !user.id) {
+          return sendJson(res, 200, { ok: true, plan: 'free' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .select('subscription_plan')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('[Subscription] fetch error', error);
+          return sendJson(res, 200, { ok: true, plan: 'free' });
+        }
+
+        return sendJson(res, 200, { ok: true, plan: data?.subscription_plan || 'free' });
+      } catch (err) {
+        console.error('[Subscription] server error', err);
+        return sendJson(res, 200, { ok: true, plan: 'free' });
+      }
+    })();
+    return;
+  }
+
   // Serve favicon from SVG asset to avoid 404s
   if (parsed.pathname === '/favicon.ico') {
     const fav = path.join(__dirname, 'assets', 'promptly-icon.svg');
