@@ -670,9 +670,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.addEventListener('click', async (e) => {
-    if (!e.target.classList.contains('experiment-btn')) return;
-    const title = e.target.dataset.title || 'Experiment';
-    const description = e.target.dataset.description || '';
+    const btn = e.target.closest('.experiment-btn');
+    if (!btn) return;
+
+    const title = btn.getAttribute('data-title') || 'New Experiment';
+    const description = btn.getAttribute('data-description') || '';
+
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
     try {
       const res = await fetch('/api/analytics/experiments', {
         method: 'POST',
@@ -680,12 +687,17 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ title, description }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error('experiment_create_failed');
-      console.log('[Analytics] Experiment created', json.experiment);
-      alert('Experiment started for the next 7 days.');
+      if (!res.ok || !json.ok) throw new Error('experiment_create_failed');
+
+      if (typeof loadExperiments === 'function') {
+        await loadExperiments();
+      }
+
+      btn.textContent = 'Experiment Created';
     } catch (err) {
       console.error('[Analytics] experiment create error', err);
-      alert('Could not start experiment.');
+      btn.textContent = originalText;
+      btn.disabled = false;
     }
   });
 
