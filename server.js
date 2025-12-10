@@ -31,6 +31,7 @@ const {
   buildWeeklyReport,
   syncAudience,
   syncFollowerMetrics,
+  syncDemographics,
 } = require('./services/phyllo-metrics');
 const {
   createPhylloUser,
@@ -3554,6 +3555,41 @@ Output format:
       } catch (err) {
         console.error('[Phyllo] sync-followers error', err);
         return sendJson(res, 500, { ok: false, error: 'phyllo_sync_followers_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/sync-demographics' && req.method === 'POST') {
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const demo = await syncDemographics(userId);
+
+        const { data: existing } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('posts, followers, overview')
+          .eq('user_id', userId)
+          .single();
+
+        await supabaseAdmin
+          .from('cached_analytics')
+          .upsert({
+            user_id: userId,
+            demographics: demo || {},
+            posts: existing?.posts || [],
+            followers: existing?.followers || [],
+            overview: existing?.overview || {},
+            updated_at: new Date().toISOString(),
+          });
+
+        return sendJson(res, 200, { ok: true, demographics: demo || {} });
+      } catch (err) {
+        console.error('[Phyllo] sync-demographics error', err);
+        return sendJson(res, 500, { ok: false, error: 'phyllo_sync_demographics_failed' });
       }
     })();
     return;

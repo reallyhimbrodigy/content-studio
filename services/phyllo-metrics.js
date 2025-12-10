@@ -208,6 +208,53 @@ async function syncFollowerMetrics(userId) {
   return { total, followerSeries };
 }
 
+async function syncDemographics(userId) {
+  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const demographics = {};
+
+  try {
+    const { supabaseAdmin } = require('./supabase-admin');
+    const { data: accounts, error } = await supabaseAdmin
+      .from('phyllo_accounts')
+      .select('account_id, platform, work_platform_id')
+      .eq('user_id', userId)
+      .eq('status', 'connected');
+
+    if (error || !accounts || !accounts.length) {
+      if (error) {
+        console.error('[Phyllo] syncDemographics accounts error', error);
+      }
+      return demographics;
+    }
+
+    for (const acc of accounts) {
+      if (!acc || !acc.account_id) continue;
+      try {
+        const url = `${base}/v1/accounts/${acc.account_id}/audience`;
+        const resp = await fetch(url, {
+          headers: {
+            'Client-Id': process.env.PHYLLO_CLIENT_ID,
+            'Client-Secret': process.env.PHYLLO_CLIENT_SECRET,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!resp.ok) {
+          console.warn('[Phyllo] demographics fetch failed', acc.account_id, resp.status);
+          continue;
+        }
+        const json = await resp.json();
+        demographics[acc.platform || acc.work_platform_id || 'unknown'] = json?.data || json || [];
+      } catch (err) {
+        console.error('[Phyllo] demographics fetch error', acc.account_id, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Phyllo] syncDemographics unexpected error', err);
+  }
+
+  return demographics;
+}
+
 module.exports = {
   getPhylloPosts,
   getPhylloPostMetrics,
@@ -216,4 +263,5 @@ module.exports = {
   buildWeeklyReport,
   syncAudience,
   syncFollowerMetrics,
+  syncDemographics,
 };

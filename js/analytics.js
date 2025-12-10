@@ -558,6 +558,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById(id);
         if (el) el.textContent = 'No demographic data yet.';
       });
+      const panel = document.getElementById('demographics-panel');
+      if (panel) panel.textContent = 'No demographic data yet.';
     }
   }
 
@@ -566,6 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderKeyValueBlock('demographics-gender', 'Gender', demo.gender);
     renderKeyValueBlock('demographics-location', 'Location', demo.location);
     renderKeyValueBlock('demographics-language', 'Language', demo.language);
+    renderDemographicsPanel(demo);
   }
 
   function renderKeyValueBlock(containerId, title, data) {
@@ -590,6 +593,33 @@ document.addEventListener('DOMContentLoaded', () => {
       list.appendChild(li);
     });
     el.appendChild(list);
+  }
+
+  function renderDemographicsPanel(demo = {}) {
+    const panel = document.getElementById('demographics-panel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    const platforms = Object.keys(demo);
+    if (!platforms.length) {
+      panel.textContent = 'No demographic data yet.';
+      return;
+    }
+
+    platforms.forEach((platform) => {
+      const block = document.createElement('div');
+      block.className = 'demo-block';
+      const items = demo[platform] || [];
+      const content = items
+        .map((d) => {
+          const label = d.age_group || d.location || d.segment || 'Segment';
+          const val = d.percentage != null ? `${d.percentage}%` : d.count || '';
+          return `${label}: ${val}`;
+        })
+        .join('<br>');
+      block.innerHTML = `<h3>${platform}</h3>${content || 'No data'}`;
+      panel.appendChild(block);
+    });
   }
 
   async function loadEngagement() {
@@ -687,6 +717,10 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFollowerGrowth();
   loadSyncStatus();
   loadFollowerGrowthChart();
+  const refreshBtn = document.getElementById('refresh-all-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', refreshAllData);
+  }
   const genBtn = document.getElementById('generate-insights-btn');
   if (genBtn) {
     genBtn.addEventListener('click', generateInsights);
@@ -751,6 +785,41 @@ document.addEventListener('DOMContentLoaded', () => {
       if (statusEl) statusEl.textContent = 'Sync failed. Try again later.';
     } finally {
       if (btn) btn.disabled = false;
+    }
+  }
+
+  async function refreshAllData() {
+    const btn = document.getElementById('refresh-all-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Refreshing...';
+    }
+    try {
+      await fetch('/api/phyllo/sync-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await fetch('/api/phyllo/sync-followers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await fetch('/api/phyllo/sync-demographics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      await loadSyncStatus();
+      await loadAnalytics();
+      await loadFollowerGrowthChart();
+      await loadDemographics();
+      await loadInsights();
+    } catch (err) {
+      console.error('[Analytics] refreshAllData error', err);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Refresh All Data';
+      }
     }
   }
 
