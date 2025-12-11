@@ -4557,7 +4557,7 @@ body.prefers-reduced-motion *::after {
   gap: var(--grid-gap);
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   grid-auto-flow: row dense;
-  align-items: stretch;
+  align-items: start;
 }
 
 .calendar-card {
@@ -4577,7 +4577,7 @@ body.prefers-reduced-motion *::after {
 
 .calendar-card--expanded {
   grid-column: 1 / -1;
-  min-height: 260px;
+  min-height: auto;
   height: auto;
   overflow: visible;
 }
