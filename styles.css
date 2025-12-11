@@ -3232,6 +3232,14 @@ button.button--danger:hover {
   cursor: pointer !important;
   position: relative;
   z-index: 5;
+  background: #d7263d !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+#delete-calendar-button:hover {
+  background: #b91c1c !important;
+  border-color: #7f1d1d !important;
 }
 
 button[data-action="calendar-generate-asset"] {
