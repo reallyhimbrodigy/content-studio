@@ -4571,9 +4571,8 @@ body.prefers-reduced-motion *::after {
   position: relative;
   isolation: isolate;
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
-  min-height: 260px;
-  height: auto;
-  overflow: visible;
+  height: 260px;
+  overflow: hidden;
   grid-column: auto;
 }
 
@@ -4582,6 +4581,16 @@ body.prefers-reduced-motion *::after {
   min-height: auto;
   height: auto;
   overflow: visible;
+}
+
+.calendar-card__entries {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.calendar-card__actions {
+  margin-top: 0.75rem;
+  flex-shrink: 0;
 }
 
 .calendar-card::after {
