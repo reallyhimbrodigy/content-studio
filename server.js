@@ -2930,7 +2930,7 @@ ${JSON.stringify(compactPosts)}`;
       try {
         const promptlyUserId = req.user && req.user.id;
         if (!promptlyUserId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, data: [] });
         }
         const { data, error } = await supabaseAdmin
           .from('phyllo_accounts')
@@ -3352,7 +3352,7 @@ Output format:
       try {
         const promptlyUserId = req.user && req.user.id;
         if (!promptlyUserId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, alerts: [] });
         }
         const { data, error } = await supabaseAdmin
           .from('analytics_alerts')
@@ -3539,7 +3539,15 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, {
+            ok: true,
+            overview: null,
+            posts: [],
+            demographics: {},
+            followers: [],
+            insights: [],
+            last_sync: null,
+          });
         }
 
         const { data: overviewRow, error: overviewErr } = await supabaseAdmin
@@ -3634,7 +3642,7 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, trends: [] });
         }
 
         const { data, error } = await supabaseAdmin
@@ -3664,7 +3672,7 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, demographics: {} });
         }
 
         const { data, error } = await supabaseAdmin
@@ -3695,7 +3703,14 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, {
+            ok: true,
+            status: {
+              last_sync: null,
+              status: 'never',
+              message: null,
+            },
+          });
         }
         const { data, error } = await supabaseAdmin
           .from('analytics_sync_status')
@@ -3867,7 +3882,7 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, experiments: [] });
         }
         const { data, error } = await supabaseAdmin
           .from('analytics_experiments')
@@ -4036,7 +4051,7 @@ Output format:
       try {
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          return sendJson(res, 200, { ok: true, report: null });
         }
 
         const { data, error } = await supabaseAdmin
@@ -4063,7 +4078,7 @@ Output format:
     (async () => {
       try {
         const userId = (req.user && req.user.id) || null;
-        if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
+        if (!userId || !supabaseAdmin) return sendJson(res, 200, { ok: true, data: [] });
         const { data: accounts, error: accountsError } = await supabaseAdmin
           .from('phyllo_accounts')
           .select('work_platform_id, username, profile_name, avatar_url')

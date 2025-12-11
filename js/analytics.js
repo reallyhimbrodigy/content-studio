@@ -293,22 +293,23 @@ document.addEventListener('DOMContentLoaded', () => {
       renderPlatformBreakdown('__loading');
       renderDemoBadge(false);
 
-      const res = await fetch('/api/analytics/full');
-      const json = await res.json();
-      let data = json;
-      const useDemo = !res.ok || !json.ok || shouldUseDemo(json);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/full');
+      let analyticsData = data;
+      const useDemo = unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData);
       if (useDemo) {
-        data = DEMO_ANALYTICS;
+        analyticsData = DEMO_ANALYTICS;
         renderDemoBadge(true);
+      } else {
+        renderDemoBadge(false);
       }
 
-      renderOverview(data.overview || {});
-      renderPosts(data.posts || []);
-      renderDemographics(data.demographics || {});
-      renderInsights(data.insights || []);
-      renderLastSync(data.last_sync);
-      renderGrowthReport(data.report || data.growth_report || null);
-      renderPlatformBreakdown(data.posts || []);
+      renderOverview(analyticsData.overview || {});
+      renderPosts(analyticsData.posts || []);
+      renderDemographics(analyticsData.demographics || {});
+      renderInsights(analyticsData.insights || []);
+      renderLastSync(analyticsData.last_sync);
+      renderGrowthReport(analyticsData.report || analyticsData.growth_report || null);
+      renderPlatformBreakdown(analyticsData.posts || []);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
       renderOverview({});
@@ -442,10 +443,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadExperiments() {
     try {
-      const res = await fetch('/api/analytics/experiments');
-      const json = await res.json();
-      if (!json.ok) throw new Error('experiments fetch failed');
-      renderExperiments(json.experiments || []);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/experiments');
+      if (unauthorized) {
+        renderExperiments([]);
+        return;
+      }
+      if (error || !data || data.ok === false) throw new Error('experiments fetch failed');
+      renderExperiments(data.experiments || []);
     } catch (err) {
       console.error('[Analytics] loadExperiments error', err);
       renderExperiments([]);
@@ -455,10 +459,13 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadAlerts() {
     try {
       renderAlerts('__loading');
-      const res = await fetch('/api/analytics/alerts');
-      const json = await res.json();
-      if (!json.ok) throw new Error('alerts_fetch_failed');
-      renderAlerts(json.alerts || json.data || []);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/alerts');
+      if (unauthorized) {
+        renderAlerts([]);
+        return;
+      }
+      if (error || !data || data.ok === false) throw new Error('alerts_fetch_failed');
+      renderAlerts(data.alerts || data.data || []);
     } catch (err) {
       console.error('[Analytics] loadAlerts error', err);
       renderAlerts([]);
@@ -655,11 +662,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadSyncStatus() {
     try {
-      const res = await fetch('/api/analytics/sync-status');
-      const json = await res.json();
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/sync-status');
+      if (unauthorized) return;
       const el = document.getElementById('sync-status');
       if (!el) return;
-      const s = json.status;
+      if (error || !data) {
+        el.textContent = 'No sync has occurred yet.';
+        return;
+      }
+      const s = data.status;
       if (s && s.status === 'never') {
         el.textContent = 'No sync has occurred yet.';
       } else if (s && s.last_sync) {
