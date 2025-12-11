@@ -79,6 +79,28 @@ const DEMO_ANALYTICS = {
   },
 };
 
+async function fetchAnalyticsJson(url, options) {
+  const res = await fetch(url, options || {});
+
+  if (res.status === 401) {
+    console.warn('[Analytics] unauthorized for', url);
+    return { unauthorized: true, data: null };
+  }
+
+  if (!res.ok) {
+    console.warn('[Analytics] fetch failed', url, res.status);
+    return { error: true, data: null };
+  }
+
+  try {
+    const json = await res.json();
+    return { data: json };
+  } catch (e) {
+    console.warn('[Analytics] invalid JSON for', url, e);
+    return { error: true, data: null };
+  }
+}
+
 function shouldUseDemo(data) {
   if (!data || !data.overview) return true;
   const hasPosts = Array.isArray(data.posts) && data.posts.length > 0;
@@ -232,14 +254,14 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSubscriptionAndAnalytics();
   loadConnectedAccounts();
   function loadConnectedAccounts() {
-    fetch('/api/phyllo/accounts')
-      .then((r) => r.json())
-      .then((res) => {
-        if (!res || res.ok === false) {
+    fetchAnalyticsJson('/api/phyllo/accounts')
+      .then(({ data, unauthorized, error }) => {
+        if (unauthorized) return;
+        if (error || !data || data.ok === false) {
           renderConnectedAccounts([]);
           return;
         }
-        renderConnectedAccounts(res.data || []);
+        renderConnectedAccounts(data.data || []);
       })
       .catch((err) => {
         console.error('[Phyllo] loadConnectedAccounts error', err);
@@ -248,19 +270,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function fetchInsights() {
-    const res = await fetch('/api/analytics/insights');
-    if (!res.ok) throw new Error('insights failed ' + res.status);
-    const json = await res.json();
-    if (!json.ok) throw new Error('insights error');
-    return json.insights || [];
+    const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/insights');
+    if (unauthorized) return [];
+    if (error || !data || data.ok === false) throw new Error('insights error');
+    return data.insights || [];
   }
 
   async function fetchAlerts() {
-    const res = await fetch('/api/analytics/alerts');
-    if (!res.ok) throw new Error('alerts failed ' + res.status);
-    const json = await res.json();
-    if (!json.ok) throw new Error('alerts error');
-    return json.alerts || json.data || [];
+    const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/alerts');
+    if (unauthorized) return [];
+    if (error || !data || data.ok === false) throw new Error('alerts error');
+    return data.alerts || data.data || [];
   }
 
   async function loadFullAnalytics() {
@@ -483,10 +503,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadDemographics() {
     try {
-      const res = await fetch('/api/analytics/demographics');
-      const json = await res.json();
-      if (!json.ok) throw new Error('demographics fetch failed');
-      renderDemographics(json.demographics || {});
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/demographics');
+      if (unauthorized) return;
+      if (error || !data || data.ok === false) throw new Error('demographics fetch failed');
+      renderDemographics(data.demographics || {});
     } catch (err) {
       console.error('[Analytics] loadDemographics error', err);
       renderDemographics({});
@@ -495,10 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadGrowthReport() {
     try {
-      const res = await fetch('/api/analytics/reports/latest');
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error('report_fetch_failed');
-      renderGrowthReport(json.report || null);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/reports/latest');
+      if (unauthorized) return;
+      if (error || !data || data.ok === false) throw new Error('report_fetch_failed');
+      renderGrowthReport(data.report || null);
     } catch (err) {
       console.error('[Analytics] loadGrowthReport error', err);
       renderGrowthReport(null);
@@ -552,6 +572,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const block = document.createElement('div');
       block.className = 'demo-block';
       const items = demo[platform] || [];
+      if (!Array.isArray(items) || !items.length) {
+        block.innerHTML = `<h3>${platform}</h3>No data`;
+        panel.appendChild(block);
+        return;
+      }
       const content = items
         .map((d) => {
           const label = d.age_group || d.location || d.segment || 'Segment';
@@ -566,11 +591,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadEngagement() {
     try {
-      const res = await fetch('/api/analytics/engagement');
-      const json = await res.json();
-      if (!json.ok) throw new Error('engagement_fetch_failed');
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/engagement');
+      if (unauthorized) return;
+      if (error || !data || data.ok === false) throw new Error('engagement_fetch_failed');
       const el = document.getElementById('kpi-engagement');
-      if (el) el.textContent = `${json.engagement}%`;
+      if (el) el.textContent = `${data.engagement}%`;
     } catch (err) {
       console.error('[Analytics] loadEngagement error', err);
       const el = document.getElementById('kpi-engagement');
@@ -580,10 +605,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadFollowerGrowth() {
     try {
-      const res = await fetch('/api/analytics/followers');
-      const json = await res.json();
-      if (!json.ok) throw new Error('followers_fetch_failed');
-      renderFollowerGrowth(json.trends || []);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/followers');
+      if (unauthorized) return;
+      if (error || !data || data.ok === false) throw new Error('followers_fetch_failed');
+      renderFollowerGrowth(data.trends || []);
     } catch (err) {
       console.error('[Analytics] loadFollowerGrowth error', err);
       const el = document.getElementById('followers-chart');
@@ -593,10 +618,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadFollowerGrowthChart() {
     try {
-      const res = await fetch('/api/analytics/overview');
-      const json = await res.json();
-      if (!json.ok) throw new Error('followers_fetch_failed');
-      const followers = json.followers || [];
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/overview');
+      if (unauthorized) return;
+      if (error || !data || data.ok === false) throw new Error('followers_fetch_failed');
+      const followers = data.followers || [];
       const el = document.getElementById('follower-growth-chart');
       if (!el) return;
       el.innerHTML = followers.length
