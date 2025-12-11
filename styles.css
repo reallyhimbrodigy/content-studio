@@ -1,7 +1,6 @@
 .calendar-card__story,
 .calendar-card__design,
 .calendar-card__repurpose,
-.calendar-card__analytics,
 .calendar-card__engagement,
 .calendar-card__promo {
   font-size: 0.97rem;
@@ -12,7 +11,6 @@
 .calendar-card__story strong,
 .calendar-card__design strong,
 .calendar-card__repurpose strong,
-.calendar-card__analytics strong,
 .calendar-card__engagement strong,
 .calendar-card__promo strong {
   color: #7f5af0;

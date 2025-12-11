@@ -4961,9 +4961,6 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText ? createDetailRow('Repurpose', repurposeText, 'calendar-card__repurpose') : null;
 
-    const analyticsText = analytics ? (Array.isArray(analytics) ? analytics.join(', ') : analytics) : '';
-    const analyticsEl = analyticsText ? createDetailRow('Analytics', analyticsText, 'calendar-card__analytics') : null;
-
     let engagementText = '';
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
       const parts = [];
@@ -5058,7 +5055,6 @@ const createCard = (post) => {
     if (storyPrompt) fullTextParts.push(`Story Prompt: ${storyPrompt}`);
     if (designNotes) fullTextParts.push(`Design Notes: ${designNotes}`);
     if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
-    if (analytics && Array.isArray(analytics) && analytics.length) fullTextParts.push(`Analytics: ${analytics.join(', ')}`);
     if (promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
     if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
@@ -5177,7 +5173,6 @@ const createCard = (post) => {
       storyPromptEl,
       designNotesEl,
       repurposeEl,
-      analyticsEl,
       engagementEl,
       promoSlotEl,
       weeklyPromoEl,
@@ -6383,7 +6378,6 @@ function buildPostHTML(post){
   const storyPrompt = post.storyPrompt || '';
   const designNotes = post.designNotes || '';
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
-  const analytics = Array.isArray(post.analytics)? post.analytics : (post.analytics? [post.analytics] : []);
   const weeklyPromo = post.weeklyPromo || '';
   const promoSlot = !!post.promoSlot;
   const vs = post.videoScript || {};
@@ -6399,7 +6393,6 @@ function buildPostHTML(post){
     storyPrompt ? `<div class="calendar-card__story"><strong>Story Prompt:</strong> ${nl2br(storyPrompt)}</div>` : '',
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
-    analytics.length ? `<div class="calendar-card__analytics"><strong>Analytics:</strong> ${escapeHtml(analytics.join(', '))}</div>` : '',
     (engage.commentReply||engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply?`<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>`:''}${engage.dmReply?`<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
     (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div><em>Hook:</em> ${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
@@ -6567,7 +6560,7 @@ function buildPostHTML(post){
     .calendar-card__hashtags { color: #2cb1bc; font-size: 0.97rem; margin: 0.25rem 0; font-weight: 600; }
     .calendar-card__format { display: inline-block; background: rgba(44, 177, 188, 0.13); color: #2cb1bc; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
     .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #7f5af0; font-size: 0.97rem; }
-    .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__analytics, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+  .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__posting-tip, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
     .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
@@ -8159,7 +8152,6 @@ function renderPublishHub(){
     if (post.storyPrompt) fullTextParts.push(`Story Prompt: ${post.storyPrompt}`);
     if (post.designNotes) fullTextParts.push(`Design Notes: ${post.designNotes}`);
     if (post.repurpose && Array.isArray(post.repurpose) && post.repurpose.length) fullTextParts.push(`Repurpose: ${post.repurpose.join(' • ')}`);
-    if (post.analytics && Array.isArray(post.analytics) && post.analytics.length) fullTextParts.push(`Analytics: ${post.analytics.join(', ')}`);
     if (post.promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
     if (post.weeklyPromo) fullTextParts.push(`Promo: ${post.weeklyPromo}`);
     if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
