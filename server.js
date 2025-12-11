@@ -3406,6 +3406,19 @@ Output format:
     return;
   }
 
+  // Stub overview to avoid 404s if frontend calls it
+  if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
+    (async () => {
+      try {
+        return sendJson(res, 200, { ok: true, data: null });
+      } catch (err) {
+        console.error('analytics overview error', err);
+        return sendJson(res, 500, { ok: false, error: 'internal_error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'POST') {
     (async () => {
       try {
