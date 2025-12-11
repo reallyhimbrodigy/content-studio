@@ -4575,7 +4575,7 @@ body.prefers-reduced-motion *::after {
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
   min-height: 260px;
   height: 260px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .calendar-card--expanded {
@@ -4630,6 +4630,10 @@ body.prefers-reduced-motion *::after {
   font-size: 1.01rem;
   line-height: 1.6;
   font-weight: 500;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .calendar-card__caption-row {
@@ -4984,10 +4988,10 @@ body.prefers-reduced-motion *::after {
 }
 
 .calendar-card__actions {
+  margin-top: auto;
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-top: 0.5rem;
 }
 
 .calendar-card__actions .batch-select-btn.is-active {
