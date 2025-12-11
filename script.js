@@ -4672,6 +4672,19 @@ if (brandLogoClearBtn) {
   });
 }
 
+function handleCalendarCardExpansion(card, expanded) {
+  const allCards = document.querySelectorAll('.calendar-card');
+  allCards.forEach((el) => {
+    if (el !== card) {
+      el.classList.remove('calendar-card--expanded');
+      el.querySelectorAll('details[open]').forEach((d) => {
+        d.open = false;
+      });
+    }
+  });
+  card.classList.toggle('calendar-card--expanded', Boolean(expanded));
+}
+
 const createCard = (post) => {
   const entries = Array.isArray(post.multiPosts) && post.multiPosts.length ? post.multiPosts : [post];
   const primary = entries[0] || post;
@@ -4699,6 +4712,13 @@ const createCard = (post) => {
   if (entries.length > 1) entriesWrap.classList.add('calendar-card__entries--multi');
 
   entries.forEach((entry, idx) => entriesWrap.appendChild(buildEntry(entry, idx)));
+
+  const detailsList = card.querySelectorAll('details');
+  detailsList.forEach((detailsEl) => {
+    detailsEl.addEventListener('toggle', () => {
+      handleCalendarCardExpansion(card, detailsEl.open);
+    });
+  });
 
   card.append(dayEl, entriesWrap);
   return card;
