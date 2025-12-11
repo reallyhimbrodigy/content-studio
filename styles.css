@@ -4568,6 +4568,10 @@ body.prefers-reduced-motion *::after {
   align-items: stretch;
 }
 
+#library-calendars-grid {
+  display: none;
+}
+
 .calendar-card {
   background: var(--card);
   border-radius: 18px;

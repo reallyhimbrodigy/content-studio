@@ -300,17 +300,17 @@ const upgradeModal = document.getElementById('upgrade-modal');
 const upgradeClose = document.getElementById('upgrade-close');
 const upgradeBtn = document.getElementById('upgrade-btn');
 const brandBtn = document.getElementById('brand-brain-btn');
-const calendarsList = document.getElementById('calendars-list');
+const calendarsList = document.getElementById('library-calendars-grid');
 const calendarToolbar = document.getElementById('calendar-toolbar');
 const calendarSearchInput = document.getElementById('calendar-search');
 const calendarSortSelect = document.getElementById('calendar-sort');
 const calendarFilterButtons = document.querySelectorAll('[data-calendar-filter]');
-const calendarEmptyState = document.getElementById('calendar-empty-state');
+const calendarEmptyState = document.getElementById('library-empty-state');
 const calendarEmptyCta = document.getElementById('calendar-empty-cta');
 
 let currentUser = null;
 let isLibraryUserPro = false;
-let libraryCalendarData = LIBRARY_MOCK_CALENDARS.map((item) => normalizeCalendar(item, { source: 'mock' }));
+let libraryCalendarData = [];
 const calendarFilters = { search: '', status: 'all', sort: 'recent' };
 const calendarRawLookup = new Map();
 
@@ -506,17 +506,23 @@ function renderLibraryCalendars() {
 
   if (baseCount === 0) {
     calendarsList.innerHTML = '';
+    calendarsList.style.display = 'none';
+    if (calendarEmptyState) calendarEmptyState.style.display = '';
     return;
   }
 
   const filtered = getFilteredCalendars();
   if (!filtered.length) {
     calendarsList.innerHTML = `<div class="calendar-empty-results">No calendars match this view.</div>`;
+    calendarsList.style.display = 'grid';
+    if (calendarEmptyState) calendarEmptyState.style.display = 'none';
     return;
   }
 
   const cardsHtml = filtered.map(renderCalendarCard).join('');
   calendarsList.innerHTML = cardsHtml;
+  calendarsList.style.display = 'grid';
+  if (calendarEmptyState) calendarEmptyState.style.display = 'none';
   attachCalendarCardInteractions();
 }
 
