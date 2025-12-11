@@ -6605,7 +6605,7 @@ body.no-scroll {
 #sync-now-btn,
 #generate-insights-btn,
 .experiment-btn {
-  background: linear-gradient(90deg, #5b4bff 0%, #9b4bff 100%) !important;
+  background: linear-gradient(135deg, #7f5af0, #2cb1bc) !important;
   color: #ffffff !important;
   border: none !important;
 }
