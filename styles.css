@@ -6602,6 +6602,20 @@ body.no-scroll {
   border: 1px solid rgba(127, 90, 240, 0.4);
 }
 
+#sync-now-btn,
+#generate-insights-btn,
+.experiment-btn {
+  background: linear-gradient(90deg, #5b4bff 0%, #9b4bff 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+#sync-now-btn:hover,
+#generate-insights-btn:hover,
+.experiment-btn:hover {
+  opacity: 0.9;
+}
+
 .analytics-loading {
   font-size: 13px;
   color: #6b7280;
