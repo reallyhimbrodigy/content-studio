@@ -5809,30 +5809,12 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   const baseCaption = (post.caption || post.idea || 'Share today’s win.').trim();
   const nicheTag = buildNicheTag(nicheStyle);
   const hashtagArray = Array.isArray(post.hashtags) ? post.hashtags.map(formatHashtag).filter(Boolean) : [];
-  const broadSet = hashtagArray.length ? hashtagArray.slice(0, 6) : ['#ContentPlan', '#Storytelling', '#CreatorJourney'];
-  const nicheSetBase = [
-    `#${nicheTag}`,
-    `#${nicheTag}Life`,
-    `#${nicheTag}Studio`,
-    `#${nicheTag}Stories`
-  ];
-
-  const captionVariations = {
-    casual: `${baseCaption.replace(/[.!?]+$/, '')}! Drop your best question in the comments`,
-    professional: `Let’s address the big question: ${capitalizeSentence(baseCaption)} Our team is ready with evidence-backed answers.`,
-    witty: `Plot twist: ${baseCaption.replace(/[.!?]$/, '')}. Ask away and we’ll spill the tea (and the serums).`
-  };
 
   const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
   const interactive = pickCycled(proInteractivePrompts, index);
 
   return {
     ...post,
-    captionVariations,
-    hashtagSets: {
-      broad: broadSet,
-      niche: nicheSetBase
-    },
     suggestedAudio: describeTrendingAudio(index),
     postingTimeTip: pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
