@@ -255,3 +255,15 @@ CREATE TABLE IF NOT EXISTS analytics_alerts (
   payload_json jsonb,
   is_read boolean default false
 );
+
+-- Generic feature usage tracking
+CREATE TABLE IF NOT EXISTS feature_usage (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  feature_key text not null,
+  count integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS feature_usage_user_feature_idx
+  ON feature_usage(user_id, feature_key);

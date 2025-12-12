@@ -42,6 +42,7 @@ const {
   getPhylloUserByExternalId,
   getPhylloAccountDetails,
 } = require('./services/phyllo');
+const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -262,6 +263,23 @@ function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(payload));
 }
+
+function isUserPro(req) {
+  const plan = req?.user?.plan;
+  if (req?.user?.isPro) return true;
+  if (plan && (plan === 'pro' || plan === 'teams')) return true;
+  return false;
+}
+
+function analyticsUpgradeRequired(res) {
+  return sendJson(res, 402, {
+    ok: false,
+    error: 'upgrade_required',
+    feature: 'analytics_full',
+  });
+}
+
+const CALENDAR_EXPORT_FEATURE_KEY = 'calendar_exports';
 
 const MAX_JSON_BODY = 1 * 1024 * 1024; // 1MB cap to prevent oversized payloads.
 
@@ -1970,6 +1988,238 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Calendar API endpoints
+  // ---------------------------------------------------------------------------
+
+  // helper to generate calendar posts (reuse logic from /api/generate-calendar)
+  async function generateCalendarPosts(payload = {}) {
+    const { nicheStyle, userId, days, startDay, postsPerDay } = payload;
+    if (!nicheStyle) {
+      const err = new Error('nicheStyle required');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!OPENAI_API_KEY) {
+      const err = new Error('OPENAI_API_KEY not set');
+      err.statusCode = 500;
+      throw err;
+    }
+    const brand = userId ? loadBrand(userId) : null;
+    const brandContext = summarizeBrandForPrompt(brand);
+    let posts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
+    if (incomplete.length > 0) {
+      const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
+      if (Array.isArray(repaired) && repaired.length === incomplete.length) {
+        incomplete.forEach((entry, idx) => {
+          const fixed = repaired[idx] || {};
+          const merged = Object.assign({}, entry.p, fixed);
+          if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
+          if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
+          if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
+          if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
+          if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
+          if (!merged.engagementScripts) merged.engagementScripts = {};
+          if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
+          if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
+          if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
+          posts[entry.i] = merged;
+        });
+      }
+    }
+    let promoCount = 0;
+    const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
+    posts = posts.map((p, idx) => {
+      const normalized = normalizePost(p, idx, startDay);
+      const isPromo =
+        !!normalized.promoSlot ||
+        (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
+        (typeof normalized.cta === 'string' && promoKeywords.test(normalized.cta)) ||
+        (typeof normalized.idea === 'string' && promoKeywords.test(normalized.idea));
+      if (isPromo) {
+        promoCount += 1;
+        if (promoCount > 3) {
+          normalized.promoSlot = false;
+          normalized.weeklyPromo = '';
+          if (promoKeywords.test(normalized.idea || '')) {
+            normalized.idea = normalized.idea.replace(promoKeywords, '').trim() || 'Fresh content idea';
+          }
+        }
+      }
+      return normalized;
+    });
+    return posts;
+  }
+
+  if (parsed.pathname === '/api/calendar/export-usage' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (isPro) {
+          return sendJson(res, 200, {
+            ok: true,
+            isPro: true,
+            exportsUsed: 0,
+            remainingFreeExports: null,
+          });
+        }
+
+        const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+        return sendJson(res, 200, {
+          ok: true,
+          isPro: false,
+          exportsUsed: usage,
+          remainingFreeExports: Math.max(0, 3 - usage),
+        });
+      } catch (err) {
+        console.error('[Calendar] export-usage error', err);
+        return sendJson(res, 500, { ok: false, error: 'export_usage_fetch_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/calendar/save' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+          if (usage >= 3) {
+            return sendJson(res, 402, {
+              ok: false,
+              error: 'upgrade_required',
+              feature: CALENDAR_EXPORT_FEATURE_KEY,
+            });
+          }
+        }
+        const body = await readJsonBody(req);
+        const calendar = body || {};
+        const posts = calendar.posts || calendar.calendar || calendar.calendar?.posts || [];
+        const nicheStyle = calendar.nicheStyle || calendar.niche || 'Untitled';
+        const payload = {
+          user_id: user.id,
+          niche_style: nicheStyle,
+          posts,
+          saved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const { data, error } = await supabaseAdmin
+          .from('calendars')
+          .insert(payload)
+          .select()
+          .single();
+        if (error) {
+          console.error('[Calendar] save failed', error);
+          return sendJson(res, 500, { ok: false, error: 'save_failed' });
+        }
+        if (!isPro) {
+          await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+        }
+        return sendJson(res, 200, { ok: true, calendar: data });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        console.error('[Calendar] save error', err);
+        return sendJson(res, status, { ok: false, error: 'save_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/calendar/download' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+          if (usage >= 3) {
+            return sendJson(res, 402, {
+              ok: false,
+              error: 'upgrade_required',
+              feature: CALENDAR_EXPORT_FEATURE_KEY,
+            });
+          }
+        }
+        const body = await readJsonBody(req);
+        const calendarId = body?.calendarId || body?.id;
+        if (calendarId) {
+          const { data, error } = await supabaseAdmin
+            .from('calendars')
+            .select('*')
+            .eq('id', calendarId)
+            .eq('user_id', user.id)
+            .single();
+          if (error) {
+            console.error('[Calendar] download fetch error', error);
+            return sendJson(res, 404, { ok: false, error: 'not_found' });
+          }
+          if (!isPro) {
+            await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+          }
+          return sendJson(res, 200, { ok: true, calendar: data });
+        }
+        const calendar = body?.calendar || body;
+        if (!isPro) {
+          await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+        }
+        return sendJson(res, 200, { ok: true, calendar });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        console.error('[Calendar] download error', err);
+        return sendJson(res, status, { ok: false, error: 'download_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/calendar/regenerate' && req.method === 'POST') {
+    (async () => {
+      try {
+        // Require auth for regen, but still allow body userId to pass brand
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+          if (usage >= 3) {
+            return sendJson(res, 402, {
+              ok: false,
+              error: 'upgrade_required',
+              feature: CALENDAR_EXPORT_FEATURE_KEY,
+            });
+          }
+        }
+        const body = await readJsonBody(req);
+        const posts = await generateCalendarPosts(body || {});
+        if (!isPro) {
+          await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+        }
+        return sendJson(res, 200, { posts });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        let errorMessage = err.message || 'internal_error';
+        if (String(errorMessage).includes('502')) {
+          errorMessage = 'OpenAI servers are temporarily unavailable. Please try again in a moment.';
+        } else if (String(errorMessage).includes('503')) {
+          errorMessage = 'OpenAI service is overloaded. Please try again in a few seconds.';
+        } else if (String(errorMessage).includes('504')) {
+          errorMessage = 'Request timed out. Please try again.';
+        } else if (String(errorMessage).includes('429')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
+        }
+        return sendJson(res, status, { error: errorMessage });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/generate-calendar' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -2953,8 +3203,12 @@ ${JSON.stringify(compactPosts)}`;
     (async () => {
       try {
         const promptlyUserId = req.user && req.user.id;
+        const isPro = isUserPro(req);
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
         }
 
         const { data: accounts, error: accErr } = await supabaseAdmin
@@ -3150,6 +3404,7 @@ ${JSON.stringify(compactPosts)}`;
       .then(async (body) => {
         try {
           const userId = req.user && req.user.id;
+          const isPro = isUserPro(req);
           if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
           if (!OPENAI_API_KEY) return sendJson(res, 500, { ok: false, error: 'openai_not_configured' });
 
@@ -3203,6 +3458,10 @@ Output format:
             insights = [{ title: 'Unable to parse model response', detail: content || 'No content' }];
           }
 
+          if (!isPro && Array.isArray(insights)) {
+            insights = insights.slice(0, 2);
+          }
+
           if (supabaseAdmin) {
             try {
               await supabaseAdmin.from('analytics_insights').insert({
@@ -3240,6 +3499,10 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
+    const isPro = isUserPro(req);
+    if (!isPro) {
+      return analyticsUpgradeRequired(res);
+    }
     return sendJson(res, 200, {
       ok: true,
       data: [
@@ -3251,6 +3514,10 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/posts' && req.method === 'GET') {
+    const isPro = isUserPro(req);
+    if (!isPro) {
+      return analyticsUpgradeRequired(res);
+    }
     return sendJson(res, 200, {
       ok: true,
       data: [
@@ -3286,6 +3553,7 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3298,7 +3566,10 @@ Output format:
         if (error) {
           return sendJson(res, 500, { ok: false, error: 'insights_fetch_failed' });
         }
-        const insights = (data && data[0] && data[0].insights) || [];
+        let insights = (data && data[0] && data[0].insights) || [];
+        if (!isPro && Array.isArray(insights)) {
+          insights = insights.slice(0, 2);
+        }
         return sendJson(res, 200, { ok: true, insights });
       } catch (err) {
         console.error('[Analytics insights fetch] error', err);
@@ -3351,6 +3622,10 @@ Output format:
     (async () => {
       try {
         const promptlyUserId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, alerts: [] });
         }
@@ -3376,6 +3651,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3423,6 +3702,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3461,6 +3744,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3497,6 +3784,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3538,6 +3829,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, {
             ok: true,
@@ -3641,6 +3936,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, trends: [] });
         }
@@ -3671,6 +3970,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, demographics: {} });
         }
@@ -3881,6 +4184,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, experiments: [] });
         }
@@ -3907,6 +4214,10 @@ Output format:
       (async () => {
         try {
           const userId = req.user && req.user.id;
+          const isPro = isUserPro(req);
+          if (!isPro) {
+            return analyticsUpgradeRequired(res);
+          }
           if (!userId || !supabaseAdmin) {
             return sendJson(res, 401, { ok: false, error: 'unauthorized' });
           }
@@ -3935,6 +4246,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3965,6 +4280,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -3995,6 +4314,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -4024,6 +4347,7 @@ Output format:
           overview: (analyticsData && analyticsData.overview) || {},
           insights: (insightsRows && insightsRows[0] && insightsRows[0].insights) || [],
           alerts: alertsRows || [],
+          isPro,
         });
 
         const { error } = await supabaseAdmin
@@ -4050,6 +4374,10 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, report: null });
         }
@@ -4188,6 +4516,10 @@ Output format:
     (async () => {
       try {
         const userId = (req.user && req.user.id) || null;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
         const plan = (req.user && req.user.plan) || 'free';
         const windowDays = plan === 'pro' || plan === 'teams' ? 365 : 30;
@@ -4234,6 +4566,10 @@ Output format:
     (async () => {
       try {
         const userId = (req.user && req.user.id) || null;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return analyticsUpgradeRequired(res);
+        }
         if (!userId || !supabaseAdmin) return sendJson(res, 401, { error: 'unauthorized' });
         const plan = (req.user && req.user.plan) || 'free';
         const windowDays = plan === 'pro' || plan === 'teams' ? 365 : 30;

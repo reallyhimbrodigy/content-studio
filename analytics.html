@@ -38,7 +38,10 @@
                 <div class="hero-top">
                   <div>
             <h1 id="analytics-title">Analytics</h1>
-                    <p class="subtitle">Track your content performance and get AI-powered recommendations.</p>
+                    <p class="subtitle" id="analytics-overview-subtitle">
+                      Track your content performance and get AI-powered recommendations.
+                      <span id="analytics-overview-range" class="analytics-overview-range"></span>
+                    </p>
                     <button class="primary brand-brain-btn" id="connect-account">Connect Account</button>
                     <button class="primary brand-brain-btn" id="refresh-all-btn">Refresh All Data</button>
                   </div>
@@ -91,18 +94,18 @@
                 <div id="sync-status" class="sync-status"></div>
                 <button id="sync-now-btn" class="primary-btn">Sync Now</button>
 
-                <section id="platform-breakdown-section" class="analytics-section">
-                  <h2>Platform Breakdown</h2>
-                  <div id="platform-breakdown" class="platform-breakdown-row"></div>
-                </section>
+              <section id="platform-breakdown-section" class="analytics-section">
+                <h2>Platform Breakdown</h2>
+                <div id="platform-breakdown" class="platform-breakdown-row"></div>
+              </section>
 
-                <section id="followers-section" class="analytics-section">
-                  <h2>Follower Growth</h2>
-                  <div id="followers-chart" class="followers-chart"></div>
-                  <div id="follower-growth-chart" class="analytics-chart"></div>
-                </section>
+              <section id="followers-section" class="analytics-section" data-analytics-section="followers">
+                <h2>Follower Growth</h2>
+                <div id="followers-chart" class="followers-chart"></div>
+                <div id="follower-growth-chart" class="analytics-chart"></div>
+              </section>
 
-                <section class="analytics-section">
+                <section class="analytics-section" data-analytics-section="heatmap">
                   <div class="section-header">
                     <h2>Best Posting Times</h2>
                     <p>Heatmap will populate when accounts are connected. AI will highlight recommended posting slots here.</p>
@@ -115,7 +118,7 @@
                   </div>
                 </section>
 
-                <section class="analytics-section">
+                <section class="analytics-section" data-analytics-section="performance">
                   <div class="content-performance-header">
                     <h2>Content Performance</h2>
                     <div class="content-performance-actions">
@@ -155,7 +158,7 @@
                     <div class="analytics-insights-grid" id="insights-list"></div>
                   </div>
 
-                  <aside class="analytics-alerts">
+                  <aside class="analytics-alerts" data-analytics-section="alerts">
                     <div class="section-header">
                       <h2>Alerts</h2>
                     </div>
@@ -163,7 +166,7 @@
                   </aside>
                 </section>
 
-                <section id="demographics-section" class="analytics-section">
+                <section id="demographics-section" class="analytics-section" data-analytics-section="demographics">
                   <h2>Audience Demographics</h2>
                   <div id="demographics-age"></div>
                   <div id="demographics-gender"></div>
@@ -177,17 +180,17 @@
                   <div id="top-posts-list"></div>
                 </section>
 
-                <section id="growth-report-section" class="analytics-section">
+                <section id="growth-report-section" class="analytics-section" data-analytics-section="report">
                   <h2>Weekly Growth Report</h2>
                   <div id="growth-report-card" class="growth-report-card"></div>
                 </section>
 
-                <section id="experiments-section" class="analytics-section">
+                <section id="experiments-section" class="analytics-section" data-analytics-section="experiments">
                   <h2>Experiments</h2>
                   <div id="experiments-list"></div>
                 </section>
 
-                <section id="alerts-section" class="analytics-section">
+                <section id="alerts-section" class="analytics-section" data-analytics-section="alerts">
                   <h2>Alerts</h2>
                   <div id="alerts-list"></div>
                 </section>

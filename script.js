@@ -2,7 +2,6 @@ import {
   getCurrentUser,
   getCurrentUserId,
   getCurrentUserDetails,
-  saveUserCalendar,
   signOut as storeSignOut,
   getUserTier,
   setUserTier,
@@ -114,14 +113,15 @@ let fontPickerListenersBound = false;
   const exportIcsBtn = document.getElementById('export-ics');
   const downloadZipBtn = document.getElementById('download-zip');
   const copyAllCaptionsBtn = document.getElementById('copy-all-captions');
-  const copyAllFullBtn = document.getElementById('copy-all-full');
-  const exportVariantsCsvBtn = document.getElementById('export-variants-csv');
-  const downloadVariantsZipBtn = document.getElementById('download-variants-zip');
-  const downloadCalendarFolderBtn = document.getElementById('download-calendar-folder');
-  const deleteCalendarBtn = document.getElementById('delete-calendar-button');
-  const hub = document.getElementById('publish-hub');
-  const hubNext = document.getElementById('hub-next');
-  const hubAfter = document.getElementById('hub-after');
+const copyAllFullBtn = document.getElementById('copy-all-full');
+const exportVariantsCsvBtn = document.getElementById('export-variants-csv');
+const downloadVariantsZipBtn = document.getElementById('download-variants-zip');
+const downloadCalendarFolderBtn = document.getElementById('download-calendar-folder');
+const deleteCalendarBtn = document.getElementById('delete-calendar-button');
+const calendarExportUsageEl = document.getElementById('calendar-export-usage');
+const hub = document.getElementById('publish-hub');
+const hubNext = document.getElementById('hub-next');
+const hubAfter = document.getElementById('hub-after');
 const designSection = document.getElementById('design-lab');
 const designGrid = document.getElementById('design-grid');
 const designEmpty = document.getElementById('design-empty');
@@ -2658,6 +2658,26 @@ function updateAccountPlanInfo(state) {
   if (accountPlanLimitsEl) accountPlanLimitsEl.textContent = plan.limits;
 }
 
+async function loadCalendarExportUsage() {
+  if (!calendarExportUsageEl) return;
+  try {
+    const res = await fetchWithAuth('/api/calendar/export-usage', { method: 'GET' });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    if (!json || json.ok !== true) return;
+
+    if (json.isPro) {
+      calendarExportUsageEl.textContent = '';
+      return;
+    }
+
+    const used = json.exportsUsed ?? 0;
+    calendarExportUsageEl.textContent = `Free exports used: ${used} of 3`;
+  } catch (err) {
+    // Silently ignore; indicator is optional
+  }
+}
+
 function updateAccountLastLogin(timestamp) {
   if (!accountLastLoginEl) return;
   if (!timestamp) {
@@ -3962,6 +3982,7 @@ async function bootstrapApp(attempt = 0) {
     window.cachedUserIsPro = userIsPro;
     updatePostFrequencyUI();
     updateAccountPlanInfo(userIsPro);
+    loadCalendarExportUsage();
     try {
       const userDetails = await getCurrentUserDetails();
       updateAccountLastLogin(userDetails?.last_sign_in_at || userDetails?.updated_at || userDetails?.created_at || '');
@@ -4029,6 +4050,7 @@ async function bootstrapApp(attempt = 0) {
     applyProfileSettings();
     updateAccountOverviewEmail('');
     updateAccountPlanInfo('none');
+    if (calendarExportUsageEl) calendarExportUsageEl.textContent = '';
     updateAccountLastLogin('');
     if (publicNav) {
       publicNav.style.display = 'flex';
@@ -4598,18 +4620,11 @@ function clearBrandLogoPreview() {
 
 if (brandBtn && brandModal) {
   brandBtn.addEventListener('click', async () => {
-console.log('Brand Brain clicked');
-    const user = await getCurrentUser();
-    console.log('Current user:', user);
-    const userIsPro = await isPro(user);
-    console.log('User is Pro:', userIsPro);
-    if (!userIsPro) {
-      console.log('Showing upgrade modal');
-      showUpgradeModal();
+    if (!window.cachedUserIsPro) {
+      if (typeof showUpgradeModal === 'function') showUpgradeModal();
       return;
     }
     await Promise.all([refreshBrandKit(), refreshBrandBrain()]);
-    console.log('Opening brand modal');
     openBrandModal();
   });
 }
@@ -5356,9 +5371,12 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, op
 }
 
 async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
-  const resp = await fetch('/api/generate-calendar', {
+  if (calendarExportsLocked) {
+    showUpgradeModal();
+    throw new Error('upgrade_required');
+  }
+  const resp = await fetchWithAuth('/api/calendar/regenerate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       nicheStyle,
       days: 1,
@@ -5367,6 +5385,13 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
     }),
   });
   const data = await resp.json().catch(() => ({}));
+  if (data?.error === 'upgrade_required') {
+    if (data?.feature === 'calendar_exports') {
+      lockCalendarExportButtons();
+    }
+    showUpgradeModal();
+    throw new Error('upgrade_required');
+  }
   if (!resp.ok || !data.posts || !data.posts.length) {
     throw new Error(data.error || 'Failed to regenerate day (fallback)');
   }
@@ -5407,6 +5432,54 @@ function setCurrentCalendarId(id) {
   currentCalendarId = normalized || null;
   console.log('[Promptly] Current calendar id set', { id: currentCalendarId });
   updateCalendarToolbarState();
+}
+
+async function fetchLatestCalendarSnapshot() {
+  try {
+    if (!currentCalendarId && (!Array.isArray(currentCalendar) || !currentCalendar.length)) {
+      return;
+    }
+    const payload = {};
+    if (currentCalendarId) payload.calendarId = currentCalendarId;
+    if (Array.isArray(currentCalendar) && currentCalendar.length) payload.calendar = currentCalendar;
+    if (currentNiche) payload.nicheStyle = currentNiche;
+
+    const resp = await fetchWithAuth('/api/calendar/download', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (json?.error === 'upgrade_required') {
+      showUpgradeModal();
+      return;
+    }
+    if (!resp.ok || !json?.calendar) {
+      console.warn('[Promptly] download calendar failed', resp.status, json);
+      return;
+    }
+
+    const cal = json.calendar;
+    const posts = Array.isArray(cal?.posts)
+      ? cal.posts
+      : Array.isArray(cal?.calendar?.posts)
+      ? cal.calendar.posts
+      : Array.isArray(cal?.calendar)
+      ? cal.calendar
+      : Array.isArray(cal)
+      ? cal
+      : [];
+    if (!posts.length) return;
+
+    currentCalendar = posts;
+    setCurrentCalendarId(extractCalendarId(cal));
+    if (cal?.niche_style || cal?.nicheStyle || cal?.niche) {
+      currentNiche = cal.niche_style || cal.nicheStyle || cal.niche;
+    }
+    syncCalendarUIAfterDataChange();
+    persistCurrentCalendarState();
+  } catch (err) {
+    console.warn('[Promptly] fetchLatestCalendarSnapshot failed', err);
+  }
 }
 
 updateCalendarToolbarState();
@@ -5925,35 +5998,74 @@ function hideGeneratingState(originalText) {
   if (progressFill) progressFill.style.width = '0%';
 }
 
+// Export usage lock state
+let calendarExportsLocked = false;
+
+function lockCalendarExportButtons() {
+  calendarExportsLocked = true;
+  const buttons = [
+    document.getElementById('save-calendar'),
+    document.getElementById('download-calendar-folder'),
+    document.getElementById('export-calendar'),
+  ].filter(Boolean);
+
+  buttons.forEach((btn) => {
+    btn.classList.add('calendar-export-locked');
+  });
+}
+
 // Export button handler
 if (exportBtn) {
   exportBtn.addEventListener("click", async () => {
-    console.log('Export clicked');
-    const user = await getCurrentUser();
-    console.log('Current user:', user);
-    const userIsPro = await isPro(user);
-    console.log('User is Pro:', userIsPro);
-    if (!userIsPro) {
-      console.log('Showing upgrade modal');
+    if (calendarExportsLocked) {
       showUpgradeModal();
       return;
     }
-    
+
+    await fetchLatestCalendarSnapshot();
     const niche = nicheInput ? nicheInput.value.trim() : "";
     if (!currentCalendar || currentCalendar.length === 0) {
       alert("No calendar to export. Generate a calendar first.");
       return;
     }
-    downloadCalendarAsJSON(currentCalendar, niche);
-    if (feedbackEl) {
-      feedbackEl.textContent = "Calendar exported — check your downloads folder.";
-      feedbackEl.classList.add("success");
-      setTimeout(() => {
-        if (feedbackEl) {
-          feedbackEl.textContent = "";
-          feedbackEl.classList.remove("success");
+
+    try {
+      const resp = await fetchWithAuth('/api/calendar/download', {
+        method: 'POST',
+        body: JSON.stringify({
+          nicheStyle: niche,
+          posts: currentCalendar,
+          generatedAt: new Date().toISOString(),
+          generatedByAI: true,
+        }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (body?.error === 'upgrade_required') {
+        if (body?.feature === 'calendar_exports') {
+          lockCalendarExportButtons();
         }
-      }, 2500);
+        showUpgradeModal();
+        return;
+      }
+      if (!resp.ok || body.ok === false) {
+        throw new Error(body.error || 'Failed to export calendar');
+      }
+      const calendarPayload = body.calendar || body.posts ? body : body.calendar;
+      const calendarToDownload = calendarPayload?.calendar || calendarPayload?.posts ? calendarPayload : currentCalendar;
+      downloadCalendarAsJSON(calendarToDownload.posts ? calendarToDownload.posts : calendarToDownload, niche);
+      if (feedbackEl) {
+        feedbackEl.textContent = "Calendar exported — check your downloads folder.";
+        feedbackEl.classList.add("success");
+        setTimeout(() => {
+          if (feedbackEl) {
+            feedbackEl.textContent = "";
+            feedbackEl.classList.remove("success");
+          }
+        }, 2500);
+      }
+    } catch (err) {
+      console.error('[Promptly] export calendar failed', err);
+      alert(err?.message || 'Failed to export calendar. Please try again.');
     }
   });
 }
@@ -5968,7 +6080,8 @@ if (exportCsvBtn) {
       showUpgradeModal();
       return;
     }
-    
+    await fetchLatestCalendarSnapshot();
+
     const niche = nicheInput ? nicheInput.value.trim() : '';
     if (!currentCalendar || currentCalendar.length === 0) {
       alert('No calendar to export. Generate a calendar first.');
@@ -6001,7 +6114,8 @@ if (exportIcsBtn) {
       showUpgradeModal();
       return;
     }
-    
+    await fetchLatestCalendarSnapshot();
+
     if (!currentCalendar || currentCalendar.length === 0) {
       alert('No calendar to export. Generate a calendar first.');
       return;
@@ -6028,6 +6142,8 @@ if (downloadZipBtn) {
       showUpgradeModal();
       return;
     }
+
+    await fetchLatestCalendarSnapshot();
     
     if (!currentCalendar || currentCalendar.length === 0) {
       alert('No calendar to export. Generate a calendar first.');
@@ -6186,7 +6302,8 @@ async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
 
 // Variants CSV export
 if (exportVariantsCsvBtn) {
-  exportVariantsCsvBtn.addEventListener('click', ()=>{
+  exportVariantsCsvBtn.addEventListener('click', async ()=>{
+    await fetchLatestCalendarSnapshot();
     if (!currentCalendar || currentCalendar.length===0) { alert('Generate calendar first.'); return; }
     const headers = ['Day','Platform','Caption'];
     const rows = [];
@@ -6214,6 +6331,8 @@ if (downloadVariantsZipBtn) {
       showUpgradeModal();
       return;
     }
+
+    await fetchLatestCalendarSnapshot();
     
     if (!currentCalendar || currentCalendar.length===0) { alert('Generate calendar first.'); return; }
   const JSZipLib = await ensureZip().catch(()=>null);
@@ -6235,13 +6354,7 @@ if (downloadVariantsZipBtn) {
 // Download Calendar Folder (30 HTML files)
 if (downloadCalendarFolderBtn) {
   downloadCalendarFolderBtn.addEventListener('click', async ()=>{
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    await fetchLatestCalendarSnapshot();
     
     if (!currentCalendar || currentCalendar.length===0) { alert('Generate calendar first.'); return; }
     const JSZipLib = await ensureZip().catch(()=>null);
@@ -6590,19 +6703,12 @@ function buildPostHTML(post){
 // Save Calendar button handler
 if (saveBtn) {
   saveBtn.addEventListener("click", async () => {
-    const currentUser = await getCurrentUser();
-    
-    // Gate: Pro feature
-    const userIsPro = await isPro(currentUser);
-    if (!userIsPro) {
+    if (calendarExportsLocked) {
       showUpgradeModal();
-      if (feedbackEl) {
-        feedbackEl.textContent = "Save to Library is a Pro feature. Upgrade to save unlimited calendars!";
-        feedbackEl.style.color = 'var(--accent)';
-      }
       return;
     }
-    
+    const currentUser = await getCurrentUser();
+
     const niche = nicheInput ? nicheInput.value.trim() : "";
     if (!currentCalendar || currentCalendar.length === 0) {
       alert("No calendar to save. Generate a calendar first.");
@@ -6623,7 +6729,26 @@ if (saveBtn) {
     }
     
     try {
-      const savedRecord = await saveUserCalendar(currentUser, calendarData);
+      const resp = await fetchWithAuth('/api/calendar/save', {
+        method: 'POST',
+        body: JSON.stringify(calendarData),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (body?.error === 'upgrade_required') {
+        if (body?.feature === 'calendar_exports') {
+          lockCalendarExportButtons();
+        }
+        showUpgradeModal();
+        if (feedbackEl) {
+          feedbackEl.textContent = "Save to Library is a Pro feature. Upgrade to save unlimited calendars!";
+          feedbackEl.style.color = 'var(--accent)';
+        }
+        return;
+      }
+      if (!resp.ok || body.ok === false) {
+        throw new Error(body.error || 'Failed to save calendar');
+      }
+      const savedRecord = body.calendar || body;
       setCurrentCalendarId(extractCalendarId(savedRecord));
       if (feedbackEl) {
         feedbackEl.textContent = `✓ Calendar saved for "${niche}"`;
@@ -7353,14 +7478,17 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     
     // Helper to fetch one batch
     const fetchBatch = async (batchIndex) => {
+      if (calendarExportsLocked) {
+        showUpgradeModal();
+        throw new Error('upgrade_required');
+      }
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
       console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
       
-      const response = await fetch("/api/generate-calendar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetchWithAuth('/api/calendar/regenerate', {
+        method: 'POST',
         body: JSON.stringify({ 
           nicheStyle, 
           userId: getCurrentUser() || undefined, 
@@ -7382,11 +7510,25 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
             return null;
           }
         })();
+        if (parsedDetail?.error === 'upgrade_required') {
+          if (parsedDetail?.feature === 'calendar_exports') {
+            lockCalendarExportButtons();
+          }
+          showUpgradeModal();
+          throw new Error('upgrade_required');
+        }
         const hint = parsedDetail?.error || detail || response.statusText;
         throw new Error(`API error: ${hint}`);
       }
       
       const data = await response.json();
+      if (data?.error === 'upgrade_required') {
+        if (data?.feature === 'calendar_exports') {
+          lockCalendarExportButtons();
+        }
+        showUpgradeModal();
+        throw new Error('upgrade_required');
+      }
       let batchPosts = Array.isArray(data.posts) ? data.posts : [];
 
       // Update progress UI as each batch completes

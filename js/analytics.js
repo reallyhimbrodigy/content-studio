@@ -15,6 +15,22 @@ import {
   applyAnalyticsAccess,
 } from './analytics-render.js';
 
+function lockAnalyticsSection(sectionKey) {
+  const el = document.querySelector(`[data-analytics-section="${sectionKey}"]`);
+  if (!el) return;
+  el.classList.add('analytics-section-locked');
+  if (!el.dataset.lockHandlerAttached) {
+    el.dataset.lockHandlerAttached = 'true';
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openUpgradeCTA();
+    });
+  }
+}
+
+let analyticsIsPro = false;
+
 const DEMO_ANALYTICS = {
   overview: {
     followerGrowth: '+1,250 this month',
@@ -108,6 +124,53 @@ function shouldUseDemo(data) {
   return !hasPosts && !hasViews;
 }
 
+function applyProButtonStyles() {
+  const proBtns = document.querySelectorAll('#generate-insights-btn, .experiment-btn');
+  proBtns.forEach((btn) => {
+    if (!btn) return;
+    if (analyticsIsPro) {
+      btn.classList.remove('analytics-btn-locked');
+      btn.disabled = false;
+    } else {
+      btn.classList.add('analytics-btn-locked');
+    }
+  });
+}
+
+function applyShareReportGating() {
+  const shareBtn = document.getElementById('analytics-share-report-btn');
+  if (!shareBtn) return;
+
+  // If Pro, remove any upgrade handler and locked styling.
+  if (analyticsIsPro) {
+    shareBtn.classList.remove('analytics-btn-locked');
+    if (shareBtn.__upgradeHandler) {
+      shareBtn.removeEventListener('click', shareBtn.__upgradeHandler);
+      shareBtn.__upgradeHandler = null;
+    }
+    return;
+  }
+
+  // Free users: lock the button and route clicks to upgrade modal.
+  shareBtn.classList.add('analytics-btn-locked');
+  if (!shareBtn.__upgradeHandler) {
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openUpgradeCTA();
+    };
+    shareBtn.__upgradeHandler = handler;
+    shareBtn.addEventListener('click', handler);
+  }
+}
+
+function openUpgradeCTA() {
+  const fn = window.openUpgradeModal || window.showUpgradeModal;
+  if (typeof fn === 'function') {
+    fn();
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
@@ -195,57 +258,17 @@ document.addEventListener('DOMContentLoaded', () => {
     connectBtn.addEventListener('click', openPhyllo);
   }
 
-  function renderHeatmapGrid(data) {
-    const grid = document.querySelector('.analytics-heatmap-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    const buckets = [
-      { label: 'Midnight-4a', hours: [0, 1, 2, 3] },
-      { label: '4a-8a', hours: [4, 5, 6, 7] },
-      { label: '8a-Noon', hours: [8, 9, 10, 11] },
-      { label: 'Noon-4p', hours: [12, 13, 14, 15] },
-      { label: '4p-8p', hours: [16, 17, 18, 19] },
-      { label: '8p-Mid', hours: [20, 21, 22, 23] },
-    ];
-    const maxEng = data.length ? Math.max(...data.map((d) => Number(d.engagement || 0))) : 0;
-    buckets.forEach((bucket, bucketIdx) => {
-      for (let day = 0; day < 7; day++) {
-        const cell = document.createElement('span');
-        cell.className = 'heatmap-cell';
-        cell.dataset.day = String(day);
-        cell.dataset.bucket = String(bucketIdx);
-        const matches = data.filter((d) => d.day === day && bucket.hours.includes(d.hour));
-        const engagement = matches.reduce((sum, c) => sum + Number(c.engagement || 0), 0);
-        const intensity = maxEng ? Math.min(1, engagement / maxEng) : 0;
-        cell.style.opacity = `${0.2 + intensity * 0.8}`;
-        cell.title = `Day ${day}, ${bucket.label}: ${Math.round(engagement)} engagement`;
-        grid.appendChild(cell);
-      }
-    });
-  }
-
-  async function loadHeatmap() {
-    try {
-      const res = await fetch('/api/analytics/heatmap');
-      const json = await res.json();
-      if (!json.ok) throw new Error('heatmap_fetch_failed');
-      renderHeatmap(json.heatmap || []);
-    } catch (err) {
-      console.error('[Analytics] loadHeatmap error', err);
-      const grid = document.getElementById('heatmap-grid');
-      if (grid) grid.textContent = 'No heatmap data yet.';
-    }
-  }
-
   async function loadInsights() {
     try {
       const res = await fetch('/api/analytics/insights');
       const json = await res.json();
       if (!json.ok) throw new Error('insights fetch failed');
-      renderInsights(json.insights || []);
+      renderInsights(json.insights || [], analyticsIsPro);
+      applyProButtonStyles();
     } catch (err) {
       console.error('[Analytics] loadInsights error', err);
-      renderInsights([]);
+      renderInsights([], analyticsIsPro);
+      applyProButtonStyles();
     }
   }
 
@@ -253,6 +276,13 @@ document.addEventListener('DOMContentLoaded', () => {
   initPlatformFilter();
   loadSubscriptionAndAnalytics();
   loadConnectedAccounts();
+  document.addEventListener('click', (e) => {
+    const lockedBtn = e.target.closest('.analytics-btn-locked');
+    if (!lockedBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openUpgradeCTA();
+  });
   function loadConnectedAccounts() {
     fetchAnalyticsJson('/api/phyllo/accounts')
       .then(({ data, unauthorized, error }) => {
@@ -288,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderOverview({ __loading: true });
       renderPosts('__loading');
       renderDemographics('__loading');
-      renderInsights('__loading');
+      renderInsights('__loading', analyticsIsPro);
       renderGrowthReport('__loading');
       renderPlatformBreakdown('__loading');
       renderDemoBadge(false);
@@ -303,10 +333,12 @@ document.addEventListener('DOMContentLoaded', () => {
         renderDemoBadge(false);
       }
 
+      setOverviewRangeLabel(analyticsData);
       renderOverview(analyticsData.overview || {});
       renderPosts(analyticsData.posts || []);
       renderDemographics(analyticsData.demographics || {});
-      renderInsights(analyticsData.insights || []);
+      renderInsights(analyticsData.insights || [], analyticsIsPro);
+      applyProButtonStyles();
       renderLastSync(analyticsData.last_sync);
       renderGrowthReport(analyticsData.report || analyticsData.growth_report || null);
       renderPlatformBreakdown(analyticsData.posts || []);
@@ -315,10 +347,12 @@ document.addEventListener('DOMContentLoaded', () => {
       renderOverview({});
       renderPosts([]);
       renderDemographics({});
-      renderInsights([]);
+      renderInsights([], analyticsIsPro);
+      applyProButtonStyles();
       renderGrowthReport(null);
       renderDemoBadge(false);
       renderPlatformBreakdown([]);
+      setOverviewRangeLabel(null);
     }
   }
 
@@ -327,11 +361,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/user/subscription');
       const json = await res.json();
       const plan = json.plan || 'free';
+      analyticsIsPro = plan === 'pro' || plan === 'teams';
       applyAnalyticsAccess(plan);
+      applyProButtonStyles();
+      applyShareReportGating();
       await loadFullAnalytics();
     } catch (err) {
       console.error('[Analytics] subscription load error', err);
+      analyticsIsPro = false;
       applyAnalyticsAccess('free');
+      applyProButtonStyles();
+      applyShareReportGating();
       await loadFullAnalytics();
     }
   }
@@ -380,6 +420,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('/api/analytics/heatmap');
       const json = await res.json();
+      if (json && json.error === 'upgrade_required') {
+        lockAnalyticsSection('heatmap');
+        return;
+      }
       if (!json.ok) throw new Error('heatmap_fetch_failed');
       renderHeatmap(json.heatmap || []);
     } catch (err) {
@@ -413,14 +457,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderExperiments(experiments = []) {
+    const safeExperiments = Array.isArray(experiments) ? experiments : [];
     const container = document.getElementById('experiments-list');
     if (!container) return;
-    if (!experiments.length) {
+    if (!safeExperiments.length) {
       container.textContent = 'No experiments yet.';
       return;
     }
     container.innerHTML = '';
-    experiments.forEach((exp) => {
+    safeExperiments.forEach((exp) => {
       const div = document.createElement('div');
       div.className = 'experiment-card';
       div.innerHTML = `
@@ -448,6 +493,10 @@ document.addEventListener('DOMContentLoaded', () => {
         renderExperiments([]);
         return;
       }
+      if (data && data.error === 'upgrade_required') {
+        lockAnalyticsSection('experiments');
+        return;
+      }
       if (error || !data || data.ok === false) throw new Error('experiments fetch failed');
       renderExperiments(data.experiments || []);
     } catch (err) {
@@ -461,6 +510,11 @@ document.addEventListener('DOMContentLoaded', () => {
       renderAlerts('__loading');
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/alerts');
       if (unauthorized) {
+        renderAlerts([]);
+        return;
+      }
+      if (data && data.error === 'upgrade_required') {
+        lockAnalyticsSection('alerts');
         renderAlerts([]);
         return;
       }
@@ -512,6 +566,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/demographics');
       if (unauthorized) return;
+      if (data && data.error === 'upgrade_required') {
+        lockAnalyticsSection('demographics');
+        return;
+      }
       if (error || !data || data.ok === false) throw new Error('demographics fetch failed');
       renderDemographics(data.demographics || {});
     } catch (err) {
@@ -524,6 +582,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/reports/latest');
       if (unauthorized) return;
+      if (data && data.error === 'upgrade_required') {
+        lockAnalyticsSection('report');
+        return;
+      }
       if (error || !data || data.ok === false) throw new Error('report_fetch_failed');
       renderGrowthReport(data.report || null);
     } catch (err) {
@@ -533,11 +595,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderDemographics(demo = {}) {
-    renderKeyValueBlock('demographics-age', 'Age', demo.age);
-    renderKeyValueBlock('demographics-gender', 'Gender', demo.gender);
-    renderKeyValueBlock('demographics-location', 'Location', demo.location);
-    renderKeyValueBlock('demographics-language', 'Language', demo.language);
-    renderDemographicsPanel(demo);
+    const safeDemo = demo && typeof demo === 'object' ? demo : {};
+    renderKeyValueBlock('demographics-age', 'Age', safeDemo.age);
+    renderKeyValueBlock('demographics-gender', 'Gender', safeDemo.gender);
+    renderKeyValueBlock('demographics-location', 'Location', safeDemo.location);
+    renderKeyValueBlock('demographics-language', 'Language', safeDemo.language);
+    renderDemographicsPanel(safeDemo);
   }
 
   function renderKeyValueBlock(containerId, title, data) {
@@ -569,7 +632,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!panel) return;
     panel.innerHTML = '';
 
-    const platforms = Object.keys(demo);
+    const safeDemo = demo && typeof demo === 'object' ? demo : {};
+    const platforms = Object.keys(safeDemo);
     if (!platforms.length) {
       panel.textContent = 'No demographic data yet.';
       return;
@@ -578,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
     platforms.forEach((platform) => {
       const block = document.createElement('div');
       block.className = 'demo-block';
-      const items = demo[platform] || [];
+      const items = safeDemo[platform] || [];
       if (!Array.isArray(items) || !items.length) {
         block.innerHTML = `<h3>${platform}</h3>No data`;
         panel.appendChild(block);
@@ -594,6 +658,22 @@ document.addEventListener('DOMContentLoaded', () => {
       block.innerHTML = `<h3>${platform}</h3>${content || 'No data'}`;
       panel.appendChild(block);
     });
+  }
+
+  function setOverviewRangeLabel(payload) {
+    const el = document.getElementById('analytics-overview-range');
+    if (!el) return;
+
+    if (!analyticsIsPro) {
+      el.textContent = ' · Last 30 days';
+      return;
+    }
+
+    const label =
+      (payload && payload.overview && payload.overview.rangeLabel) ||
+      (payload && payload.rangeLabel);
+
+    el.textContent = label ? ` · ${label}` : ' · Full history';
   }
 
   async function loadEngagement() {
@@ -614,6 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/followers');
       if (unauthorized) return;
+      if (data && data.error === 'upgrade_required') {
+        lockAnalyticsSection('followers');
+        return;
+      }
       if (error || !data || data.ok === false) throw new Error('followers_fetch_failed');
       renderFollowerGrowth(data.trends || []);
     } catch (err) {
@@ -642,15 +726,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderFollowerGrowth(trends = []) {
+    const safeTrends = Array.isArray(trends) ? trends : [];
     const container = document.getElementById('followers-chart');
     if (!container) return;
     container.innerHTML = '';
-    if (!trends.length) {
+    if (!safeTrends.length) {
       container.textContent = 'No follower data yet.';
       return;
     }
-    const max = Math.max(...trends.map((t) => t.count || 0)) || 1;
-    trends.forEach((t) => {
+    const max = Math.max(...safeTrends.map((t) => t.count || 0)) || 1;
+    safeTrends.forEach((t) => {
       const bar = document.createElement('div');
       bar.className = 'followers-bar';
       const heightPct = ((t.count || 0) / max) * 100;
@@ -719,6 +804,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = e.target.closest('.experiment-btn');
     if (!btn) return;
 
+    if (!analyticsIsPro) {
+      e.preventDefault();
+      e.stopPropagation();
+      openUpgradeCTA();
+      return;
+    }
+
     const title = btn.getAttribute('data-title') || 'New Experiment';
     const description = btn.getAttribute('data-description') || '';
 
@@ -733,6 +825,15 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ title, description }),
       });
       const json = await res.json();
+      if (json && json.error === 'upgrade_required') {
+        lockAnalyticsSection('experiments');
+        if (typeof window.showUpgradeModal === 'function') {
+          window.showUpgradeModal();
+        }
+        btn.textContent = originalText;
+        btn.disabled = false;
+        return;
+      }
       if (!res.ok || !json.ok) throw new Error('experiment_create_failed');
 
       if (typeof loadExperiments === 'function') {
@@ -759,6 +860,15 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/analytics/experiments/${id}`, { method: 'DELETE' });
       const json = await res.json();
+      if (json && json.error === 'upgrade_required') {
+        lockAnalyticsSection('experiments');
+        if (typeof window.showUpgradeModal === 'function') {
+          window.showUpgradeModal();
+        }
+        btn.disabled = false;
+        btn.textContent = original;
+        return;
+      }
       if (!res.ok || !json.ok) throw new Error('delete_failed');
       if (typeof loadExperiments === 'function') await loadExperiments();
     } catch (err) {
@@ -778,6 +888,15 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/analytics/experiments/${id}/complete`, { method: 'PATCH' });
       const json = await res.json();
+      if (json && json.error === 'upgrade_required') {
+        lockAnalyticsSection('experiments');
+        if (typeof window.showUpgradeModal === 'function') {
+          window.showUpgradeModal();
+        }
+        btn.disabled = false;
+        btn.textContent = original;
+        return;
+      }
       if (!res.ok || !json.ok) throw new Error('complete_failed');
       if (typeof loadExperiments === 'function') await loadExperiments();
     } catch (err) {
@@ -868,6 +987,10 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateInsights() {
     const btn = document.getElementById('generate-insights-btn');
     const list = document.getElementById('insights-list');
+    if (!analyticsIsPro) {
+      openUpgradeCTA();
+      return;
+    }
     try {
       if (btn) {
         btn.disabled = true;
@@ -888,7 +1011,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const latest = await fetch('/api/analytics/insights');
       const latestJson = await latest.json();
       if (latestJson.ok) {
-        renderInsights(latestJson.insights || []);
+        renderInsights(latestJson.insights || [], analyticsIsPro);
+        applyProButtonStyles();
       }
     } catch (err) {
       console.error('[Analytics] generateInsights error', err);

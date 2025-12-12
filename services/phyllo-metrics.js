@@ -161,9 +161,37 @@ async function getAudienceDemographics(accounts = []) {
   return results;
 }
 
-async function buildWeeklyReport({ posts = [], overview = {}, insights = [], alerts = [] }) {
+async function buildWeeklyReport({ posts = [], overview = {}, insights = [], alerts = [], isPro = true }) {
+  const weekStart = new Date().toISOString().slice(0, 10);
+
+  if (!isPro) {
+    // Free tier teaser: last-30-day basics + limited insights
+    const limitedOverview = {
+      followerGrowth:
+        overview.followerGrowth ?? overview.follower_growth ?? overview.followers_growth ?? null,
+      engagementRate:
+        overview.engagementRate ?? overview.engagement_rate ?? null,
+      avgViewsPerPost:
+        overview.avgViewsPerPost ?? overview.avg_views_per_post ?? overview.avg_views ?? null,
+    };
+
+    return {
+      weekStart,
+      tier: 'free',
+      overview: limitedOverview,
+      topPosts: [],
+      insights: (insights || []).slice(0, 2),
+      alerts: [],
+      highlights: {
+        fastestGrowingPlatform: null,
+        bestPostingTime: null,
+      },
+    };
+  }
+
   return {
-    weekStart: new Date().toISOString().slice(0, 10),
+    weekStart,
+    tier: 'pro',
     overview,
     topPosts: posts.slice(0, 5),
     insights,

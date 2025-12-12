@@ -141,7 +141,7 @@ function renderKeyValueBlock(containerId, title, data) {
   el.appendChild(list);
 }
 
-export function renderInsights(insights = []) {
+export function renderInsights(insights = [], isPro = true) {
   const container = document.getElementById('insights-list');
   if (!container) return;
   container.innerHTML = '';
@@ -152,14 +152,16 @@ export function renderInsights(insights = []) {
     return;
   }
 
-  if (!insights.length) {
+  const list = Array.isArray(insights) ? insights : [];
+
+  if (!list.length) {
     container.textContent = 'No insights yet. Click "Generate Insights" to create them.';
     container.classList.add('analytics-empty');
     return;
   }
   container.classList.remove('analytics-empty');
 
-  insights.forEach((insight, idx) => {
+  list.forEach((insight, idx) => {
     const card = document.createElement('div');
     card.className = 'insight-card';
     card.innerHTML = `
@@ -175,6 +177,30 @@ export function renderInsights(insights = []) {
     `;
     container.appendChild(card);
   });
+
+  if (!isPro && list.length > 0) {
+    const upsell = document.createElement('div');
+    upsell.className = 'analytics-insights-upsell';
+    upsell.innerHTML = `
+      <div class="analytics-insights-upsell__text">
+        You're seeing a preview of your AI insights. Upgrade to Pro to unlock full insights and experiments.
+      </div>
+    `;
+
+    const btn = document.createElement('button');
+    btn.className = 'primary-btn';
+    btn.textContent = 'Upgrade to Pro';
+    btn.addEventListener('click', () => {
+      if (typeof window.openUpgradeModal === 'function') {
+        window.openUpgradeModal();
+      } else if (typeof window.showUpgradeModal === 'function') {
+        window.showUpgradeModal();
+      }
+    });
+
+    upsell.appendChild(btn);
+    container.appendChild(upsell);
+  }
 }
 
 export function renderLastSync(ts) {
@@ -193,12 +219,14 @@ export function renderConnectedAccounts(accounts = []) {
 
   container.innerHTML = '';
 
-  if (!accounts || !accounts.length) {
+  const list = Array.isArray(accounts) ? accounts : [];
+
+  if (!list.length) {
     container.textContent = 'No accounts connected yet.';
     return;
   }
 
-  accounts.forEach((acc) => {
+  list.forEach((acc) => {
     const div = document.createElement('div');
     div.className = 'connected-account-pill';
     const platform = (acc.platform || 'platform').toUpperCase();
@@ -435,13 +463,15 @@ export function renderAlerts(alerts) {
     return;
   }
 
-  if (!alerts || alerts.length === 0) {
+  const list = Array.isArray(alerts) ? alerts : [];
+
+  if (!list.length) {
     container.innerHTML = '<div class="alert-empty">No alerts available.</div>';
     return;
   }
 
   container.innerHTML = '';
-  alerts.forEach((a) => {
+  list.forEach((a) => {
     const div = document.createElement('div');
     div.className = 'alert-card';
     div.textContent = a.message || a.detail || a.type || 'Alert';
