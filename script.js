@@ -300,7 +300,7 @@ if (forceLandingView) {
 let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
-let cachedUserIsPro = false;
+window.cachedUserIsPro = window.cachedUserIsPro ?? null;
 let currentPostFrequency = 1;
 let pendingAssetGeneration = null;
 let lastGenerateAssetOpener = null;
@@ -648,12 +648,12 @@ async function beginGenerateAssetFlow(entry, entryDay, triggerButton) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
+    const userIsPro = window.cachedUserIsPro || (await isPro(currentUserId));
     if (!userIsPro) {
       showUpgradeModal();
       return;
     }
-    cachedUserIsPro = true;
+    window.cachedUserIsPro = true;
     const context = buildAssetContextFromEntry(entry, resolvedDay);
     openGenerateAssetModal(context);
   } finally {
@@ -2537,7 +2537,7 @@ function persistProfileSettingsLocally(settings = {}, email = activeUserEmail) {
 }
 
 function getPostFrequency() {
-  if (!cachedUserIsPro) return 1;
+  if (!window.cachedUserIsPro) return 1;
   const stored = localStorage.getItem(POST_FREQUENCY_KEY);
   const parsed = parseInt(stored, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
@@ -2545,7 +2545,7 @@ function getPostFrequency() {
 }
 
 function setPostFrequency(value) {
-  if (!cachedUserIsPro) return;
+  if (!window.cachedUserIsPro) return;
   const normalized = Math.min(Math.max(parseInt(value, 10) || 1, 1), 6);
   try {
     localStorage.setItem(POST_FREQUENCY_KEY, String(normalized));
@@ -2717,7 +2717,7 @@ applyProfileSettings();
 function updateTabs(){
     if (!calendarSection || !hub) return;
     const wantsDesign = activeTab === 'design';
-    if (wantsDesign && !cachedUserIsPro) activeTab = 'plan';
+    if (wantsDesign && !window.cachedUserIsPro) activeTab = 'plan';
     const hasCalendar = currentCalendar && currentCalendar.length > 0;
     // Toggle classes
     if (tabPlan) tabPlan.classList.toggle('active', activeTab==='plan');
@@ -3455,11 +3455,11 @@ function clearDesignDragHighlights() {
   }
 
 async function requireProAccess() {
-    if (cachedUserIsPro) return true;
+    if (window.cachedUserIsPro) return true;
     const user = await getCurrentUser();
     if (!user) return false;
     const userIsPro = await isPro(user);
-    cachedUserIsPro = userIsPro;
+    window.cachedUserIsPro = userIsPro;
     return userIsPro;
   }
 
@@ -3469,8 +3469,8 @@ async function startDesignModal(entry = null, entryDay = null) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-  const userIsPro = cachedUserIsPro || (await isPro(userId));
-  if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
+  const userIsPro = window.cachedUserIsPro || (await isPro(userId));
+  if (userIsPro && !window.cachedUserIsPro) window.cachedUserIsPro = true;
   const remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(userId);
   const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
   activeDesignContext = entry ? { entry, day: resolvedDay } : null;
@@ -3586,8 +3586,8 @@ async function handleDesignFormSubmit(event) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = cachedUserIsPro || (await isPro(currentUserId));
-    if (userIsPro && !cachedUserIsPro) cachedUserIsPro = true;
+    const userIsPro = window.cachedUserIsPro || (await isPro(currentUserId));
+    if (userIsPro && !window.cachedUserIsPro) window.cachedUserIsPro = true;
     let remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(currentUserId);
     if (!userIsPro && remainingQuota <= 0) {
       showDesignError('Monthly limit reached', 'Free plan includes 3 AI assets per month. Upgrade for unlimited designs.');
@@ -3959,7 +3959,7 @@ async function bootstrapApp(attempt = 0) {
     // Show Pro badge if applicable
     const userIsPro = await isPro(currentUser);
     console.log('User is Pro:', userIsPro);
-    cachedUserIsPro = userIsPro;
+    window.cachedUserIsPro = userIsPro;
     updatePostFrequencyUI();
     updateAccountPlanInfo(userIsPro);
     try {
@@ -4037,7 +4037,7 @@ async function bootstrapApp(attempt = 0) {
     if (userMenu) userMenu.style.display = 'none';
     if (landingExperience) landingExperience.style.display = '';
     if (appExperience) appExperience.style.display = 'none';
-    cachedUserIsPro = false;
+    window.cachedUserIsPro = false;
     updatePostFrequencyUI();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
@@ -4242,7 +4242,7 @@ if (accountPasswordManageBtn) {
 
 if (postFrequencySelect) {
   const guardFreeChange = (event) => {
-    if (cachedUserIsPro) return false;
+    if (window.cachedUserIsPro) return false;
     event?.preventDefault();
     postFrequencySelect.value = '1';
     postFrequencySelect.blur();
@@ -5073,19 +5073,19 @@ const createCard = (post) => {
       if (entry.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${entry.variants.tiktokCaption}`);
       if (entry.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${entry.variants.linkedinCaption}`);
     }
-    if (cachedUserIsPro && entry.captionVariations) {
+    if (window.cachedUserIsPro && entry.captionVariations) {
       if (entry.captionVariations.casual) fullTextParts.push(`Casual Caption: ${entry.captionVariations.casual}`);
       if (entry.captionVariations.professional) fullTextParts.push(`Professional Caption: ${entry.captionVariations.professional}`);
       if (entry.captionVariations.witty) fullTextParts.push(`Witty Caption: ${entry.captionVariations.witty}`);
     }
-    if (cachedUserIsPro && entry.hashtagSets) {
+    if (window.cachedUserIsPro && entry.hashtagSets) {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
-    if (cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
-    if (cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
-    if (cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
+    if (window.cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
+    if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
+    if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
+    if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
     btnCopyFull.addEventListener('click', async () => {
@@ -5131,7 +5131,7 @@ const createCard = (post) => {
     }
 
     const proDetailNodes = [];
-    if (cachedUserIsPro && entry.captionVariations) {
+    if (window.cachedUserIsPro && entry.captionVariations) {
       const parts = [];
       if (entry.captionVariations.casual) parts.push(`Casual: ${entry.captionVariations.casual}`);
       if (entry.captionVariations.professional) parts.push(`Professional: ${entry.captionVariations.professional}`);
@@ -5139,7 +5139,7 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Caption variations', text, 'calendar-card__caption-variations'));
     }
-    if (cachedUserIsPro && entry.hashtagSets) {
+    if (window.cachedUserIsPro && entry.hashtagSets) {
       const parts = [];
       const broad = Array.isArray(entry.hashtagSets.broad) ? entry.hashtagSets.broad.join(' ') : entry.hashtagSets.broad;
       const niche = Array.isArray(entry.hashtagSets.niche) ? entry.hashtagSets.niche.join(' ') : entry.hashtagSets.niche;
@@ -5148,16 +5148,16 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
-    if (cachedUserIsPro && entry.suggestedAudio) {
+    if (window.cachedUserIsPro && entry.suggestedAudio) {
       proDetailNodes.push(createDetailRow('Suggested audio', entry.suggestedAudio, 'calendar-card__audio'));
     }
-    if (cachedUserIsPro && entry.postingTimeTip) {
+    if (window.cachedUserIsPro && entry.postingTimeTip) {
       proDetailNodes.push(createDetailRow('Posting time tip', entry.postingTimeTip, 'calendar-card__posting-tip'));
     }
-    if (cachedUserIsPro && entry.storyPromptExpanded) {
+    if (window.cachedUserIsPro && entry.storyPromptExpanded) {
       proDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
     }
-    if (cachedUserIsPro && entry.followUpIdea) {
+    if (window.cachedUserIsPro && entry.followUpIdea) {
       proDetailNodes.push(createDetailRow('Follow-up idea', entry.followUpIdea, 'calendar-card__followup'));
     }
 
@@ -6082,8 +6082,8 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
   let resolvedIsPro;
   if (typeof userIsPro === 'boolean') {
     resolvedIsPro = userIsPro;
-  } else if (typeof cachedUserIsPro === 'boolean') {
-    resolvedIsPro = cachedUserIsPro;
+  } else if (typeof window.cachedUserIsPro === 'boolean') {
+    resolvedIsPro = window.cachedUserIsPro;
   } else {
     resolvedIsPro = await isPro(resolvedUserId);
   }
@@ -6122,7 +6122,7 @@ async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
   if (!Array.isArray(currentCalendar) || !currentCalendar.length) return;
   const userId = activeUserEmail || (await getCurrentUser());
   if (!userId) return;
-  const userIsPro = typeof cachedUserIsPro === 'boolean' ? cachedUserIsPro : await isPro(userId);
+  const userIsPro = typeof window.cachedUserIsPro === 'boolean' ? window.cachedUserIsPro : await isPro(userId);
   if (!userIsPro) return;
   const needsVariants = currentCalendar.some((post) => {
     const variants = post?.variants;
