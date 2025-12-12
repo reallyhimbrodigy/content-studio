@@ -63,6 +63,7 @@ body {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 1.5rem;
+  align-items: start;
   position: relative;
   transition: grid-template-columns 0.25s ease, gap 0.25s ease;
 }
@@ -126,7 +127,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  min-height: calc(100vh - 8rem);
+  height: 100vh;
+  position: sticky;
+  top: 0;
   transition: transform 0.25s ease, opacity 0.25s ease;
   transform: translateX(0);
 }
