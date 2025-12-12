@@ -201,7 +201,7 @@ const emailInput = document.getElementById("email");
             try {
               const user = await getCurrentUser();
               if (user) {
-                window.location.href = "/";
+                window.location.href = "/index.html";
               } else {
                 // Session not ready yet, try again
                 setTimeout(verifyAndRedirect, 300);
