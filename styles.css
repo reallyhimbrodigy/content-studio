@@ -82,9 +82,9 @@ body {
 }
 
 .sidebar-toggle {
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+  top: 16px;
+  left: 16px;
   width: 42px;
   height: 42px;
   border-radius: 10px;
