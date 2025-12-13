@@ -4922,35 +4922,38 @@ Output format:
   }
 
   if (parsed.pathname === '/api/brand/profile' && req.method === 'GET') {
-    try {
-      const userId = parsed.query.userId;
-      if (!userId) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'userId required' }));
-      }
-      // Prefer Supabase-backed preference, fall back to legacy file store
-      const dbPref = await fetchBrandBrainPreference(userId);
-      const brand = loadBrand(userId);
-      const textFromFile = extractBrandVoiceText(brand);
-      const text = (dbPref?.text || textFromFile || '').trim();
-      const updatedAt = dbPref?.updatedAt || brand?.updatedAt || null;
-      const chunksCount = Array.isArray(brand?.chunks) ? brand.chunks.length : 0;
+    (async () => {
+      try {
+        const userId = parsed.query.userId;
+        if (!userId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'userId required' }));
+        }
+        // Prefer Supabase-backed preference, fall back to legacy file store
+        const dbPref = await fetchBrandBrainPreference(userId);
+        const brand = loadBrand(userId);
+        const textFromFile = extractBrandVoiceText(brand);
+        const text = (dbPref?.text || textFromFile || '').trim();
+        const updatedAt = dbPref?.updatedAt || brand?.updatedAt || null;
+        const chunksCount = Array.isArray(brand?.chunks) ? brand.chunks.length : 0;
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(
-        JSON.stringify({
-          ok: true,
-          hasProfile: !!text,
-          chunks: chunksCount,
-          text,
-          updatedAt,
-        })
-      );
-    } catch (err) {
-      console.error('Brand profile error:', err);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: String(err) }));
-    }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(
+          JSON.stringify({
+            ok: true,
+            hasProfile: !!text,
+            chunks: chunksCount,
+            text,
+            updatedAt,
+          })
+        );
+      } catch (err) {
+        console.error('Brand profile error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: String(err) }));
+      }
+    })();
+    return;
   }
 
   // Handle clean URLs (e.g., /success -> /success.html)
