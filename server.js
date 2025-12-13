@@ -1608,6 +1608,60 @@ function extractBrandVoiceText(brand) {
     .trim();
 }
 
+// Brand Brain persistence helpers (Supabase-backed, tolerate missing table)
+async function fetchBrandBrainPreference(userId) {
+  if (!userId || !supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('brand_brain_preferences')
+      .select('preferences, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+    return { text: data.preferences || '', updatedAt: data.updated_at || null };
+  } catch (err) {
+    const msg = String(err?.message || err);
+    // If the table doesn't exist in this environment, fall back silently
+    if (msg.includes('brand_brain_preferences') || msg.includes('42P01') || msg.includes('schema cache')) {
+      console.warn('[BrandBrain] preferences table missing; skipping load');
+      return null;
+    }
+    console.error('[BrandBrain] fetch preference failed', msg);
+    return null;
+  }
+}
+
+async function upsertBrandBrainPreference(userId, text) {
+  if (!userId || !supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('brand_brain_preferences')
+      .upsert(
+        {
+          user_id: userId,
+          preferences: text,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+      .select('preferences, updated_at')
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || null;
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (msg.includes('brand_brain_preferences') || msg.includes('42P01') || msg.includes('schema cache')) {
+      console.warn('[BrandBrain] preferences table missing; skipping persist');
+      return null;
+    }
+    console.error('[BrandBrain] upsert preference failed', msg);
+    return null;
+  }
+}
+
 // Loads a normalized snapshot of the user's Brand Brain + Brand Design settings.
 async function loadUserBrandProfile(userId) {
   if (!userId) return null;
@@ -4850,6 +4904,12 @@ Output format:
         const embeddings = await embedTextList(chunks);
         const stored = chunks.map((t, i) => ({ id: i + 1, text: t, embedding: embeddings[i] }));
         const saved = saveBrand(userId, stored);
+        // Also persist the raw text to Supabase for durability
+        try {
+          await upsertBrandBrainPreference(userId, text);
+        } catch (err) {
+          console.warn('[BrandBrain] preference upsert skipped', err?.message || err);
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, chunks: saved.chunks.length }));
       } catch (err) {
@@ -4868,21 +4928,22 @@ Output format:
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'userId required' }));
       }
+      // Prefer Supabase-backed preference, fall back to legacy file store
+      const dbPref = await fetchBrandBrainPreference(userId);
       const brand = loadBrand(userId);
-      const text = Array.isArray(brand?.chunks)
-        ? brand.chunks
-            .map((chunk) => (typeof chunk?.text === 'string' ? chunk.text.trim() : ''))
-            .filter(Boolean)
-            .join('\n\n')
-        : '';
+      const textFromFile = extractBrandVoiceText(brand);
+      const text = (dbPref?.text || textFromFile || '').trim();
+      const updatedAt = dbPref?.updatedAt || brand?.updatedAt || null;
+      const chunksCount = Array.isArray(brand?.chunks) ? brand.chunks.length : 0;
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(
         JSON.stringify({
           ok: true,
-          hasProfile: !!brand,
-          chunks: brand?.chunks?.length || 0,
+          hasProfile: !!text,
+          chunks: chunksCount,
           text,
-          updatedAt: brand?.updatedAt || null,
+          updatedAt,
         })
       );
     } catch (err) {
