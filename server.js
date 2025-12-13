@@ -2075,7 +2075,7 @@ const server = http.createServer((req, res) => {
           remainingFreeExports: Math.max(0, 3 - usage),
         });
       } catch (err) {
-        console.error('[Calendar] export-usage error', err);
+        console.error('[export-usage] failed', err);
         return sendJson(res, 500, { ok: false, error: 'export_usage_fetch_failed' });
       }
     })();
