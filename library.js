@@ -1,4 +1,4 @@
-import { getCurrentUser, isPro } from './user-store.js';
+import { getCurrentUser, isPro, supabase } from './user-store.js';
 import { initTheme } from './theme.js';
 
 // Apply theme on page load
@@ -566,7 +566,7 @@ function renderCalendarCard(calendar) {
       <p class="calendar-card__metrics">Posts: ${calendar.postsCount} • Variants: ${calendar.variantsCount}</p>
       <div class="calendar-card__actions">
         <button type="button" class="primary" data-calendar-action="open" data-calendar-id="${escapeHtml(calendar.id)}">Open</button>
-        <button type="button" class="ghost" data-calendar-action="duplicate" data-calendar-id="${escapeHtml(calendar.id)}">Duplicate</button>
+        <button type="button" class="button--danger" data-calendar-action="delete" data-calendar-id="${escapeHtml(calendar.id)}">Delete</button>
         <button type="button" class="ghost" data-calendar-action="export" data-calendar-id="${escapeHtml(calendar.id)}">Export</button>
       </div>
     </article>
@@ -613,13 +613,24 @@ function handleCalendarAction(action = 'open', calendarId = '') {
   if (action === 'open') {
     sessionStorage.setItem('promptly_load_calendar', JSON.stringify(rawCalendar));
     window.location.href = '/';
-  } else if (action === 'duplicate') {
-    const duplicatePayload = JSON.parse(JSON.stringify(rawCalendar));
-    delete duplicatePayload.id;
-    sessionStorage.setItem('promptly_load_calendar', JSON.stringify(duplicatePayload));
-    window.location.href = '/';
+  } else if (action === 'delete') {
+    const confirmed = window.confirm('Delete this saved calendar? This cannot be undone.');
+    if (!confirmed) return;
+    deleteSavedCalendar(calendarId);
   } else if (action === 'export') {
     exportCalendarArchive(rawCalendar);
+  }
+}
+
+async function deleteSavedCalendar(calendarId) {
+  if (!calendarId) return;
+  try {
+    const { error } = await supabase.from('calendars').delete().eq('id', calendarId);
+    if (error) throw error;
+    await loadCalendars();
+  } catch (err) {
+    console.error('[Library] delete calendar failed', err);
+    alert('Failed to delete calendar. Please try again.');
   }
 }
 
