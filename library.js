@@ -566,7 +566,7 @@ function renderCalendarCard(calendar) {
       <p class="calendar-card__metrics">Posts: ${calendar.postsCount} • Variants: ${calendar.variantsCount}</p>
       <div class="calendar-card__actions">
         <button type="button" class="primary" data-calendar-action="open" data-calendar-id="${escapeHtml(calendar.id)}">Open</button>
-        <button type="button" class="button--danger" data-calendar-action="delete" data-calendar-id="${escapeHtml(calendar.id)}">Delete</button>
+        <button type="button" class="delete-calendar-btn" data-calendar-action="delete" data-calendar-id="${escapeHtml(calendar.id)}">Delete</button>
         <button type="button" class="ghost" data-calendar-action="export" data-calendar-id="${escapeHtml(calendar.id)}">Export</button>
       </div>
     </article>

@@ -3229,6 +3229,21 @@ button.button--danger:hover {
   box-shadow: 0 16px 38px rgba(255, 96, 96, 0.35);
 }
 
+.delete-calendar-btn {
+  background: linear-gradient(90deg, #ff4f4f, #d62828);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.delete-calendar-btn:hover {
+  opacity: 0.85;
+}
+
 #delete-calendar-button {
   opacity: 1 !important;
   pointer-events: auto !important;
