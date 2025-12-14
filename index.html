@@ -265,21 +265,23 @@
 
       <div id="app-experience" style="display:none;">
         <div class="app-layout">
-          <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
-            <span class="sidebar-toggle__bars" aria-hidden="true"></span>
-          </button>
           <aside class="app-sidebar" id="app-sidebar">
-            <nav class="sidebar-nav" aria-label="Workspace navigation">
-              <a href="/" class="sidebar-link is-active" aria-current="page">
-                <span>Content Calendar</span>
-              </a>
-              <a href="/library.html" class="sidebar-link">
-                <span>Library</span>
-              </a>
-              <a href="/analytics.html" class="sidebar-link" data-nav="analytics">
-                <span>Analytics</span>
-              </a>
-            </nav>
+            <div class="sidebar-fixed-inner">
+              <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
+                <span class="sidebar-toggle__bars" aria-hidden="true"></span>
+              </button>
+              <nav class="sidebar-nav" aria-label="Workspace navigation">
+                <a href="/" class="sidebar-link is-active" aria-current="page">
+                  <span>Content Calendar</span>
+                </a>
+                <a href="/library.html" class="sidebar-link">
+                  <span>Library</span>
+                </a>
+                <a href="/analytics.html" class="sidebar-link" data-nav="analytics">
+                  <span>Analytics</span>
+                </a>
+              </nav>
+            </div>
           </aside>
           <div class="app-main">
         <header class="hero app-hero">

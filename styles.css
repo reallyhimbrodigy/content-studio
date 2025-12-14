@@ -6936,27 +6936,20 @@ html, body {
   }
 }
 
-/* Keep sidebar visible while scrolling (desktop) */
+.sidebar-fixed-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 @media (min-width: 961px) {
-  .app-sidebar {
-    position: relative;
-    top: auto;
-    height: 100vh;
-    overflow: visible;
-    align-self: flex-start;
-  }
-
-  .sidebar-nav,
-  .sidebar-content {
-    overflow: visible;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-  }
-
-  /* Keep the nav itself pinned while the main content scrolls */
-  .sidebar-nav {
+  .sidebar-fixed-inner {
     position: sticky;
     top: 0;
+    width: 100%;
+    height: 100vh;
+    justify-content: flex-start;
+    padding: 1.5rem 1rem 1.5rem 1.25rem;
+    box-sizing: border-box;
   }
 }
