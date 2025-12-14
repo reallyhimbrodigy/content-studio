@@ -229,6 +229,46 @@ body {
   }
 }
 
+/* Sidebar final overrides */
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 260px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: translateX(0);
+  overflow: visible;
+  z-index: 20;
+}
+
+.app-sidebar.collapsed {
+  transform: translateX(-110%);
+  opacity: 1;
+  pointer-events: none;
+}
+
+.sidebar-fixed-inner {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.app-main {
+  margin-left: 260px;
+}
+
+.app-layout.sidebar-collapsed .app-main {
+  margin-left: 0;
+}
 .tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--card-border); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(6px); background: linear-gradient(180deg, rgba(20,20,28,0.9), rgba(20,20,28,0.6)); padding-top: 0.25rem; }
 .tab { background: transparent; border: none; padding: 0.5rem 0.75rem; border-radius: 8px 8px 0 0; font-weight: 600; color: var(--text-secondary); transition: all 0.2s ease; }
 .tab.active { background: var(--surface); color: var(--text-primary); border: 1px solid var(--card-border); border-bottom-color: transparent; }
@@ -6957,4 +6997,120 @@ html, body {
   flex-direction: column;
   height: auto;
   position: relative;
+}
+
+/* === Sidebar layout hard reset (consistent across app pages) === */
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 260px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1.5rem 1rem 1.5rem 1.25rem;
+  transform: translateX(0);
+  z-index: 40;
+  overflow: visible;
+}
+
+.app-sidebar.collapsed {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-fixed-inner,
+.sidebar-inner,
+.sidebar-content {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.app-main {
+  margin-left: 260px;
+}
+
+.app-layout.sidebar-collapsed .app-main {
+  margin-left: 0;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 50;
+}
+
+/* Final sidebar overrides to enforce full-height fixed column across app pages */
+.app-sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 260px !important;
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  background: var(--surface) !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 1.5rem 1rem 1.5rem 1.25rem !important;
+  transform: translateX(0) !important;
+  z-index: 40 !important;
+  overflow: visible !important;
+}
+
+.app-sidebar.collapsed {
+  transform: translateX(-110%) !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+
+.sidebar-fixed-inner,
+.sidebar-inner,
+.sidebar-content {
+  position: relative !important;
+  flex: 1 !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
+}
+
+.app-layout {
+  display: flex !important;
+  min-height: 100vh !important;
+  overflow: visible !important;
+}
+
+.app-main {
+  margin-left: 260px !important;
+}
+
+.app-layout.sidebar-collapsed .app-main {
+  margin-left: 0 !important;
+}
+
+.sidebar-toggle {
+  position: fixed !important;
+  top: 16px !important;
+  left: 16px !important;
+  z-index: 50 !important;
 }
