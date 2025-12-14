@@ -6936,3 +6936,22 @@ html, body {
     min-height: 300px;
   }
 }
+
+/* Keep sidebar visible while scrolling (desktop) */
+@media (min-width: 961px) {
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: visible;
+    align-self: flex-start;
+  }
+
+  .sidebar-nav,
+  .sidebar-content {
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+}
