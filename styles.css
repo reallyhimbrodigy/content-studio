@@ -6812,3 +6812,127 @@ body.no-scroll {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --------------------------------------------
+   Mobile optimizations for Calendar page
+-------------------------------------------- */
+html, body {
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  /* Keep sidebar off-canvas when closed and ensure menu is always visible */
+  .app-layout {
+    grid-template-columns: 0 1fr;
+  }
+
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    transform: translateX(-110%);
+    border-radius: 0 20px 20px 0;
+  }
+
+  .app-sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+
+  .sidebar-toggle {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 60;
+  }
+
+  /* Calendar hero and controls */
+  .hero {
+    padding: 1.25rem;
+  }
+
+  .hero h1 {
+    font-size: 1.85rem;
+  }
+
+  .hero__cta,
+  .hero__features,
+  .calendar__filters,
+  .calendar__controls {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .hero__cta input,
+  .hero__cta button,
+  .calendar__filters > *,
+  .calendar__controls > button,
+  .calendar__controls > .btn,
+  .calendar__controls > .ghost {
+    width: 100%;
+  }
+
+  .calendar__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .calendar__meta,
+  .calendar__actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* Grid and cards */
+  .calendar__grid {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .calendar-card {
+    width: 100%;
+    min-height: 320px;
+  }
+
+  .calendar-card__actions,
+  .publish-card .actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .calendar-card__actions button,
+  .publish-card .actions button {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  /* Stack main action buttons */
+  .calendar__controls button,
+  .calendar__controls .btn,
+  .calendar__controls .ghost,
+  #calendar-export-usage {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero {
+    padding: 1rem;
+  }
+
+  .hero h1 {
+    font-size: 1.65rem;
+  }
+
+  .hero-tagline {
+    font-size: 0.95rem;
+  }
+
+  .calendar-card {
+    min-height: 300px;
+  }
+}
