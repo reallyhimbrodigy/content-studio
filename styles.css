@@ -2892,14 +2892,6 @@ body {
   justify-content: center;
 }
 
-.landing-hero__panel {
-  width: 100%;
-  max-width: 640px;
-  position: relative;
-  z-index: 1;
-  max-height: 70vh;
-}
-
 .hero-panel {
   background: linear-gradient(160deg, rgba(127, 90, 240, 0.12), rgba(12, 12, 20, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.08);
