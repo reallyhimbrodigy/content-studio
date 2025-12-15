@@ -2762,9 +2762,9 @@ body {
 
 .landing-hero {
   gap: clamp(2rem, 4vw, 3.5rem);
-  max-width: 1280px;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: clamp(32px, 6vw, 72px) clamp(20px, 4vw, 48px);
+  padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px);
 }
 
 .landing-hero__grid {
@@ -2801,6 +2801,7 @@ body {
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
+  max-height: 70vh;
 }
 
 @media (min-width: 1024px) {
@@ -2896,6 +2897,7 @@ body {
   max-width: 640px;
   position: relative;
   z-index: 1;
+  max-height: 70vh;
 }
 
 .hero-panel {
@@ -2904,6 +2906,8 @@ body {
   border-radius: 28px;
   padding: 1.75rem;
   box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5);
+  height: 100%;
+  overflow: auto;
 }
 
 .hero-panel__header {
@@ -2939,8 +2943,8 @@ body {
   list-style: none;
   padding: 0;
   margin: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1rem;
 }
 
