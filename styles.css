@@ -7086,11 +7086,14 @@ html, body {
 .sidebar-fixed-inner,
 .sidebar-inner,
 .sidebar-content {
-  position: relative !important;
-  flex: 1 !important;
-  height: 100% !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 260px !important;
+  height: 100vh !important;
   display: flex !important;
   flex-direction: column !important;
+  justify-content: flex-start !important;
   overflow: visible !important;
 }
 
