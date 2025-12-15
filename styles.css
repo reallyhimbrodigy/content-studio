@@ -7091,3 +7091,34 @@ html, body {
   left: 16px;
   z-index: 50;
 }
+
+/* Landing preview overrides (landing-only) */
+.landing-samples__cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+  position: relative;
+  z-index: 0;
+  left: auto;
+  right: auto;
+  top: auto;
+  transform: none;
+}
+
+.landing-samples__cards .sample-card {
+  width: 100%;
+  max-height: 520px;
+  overflow: hidden;
+  padding: 1.25rem 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .landing-samples__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-samples__cards .sample-card {
+    max-height: none;
+  }
+}
