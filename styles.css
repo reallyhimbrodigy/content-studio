@@ -7071,7 +7071,7 @@ html, body {
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  padding: 1.5rem 1rem 1.5rem 1.25rem !important;
+  padding: 64px 1rem 1.5rem 1.25rem !important;
   transform: translateX(0) !important;
   z-index: 40 !important;
   overflow: visible !important;
@@ -7113,7 +7113,7 @@ html, body {
 
 .sidebar-toggle {
   position: fixed !important;
-  top: 16px !important;
-  left: 16px !important;
-  z-index: 50 !important;
+  top: 20px !important;
+  left: 20px !important;
+  z-index: 1001 !important;
 }
