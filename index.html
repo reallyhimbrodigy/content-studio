@@ -29,20 +29,29 @@
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
     <style>
-      /* LANDING PAGE — widen preview cards and prevent overlap */
+      /* LANDING: preview cards belong under hero, never overlapping sections */
+      [view="landing"] .landing-hero {
+        padding-bottom: 32px;
+      }
+
+      [view="landing"] .landing-preview-cards,
       [view="landing"] .preview-cards,
       [view="landing"] .cards-preview,
       [view="landing"] .content-preview {
         position: static !important;
-        display: grid !important;
-        grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr) !important;
-        gap: 20px !important;
+        inset: auto !important;
+        transform: none !important;
+        margin-top: 24px !important;
+        margin-bottom: 48px !important;
         width: 100% !important;
-        max-width: 900px !important;
-        margin: 0 !important;
+        max-width: 980px !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 20px !important;
         align-items: start !important;
       }
 
+      [view="landing"] .landing-preview-cards > *,
       [view="landing"] .preview-cards > *,
       [view="landing"] .cards-preview > *,
       [view="landing"] .content-preview > * {
@@ -55,6 +64,7 @@
       }
 
       @media (max-width: 900px) {
+        [view="landing"] .landing-preview-cards,
         [view="landing"] .preview-cards,
         [view="landing"] .cards-preview,
         [view="landing"] .content-preview {
@@ -116,93 +126,89 @@
                 </div>
               </div>
             </div>
-          <div class="landing-hero__panel">
-            <div class="hero-panel">
-              <div class="landing-samples__cards hero-panel__list">
-                <article class="calendar-card sample-card" data-pillar="Authority">
-                  <div class="calendar-card__day">01</div>
-                  <div class="calendar-card__entries">
-                    <div class="calendar-card__entry">
-                      <h3 class="calendar-card__title">Behind-the-scenes carousel</h3>
-                      <span class="calendar-card__type">Carousel</span>
-                      <p class="calendar-card__caption">Walk through your storyboard process from messy brainstorm to polished hooks, then invite followers to DM “PLAN” for the swipe file.</p>
-                      <div class="calendar-card__hashtags">#CreatorOps #ContentBehindScenes</div>
-                      <span class="calendar-card__format">Format: Instagram carousel</span>
-                      <span class="calendar-card__cta">CTA: DM “PLAN” for the prompt stack</span>
-                      <div class="calendar-card__story"><strong>Story Prompt:</strong> Snap each production phase, highlight a mistake, and end with the lesson learned.</div>
-                      <div class="calendar-card__design"><strong>Design Notes:</strong> Use sticky-note overlays + checklist icons across frames.</div>
-                      <div class="calendar-card__repurpose"><strong>Repurpose:</strong> Convert top frames into Reel scenes • Expand into newsletter tutorial.</div>
-                      <div class="calendar-card__analytics"><strong>Analytics:</strong> Track swipe-through rate + replies tagging “PLAN”.</div>
-                      <div class="calendar-card__engagement"><strong>Engagement Script:</strong> “Drop your current workflow bottleneck and I’ll send a fix.”</div>
-                      <div class="calendar-card__variants">
-                        <strong>Platform Variants</strong>
-                        <div><em>Instagram:</em> Invite people to screenshot the checklist.</div>
-                        <div><em>TikTok:</em> Quick BTS montage + voiceover tip.</div>
-                        <div><em>LinkedIn:</em> Frame as “Process → Insight → CTA” in text post.</div>
-                      </div>
-                      <div class="calendar-card__audio"><strong>Audio:</strong> Ambient synth pad underneath voiceover.</div>
-                      <div class="calendar-card__followup"><strong>Follow-up:</strong> Send DM template to everyone who comments “PLAN”.</div>
-                      <div class="calendar-card__actions calendar-card__actions--global">
-                        <button class="ghost" type="button">Copy full card</button>
-                        <button class="ghost" type="button">Regenerate</button>
-                        <button class="ghost" type="button">Download</button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-
-                <article class="calendar-card sample-card" data-pillar="Demand">
-                  <div class="calendar-card__day">02</div>
-                  <div class="calendar-card__entries">
-                    <div class="calendar-card__entry">
-                      <h3 class="calendar-card__title">Launch-day teaser</h3>
-                      <span class="calendar-card__type">Video</span>
-                      <p class="calendar-card__caption">Drop a countdown Reel with a comment magnet question to boost saves and replies.</p>
-                      <div class="calendar-card__hashtags">#LaunchReady #SocialSystem</div>
-                      <span class="calendar-card__format">Format: Countdown Reel</span>
-                      <span class="calendar-card__cta">CTA: “Comment READY to get early access link.”</span>
-                      <div class="calendar-card__story"><strong>Story Prompt:</strong> Show calendar view, sticky notes, and final hook.</div>
-                      <div class="calendar-card__design"><strong>Design Notes:</strong> Use animated timer overlay + punch-in text for hooks.</div>
-                      <div class="calendar-card__repurpose"><strong>Repurpose:</strong> Turn key frames into Stories sequence with polls.</div>
-                      <div class="calendar-card__analytics"><strong>Analytics:</strong> Monitor average watch time + number of “READY” comments.</div>
-                      <div class="calendar-card__engagement">
-                        <strong>Engagement Scripts</strong>
-                        <div><em>Comment:</em> “Dropping your early link — watch your DMs.”</div>
-                        <div><em>DM:</em> “Here’s the beta pass + first task to try.”</div>
-                      </div>
-                      <div class="calendar-card__video">
-                        <strong>Reel Script</strong>
-                        <div><em>Hook:</em> “3 days until the calendar that plans itself drops.”</div>
-                        <div><em>Body:</em> “Peek the exact cards, show the Brand Brain prompt, flash the regen feature.”</div>
-                        <div><em>CTA:</em> “Comment READY so I can DM the early access link.”</div>
-                      </div>
-                      <div class="calendar-card__variants">
-                        <strong>Platform Variants</strong>
-                        <div><em>Instagram:</em> Reel + Stories countdown sticker.</div>
-                        <div><em>TikTok:</em> Split-screen reaction format showing prompts filling in.</div>
-                        <div><em>LinkedIn:</em> Text post with GIF of timeline.</div>
-                      </div>
-                      <div class="calendar-card__posting-tip"><strong>Posting Tip:</strong> Pin to top of profile through launch window.</div>
-                      <div class="calendar-card__weekly-promo"><strong>Promo:</strong> “First 25 signups get free Brand Brain ingest.”</div>
-                      <div class="calendar-card__followup"><strong>Follow-up:</strong> DM automation to deliver beta survey once they watch.</div>
-                      <div class="calendar-card__actions calendar-card__actions--global">
-                        <button class="ghost" type="button">Copy full card</button>
-                        <button class="ghost" type="button">Regenerate</button>
-                        <button class="ghost" type="button">Download</button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              </div>
-              <form class="landing-samples__form hero-panel__cta" action="/auth.html?mode=login">
-                <label for="landing-sample-input" class="input-label">Imagine this for your niche</label>
-                <input id="landing-sample-input" class="generate-input" type="text" placeholder="e.g., med spas, fintech founders, indie games" />
-                <button class="primary primary-large" type="submit">Generate calendar</button>
-              </form>
-            </div>
           </div>
-        </div>
-      </header>
+          <div class="landing-samples__cards hero-panel__list landing-preview-cards">
+            <article class="calendar-card sample-card" data-pillar="Authority">
+              <div class="calendar-card__day">01</div>
+              <div class="calendar-card__entries">
+                <div class="calendar-card__entry">
+                  <h3 class="calendar-card__title">Behind-the-scenes carousel</h3>
+                  <span class="calendar-card__type">Carousel</span>
+                  <p class="calendar-card__caption">Walk through your storyboard process from messy brainstorm to polished hooks, then invite followers to DM “PLAN” for the swipe file.</p>
+                  <div class="calendar-card__hashtags">#CreatorOps #ContentBehindScenes</div>
+                  <span class="calendar-card__format">Format: Instagram carousel</span>
+                  <span class="calendar-card__cta">CTA: DM “PLAN” for the prompt stack</span>
+                  <div class="calendar-card__story"><strong>Story Prompt:</strong> Snap each production phase, highlight a mistake, and end with the lesson learned.</div>
+                  <div class="calendar-card__design"><strong>Design Notes:</strong> Use sticky-note overlays + checklist icons across frames.</div>
+                  <div class="calendar-card__repurpose"><strong>Repurpose:</strong> Convert top frames into Reel scenes • Expand into newsletter tutorial.</div>
+                  <div class="calendar-card__analytics"><strong>Analytics:</strong> Track swipe-through rate + replies tagging “PLAN”.</div>
+                  <div class="calendar-card__engagement"><strong>Engagement Script:</strong> “Drop your current workflow bottleneck and I’ll send a fix.”</div>
+                  <div class="calendar-card__variants">
+                    <strong>Platform Variants</strong>
+                    <div><em>Instagram:</em> Invite people to screenshot the checklist.</div>
+                    <div><em>TikTok:</em> Quick BTS montage + voiceover tip.</div>
+                    <div><em>LinkedIn:</em> Frame as “Process → Insight → CTA” in text post.</div>
+                  </div>
+                  <div class="calendar-card__audio"><strong>Audio:</strong> Ambient synth pad underneath voiceover.</div>
+                  <div class="calendar-card__followup"><strong>Follow-up:</strong> Send DM template to everyone who comments “PLAN”.</div>
+                  <div class="calendar-card__actions calendar-card__actions--global">
+                    <button class="ghost" type="button">Copy full card</button>
+                    <button class="ghost" type="button">Regenerate</button>
+                    <button class="ghost" type="button">Download</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="calendar-card sample-card" data-pillar="Demand">
+              <div class="calendar-card__day">02</div>
+              <div class="calendar-card__entries">
+                <div class="calendar-card__entry">
+                  <h3 class="calendar-card__title">Launch-day teaser</h3>
+                  <span class="calendar-card__type">Video</span>
+                  <p class="calendar-card__caption">Drop a countdown Reel with a comment magnet question to boost saves and replies.</p>
+                  <div class="calendar-card__hashtags">#LaunchReady #SocialSystem</div>
+                  <span class="calendar-card__format">Format: Countdown Reel</span>
+                  <span class="calendar-card__cta">CTA: “Comment READY to get early access link.”</span>
+                  <div class="calendar-card__story"><strong>Story Prompt:</strong> Show calendar view, sticky notes, and final hook.</div>
+                  <div class="calendar-card__design"><strong>Design Notes:</strong> Use animated timer overlay + punch-in text for hooks.</div>
+                  <div class="calendar-card__repurpose"><strong>Repurpose:</strong> Turn key frames into Stories sequence with polls.</div>
+                  <div class="calendar-card__analytics"><strong>Analytics:</strong> Monitor average watch time + number of “READY” comments.</div>
+                  <div class="calendar-card__engagement">
+                    <strong>Engagement Scripts</strong>
+                    <div><em>Comment:</em> “Dropping your early link — watch your DMs.”</div>
+                    <div><em>DM:</em> “Here’s the beta pass + first task to try.”</div>
+                  </div>
+                  <div class="calendar-card__video">
+                    <strong>Reel Script</strong>
+                    <div><em>Hook:</em> “3 days until the calendar that plans itself drops.”</div>
+                    <div><em>Body:</em> “Peek the exact cards, show the Brand Brain prompt, flash the regen feature.”</div>
+                    <div><em>CTA:</em> “Comment READY so I can DM the early access link.”</div>
+                  </div>
+                  <div class="calendar-card__variants">
+                    <strong>Platform Variants</strong>
+                    <div><em>Instagram:</em> Reel + Stories countdown sticker.</div>
+                    <div><em>TikTok:</em> Split-screen reaction format showing prompts filling in.</div>
+                    <div><em>LinkedIn:</em> Text post with GIF of timeline.</div>
+                  </div>
+                  <div class="calendar-card__posting-tip"><strong>Posting Tip:</strong> Pin to top of profile through launch window.</div>
+                  <div class="calendar-card__weekly-promo"><strong>Promo:</strong> “First 25 signups get free Brand Brain ingest.”</div>
+                  <div class="calendar-card__followup"><strong>Follow-up:</strong> DM automation to deliver beta survey once they watch.</div>
+                  <div class="calendar-card__actions calendar-card__actions--global">
+                    <button class="ghost" type="button">Copy full card</button>
+                    <button class="ghost" type="button">Regenerate</button>
+                    <button class="ghost" type="button">Download</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+          <form class="landing-samples__form hero-panel__cta" action="/auth.html?mode=login">
+            <label for="landing-sample-input" class="input-label">Imagine this for your niche</label>
+            <input id="landing-sample-input" class="generate-input" type="text" placeholder="e.g., med spas, fintech founders, indie games" />
+            <button class="primary primary-large" type="submit">Generate calendar</button>
+          </form>
+        </header>
 
         <section class="landing-value" id="product">
         <div class="landing-value__intro">
