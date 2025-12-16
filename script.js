@@ -2660,19 +2660,27 @@ function updateAccountPlanInfo(state) {
 
 async function loadCalendarExportUsage() {
   if (!calendarExportUsageEl) return;
+  if (window.cachedUserIsPro) {
+    calendarExportUsageEl.textContent = '';
+    calendarExportUsageEl.style.display = 'none';
+    return;
+  }
   try {
     const res = await fetchWithAuth('/api/calendar/export-usage', { method: 'GET' });
     if (!res.ok) return;
     const json = await res.json().catch(() => ({}));
     if (!json || json.ok !== true) return;
 
-    if (json.isPro) {
+    const userIsPro = json.isPro || window.cachedUserIsPro;
+    if (userIsPro) {
       calendarExportUsageEl.textContent = '';
+      calendarExportUsageEl.style.display = 'none';
       return;
     }
 
     const used = json.exportsUsed ?? 0;
     calendarExportUsageEl.textContent = `Free exports used: ${used} of 3`;
+    calendarExportUsageEl.style.display = '';
   } catch (err) {
     // Silently ignore; indicator is optional
   }
