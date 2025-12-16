@@ -6559,6 +6559,17 @@ body.no-scroll {
   margin: 0 auto;
 }
 
+body.analytics-view .page-container {
+  width: 100%;
+  max-width: none;
+}
+
+body.analytics-view .page-content {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
 .analytics-section {
   margin-bottom: 24px;
   padding: 16px 18px;

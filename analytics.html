@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="styles.css" />
     <script src="assets/vendor/supabase.js"></script>
   </head>
-  <body>
+  <body class="analytics-view">
     <div class="app-shell">
       <div class="app-layout">
         <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
@@ -46,6 +46,25 @@
                     </p>
                     <button class="primary brand-brain-btn" id="connect-account">Connect Account</button>
                     <button class="primary brand-brain-btn" id="refresh-all-btn">Refresh All Data</button>
+                  </div>
+                  <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
+                    <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
+                    <div class="profile-wrapper">
+                      <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
+                      <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                        <span id="profile-initial" aria-hidden="true">P</span>
+                      </button>
+                      <div id="profile-menu" class="profile-menu" style="display:none;">
+                        <div id="profile-dropdown" class="profile-dropdown">
+                          <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
+                          <button id="account-overview-btn" class="profile-menu-item">Account</button>
+                          <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
+                          <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
+                          <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
+                          <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="analytics-connected-strip" aria-label="Connected accounts" id="connected-accounts">
