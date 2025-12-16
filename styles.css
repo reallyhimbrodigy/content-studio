@@ -7163,3 +7163,42 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+/* LANDING: force equal-height preview cards */
+#landing-preview-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+#landing-preview-cards .landing-preview-card {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-self: stretch;
+}
+
+/* critical: allow inner content to flex without collapsing height */
+#landing-preview-cards .landing-preview-card > * {
+  min-height: 0;
+}
+
+/* if any inner wrapper is using fit-content/auto and shrinking, force it to fill */
+#landing-preview-cards .landing-preview-card .content-card,
+#landing-preview-cards .landing-preview-card .card,
+#landing-preview-cards .landing-preview-card .post-card {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
