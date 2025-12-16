@@ -4743,6 +4743,62 @@ body.prefers-reduced-motion *::after {
   font-size: 1.15rem;
   margin: 0;
 }
+.calendar-card__primary-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+.calendar-card__info-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+.calendar-card__info-row strong {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+.calendar-card__hooks {
+  margin-top: 0.25rem;
+  padding-bottom: 0.45rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--card-border);
+}
+.calendar-card__hooks strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+  font-size: 0.92rem;
+}
+.calendar-card__hook-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.18rem;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.calendar-card__video-script {
+  display: grid;
+  gap: 0.15rem;
+}
+.calendar-card__video-script div {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.calendar-card__video-script strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
 
 .calendar-card__type {
   display: inline-block;
@@ -4770,6 +4826,58 @@ body.prefers-reduced-motion *::after {
   gap: 0.5rem;
 }
 
+.calendar-card__caption-quick-copy {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-start;
+}
+.calendar-card__caption-quick-copy:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.calendar-card:not(.calendar-card--expanded) .calendar-card__caption-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.calendar-card:not(.calendar-card--expanded) .calendar-card__primary-meta {
+  margin-bottom: 0.9rem;
+}
+
+.calendar-card:not(.calendar-card--expanded) .calendar-card__hooks,
+.calendar-card:not(.calendar-card--expanded) .calendar-card__execution-notes,
+.calendar-card:not(.calendar-card--expanded) .calendar-card__cta-action {
+  margin-bottom: 0.9rem;
+}
+
+.calendar-card:not(.calendar-card--expanded) .calendar-card__hooks strong,
+.calendar-card:not(.calendar-card--expanded) .calendar-card__execution-notes-title,
+.calendar-card:not(.calendar-card--expanded) .calendar-card__cta-action strong,
+.calendar-card:not(.calendar-card--expanded) .calendar-card__info-row strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.calendar-card:not(.calendar-card--expanded) .calendar-card__info-row span {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-primary);
+  word-break: break-word;
+  white-space: normal;
+}
+
 .caption-copy-btn {
   flex-shrink: 0;
 }
@@ -4779,6 +4887,32 @@ body.prefers-reduced-motion *::after {
   font-size: 0.97rem;
   margin-bottom: 0.25rem;
   margin-top: 0.25rem;
+  font-weight: 600;
+}
+
+.calendar-card__execution-notes {
+  margin: 0.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+.calendar-card__execution-notes-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.calendar-card__execution-note {
+  display: flex;
+  gap: 0.3rem;
+  align-items: baseline;
+}
+.calendar-card__execution-note strong {
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -4921,6 +5055,12 @@ body.prefers-reduced-motion *::after {
   padding: 0.45rem 0.55rem;
   line-height: 1.5;
   word-break: break-word;
+}
+.calendar-card__audio {
+  font-size: 0.88rem;
+}
+.calendar-card__audio .detail-text {
+  opacity: 0.8;
 }
 
 .calendar-card__caption-variations em,

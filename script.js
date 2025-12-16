@@ -331,6 +331,52 @@ const DESIGN_FREE_MONTHLY_QUOTA = 3;
 const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
 
+function normalizeContentCard(card) {
+  const base = card && typeof card === 'object' ? card : {};
+  const category = (base.category || base.type || '').toString();
+  const lowerCategory = category.toLowerCase();
+  const hasEducational = lowerCategory.includes('educational');
+  const angle = typeof base.angle === 'string' && base.angle.trim()
+    ? base.angle
+    : hasEducational
+      ? 'Authority-building framework'
+      : 'Myth-busting education';
+  const objective = typeof base.objective === 'string' && base.objective.trim()
+    ? base.objective
+    : hasEducational
+      ? 'Drive saves + profile visits (education -> authority)'
+      : 'Drive comments + shares';
+  const successSignal = typeof base.successSignal === 'string' && base.successSignal.trim()
+    ? base.successSignal
+    : 'Saves ≥ 5% of views • Comments ≥ 2% of views';
+  const pinnedComment = typeof base.pinnedComment === 'string' && base.pinnedComment.trim()
+    ? base.pinnedComment
+    : 'Comment "MEAL" and I\'ll DM my pre-game checklist.';
+
+  let hookOptions = [];
+  if (Array.isArray(base.hookOptions)) {
+    hookOptions = base.hookOptions;
+  } else if (typeof base.hookOptions === 'string') {
+    hookOptions = base.hookOptions.split(/[\n•]+/).map((h) => h.trim()).filter(Boolean);
+  }
+  if (!hookOptions.length) {
+    hookOptions = [
+      'Most athletes are underfueling before games.',
+      'This is why your training isn’t translating to performance.',
+      'Your diet might be costing you points.',
+    ];
+  }
+
+  return {
+    ...base,
+    angle,
+    objective,
+    successSignal,
+    pinnedComment,
+    hookOptions,
+  };
+}
+
 /**
  * @typedef {'draft'|'ready'|'exported'} AssetStatus
  * @typedef {Object} DesignAsset
@@ -4751,6 +4797,7 @@ const createCard = (post) => {
   return card;
 
   function buildEntry(entry, idx) {
+    const normalizedEntry = normalizeContentCard(entry);
     const entryEl = document.createElement('div');
     entryEl.className = 'calendar-card__entry';
     entryEl.dataset.entryIndex = String(idx);
@@ -4775,6 +4822,7 @@ const createCard = (post) => {
       pillar,
       storyPrompt,
       designNotes,
+      postingTimeTip,
       repurpose,
       analytics,
       engagementScripts,
@@ -4789,6 +4837,72 @@ const createCard = (post) => {
       card.dataset.pillar = pillar;
     }
 
+    const infoRows = document.createElement('div');
+    infoRows.className = 'calendar-card__primary-meta';
+    const categoryText = (normalizedEntry.category || entry.category || pillar || '').toString();
+    const hasEducationalPillar = categoryText.toLowerCase().includes('educational');
+    const angleValue = normalizedEntry.angle || (hasEducationalPillar ? 'Authority-building framework' : 'Myth-busting education');
+    const objectiveValue = normalizedEntry.objective || 'Drive saves + profile visits (education -> authority)';
+    const targetSavesValue =
+      normalizedEntry.targetSaves ||
+      entry.targetSaves ||
+      '≥ 5% of views';
+    const targetCommentsValue =
+      normalizedEntry.targetComments ||
+      entry.targetComments ||
+      '≥ 2% of views';
+    const pinnedValue = normalizedEntry.pinnedComment || 'Comment "MEAL" and I\'ll DM my pre-game checklist.';
+
+    const addInfoRow = (label, value) => {
+      if (!value) return;
+      const row = document.createElement('div');
+      row.className = 'calendar-card__info-row';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = `${label}:`;
+      const textEl = document.createElement('span');
+      textEl.textContent = value;
+      row.append(labelEl, textEl);
+      infoRows.appendChild(row);
+    };
+
+    addInfoRow('Angle', angleValue);
+    addInfoRow('Objective', objectiveValue);
+    addInfoRow('Target saves', targetSavesValue);
+    addInfoRow('Target comments', targetCommentsValue);
+    addInfoRow('Pinned comment', pinnedValue);
+
+    const hooksEl = document.createElement('div');
+    hooksEl.className = 'calendar-card__hooks';
+    const hooksLabel = document.createElement('strong');
+    hooksLabel.textContent = 'Hook options';
+    const hooksList = document.createElement('ul');
+    hooksList.className = 'calendar-card__hook-list';
+    const normalizeHooks = (source) => {
+      if (Array.isArray(source)) {
+        return source.map((item) => String(item || '').trim()).filter(Boolean);
+      }
+      if (typeof source === 'string') {
+        return source
+          .split(/[\n•]/)
+          .map((item) => String(item || '').trim())
+          .filter(Boolean);
+      }
+      return [];
+    };
+    const fallbackHooks = [
+      'Most athletes are underfueling before games.',
+      'This is why your training isn’t translating to performance.',
+      'Your diet might be costing you points.',
+    ];
+    const normalizedHooks = normalizeHooks(normalizedEntry.hookOptions);
+    const hookValues = (normalizedHooks.length ? normalizedHooks : fallbackHooks).slice(0, 3);
+    hookValues.forEach((hook) => {
+      const li = document.createElement('li');
+      li.textContent = hook;
+      hooksList.appendChild(li);
+    });
+    hooksEl.append(hooksLabel, hooksList);
+
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';
     ideaEl.textContent = idea || title || '';
@@ -4801,7 +4915,8 @@ const createCard = (post) => {
     captionRow.className = 'calendar-card__caption-row';
     const captionEl = document.createElement('p');
     captionEl.className = 'calendar-card__caption';
-    captionEl.textContent = caption || description || '';
+    const canonicalCaption = (caption || description || '').trim();
+    captionEl.textContent = canonicalCaption;
     const captionCopyBtn = document.createElement('button');
     captionCopyBtn.type = 'button';
     captionCopyBtn.className = 'detail-copy-btn caption-copy-btn';
@@ -4812,19 +4927,75 @@ const createCard = (post) => {
     </svg>`;
     captionCopyBtn.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(caption || description || '');
+        await navigator.clipboard.writeText(canonicalCaption);
         captionCopyBtn.classList.add('copied');
         setTimeout(() => captionCopyBtn.classList.remove('copied'), 800);
       } catch (e) {}
     });
-    captionRow.append(captionEl, captionCopyBtn);
+    const captionQuickCopyBtn = document.createElement('button');
+    captionQuickCopyBtn.type = 'button';
+    captionQuickCopyBtn.className = 'calendar-card__caption-quick-copy';
+    captionQuickCopyBtn.textContent = 'Copy Caption';
+    let captionCopyTimer = null;
+    const resetCaptionQuickCopyLabel = (label) => {
+      if (captionCopyTimer) clearTimeout(captionCopyTimer);
+      captionQuickCopyBtn.textContent = label;
+      captionCopyTimer = setTimeout(() => {
+        captionQuickCopyBtn.textContent = 'Copy Caption';
+      }, 1500);
+    };
+    const fallbackCopyText = (text) => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      let success = false;
+      try {
+        success = document.execCommand('copy');
+      } catch (err) {
+        success = false;
+      }
+      document.body.removeChild(textarea);
+      return success;
+    };
+    const copyTextWithFallback = async (text) => {
+      if (!text) return false;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {}
+      return fallbackCopyText(text);
+    };
+    captionQuickCopyBtn.addEventListener('click', async () => {
+      if (!canonicalCaption) {
+        resetCaptionQuickCopyLabel('No caption');
+        return;
+      }
+      captionQuickCopyBtn.disabled = true;
+      const copied = await copyTextWithFallback(canonicalCaption);
+      captionQuickCopyBtn.disabled = false;
+      resetCaptionQuickCopyLabel(copied ? 'Copied' : 'Copy failed');
+    });
+    captionRow.append(captionEl, captionCopyBtn, captionQuickCopyBtn);
 
     const hashtagsEl = document.createElement('div');
     hashtagsEl.className = 'calendar-card__hashtags';
-    if (Array.isArray(hashtags)) {
-      hashtagsEl.textContent = hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ');
-    } else if (typeof hashtags === 'string') {
-      hashtagsEl.textContent = hashtags;
+    const normalizeTags = () => {
+      if (Array.isArray(hashtags)) return hashtags;
+      if (typeof hashtags === 'string') return hashtags.split(/[\s,\\n]+/);
+      return [];
+    };
+    const tagArr = normalizeTags().map((h) => h.trim()).filter(Boolean);
+    if (tagArr.length) {
+      const displayTags = tagArr.slice(0, 5).map((h) => (h.startsWith('#') ? h : `#${h}`));
+      const remaining = tagArr.length - displayTags.length;
+      hashtagsEl.textContent = remaining > 0 ? `${displayTags.join(' ')} +${remaining} more` : displayTags.join(' ');
     }
 
     const createDetailRow = (label, value, className) => {
@@ -4977,7 +5148,6 @@ const createCard = (post) => {
     };
 
     const formatEl = createDetailRow('Format', format, 'calendar-card__format');
-    const ctaEl = createDetailRow('CTA', cta, 'calendar-card__cta');
 
     const storyPromptText = storyPrompt || '';
     const storyPromptEl = storyPromptText ? createDetailRow('Story Prompt', storyPromptText, 'calendar-card__story') : null;
@@ -4986,7 +5156,7 @@ const createCard = (post) => {
     const designNotesEl = designNotesText ? createDetailRow('Design Notes', designNotesText, 'calendar-card__design') : null;
 
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
-    const repurposeEl = repurposeText ? createDetailRow('Repurpose', repurposeText, 'calendar-card__repurpose') : null;
+    const repurposeEl = repurposeText || '';
 
     let engagementText = '';
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
@@ -4997,7 +5167,7 @@ const createCard = (post) => {
     } else if (engagementScript) {
       engagementText = engagementScript;
     }
-    const engagementEl = engagementText ? createDetailRow('Engagement', engagementText, 'calendar-card__engagement') : null;
+    const engagementEl = engagementText || '';
 
     const promoSlotEl = promoSlot
       ? (() => {
@@ -5010,13 +5180,91 @@ const createCard = (post) => {
 
     const weeklyPromoEl = weeklyPromo ? createDetailRow('Promo', weeklyPromo, 'calendar-card__weekly-promo') : null;
 
-    const videoScriptText =
-      videoScript && (videoScript.hook || videoScript.body || videoScript.cta)
-        ? [videoScript.hook && `Hook: ${videoScript.hook}`, videoScript.body && `Body: ${videoScript.body}`, videoScript.cta && `CTA: ${videoScript.cta}`]
-            .filter(Boolean)
-            .join(' | ')
-        : '';
-    const videoScriptEl = videoScriptText ? createDetailRow(format === 'Reel' ? 'Reel Script' : 'Video Script', videoScriptText, 'calendar-card__video') : null;
+    const createExecutionNoteLine = (label, value) => {
+      const row = document.createElement('div');
+      row.className = 'calendar-card__execution-note';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = `${label}:`;
+      const textEl = document.createElement('span');
+      textEl.textContent = value;
+      row.append(labelEl, textEl);
+      return row;
+    };
+    const executionNoteLines = [];
+    if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
+    if (postingTimeTip) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
+    if (designNotes) executionNoteLines.push(createExecutionNoteLine('Design notes', designNotes));
+    const executionNotesEl = executionNoteLines.length
+      ? (() => {
+          const container = document.createElement('div');
+          container.className = 'calendar-card__execution-notes';
+          const title = document.createElement('div');
+          title.className = 'calendar-card__execution-notes-title';
+          title.textContent = 'Execution Notes';
+          container.append(title, ...executionNoteLines);
+          return container;
+        })()
+      : null;
+
+    const createPrimaryCtaRow = (value) => {
+      const row = document.createElement('div');
+      row.className = 'calendar-card__cta-action';
+      const label = document.createElement('strong');
+      label.textContent = 'CTA:';
+      const text = document.createElement('span');
+      text.textContent = value;
+      row.append(label, text);
+      return row;
+    };
+    const collapsedCtaEl = cta ? createPrimaryCtaRow(cta) : null;
+
+    const buildReelScript = () => {
+      const label = format === 'Reel' ? 'Reel Script' : 'Video Script';
+      if (!videoScript) return null;
+      const structured = {
+        hook: videoScript.hook || '',
+        body: videoScript.body || '',
+        cta: videoScript.cta || '',
+      };
+      if (!structured.hook && !structured.body && !structured.cta && typeof videoScript === 'string') {
+        const raw = videoScript;
+        const normalized = raw.replace(/\u2022/g, '|');
+        const hookMatch = normalized.match(/hook:\s*([^|\\n]*)(?:\||\\n|$)/i);
+        const bodyMatch = normalized.match(/body:\s*([^|\\n]*)(?:\||\\n|$)/i);
+        const ctaMatch = normalized.match(/cta:\s*([^|\\n]*)(?:\||\\n|$)/i);
+        structured.hook = hookMatch ? hookMatch[1].trim() : '';
+        structured.body = bodyMatch ? bodyMatch[1].trim() : '';
+        structured.cta = ctaMatch ? ctaMatch[1].trim() : '';
+        if (!structured.hook && !structured.cta && !structured.body) {
+          structured.body = raw;
+        }
+      }
+      const row = document.createElement('div');
+      row.className = 'calendar-card__video calendar-card__detail-row';
+      const header = document.createElement('div');
+      header.className = 'detail-row__top';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = `${label}:`;
+      header.append(labelEl);
+      const bodyWrap = document.createElement('div');
+      bodyWrap.className = 'detail-text calendar-card__video-script';
+      const addLine = (prefix, text) => {
+        const line = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = `${prefix}:`;
+        line.append(strong);
+        const span = document.createElement('span');
+        span.textContent = text || '';
+        line.append(span);
+        bodyWrap.append(line);
+      };
+      addLine('Hook', structured.hook || '');
+      addLine('Body', structured.body || '');
+      addLine('CTA', structured.cta || '');
+      row.append(header, bodyWrap);
+      return row;
+    };
+    const videoScriptEl = buildReelScript();
 
     const variantText =
       entry.variants && (entry.variants.igCaption || entry.variants.tiktokCaption || entry.variants.linkedinCaption)
@@ -5028,7 +5276,7 @@ const createCard = (post) => {
             .filter(Boolean)
             .join(' | ')
         : '';
-    const variantsEl = variantText ? createDetailRow('Platform Variants', variantText, 'calendar-card__variants') : null;
+    const variantsEl = variantText || '';
     const assetsEl = null; // Calendar asset cards hidden
 
     const actionsEl = document.createElement('div');
@@ -5175,17 +5423,16 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
-    if (window.cachedUserIsPro && entry.suggestedAudio) {
-      proDetailNodes.push(createDetailRow('Suggested audio', entry.suggestedAudio, 'calendar-card__audio'));
-    }
     if (window.cachedUserIsPro && entry.postingTimeTip) {
       proDetailNodes.push(createDetailRow('Posting time tip', entry.postingTimeTip, 'calendar-card__posting-tip'));
     }
-    if (window.cachedUserIsPro && entry.storyPromptExpanded) {
-      proDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
+    const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
+    const hiddenDetailNodes = [];
+    if (window.cachedUserIsPro && entry.suggestedAudio) {
+      hiddenDetailNodes.push(createDetailRow('Audio (optional)', entry.suggestedAudio, 'calendar-card__audio'));
     }
-    if (window.cachedUserIsPro && entry.followUpIdea) {
-      proDetailNodes.push(createDetailRow('Follow-up idea', entry.followUpIdea, 'calendar-card__followup'));
+    if (window.cachedUserIsPro && entry.storyPromptExpanded) {
+      hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
     }
 
     const details = document.createElement('details');
@@ -5196,22 +5443,72 @@ const createCard = (post) => {
     [
       hashtagsEl,
       formatEl,
-      ctaEl,
       storyPromptEl,
       designNotesEl,
-      repurposeEl,
-      engagementEl,
+      (() => {
+        const anyEngagement = engagementEl || followUpText;
+        if (!anyEngagement) return null;
+        const row = document.createElement('div');
+        row.className = 'calendar-card__engagement-loop calendar-card__detail-row';
+        const header = document.createElement('div');
+        header.className = 'detail-row__top';
+        const labelEl = document.createElement('strong');
+        labelEl.textContent = 'Engagement Loop:';
+        header.append(labelEl);
+        const body = document.createElement('div');
+        body.className = 'detail-text';
+        if (engagementEl) {
+          const part = document.createElement('div');
+          part.textContent = engagementEl;
+          body.appendChild(part);
+        }
+        if (followUpText) {
+          const part = document.createElement('div');
+          part.textContent = followUpText;
+          body.appendChild(part);
+        }
+        row.append(header, body);
+        return row;
+      })(),
       promoSlotEl,
       weeklyPromoEl,
       videoScriptEl,
-      variantsEl,
+      (() => {
+        const anyDistribution = repurposeEl || variantsEl;
+        if (!anyDistribution) return null;
+        const row = document.createElement('div');
+        row.className = 'calendar-card__distribution calendar-card__detail-row';
+        const header = document.createElement('div');
+        header.className = 'detail-row__top';
+        const labelEl = document.createElement('strong');
+        labelEl.textContent = 'Distribution Plan:';
+        header.append(labelEl);
+        const body = document.createElement('div');
+        body.className = 'detail-text';
+        if (repurposeEl) {
+          const part = document.createElement('div');
+          part.textContent = repurposeEl;
+          body.appendChild(part);
+        }
+        if (variantsEl) {
+          const part = document.createElement('div');
+          part.textContent = variantsEl;
+          body.appendChild(part);
+        }
+        row.append(header, body);
+        return row;
+      })(),
       assetsEl,
       ...proDetailNodes,
+      ...hiddenDetailNodes,
       actionsEl,
     ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
     details.append(summary, detailsBody);
 
-    entryEl.append(ideaEl, typeEl, captionRow, details);
+    entryEl.append(infoRows, hooksEl, ideaEl, typeEl, captionRow);
+    if (collapsedCtaEl) entryEl.append(collapsedCtaEl);
+    if (executionNotesEl) entryEl.append(executionNotesEl);
+    entryEl.append(details);
     return entryEl;
   }
 };
