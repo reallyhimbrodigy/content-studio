@@ -331,49 +331,82 @@ const DESIGN_FREE_MONTHLY_QUOTA = 3;
 const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
 
+const CARD_STRATEGY_HOOK_FALLBACKS = [
+  'Drop a bold stat that proves this topic matters now.',
+  'Ask the question everyone’s too afraid to say out loud.',
+  'Flip the narrative by exposing the thing most people dismiss.',
+];
+
+function formatStrategyTarget(value) {
+  if (!Number.isFinite(value)) return '';
+  const display = Number.isInteger(value) ? value : Number(value.toFixed(1));
+  return `≥ ${display}% of views`;
+}
+
+function normalizeCardStrategy(rawStrategy = {}, context = {}) {
+  const label = String(context.title || context.idea || context.caption || 'this concept').trim() || 'this concept';
+  const sanitized = typeof rawStrategy === 'object' ? rawStrategy : {};
+  const parsePercent = (val) => {
+    if (Number.isFinite(val)) return val;
+    if (typeof val === 'string') {
+      const num = parseFloat(val.replace(/[^\d.-]+/g, ''));
+      if (Number.isFinite(num)) return num;
+    }
+    return NaN;
+  };
+  const clampPercent = (value) => {
+    if (!Number.isFinite(value)) return null;
+    const bounded = Math.max(1, Math.min(25, value));
+    return Math.round(bounded * 10) / 10;
+  };
+  const hookSources = Array.isArray(sanitized.hook_options) ? sanitized.hook_options : [];
+  const dedupedHooks = [];
+  hookSources.forEach((hook) => {
+    const trimmed = String(hook || '').trim();
+    if (trimmed && !dedupedHooks.includes(trimmed)) {
+      dedupedHooks.push(trimmed);
+    }
+  });
+  while (dedupedHooks.length < 3) {
+    const fallback = CARD_STRATEGY_HOOK_FALLBACKS[dedupedHooks.length % CARD_STRATEGY_HOOK_FALLBACKS.length];
+    dedupedHooks.push(fallback);
+  }
+  const targetSaves = clampPercent(parsePercent(sanitized.target_saves_pct ?? sanitized.target_saves));
+  const targetComments = clampPercent(parsePercent(sanitized.target_comments_pct ?? sanitized.target_comments));
+  return {
+    angle: String(sanitized.angle || `${label} angle`).trim(),
+    objective: String(sanitized.objective || `Drive saves + momentum for ${label}`).trim(),
+    pinned_comment: String(
+      sanitized.pinned_comment || sanitized.pinnedComment || 'Comment "MEAL" and I’ll DM my prep checklist.'
+    ).trim(),
+    target_saves_pct: Number.isFinite(targetSaves) ? targetSaves : 5,
+    target_comments_pct: Number.isFinite(targetComments) ? targetComments : 2,
+    hook_options: dedupedHooks.slice(0, 3),
+  };
+}
+
 function normalizeContentCard(card) {
   const base = card && typeof card === 'object' ? card : {};
-  const category = (base.category || base.type || '').toString();
-  const lowerCategory = category.toLowerCase();
-  const hasEducational = lowerCategory.includes('educational');
-  const angle = typeof base.angle === 'string' && base.angle.trim()
-    ? base.angle
-    : hasEducational
-      ? 'Authority-building framework'
-      : 'Myth-busting education';
-  const objective = typeof base.objective === 'string' && base.objective.trim()
-    ? base.objective
-    : hasEducational
-      ? 'Drive saves + profile visits (education -> authority)'
-      : 'Drive comments + shares';
+  const normalizedStrategy = normalizeCardStrategy(base.strategy, base);
+  const angle = normalizedStrategy.angle;
+  const objective = normalizedStrategy.objective;
   const successSignal = typeof base.successSignal === 'string' && base.successSignal.trim()
     ? base.successSignal
     : 'Saves ≥ 5% of views • Comments ≥ 2% of views';
-  const pinnedComment = typeof base.pinnedComment === 'string' && base.pinnedComment.trim()
-    ? base.pinnedComment
-    : 'Comment "MEAL" and I\'ll DM my pre-game checklist.';
-
-  let hookOptions = [];
-  if (Array.isArray(base.hookOptions)) {
-    hookOptions = base.hookOptions;
-  } else if (typeof base.hookOptions === 'string') {
-    hookOptions = base.hookOptions.split(/[\n•]+/).map((h) => h.trim()).filter(Boolean);
-  }
-  if (!hookOptions.length) {
-    hookOptions = [
-      'Most athletes are underfueling before games.',
-      'This is why your training isn’t translating to performance.',
-      'Your diet might be costing you points.',
-    ];
-  }
-
+  const pinnedComment = normalizedStrategy.pinned_comment;
+  const hookOptions = normalizedStrategy.hook_options;
+  const targetSavesText = formatStrategyTarget(normalizedStrategy.target_saves_pct);
+  const targetCommentsText = formatStrategyTarget(normalizedStrategy.target_comments_pct);
   return {
     ...base,
+    strategy: normalizedStrategy,
     angle,
     objective,
     successSignal,
     pinnedComment,
     hookOptions,
+    targetSaves: targetSavesText,
+    targetComments: targetCommentsText,
   };
 }
 
@@ -5897,7 +5930,30 @@ function hydrateCalendarFromStorage(force = false) {
   }
 }
 
+function logStrategyDuplicates(posts) {
+  if (!Array.isArray(posts)) return;
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  const angleCounts = new Map();
+  const pinnedCounts = new Map();
+  posts.forEach((post) => {
+    const strategy = post?.strategy || {};
+    const angle = (strategy.angle || '').trim();
+    if (angle) angleCounts.set(angle, (angleCounts.get(angle) || 0) + 1);
+    const pinned = (strategy.pinned_comment || '').trim();
+    if (pinned) pinnedCounts.set(pinned, (pinnedCounts.get(pinned) || 0) + 1);
+  });
+  const angleDuplicates = Array.from(angleCounts.values()).filter((count) => count > 1).length;
+  const pinnedDuplicates = Array.from(pinnedCounts.values()).filter((count) => count > 1).length;
+  if (angleDuplicates || pinnedDuplicates) {
+    console.warn('[Strategy duplicates]', {
+      angleDuplicates,
+      pinnedDuplicates,
+    });
+  }
+}
+
 const renderCards = (subset) => {
+  logStrategyDuplicates(subset);
   if (!grid) return;
   grid.innerHTML = "";
   const freq = Math.max(currentPostFrequency || 1, 1);

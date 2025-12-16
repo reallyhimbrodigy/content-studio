@@ -1349,8 +1349,23 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
-  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)\n- tiktok_caption (final, trimmed block)\n- linkedin_caption (final, trimmed block)\n\nRules:\n- If unsure, invent concise, plausible content rather than omitting fields.\n- Always include every field above (use empty string only if absolutely necessary).\n- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+  const strategyRules = `
+Strategy rules:
+1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_comment, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
+2) Angle and pinned_comment must be unique across all ${days} posts and should not reuse the exact same phrasing.
+3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
+4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
+5) Strategy wording must vary per post—do not recycle the same blocks verbatim across posts.`;\n  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+- tiktok_caption (final, trimmed block)
+- linkedin_caption (final, trimmed block)
+- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_comment, hook_options }
+
+Rules:
+- If unsure, invent concise, plausible content rather than omitting fields.
+- Always include every field above (use empty string only if absolutely necessary).
+- Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
+- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption'];
@@ -1415,8 +1430,59 @@ function hasAllRequiredFields(p){
     && p.engagementScripts && p.engagementScripts.commentReply && p.engagementScripts.dmReply
     && scriptObj && scriptObj.hook && scriptObj.body && scriptObj.cta
     && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true)
-    && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string';
+    && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string'
+    && hasValidStrategy(p);
   return !!ok;
+}
+
+const STRATEGY_HOOK_FALLBACKS = [
+  'Tell them the one mistake that keeps this from working.',
+  'Imagine what happens if you did this before your next post.',
+  'Challenge the status quo while you show the weird detail.',
+];
+
+function parseStrategyPercent(value) {
+  if (value === null || value === undefined) return NaN;
+  if (Number.isFinite(value)) return value;
+  const numeric = parseFloat(String(value).replace(/[^\d.-]+/g, ''));
+  return Number.isFinite(numeric) ? numeric : NaN;
+}
+
+function clampStrategyPercent(value) {
+  if (!Number.isFinite(value)) return null;
+  const bounded = Math.max(1, Math.min(25, value));
+  return Math.round(bounded * 10) / 10;
+}
+
+function normalizeStrategyForPost(post = {}) {
+  const reference = String(post.title || post.idea || post.caption || 'this concept').trim();
+  const description = reference || 'this content idea';
+  const raw = post.strategy && typeof post.strategy === 'object' ? post.strategy : {};
+  const hooks = Array.isArray(raw.hook_options) ? raw.hook_options : [];
+  const dedupedHooks = [];
+  hooks.forEach((item) => {
+    const sanitized = String(item || '').trim();
+    if (sanitized && !dedupedHooks.includes(sanitized)) {
+      dedupedHooks.push(sanitized);
+    }
+  });
+  while (dedupedHooks.length < 3) {
+    const fallback = STRATEGY_HOOK_FALLBACKS[dedupedHooks.length % STRATEGY_HOOK_FALLBACKS.length];
+    dedupedHooks.push(fallback);
+  }
+  const angle = String(raw.angle || `${description} angle`).trim();
+  const objective = String(raw.objective || `Drive saves + advocacy for ${description}`).trim();
+  const pinned = String(raw.pinned_comment || raw.pinnedComment || 'Comment "MEAL" and I\'ll DM our pre-game checklist.').trim();
+  const savesPct = clampStrategyPercent(parseStrategyPercent(raw.target_saves_pct ?? raw.target_saves ?? raw.targetSaves));
+  const commentsPct = clampStrategyPercent(parseStrategyPercent(raw.target_comments_pct ?? raw.target_comments ?? raw.targetComments));
+  return {
+    angle,
+    objective,
+    pinned_comment: pinned,
+    target_saves_pct: Number.isFinite(savesPct) ? savesPct : 5,
+    target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : 2,
+    hook_options: dedupedHooks.slice(0, 3),
+  };
 }
 
 async function repairMissingFields(nicheStyle, brandContext, partialPosts){
@@ -1439,6 +1505,7 @@ async function repairMissingFields(nicheStyle, brandContext, partialPosts){
 - promoSlot (boolean)
 - weeklyPromo (string; include empty string if promoSlot is false)
 - script { hook, body, cta }
+- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_comment, hook_options }
 - instagram_caption (string)
 - tiktok_caption (string)
 - linkedin_caption (string)`;
@@ -1527,6 +1594,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   out.instagram_caption = (out.instagram_caption || out.caption || '').trim();
   out.tiktok_caption = (out.tiktok_caption || out.caption || '').trim();
   out.linkedin_caption = (out.linkedin_caption || out.caption || '').trim();
+  out.strategy = normalizeStrategyForPost(out);
   return out;
 }
 
@@ -1585,6 +1653,35 @@ function callOpenAI(nicheStyle, brandContext, opts = {}) {
     }
   };
   return fetchAndParse(0);
+}
+
+function hasValidStrategy(post) {
+  if (!post || typeof post !== 'object') return false;
+  const strategy = post.strategy;
+  if (!strategy || typeof strategy !== 'object') return false;
+  const hooks = Array.isArray(strategy.hook_options)
+    ? strategy.hook_options.map((option) => String(option || '').trim()).filter(Boolean)
+    : [];
+  const targetSaves = Number(strategy.target_saves_pct ?? strategy.target_saves ?? strategy.targetSaves);
+  const targetComments = Number(strategy.target_comments_pct ?? strategy.target_comments ?? strategy.targetComments);
+  return (
+    typeof strategy.angle === 'string' && strategy.angle.trim() &&
+    typeof strategy.objective === 'string' && strategy.objective.trim() &&
+    typeof strategy.pinned_comment === 'string' && strategy.pinned_comment.trim() &&
+    hooks.length >= 3 &&
+    Number.isFinite(targetSaves) &&
+    Number.isFinite(targetComments)
+  );
+}
+
+async function callOpenAIWithStrategy(nicheStyle, brandContext, opts = {}, attempt = 0) {
+  const posts = await callOpenAI(nicheStyle, brandContext, opts);
+  if (Array.isArray(posts) && posts.some((post) => !hasValidStrategy(post))) {
+    if (attempt >= 1) return posts;
+    console.warn('[Calendar] Strategy block validation failed; regenerating once.');
+    return callOpenAIWithStrategy(nicheStyle, brandContext, opts, attempt + 1);
+  }
+  return posts;
 }
 
 function loadBrand(userId) {
@@ -2061,7 +2158,7 @@ const server = http.createServer((req, res) => {
     }
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
-    let posts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
     const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
     if (incomplete.length > 0) {
       const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
@@ -2291,7 +2388,7 @@ const server = http.createServer((req, res) => {
         // pull brand context if available
         const brand = userId ? loadBrand(userId) : null;
         const brandContext = summarizeBrandForPrompt(brand);
-        let posts = await callOpenAI(nicheStyle, brandContext, { days, startDay });
+        let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay });
         // First-pass repair via LLM if any items are missing required fields
         const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
         if (incomplete.length > 0) {
