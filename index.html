@@ -28,6 +28,41 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
+    <style>
+      /* LANDING PAGE — widen preview cards and prevent overlap */
+      [view="landing"] .preview-cards,
+      [view="landing"] .cards-preview,
+      [view="landing"] .content-preview {
+        position: static !important;
+        display: grid !important;
+        grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr) !important;
+        gap: 20px !important;
+        width: 100% !important;
+        max-width: 900px !important;
+        margin: 0 !important;
+        align-items: start !important;
+      }
+
+      [view="landing"] .preview-cards > *,
+      [view="landing"] .cards-preview > *,
+      [view="landing"] .content-preview > * {
+        position: static !important;
+        transform: none !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        width: 100% !important;
+      }
+
+      @media (max-width: 900px) {
+        [view="landing"] .preview-cards,
+        [view="landing"] .cards-preview,
+        [view="landing"] .content-preview {
+          grid-template-columns: 1fr !important;
+          max-width: 100% !important;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="app-shell">
