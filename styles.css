@@ -7117,7 +7117,8 @@ html, body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
+  grid-auto-rows: 1fr;
   max-width: 1120px;
   margin: 32px auto 72px;
   padding-bottom: 24px;
@@ -7139,6 +7140,11 @@ html, body {
   height: auto !important;
   max-height: none !important;
   overflow: visible !important;
+}
+
+[view="landing"] .landing-preview-cards .calendar-card {
+  height: 100% !important;
+  min-height: auto !important;
 }
 
 [view="landing"] .landing-preview-cards summary {
