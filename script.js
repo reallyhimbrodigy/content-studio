@@ -314,6 +314,7 @@ let currentBrandKit = null;
 let brandKitLoaded = false;
 let brandProfileLoaded = false;
 let currentBrandText = '';
+let brandBrainHydrated = false;
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
 const selectedDesignAssetIds = new Set();
@@ -4577,14 +4578,11 @@ function persistBrandKitLocal(kit, email = activeUserEmail) {
 }
 
 async function refreshBrandBrain(force = false) {
-  if (brandProfileLoaded && !force) return currentBrandText;
+  if (brandBrainHydrated && !force) return currentBrandText;
   const userId = activeUserEmail || (await getCurrentUser());
   if (!userId) return '';
   const localCopy = loadBrandBrainLocal(userId);
-  if (!brandProfileLoaded && localCopy && brandText) {
-    brandText.value = localCopy;
-    currentBrandText = localCopy;
-  }
+  let latestText = '';
   try {
     const resp = await fetch(`/api/brand/profile?userId=${encodeURIComponent(userId)}`, {
       cache: 'no-store',
@@ -4592,16 +4590,21 @@ async function refreshBrandBrain(force = false) {
     });
     if (resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      currentBrandText = data.text || localCopy || '';
-      if (brandText) brandText.value = currentBrandText;
-      persistBrandBrainLocal(currentBrandText, userId);
+      latestText = data?.text || '';
     } else {
       console.warn('Brand profile request failed with status', resp.status);
     }
   } catch (err) {
     console.warn('Unable to load Brand Brain profile:', err?.message || err);
   }
+  if (!latestText) {
+    latestText = localCopy || '';
+  }
+  currentBrandText = latestText;
+  if (brandText) brandText.value = latestText;
+  persistBrandBrainLocal(currentBrandText, userId);
   brandProfileLoaded = true;
+  brandBrainHydrated = true;
   return currentBrandText;
 }
 
@@ -4670,6 +4673,7 @@ if (brandSaveBtn) {
       currentBrandText = text;
       persistBrandBrainLocal(text, userId);
       brandProfileLoaded = true;
+      brandBrainHydrated = true;
       setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
     } catch (e) {
       if (brandStatus) brandStatus.textContent = `Error: ${e.message}`;

@@ -362,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const json = await res.json();
       const plan = json.plan || 'free';
       analyticsIsPro = plan === 'pro' || plan === 'teams';
+      removeProRangeHelpers();
       applyAnalyticsAccess(plan);
       applyProButtonStyles();
       applyShareReportGating();
@@ -674,6 +675,16 @@ document.addEventListener('DOMContentLoaded', () => {
       (payload && payload.rangeLabel);
 
     el.textContent = label ? ` · ${label}` : ' · Full history';
+  }
+
+  function removeProRangeHelpers() {
+    if (!analyticsIsPro) return;
+    document.querySelectorAll('.analytics-kpi-helper').forEach((el) => {
+      const text = (el.textContent || '').toLowerCase();
+      if (text.includes('last 30 days')) {
+        el.remove();
+      }
+    });
   }
 
   async function loadEngagement() {
