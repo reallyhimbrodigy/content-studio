@@ -7141,6 +7141,17 @@ html, body {
   overflow: visible !important;
 }
 
+[view="landing"] .landing-preview-cards summary {
+  display: none !important;
+}
+
+[view="landing"] .landing-preview-cards .details-body {
+  display: block !important;
+  max-height: none !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+}
+
 @media (max-width: 900px) {
   [view="landing"] .landing-preview-cards {
     grid-template-columns: 1fr;
