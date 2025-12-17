@@ -387,6 +387,65 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
   };
 }
 
+const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and\s+I(?:'|’)?ll\s+send you\s+(.+)\.?$/i;
+const PINNED_KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
+const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
+
+function normalizePinnedSignature(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function extractPinnedCommentParts(value) {
+  const match = String(value || '').match(PINNED_COMMENT_REGEX);
+  if (!match) return { keyword: '', deliverable: '' };
+  return { keyword: match[1].toUpperCase(), deliverable: (match[2] || '').trim() };
+}
+
+function derivePinnedFallbackTokens(nicheStyle) {
+  const tokens = (String(nicheStyle || '')
+    .toUpperCase()
+    .match(/[A-Z0-9]{3,12}/g) || [])
+    .filter((token) => !PINNED_KEYWORD_STOPWORDS.has(token));
+  const combined = [...new Set([...tokens, ...DEFAULT_PINNED_FALLBACK_TOKENS])];
+  return combined.length ? combined : DEFAULT_PINNED_FALLBACK_TOKENS.slice();
+}
+
+function ensureUniquePinnedComments(posts, nicheStyle) {
+  if (!Array.isArray(posts)) return posts;
+  const seen = new Set();
+  const tokens = derivePinnedFallbackTokens(nicheStyle);
+  let fallbackIndex = 0;
+  const defaultDeliverable = 'my guide';
+  posts.forEach((post) => {
+    if (!post || typeof post !== 'object') return;
+    const strategy = post.strategy || {};
+    let pinned = String(strategy.pinned_comment || '').trim();
+    let parsed = extractPinnedCommentParts(pinned);
+    let deliverable = parsed.deliverable || defaultDeliverable;
+    let normalized = normalizePinnedSignature(pinned);
+    if (!normalized) {
+      const token = tokens[fallbackIndex % tokens.length];
+      fallbackIndex += 1;
+      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      normalized = normalizePinnedSignature(pinned);
+    }
+    let guard = 0;
+    while (normalized && seen.has(normalized) && guard < tokens.length * 2) {
+      const token = tokens[fallbackIndex % tokens.length];
+      fallbackIndex += 1;
+      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      normalized = normalizePinnedSignature(pinned);
+      guard += 1;
+    }
+    if (normalized) {
+      strategy.pinned_comment = pinned;
+      post.strategy = strategy;
+      seen.add(normalized);
+    }
+  });
+  return posts;
+}
+
 function normalizeContentCard(card) {
   const base = card && typeof card === 'object' ? card : {};
   const normalizedStrategy = normalizeCardStrategy(base.strategy, base);
@@ -8014,6 +8073,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       allPosts = ensureUniqueDailyPosts(allPosts, normalizedFrequency);
     }
     allPosts = ensureGlobalVariety(allPosts);
+    allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
