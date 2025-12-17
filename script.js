@@ -403,8 +403,15 @@ function sanitizePinnedKeyword(value) {
 
 function extractKeywordFromComment(comment) {
   if (!comment) return '';
-  const match = String(comment).match(/Comment\s+([A-Za-z]+)/i);
-  return sanitizePinnedKeyword(match ? match[1] : '');
+  const parts = extractPinnedCommentParts(comment);
+  return parts.keyword;
+}
+
+function normalizePinnedCommentString(raw) {
+  const parts = extractPinnedCommentParts(raw);
+  if (!parts.keyword) return String(raw || '').trim();
+  const deliverable = parts.deliverable || 'my guide';
+  return `Comment "${parts.keyword}" and I'll send you ${deliverable}.`;
 }
 
 function deriveTitleKeywordCandidates(post) {
@@ -430,7 +437,7 @@ function pickDeliverable(post) {
 function buildPinnedCommentLine(keyword, deliverable) {
   const safeKeyword = sanitizePinnedKeyword(keyword) || 'GUIDE';
   const safeDeliverable = deliverable || 'my guide';
-  return `Comment ${safeKeyword} and I'll send you ${safeDeliverable}.`;
+  return `Comment "${safeKeyword}" and I'll send you ${safeDeliverable}.`;
 }
 
 function ensureUniqueKeyword(keyword, usedSet, post) {
@@ -484,7 +491,7 @@ function preparePinnedCommentsForRender(posts = []) {
   });
 }
 
-const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and\s+I(?:'|’)?ll\s+send you\s+(.+)\.?$/i;
+const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z0-9]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
 const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
 
 function normalizePinnedSignature(value) {
@@ -494,7 +501,9 @@ function normalizePinnedSignature(value) {
 function extractPinnedCommentParts(value) {
   const match = String(value || '').match(PINNED_COMMENT_REGEX);
   if (!match) return { keyword: '', deliverable: '' };
-  return { keyword: match[1].toUpperCase(), deliverable: (match[2] || '').trim() };
+  const keyword = sanitizePinnedKeyword(match[2]);
+  const deliverable = String(match[3] || '').trim().replace(/\.+$/, '').trim();
+  return { keyword, deliverable };
 }
 
 function derivePinnedFallbackTokens(nicheStyle) {
@@ -515,7 +524,7 @@ function ensureUniquePinnedComments(posts, nicheStyle) {
   posts.forEach((post) => {
     if (!post || typeof post !== 'object') return;
     const strategy = post.strategy || {};
-    let pinned = String(strategy.pinned_comment || '').trim();
+    let pinned = normalizePinnedCommentString(String(strategy.pinned_comment || strategy.pinnedComment || ''));
     let parsed = extractPinnedCommentParts(pinned);
     let deliverable = parsed.deliverable || defaultDeliverable;
     let normalized = normalizePinnedSignature(pinned);
@@ -6128,11 +6137,8 @@ function normalizePinnedKeywordForLog(strategy = {}) {
   const keyword = String(strategy?.pinned_keyword || '').trim().toUpperCase();
   if (/^[A-Z]{3,16}$/.test(keyword)) return keyword;
   const comment = String(strategy?.pinned_comment || strategy?.pinnedComment || '');
-  const match = comment.match(/Comment\s+([A-Za-z]+)/i);
-  if (match) {
-    const candidate = match[1].toUpperCase().replace(/[^A-Z]/g, '');
-    if (/^[A-Z]{3,16}$/.test(candidate)) return candidate;
-  }
+  const parts = extractPinnedCommentParts(comment);
+  if (parts.keyword) return parts.keyword;
   return '';
 }
 
