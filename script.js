@@ -412,6 +412,55 @@ function normalizeContentCard(card) {
   };
 }
 
+function cleanPinnedCommentLine(line) {
+  if (!line) return '';
+  let text = String(line).trim();
+  text = text.replace(/^(Pinned comment|Pin comment|Comment)\s*:?/i, '');
+  text = text.replace(/\bDay\s*\d+\b/gi, '');
+  text = text.replace(/\b(angle|objective)\b/gi, '');
+  text = text.replace(/by showing how/gi, '');
+  text = text.replace(/\(.*?\)/g, '');
+  text = text.replace(/^\s*[:-]+\s*/, '');
+  text = text.replace(/\s*[:-]+\s*$/, '');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+function parsePinnedCommentLines(raw) {
+  if (!raw) return [];
+  return String(raw || '')
+    .split(/[\n•]+/)
+    .map(cleanPinnedCommentLine)
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+function normalizeHookOptionsList(source) {
+  const metaPrefix = /^(Open with|Frame|Ask what|Use this|By showing how|By comparing|By asking|Imagine|Challenge|Start with|Play with)\b[:\s-]*/i;
+  const lines = [];
+  if (Array.isArray(source)) {
+    lines.push(...source);
+  } else if (typeof source === 'string') {
+    lines.push(...source.split(/[\n•]+/));
+  }
+  const cleaned = [];
+  lines.forEach((line) => {
+    if (!line) return;
+    let text = String(line).trim();
+    text = text.replace(/^\s*[-•\d.]+\s*/, '');
+    text = text.replace(/\bDay\s*\d+\b/gi, '');
+    text = text.replace(/\(.*?\)/g, '');
+    text = text.replace(metaPrefix, '');
+    text = text.replace(/by showing how/gi, '');
+    text = text.replace(/by comparing/gi, '');
+    const sentence = text.split(/[.?!]\s+/)[0] || text;
+    text = sentence.replace(/[.]+$/, '').trim();
+    if (!text) return;
+    cleaned.push(text);
+  });
+  return cleaned.filter(Boolean).slice(0, 5);
+}
+
 /**
  * @typedef {'draft'|'ready'|'exported'} AssetStatus
  * @typedef {Object} DesignAsset
@@ -4904,36 +4953,46 @@ const createCard = (post) => {
     addInfoRow('Objective', objectiveValue);
     addInfoRow('Target saves', targetSavesValue);
     addInfoRow('Target comments', targetCommentsValue);
-    addInfoRow('Pinned comment', pinnedValue);
+
+    const pinnedLines = parsePinnedCommentLines(normalizedEntry.pinnedComment);
+    if (pinnedLines.length) {
+      const pinnedBlock = document.createElement('div');
+      pinnedBlock.className = 'calendar-card__pinned-comment';
+      const pinnedLabelEl = document.createElement('span');
+      pinnedLabelEl.className = 'calendar-card__pinned-comment-label';
+      pinnedLabelEl.textContent = 'Pinned comment';
+      const primaryLine = document.createElement('p');
+      primaryLine.className = 'calendar-card__pinned-comment-primary';
+      primaryLine.textContent = pinnedLines[0];
+      pinnedBlock.append(pinnedLabelEl, primaryLine);
+      if (pinnedLines[1]) {
+        const altLine = document.createElement('p');
+        altLine.className = 'calendar-card__pinned-comment-alt';
+        altLine.textContent = `Alt: ${pinnedLines[1]}`;
+        pinnedBlock.append(altLine);
+      }
+      entryEl.appendChild(pinnedBlock);
+    }
 
     const hooksEl = document.createElement('div');
     hooksEl.className = 'calendar-card__hooks';
-    const hooksLabel = document.createElement('strong');
-    hooksLabel.textContent = 'Hook options';
+    const hooksLabel = document.createElement('span');
+    hooksLabel.className = 'calendar-card__hooks-label';
+    hooksLabel.textContent = 'Hooks';
     const hooksList = document.createElement('ul');
     hooksList.className = 'calendar-card__hook-list';
-    const normalizeHooks = (source) => {
-      if (Array.isArray(source)) {
-        return source.map((item) => String(item || '').trim()).filter(Boolean);
-      }
-      if (typeof source === 'string') {
-        return source
-          .split(/[\n•]/)
-          .map((item) => String(item || '').trim())
-          .filter(Boolean);
-      }
-      return [];
-    };
+    const normalizedHooks = normalizeHookOptionsList(normalizedEntry.hookOptions);
     const fallbackHooks = [
       'Most athletes are underfueling before games.',
       'This is why your training isn’t translating to performance.',
       'Your diet might be costing you points.',
     ];
-    const normalizedHooks = normalizeHooks(normalizedEntry.hookOptions);
-    const hookValues = (normalizedHooks.length ? normalizedHooks : fallbackHooks).slice(0, 3);
+    const hookValues = (normalizedHooks.length ? normalizedHooks : fallbackHooks).slice(0, 5);
     hookValues.forEach((hook) => {
+      const cleaned = String(hook || '').trim();
+      if (!cleaned) return;
       const li = document.createElement('li');
-      li.textContent = hook;
+      li.textContent = cleaned;
       hooksList.appendChild(li);
     });
     hooksEl.append(hooksLabel, hooksList);
