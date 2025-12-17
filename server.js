@@ -1842,7 +1842,7 @@ async function sanitizeStrategyCopy(posts, nicheStyle, classification, brandCont
         strategy = templateStrategyFromTitle(post, classification, nicheStyle);
       }
     }
-    strategy = await ensurePinnedCommentValid(strategy, post, classification, nicheStyle);
+    strategy = await ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
     post.strategy = strategy;
     results.push(post);
   }
