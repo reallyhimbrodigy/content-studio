@@ -1354,7 +1354,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 2) Angle and pinned_comment must be unique across all ${days} posts and should not reuse the same phrasing.
 3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
 4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
-5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.`;
+5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
+6) Use each post's title, angle, and objective to tailor the pinned_comment and hook_options so every calendar entry feels custom.
+7) Hook options should mention the angle or objective and stay distinct from other posts.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
@@ -1435,12 +1437,6 @@ function hasAllRequiredFields(p){
   return !!ok;
 }
 
-const STRATEGY_HOOK_FALLBACKS = [
-  'Tell them the one mistake that keeps this from working.',
-  'Imagine what happens if you did this before your next post.',
-  'Challenge the status quo while you show the weird detail.',
-];
-
 function parseStrategyPercent(value) {
   if (value === null || value === undefined) return NaN;
   if (Number.isFinite(value)) return value;
@@ -1458,6 +1454,8 @@ function normalizeStrategyForPost(post = {}) {
   const reference = String(post.title || post.idea || post.caption || 'this concept').trim();
   const description = reference || 'this content idea';
   const raw = post.strategy && typeof post.strategy === 'object' ? post.strategy : {};
+  const angleText = String(raw.angle || `${description} angle`).trim() || `${description} angle`;
+  const objectiveText = String(raw.objective || `Drive saves + momentum for ${description}`).trim();
   const hooks = Array.isArray(raw.hook_options) ? raw.hook_options : [];
   const dedupedHooks = [];
   hooks.forEach((item) => {
@@ -1466,23 +1464,58 @@ function normalizeStrategyForPost(post = {}) {
       dedupedHooks.push(sanitized);
     }
   });
+  const daySuffix = typeof post.day === 'number' ? ` (Day ${post.day})` : '';
+  const fallbackHooks = [
+    `Open with ${angleText} by showing how ${description} solves a major objection${daySuffix}.`,
+    `Frame ${objectiveText} by comparing ${description} to the mistake people usually make${daySuffix}.`,
+    `Ask the audience what ${description} could feel like once ${angleText} lands${daySuffix}.`,
+  ];
   while (dedupedHooks.length < 3) {
-    const fallback = STRATEGY_HOOK_FALLBACKS[dedupedHooks.length % STRATEGY_HOOK_FALLBACKS.length];
-    dedupedHooks.push(fallback);
+    dedupedHooks.push(fallbackHooks[dedupedHooks.length % fallbackHooks.length]);
   }
-  const angle = String(raw.angle || `${description} angle`).trim();
-  const objective = String(raw.objective || `Drive saves + advocacy for ${description}`).trim();
-  const pinned = String(raw.pinned_comment || raw.pinnedComment || 'Comment "MEAL" and I\'ll DM our pre-game checklist.').trim();
+  const pinnedRaw = String(raw.pinned_comment || raw.pinnedComment || '').trim();
+  const pinnedFallback = `Comment "${description}" and I’ll drop the ${angleText.toLowerCase()} insight${daySuffix}.`;
+  const pinned = pinnedRaw || pinnedFallback;
   const savesPct = clampStrategyPercent(parseStrategyPercent(raw.target_saves_pct ?? raw.target_saves ?? raw.targetSaves));
   const commentsPct = clampStrategyPercent(parseStrategyPercent(raw.target_comments_pct ?? raw.target_comments ?? raw.targetComments));
   return {
-    angle,
-    objective,
+    angle: angleText,
+    objective: objectiveText,
     pinned_comment: pinned,
     target_saves_pct: Number.isFinite(savesPct) ? savesPct : 5,
     target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : 2,
     hook_options: dedupedHooks.slice(0, 3),
   };
+}
+
+function ensureUniqueStrategyValues(posts = []) {
+  if (!Array.isArray(posts)) return posts;
+  const pinnedCounts = new Map();
+  const angleCounts = new Map();
+  posts.forEach((post) => {
+    const strategy = post.strategy || {};
+    const pinned = (strategy.pinned_comment || '').trim();
+    if (pinned) {
+      const seen = pinnedCounts.get(pinned) || 0;
+      if (seen > 0) {
+        strategy.pinned_comment = `${pinned} (Day ${post.day || '??'})`;
+      }
+      pinnedCounts.set(strategy.pinned_comment || pinned, (pinnedCounts.get(strategy.pinned_comment || pinned) || 0) + 1);
+    }
+    const angle = (strategy.angle || '').trim();
+    if (angle) {
+      const seenAngle = angleCounts.get(angle) || 0;
+      if (seenAngle > 0) {
+        const uniqueAngle = `${angle} (Day ${post.day || '??'})`;
+        strategy.angle = uniqueAngle;
+        angleCounts.set(uniqueAngle, (angleCounts.get(uniqueAngle) || 0) + 1);
+      } else {
+        angleCounts.set(angle, 1);
+      }
+    }
+    post.strategy = strategy;
+  });
+  return posts;
 }
 
 async function repairMissingFields(nicheStyle, brandContext, partialPosts){
@@ -1664,11 +1697,13 @@ function hasValidStrategy(post) {
     : [];
   const targetSaves = Number(strategy.target_saves_pct ?? strategy.target_saves ?? strategy.targetSaves);
   const targetComments = Number(strategy.target_comments_pct ?? strategy.target_comments ?? strategy.targetComments);
+  const hookSet = new Set(hooks);
   return (
     typeof strategy.angle === 'string' && strategy.angle.trim() &&
     typeof strategy.objective === 'string' && strategy.objective.trim() &&
     typeof strategy.pinned_comment === 'string' && strategy.pinned_comment.trim() &&
     hooks.length >= 3 &&
+    hookSet.size >= 3 &&
     Number.isFinite(targetSaves) &&
     Number.isFinite(targetComments)
   );
@@ -2200,6 +2235,7 @@ const server = http.createServer((req, res) => {
       }
       return normalized;
     });
+    posts = ensureUniqueStrategyValues(posts);
     return posts;
   }
 
@@ -2435,6 +2471,7 @@ const server = http.createServer((req, res) => {
           }
           return normalized;
         });
+        posts = ensureUniqueStrategyValues(posts);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ posts }));

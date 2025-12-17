@@ -331,12 +331,6 @@ const DESIGN_FREE_MONTHLY_QUOTA = 3;
 const DESIGN_LAST_TEMPLATE_KEY = 'promptly_design_last_template_v1';
 const DESIGN_VIEW_MODE_KEY = 'promptly_design_view_mode_v1';
 
-const CARD_STRATEGY_HOOK_FALLBACKS = [
-  'Drop a bold stat that proves this topic matters now.',
-  'Ask the question everyone’s too afraid to say out loud.',
-  'Flip the narrative by exposing the thing most people dismiss.',
-];
-
 function formatStrategyTarget(value) {
   if (!Number.isFinite(value)) return '';
   const display = Number.isInteger(value) ? value : Number(value.toFixed(1));
@@ -344,8 +338,30 @@ function formatStrategyTarget(value) {
 }
 
 function normalizeCardStrategy(rawStrategy = {}, context = {}) {
+  const strategy = typeof rawStrategy === 'object' ? rawStrategy : {};
   const label = String(context.title || context.idea || context.caption || 'this concept').trim() || 'this concept';
-  const sanitized = typeof rawStrategy === 'object' ? rawStrategy : {};
+  const angleText = String(strategy.angle || `${label} angle`).trim();
+  const objectiveText = String(strategy.objective || `Drive saves + momentum for ${label}`).trim();
+  const hookSources = Array.isArray(strategy.hook_options) ? strategy.hook_options : [];
+  const dedupedHooks = [];
+  hookSources.forEach((hook) => {
+    const trimmed = String(hook || '').trim();
+    if (trimmed && !dedupedHooks.includes(trimmed)) {
+      dedupedHooks.push(trimmed);
+    }
+  });
+  const daySuffix = typeof context.day === 'number' ? ` (Day ${context.day})` : '';
+  const fallbackHooks = [
+    `Open with ${angleText} by showing how ${label} solves a major objection${daySuffix}.`,
+    `Frame ${objectiveText} by comparing ${label} to the common mistake every viewer makes${daySuffix}.`,
+    `Ask what ${label} could feel like once ${angleText} lands${daySuffix}.`,
+  ];
+  while (dedupedHooks.length < 3) {
+    dedupedHooks.push(fallbackHooks[dedupedHooks.length % fallbackHooks.length]);
+  }
+  const pinnedRaw = String(strategy.pinned_comment || strategy.pinnedComment || '').trim();
+  const pinnedFallback = `Comment "${label}" and I’ll drop the ${angleText.toLowerCase()} insight${daySuffix}.`;
+  const pinned = pinnedRaw || pinnedFallback;
   const parsePercent = (val) => {
     if (Number.isFinite(val)) return val;
     if (typeof val === 'string') {
@@ -359,26 +375,12 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
     const bounded = Math.max(1, Math.min(25, value));
     return Math.round(bounded * 10) / 10;
   };
-  const hookSources = Array.isArray(sanitized.hook_options) ? sanitized.hook_options : [];
-  const dedupedHooks = [];
-  hookSources.forEach((hook) => {
-    const trimmed = String(hook || '').trim();
-    if (trimmed && !dedupedHooks.includes(trimmed)) {
-      dedupedHooks.push(trimmed);
-    }
-  });
-  while (dedupedHooks.length < 3) {
-    const fallback = CARD_STRATEGY_HOOK_FALLBACKS[dedupedHooks.length % CARD_STRATEGY_HOOK_FALLBACKS.length];
-    dedupedHooks.push(fallback);
-  }
-  const targetSaves = clampPercent(parsePercent(sanitized.target_saves_pct ?? sanitized.target_saves));
-  const targetComments = clampPercent(parsePercent(sanitized.target_comments_pct ?? sanitized.target_comments));
+  const targetSaves = clampPercent(parsePercent(strategy.target_saves_pct ?? strategy.target_saves ?? strategy.targetSaves));
+  const targetComments = clampPercent(parsePercent(strategy.target_comments_pct ?? strategy.target_comments ?? strategy.targetComments));
   return {
-    angle: String(sanitized.angle || `${label} angle`).trim(),
-    objective: String(sanitized.objective || `Drive saves + momentum for ${label}`).trim(),
-    pinned_comment: String(
-      sanitized.pinned_comment || sanitized.pinnedComment || 'Comment "MEAL" and I’ll DM my prep checklist.'
-    ).trim(),
+    angle: angleText,
+    objective: objectiveText,
+    pinned_comment: pinned,
     target_saves_pct: Number.isFinite(targetSaves) ? targetSaves : 5,
     target_comments_pct: Number.isFinite(targetComments) ? targetComments : 2,
     hook_options: dedupedHooks.slice(0, 3),
