@@ -1865,18 +1865,33 @@ async function dedupePinnedComments(posts = [], classification, nicheStyle) {
   const usedKeywords = new Set();
   for (const post of posts) {
     const strategy = post.strategy || {};
-    const keyword = normalizeKeywordToken(strategy.pinned_keyword || '');
-    if (keyword && isKeywordValid(keyword, post) && !usedKeywords.has(keyword)) {
-      usedKeywords.add(keyword);
+    const currentKeyword = normalizeKeywordToken(strategy.pinned_keyword || '');
+    if (currentKeyword && isKeywordValid(currentKeyword, post) && !usedKeywords.has(currentKeyword)) {
+      usedKeywords.add(currentKeyword);
       continue;
     }
     const blacklist = [...usedKeywords];
-    const regeneratedKeyword = await regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist);
-    const finalKeyword = regeneratedKeyword && isKeywordValid(regeneratedKeyword, post) && !usedKeywords.has(regeneratedKeyword)
-      ? regeneratedKeyword
-      : selectUnusedFallbackKeyword(post, classification, nicheStyle, usedKeywords);
+    let finalKeyword = currentKeyword;
+    let attempts = 0;
+    while (
+      (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) &&
+      attempts < 2
+    ) {
+      const regenerated = await regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist);
+      if (regenerated && isKeywordValid(regenerated, post) && !usedKeywords.has(regenerated)) {
+        finalKeyword = regenerated;
+        break;
+      }
+      if (regenerated) blacklist.push(regenerated);
+      attempts += 1;
+    }
+    if (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) {
+      finalKeyword = selectUnusedFallbackKeyword(post, classification, nicheStyle, usedKeywords);
+    }
     const updatedStrategy = await ensurePinnedFieldsValid({ ...strategy, pinned_keyword: finalKeyword }, post, classification, nicheStyle);
-    usedKeywords.add(updatedStrategy.pinned_keyword);
+    if (updatedStrategy.pinned_keyword) {
+      usedKeywords.add(updatedStrategy.pinned_keyword);
+    }
     post.strategy = updatedStrategy;
   }
   return posts;

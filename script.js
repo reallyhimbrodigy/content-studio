@@ -6050,6 +6050,18 @@ function hydrateCalendarFromStorage(force = false) {
   }
 }
 
+function normalizePinnedKeywordForLog(strategy = {}) {
+  const keyword = String(strategy?.pinned_keyword || '').trim().toUpperCase();
+  if (/^[A-Z]{3,16}$/.test(keyword)) return keyword;
+  const comment = String(strategy?.pinned_comment || strategy?.pinnedComment || '');
+  const match = comment.match(/Comment\s+([A-Za-z]+)/i);
+  if (match) {
+    const candidate = match[1].toUpperCase().replace(/[^A-Z]/g, '');
+    if (/^[A-Z]{3,16}$/.test(candidate)) return candidate;
+  }
+  return '';
+}
+
 function logStrategyDuplicates(posts) {
   if (!Array.isArray(posts)) return;
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
@@ -6059,7 +6071,7 @@ function logStrategyDuplicates(posts) {
     const strategy = post?.strategy || {};
     const angle = (strategy.angle || '').trim();
     if (angle) angleCounts.set(angle, (angleCounts.get(angle) || 0) + 1);
-    const pinned = (strategy.pinned_comment || '').trim();
+    const pinned = normalizePinnedKeywordForLog(strategy);
     if (pinned) pinnedCounts.set(pinned, (pinnedCounts.get(pinned) || 0) + 1);
   });
   const angleDuplicates = Array.from(angleCounts.values()).filter((count) => count > 1).length;
