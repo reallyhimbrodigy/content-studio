@@ -387,6 +387,103 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
   };
 }
 
+const PINNED_KEYWORD_STOPWORDS = new Set(['THE', 'A', 'AN', 'AND', 'OR', 'TO', 'OF', 'IN', 'MY', 'YOUR', 'THIS', 'THAT']);
+const PREFERRED_DELIVERABLES = [
+  { match: /drill|practice|routine|skill/, deliverable: 'my drill list' },
+  { match: /tip|checklist/, deliverable: 'my checklist' },
+  { match: /script|reel|video/, deliverable: 'my script' },
+  { match: /story|proof|social/, deliverable: 'my story breakdown' },
+  { match: /promo|offer|launch/, deliverable: 'my offer details' },
+];
+
+function sanitizePinnedKeyword(value) {
+  const normalized = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return normalized.length >= 3 && normalized.length <= 16 ? normalized : '';
+}
+
+function extractKeywordFromComment(comment) {
+  if (!comment) return '';
+  const match = String(comment).match(/Comment\s+([A-Za-z]+)/i);
+  return sanitizePinnedKeyword(match ? match[1] : '');
+}
+
+function deriveTitleKeywordCandidates(post) {
+  const text = (post.title || post.idea || post.caption || '').toUpperCase();
+  if (!text) return [];
+  const tokens = text.match(/[A-Z]{3,16}/g) || [];
+  return tokens
+    .map((token) => sanitizePinnedKeyword(token))
+    .filter((token) => token && !PINNED_KEYWORD_STOPWORDS.has(token));
+}
+
+function pickDeliverable(post) {
+  const rawStrategy = post.strategy || {};
+  const delivered = String(post.pinned_deliverable || rawStrategy.pinned_deliverable || rawStrategy.pinnedDeliverable || '').trim();
+  if (delivered) return delivered;
+  const type = String(post.type || post.strategy?.type || '').toLowerCase();
+  for (const entry of PREFERRED_DELIVERABLES) {
+    if (entry.match.test(type)) return entry.deliverable;
+  }
+  return 'my guide';
+}
+
+function buildPinnedCommentLine(keyword, deliverable) {
+  const safeKeyword = sanitizePinnedKeyword(keyword) || 'GUIDE';
+  const safeDeliverable = deliverable || 'my guide';
+  return `Comment ${safeKeyword} and I'll send you ${safeDeliverable}.`;
+}
+
+function ensureUniqueKeyword(keyword, usedSet, post) {
+  let base = sanitizePinnedKeyword(keyword) || deriveTitleKeywordCandidates(post)[0] || 'GUIDE';
+  let candidate = base;
+  const daySuffix = typeof post.day === 'number' ? String(post.day) : '';
+  let attempt = 0;
+  while (usedSet.has(candidate)) {
+    attempt += 1;
+    candidate = `${base}${daySuffix || ''}${attempt || ''}`.slice(0, 16);
+    if (attempt > 5) break;
+  }
+  if (PINNED_KEYWORD_STOPWORDS.has(candidate)) return `${base}${daySuffix || '' || '1'}`;
+  return candidate;
+}
+
+function derivePinnedKeyword(post) {
+  const strategy = post.strategy || {};
+  const potentials = [
+    sanitizePinnedKeyword(strategy.pinned_keyword || post.pinned_keyword),
+    extractKeywordFromComment(strategy.pinned_comment || post.pinned_comment || post.pinnedComment),
+    ...deriveTitleKeywordCandidates(post),
+  ].filter(Boolean);
+  return potentials.length ? potentials[0] : '';
+}
+
+function preparePinnedCommentsForRender(posts = []) {
+  if (!Array.isArray(posts)) return;
+  const used = new Set();
+  posts.forEach((post) => {
+    if (!post || typeof post !== 'object') return;
+    const strategy = post.strategy || {};
+    let keyword = derivePinnedKeyword(post);
+    if (!keyword || used.has(keyword)) {
+      keyword = ensureUniqueKeyword(keyword, used, post);
+    }
+    keyword = sanitizePinnedKeyword(keyword);
+    if (!keyword) keyword = ensureUniqueKeyword('GUIDE', used, post);
+    if (used.has(keyword)) {
+      keyword = ensureUniqueKeyword(`${keyword}X`, used, post);
+    }
+    const deliverable = pickDeliverable(post);
+    const comment = buildPinnedCommentLine(keyword, deliverable);
+    used.add(keyword);
+    post.strategy = {
+      ...strategy,
+      pinned_keyword: keyword,
+      pinned_deliverable: deliverable,
+      pinned_comment: comment,
+    };
+  });
+}
+
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and\s+I(?:'|’)?ll\s+send you\s+(.+)\.?$/i;
 const PINNED_KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
 const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
@@ -6085,6 +6182,7 @@ function logStrategyDuplicates(posts) {
 }
 
 const renderCards = (subset) => {
+  preparePinnedCommentsForRender(subset);
   logStrategyDuplicates(subset);
   if (!grid) return;
   grid.innerHTML = "";
