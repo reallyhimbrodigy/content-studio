@@ -4660,10 +4660,20 @@ body.prefers-reduced-motion *::after {
 .calendar__grid {
   display: grid;
   gap: var(--grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   grid-auto-rows: max-content;
   grid-auto-flow: row dense;
   align-items: stretch;
+  padding: 0 1.5rem;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+@media (min-width: 1200px) {
+  .calendar__grid {
+    grid-template-columns: repeat(3, minmax(340px, 1fr));
+  }
 }
 
 /* Compact mode */
@@ -4676,9 +4686,19 @@ body.prefers-reduced-motion *::after {
 #calendar-grid {
   display: grid;
   gap: var(--grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   grid-auto-flow: row dense;
   align-items: stretch;
+  padding: 0 1.5rem;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+@media (min-width: 1200px) {
+  #calendar-grid {
+    grid-template-columns: repeat(3, minmax(340px, 1fr));
+  }
 }
 
 #library-calendars-grid {
@@ -4688,7 +4708,7 @@ body.prefers-reduced-motion *::after {
 .calendar-card {
   background: var(--card);
   border-radius: 18px;
-  padding: 1.5rem;
+  padding: 1.75rem;
   border: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
@@ -4697,8 +4717,10 @@ body.prefers-reduced-motion *::after {
   isolation: isolate;
   box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
   height: auto;
-  min-height: 320px;
+  min-height: 340px;
+  min-width: 320px;
   grid-column: auto;
+  word-break: normal;
 }
 
 .calendar-card--expanded {
@@ -4755,9 +4777,10 @@ body.prefers-reduced-motion *::after {
   font-size: 0.92rem;
   line-height: 1.35;
   color: var(--text-secondary);
-  word-break: break-word;
+  word-break: normal;
 }
 .calendar-card__info-row strong {
+  white-space: nowrap;
   color: var(--text-primary);
   font-weight: 700;
   font-size: 0.92rem;
@@ -4787,7 +4810,7 @@ body.prefers-reduced-motion *::after {
   color: var(--text-secondary);
   font-size: 0.92rem;
   line-height: 1.6;
-  word-break: break-word;
+  word-break: normal;
   margin-bottom: 0.25rem;
 }
 .calendar-card__hook-list li {
@@ -4865,13 +4888,17 @@ body.prefers-reduced-motion *::after {
   border: none;
   background: none;
   color: var(--text-secondary);
-  font-size: 0.78rem;
+  font-size: 0;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   cursor: pointer;
   padding: 0;
   align-self: flex-start;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .calendar-card__caption-quick-copy:disabled {
   opacity: 0.45;
