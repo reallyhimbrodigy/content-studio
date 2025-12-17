@@ -387,7 +387,7 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
   };
 }
 
-const PINNED_KEYWORD_STOPWORDS = new Set(['THE', 'A', 'AN', 'AND', 'OR', 'TO', 'OF', 'IN', 'MY', 'YOUR', 'THIS', 'THAT']);
+const PINNED_KEYWORD_STOPWORDS = new Set(['THE', 'A', 'AN', 'AND', 'OR', 'TO', 'OF', 'IN', 'ON', 'FOR', 'WITH', 'MY', 'YOUR', 'THIS', 'THAT']);
 const PREFERRED_DELIVERABLES = [
   { match: /drill|practice|routine|skill/, deliverable: 'my drill list' },
   { match: /tip|checklist/, deliverable: 'my checklist' },
@@ -485,7 +485,6 @@ function preparePinnedCommentsForRender(posts = []) {
 }
 
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and\s+I(?:'|’)?ll\s+send you\s+(.+)\.?$/i;
-const PINNED_KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
 const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
 
 function normalizePinnedSignature(value) {
