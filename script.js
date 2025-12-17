@@ -590,30 +590,21 @@ function parsePinnedCommentLines(raw) {
     .slice(0, 2);
 }
 
-function normalizeHookOptionsList(source) {
-  const metaPrefix = /^(Open with|Frame|Ask what|Use this|By showing how|By comparing|By asking|Imagine|Challenge|Start with|Play with)\b[:\s-]*/i;
-  const lines = [];
-  if (Array.isArray(source)) {
-    lines.push(...source);
-  } else if (typeof source === 'string') {
-    lines.push(...source.split(/[\n•]+/));
+function ensureReelScriptHook(entry) {
+  if (!entry || typeof entry !== 'object') return 'Stop scrolling quick tip';
+  if (!entry.videoScript || typeof entry.videoScript !== 'object') {
+    entry.videoScript = {};
   }
-  const cleaned = [];
-  lines.forEach((line) => {
-    if (!line) return;
-    let text = String(line).trim();
-    text = text.replace(/^\s*[-•\d.]+\s*/, '');
-    text = text.replace(/\bDay\s*\d+\b/gi, '');
-    text = text.replace(/\(.*?\)/g, '');
-    text = text.replace(metaPrefix, '');
-    text = text.replace(/by showing how/gi, '');
-    text = text.replace(/by comparing/gi, '');
-    const sentence = text.split(/[.?!]\s+/)[0] || text;
-    text = sentence.replace(/[.]+$/, '').trim();
-    if (!text) return;
-    cleaned.push(text);
-  });
-  return cleaned.filter(Boolean).slice(0, 5);
+  const script = entry.videoScript;
+  let hook = String(script.hook || '').trim();
+  if (!hook) {
+    const source = String(entry.idea || entry.title || entry.caption || '').trim();
+    hook = (source.split(/[.?!]/)[0] || '').trim();
+    if (!hook) hook = 'Stop scrolling quick tip';
+    script.hook = hook;
+  }
+  entry.videoScript = script;
+  return hook;
 }
 
 /**
@@ -5134,23 +5125,10 @@ const createCard = (post) => {
     const hooksLabel = document.createElement('span');
     hooksLabel.className = 'calendar-card__hooks-label';
     hooksLabel.textContent = 'Hooks';
-    const hooksList = document.createElement('ul');
-    hooksList.className = 'calendar-card__hook-list';
-    const normalizedHooks = normalizeHookOptionsList(normalizedEntry.hookOptions);
-    const fallbackHooks = [
-      'Most athletes are underfueling before games.',
-      'This is why your training isn’t translating to performance.',
-      'Your diet might be costing you points.',
-    ];
-    const hookValues = (normalizedHooks.length ? normalizedHooks : fallbackHooks).slice(0, 5);
-    hookValues.forEach((hook) => {
-      const cleaned = String(hook || '').trim();
-      if (!cleaned) return;
-      const li = document.createElement('li');
-      li.textContent = cleaned;
-      hooksList.appendChild(li);
-    });
-    hooksEl.append(hooksLabel, hooksList);
+    const hookLine = document.createElement('p');
+    hookLine.className = 'calendar-card__hook-line';
+    hookLine.textContent = ensureReelScriptHook(entry);
+    hooksEl.append(hooksLabel, hookLine);
 
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';

@@ -4781,21 +4781,12 @@ body.prefers-reduced-motion *::after {
   margin-bottom: 0.15rem;
   text-transform: uppercase;
 }
-.calendar-card__hook-list {
+.calendar-card__hook-line {
   margin: 0;
-  padding-left: 1.1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
   color: var(--text-secondary);
-  font-size: 0.92rem;
-  line-height: 1.6;
+  font-size: 0.95rem;
+  line-height: 1.4;
   word-break: normal;
-  margin-bottom: 0.25rem;
-}
-.calendar-card__hook-list li {
-  list-style-type: disc;
-  padding-left: 0.15rem;
 }
 .calendar-card__pinned-comment {
   margin-top: 0.35rem;
