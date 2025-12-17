@@ -1712,26 +1712,37 @@ const FALLBACK_KEYWORD_MAP = [
   { match: /creator|influencer|lifestyle|content|story/, keywords: ['ROUTINE', 'VIBES'] },
 ];
 
-function deterministicKeywordFallback(post = {}, classification = 'creator', nicheStyle = '') {
+function deterministicKeywordFallback(post = {}, classification = 'creator', nicheStyle = '', used = new Set()) {
   const text = [nicheStyle, post.idea, post.title, post.pillar, post.type].filter(Boolean).join(' ').toLowerCase();
   for (const entry of FALLBACK_KEYWORD_MAP) {
     if (entry.match.test(text)) {
       for (const candidate of entry.keywords) {
+        if (isKeywordValid(candidate, post) && !used.has(candidate)) return candidate;
+      }
+      for (const candidate of entry.keywords) {
         if (isKeywordValid(candidate, post)) return candidate;
       }
-      return entry.keywords[0];
     }
+  }
+  const fallbackPool = classification === 'business'
+    ? ['CLIENTS', 'SYSTEM', 'PROOF', 'GROWTH', 'PLAN']
+    : ['ROUTINE', 'VIBES', 'STORY', 'CREW', 'FLOW'];
+  for (const candidate of fallbackPool) {
+    if (isKeywordValid(candidate, post) && !used.has(candidate)) return candidate;
+  }
+  for (const candidate of fallbackPool) {
+    if (isKeywordValid(candidate, post)) return candidate;
   }
   return classification === 'business' ? 'CLIENTS' : 'ROUTINE';
 }
 
-function deriveFallbackKeyword(post = {}, classification = 'creator', nicheStyle = '', deliverable = '') {
+function deriveFallbackKeyword(post = {}, classification = 'creator', nicheStyle = '', deliverable = '', used = new Set()) {
   const source = [post.idea, post.title, post.caption, post.pillar, nicheStyle].filter(Boolean).join(' ');
   const tokens = (String(source || '').toUpperCase().match(/[A-Z0-9]+/g) || []).filter(Boolean);
   const filtered = tokens.filter((token) => !(token === 'MEAL' && deliverable !== 'my meal plan'));
-  const candidate = filtered.find((token) => token.length >= 3 && token.length <= 10 && isKeywordValid(token, post));
+  const candidate = filtered.find((token) => token.length >= 3 && token.length <= 10 && isKeywordValid(token, post) && !used.has(token));
   if (candidate) return candidate;
-  return deterministicKeywordFallback(post, classification, nicheStyle);
+  return deterministicKeywordFallback(post, classification, nicheStyle, used);
 }
 
 function buildFallbackHooks(post, classification, keyword) {
@@ -1757,6 +1768,40 @@ function buildFallbackStrategyPieces(post, classification, nicheStyle) {
   return { keyword, deliverable, hooks };
 }
 
+async function regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist = []) {
+  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
+  const blacklistLine = (Array.isArray(blacklist) && blacklist.length)
+    ? `Do NOT use these keywords: ${blacklist.join(', ')}.`
+    : '';
+  const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
+Post title: ${post.title || post.idea || 'Untitled'}
+Post summary: ${summary || 'Fresh concept'}
+
+${blacklistLine}
+Return a single uppercase keyword (3-16 letters) that feels specific to this post. Do NOT use stopwords (THE, A, AN, AND, OR, TO, OF, IN, ON, FOR, WITH, MY, YOUR, THIS, THAT). Do not reuse the title or any title word. Return only the keyword on its own line.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
+    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
+    return candidate ? normalizeKeywordToken(candidate) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function selectUnusedFallbackKeyword(post, classification, nicheStyle, used = new Set()) {
+  const candidate = deriveFallbackKeyword(post, classification, nicheStyle, '', used);
+  if (candidate && !used.has(candidate) && isKeywordValid(candidate, post)) return candidate;
+  const fallbackPool = classification === 'business'
+    ? ['CLIENTS', 'SYSTEM', 'PROOF', 'GROWTH', 'PLAN', 'AUDIT', 'TRUST', 'COACH']
+    : ['ROUTINE', 'VIBES', 'STORY', 'CREW', 'FLOW', 'MOMENT', 'SPARK', 'FRESH'];
+  for (const option of fallbackPool) {
+    if (!used.has(option) && isKeywordValid(option, post)) return option;
+  }
+  for (const option of fallbackPool) {
+    if (isKeywordValid(option, post)) return option;
+  }
+  return classification === 'business' ? 'CLIENTS' : 'ROUTINE';
+}
 async function regeneratePinnedKeywordOnly(post, classification, nicheStyle) {
   const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
   const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
@@ -1814,6 +1859,27 @@ async function ensurePinnedFieldsValid(strategy = {}, post, classification, nich
     pinned_deliverable: deliverable,
     pinned_comment: buildPinnedCommentLine(keyword, deliverable),
   };
+}
+
+async function dedupePinnedComments(posts = [], classification, nicheStyle) {
+  const usedKeywords = new Set();
+  for (const post of posts) {
+    const strategy = post.strategy || {};
+    const keyword = normalizeKeywordToken(strategy.pinned_keyword || '');
+    if (keyword && isKeywordValid(keyword, post) && !usedKeywords.has(keyword)) {
+      usedKeywords.add(keyword);
+      continue;
+    }
+    const blacklist = [...usedKeywords];
+    const regeneratedKeyword = await regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist);
+    const finalKeyword = regeneratedKeyword && isKeywordValid(regeneratedKeyword, post) && !usedKeywords.has(regeneratedKeyword)
+      ? regeneratedKeyword
+      : selectUnusedFallbackKeyword(post, classification, nicheStyle, usedKeywords);
+    const updatedStrategy = await ensurePinnedFieldsValid({ ...strategy, pinned_keyword: finalKeyword }, post, classification, nicheStyle);
+    usedKeywords.add(updatedStrategy.pinned_keyword);
+    post.strategy = updatedStrategy;
+  }
+  return posts;
 }
 
 function templateStrategyFromTitle(post, classification, nicheStyle) {
@@ -2574,6 +2640,7 @@ const server = http.createServer((req, res) => {
     posts = ensureUniqueStrategyValues(posts);
     posts = ensureUniqueStrategyValues(posts);
     posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+    posts = await dedupePinnedComments(posts, classification, nicheStyle);
     logDuplicateStrategyValues(posts);
     return posts;
   }
