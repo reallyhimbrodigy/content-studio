@@ -1374,14 +1374,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
-  const strategyRules = `Strategy rules:
+const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_comment, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_comment must be unique across all ${days} posts and should not reuse the same phrasing.
 3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
 4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
 5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
-6) Use each post's title, angle, and objective to tailor the pinned_comment and hook_options so every calendar entry feels custom.
-7) Hook options should mention the angle or objective and stay distinct from other posts.
+6) Pinned comments must follow this exact format: Comment <ONE_WORD_KEYWORD> and I'll send you <DELIVERABLE>. The keyword must be niche relevant, one word, and unique; the deliverable must be specific to the post and cannot mention the title, “insight”, “angle”, or “objective”.
+7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 ${classificationRules}`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
@@ -1500,8 +1500,35 @@ function normalizeStrategyForPost(post = {}) {
   };
 }
 
-const BANNED_TERMS = ['angle', 'objective', 'major objection'];
-const BANNED_PREFIXES = ['Pinned comment', 'Pin comment', 'Comment'];
+const BANNED_TERMS = ['angle', 'objective', 'major objection', 'insight'];
+const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and I(?:'|’|`)?ll send you\s+(.+)\.$/i;
+
+function getPostTitleText(post = {}) {
+  const raw = String(post.title || post.idea || '').trim();
+  return raw.toLowerCase();
+}
+
+function isPinnedCommentValid(pinned = '', post = {}) {
+  const text = String(pinned || '').trim();
+  if (!text) return false;
+  if (!text.toLowerCase().startsWith('comment ')) return false;
+  if (!isSingleSentence(text)) return false;
+  if (containsBannedTerms(text)) return false;
+  if (text.toLowerCase().includes(getPostTitleText(post))) return false;
+  const match = text.match(PINNED_COMMENT_REGEX);
+  if (!match) return false;
+  const keyword = match[1] || '';
+  return /^[A-Za-z0-9]+$/.test(keyword);
+}
+
+function isHookLineValid(hook = '', post = {}) {
+  const cleaned = String(hook || '').trim();
+  if (!cleaned) return false;
+  if (!isSingleSentence(cleaned)) return false;
+  if (containsBannedTerms(cleaned)) return false;
+  if (cleaned.toLowerCase().includes(getPostTitleText(post))) return false;
+  return true;
+}
 
 function containsBannedTerms(text) {
   if (!text) return false;
@@ -1515,29 +1542,16 @@ function isSingleSentence(text) {
   return sentences.length <= 1;
 }
 
-function cleanBannedPrefix(text) {
-  let result = text;
-  BANNED_PREFIXES.forEach((prefix) => {
-    const regex = new RegExp(`^${prefix}\\s*[:\\-]?\\s*`, 'i');
-    result = result.replace(regex, '');
-  });
-  return result.trim();
-}
-
 function isStrategyCopyBad(strategy = {}, post = {}) {
   if (!strategy) return true;
   const title = String(post.title || post.idea || '').trim().toLowerCase();
-  const pinned = cleanBannedPrefix(strategy.pinned_comment || '');
-  if (!pinned || containsBannedTerms(pinned) || !isSingleSentence(pinned)) return true;
-  if (title && pinned.toLowerCase().includes(title)) return true;
+  if (!isPinnedCommentValid(strategy.pinned_comment, post)) return true;
   const hooks = Array.isArray(strategy.hook_options) ? strategy.hook_options : [];
   if (hooks.length < 3) return true;
   const seenHooks = new Set();
   for (const hook of hooks.slice(0, 3)) {
-    const cleaned = cleanBannedPrefix(String(hook || '').trim());
-    if (!cleaned || containsBannedTerms(cleaned) || !isSingleSentence(cleaned)) return true;
-    if (title && cleaned.toLowerCase().includes(title)) return true;
-    seenHooks.add(cleaned.toLowerCase());
+    if (!isHookLineValid(hook, post)) return true;
+    seenHooks.add(String(hook || '').trim().toLowerCase());
   }
   if (seenHooks.size < 3) return true;
   return false;
@@ -1573,6 +1587,24 @@ function ensureUniqueStrategyValues(posts = []) {
   return posts;
 }
 
+function logDuplicateStrategyValues(posts = []) {
+  if (process.env.NODE_ENV === 'production') return;
+  const angleCounts = new Map();
+  const pinnedCounts = new Map();
+  for (const post of posts) {
+    const strategy = post.strategy || {};
+    const angle = (strategy.angle || '').trim();
+    if (angle) angleCounts.set(angle, (angleCounts.get(angle) || 0) + 1);
+    const pinned = (strategy.pinned_comment || '').trim();
+    if (pinned) pinnedCounts.set(pinned, (pinnedCounts.get(pinned) || 0) + 1);
+  }
+  const angleDuplicates = [...angleCounts.values()].filter((count) => count > 1).length;
+  const pinnedDuplicates = [...pinnedCounts.values()].filter((count) => count > 1).length;
+  if (angleDuplicates > 0 || pinnedDuplicates > 0) {
+    console.warn('[Calendar DEV] Duplicate strategy values', { angleDuplicates, pinnedDuplicates });
+  }
+}
+
 async function regeneratePostStrategy(post, nicheStyle, classification, brandContext) {
   const keyword = extractStrategyKeyword(post.title || post.idea || nicheStyle).replace(/"/g, '');
   const deliverables = classification === 'business'
@@ -1588,7 +1620,7 @@ Niche: ${nicheStyle}
 Post title: ${post.title || post.idea || 'Untitled'}
 Pillar: ${post.pillar || 'General'}
 
-Provide a JSON object with keys "angle", "objective", "pinned_comment", and "hook_options" (array of exactly 3 hooks). Each hook must be one sentence, mention the pain/outcome (business) or a relatable moment (creator), and end with a call-to-action to comment or DM. Pinned comment must be a single short line starting with Comment "${keyword}" and promise a specific deliverable (audits, checklist, template, guide, etc.). Do not reuse the title verbatim or mention angle/objective/major objection.`;
+Provide a JSON object with keys "angle", "objective", "pinned_comment", and "hook_options" (array of exactly 3 hooks). Each hook must be one sentence, mention the pain/outcome (business) or a relatable moment (creator), and end with a call-to-action to comment or DM. Pinned comment must follow this exact format: Comment <ONE_WORD_KEYWORD> and I'll send you <DELIVERABLE>. The keyword should be niche relevant and unique; the deliverable must be a specific resource tied to this post (checklist, template, roadmap, meal plan, etc.). Do not reuse the title verbatim or mention the words insight, angle, objective, or major objection.`;
   try {
     const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 900 });
     const parsed = JSON.parse(raw);
@@ -1608,31 +1640,97 @@ Provide a JSON object with keys "angle", "objective", "pinned_comment", and "hoo
   }
 }
 
+function deriveFallbackDeliverable(post = {}, classification = 'creator') {
+  const text = [post.type, post.pillar, post.idea, post.caption, post.storyPrompt]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const patterns = [
+    { match: /drill|practice|routine|skill/, deliverable: 'my drill list' },
+    { match: /nutrition|meal|diet|food|recipe/, deliverable: 'my meal plan' },
+    { match: /story|social proof|testimonial|case study|proof/, deliverable: 'my case study breakdown' },
+    { match: /promo|launch|offer|discount|deal|sale|special/, deliverable: 'my offer details' },
+    { match: /audit|review|assessment|checklist|scorecard/, deliverable: 'my audit checklist' },
+    { match: /template|framework|system|swipe|script|copy/, deliverable: 'my template pack' },
+    { match: /roadmap|plan|strategy|blueprint/, deliverable: 'my roadmap' },
+    { match: /calculator|estimate|roi|score/, deliverable: 'my calculator' },
+  ];
+  for (const entry of patterns) {
+    if (entry.match.test(text)) return entry.deliverable;
+  }
+  return classification === 'business' ? 'my blueprint' : 'my creative guide';
+}
+
+function deriveFallbackKeyword(post = {}, classification = 'creator', nicheStyle = '', deliverable = '') {
+  const source = [post.idea, post.title, post.caption, post.pillar, nicheStyle].filter(Boolean).join(' ');
+  const tokens = (String(source || '').toUpperCase().match(/[A-Z0-9]+/g) || []).filter(Boolean);
+  const filtered = tokens.filter((token) => !(token === 'MEAL' && deliverable !== 'my meal plan'));
+  const candidate = filtered.find((token) => token.length >= 3 && token.length <= 10);
+  if (candidate) return candidate;
+  return classification === 'business' ? 'PROOF' : 'STORY';
+}
+
+function buildFallbackHooks(post, classification, keyword) {
+  const base = (String(post.idea || post.title || keyword) || '').replace(/\.$/, '');
+  if (classification === 'business') {
+    return [
+      `${keyword} is quietly costing you clients—comment "need it" to grab the fix.`,
+      `Naming ${keyword} frees up the outcome we promised; DM me if you want the proof.`,
+      `Fixing ${keyword} this week unlocks more bookings—comment "ready" and I'll send the play.`,
+    ];
+  }
+  return [
+    `Story time: how ${keyword} reshaped my week—does this feel like you?`,
+    `Contrarian take: ${keyword} gets better when it’s messy—what’s your version of it?`,
+    `Trend check: everyone is doing ${keyword}, but this twist keeps it real—what surprised you most?`,
+  ];
+}
+
+function buildFallbackStrategyPieces(post, classification, nicheStyle) {
+  const deliverable = deriveFallbackDeliverable(post, classification);
+  const keyword = deriveFallbackKeyword(post, classification, nicheStyle, deliverable);
+  const pinned = `Comment ${keyword} and I'll send you ${deliverable}.`;
+  const hooks = buildFallbackHooks(post, classification, keyword);
+  return { keyword, deliverable, pinned, hooks };
+}
+
+async function regeneratePinnedCommentOnly(post, classification, nicheStyle) {
+  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
+  const prompt = `You are a content strategist. Niche: ${nicheStyle}. Classification: ${classification}.
+Post title: ${post.title || post.idea || 'Untitled'}
+Post summary: ${summary || 'Fresh concept'}
+
+Return one line that is a pinned comment in this exact format:
+Comment <ONE_WORD_KEYWORD> and I'll send you <DELIVERABLE>.
+The keyword must be niche relevant, one word, uppercase, and different from the title. The deliverable must be specific to this post (checklist, template, meal plan, roadmap, etc.). Do NOT use the words insight, angle, objective, or major objection. Do not include any other text or explanation.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 400 });
+    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
+    return candidate || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function ensurePinnedCommentValid(strategy = {}, post, classification, nicheStyle) {
+  if (isPinnedCommentValid(strategy.pinned_comment, post)) return strategy;
+  const regenerated = await regeneratePinnedCommentOnly(post, classification, nicheStyle);
+  if (regenerated && isPinnedCommentValid(regenerated, post)) {
+    return { ...strategy, pinned_comment: regenerated };
+  }
+  const fallback = buildFallbackStrategyPieces(post, classification, nicheStyle);
+  return { ...strategy, pinned_comment: fallback.pinned };
+}
+
 function templateStrategyFromTitle(post, classification, nicheStyle) {
-  const keyword = extractStrategyKeyword(post.title || post.idea || post.caption || nicheStyle || 'this topic');
-  const deliverables = classification === 'business'
-    ? ['audit', 'checklist', 'blueprint', 'plan']
-    : ['guide', 'template', 'cheat sheet', 'digital backstory'];
-  const deliverable = deliverables[Math.min(deliverables.length - 1, (keyword.length || 1) % deliverables.length)];
-  const pinned = `Comment "${keyword}" and I’ll DM a ${deliverable} for this topic.`;
-  const hooks = classification === 'business'
-    ? [
-        `Prove it by naming the cost of ignoring ${keyword} and promise the fix.`,
-        `Share how ${post.title || keyword} can flip pain into a wins and invite them to comment.`,
-        `Show the quick proof why this tactic works and ask “Who needs this?”`,
-      ]
-    : [
-        `Story time: how ${keyword} became my vibe and why I keep coming back.`,
-        `Flip the script on ${keyword} with a wild truth—tell me if it’s you.`,
-        `I filmed the behind-the-scenes of ${keyword}. Which part surprised you?`,
-      ];
+  const fallback = buildFallbackStrategyPieces(post, classification, nicheStyle);
   return {
     angle: post.strategy?.angle || '',
     objective: post.strategy?.objective || '',
-    pinned_comment: pinned,
+    pinned_comment: fallback.pinned,
     target_saves_pct: 5,
     target_comments_pct: 2,
-    hook_options: hooks,
+    hook_options: fallback.hooks,
   };
 }
 
@@ -1648,6 +1746,7 @@ async function sanitizeStrategyCopy(posts, nicheStyle, classification, brandCont
         strategy = templateStrategyFromTitle(post, classification, nicheStyle);
       }
     }
+    strategy = await ensurePinnedCommentValid(strategy, post, classification, nicheStyle);
     post.strategy = strategy;
     results.push(post);
   }
@@ -2375,6 +2474,7 @@ const server = http.createServer((req, res) => {
     posts = ensureUniqueStrategyValues(posts);
     posts = ensureUniqueStrategyValues(posts);
     posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+    logDuplicateStrategyValues(posts);
     return posts;
   }
 
