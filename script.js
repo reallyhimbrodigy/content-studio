@@ -6147,17 +6147,44 @@ function logStrategyDuplicates(posts) {
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
   const angleCounts = new Map();
   const pinnedCounts = new Map();
-  posts.forEach((post) => {
+  const angleEntries = new Map();
+  const pinnedEntries = new Map();
+  posts.forEach((post, idx) => {
     const strategy = post?.strategy || {};
+    const identifier = {
+      index: idx,
+      day: post?.day,
+      title: post?.title || post?.idea || '',
+    };
     const angle = (strategy.angle || '').trim();
-    if (angle) angleCounts.set(angle, (angleCounts.get(angle) || 0) + 1);
+    if (angle) {
+      angleCounts.set(angle, (angleCounts.get(angle) || 0) + 1);
+      const existing = angleEntries.get(angle) || [];
+      existing.push(identifier);
+      angleEntries.set(angle, existing);
+    }
     const pinned = normalizePinnedKeywordForLog(strategy);
-    if (pinned) pinnedCounts.set(pinned, (pinnedCounts.get(pinned) || 0) + 1);
+    if (pinned) {
+      pinnedCounts.set(pinned, (pinnedCounts.get(pinned) || 0) + 1);
+      const existing = pinnedEntries.get(pinned) || [];
+      existing.push(identifier);
+      pinnedEntries.set(pinned, existing);
+    }
   });
-  const angleDuplicates = Array.from(angleCounts.values()).filter((count) => count > 1).length;
-  const pinnedDuplicates = Array.from(pinnedCounts.values()).filter((count) => count > 1).length;
-  if (angleDuplicates || pinnedDuplicates) {
+  const angleDuplicatesCount = Array.from(angleCounts.values()).filter((count) => count > 1).length;
+  const pinnedDuplicatesCount = Array.from(pinnedCounts.values()).filter((count) => count > 1).length;
+  const angleDuplicates = {};
+  const pinnedDuplicates = {};
+  angleEntries.forEach((entries, value) => {
+    if (entries.length > 1) angleDuplicates[value] = entries;
+  });
+  pinnedEntries.forEach((entries, value) => {
+    if (entries.length > 1) pinnedDuplicates[value] = entries;
+  });
+  if (angleDuplicatesCount || pinnedDuplicatesCount) {
     console.warn('[Strategy duplicates]', {
+      angleDuplicatesCount,
+      pinnedDuplicatesCount,
       angleDuplicates,
       pinnedDuplicates,
     });
