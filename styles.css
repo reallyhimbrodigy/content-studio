@@ -4447,6 +4447,9 @@ body.prefers-reduced-motion *::after {
   gap: 1.5rem;
   opacity: 1;
   transition: opacity 0.2s ease;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .calendar__head {
@@ -4814,10 +4817,17 @@ body.prefers-reduced-motion *::after {
 .calendar__grid {
   display: grid;
   gap: var(--grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: max-content;
   grid-auto-flow: row dense;
   align-items: stretch;
+  width: 100%;
+}
+
+@media (max-width: 1200px) {
+  .calendar__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Compact mode */
@@ -4830,9 +4840,16 @@ body.prefers-reduced-motion *::after {
 #calendar-grid {
   display: grid;
   gap: var(--grid-gap);
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-flow: row dense;
   align-items: stretch;
+  width: 100%;
+}
+
+@media (max-width: 1200px) {
+  #calendar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 #library-calendars-grid {
@@ -4896,6 +4913,13 @@ body.prefers-reduced-motion *::after {
 .calendar-card__title {
   font-size: 1.15rem;
   margin: 0;
+}
+
+.calendar-card__caption-quick-copy {
+  text-indent: -9999px;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .calendar-card__type {
