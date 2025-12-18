@@ -225,6 +225,53 @@
       </div>
     </div>
 
+    <!-- Upgrade Modal -->
+    <div id="upgrade-modal" class="modal" style="display: none;">
+      <div class="modal-content upgrade-modal">
+        <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
+        <div class="upgrade-header">
+          <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h2>Upgrade to Promptly Pro</h2>
+          <p class="upgrade-subtitle">Unlock unlimited calendars, downloads, and advanced features</p>
+        </div>
+        <div class="pricing-cards">
+          <div class="pricing-card">
+            <div class="pricing-tier">Free</div>
+            <div class="pricing-price">$0<span>/month</span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> 1 calendar per month</li>
+              <li><span class="check">✓</span> Instagram captions only</li>
+              <li><span class="check">✓</span> Copy text to clipboard</li>
+              <li><span class="cross">✗</span> Download ZIP files</li>
+              <li><span class="cross">✗</span> Brand Brain</li>
+              <li><span class="cross">✗</span> Save to library</li>
+              <li><span class="cross">✗</span> Platform variants</li>
+            </ul>
+          </div>
+          <div class="pricing-card pricing-card-pro">
+            <div class="pricing-badge">Most Popular</div>
+            <div class="pricing-tier">Pro</div>
+            <div class="pricing-price">$19.99<span>/month</span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> Unlimited calendars</li>
+              <li><span class="check">✓</span> All platform variants</li>
+              <li><span class="check">✓</span> Full download suite</li>
+              <li><span class="check">✓</span> Brand Brain AI</li>
+              <li><span class="check">✓</span> Unlimited library saves</li>
+              <li><span class="check">✓</span> Fast parallel generation</li>
+              <li><span class="check">✓</span> Priority support</li>
+            </ul>
+            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
+              Upgrade to Pro
+            </button>
+          </div>
+        </div>
+        <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
+      </div>
+    </div>
+
     <script type="module" src="script.js"></script>
     <script src="https://cdn.getphyllo.com/connect/v2/phyllo-connect.js"></script>
     <script type="module" src="/js/analytics-render.js"></script>
