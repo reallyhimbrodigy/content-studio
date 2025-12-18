@@ -6450,35 +6450,73 @@ const proFollowUpIdeas = [
   'Send a newsletter recap that embeds today’s main CTA.'
 ];
 
-const trendingTikTokAudios = [
-  { title: 'Not Like Us', artist: 'Kendrick Lamar', usage: 'high-energy glow-up reveals and punchy before/afters' },
-  { title: 'Birds of a Feather', artist: 'Billie Eilish', usage: 'softer transformation stories + community moments' },
-  { title: 'GATA ONLY', artist: 'Flo Milli', usage: 'quick jump cuts or sassier myth-busting clips' },
-  { title: 'Espresso (sped up)', artist: 'Sabrina Carpenter', usage: 'day-in-the-life facials + POV walkthroughs' },
-  { title: 'Skinny', artist: 'Halsey', usage: 'confidence POV audio for skincare pep talks' }
+const AUDIO_CUE_POOL = [
+  { mood: 'Brisk pop surge', tempo: '130–150 bpm', energy: 'high-energy drive', genre: 'pop', search: 'sped up pop punchy beat' },
+  { mood: 'Smooth R&B shimmer', tempo: '90–110 bpm', energy: 'warm groove', genre: 'R&B', search: 'smoky rnb slow burn' },
+  { mood: 'Retro synth bounce', tempo: '120–135 bpm', energy: 'upbeat momentum', genre: 'synthwave', search: 'retro synth bounce' },
+  { mood: 'Moody neo-soul pulse', tempo: '80–95 bpm', energy: 'velvet depth', genre: 'neo-soul', search: 'neo soul velvet pulse' },
+  { mood: 'Bright indie clap', tempo: '115–130 bpm', energy: 'breezy optimism', genre: 'indie pop', search: 'sunny indie clap' },
+  { mood: 'Hard-hitting drill', tempo: '70–90 bpm', energy: 'gritty intensity', genre: 'drill', search: 'urban drill impact' },
+  { mood: 'Future bass shimmer', tempo: '140–150 bpm', energy: 'dreamy lift', genre: 'future bass', search: 'future bass shimmer' },
+  { mood: 'Laid-back lo-fi lounge', tempo: '70–85 bpm', energy: 'chill calm', genre: 'lo-fi', search: 'lofi lounge mist' },
+  { mood: 'Cinematic bass swell', tempo: '90–105 bpm', energy: 'majestic tension', genre: 'cinematic pop', search: 'cinematic bass swell' },
+  { mood: 'Hyper pop sprint', tempo: '150–170 bpm', energy: 'electric buzz', genre: 'hyperpop', search: 'hyperpop sprint shutter' },
+  { mood: 'Organic acoustic drive', tempo: '100–115 bpm', energy: 'earthy uplift', genre: 'acoustic pop', search: 'organic acoustic drive' },
+  { mood: 'Gospel choir lift', tempo: '100–120 bpm', energy: 'uplifting warmth', genre: 'gospel', search: 'gospel choir lift' },
+  { mood: 'Dark trap shimmer', tempo: '70–90 bpm', energy: 'brooding pulse', genre: 'trap', search: 'trap shimmer pulse' },
+  { mood: 'Playful funk jam', tempo: '110–125 bpm', energy: 'groovy bounce', genre: 'funk', search: 'funk jam bounce' },
+  { mood: 'Dreamy shoegaze haze', tempo: '90–100 bpm', energy: 'ethereal slow', genre: 'shoegaze', search: 'shoegaze haze swirl' },
+  { mood: 'Summer reggaeton sway', tempo: '100–115 bpm', energy: 'sunny heat', genre: 'reggaeton', search: 'summer reggaeton sway' },
+  { mood: 'Bold electro anthem', tempo: '128–138 bpm', energy: 'festival rush', genre: 'electro', search: 'electro anthem rush' },
+  { mood: 'Punchy pop-rock cut', tempo: '120–130 bpm', energy: 'confident pulse', genre: 'pop-rock', search: 'pop rock punch cut' },
+  { mood: 'Calm cinematic drift', tempo: '70–85 bpm', energy: 'soft glow', genre: 'ambient', search: 'calm cinematic drift' },
+  { mood: 'Animated world beat', tempo: '110–125 bpm', energy: 'percussive joy', genre: 'world', search: 'world beat joy' },
 ];
 
-const trendingInstagramAudios = [
-  { title: 'Good Luck, Babe!', artist: 'Chappell Roan', usage: 'bold hook for promo CTA slides' },
-  { title: 'Austin (Boots Stop Workin’)', artist: 'Dasha', usage: 'text overlays about routines or service stacks' },
-  { title: 'Tucson', artist: 'Khalid', usage: 'slow-pan treatment rooms or ingredient spotlights' },
-  { title: 'Million Dollar Baby', artist: 'Tommy Richman', usage: 'jump-cut reels showing quick transformations' },
-  { title: '360', artist: 'Charli XCX', usage: 'carousel teasers and motion graphic carousels' }
-];
+const createAudioSuggestionTracker = () => {
+  const usedSearches = new Set();
+  const poolLength = AUDIO_CUE_POOL.length;
 
-const describeTrendingAudio = (index = 0) => {
-  const now = new Date();
-  const monthYear = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(now);
-  const tikTokPick = pickCycled(trendingTikTokAudios, index);
-  const igPick = pickCycled(trendingInstagramAudios, index + 1);
-  const tikTokText = tikTokPick
-    ? `TikTok — “${tikTokPick.title}” by ${tikTokPick.artist} (perfect for ${tikTokPick.usage}).`
-    : '';
-  const igText = igPick
-    ? `Instagram Reels — “${igPick.title}” by ${igPick.artist} (great for ${igPick.usage}).`
-    : '';
-  return `Trending now (${monthYear}): ${tikTokText} ${igText}`.trim();
+  const allocateCue = (seed) => {
+    for (let attempt = 0; attempt < poolLength; attempt++) {
+      const candidate = AUDIO_CUE_POOL[(seed + attempt) % poolLength];
+      if (!usedSearches.has(candidate.search) || attempt >= poolLength - 1) {
+        usedSearches.add(candidate.search);
+        return candidate;
+      }
+    }
+    const fallback = AUDIO_CUE_POOL[seed % poolLength];
+    usedSearches.add(fallback.search);
+    return fallback;
+  };
+
+  const formatCue = (cue) => {
+    const parts = [
+      cue.mood,
+      `${cue.genre} style`,
+      cue.energy,
+      cue.tempo,
+      `search: '${cue.search}'`,
+    ];
+    return parts.filter(Boolean).join(', ');
+  };
+
+  return {
+    reset() {
+      usedSearches.clear();
+    },
+    buildSuggestion(index) {
+      const tikTokCue = allocateCue(index * 2);
+      const igCue = allocateCue(index * 2 + 1);
+      return `TikTok: ${formatCue(tikTokCue)}; Instagram Reels: ${formatCue(igCue)}`;
+    },
+  };
 };
+
+const audioSuggestionTracker = createAudioSuggestionTracker();
+const resetAudioSuggestions = () => audioSuggestionTracker.reset();
+
+const proPostingTips = [
 
 const proPostingTips = [
   'Post weekday afternoons to catch students between classes.',
@@ -6520,9 +6558,9 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
   const interactive = pickCycled(proInteractivePrompts, index);
 
-  return {
-    ...post,
-    suggestedAudio: describeTrendingAudio(index),
+    return {
+      ...post,
+      suggestedAudio: audioSuggestionTracker.buildSuggestion(index),
     postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
@@ -8209,6 +8247,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
     if (userIsPro) {
+      resetAudioSuggestions();
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));
