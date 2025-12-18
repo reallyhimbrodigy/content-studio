@@ -6182,12 +6182,7 @@ function logStrategyDuplicates(posts) {
     if (entries.length > 1) pinnedDuplicates[value] = entries;
   });
   if (angleDuplicatesCount || pinnedDuplicatesCount) {
-    console.warn('[Strategy duplicates]', {
-      angleDuplicatesCount,
-      pinnedDuplicatesCount,
-      angleDuplicates,
-      pinnedDuplicates,
-    });
+    // Intentional no-op: duplicates tracked elsewhere, no console noise in production.
   }
 }
 
