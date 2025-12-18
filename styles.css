@@ -4916,10 +4916,7 @@ body.prefers-reduced-motion *::after {
 }
 
 .calendar-card__caption-quick-copy {
-  text-indent: -9999px;
-  white-space: nowrap;
-  overflow: hidden;
-  min-width: 0;
+  display: none;
 }
 
 .calendar-card__type {
