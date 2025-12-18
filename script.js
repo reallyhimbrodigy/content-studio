@@ -6517,8 +6517,6 @@ const audioSuggestionTracker = createAudioSuggestionTracker();
 const resetAudioSuggestions = () => audioSuggestionTracker.reset();
 
 const proPostingTips = [
-
-const proPostingTips = [
   'Post weekday afternoons to catch students between classes.',
   'Aim for early morning drops to reach execs before meetings.',
   'Share on Saturday evenings when lifestyle audiences scroll longer.',
