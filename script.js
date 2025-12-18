@@ -6482,7 +6482,7 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   return {
     ...post,
     suggestedAudio: describeTrendingAudio(index),
-    postingTimeTip: pickCycled(proPostingTips, index),
+    postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
       : interactive,
@@ -6495,7 +6495,6 @@ const stripProFields = (post) => {
   delete clone.captionVariations;
   delete clone.hashtagSets;
   delete clone.suggestedAudio;
-  delete clone.postingTimeTip;
   delete clone.visualTemplate;
   delete clone.storyPromptExpanded;
   delete clone.followUpIdea;

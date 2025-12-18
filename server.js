@@ -1374,7 +1374,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
-const strategyRules = `Strategy rules:
+  const postingTimeRules =
+    'Posting-time tips must name a realistic audience for this niche, pair that audience with a plausible scroll window or time of day, and stay as a single sentence. Avoid executive/B2B terms (exec, CEO, founder, investor, board, enterprise) unless this niche is explicitly business/coaching.';
+  const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
 3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
@@ -1384,9 +1386,10 @@ const strategyRules = `Strategy rules:
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
+- postingTimeTip (single sentence describing an audience + scroll window)
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
 
 Rules:
@@ -1459,6 +1462,7 @@ function hasAllRequiredFields(p){
     && scriptObj && scriptObj.hook && scriptObj.body && scriptObj.cta
     && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true)
     && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string'
+    && typeof p.postingTimeTip === 'string' && p.postingTimeTip.trim()
     && hasValidStrategy(p);
   return !!ok;
 }
@@ -1512,6 +1516,23 @@ function normalizeStrategyForPost(post = {}) {
 const BANNED_TERMS = ['angle', 'objective', 'major objection', 'insight'];
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and I(?:'|’|`)?ll send you\s+(.+)\.$/i;
 const KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
+const POSTING_TIME_BANNED_AUDIENCE_TERMS = [
+  'exec', 'executive', 'executives', 'founder', 'founders', 'ceo', 'ceos', 'enterprise', 'board', 'investor', 'investors'
+];
+const POSTING_TIME_WINDOW_OPTIONS = [
+  'weekday mornings around 7am before practice or meetings begin',
+  'midweek lunch breaks around noon when phones pop up',
+  'weekday evenings around 7pm when people unwind and scroll',
+  'Saturday afternoons around 3pm during relaxed scrolling',
+  'Sunday evenings around 8pm when folks plan their week'
+];
+const POSTING_TIME_AUDIENCE_PATTERNS = [
+  { match: /basketball|athlete|sport|coach/, creator: 'local athletes and their parents', business: 'club directors and athletic directors' },
+  { match: /fitness|nutrition|wellness|gym|meal|trainer/, creator: 'wellness seekers and gym goers', business: 'studio owners and operations leads' },
+  { match: /beauty|skincare|esthetic|spa|salon/, creator: 'skincare fans and self-care seekers', business: 'boutique owners and studio managers' },
+  { match: /business|coach|consult|agency|strategy|growth|marketing|sales/, creator: 'ambitious creators and community builders', business: 'founders and growth leaders' },
+  { match: /creator|influencer|lifestyle|content|story/, creator: 'your creative audience and community', business: 'marketing leaders and brand storytellers' },
+];
 
 function buildPinnedCommentLine(keyword = '', deliverable = '') {
   if (!keyword || !deliverable) return '';
@@ -1595,6 +1616,81 @@ function isStrategyCopyBad(strategy = {}, post = {}) {
   }
   if (seenHooks.size < 3) return true;
   return false;
+}
+
+function containsBannedPostingAudience(text = '') {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  return POSTING_TIME_BANNED_AUDIENCE_TERMS.some((term) => lower.includes(term));
+}
+
+function isPostingTimeTipValid(tip = '', classification = 'creator') {
+  const cleaned = String(tip || '').trim();
+  if (!cleaned) return false;
+  if (classification !== 'business' && containsBannedPostingAudience(cleaned)) return false;
+  return true;
+}
+
+function derivePostingAudience(post = {}, classification = 'creator', nicheStyle = '') {
+  const text = [nicheStyle, post.idea, post.title, post.pillar, post.caption].filter(Boolean).join(' ').toLowerCase();
+  for (const entry of POSTING_TIME_AUDIENCE_PATTERNS) {
+    if (entry.match.test(text)) return entry[classification] || entry.creator;
+  }
+  return classification === 'business'
+    ? 'founders and growth leaders'
+    : 'your niche community of curious fans';
+}
+
+function derivePostingTimeWindow(post = {}) {
+  if (!POSTING_TIME_WINDOW_OPTIONS.length) return 'during peak scrolling hours';
+  const idx = Number(post.day || 0) % POSTING_TIME_WINDOW_OPTIONS.length;
+  return POSTING_TIME_WINDOW_OPTIONS[idx] || POSTING_TIME_WINDOW_OPTIONS[0];
+}
+
+function derivePostingTimeTipFallback(post = {}, classification = 'creator', nicheStyle = '') {
+  const audience = derivePostingAudience(post, classification, nicheStyle);
+  const window = derivePostingTimeWindow(post);
+  const nicheHint = nicheStyle ? ` around your ${nicheStyle} content` : '';
+  return `Post ${window} when ${audience} are scrolling${nicheHint}.`.replace(/\s+/g, ' ').trim();
+}
+
+async function regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms = []) {
+  const summary = [post.idea, post.caption, post.pillar, post.cta].filter(Boolean).join(' | ') || 'Fresh concept';
+  const brandLine = brandContext ? `Brand context: ${brandContext}` : '';
+  const bannedLine = bannedTerms.length
+    ? `Avoid these audience keywords: ${bannedTerms.join(', ')}.`
+    : '';
+  const prompt = `You are a content strategist for ${classification} content. ${brandLine}
+Niche/Style: ${nicheStyle || 'General'}
+Post summary: ${summary}
+${bannedLine}
+Provide a single sentence posting time tip that names the audience and a plausible scroll window/time (e.g., "weekday mornings at 8am when parents scroll after drop-off"). Return only that sentence.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.5, maxTokens: 250 });
+    const lines = (raw || '').split(/\\n+/).map((line) => line.trim()).filter(Boolean);
+    return lines[0] || '';
+  } catch (err) {
+    return '';
+  }
+}
+
+async function ensurePostingTimeTips(posts = [], classification, nicheStyle, brandContext) {
+  if (!Array.isArray(posts)) return posts;
+  const bannedTerms = classification === 'business' ? [] : POSTING_TIME_BANNED_AUDIENCE_TERMS;
+  for (const post of posts) {
+    let tip = String(post.postingTimeTip || '').trim();
+    if (!isPostingTimeTipValid(tip, classification)) {
+      const regenerated = await regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms);
+      if (isPostingTimeTipValid(regenerated, classification)) {
+        tip = regenerated;
+      }
+    }
+    if (!tip) {
+      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
+    }
+    post.postingTimeTip = tip;
+  }
+  return posts;
 }
 
 function ensureUniqueStrategyValues(posts = []) {
@@ -1949,6 +2045,7 @@ async function repairMissingFields(nicheStyle, brandContext, partialPosts){
 - engagementScripts { commentReply, dmReply } (each <= 140 chars)
 - promoSlot (boolean)
 - weeklyPromo (string; include empty string if promoSlot is false)
+- postingTimeTip (string; mention a niche audience + time/window)
 - script { hook, body, cta }
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, pinned_comment, hook_options }
 - instagram_caption (string)
@@ -2014,6 +2111,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   out.pillar = out.pillar || 'Education';
   out.storyPrompt = out.storyPrompt || "Share behind-the-scenes of today's work.";
   out.designNotes = out.designNotes || 'Clean layout, bold headline, brand colors.';
+  out.postingTimeTip = typeof p.postingTimeTip === 'string' ? p.postingTimeTip : '';
   if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
     out.repurpose = ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'];
   }
@@ -2656,6 +2754,7 @@ const server = http.createServer((req, res) => {
     posts = ensureUniqueStrategyValues(posts);
     posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
     posts = await dedupePinnedComments(posts, classification, nicheStyle);
+    posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
     return posts;
   }
