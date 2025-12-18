@@ -28,51 +28,6 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
-    <style>
-      /* LANDING: preview cards belong under hero, never overlapping sections */
-      [view="landing"] .landing-hero {
-        padding-bottom: 32px;
-      }
-
-      [view="landing"] .landing-preview-cards,
-      [view="landing"] .preview-cards,
-      [view="landing"] .cards-preview,
-      [view="landing"] .content-preview {
-        position: static !important;
-        inset: auto !important;
-        transform: none !important;
-        margin-top: 24px !important;
-        margin-bottom: 48px !important;
-        width: 100% !important;
-        max-width: 980px !important;
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 20px !important;
-        align-items: start !important;
-      }
-
-      [view="landing"] .landing-preview-cards > *,
-      [view="landing"] .preview-cards > *,
-      [view="landing"] .cards-preview > *,
-      [view="landing"] .content-preview > * {
-        position: static !important;
-        transform: none !important;
-        height: auto !important;
-        max-height: none !important;
-        overflow: visible !important;
-        width: 100% !important;
-      }
-
-      @media (max-width: 900px) {
-        [view="landing"] .landing-preview-cards,
-        [view="landing"] .preview-cards,
-        [view="landing"] .cards-preview,
-        [view="landing"] .content-preview {
-          grid-template-columns: 1fr !important;
-          max-width: 100% !important;
-        }
-      }
-    </style>
   </head>
   <body>
     <div class="app-shell">
@@ -143,7 +98,9 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="details-body">
+                  <details>
+                    <summary>Details</summary>
+                    <div class="details-body">
                       <div class="calendar-card__hashtags">#CreatorOps #ContentBehindScenes</div>
                       <div class="calendar-card__format calendar-card__detail-row">
                         <div class="detail-row__top">
@@ -258,7 +215,8 @@
                         <button class="calendar-card__action pro-gradient-btn" type="button">Download</button>
                         <button class="calendar-card__action pro-gradient-btn" type="button">Regenerate</button>
                       </div>
-                  </div>
+                    </div>
+                  </details>
                 </div>
               </div>
             </article>
@@ -278,7 +236,9 @@
                       </svg>
                     </button>
                   </div>
-                  <div class="details-body">
+                  <details>
+                    <summary>Details</summary>
+                    <div class="details-body">
                       <div class="calendar-card__hashtags">#LaunchReady #SocialSystem</div>
                       <div class="calendar-card__format calendar-card__detail-row">
                         <div class="detail-row__top">
@@ -417,7 +377,8 @@
                         <button class="calendar-card__action pro-gradient-btn" type="button">Download</button>
                         <button class="calendar-card__action pro-gradient-btn" type="button">Regenerate</button>
                       </div>
-                  </div>
+                    </div>
+                  </details>
                 </div>
               </div>
             </article>
