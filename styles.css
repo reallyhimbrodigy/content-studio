@@ -3176,6 +3176,92 @@ body {
   gap: 1rem;
 }
 
+.landing-preview-cards .calendar-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 1.5rem;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+  isolation: isolate;
+  min-height: auto !important;
+}
+
+.landing-preview-cards .calendar-card__day {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: rgba(255, 255, 255, 0.18);
+}
+
+.landing-preview-cards .calendar-card__caption-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.landing-preview-cards .calendar-card__caption {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--text-secondary);
+  font-size: 1.01rem;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.landing-preview-cards .calendar-card__type {
+  display: inline-block;
+  background: rgba(127, 90, 240, 0.13);
+  color: #7f5af0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.15em 0.7em;
+  margin-bottom: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.landing-preview-cards .calendar-card__detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+}
+
+.landing-preview-cards .detail-row__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.landing-preview-cards .detail-copy-btn {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.landing-preview-cards .detail-copy-btn:hover {
+  color: #a28dfd;
+  transform: translateY(-1px);
+}
+
+.landing-preview-cards summary {
+  display: list-item !important;
+}
+
 .sample-card {
   min-height: auto;
   background: rgba(20, 20, 30, 0.85);
