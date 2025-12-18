@@ -3176,7 +3176,7 @@ body {
   gap: 1rem;
 }
 
-.landing-preview-cards .calendar-card {
+.landing-preview-cards .calendar-card, body[view="landing"] .landing-preview-cards .sample-card.calendar-card {
   background: var(--card);
   border-radius: 18px;
   padding: 1.5rem;
@@ -3187,23 +3187,24 @@ body {
   gap: 1rem;
   position: relative;
   isolation: isolate;
+  min-height: 320px;
   min-height: auto !important;
 }
 
-.landing-preview-cards .calendar-card__day {
+.landing-preview-cards .calendar-card__day, body[view="landing"] .landing-preview-cards .calendar-card__day {
   font-size: 3rem;
   font-weight: 700;
   letter-spacing: -0.04em;
   color: rgba(255, 255, 255, 0.18);
 }
 
-.landing-preview-cards .calendar-card__caption-row {
+.landing-preview-cards .calendar-card__caption-row, body[view="landing"] .landing-preview-cards .calendar-card__caption-row {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
 }
 
-.landing-preview-cards .calendar-card__caption {
+.landing-preview-cards .calendar-card__caption, body[view="landing"] .landing-preview-cards .calendar-card__caption {
   margin: 0.5rem 0 0.25rem;
   color: var(--text-secondary);
   font-size: 1.01rem;
@@ -3211,7 +3212,7 @@ body {
   font-weight: 500;
 }
 
-.landing-preview-cards .calendar-card__type {
+.landing-preview-cards .calendar-card__type, body[view="landing"] .landing-preview-cards .calendar-card__type {
   display: inline-block;
   background: rgba(127, 90, 240, 0.13);
   color: #7f5af0;
@@ -3223,7 +3224,7 @@ body {
   margin-top: 0.25rem;
 }
 
-.landing-preview-cards .calendar-card__detail-row {
+.landing-preview-cards .calendar-card__detail-row, body[view="landing"] .landing-preview-cards .calendar-card__detail-row {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -3258,9 +3259,10 @@ body {
   transform: translateY(-1px);
 }
 
-.landing-preview-cards summary {
+.landing-preview-cards summary, body[view="landing"] .landing-preview-cards summary {
   display: list-item !important;
 }
+
 
 .landing-preview-cards .calendar-card__entries {
   flex: 1 1 auto;
