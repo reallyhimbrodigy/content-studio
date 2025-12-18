@@ -307,7 +307,7 @@ let lastGenerateAssetOpener = null;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
-let designAssetsApiDisabled = false;
+let designAssetsApiDisabled = true;
 let isFetchingDesignAssets = false;
 let activeDesignContext = null;
 let currentBrandKit = null;
@@ -807,6 +807,9 @@ function closeGenerateAssetModal() {
 
 async function createDesignAssetFromCalendar(context, type) {
   if (!context) throw new Error('Missing calendar context');
+  if (designAssetsApiDisabled) {
+    throw new Error('Design assets are disabled in this environment.');
+  }
   const currentUserId = await getCurrentUserId();
   if (!currentUserId) {
     throw new Error('You must be signed in to generate assets.');
@@ -1107,6 +1110,9 @@ function buildAssetEditorPatchPayload(regenerate = false) {
 
 async function persistAssetEditorChanges(regenerate = false) {
   if (!currentDesignAsset) return null;
+  if (designAssetsApiDisabled) {
+    throw new Error('Design assets are disabled in this environment.');
+  }
   const payload = buildAssetEditorPatchPayload(regenerate);
   console.log('[Promptly] PATCH asset', currentDesignAsset.id, payload);
   const response = await fetchWithAuth(`/api/design-assets/${encodeURIComponent(currentDesignAsset.id)}`, {
@@ -1473,6 +1479,7 @@ function mergeDesignAsset(asset, options = {}) {
 
 async function refreshDesignAssetById(assetId) {
   if (!assetId) return;
+  if (designAssetsApiDisabled) return;
   try {
     const response = await fetchWithAuth(`/api/design-assets/${encodeURIComponent(assetId)}`, { method: 'GET' });
     if (response.status === 501) {
@@ -4248,7 +4255,6 @@ async function bootstrapApp(attempt = 0) {
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
     refreshBrandKit();
-    await refreshDesignAssetsFromServer();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
