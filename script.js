@@ -599,6 +599,16 @@ function parsePinnedCommentLines(raw) {
     .slice(0, 2);
 }
 
+function ensurePinnedCommentDisplay(raw) {
+  if (!raw) return '';
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  if (/^comment\s+/i.test(text)) {
+    return text.replace(/^comment\s+/i, 'Comment ');
+  }
+  return `Comment ${text}`;
+}
+
 function ensureReelScriptHook(entry) {
   if (!entry || typeof entry !== 'object') return 'Stop scrolling quick tip';
   if (!entry.videoScript || typeof entry.videoScript !== 'object') {
@@ -5116,7 +5126,9 @@ const createCard = (post) => {
     addInfoRow('Target comments', targetCommentsValue);
 
     const pinnedLines = parsePinnedCommentLines(normalizedEntry.pinnedComment);
-    if (pinnedLines.length) {
+    const pinnedSource = normalizedEntry.pinnedComment || pinnedLines[0] || pinnedValue;
+    const pinnedDisplayText = ensurePinnedCommentDisplay(pinnedSource);
+    if (pinnedDisplayText) {
       const pinnedBlock = document.createElement('div');
       pinnedBlock.className = 'calendar-card__pinned-comment';
       const pinnedLabelEl = document.createElement('span');
@@ -5124,12 +5136,13 @@ const createCard = (post) => {
       pinnedLabelEl.textContent = 'Pinned comment';
       const primaryLine = document.createElement('p');
       primaryLine.className = 'calendar-card__pinned-comment-primary';
-      primaryLine.textContent = pinnedLines[0];
+      primaryLine.textContent = pinnedDisplayText;
       pinnedBlock.append(pinnedLabelEl, primaryLine);
-      if (pinnedLines[1]) {
+      const altText = ensurePinnedCommentDisplay(pinnedLines[1]);
+      if (altText) {
         const altLine = document.createElement('p');
         altLine.className = 'calendar-card__pinned-comment-alt';
-        altLine.textContent = `Alt: ${pinnedLines[1]}`;
+        altLine.textContent = `Alt: ${altText}`;
         pinnedBlock.append(altLine);
       }
       entryEl.appendChild(pinnedBlock);
@@ -5139,7 +5152,7 @@ const createCard = (post) => {
     hooksEl.className = 'calendar-card__hooks';
     const hooksLabel = document.createElement('span');
     hooksLabel.className = 'calendar-card__hooks-label';
-    hooksLabel.textContent = 'Hooks';
+    hooksLabel.textContent = 'Hook';
     const hookLine = document.createElement('p');
     hookLine.className = 'calendar-card__hook-line';
     hookLine.textContent = ensureReelScriptHook(entry);
