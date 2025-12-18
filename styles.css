@@ -3262,6 +3262,72 @@ body {
   display: list-item !important;
 }
 
+.landing-preview-cards .calendar-card__entries {
+  flex: 1 1 auto;
+}
+
+.landing-preview-cards .calendar-card__actions {
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+}
+
+.landing-preview-cards .calendar-card::after {
+  content: attr(data-pillar);
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.landing-preview-cards .calendar-card__title {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.landing-preview-cards details {
+  margin-top: 0.5rem;
+}
+
+.landing-preview-cards details > summary {
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  width: fit-content;
+  transition: all 0.2s ease;
+}
+
+.landing-preview-cards details[open] > summary {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+}
+
+.landing-preview-cards .details-body {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.35rem;
+  animation: fadeInSlide 0.25s ease;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  height: auto;
+}
+
+.landing-preview-cards .calendar-card__detail-row .detail-text {
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-word;
+  font-size: 0.92rem;
+}
+
 .sample-card {
   min-height: auto;
   background: rgba(20, 20, 30, 0.85);
