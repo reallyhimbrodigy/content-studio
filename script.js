@@ -493,6 +493,13 @@ function preparePinnedCommentsForRender(posts = []) {
 
 const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z0-9]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
 const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
+const BANNED_POSTING_AUDIENCE_KEYWORDS = ['exec', 'executive', 'founder', 'founders', 'investor', 'investors', 'enterprise', 'board'];
+
+function isBusinessPostingAudience(text = '') {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return BANNED_POSTING_AUDIENCE_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
 
 function normalizePinnedSignature(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -5451,7 +5458,7 @@ const createCard = (post) => {
     };
     const executionNoteLines = [];
     if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
-    if (postingTimeTip) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
+    if (postingTimeTip && !isBusinessPostingAudience(postingTimeTip)) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
     const executionNotesEl = executionNoteLines.length
       ? (() => {
           const container = document.createElement('div');
