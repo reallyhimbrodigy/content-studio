@@ -30,6 +30,17 @@ window.unlockBodyScroll = function () {
   }
 };
 
+const calendarGridRoot = document.getElementById("calendar-grid");
+const isCalendarPage = Boolean(calendarGridRoot);
+if (
+  !isCalendarPage &&
+  typeof process !== "undefined" &&
+  process.env &&
+  process.env.NODE_ENV !== "production"
+) {
+  console.info("[calendar script] calendar grid missing; skipping initialization.");
+}
+if (isCalendarPage) {
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
   const pillarFilterMenu = document.getElementById("pillar-filter-menu");
@@ -9310,3 +9321,4 @@ document.addEventListener('click', (event) => {
     }
   }
 });
+}
