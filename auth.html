@@ -239,10 +239,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: #050505;
+        color: #050505 !important;
       }
-      .password-toggle:hover { color: #111; }
-      .password-toggle svg { width: 20px; height: 20px; }
+      .password-toggle:hover { color: #050505 !important; }
+      .password-toggle svg {
+        width: 20px;
+        height: 20px;
+        stroke: #050505 !important;
+      }
       .password-toggle .icon-eye-off { display: none; }
       .password-toggle[aria-pressed="true"] .icon-eye { display: none; }
       .password-toggle[aria-pressed="true"] .icon-eye-off { display: inline; }
