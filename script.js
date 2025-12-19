@@ -4717,6 +4717,22 @@ function setupLandingSampleActionRedirects() {
 
 setupLandingSampleActionRedirects();
 
+function syncUpgradeModalFeatures() {
+  if (!upgradeModal) return;
+  const modalFreeList = upgradeModal.querySelector('.pricing-card .pricing-features');
+  const modalProList = upgradeModal.querySelector('.pricing-card-pro .pricing-features');
+  const landingFeatureLists = document.querySelectorAll('.landing-pricing__column .landing-pricing__features');
+  if (!modalFreeList || !modalProList || landingFeatureLists.length < 2) return;
+  const [landingFreeList, landingProList] = landingFeatureLists;
+  const cloneItems = (source) => Array.from(source.querySelectorAll('li')).map((li) => li.cloneNode(true));
+  modalFreeList.innerHTML = '';
+  modalProList.innerHTML = '';
+  cloneItems(landingFreeList).forEach((node) => modalFreeList.appendChild(node));
+  cloneItems(landingProList).forEach((node) => modalProList.appendChild(node));
+}
+
+syncUpgradeModalFeatures();
+
 // Sign out handler is attached after auth check when user-menu is shown
 
 // Upgrade modal handlers
