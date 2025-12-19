@@ -493,7 +493,23 @@ function preparePinnedCommentsForRender(posts = []) {
 
 const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z0-9]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
 const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
-const BANNED_POSTING_AUDIENCE_KEYWORDS = ['exec', 'executive', 'founder', 'founders', 'investor', 'investors', 'enterprise', 'board'];
+const BANNED_POSTING_AUDIENCE_KEYWORDS = [
+  'exec',
+  'executive',
+  'executives',
+  'founder',
+  'founders',
+  'ceo',
+  'ceos',
+  'investor',
+  'investors',
+  'enterprise',
+  'board',
+  'meetings',
+  'b2b',
+  'lifestyle',
+  'lifestyle audiences',
+];
 
 function isBusinessPostingAudience(text = '') {
   if (!text) return false;
