@@ -8180,51 +8180,68 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
-      console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
-      
+      const payload = {
+        nicheStyle,
+        userId: getCurrentUser() || undefined,
+        days: requestSize,
+        startDay,
+        postsPerDay: normalizedFrequency,
+      };
+      console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
+
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
-        body: JSON.stringify({ 
-          nicheStyle, 
-          userId: getCurrentUser() || undefined, 
-          days: requestSize, 
-          startDay,
-          postsPerDay: normalizedFrequency
-        })
+        body: JSON.stringify(payload)
       });
-      
-      if (!response.ok) {
-        let detail = '';
+      const responseText = await response.text();
+      const parsedDetail = (() => {
         try {
-          detail = await response.text();
-        } catch (_) {}
-        const parsedDetail = (() => {
-          try {
-            return detail ? JSON.parse(detail) : null;
-          } catch {
-            return null;
-          }
-        })();
-        if (parsedDetail?.error === 'upgrade_required') {
-          if (parsedDetail?.feature === 'calendar_exports') {
-            lockCalendarExportButtons();
-          }
-          showUpgradeModal();
-          throw new Error('upgrade_required');
+          return responseText ? JSON.parse(responseText) : null;
+        } catch {
+          return null;
         }
-        const hint = parsedDetail?.error || detail || response.statusText;
-        throw new Error(`API error: ${hint}`);
+      })();
+      const isHtmlError = /<!DOCTYPE\\s+html/i.test(responseText) || /Cloudflare Ray ID/i.test(responseText);
+      if (isHtmlError) {
+        const match = responseText.match(/Cloudflare Ray ID:\\s*([A-Za-z0-9-]+)/i);
+        const rayId = match ? match[1] : 'unknown';
+        console.error(`[Calendar] fetchBatch upstream HTML error (ray=${rayId})`, responseText.slice(0, 300));
+        throw new Error(`API error: upstream_html_500 (ray=${rayId})`);
       }
-      
-      const data = await response.json();
-      if (data?.error === 'upgrade_required') {
-        if (data?.feature === 'calendar_exports') {
+
+      if (!response.ok) {
+        const detail = parsedDetail?.error || response.statusText || 'Http error';
+        console.error(`[Calendar] fetchBatch non-ok response`, {
+          batchIndex,
+          payload,
+          status: response.status,
+          body: responseText,
+          debugStack: parsedDetail?.debugStack,
+        });
+        throw new Error(`API error: ${detail}`);
+      }
+
+      if (parsedDetail?.error === 'upgrade_required') {
+        if (parsedDetail?.feature === 'calendar_exports') {
           lockCalendarExportButtons();
         }
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
-      let batchPosts = Array.isArray(data.posts) ? data.posts : [];
+
+      if (!parsedDetail || !Array.isArray(parsedDetail.posts)) {
+        console.error('[Calendar] fetchBatch invalid JSON response', {
+          batchIndex,
+          payload,
+          body: responseText,
+        });
+        throw new Error('API error: invalid_json');
+      }
+
+      if (parsedDetail?.debugStack) {
+        console.log('[Calendar] fetchBatch debugStack:', parsedDetail.debugStack);
+      }
+      let batchPosts = parsedDetail.posts;
 
       // Update progress UI as each batch completes
       completedBatches++;
@@ -8258,8 +8275,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     
     // Fire all 6 batches in parallel for maximum speed (~30 seconds)
     console.log(" Requesting all batches in parallel...");
-    const batchPromises = Array.from({ length: totalBatches }, (_, i) => fetchBatch(i));
-    const results = await Promise.all(batchPromises);
+    const results = [];
+    for (let i = 0; i < totalBatches; i++) {
+      const batchResult = await fetchBatch(i);
+      results.push(batchResult);
+    }
     
     // Sort by batch index and flatten
     let allPosts = results

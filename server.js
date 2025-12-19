@@ -264,6 +264,35 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+function generateRequestId(prefix = 'req') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logServerError(tag, err, info = {}) {
+  const payload = {
+    tag,
+    message: err?.message || 'internal_error',
+    stack: err?.stack,
+    ...info,
+  };
+  console.error(`[Server][${tag}]`, payload);
+}
+
+function respondWithServerError(res, err, { requestId, statusCode } = {}) {
+  if (res.headersSent) return;
+  const status = statusCode || err?.statusCode || 500;
+  const payload = {
+    error: err?.message || 'internal_error',
+  };
+  if (requestId) payload.requestId = requestId;
+  if (!isProduction && err?.stack) {
+    payload.debugStack = err.stack;
+  }
+  sendJson(res, status, payload);
+}
+
 function isUserPro(req) {
   const plan = req?.user?.plan;
   if (req?.user?.isPro) return true;
@@ -2540,6 +2569,7 @@ function isBrandKitPath(pathname) {
 }
 
 const server = http.createServer((req, res) => {
+  try {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -2888,6 +2918,8 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/calendar/regenerate' && req.method === 'POST') {
     (async () => {
+      let body = null;
+      const requestId = generateRequestId('regen');
       try {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
@@ -2903,25 +2935,21 @@ const server = http.createServer((req, res) => {
             });
           }
         }
-        const body = await readJsonBody(req);
+        body = await readJsonBody(req);
         const posts = await generateCalendarPosts(body || {});
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
         return sendJson(res, 200, { posts });
       } catch (err) {
-        const status = err.statusCode || 500;
-        let errorMessage = err.message || 'internal_error';
-        if (String(errorMessage).includes('502')) {
-          errorMessage = 'OpenAI servers are temporarily unavailable. Please try again in a moment.';
-        } else if (String(errorMessage).includes('503')) {
-          errorMessage = 'OpenAI service is overloaded. Please try again in a few seconds.';
-        } else if (String(errorMessage).includes('504')) {
-          errorMessage = 'Request timed out. Please try again.';
-        } else if (String(errorMessage).includes('429')) {
-          errorMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
-        }
-        return sendJson(res, status, { error: errorMessage });
+        const context = {
+          postsPerDay: body?.postsPerDay,
+          days: body?.days,
+          startDay: body?.startDay,
+          nicheStyle: body?.nicheStyle,
+        };
+        logServerError('calendar_regenerate_error', err, { requestId, context });
+        respondWithServerError(res, err, { requestId, statusCode: err?.statusCode });
       }
     })();
     return;
@@ -2931,41 +2959,34 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', async () => {
+      const requestId = generateRequestId('generate');
       try {
         const { nicheStyle, userId, days, startDay } = JSON.parse(body || '{}');
         if (!nicheStyle) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'nicheStyle required' }));
+          return sendJson(res, 400, { error: 'nicheStyle required' });
         }
         if (!OPENAI_API_KEY) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
+          return sendJson(res, 500, { error: 'OPENAI_API_KEY not set' });
         }
         const classification = categorizeNiche(nicheStyle);
-        // pull brand context if available
         const brand = userId ? loadBrand(userId) : null;
         const brandContext = summarizeBrandForPrompt(brand);
         let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay });
-        // First-pass repair via LLM if any items are missing required fields
         const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
         if (incomplete.length > 0) {
           const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
           if (Array.isArray(repaired) && repaired.length === incomplete.length) {
             incomplete.forEach((entry, idx) => {
               const fixed = repaired[idx] || {};
-              // Merge: prefer repaired values, fall back to original
               const merged = Object.assign({}, entry.p, fixed);
               if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
               if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
-              // Normalize arrays
               if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
               if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
               if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
-              // Ensure engagementScripts object shape
               if (!merged.engagementScripts) merged.engagementScripts = {};
               if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
               if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
-              // Ensure script object shape
               if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
               posts[entry.i] = merged;
             });
@@ -2994,24 +3015,13 @@ const server = http.createServer((req, res) => {
         });
         posts = ensureUniqueStrategyValues(posts);
         posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ posts }));
+        return sendJson(res, 200, { posts });
       } catch (err) {
-        console.error('API error:', err);
-        let errorMessage = String(err);
-        // Provide more helpful error messages for common issues
-        if (errorMessage.includes('502')) {
-          errorMessage = 'OpenAI servers are temporarily unavailable. Please try again in a moment.';
-        } else if (errorMessage.includes('503')) {
-          errorMessage = 'OpenAI service is overloaded. Please try again in a few seconds.';
-        } else if (errorMessage.includes('504')) {
-          errorMessage = 'Request timed out. Please try again.';
-        } else if (errorMessage.includes('429')) {
-          errorMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
-        }
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: errorMessage }));
+        logServerError('calendar_generate_error', err, {
+          requestId,
+          bodyPreview: body.slice(0, 400),
+        });
+        respondWithServerError(res, err, { requestId });
       }
     });
     return;
@@ -5621,54 +5631,63 @@ Output format:
     return res.end(JSON.stringify({ error: 'Forbidden' }));
   }
 
-  fs.stat(filePath, (err, stats) => {
-    // If file not found and no extension, try adding .html
-    if (err && !path.extname(safePath)) {
-      safePath = safePath + '.html';
-      filePath = path.join(__dirname, path.normalize(safePath));
-      
-      if (!filePath.startsWith(__dirname)) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Forbidden' }));
+    fs.stat(filePath, (err, stats) => {
+      // If file not found and no extension, try adding .html
+      if (err && !path.extname(safePath)) {
+        safePath = safePath + '.html';
+        filePath = path.join(__dirname, path.normalize(safePath));
+        
+        if (!filePath.startsWith(__dirname)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Forbidden' }));
+        }
+        
+        fs.stat(filePath, (err2, stats2) => {
+          if (err2 || !stats2.isFile()) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Not found' }));
+          }
+          serveFile(filePath, res);
+        });
+        return;
       }
       
-      fs.stat(filePath, (err2, stats2) => {
-        if (err2 || !stats2.isFile()) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Not found' }));
-        }
-        serveFile(filePath, res);
-      });
-      return;
-    }
-    
-    if (err || !stats.isFile()) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Not found' }));
-    }
+      if (err || !stats.isFile()) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Not found' }));
+      }
 
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = {
-      '.html': 'text/html; charset=utf-8',
-      '.css': 'text/css',
-      '.js': 'text/javascript',
-      '.json': 'application/json',
-      '.svg': 'image/svg+xml',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.gif': 'image/gif',
-      '.ico': 'image/x-icon',
-    };
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.html': 'text/html; charset=utf-8',
+        '.css': 'text/css',
+        '.js': 'text/javascript',
+        '.json': 'application/json',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.ico': 'image/x-icon',
+      };
 
-    const contentType = mimeTypes[ext] || 'application/octet-stream';
-    const headers = { 'Content-Type': contentType };
-    if (ext === '.html') headers['Cache-Control'] = 'no-store';
-    else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
-    else headers['Cache-Control'] = 'public, max-age=86400';
-    res.writeHead(200, headers);
-    fs.createReadStream(filePath).pipe(res);
-  });
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      const headers = { 'Content-Type': contentType };
+      if (ext === '.html') headers['Cache-Control'] = 'no-store';
+      else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
+      else headers['Cache-Control'] = 'public, max-age=86400';
+      res.writeHead(200, headers);
+      fs.createReadStream(filePath).pipe(res);
+    });
+  } catch (err) {
+    const requestId = generateRequestId('handler');
+    logServerError('http_request_error', err, {
+      method: req.method,
+      path: req.url,
+      requestId,
+    });
+    respondWithServerError(res, err, { requestId });
+  }
 });
 
 function serveFile(filePath, res) {
