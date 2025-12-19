@@ -5452,7 +5452,6 @@ const createCard = (post) => {
     const executionNoteLines = [];
     if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
     if (postingTimeTip) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
-    if (designNotes) executionNoteLines.push(createExecutionNoteLine('Design notes', designNotes));
     const executionNotesEl = executionNoteLines.length
       ? (() => {
           const container = document.createElement('div');
