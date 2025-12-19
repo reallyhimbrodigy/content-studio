@@ -5127,10 +5127,7 @@ const createCard = (post) => {
       infoRows.appendChild(row);
     };
 
-    addInfoRow('Angle', angleValue);
-    addInfoRow('Objective', objectiveValue);
-    addInfoRow('Target saves', targetSavesValue);
-    addInfoRow('Target comments', targetCommentsValue);
+    addInfoRow('Format', format);
 
     const pinnedLines = parsePinnedCommentLines(normalizedEntry.pinnedComment);
     const pinnedSource = normalizedEntry.pinnedComment || pinnedLines[0] || pinnedValue;
