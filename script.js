@@ -410,7 +410,7 @@ function extractKeywordFromComment(comment) {
 function normalizePinnedCommentString(raw) {
   const parts = extractPinnedCommentParts(raw);
   if (!parts.keyword) return String(raw || '').trim();
-  const deliverable = parts.deliverable || 'my guide';
+  const deliverable = ensureDeliverableHasMy(parts.deliverable || 'my guide');
   return `Comment "${parts.keyword}" and I'll send you ${deliverable}.`;
 }
 
@@ -436,7 +436,7 @@ function pickDeliverable(post) {
 
 function buildPinnedCommentLine(keyword, deliverable) {
   const safeKeyword = sanitizePinnedKeyword(keyword) || 'GUIDE';
-  const safeDeliverable = deliverable || 'my guide';
+  const safeDeliverable = ensureDeliverableHasMy(deliverable || 'my guide');
   return `Comment "${safeKeyword}" and I'll send you ${safeDeliverable}.`;
 }
 
@@ -506,6 +506,13 @@ function extractPinnedCommentParts(value) {
   return { keyword, deliverable };
 }
 
+function ensureDeliverableHasMy(deliverable) {
+  const normalized = String(deliverable || '').trim();
+  if (!normalized) return 'my guide';
+  if (/^my\b/i.test(normalized)) return normalized;
+  return `my ${normalized}`;
+ }
+
 function derivePinnedFallbackTokens(nicheStyle) {
   const tokens = (String(nicheStyle || '')
     .toUpperCase()
@@ -526,19 +533,19 @@ function ensureUniquePinnedComments(posts, nicheStyle) {
     const strategy = post.strategy || {};
     let pinned = normalizePinnedCommentString(String(strategy.pinned_comment || strategy.pinnedComment || ''));
     let parsed = extractPinnedCommentParts(pinned);
-    let deliverable = parsed.deliverable || defaultDeliverable;
+    const deliverableText = ensureDeliverableHasMy(parsed.deliverable || defaultDeliverable);
     let normalized = normalizePinnedSignature(pinned);
     if (!normalized) {
       const token = tokens[fallbackIndex % tokens.length];
       fallbackIndex += 1;
-      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      pinned = `Comment ${token} and I'll send you ${deliverableText}.`;
       normalized = normalizePinnedSignature(pinned);
     }
     let guard = 0;
     while (normalized && seen.has(normalized) && guard < tokens.length * 2) {
       const token = tokens[fallbackIndex % tokens.length];
       fallbackIndex += 1;
-      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      pinned = `Comment ${token} and I'll send you ${deliverableText}.`;
       normalized = normalizePinnedSignature(pinned);
       guard += 1;
     }
