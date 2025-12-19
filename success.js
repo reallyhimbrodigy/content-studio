@@ -38,7 +38,7 @@ initTheme();
     if (countdownEl) countdownEl.textContent = countdown;
     if (countdown <= 0) {
       clearInterval(interval);
-      window.location.href = '/';
+  window.location.href = '/calendar.html';
     }
   }, 1000);
 })();

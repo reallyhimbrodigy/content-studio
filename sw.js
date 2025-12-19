@@ -1,9 +1,10 @@
 /* Promptly Service Worker */
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CORE_CACHE = `promptly-core-${CACHE_VERSION}`;
 const CORE_ASSETS = [
   '/',
   '/index.html',
+  '/calendar.html',
   '/styles.css',
   '/script.js',
   '/assets/vendor/supabase.js',

@@ -8459,7 +8459,7 @@ if (hubEmptyGenBtn) {
 // Design Lab events
 if (designEmptyGoCalendarBtn) {
   designEmptyGoCalendarBtn.addEventListener('click', () => {
-    window.location.href = '/';
+    window.location.href = '/calendar.html';
   });
 }
 if (designEmptyClearFiltersBtn) {
