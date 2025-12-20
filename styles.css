@@ -7283,6 +7283,7 @@ html, body {
 .landing-preview-card .calendar-card__hook-line,
 .landing-preview-card .calendar-card__pinned-comment-primary {
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
