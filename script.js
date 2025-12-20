@@ -5198,7 +5198,8 @@ const createCard = (post) => {
         altLine.textContent = `Alt: ${altText}`;
         pinnedBlock.append(altLine);
       }
-      entryEl.appendChild(pinnedBlock);
+      // store for later insertion
+      entryEl._pinnedBlock = pinnedBlock;
     }
 
     const hooksEl = document.createElement('div');
@@ -5812,7 +5813,10 @@ const createCard = (post) => {
     ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
     details.append(summary, detailsBody);
 
-    entryEl.append(infoRows, hooksEl, ideaEl, typeEl, captionRow);
+    const pinnedBlock = entryEl._pinnedBlock;
+    entryEl.append(infoRows, ideaEl, typeEl);
+    if (pinnedBlock) entryEl.append(pinnedBlock);
+    entryEl.append(hooksEl, captionRow);
     if (collapsedCtaEl) entryEl.append(collapsedCtaEl);
     if (executionNotesEl) entryEl.append(executionNotesEl);
     entryEl.append(details);
