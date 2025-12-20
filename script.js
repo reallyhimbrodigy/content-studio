@@ -5189,13 +5189,13 @@ const createCard = (post) => {
       pinnedLabelEl.textContent = 'Pinned comment';
       const primaryLine = document.createElement('p');
       primaryLine.className = 'calendar-card__pinned-comment-primary';
-      primaryLine.textContent = pinnedDisplayText;
+      primaryLine.innerHTML = `<span class="calendar-card__format">Pinned comment:</span>${escapeHtml(pinnedDisplayText)}`;
       pinnedBlock.append(pinnedLabelEl, primaryLine);
       const altText = ensurePinnedCommentDisplay(pinnedLines[1]);
       if (altText) {
         const altLine = document.createElement('p');
         altLine.className = 'calendar-card__pinned-comment-alt';
-        altLine.textContent = `Alt: ${altText}`;
+        altLine.innerHTML = `<span class="calendar-card__format">Alt:</span>${escapeHtml(altText)}`;
         pinnedBlock.append(altLine);
       }
       // store for later insertion
@@ -5209,7 +5209,7 @@ const createCard = (post) => {
     hooksLabel.textContent = 'Hook';
     const hookLine = document.createElement('p');
     hookLine.className = 'calendar-card__hook-line';
-    hookLine.textContent = ensureReelScriptHook(entry);
+    hookLine.innerHTML = `<span class="calendar-card__format">Hook:</span>${escapeHtml(ensureReelScriptHook(entry))}`;
     hooksEl.append(hooksLabel, hookLine);
 
     const ideaEl = document.createElement('h3');
@@ -5508,7 +5508,7 @@ const createCard = (post) => {
           container.className = 'calendar-card__execution-notes';
           const title = document.createElement('div');
           title.className = 'calendar-card__execution-notes-title';
-          title.textContent = 'Execution Notes';
+          title.innerHTML = `<span class="calendar-card__format">Execution Notes:</span>`;
           container.append(title, ...executionNoteLines);
           return container;
         })()
