@@ -7329,130 +7329,6 @@ html, body {
   color: #0f172a;
 }
 
-.landing-sample-card {
-  flex: 0 0 720px;
-  max-width: 720px;
-  width: 100%;
-  margin: 0 auto;
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 18px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
-  padding: 22px;
-  color: #f8fafc;
-  position: relative;
-}
-
-.landing-sample-card__section {
-  margin-top: 14px;
-}
-
-.landing-sample-card__badge {
-  position: absolute;
-  top: 16px;
-  right: 18px;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  opacity: 0.85;
-}
-
-.landing-sample-card__label,
-.landing-sample-card__label-inline,
-.landing-sample-card__k {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.7;
-}
-
-.landing-sample-card__text,
-.landing-sample-card__v,
-.landing-sample-card__text-inline {
-  font-size: 13px;
-  line-height: 1.4;
-  color: rgba(248, 250, 252, 0.95);
-}
-
-.landing-sample-card__title {
-  font-size: 20px;
-  font-weight: 700;
-  margin-top: 6px;
-}
-
-.landing-sample-card__pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  margin-top: 8px;
-  background: rgba(248, 250, 252, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.landing-sample-card__caption {
-  margin-top: 10px;
-  line-height: 1.5;
-}
-
-.landing-sample-card__row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: baseline;
-}
-
-.landing-sample-card__kv {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.landing-sample-card__muted {
-  font-size: 12px;
-  color: rgba(248, 250, 252, 0.7);
-  margin-top: 6px;
-}
-
-.landing-sample-card__details {
-  max-height: 420px;
-  overflow: auto;
-  padding-right: 8px;
-}
-
-.landing-sample-card__details::-webkit-scrollbar {
-  width: 6px;
-}
-
-.landing-sample-card__details::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 999px;
-}
-
-.landing-sample-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.landing-sample-card__btn {
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  text-decoration: none;
-  font-size: 13px;
-  color: #f8fafc;
-}
-
-.landing-sample-card__btn--primary {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: transparent;
-  font-weight: 600;
-}
-
 .landing-generate-cta {
   display: flex;
   flex-direction: column;
@@ -7492,7 +7368,6 @@ html, body {
 }
 
 @media (max-width: 980px) {
-  .landing-sample-card,
   .landing-generate-cta {
     width: 92vw;
     max-width: 92vw;
