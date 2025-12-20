@@ -8285,34 +8285,20 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     };
     
     // Fire all 6 batches in parallel for maximum speed (~30 seconds)
-    const runWithConcurrencyLimit = async (items, limit, worker) => {
-      const results = new Array(items.length);
-      let cursor = 0;
-      const release = async () => {
-        if (cursor >= items.length) return;
-        const index = cursor++;
-        try {
-          results[index] = await worker(items[index]);
-        } finally {
-          await release();
-        }
-      };
-      const workers = Array.from({ length: Math.min(limit, items.length) }, () => release());
-      await Promise.all(workers);
-      return results;
-    };
-
     console.log(" Requesting all batches in parallel...");
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const t0 = performance.now();
-    const concurrencyLimit = Math.min(4, totalBatches);
-    const results = await runWithConcurrencyLimit(batchIndexes, concurrencyLimit, async (batchIndex) => fetchBatch(batchIndex));
+    const results = await Promise.all(
+      batchIndexes.map((batchIndex) =>
+        fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
+      )
+    );
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
+
+    const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
     
     // Sort by batch index and flatten
-    let allPosts = results
-      .sort((a, b) => a.batchIndex - b.batchIndex)
-      .flatMap(r => r.posts);
+    let allPosts = orderedResults.flatMap(r => r.posts);
 
     // Normalize every post to guarantee required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
