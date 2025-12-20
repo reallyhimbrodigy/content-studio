@@ -2767,6 +2767,25 @@ body {
   padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px);
 }
 
+.landing-hero-content--centered {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.landing-hero-content--centered p {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.landing-hero-content--centered .landing-hero__actions,
+.landing-hero-content--centered .landing-badges,
+.landing-hero-content--centered .hero-proof,
+.landing-hero-content--centered .landing-logos {
+  justify-content: center;
+}
+
 .landing-hero__grid {
   display: grid;
   grid-template-columns: 1fr;
