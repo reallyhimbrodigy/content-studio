@@ -2666,16 +2666,21 @@ const server = http.createServer((req, res) => {
       return res.end();
     }
   }
-  if (
-    (parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html') &&
-    req.method === 'GET'
-  ) {
-    const calendarPage = path.join(__dirname, 'calendar.html');
-    if (fs.existsSync(calendarPage)) {
-      return serveFile(calendarPage, res);
+  if (req.method === 'GET') {
+    if (parsed.pathname === '/js/landing.js') {
+      const landingScript = path.join(__dirname, 'js', 'landing.js');
+      if (fs.existsSync(landingScript)) {
+        return serveFile(landingScript, res);
+      }
     }
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'calendar_not_found' }));
+    if (parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html') {
+      const calendarPage = path.join(__dirname, 'calendar.html');
+      if (fs.existsSync(calendarPage)) {
+        return serveFile(calendarPage, res);
+      }
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'calendar_not_found' }));
+    }
   }
 
   // Helper: serve static file with optional gzip if client supports
