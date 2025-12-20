@@ -2767,6 +2767,20 @@ body {
   padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px);
 }
 
+.landing-hero--centered {
+  text-align: center;
+}
+
+.landing-hero--centered .landing-hero__intro,
+.landing-hero--centered .landing-logos,
+.landing-hero--centered .hero-proof,
+.landing-hero--centered .landing-badges,
+.landing-hero--centered .landing-hero__actions {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
 .landing-hero__grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -2826,6 +2840,16 @@ body {
 
   .landing-hero__panel {
     max-width: 100%;
+  }
+
+  .landing-hero--centered .landing-hero__intro,
+  .landing-hero--centered .landing-logos,
+  .landing-hero--centered .hero-proof,
+  .landing-hero--centered .landing-badges,
+  .landing-hero--centered .landing-hero__actions {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
   }
 }
 
