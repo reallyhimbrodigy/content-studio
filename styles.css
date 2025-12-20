@@ -7293,3 +7293,40 @@ html, body {
   border-top: 1px solid #f0f0f0;
   margin-top: 10px;
 }
+
+.landing-card-preview-wrapper {
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+}
+
+.landing-card-preview-wrapper .landing-preview-card {
+  transform: scale(0.92);
+  transform-origin: top center;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+.landing-card-preview-wrapper .calendar-card__pinned-comment-label,
+.landing-card-preview-wrapper .calendar-card__hooks-label,
+.landing-card-preview-wrapper .calendar-card__execution-notes-title {
+  font-size: 11px;
+  color: #0f172a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.landing-card-preview-wrapper .calendar-card__title {
+  font-size: 15px;
+}
+
+.landing-card-preview-wrapper .calendar-card__caption {
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.landing-card-preview-wrapper .calendar-card__execution-note span {
+  color: #0f172a;
+}
