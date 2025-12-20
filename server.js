@@ -2118,6 +2118,12 @@ ${schema}`;
 }
 
 function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
+  if (!post || typeof post !== 'object') {
+    const err = new Error('Invalid post payload');
+    err.code = 'BAD_REQUEST';
+    err.statusCode = 400;
+    throw err;
+  }
   const fallbackDay = typeof forcedDay === 'number'
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
@@ -2140,7 +2146,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   out.pillar = out.pillar || 'Education';
   out.storyPrompt = out.storyPrompt || "Share behind-the-scenes of today's work.";
   out.designNotes = out.designNotes || 'Clean layout, bold headline, brand colors.';
-  out.postingTimeTip = typeof p.postingTimeTip === 'string' ? p.postingTimeTip : '';
+  out.postingTimeTip = typeof post.postingTimeTip === 'string' ? post.postingTimeTip : '';
   if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
     out.repurpose = ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'];
   }
@@ -2965,7 +2971,19 @@ const server = http.createServer((req, res) => {
           nicheStyle: body?.nicheStyle,
         };
         logServerError('calendar_regenerate_error', err, { requestId, context });
-        respondWithServerError(res, err, { requestId, statusCode: err?.statusCode });
+        if (res.headersSent) return;
+        const status = err?.statusCode || 500;
+        const payload = {
+          error: {
+            message: err?.message || 'Internal Server Error',
+            code: err?.code || 'CALENDAR_REGENERATE_FAILED',
+          },
+          requestId,
+        };
+        if (!isProduction && err?.stack) {
+          payload.debugStack = err.stack;
+        }
+        return sendJson(res, status, payload);
       }
     })();
     return;
