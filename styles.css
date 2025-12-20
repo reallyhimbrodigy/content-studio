@@ -7302,8 +7302,6 @@ html, body {
 }
 
 .landing-card-preview-wrapper .landing-preview-card {
-  transform: scale(0.92);
-  transform-origin: top center;
   width: 100%;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   border-color: rgba(15, 23, 42, 0.1);
@@ -7329,6 +7327,21 @@ html, body {
 
 .landing-card-preview-wrapper .calendar-card__execution-note span {
   color: #0f172a;
+}
+
+.landing-sample-card {
+  flex: 0 0 520px;
+  max-width: 520px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.landing-sample-card .landing-card-preview-wrapper {
+  justify-content: stretch;
+}
+
+.landing-sample-card .landing-preview-card {
+  padding: 24px;
 }
 
 .landing-sample-card .landing-preview-card {
