@@ -7330,3 +7330,29 @@ html, body {
 .landing-card-preview-wrapper .calendar-card__execution-note span {
   color: #0f172a;
 }
+
+.landing-sample-card .landing-preview-card {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.5);
+}
+
+.landing-sample-card .landing-preview-card .calendar-card__pinned-comment-label,
+.landing-sample-card .landing-preview-card .calendar-card__hooks-label,
+.landing-sample-card .landing-preview-card .calendar-card__execution-notes-title,
+.landing-sample-card .landing-preview-card .calendar-card__type,
+.landing-sample-card .landing-preview-card .calendar-card__execution-note strong {
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.landing-sample-card .landing-preview-card .calendar-card__caption,
+.landing-sample-card .landing-preview-card .calendar-card__hook-line,
+.landing-sample-card .landing-preview-card .calendar-card__pinned-comment-primary,
+.landing-sample-card .landing-preview-card .calendar-card__execution-note span {
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.landing-sample-card .landing-preview-card h3 {
+  color: #ffffff;
+}
