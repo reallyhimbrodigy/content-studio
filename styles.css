@@ -7281,6 +7281,27 @@ html, body {
   line-height: 1.6;
 }
 
+.landing-section + .landing-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.landing-section .content-page {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.landing-section h2 {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f5f6f8;
+}
+
+.landing-section p {
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .landing-preview-card .calendar-card__pinned-comment,
 .landing-preview-card .calendar-card__hooks {
   margin-bottom: 6px;
