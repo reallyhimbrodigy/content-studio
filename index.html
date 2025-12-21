@@ -29,7 +29,7 @@
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
   </head>
-  <body>
+  <body class="view-landing">
     <div class="app-shell">
       <nav class="landing-nav" aria-label="Primary navigation">
         <div class="landing-nav__brand"></div>
@@ -246,23 +246,126 @@
     </div>
 
     <section id="product" class="landing-section">
-      <div class="content-page">
-        <h2>Product</h2>
-        <p>Promptly turns a single niche into a full month of reels, stories, and swipe-worthy copy with one click. Strategy, hooks, captions, scripts, audio cues—and now Story prompt+—all stay in one polished calendar.</p>
+      <div class="landing-section__inner">
+        <div class="landing-section__header">
+          <span class="landing-eyebrow">PRODUCT</span>
+          <h2>A planning-first content studio</h2>
+          <p>Promptly turns a single niche into a full month of reels, stories, and swipe-worthy copy with one click. Strategy, hooks, captions, scripts, audio cues—and now Story prompt+—all stay in one polished calendar.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon"></div>
+            <h3 class="feature-title">Calendar-first planning</h3>
+            <p class="feature-text">Every idea flows into a sequenced 30-day roadmap tailored to your niche.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🧠</div>
+            <h3 class="feature-title">Brand Brain</h3>
+            <p class="feature-text">Capture tone, visuals, and strategic constraints before generating posts.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🎬</div>
+            <h3 class="feature-title">Rich content cards</h3>
+            <p class="feature-text">Hooks, CTAs, formats, hashtags, audio ideas, and posting tips in one view.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">✨</div>
+            <h3 class="feature-title">Story Prompt+</h3>
+            <p class="feature-text">Interactive story prompts with polls, sliders, and DM hooks for each concept.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3 class="feature-title">Regeneration</h3>
+            <p class="feature-text">Refresh any day instantly without losing posting-time and CTA guidance.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📤</div>
+            <h3 class="feature-title">Export-ready</h3>
+            <p class="feature-text">Download calendars, captions, and assets straight from the same interface.</p>
+          </article>
+        </div>
       </div>
     </section>
 
     <section id="workflow" class="landing-section">
-      <div class="content-page">
-        <h2>Workflow</h2>
-        <p>Set your niche, unlock Brand Brain, generate dozens of posts, then export platforms, scripts, and assets directly from the calendar view. Refresh and regenerate with the same tools at every step.</p>
+      <div class="landing-section__inner">
+        <div class="landing-section__header">
+          <span class="landing-eyebrow">WORKFLOW</span>
+          <h2>Calendar → Visual → (Later) Editor → Export</h2>
+          <p>From niche to export with Preview, Brand Brain, and automation layered into every day.</p>
+        </div>
+        <div class="workflow-steps">
+          <article class="workflow-step">
+            <div class="workflow-step__number">1</div>
+            <h3>Set your niche</h3>
+            <p>Define the audience, tone, and goals that will guide the calendar.</p>
+          </article>
+          <article class="workflow-step">
+            <div class="workflow-step__number">2</div>
+            <h3>Unlock Brand Brain</h3>
+            <p>Capture brand voice, colors, and constraints that should steer every post.</p>
+          </article>
+          <article class="workflow-step">
+            <div class="workflow-step__number">3</div>
+            <h3>Generate 30-day calendar</h3>
+            <p>Produce every hook, caption, CTA, Story prompt+, and posting tip in one sweep.</p>
+          </article>
+          <article class="workflow-step">
+            <div class="workflow-step__number">4</div>
+            <h3>Export & execute</h3>
+            <p>Send to publishing, library, or downloads complete with scripts and assets.</p>
+          </article>
+        </div>
       </div>
     </section>
 
     <section id="pricing" class="landing-section">
-      <div class="content-page">
-        <h2>Pricing</h2>
-        <p>The free tier covers calendar generation plus a few exports and backlinks to Brand Brain. Upgrade to Pro for unlimited saves, downloads, analytics, and multi-platform experiments.</p>
+      <div class="landing-section__inner">
+        <div class="landing-section__header">
+          <span class="landing-eyebrow">PRICING</span>
+          <h2>Simple pricing that scales with output</h2>
+          <p>Choose the plan that fits how often you generate, export, and refine content across platforms.</p>
+        </div>
+        <div class="pricing-grid">
+          <article class="pricing-card">
+            <p class="pricing-card__name">Starter</p>
+            <p class="pricing-card__price">$0<span>/month</span></p>
+            <p class="pricing-card__subtitle">Best for weekly test runs</p>
+            <ul class="pricing-card__features">
+              <li>30-day calendar generation</li>
+              <li>3 exports per month</li>
+              <li>Limited Brand Brain</li>
+              <li>Basic analytics teaser</li>
+            </ul>
+            <button class="pricing-card__cta">Start free</button>
+          </article>
+          <article class="pricing-card pricing-card--featured is-featured">
+            <span class="pricing-pill">Most popular</span>
+            <p class="pricing-card__name">Pro</p>
+            <p class="pricing-card__price">$19.99<span>/month</span></p>
+            <p class="pricing-card__subtitle">Use it for consistent publishing</p>
+            <ul class="pricing-card__features">
+              <li>Unlimited saves & downloads</li>
+              <li>Brand Brain fully unlocked</li>
+              <li>Posts/day & regen unlocked</li>
+              <li>Analytics + experiments</li>
+              <li>Platform scripts + audio cues</li>
+            </ul>
+            <button class="pricing-card__cta pricing-card__cta--primary">Upgrade to Pro</button>
+          </article>
+          <article class="pricing-card">
+            <p class="pricing-card__name">Studio</p>
+            <p class="pricing-card__price">Custom</p>
+            <p class="pricing-card__subtitle">Scale across teams</p>
+            <ul class="pricing-card__features">
+              <li>Multi-brand calendars</li>
+              <li>Advanced analytics exports</li>
+              <li>Workflow integrations</li>
+              <li>Dedicated support</li>
+            </ul>
+            <button class="pricing-card__cta">Talk to sales</button>
+          </article>
+        </div>
       </div>
     </section>
 
