@@ -7244,18 +7244,22 @@ html, body {
 
 .landing-preview-card {
   position: relative;
-  width: min(760px, 100%);
-  max-width: 760px;
+  width: min(780px, 100%);
+  max-width: 780px;
   margin: 0 auto;
   border: 1px solid var(--card-border);
   border-radius: 18px;
-  padding: 1.5rem;
+  padding: 1.75rem;
   gap: 1rem;
   background: var(--card);
-  box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
-  font-size: 13px;
-  line-height: 1.4;
+  box-shadow: 0 26px 40px rgba(0, 0, 0, 0.28);
+  font-size: 13.4px;
+  line-height: 1.45;
   color: var(--text-primary);
+}
+.landing-preview-card .calendar-card {
+  padding: 1.85rem;
+  font-size: 1.05rem;
 }
 
 .landing-preview-card .calendar-card__pinned-comment,
