@@ -7264,6 +7264,23 @@ html, body {
   font-size: 1.1rem;
 }
 
+.landing-section {
+  padding: 3rem clamp(1.5rem, 4vw, 3rem);
+}
+
+.landing-section h2 {
+  font-size: clamp(2rem, 3vw, 2.5rem);
+  margin-bottom: 0.75rem;
+}
+
+.landing-section p {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+}
+
 .landing-preview-card .calendar-card__pinned-comment,
 .landing-preview-card .calendar-card__hooks {
   margin-bottom: 6px;
