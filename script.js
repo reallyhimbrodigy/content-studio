@@ -5873,6 +5873,9 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
     const newPost = parsed.post;
+    if (!newPost.postingTimeTip && entry.postingTimeTip) {
+      newPost.postingTimeTip = entry.postingTimeTip;
+    }
     let replaced = false;
     currentCalendar = currentCalendar.map((p) => {
       if (!replaced && p === entry) {
