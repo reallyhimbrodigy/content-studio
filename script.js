@@ -8351,6 +8351,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const slot = (idx % normalizedFrequency) + 1;
       return { ...post, day: dayIndex, slot };
     });
+    allPosts.forEach((post) => {
+      console.log(`[Calendar] audio assigned run ${thisRunId}`, { day: post.day, audio: post.audio });
+    });
 
     if (normalizedFrequency > 1) {
       allPosts = ensureUniqueDailyPosts(allPosts, normalizedFrequency);
