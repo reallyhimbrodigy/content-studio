@@ -1399,7 +1399,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
-  const audioRules = `Audio rules:\n1) For each post, choose one specific TikTok sound and one Instagram Reels sound that are currently trending for this niche (prefer titles + artists/creators from the past 7 days).\n2) Explain them using this exact format: TikTok: "<AUDIO TITLE>" — <ARTIST/CREATOR> (search: "<AUDIO TITLE> <ARTIST/CREATOR>"); Instagram Reels: "<AUDIO TITLE>" — <ARTIST/CREATOR> (search: "<AUDIO TITLE> <ARTIST/CREATOR>").\n3) Keep every audio string unique across the ${days}-day calendar; do not reuse the same track twice. No genre descriptions, moods, or BPM ranges.`;
+  const audioRules = `Audio rules:\n1) For each post, output one TikTok sound and one Instagram Reels sound that are actually trending for this niche right now.\n2) Use this exact format only: TikTok: <TRACK_NAME> - <ARTIST_OR_CREATOR>; Instagram: <TRACK_NAME> - <ARTIST_OR_CREATOR>.\n3) Do NOT mention vibrations, BPM, "search:", genre words, or invented descriptors—this must be the real sound title plus the creator.\n4) Ensure every audio line is unique across the ${days}-day calendar.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1429,6 +1429,90 @@ Rules:
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
+const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone)\b/i;
+
+function normalizeAudioLine(value) {
+  if (!value && value !== 0) return '';
+  return String(value).trim().replace(/["'“”]/g, '').replace(/\s+/g, ' ');
+}
+
+function isAudioLineValid(line = '') {
+  const text = normalizeAudioLine(line);
+  if (!text) return false;
+  if (!text.includes('TikTok:') || !text.includes('Instagram:')) return false;
+  if (AUDIO_INVALID_PATTERN.test(text)) return false;
+  const segments = text.split(';').map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length < 2) return false;
+  return segments.every((segment) => {
+    if (!/^(TikTok|Instagram):/i.test(segment)) return false;
+    return segment.includes(' - ');
+  });
+}
+
+async function requestAudioCorrection(nicheStyle, brandContext, post) {
+  if (!OPENAI_API_KEY) return '';
+  const instructions = [
+    'You are a content strategist who only lists real trending audio names.',
+    'Return exactly one line in this format: TikTok: <TRACK NAME> - <ARTIST>; Instagram: <TRACK NAME> - <ARTIST>.',
+    'Do NOT include BPM, genre words, "search:", or any descriptive adjectives—only the official sound name and creator.',
+  ].join(' ');
+  const userParts = [
+    `Niche: ${nicheStyle}`,
+    brandContext ? `Brand context: ${brandContext}` : null,
+    post.hook ? `Hook: ${post.hook}` : null,
+    post.caption ? `Caption: ${post.caption}` : null,
+    post.audio ? `Previous audio: ${post.audio}` : null,
+  ].filter(Boolean).join('\n');
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: instructions },
+      { role: 'user', content: `${userParts}\nReturn only the requested audio line.` },
+    ],
+    temperature: 0.3,
+    max_tokens: 200,
+  });
+  const options = {
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+  };
+  try {
+    const json = await openAIRequest(options, payload);
+    const content = json?.choices?.[0]?.message?.content || '';
+    const line = content.split(/\r?\n/)[0].trim();
+    return normalizeAudioLine(line);
+  } catch (err) {
+    console.error('[Calendar] audio correction failed', err?.message || err);
+    return '';
+  }
+}
+
+async function ensureAudioLines(nicheStyle, brandContext, posts = []) {
+  if (!Array.isArray(posts)) return posts;
+  for (let idx = 0; idx < posts.length; idx += 1) {
+    const post = posts[idx];
+    const normalized = normalizeAudioLine(post.audio);
+    if (isAudioLineValid(normalized)) {
+      post.audio = normalized;
+      continue;
+    }
+    console.warn('[Calendar] invalid audio string detected for day', post.day || idx + 1);
+    const corrected = await requestAudioCorrection(nicheStyle, brandContext, post);
+    if (isAudioLineValid(corrected)) {
+      post.audio = corrected;
+    } else {
+      post.audio = normalized || corrected || 'TikTok: TBD - Artist; Instagram: TBD - Artist';
+    }
+  }
+  return posts;
+}
+
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
@@ -2764,6 +2848,7 @@ const server = http.createServer((req, res) => {
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
     let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    posts = await ensureAudioLines(nicheStyle, brandContext, posts);
     const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
     if (incomplete.length > 0) {
       const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
