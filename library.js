@@ -115,8 +115,8 @@ function buildPostHTML(post) {
       + `</div>`
     );
   }
-  if (isLibraryUserPro && post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  if (isLibraryUserPro && post.audio) {
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
   }
   if (isLibraryUserPro && post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);

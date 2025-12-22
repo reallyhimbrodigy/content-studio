@@ -5144,6 +5144,16 @@ const createCard = (post) => {
       weeklyPromo,
     } = entry;
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
+    (function logAudioDebug() {
+      if (typeof window === 'undefined') return;
+      const hostname = window.location?.hostname || '';
+      if (hostname && !['localhost', '127.0.0.1'].includes(hostname)) return;
+      const audioKeys = ['audio', 'suggestedAudio', 'tiktok_audio', 'instagram_audio', 'audioText'].filter((key) => key in entry);
+      console.log('[Calendar] rendering audio', { day: entryDay, audio: entry.audio, keys: Object.keys(entry), audioKeys });
+      if (audioKeys.length > 1) {
+        console.warn('[Calendar] detected multiple audio keys', audioKeys);
+      }
+    })();
 
     if (!card.dataset.pillar && pillar) {
       card.dataset.pillar = pillar;
@@ -5665,7 +5675,7 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (window.cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
+    if (entry.audio) fullTextParts.push(`Audio: ${entry.audio}`);
     if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
     if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
@@ -5736,8 +5746,8 @@ const createCard = (post) => {
     }
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
-    if (window.cachedUserIsPro && entry.suggestedAudio) {
-      hiddenDetailNodes.push(createDetailRow('Audio (optional)', entry.suggestedAudio, 'calendar-card__audio'));
+    if (entry.audio) {
+      hiddenDetailNodes.push(createDetailRow('Audio', entry.audio, 'calendar-card__audio'));
     }
     if (window.cachedUserIsPro && entry.storyPromptExpanded) {
       hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
@@ -6509,72 +6519,6 @@ const proFollowUpIdeas = [
   'Send a newsletter recap that embeds today’s main CTA.'
 ];
 
-const AUDIO_CUE_POOL = [
-  { mood: 'Brisk pop surge', tempo: '130–150 bpm', energy: 'high-energy drive', genre: 'pop', search: 'sped up pop punchy beat' },
-  { mood: 'Smooth R&B shimmer', tempo: '90–110 bpm', energy: 'warm groove', genre: 'R&B', search: 'smoky rnb slow burn' },
-  { mood: 'Retro synth bounce', tempo: '120–135 bpm', energy: 'upbeat momentum', genre: 'synthwave', search: 'retro synth bounce' },
-  { mood: 'Moody neo-soul pulse', tempo: '80–95 bpm', energy: 'velvet depth', genre: 'neo-soul', search: 'neo soul velvet pulse' },
-  { mood: 'Bright indie clap', tempo: '115–130 bpm', energy: 'breezy optimism', genre: 'indie pop', search: 'sunny indie clap' },
-  { mood: 'Hard-hitting drill', tempo: '70–90 bpm', energy: 'gritty intensity', genre: 'drill', search: 'urban drill impact' },
-  { mood: 'Future bass shimmer', tempo: '140–150 bpm', energy: 'dreamy lift', genre: 'future bass', search: 'future bass shimmer' },
-  { mood: 'Laid-back lo-fi lounge', tempo: '70–85 bpm', energy: 'chill calm', genre: 'lo-fi', search: 'lofi lounge mist' },
-  { mood: 'Cinematic bass swell', tempo: '90–105 bpm', energy: 'majestic tension', genre: 'cinematic pop', search: 'cinematic bass swell' },
-  { mood: 'Hyper pop sprint', tempo: '150–170 bpm', energy: 'electric buzz', genre: 'hyperpop', search: 'hyperpop sprint shutter' },
-  { mood: 'Organic acoustic drive', tempo: '100–115 bpm', energy: 'earthy uplift', genre: 'acoustic pop', search: 'organic acoustic drive' },
-  { mood: 'Gospel choir lift', tempo: '100–120 bpm', energy: 'uplifting warmth', genre: 'gospel', search: 'gospel choir lift' },
-  { mood: 'Dark trap shimmer', tempo: '70–90 bpm', energy: 'brooding pulse', genre: 'trap', search: 'trap shimmer pulse' },
-  { mood: 'Playful funk jam', tempo: '110–125 bpm', energy: 'groovy bounce', genre: 'funk', search: 'funk jam bounce' },
-  { mood: 'Dreamy shoegaze haze', tempo: '90–100 bpm', energy: 'ethereal slow', genre: 'shoegaze', search: 'shoegaze haze swirl' },
-  { mood: 'Summer reggaeton sway', tempo: '100–115 bpm', energy: 'sunny heat', genre: 'reggaeton', search: 'summer reggaeton sway' },
-  { mood: 'Bold electro anthem', tempo: '128–138 bpm', energy: 'festival rush', genre: 'electro', search: 'electro anthem rush' },
-  { mood: 'Punchy pop-rock cut', tempo: '120–130 bpm', energy: 'confident pulse', genre: 'pop-rock', search: 'pop rock punch cut' },
-  { mood: 'Calm cinematic drift', tempo: '70–85 bpm', energy: 'soft glow', genre: 'ambient', search: 'calm cinematic drift' },
-  { mood: 'Animated world beat', tempo: '110–125 bpm', energy: 'percussive joy', genre: 'world', search: 'world beat joy' },
-];
-
-const createAudioSuggestionTracker = () => {
-  const usedSearches = new Set();
-  const poolLength = AUDIO_CUE_POOL.length;
-
-  const allocateCue = (seed) => {
-    for (let attempt = 0; attempt < poolLength; attempt++) {
-      const candidate = AUDIO_CUE_POOL[(seed + attempt) % poolLength];
-      if (!usedSearches.has(candidate.search) || attempt >= poolLength - 1) {
-        usedSearches.add(candidate.search);
-        return candidate;
-      }
-    }
-    const fallback = AUDIO_CUE_POOL[seed % poolLength];
-    usedSearches.add(fallback.search);
-    return fallback;
-  };
-
-  const formatCue = (cue) => {
-    const parts = [
-      cue.mood,
-      `${cue.genre} style`,
-      cue.energy,
-      cue.tempo,
-      `search: '${cue.search}'`,
-    ];
-    return parts.filter(Boolean).join(', ');
-  };
-
-  return {
-    reset() {
-      usedSearches.clear();
-    },
-    buildSuggestion(index) {
-      const tikTokCue = allocateCue(index * 2);
-      const igCue = allocateCue(index * 2 + 1);
-      return `TikTok: ${formatCue(tikTokCue)}; Instagram Reels: ${formatCue(igCue)}`;
-    },
-  };
-};
-
-const audioSuggestionTracker = createAudioSuggestionTracker();
-const resetAudioSuggestions = () => audioSuggestionTracker.reset();
-
 const proPostingTips = [
   'Post weekday afternoons to catch students between classes.',
   'Aim for early morning drops to reach execs before meetings.',
@@ -6617,8 +6561,7 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
 
     return {
       ...post,
-      suggestedAudio: audioSuggestionTracker.buildSuggestion(index),
-    postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
+      postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
       : interactive,
@@ -6630,7 +6573,6 @@ const stripProFields = (post) => {
   const clone = { ...post };
   delete clone.captionVariations;
   delete clone.hashtagSets;
-  delete clone.suggestedAudio;
   delete clone.visualTemplate;
   delete clone.storyPromptExpanded;
   delete clone.followUpIdea;
@@ -7303,8 +7245,8 @@ function buildPostHTML(post){
       + `</div>`
     );
   }
-  if (post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  if (post.audio) {
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
   }
   if (post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
@@ -8366,7 +8308,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
 
     if (userIsPro) {
-      resetAudioSuggestions();
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));
