@@ -1399,6 +1399,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+  const audioRules = `Audio rules:\n1) Imagine 10 trending TikTok or Instagram Reels tracks tied to this niche (mention vibes and search phrases) before assigning.\n2) Assign exactly one unique audio string per post with no repeats across the ${days}-day calendar.\n3) Audio strings must start with "TikTok:" or "Instagram Reels:", describe vibe/bpm, and include search: '...'.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1415,10 +1416,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - postingTimeTip (single sentence describing an audience + scroll window)
+- audio (string: TikTok or Instagram Reels assignment with vibe, bpm range, search query)
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
 
 Rules:
@@ -1428,7 +1430,7 @@ Rules:
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
 function sanitizePostForPrompt(post = {}) {
-  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption'];
+  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
   const clone = { ...post };
   if (!clone.script && clone.videoScript) clone.script = clone.videoScript;
@@ -1467,7 +1469,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 9) Keep outputs concise to avoid truncation.
 10) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption).`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio).`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
@@ -1492,6 +1494,7 @@ function hasAllRequiredFields(p){
     && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true)
     && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string'
     && typeof p.postingTimeTip === 'string' && p.postingTimeTip.trim()
+    && typeof p.audio === 'string' && p.audio.trim()
     && hasValidStrategy(p);
   return !!ok;
 }
