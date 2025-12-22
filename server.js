@@ -1430,6 +1430,7 @@ Rules:
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
 const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone)\b/i;
+const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
 
 function normalizeAudioLine(value) {
   if (!value && value !== 0) return '';
@@ -1447,6 +1448,15 @@ function isAudioLineValid(line = '') {
     if (!/^(TikTok|Instagram):/i.test(segment)) return false;
     return segment.includes(' - ');
   });
+}
+
+function isBadAudio(line = '') {
+  const text = normalizeAudioLine(line);
+  if (!text) return true;
+  if (AUDIO_INVALID_PATTERN.test(text)) return true;
+  if (AUDIO_DIGIT_PATTERN.test(text)) return true;
+  if (!text.includes('TikTok:') || !text.includes('Instagram:')) return true;
+  return !text.includes(' - ');
 }
 
 async function requestAudioCorrection(nicheStyle, brandContext, post) {
@@ -1502,11 +1512,13 @@ async function ensureAudioLines(nicheStyle, brandContext, posts = []) {
       post.audio = normalized;
       continue;
     }
-    console.warn('[Calendar] invalid audio string detected for day', post.day || idx + 1);
+    const dayLabel = post.day || idx + 1;
+    console.warn('[Calendar] invalid audio string detected for day', dayLabel, normalized || post.audio);
     const corrected = await requestAudioCorrection(nicheStyle, brandContext, post);
     if (isAudioLineValid(corrected)) {
       post.audio = corrected;
     } else {
+      console.warn('[Calendar] audio correction failed for day', dayLabel, corrected || normalized);
       post.audio = normalized || corrected || 'TikTok: TBD - Artist; Instagram: TBD - Artist';
     }
   }
