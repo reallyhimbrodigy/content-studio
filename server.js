@@ -44,6 +44,7 @@ const {
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
+const { getTrendingAudio } = require('./lib/trendingAudio');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
 const resolvePlacidTemplateId = () => null;
@@ -2984,6 +2985,70 @@ const server = http.createServer((req, res) => {
           payload.debugStack = err.stack;
         }
         return sendJson(res, status, payload);
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/suggested-audio' && req.method === 'GET') {
+    (async () => {
+      try {
+        const { fetchTrendingTikTokAudio, fetchTrendingInstagramReelsAudio } = require('./providers/trendingAudioProvider');
+        const query = new URL(req.url, `http://${req.headers.host}`).searchParams;
+        const niche = query.get('niche') || '';
+        const postTopic = query.get('postTopic') || '';
+        const count = Math.min(20, Math.max(1, Number(query.get('count') || 8)));
+        if (!niche.trim()) {
+          return sendJson(res, 400, { error: 'niche query required' });
+        }
+        const configured = Boolean(fetchTrendingTikTokAudio || fetchTrendingInstagramReelsAudio);
+        if (!configured) {
+          return sendJson(res, 200, {
+            items: [],
+            error: 'NO_TREND_PROVIDER_CONFIGURED',
+          });
+        }
+        const items = [];
+        if (fetchTrendingTikTokAudio) {
+          const tiktoks = await fetchTrendingTikTokAudio(niche, count);
+          items.push(...tiktoks);
+        }
+        if (fetchTrendingInstagramReelsAudio) {
+          const instas = await fetchTrendingInstagramReelsAudio(niche, count);
+          items.push(...instas);
+        }
+        return sendJson(res, 200, { items });
+      } catch (err) {
+        console.error('[Audio] suggestion error', err);
+        sendJson(res, 500, { error: 'audio_suggestion_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/trending-audio' && req.method === 'GET') {
+    (async () => {
+      try {
+        const query = new URL(req.url, `http://${req.headers.host}`).searchParams;
+        const niche = query.get('niche') || '';
+        const postTopic = query.get('postTopic') || '';
+        const limit = Math.min(15, Math.max(3, Number(query.get('limit') || 8)));
+        if (!niche.trim()) {
+          return sendJson(res, 400, { error: 'niche query required' });
+        }
+        const candidates = await getTrendingAudio({
+          niche,
+          postContext: { postTopic },
+          limit,
+        });
+        return sendJson(res, 200, {
+          platform: 'mixed',
+          generatedAt: new Date().toISOString(),
+          items: candidates,
+        });
+      } catch (err) {
+        console.error('[Audio] trending error', err);
+        return sendJson(res, 500, { error: 'FETCH_FAILED', items: [] });
       }
     })();
     return;

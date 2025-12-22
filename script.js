@@ -5337,6 +5337,47 @@ const createCard = (post) => {
       row.append(header, textEl);
       return row;
     };
+
+    const createSuggestedAudioListElement = (items = [], { forDetails = false } = {}) => {
+      const entries = Array.isArray(items) ? items : [];
+      const wrapper = document.createElement('div');
+      wrapper.className = 'calendar-card__audio-list';
+      if (forDetails) {
+        wrapper.classList.add('calendar-card__detail-row');
+      } else {
+        wrapper.classList.add('calendar-card__suggested-audio-block');
+      }
+      const header = document.createElement('div');
+      header.className = 'detail-row__top';
+      const labelEl = document.createElement('strong');
+      labelEl.textContent = 'Suggested audio';
+      header.append(labelEl);
+      const list = document.createElement('div');
+      list.className = 'calendar-card__audio-list-items';
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'calendar-card__audio-empty';
+        empty.textContent = 'No suggested audio yet.';
+        list.appendChild(empty);
+      } else {
+        entries.slice(0, SUGGESTED_AUDIO_LIMIT).forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'calendar-card__audio-item';
+          const heading = document.createElement('div');
+          heading.className = 'calendar-card__audio-item-heading';
+          const title = item.title || 'Untitled';
+          const creator = item.creator || 'Unknown creator';
+          heading.textContent = `${formatPlatformLabel(item.platform)} · ${title} — ${creator}`;
+          const hint = document.createElement('div');
+          hint.className = 'calendar-card__audio-item-hint';
+          hint.textContent = item.usageHint || 'Usage hint pending.';
+          row.append(heading, hint);
+          list.appendChild(row);
+        });
+      }
+      wrapper.append(header, list);
+      return wrapper;
+    };
     const buildLinkedAssetsRow = (entryData) => {
       if (true) return null; // hide calendar-surface AI assets
       const assets = Array.isArray(entryData?.assets) ? entryData.assets : [];
@@ -5665,7 +5706,10 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (window.cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
+    if (window.cachedUserIsPro && entry.suggestedAudioItems && entry.suggestedAudioItems.length) {
+      const summary = entry.suggestedAudio || summarizeAudioItems(entry.suggestedAudioItems);
+      if (summary) fullTextParts.push(`Suggested Audio: ${summary}`);
+    }
     if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
     if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
@@ -5736,8 +5780,12 @@ const createCard = (post) => {
     }
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
-    if (window.cachedUserIsPro && entry.suggestedAudio) {
-      hiddenDetailNodes.push(createDetailRow('Audio (optional)', entry.suggestedAudio, 'calendar-card__audio'));
+    if (window.cachedUserIsPro) {
+      const audioItems = Array.isArray(entry.suggestedAudioItems) ? entry.suggestedAudioItems : [];
+      const collapsedAudioBlock = createSuggestedAudioListElement(audioItems, { forDetails: false });
+      const detailAudioBlock = createSuggestedAudioListElement(audioItems, { forDetails: true });
+      if (collapsedAudioBlock) entryEl.append(collapsedAudioBlock);
+      if (detailAudioBlock) hiddenDetailNodes.push(detailAudioBlock);
     }
     if (window.cachedUserIsPro && entry.storyPromptExpanded) {
       hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
@@ -5872,7 +5920,19 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       parsed = { post: fallback };
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
-    const newPost = parsed.post;
+    let newPost = parsed.post;
+    const prevAudioItems = Array.isArray(entry.suggestedAudioItems) ? entry.suggestedAudioItems : [];
+    const prevAudioSummary = entry.suggestedAudio || summarizeAudioItems(prevAudioItems);
+    if (window.cachedUserIsPro) {
+      try {
+        const enriched = await attachSuggestedAudioToPosts([newPost], nicheStyle);
+        newPost = enriched[0] || newPost;
+      } catch (audioErr) {
+        console.warn('Suggested audio refresh failed for regenerated post', audioErr);
+        newPost.suggestedAudioItems = prevAudioItems;
+        newPost.suggestedAudio = prevAudioSummary;
+      }
+    }
     if (!newPost.postingTimeTip && entry.postingTimeTip) {
       newPost.postingTimeTip = entry.postingTimeTip;
     }
@@ -6509,71 +6569,109 @@ const proFollowUpIdeas = [
   'Send a newsletter recap that embeds today’s main CTA.'
 ];
 
-const AUDIO_CUE_POOL = [
-  { mood: 'Brisk pop surge', tempo: '130–150 bpm', energy: 'high-energy drive', genre: 'pop', search: 'sped up pop punchy beat' },
-  { mood: 'Smooth R&B shimmer', tempo: '90–110 bpm', energy: 'warm groove', genre: 'R&B', search: 'smoky rnb slow burn' },
-  { mood: 'Retro synth bounce', tempo: '120–135 bpm', energy: 'upbeat momentum', genre: 'synthwave', search: 'retro synth bounce' },
-  { mood: 'Moody neo-soul pulse', tempo: '80–95 bpm', energy: 'velvet depth', genre: 'neo-soul', search: 'neo soul velvet pulse' },
-  { mood: 'Bright indie clap', tempo: '115–130 bpm', energy: 'breezy optimism', genre: 'indie pop', search: 'sunny indie clap' },
-  { mood: 'Hard-hitting drill', tempo: '70–90 bpm', energy: 'gritty intensity', genre: 'drill', search: 'urban drill impact' },
-  { mood: 'Future bass shimmer', tempo: '140–150 bpm', energy: 'dreamy lift', genre: 'future bass', search: 'future bass shimmer' },
-  { mood: 'Laid-back lo-fi lounge', tempo: '70–85 bpm', energy: 'chill calm', genre: 'lo-fi', search: 'lofi lounge mist' },
-  { mood: 'Cinematic bass swell', tempo: '90–105 bpm', energy: 'majestic tension', genre: 'cinematic pop', search: 'cinematic bass swell' },
-  { mood: 'Hyper pop sprint', tempo: '150–170 bpm', energy: 'electric buzz', genre: 'hyperpop', search: 'hyperpop sprint shutter' },
-  { mood: 'Organic acoustic drive', tempo: '100–115 bpm', energy: 'earthy uplift', genre: 'acoustic pop', search: 'organic acoustic drive' },
-  { mood: 'Gospel choir lift', tempo: '100–120 bpm', energy: 'uplifting warmth', genre: 'gospel', search: 'gospel choir lift' },
-  { mood: 'Dark trap shimmer', tempo: '70–90 bpm', energy: 'brooding pulse', genre: 'trap', search: 'trap shimmer pulse' },
-  { mood: 'Playful funk jam', tempo: '110–125 bpm', energy: 'groovy bounce', genre: 'funk', search: 'funk jam bounce' },
-  { mood: 'Dreamy shoegaze haze', tempo: '90–100 bpm', energy: 'ethereal slow', genre: 'shoegaze', search: 'shoegaze haze swirl' },
-  { mood: 'Summer reggaeton sway', tempo: '100–115 bpm', energy: 'sunny heat', genre: 'reggaeton', search: 'summer reggaeton sway' },
-  { mood: 'Bold electro anthem', tempo: '128–138 bpm', energy: 'festival rush', genre: 'electro', search: 'electro anthem rush' },
-  { mood: 'Punchy pop-rock cut', tempo: '120–130 bpm', energy: 'confident pulse', genre: 'pop-rock', search: 'pop rock punch cut' },
-  { mood: 'Calm cinematic drift', tempo: '70–85 bpm', energy: 'soft glow', genre: 'ambient', search: 'calm cinematic drift' },
-  { mood: 'Animated world beat', tempo: '110–125 bpm', energy: 'percussive joy', genre: 'world', search: 'world beat joy' },
-];
-
-const createAudioSuggestionTracker = () => {
-  const usedSearches = new Set();
-  const poolLength = AUDIO_CUE_POOL.length;
-
-  const allocateCue = (seed) => {
-    for (let attempt = 0; attempt < poolLength; attempt++) {
-      const candidate = AUDIO_CUE_POOL[(seed + attempt) % poolLength];
-      if (!usedSearches.has(candidate.search) || attempt >= poolLength - 1) {
-        usedSearches.add(candidate.search);
-        return candidate;
-      }
+const SUGGESTED_AUDIO_LIMIT = 6;
+const SUGGESTED_AUDIO_CONCURRENCY = 3;
+const usedAudioIds = new Set();
+const resetSuggestedAudioUsage = () => {
+  usedAudioIds.clear();
+};
+const markSuggestedAudioUsage = (items = []) => {
+  items.forEach((item) => {
+    if (item && item.id) {
+      usedAudioIds.add(item.id);
     }
-    const fallback = AUDIO_CUE_POOL[seed % poolLength];
-    usedSearches.add(fallback.search);
-    return fallback;
-  };
-
-  const formatCue = (cue) => {
-    const parts = [
-      cue.mood,
-      `${cue.genre} style`,
-      cue.energy,
-      cue.tempo,
-      `search: '${cue.search}'`,
-    ];
-    return parts.filter(Boolean).join(', ');
-  };
-
-  return {
-    reset() {
-      usedSearches.clear();
-    },
-    buildSuggestion(index) {
-      const tikTokCue = allocateCue(index * 2);
-      const igCue = allocateCue(index * 2 + 1);
-      return `TikTok: ${formatCue(tikTokCue)}; Instagram Reels: ${formatCue(igCue)}`;
-    },
-  };
+  });
 };
 
-const audioSuggestionTracker = createAudioSuggestionTracker();
-const resetAudioSuggestions = () => audioSuggestionTracker.reset();
+const formatPlatformLabel = (platform = '') => {
+  const normalized = (platform || 'mixed').toLowerCase();
+  if (normalized.includes('tiktok')) return 'TikTok';
+  if (normalized.includes('instagram')) return 'Instagram Reels';
+  if (normalized === 'mixed') return 'Trending audio';
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
+};
+
+const summarizeAudioItems = (items = []) => {
+  if (!Array.isArray(items) || !items.length) return '';
+  return items
+    .slice(0, 3)
+    .map((item) => {
+      const title = item.title || 'Unknown title';
+      const creator = item.creator || 'Unknown creator';
+      return `${formatPlatformLabel(item.platform)}: ${title} — ${creator}`;
+    })
+    .join(' • ');
+};
+
+const buildPostTopic = (post = {}) => {
+  const parts = [];
+  if (post.idea) parts.push(post.idea);
+  if (post.title && post.title !== post.idea) parts.push(post.title);
+  const hook = post.videoScript?.hook;
+  if (hook) parts.push(hook);
+  const topic = parts.filter(Boolean).join(' | ');
+  return topic.slice(0, 220);
+};
+
+const fetchSuggestedAudioForPost = async (post, nicheStyle) => {
+  if (!nicheStyle) return [];
+  const topic = buildPostTopic(post);
+  const params = new URLSearchParams({
+    niche: nicheStyle,
+    postTopic: topic,
+    limit: SUGGESTED_AUDIO_LIMIT,
+  });
+  try {
+    const resp = await fetch(`/api/trending-audio?${params.toString()}`);
+    if (!resp.ok) return [];
+    const json = await resp.json().catch(() => null);
+    const items = Array.isArray(json?.items) ? json.items : [];
+    return items
+      .slice(0, SUGGESTED_AUDIO_LIMIT)
+      .map((item) => ({
+        platform: item.platform || 'mixed',
+        title: item.title || '',
+        creator: item.creator || '',
+        usageHint: item.usageHint || '',
+        link: item.link || item.url || '',
+        confidence:
+          typeof item.confidence === 'number'
+            ? item.confidence
+            : Number(item.confidence) || 0,
+      }))
+      .filter((entry) => entry.title || entry.creator);
+  } catch (err) {
+    console.warn('[Audio] fetch suggested audio failed', err);
+    return [];
+  }
+};
+
+const attachSuggestedAudioToPosts = async (posts = [], nicheStyle = '') => {
+  if (!posts.length) return posts;
+  if (!nicheStyle) return posts;
+  const enriched = posts.map((post) => ({
+    ...post,
+    suggestedAudioItems: [],
+    suggestedAudio: '',
+  }));
+  for (let i = 0; i < posts.length; i += SUGGESTED_AUDIO_CONCURRENCY) {
+    const chunk = posts.slice(i, i + SUGGESTED_AUDIO_CONCURRENCY);
+    const responses = await Promise.all(chunk.map((post) => fetchSuggestedAudioForPost(post, nicheStyle)));
+    responses.forEach((items, idx) => {
+      const candidates = Array.isArray(items) ? items : [];
+      const unused = candidates.filter((item) => item.id && !usedAudioIds.has(item.id));
+      const selection = (unused.length ? unused : candidates).slice(0, SUGGESTED_AUDIO_LIMIT);
+      markSuggestedAudioUsage(selection);
+      const summary = summarizeAudioItems(selection);
+      enriched[i + idx] = {
+        ...enriched[i + idx],
+        suggestedAudioItems: selection,
+        suggestedAudio: summary,
+      };
+    });
+  }
+  return enriched;
+};
 
 const proPostingTips = [
   'Post weekday afternoons to catch students between classes.',
@@ -6614,10 +6712,12 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
 
   const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
   const interactive = pickCycled(proInteractivePrompts, index);
+  const audioSummary = post.suggestedAudio || summarizeAudioItems(post.suggestedAudioItems);
 
-    return {
-      ...post,
-      suggestedAudio: audioSuggestionTracker.buildSuggestion(index),
+  return {
+    ...post,
+    suggestedAudioItems: Array.isArray(post.suggestedAudioItems) ? post.suggestedAudioItems : [],
+    suggestedAudio: audioSummary,
     postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
@@ -6631,6 +6731,7 @@ const stripProFields = (post) => {
   delete clone.captionVariations;
   delete clone.hashtagSets;
   delete clone.suggestedAudio;
+  delete clone.suggestedAudioItems;
   delete clone.visualTemplate;
   delete clone.storyPromptExpanded;
   delete clone.followUpIdea;
@@ -7210,6 +7311,20 @@ function buildPostHTML(post){
   const engage = post.engagementScripts || {};
   const nl2br = (s)=> escapeHtml(s).replace(/\n/g,'<br/>');
   const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
+  const renderSuggestedAudioBlock = (items = []) => {
+    const entries = Array.isArray(items) ? items.slice(0, SUGGESTED_AUDIO_LIMIT) : [];
+    const rows = entries.length
+      ? entries
+          .map((item) => {
+            const title = item.title || 'Untitled';
+            const creator = item.creator || 'Unknown creator';
+            const hint = item.usageHint || 'Usage hint pending.';
+            return `<div class="calendar-card__audio-item"><span class="calendar-card__audio-item-heading">${escapeHtml(formatPlatformLabel(item.platform))} · ${escapeHtml(title)} — ${escapeHtml(creator)}</span><span class="calendar-card__audio-item-hint">${escapeHtml(hint)}</span></div>`;
+          })
+          .join('')
+      : `<div class="calendar-card__audio-empty">No suggested audio yet.</div>`;
+    return `<div class="calendar-card__audio"><strong>Suggested audio</strong><div class="calendar-card__audio-list">${rows}</div></div>`;
+  };
 
   // Build a single calendar card markup mirroring the in-app component
   const detailBlocks = [
@@ -7294,8 +7409,8 @@ function buildPostHTML(post){
       + `</div>`
     );
   }
-  if (post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  if (post.suggestedAudioItems || post.suggestedAudio) {
+    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudioItems));
   }
   if (post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
@@ -8327,7 +8442,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
     if (userIsPro) {
-      resetAudioSuggestions();
+      resetSuggestedAudioUsage();
+      try {
+        allPosts = await attachSuggestedAudioToPosts(allPosts, nicheStyle);
+      } catch (audioErr) {
+        console.warn('Suggested audio fetch failed', audioErr);
+      }
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));

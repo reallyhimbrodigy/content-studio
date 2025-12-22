@@ -73,6 +73,28 @@ function buildPostHTML(post) {
     ? post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')
     : (post.hashtags || '');
   
+  const LIBRARY_AUDIO_LIMIT = 6;
+  const formatPlatformLabel = (platform = '') => {
+    const normalized = (platform || 'mixed').toLowerCase();
+    if (normalized.includes('tiktok')) return 'TikTok';
+    if (normalized.includes('instagram')) return 'Instagram Reels';
+    if (normalized === 'mixed') return 'Trending audio';
+    return platform.charAt(0).toUpperCase() + platform.slice(1);
+  };
+  const renderSuggestedAudioBlock = (items = []) => {
+    const entries = Array.isArray(items) ? items.slice(0, LIBRARY_AUDIO_LIMIT) : [];
+    const listItems = entries.length
+      ? entries
+          .map((item) => {
+            const title = item.title || 'Untitled';
+            const creator = item.creator || 'Unknown creator';
+            const hint = item.usageHint || 'Usage hint pending.';
+            return `<div class="calendar-card__audio-item"><span class="calendar-card__audio-item-heading">${escapeHtml(formatPlatformLabel(item.platform))} · ${escapeHtml(title)} — ${escapeHtml(creator)}</span><span class="calendar-card__audio-item-hint">${escapeHtml(hint)}</span></div>`;
+          })
+          .join('')
+      : `<div class="calendar-card__audio-empty">No suggested audio yet.</div>`;
+    return `<div class="calendar-card__audio"><strong>Suggested audio</strong><div class="calendar-card__audio-list">${listItems}</div></div>`;
+  };
   const nl2br = (s) => escapeHtml(s).replace(/\n/g, '<br/>');
   const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
 
@@ -115,8 +137,8 @@ function buildPostHTML(post) {
       + `</div>`
     );
   }
-  if (isLibraryUserPro && post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
+  if (isLibraryUserPro) {
+    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudioItems));
   }
   if (isLibraryUserPro && post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);

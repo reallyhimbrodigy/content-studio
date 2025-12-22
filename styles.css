@@ -5067,6 +5067,45 @@ body.prefers-reduced-motion *::after {
   word-break: break-word;
 }
 
+.calendar-card__audio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.calendar-card__audio-item {
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.calendar-card__audio-item-heading {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.calendar-card__audio-item-hint {
+  font-size: 0.82rem;
+  color: rgba(148, 163, 184, 0.85);
+  margin-top: 0.25rem;
+}
+
+.calendar-card__audio-empty {
+  color: rgba(148, 163, 184, 0.8);
+  font-size: 0.85rem;
+  padding: 0.3rem 0;
+}
+
+.calendar-card__suggested-audio-block {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(127, 90, 240, 0.3);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(127, 90, 240, 0.05);
+}
+
 .calendar-card__caption-variations em,
 .calendar-card__hashtag-sets em,
 .calendar-card__variants em,
