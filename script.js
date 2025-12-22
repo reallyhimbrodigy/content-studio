@@ -6703,6 +6703,9 @@ function showGeneratingState() {
   if (progressText) progressText.textContent = 'Preparing your calendar...';
 }
 
+const waitForPaint = () =>
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
 function hideGeneratingState(originalText) {
   if (generateBtn) generateBtn.disabled = false;
   if (btnSpinner) btnSpinner.style.display = 'none';
@@ -8190,6 +8193,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     let completedBatches = 0;
     
     // Helper to fetch one batch
+    let firstBatchLogged = false;
     const fetchBatch = async (batchIndex) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
@@ -8207,6 +8211,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       };
       console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
 
+      if (!firstBatchLogged) {
+        firstBatchLogged = true;
+        console.timeEnd('calendar:click_to_first_batch');
+      }
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -8438,10 +8446,14 @@ if (generateBtn) {
       if (feedbackEl) feedbackEl.textContent = "";
       console.log(" Calling API with niche:", niche);
 
-      // Call OpenAI to generate calendar
-      const postsPerDay = getPostFrequency();
-      currentPostFrequency = postsPerDay;
-      const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
+    console.log(' Starting paint wait for generating state');
+    await waitForPaint();
+    console.time('calendar:click_to_first_batch');
+
+    // Call OpenAI to generate calendar
+    const postsPerDay = getPostFrequency();
+    currentPostFrequency = postsPerDay;
+    const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
       console.log(" Received posts:", aiGeneratedPosts);
       
       // Increment generation count for free users
