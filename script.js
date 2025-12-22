@@ -1360,6 +1360,9 @@ function persistDesignAssetsToStorage() {
     if (err && err.name === 'QuotaExceededError') {
       designStorageDisabled = true;
     }
+  } finally {
+    if (currentRunId === runId) currentRunId = 0;
+    generationAbortController = null;
   }
 }
 
@@ -8178,6 +8181,9 @@ function normalizePost(p, idx = 0, startDay = 1) {
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
   console.log(" generateCalendarWithAI called with:", nicheStyle);
+  const runId = Date.now();
+  currentRunId = runId;
+  generationAbortController = new AbortController();
   
   try {
     const currentUserEmail = await getCurrentUser();
@@ -8196,12 +8202,13 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
+      if (currentRunId !== runId) return null;
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
       const payload = {
         nicheStyle,
-        userId: getCurrentUser() || undefined,
+        userId: currentUserEmail || undefined,
         days: requestSize,
         startDay,
         postsPerDay: normalizedFrequency,
@@ -8419,10 +8426,22 @@ async function canGenerate() {
   return true;
 }
 
+let isGeneratingCalendar = false;
+
+let isGeneratingCalendar = false;
+
+let isGeneratingCalendar = false;
+let currentRunId = 0;
+let generationAbortController = null;
+
 if (generateBtn) {
   generateBtn.addEventListener("click", async () => {
     const niche = nicheInput ? nicheInput.value.trim() : "";
     console.log(" Generate clicked, niche:", niche);
+    if (isGeneratingCalendar) {
+      console.log("Generation already in progress; ignoring click.");
+      return;
+    }
     
     const { ok, msg } = validateNiche(niche);
     console.log(" Validation result:", { ok, msg });
@@ -8448,8 +8467,8 @@ if (generateBtn) {
       return;
     }
 
+    isGeneratingCalendar = true;
     const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
-    // proceed with AI generation and display
     try {
       console.log(" Starting AI generation for:", niche);
       showGeneratingState();
@@ -8501,6 +8520,7 @@ if (generateBtn) {
         if (feedbackEl) feedbackEl.textContent = "";
       }, 4000);
     } finally {
+      isGeneratingCalendar = false;
       // ensure disabled state cleared (hideGeneratingState already handles it in happy/error flows)
       if (generateBtn && !btnText) generateBtn.disabled = false;
     }
