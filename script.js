@@ -6714,6 +6714,7 @@ function hideGeneratingState(originalText) {
 let isGeneratingCalendar = false;
 let currentGenerationRunId = 0;
 let generationAbortController = null;
+let calendarRunCounter = 0;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -8185,9 +8186,10 @@ function normalizePost(p, idx = 0, startDay = 1) {
 
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
-  console.log(" generateCalendarWithAI called with:", nicheStyle, options);
-  const { signal: runSignal, runId: optionsRunId } = options;
-  const thisRunId = optionsRunId || Date.now();
+  const runSignal = options.signal;
+  const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
+  const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
+  console.log(`[Calendar] generateCalendarWithAI start runId=${thisRunId}`, { nicheStyle, postsPerDay });
 
   try {
     const currentUserEmail = await getCurrentUser();
@@ -8202,13 +8204,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     
     if (runSignal?.aborted) throw new Error('generation_cancelled');
     const payloadUserId = currentUserId || currentUserEmail || undefined;
-    const fetchOptions = { signal: runSignal, runId: thisRunId };
     const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
-      if (fetchOptions.signal?.aborted) {
+      if (runSignal?.aborted || thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
       }
       const remaining = totalPosts - batchIndex * batchSize;
@@ -8221,14 +8222,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         startDay,
         postsPerDay: normalizedFrequency,
       };
-      console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
-
-      const controller = new AbortController();
-      const abortListener = () => controller.abort();
-      if (fetchOptions.signal) {
-        fetchOptions.signal.addEventListener('abort', abortListener);
+      if (thisRunId !== currentGenerationRunId) {
+        throw new Error('generation_cancelled');
       }
-      const timeout = setTimeout(() => controller.abort(), 25000);
+      console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
       let response;
       try {
         response = await fetchWithAuth('/api/calendar/regenerate', {
@@ -8238,22 +8235,14 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
-          signal: controller.signal,
+          signal: runSignal,
         });
       } catch (err) {
-        clearTimeout(timeout);
-        if (fetchOptions.signal) {
-          fetchOptions.signal.removeEventListener('abort', abortListener);
-        }
-        if (err.name === 'AbortError' && attempt < 3 && !fetchOptions.signal?.aborted) {
+        if (err.name === 'AbortError' && attempt < 3 && !runSignal?.aborted) {
           await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
           return fetchBatch(batchIndex, attempt + 1);
         }
         throw err;
-      }
-      clearTimeout(timeout);
-      if (fetchOptions.signal) {
-        fetchOptions.signal.removeEventListener('abort', abortListener);
       }
       const responseText = await response.text();
       const parsedDetail = (() => {
@@ -8324,7 +8313,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
       }
 
-      console.log(` Batch ${batchIndex + 1} complete`);
+      console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts };
     };
     
@@ -8369,7 +8358,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     allPosts = ensureGlobalVariety(allPosts);
     allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
-    if (fetchOptions.signal?.aborted || currentGenerationRunId !== thisRunId) {
+    if (runSignal?.aborted || currentGenerationRunId !== thisRunId) {
       throw new Error('generation_cancelled');
     }
 
@@ -8380,7 +8369,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       allPosts = allPosts.map((post) => stripProFields(post));
     }
 
-    console.log(" All batches complete, total posts:", allPosts.length);
+    console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);
     return allPosts;
   } catch (err) {
     console.error(" generateCalendarWithAI error:", err);
@@ -8476,12 +8465,13 @@ async function onGenerateCalendarClick() {
     return;
   }
   const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
+  const runId = ++calendarRunCounter;
+  console.log('[Calendar] generate clicked runId=' + runId);
   const controller = new AbortController();
   if (generationAbortController) {
     generationAbortController.abort();
   }
   generationAbortController = controller;
-  const runId = Date.now();
   currentGenerationRunId = runId;
   isGeneratingCalendar = true;
   try {
@@ -8494,6 +8484,7 @@ async function onGenerateCalendarClick() {
     const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
     if (currentGenerationRunId !== runId) {
       console.warn('[Calendar] Stale generation results ignored for run', runId);
+      hideGeneratingState(originalText);
       return;
     }
     console.log(" Received posts:", aiGeneratedPosts);
@@ -8507,6 +8498,7 @@ async function onGenerateCalendarClick() {
     activeTab = 'plan';
     syncCalendarUIAfterDataChange({ scrollToCalendar: true });
     persistCurrentCalendarState();
+    console.log(`[Calendar] generate run ${runId} completed successfully`);
     if (feedbackEl) {
       feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
       feedbackEl.classList.add("success");
@@ -8544,8 +8536,10 @@ async function onGenerateCalendarClick() {
 }
 
 if (generateBtn) {
-  generateBtn.removeEventListener('click', onGenerateCalendarClick);
-  generateBtn.addEventListener('click', onGenerateCalendarClick);
+  if (!generateBtn.dataset.calendarBound) {
+    generateBtn.addEventListener('click', onGenerateCalendarClick);
+    generateBtn.dataset.calendarBound = '1';
+  }
 } else if (calendarSection) {
   console.error("❌ Generate button not found - this is why Generate Calendar doesn't work");
 }
