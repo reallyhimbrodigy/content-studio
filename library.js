@@ -138,7 +138,7 @@ function buildPostHTML(post) {
     );
   }
   if (isLibraryUserPro) {
-    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudioItems));
+    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudio));
   }
   if (isLibraryUserPro && post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);

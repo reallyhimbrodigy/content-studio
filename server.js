@@ -3036,15 +3036,14 @@ const server = http.createServer((req, res) => {
         if (!niche.trim()) {
           return sendJson(res, 400, { error: 'niche query required' });
         }
-        const candidates = await getTrendingAudio({
+        const result = await getTrendingAudio({
           niche,
           postContext: { postTopic },
           limit,
         });
         return sendJson(res, 200, {
-          platform: 'mixed',
           generatedAt: new Date().toISOString(),
-          items: candidates,
+          items: Array.isArray(result?.items) ? result.items : [],
         });
       } catch (err) {
         console.error('[Audio] trending error', err);

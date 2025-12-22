@@ -5706,8 +5706,8 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (window.cachedUserIsPro && entry.suggestedAudioItems && entry.suggestedAudioItems.length) {
-      const summary = entry.suggestedAudio || summarizeAudioItems(entry.suggestedAudioItems);
+    if (window.cachedUserIsPro && entry.suggestedAudio && entry.suggestedAudio.length) {
+      const summary = entry.suggestedAudioSummary || summarizeAudioItems(entry.suggestedAudio);
       if (summary) fullTextParts.push(`Suggested Audio: ${summary}`);
     }
     if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
@@ -5781,7 +5781,7 @@ const createCard = (post) => {
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
     if (window.cachedUserIsPro) {
-      const audioItems = Array.isArray(entry.suggestedAudioItems) ? entry.suggestedAudioItems : [];
+      const audioItems = Array.isArray(entry.suggestedAudio) ? entry.suggestedAudio : [];
       const collapsedAudioBlock = createSuggestedAudioListElement(audioItems, { forDetails: false });
       const detailAudioBlock = createSuggestedAudioListElement(audioItems, { forDetails: true });
       if (collapsedAudioBlock) entryEl.append(collapsedAudioBlock);
@@ -5921,16 +5921,16 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
     let newPost = parsed.post;
-    const prevAudioItems = Array.isArray(entry.suggestedAudioItems) ? entry.suggestedAudioItems : [];
-    const prevAudioSummary = entry.suggestedAudio || summarizeAudioItems(prevAudioItems);
+    const prevAudioItems = Array.isArray(entry.suggestedAudio) ? entry.suggestedAudio : [];
+    const prevAudioSummary = entry.suggestedAudioSummary || summarizeAudioItems(prevAudioItems);
     if (window.cachedUserIsPro) {
       try {
         const enriched = await attachSuggestedAudioToPosts([newPost], nicheStyle);
         newPost = enriched[0] || newPost;
       } catch (audioErr) {
         console.warn('Suggested audio refresh failed for regenerated post', audioErr);
-        newPost.suggestedAudioItems = prevAudioItems;
-        newPost.suggestedAudio = prevAudioSummary;
+        newPost.suggestedAudio = prevAudioItems;
+        newPost.suggestedAudioSummary = prevAudioSummary;
       }
     }
     if (!newPost.postingTimeTip && entry.postingTimeTip) {
@@ -6625,8 +6625,8 @@ const fetchSuggestedAudioForPost = async (post, nicheStyle) => {
     const resp = await fetch(`/api/trending-audio?${params.toString()}`);
     if (!resp.ok) return [];
     const json = await resp.json().catch(() => null);
-    const items = Array.isArray(json?.items) ? json.items : [];
-    return items
+    const rawItems = Array.isArray(json?.items) ? json.items : [];
+    return rawItems
       .slice(0, SUGGESTED_AUDIO_LIMIT)
       .map((item) => ({
         platform: item.platform || 'mixed',
@@ -6638,6 +6638,7 @@ const fetchSuggestedAudioForPost = async (post, nicheStyle) => {
           typeof item.confidence === 'number'
             ? item.confidence
             : Number(item.confidence) || 0,
+        searchQuery: item.searchQuery || '',
       }))
       .filter((entry) => entry.title || entry.creator);
   } catch (err) {
@@ -6651,8 +6652,8 @@ const attachSuggestedAudioToPosts = async (posts = [], nicheStyle = '') => {
   if (!nicheStyle) return posts;
   const enriched = posts.map((post) => ({
     ...post,
-    suggestedAudioItems: [],
-    suggestedAudio: '',
+    suggestedAudio: [],
+    suggestedAudioSummary: '',
   }));
   for (let i = 0; i < posts.length; i += SUGGESTED_AUDIO_CONCURRENCY) {
     const chunk = posts.slice(i, i + SUGGESTED_AUDIO_CONCURRENCY);
@@ -6665,8 +6666,8 @@ const attachSuggestedAudioToPosts = async (posts = [], nicheStyle = '') => {
       const summary = summarizeAudioItems(selection);
       enriched[i + idx] = {
         ...enriched[i + idx],
-        suggestedAudioItems: selection,
-        suggestedAudio: summary,
+        suggestedAudio: selection,
+        suggestedAudioSummary: summary,
       };
     });
   }
@@ -6712,12 +6713,12 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
 
   const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
   const interactive = pickCycled(proInteractivePrompts, index);
-  const audioSummary = post.suggestedAudio || summarizeAudioItems(post.suggestedAudioItems);
+  const audioSummary = post.suggestedAudioSummary || summarizeAudioItems(post.suggestedAudio);
 
   return {
     ...post,
-    suggestedAudioItems: Array.isArray(post.suggestedAudioItems) ? post.suggestedAudioItems : [],
-    suggestedAudio: audioSummary,
+    suggestedAudio: Array.isArray(post.suggestedAudio) ? post.suggestedAudio : [],
+    suggestedAudioSummary: audioSummary,
     postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
@@ -6731,7 +6732,7 @@ const stripProFields = (post) => {
   delete clone.captionVariations;
   delete clone.hashtagSets;
   delete clone.suggestedAudio;
-  delete clone.suggestedAudioItems;
+  delete clone.suggestedAudioSummary;
   delete clone.visualTemplate;
   delete clone.storyPromptExpanded;
   delete clone.followUpIdea;
@@ -7409,8 +7410,8 @@ function buildPostHTML(post){
       + `</div>`
     );
   }
-  if (post.suggestedAudioItems || post.suggestedAudio) {
-    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudioItems));
+  if (post.suggestedAudio && post.suggestedAudio.length) {
+    detailBlocks.push(renderSuggestedAudioBlock(post.suggestedAudio));
   }
   if (post.postingTimeTip) {
     detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
