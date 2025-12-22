@@ -8190,7 +8190,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     let completedBatches = 0;
     
     // Helper to fetch one batch
-    const fetchBatch = async (batchIndex) => {
+    const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
@@ -8207,10 +8207,28 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       };
       console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
 
-      const response = await fetchWithAuth('/api/calendar/regenerate', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      let response;
+      try {
+        response = await fetchWithAuth('/api/calendar/regenerate', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError' && attempt < 3) {
+          await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
+          return fetchBatch(batchIndex, attempt + 1);
+        }
+        throw err;
+      }
+      clearTimeout(timeout);
       const responseText = await response.text();
       const parsedDetail = (() => {
         try {
@@ -8219,23 +8237,16 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
           return null;
         }
       })();
-      const isHtmlError = /<!DOCTYPE\\s+html/i.test(responseText) || /Cloudflare Ray ID/i.test(responseText);
-      if (isHtmlError) {
-        const match = responseText.match(/Cloudflare Ray ID:\\s*([A-Za-z0-9-]+)/i);
-        const rayId = match ? match[1] : 'unknown';
-        console.error(`[Calendar] fetchBatch upstream HTML error (ray=${rayId})`, responseText.slice(0, 300));
-        throw new Error(`API error: upstream_html_500 (ray=${rayId})`);
-      }
-
-      if (!response.ok) {
-        const detail = parsedDetail?.error || response.statusText || 'Http error';
-        console.error(`[Calendar] fetchBatch non-ok response`, {
-          batchIndex,
-          payload,
-          status: response.status,
-          body: responseText,
-          debugStack: parsedDetail?.debugStack,
-        });
+      const ct = response.headers.get('content-type') || '';
+      const bodyIsHtml = /<!DOCTYPE/i.test(responseText.trim()) || ct.toLowerCase().includes('text/html') || responseText.trim().startsWith('<html');
+      if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
+        const detail = parsedDetail?.error || response.statusText || 'invalid_response';
+        const preview = responseText.slice(0, 300);
+        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview });
+        if (([502, 503, 504].includes(response.status) || response.status >= 500 || bodyIsHtml) && attempt < 3) {
+          await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
+          return fetchBatch(batchIndex, attempt + 1);
+        }
         throw new Error(`API error: ${detail}`);
       }
 
@@ -8292,15 +8303,21 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     };
     
     // Fire all 6 batches in parallel for maximum speed (~30 seconds)
-    console.log(" Requesting all batches in parallel...");
+    console.log(" Requesting all batches with retries...");
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const t0 = performance.now();
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       batchIndexes.map((batchIndex) =>
         fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
       )
     );
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
+    const results = settled
+      .filter((entry) => entry.status === 'fulfilled' && entry.value)
+      .map((entry) => entry.value);
+    settled
+      .filter((entry) => entry.status === 'rejected')
+      .forEach((entry) => console.error('[Calendar] batch rejected', entry.reason));
 
     const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
     
