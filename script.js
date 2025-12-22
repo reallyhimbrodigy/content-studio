@@ -6711,6 +6711,10 @@ function hideGeneratingState(originalText) {
   if (progressFill) progressFill.style.width = '0%';
 }
 
+function wait(ms = 0) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Export usage lock state
 let calendarExportsLocked = false;
 
@@ -8190,7 +8194,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     let completedBatches = 0;
     
     // Helper to fetch one batch
-    const fetchBatch = async (batchIndex) => {
+    const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
@@ -8207,10 +8211,24 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       };
       console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
-        body: JSON.stringify(payload)
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }).catch((err) => {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') return null;
+        throw err;
       });
+      clearTimeout(timeoutId);
+      if (!response) {
+        if (attempt >= 4) throw new Error('API error: upstream_html_timeout');
+        await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
+        return fetchBatch(batchIndex, attempt + 1);
+      }
       const responseText = await response.text();
       const parsedDetail = (() => {
         try {
@@ -8227,7 +8245,17 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
         throw new Error(`API error: upstream_html_500 (ray=${rayId})`);
       }
 
-      if (!response.ok) {
+      const ct = response.headers.get('content-type') || '';
+      if (!response.ok || ct.toLowerCase().includes('text/html') || /^<!doctype/i.test(responseText.trim())) {
+        if ([502, 503, 504, 520, 521, 522, 523, 524, 525, 526].includes(response.status) && attempt < 4) {
+          await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
+          return fetchBatch(batchIndex, attempt + 1);
+        }
+        const detail = parsedDetail?.error || response.statusText || 'Http error';
+        const bodyPreview = responseText.slice(0, 300);
+        console.error(`[Calendar] fetchBatch non-ok response (batch ${batchIndex} attempt ${attempt})`, { status: response.status, body: bodyPreview });
+        throw new Error(`API error: upstream_html_${response.status}`);
+      }
         const detail = parsedDetail?.error || response.statusText || 'Http error';
         console.error(`[Calendar] fetchBatch non-ok response`, {
           batchIndex,
@@ -8291,15 +8319,41 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       return { batchIndex, posts: batchPosts };
     };
     
-    // Fire all 6 batches in parallel for maximum speed (~30 seconds)
-    console.log(" Requesting all batches in parallel...");
-    const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
+    const poolSize = 2;
+    const queue = Array.from({ length: totalBatches }, (_, i) => i);
+    const active = [];
+    console.log(' Requesting batches with concurrency 2');
     const t0 = performance.now();
-    const results = await Promise.all(
-      batchIndexes.map((batchIndex) =>
-        fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
-      )
-    );
+    const results = [];
+    const runNext = async () => {
+      if (!queue.length) return;
+      const batchIndex = queue.shift();
+      const promise = fetchBatch(batchIndex)
+        .then((result) => ({ batchIndex, result }))
+        .finally(() => {
+          const idx = active.indexOf(promise);
+          if (~idx) active.splice(idx, 1);
+        });
+      active.push(promise);
+      promise.then((res) => results.push(res));
+      if (active.length < poolSize) {
+        await runNext();
+      }
+    };
+    await Promise.all([
+      runNext(),
+      (async () => {
+        while (queue.length) {
+          if (active.length < poolSize) await runNext();
+          else await Promise.race(active);
+        }
+      })(),
+      (async () => {
+        while (active.length) {
+          await Promise.race(active);
+        }
+      })(),
+    ]);
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
 
     const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
