@@ -6711,6 +6711,14 @@ function hideGeneratingState(originalText) {
   if (progressFill) progressFill.style.width = '0%';
 }
 
+let isGeneratingCalendar = false;
+let currentGenerationRunId = 0;
+let generationAbortController = null;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Export usage lock state
 let calendarExportsLocked = false;
 
@@ -8176,11 +8184,14 @@ function normalizePost(p, idx = 0, startDay = 1) {
 }
 
 // OpenAI API integration (via backend proxy)
-async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
-  console.log(" generateCalendarWithAI called with:", nicheStyle);
-  
+async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
+  console.log(" generateCalendarWithAI called with:", nicheStyle, options);
+  const { signal: runSignal, runId: optionsRunId } = options;
+  const thisRunId = optionsRunId || Date.now();
+
   try {
     const currentUserEmail = await getCurrentUser();
+    const currentUserId = await getCurrentUserId();
     const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const batchSize = 5;
@@ -8189,19 +8200,23 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     const totalBatches = Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
     
-    // Helper to fetch one batch
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    if (runSignal?.aborted) throw new Error('generation_cancelled');
+    const payloadUserId = currentUserId || currentUserEmail || undefined;
+    const fetchOptions = { signal: runSignal, runId: thisRunId };
     const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
+      }
+      if (fetchOptions.signal?.aborted) {
+        throw new Error('generation_cancelled');
       }
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
       const payload = {
         nicheStyle,
-        userId: getCurrentUser() || undefined,
+        userId: payloadUserId,
         days: requestSize,
         startDay,
         postsPerDay: normalizedFrequency,
@@ -8209,6 +8224,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
 
       const controller = new AbortController();
+      const abortListener = () => controller.abort();
+      if (fetchOptions.signal) {
+        fetchOptions.signal.addEventListener('abort', abortListener);
+      }
       const timeout = setTimeout(() => controller.abort(), 25000);
       let response;
       try {
@@ -8223,13 +8242,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
         });
       } catch (err) {
         clearTimeout(timeout);
-        if (err.name === 'AbortError' && attempt < 3) {
+        if (fetchOptions.signal) {
+          fetchOptions.signal.removeEventListener('abort', abortListener);
+        }
+        if (err.name === 'AbortError' && attempt < 3 && !fetchOptions.signal?.aborted) {
           await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
           return fetchBatch(batchIndex, attempt + 1);
         }
         throw err;
       }
       clearTimeout(timeout);
+      if (fetchOptions.signal) {
+        fetchOptions.signal.removeEventListener('abort', abortListener);
+      }
       const responseText = await response.text();
       const parsedDetail = (() => {
         try {
@@ -8344,6 +8369,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     allPosts = ensureGlobalVariety(allPosts);
     allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
+    if (fetchOptions.signal?.aborted || currentGenerationRunId !== thisRunId) {
+      throw new Error('generation_cancelled');
+    }
+
     if (userIsPro) {
       resetAudioSuggestions();
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
@@ -8419,92 +8448,104 @@ async function canGenerate() {
   return true;
 }
 
-if (generateBtn) {
-  generateBtn.addEventListener("click", async () => {
-    const niche = nicheInput ? nicheInput.value.trim() : "";
-    console.log(" Generate clicked, niche:", niche);
-    
-    const { ok, msg } = validateNiche(niche);
-    console.log(" Validation result:", { ok, msg });
-    
-    if (!ok) {
-      // show validation feedback and focus
-      console.log("❌ Validation failed:", msg);
-      if (feedbackEl) feedbackEl.textContent = msg;
-      if (nicheInput) {
-        nicheInput.classList.add("invalid");
-        nicheInput.focus();
-      }
+
+async function onGenerateCalendarClick() {
+  if (isGeneratingCalendar) {
+    console.warn('[Calendar] Generation already running');
+    return;
+  }
+  const niche = nicheInput ? nicheInput.value.trim() : "";
+  console.log(" Generate clicked, niche:", niche);
+  const { ok, msg } = validateNiche(niche);
+  console.log(" Validation result:", { ok, msg });
+  if (!ok) {
+    console.log("❌ Validation failed:", msg);
+    if (feedbackEl) feedbackEl.textContent = msg;
+    if (nicheInput) {
+      nicheInput.classList.add("invalid");
+      nicheInput.focus();
+    }
+    return;
+  }
+  if (!(await canGenerate())) {
+    showUpgradeModal();
+    if (feedbackEl) {
+      feedbackEl.textContent = " You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
+      feedbackEl.style.color = 'var(--accent)';
+    }
+    return;
+  }
+  const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
+  const controller = new AbortController();
+  if (generationAbortController) {
+    generationAbortController.abort();
+  }
+  generationAbortController = controller;
+  const runId = Date.now();
+  currentGenerationRunId = runId;
+  isGeneratingCalendar = true;
+  try {
+    console.log(" Starting AI generation for:", niche);
+    showGeneratingState();
+    if (feedbackEl) feedbackEl.textContent = "";
+    console.log(" Calling API with niche:", niche);
+    const postsPerDay = getPostFrequency();
+    currentPostFrequency = postsPerDay;
+    const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
+    if (currentGenerationRunId !== runId) {
+      console.warn('[Calendar] Stale generation results ignored for run', runId);
       return;
     }
-
-    // Check generation limit for free users
-    if (!(await canGenerate())) {
-      showUpgradeModal();
-      if (feedbackEl) {
-        feedbackEl.textContent = " You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
-        feedbackEl.style.color = 'var(--accent)';
-      }
-      return;
-    }
-
-    const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
-    // proceed with AI generation and display
-    try {
-      console.log(" Starting AI generation for:", niche);
-      showGeneratingState();
-      if (feedbackEl) feedbackEl.textContent = "";
-      console.log(" Calling API with niche:", niche);
-
-      // Call OpenAI to generate calendar
-      const postsPerDay = getPostFrequency();
-      currentPostFrequency = postsPerDay;
-      const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
-      console.log(" Received posts:", aiGeneratedPosts);
-      
-      // Increment generation count for free users
-      incrementGenerationCount();
-      
-      // Store the calendar and render it
-      currentCalendar = aiGeneratedPosts;
-      setCurrentCalendarId(null);
-      currentNiche = niche;
-      renderCards(currentCalendar);
-      applyFilter("all");
-
-      hideGeneratingState(originalText);
-      activeTab = 'plan';
-      syncCalendarUIAfterDataChange({ scrollToCalendar: true });
-      persistCurrentCalendarState();
-      
-      if (feedbackEl) {
-        feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
-        feedbackEl.classList.add("success");
-        setTimeout(() => {
-          if (feedbackEl) {
-            feedbackEl.textContent = "";
-            feedbackEl.classList.remove("success");
-          }
-        }, 3000);
-      }
-    } catch (err) {
-      console.error("❌ Failed to generate calendar:", err);
-      console.error("❌ Error message:", err.message);
-      console.error("❌ Full error:", err);
-      hideGeneratingState('Try Again');
-      if (feedbackEl) {
-        feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
-        feedbackEl.classList.remove("success");
-      }
+    console.log(" Received posts:", aiGeneratedPosts);
+    incrementGenerationCount();
+    currentCalendar = aiGeneratedPosts;
+    setCurrentCalendarId(null);
+    currentNiche = niche;
+    renderCards(currentCalendar);
+    applyFilter("all");
+    hideGeneratingState(originalText);
+    activeTab = 'plan';
+    syncCalendarUIAfterDataChange({ scrollToCalendar: true });
+    persistCurrentCalendarState();
+    if (feedbackEl) {
+      feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
+      feedbackEl.classList.add("success");
       setTimeout(() => {
-        hideGeneratingState(originalText);
-        if (feedbackEl) feedbackEl.textContent = "";
-      }, 4000);
-    } finally {
-      // ensure disabled state cleared (hideGeneratingState already handles it in happy/error flows)
-      if (generateBtn && !btnText) generateBtn.disabled = false;
+        if (feedbackEl) {
+          feedbackEl.textContent = "";
+          feedbackEl.classList.remove("success");
+        }
+      }, 3000);
     }
-  });
+  } catch (err) {
+    if (err.message === 'generation_cancelled') {
+      console.log('Calendar generation cancelled for run', runId);
+      hideGeneratingState(originalText);
+      return;
+    }
+    console.error("❌ Failed to generate calendar:", err);
+    console.error("❌ Error message:", err.message);
+    console.error("❌ Full error:", err);
+    hideGeneratingState('Try Again');
+    if (feedbackEl) {
+      feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
+      feedbackEl.classList.remove("success");
+    }
+    setTimeout(() => {
+      hideGeneratingState(originalText);
+      if (feedbackEl) feedbackEl.textContent = "";
+    }, 4000);
+  } finally {
+    isGeneratingCalendar = false;
+    if (generationAbortController === controller) {
+      generationAbortController = null;
+    }
+  }
+}
+
+if (generateBtn) {
+  generateBtn.removeEventListener('click', onGenerateCalendarClick);
+  generateBtn.addEventListener('click', onGenerateCalendarClick);
 } else if (calendarSection) {
   console.error("❌ Generate button not found - this is why Generate Calendar doesn't work");
 }
