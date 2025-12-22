@@ -8190,6 +8190,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     let completedBatches = 0;
     
     // Helper to fetch one batch
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
