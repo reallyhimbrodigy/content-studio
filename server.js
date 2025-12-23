@@ -2965,7 +2965,7 @@ const server = http.createServer((req, res) => {
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
     if (posts.length) {
-      console.log('[Audio]', posts[0].day, posts[0].audio);
+      console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
     }
     return posts;
   }
