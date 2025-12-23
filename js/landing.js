@@ -14,3 +14,17 @@
     if (event.target === modal) toggle(false);
   });
 })();
+
+document.addEventListener('DOMContentLoaded', () => {
+  const trigger = document.querySelector('[data-upgrade-trigger]');
+  if (!trigger) return;
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (typeof window.showUpgradeModal === 'function') {
+      window.showUpgradeModal();
+    } else {
+      const upgradeBtn = document.getElementById('upgrade-btn');
+      if (upgradeBtn) upgradeBtn.click();
+    }
+  });
+});

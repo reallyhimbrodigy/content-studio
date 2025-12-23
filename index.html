@@ -357,22 +357,6 @@
       </div>
     </section>
 
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        const trigger = document.querySelector('[data-upgrade-trigger]');
-        if (!trigger) return;
-        trigger.addEventListener('click', function (event) {
-          event.preventDefault();
-          if (typeof window.showUpgradeModal === 'function') {
-            window.showUpgradeModal();
-          } else {
-            const upgradeBtn = document.getElementById('upgrade-btn');
-            if (upgradeBtn) upgradeBtn.click();
-          }
-        });
-      });
-    </script>
-
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
