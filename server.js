@@ -1399,7 +1399,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
-  const audioRules = `Audio rules:\n1) For each post, output one TikTok sound and one Instagram Reels sound that are actually trending for this niche right now.\n2) Use this exact format only: TikTok: <TRACK_NAME> - <ARTIST_OR_CREATOR>; Instagram: <TRACK_NAME> - <ARTIST_OR_CREATOR>.\n3) Do NOT mention vibrations, BPM, "search:", genre words, or invented descriptors—this must be the real sound title plus the creator.\n4) Ensure every audio line is unique across the ${days}-day calendar.`;
+  const audioRules = `Audio rules (STRICT):\n1) Output must be exactly ONE line formatted: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.\n2) Must be trending in the LAST 7 DAYS on each platform.\n3) Must be PLATFORM-SPECIFIC: TikTok and Instagram values must be DIFFERENT unless the sound is verifiably trending on both; if same, force a retry.\n4) Allowed: non-song sounds (e.g., "Original sound — @creator").\n5) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, and any descriptive phrases or made-up labels.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1420,7 +1420,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - postingTimeTip (single sentence describing an audience + scroll window)
-- audio (string: TikTok or Instagram Reels assignment with vibe, bpm range, search query)
+- audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both.
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
 
 Rules:
@@ -1429,7 +1429,7 @@ Rules:
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
-const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone)\b/i;
+const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
 const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
 
 function normalizeAudioLine(value) {
@@ -1446,25 +1446,46 @@ function isAudioLineValid(line = '') {
   if (segments.length < 2) return false;
   return segments.every((segment) => {
     if (!/^(TikTok|Instagram):/i.test(segment)) return false;
-    return segment.includes(' - ');
+    // Require em dash separator between title and creator
+    return segment.includes(' — ');
   });
 }
 
 function isBadAudio(line = '') {
   const text = normalizeAudioLine(line);
   if (!text) return true;
-  if (AUDIO_INVALID_PATTERN.test(text)) return true;
-  if (AUDIO_DIGIT_PATTERN.test(text)) return true;
+  // Missing platforms
   if (!text.includes('TikTok:') || !text.includes('Instagram:')) return true;
-  return !text.includes(' - ');
+  // Banned tokens
+  if (AUDIO_INVALID_PATTERN.test(text)) return true;
+  // BPM/tempo ranges
+  if (AUDIO_DIGIT_PATTERN.test(text)) return true;
+  const segments = text.split(';').map((s) => s.trim()).filter(Boolean);
+  if (segments.length < 2) return true;
+  // Must use em dash creator separator
+  const usesEmDash = segments.every((s) => s.includes(' — '));
+  if (!usesEmDash) return true;
+  // Compare TikTok vs Instagram parts for equality after trimming
+  const tikTokPart = segments.find((s) => /^TikTok:/i.test(s)) || '';
+  const instagramPart = segments.find((s) => /^Instagram:/i.test(s)) || '';
+  const tikTokValue = tikTokPart.replace(/^TikTok:\s*/i, '').trim();
+  const instaValue = instagramPart.replace(/^Instagram:\s*/i, '').trim();
+  if (!tikTokValue || !instaValue) return true;
+  if (tikTokValue.toLowerCase() === instaValue.toLowerCase()) return true;
+  // Both sides must include a creator separator
+  const hasCreatorTikTok = /\s—\s/.test(tikTokValue);
+  const hasCreatorInstagram = /\s—\s/.test(instaValue);
+  if (!hasCreatorTikTok || !hasCreatorInstagram) return true;
+  return false;
 }
 
 async function requestAudioCorrection(nicheStyle, brandContext, post) {
   if (!OPENAI_API_KEY) return '';
   const instructions = [
-    'You are a content strategist who only lists real trending audio names.',
-    'Return exactly one line in this format: TikTok: <TRACK NAME> - <ARTIST>; Instagram: <TRACK NAME> - <ARTIST>.',
-    'Do NOT include BPM, genre words, "search:", or any descriptive adjectives—only the official sound name and creator.',
+    'You are a content strategist who only lists REAL, LAST-7-DAYS TRENDING audio names.',
+    'Return ONLY one line in this EXACT format: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.',
+    'TikTok and Instagram MUST DIFFER unless the sound is verifiably trending on both.',
+    'Do NOT include BPM, genre words, "search:", style, synth, neo-soul, moody, upbeat, or any descriptive adjectives—only the official sound name and creator.',
   ].join(' ');
   const userParts = [
     `Niche: ${nicheStyle}`,
@@ -1477,7 +1498,7 @@ async function requestAudioCorrection(nicheStyle, brandContext, post) {
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: instructions },
-      { role: 'user', content: `${userParts}\nReturn only the requested audio line.` },
+      { role: 'user', content: `${userParts}\nReturn ONLY the one-line audio string in the exact format.` },
     ],
     temperature: 0.3,
     max_tokens: 200,
@@ -1508,18 +1529,18 @@ async function ensureAudioLines(nicheStyle, brandContext, posts = []) {
   for (let idx = 0; idx < posts.length; idx += 1) {
     const post = posts[idx];
     const normalized = normalizeAudioLine(post.audio);
-    if (isAudioLineValid(normalized)) {
+    if (!isBadAudio(normalized)) {
       post.audio = normalized;
       continue;
     }
     const dayLabel = post.day || idx + 1;
     console.warn('[Calendar] invalid audio string detected for day', dayLabel, normalized || post.audio);
     const corrected = await requestAudioCorrection(nicheStyle, brandContext, post);
-    if (isAudioLineValid(corrected)) {
+    if (!isBadAudio(corrected)) {
       post.audio = corrected;
     } else {
       console.warn('[Calendar] audio correction failed for day', dayLabel, corrected || normalized);
-      post.audio = normalized || corrected || 'TikTok: TBD - Artist; Instagram: TBD - Artist';
+      post.audio = normalized || corrected || 'TikTok: TBD — Creator; Instagram: TBD — Creator';
     }
   }
   return posts;
@@ -3062,6 +3083,8 @@ const server = http.createServer((req, res) => {
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
+        // Temporary audio log for verification
+        console.log("[Audio]", posts[0]?.audio);
         return sendJson(res, 200, { posts });
       } catch (err) {
         const context = {
@@ -3126,6 +3149,8 @@ const server = http.createServer((req, res) => {
             });
           }
         }
+        // Ensure audio lines are valid and platform-specific after repairs
+        posts = await ensureAudioLines(nicheStyle, brandContext, posts);
         let promoCount = 0;
         const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
         posts = posts.map((p, idx) => {
@@ -3149,6 +3174,8 @@ const server = http.createServer((req, res) => {
         });
         posts = ensureUniqueStrategyValues(posts);
         posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+        // Temporary audio log for verification
+        console.log("[Audio]", posts[0]?.audio);
         return sendJson(res, 200, { posts });
       } catch (err) {
         logServerError('calendar_generate_error', err, {
