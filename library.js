@@ -612,7 +612,7 @@ function handleCalendarAction(action = 'open', calendarId = '') {
 
   if (action === 'open') {
     sessionStorage.setItem('promptly_load_calendar', JSON.stringify(rawCalendar));
-    window.location.href = '/';
+    window.location.href = '/calendar.html';
   } else if (action === 'delete') {
     const confirmed = window.confirm('Delete this saved calendar? This cannot be undone.');
     if (!confirmed) return;
