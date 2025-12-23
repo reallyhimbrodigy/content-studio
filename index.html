@@ -324,7 +324,7 @@
         <div class="landing-section__header">
           <span class="landing-eyebrow">PRICING</span>
           <h2>Simple pricing that scales with output</h2>
-          <p>Choose the plan that fits how often you generate, export, and refine content across platforms.</p>
+          <p>Choose the plan that fits how consistent and dedicated you are.</p>
         </div>
         <div class="pricing-grid">
           <article class="pricing-card">
@@ -337,7 +337,7 @@
               <li>Limited Brand Brain</li>
               <li>Basic analytics teaser</li>
             </ul>
-            <button class="pricing-card__cta">Start free</button>
+            <a class="pricing-card__cta" href="https://usepromptly.app/auth.html?mode=signup">Start free</a>
           </article>
           <article class="pricing-card pricing-card--featured is-featured">
             <span class="pricing-pill">Most popular</span>
@@ -351,23 +351,27 @@
               <li>Analytics + experiments</li>
               <li>Platform scripts + audio cues</li>
             </ul>
-            <button class="pricing-card__cta pricing-card__cta--primary">Upgrade to Pro</button>
-          </article>
-          <article class="pricing-card">
-            <p class="pricing-card__name">Studio</p>
-            <p class="pricing-card__price">Custom</p>
-            <p class="pricing-card__subtitle">Scale across teams</p>
-            <ul class="pricing-card__features">
-              <li>Multi-brand calendars</li>
-              <li>Advanced analytics exports</li>
-              <li>Workflow integrations</li>
-              <li>Dedicated support</li>
-            </ul>
-            <button class="pricing-card__cta">Talk to sales</button>
+            <button class="pricing-card__cta pricing-card__cta--primary" type="button" data-upgrade-trigger>Upgrade to Pro</button>
           </article>
         </div>
       </div>
     </section>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        const trigger = document.querySelector('[data-upgrade-trigger]');
+        if (!trigger) return;
+        trigger.addEventListener('click', function (event) {
+          event.preventDefault();
+          if (typeof window.showUpgradeModal === 'function') {
+            window.showUpgradeModal();
+          } else {
+            const upgradeBtn = document.getElementById('upgrade-btn');
+            if (upgradeBtn) upgradeBtn.click();
+          }
+        });
+      });
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
