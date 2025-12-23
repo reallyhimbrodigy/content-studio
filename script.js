@@ -5468,16 +5468,14 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
-    let engagementText = '';
+    const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
-      const parts = [];
-      if (engagementScripts.commentReply) parts.push(`Comment: ${engagementScripts.commentReply}`);
-      if (engagementScripts.dmReply) parts.push(`DM: ${engagementScripts.dmReply}`);
-      engagementText = parts.join(' | ');
+      if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
+      if (engagementScripts.dmReply) engagementParts.push(`DM: ${engagementScripts.dmReply}`);
     } else if (engagementScript) {
-      engagementText = engagementScript;
+      engagementParts.push(engagementScript);
     }
-    const engagementEl = engagementText || '';
+    const engagementEl = engagementParts.filter(Boolean).join('\n');
 
     const promoSlotEl = promoSlot
       ? (() => {
@@ -5554,9 +5552,7 @@ const createCard = (post) => {
       header.className = 'detail-row__top';
       const labelEl = document.createElement('strong');
       labelEl.textContent = `${label}:`;
-      header.append(labelEl);
-      const bodyWrap = document.createElement('div');
-      bodyWrap.className = 'detail-text calendar-card__video-script';
+      const scriptParts = [];
       const addLine = (prefix, text) => {
         const line = document.createElement('div');
         const strong = document.createElement('strong');
@@ -5566,11 +5562,33 @@ const createCard = (post) => {
         span.textContent = text || '';
         line.append(span);
         bodyWrap.append(line);
+        const trimmed = String(text || '').trim();
+        if (trimmed) scriptParts.push(`${prefix}: ${trimmed}`);
       };
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'detail-copy-btn';
+      copyBtn.setAttribute('aria-label', `Copy ${label}`);
+      copyBtn.innerHTML = `<svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
+        <rect x="4" y="5.5" width="8" height="10" rx="2"/>
+      </svg>`;
+      header.append(labelEl, copyBtn);
+      const bodyWrap = document.createElement('div');
+      bodyWrap.className = 'detail-text calendar-card__video-script';
       addLine('Hook', structured.hook || '');
       addLine('Body', structured.body || '');
       addLine('CTA', structured.cta || '');
       row.append(header, bodyWrap);
+      const copyText = scriptParts.join('\n');
+      copyBtn.addEventListener('click', async () => {
+        if (!copyText) return;
+        try {
+          await navigator.clipboard.writeText(copyText);
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 800);
+        } catch (e) {}
+      });
       return row;
     };
     const videoScriptEl = buildReelScript();
@@ -5755,57 +5773,21 @@ const createCard = (post) => {
       storyPromptEl,
       designNotesEl,
       (() => {
-        const anyEngagement = engagementEl || followUpText;
-        if (!anyEngagement) return null;
-        const row = document.createElement('div');
-        row.className = 'calendar-card__engagement-loop calendar-card__detail-row';
-        const header = document.createElement('div');
-        header.className = 'detail-row__top';
-        const labelEl = document.createElement('strong');
-        labelEl.textContent = 'Engagement Loop:';
-        header.append(labelEl);
-        const body = document.createElement('div');
-        body.className = 'detail-text';
-        if (engagementEl) {
-          const part = document.createElement('div');
-          part.textContent = engagementEl;
-          body.appendChild(part);
-        }
-        if (followUpText) {
-          const part = document.createElement('div');
-          part.textContent = followUpText;
-          body.appendChild(part);
-        }
-        row.append(header, body);
-        return row;
+        const parts = [];
+        if (engagementEl) parts.push(engagementEl);
+        if (followUpText) parts.push(followUpText);
+        const value = parts.filter(Boolean).join('\n');
+        return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
       })(),
       promoSlotEl,
       weeklyPromoEl,
       videoScriptEl,
       (() => {
-        const anyDistribution = repurposeEl || variantsEl;
-        if (!anyDistribution) return null;
-        const row = document.createElement('div');
-        row.className = 'calendar-card__distribution calendar-card__detail-row';
-        const header = document.createElement('div');
-        header.className = 'detail-row__top';
-        const labelEl = document.createElement('strong');
-        labelEl.textContent = 'Distribution Plan:';
-        header.append(labelEl);
-        const body = document.createElement('div');
-        body.className = 'detail-text';
-        if (repurposeEl) {
-          const part = document.createElement('div');
-          part.textContent = repurposeEl;
-          body.appendChild(part);
-        }
-        if (variantsEl) {
-          const part = document.createElement('div');
-          part.textContent = variantsEl;
-          body.appendChild(part);
-        }
-        row.append(header, body);
-        return row;
+        const parts = [];
+        if (repurposeEl) parts.push(repurposeEl);
+        if (variantsEl) parts.push(variantsEl);
+        const value = parts.filter(Boolean).join('\n');
+        return value ? createDetailRow('Distribution Plan', value, 'calendar-card__distribution') : null;
       })(),
       assetsEl,
       ...proDetailNodes,
