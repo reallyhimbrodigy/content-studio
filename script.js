@@ -5308,17 +5308,31 @@ const createCard = (post) => {
       hashtagsEl.textContent = remaining > 0 ? `${displayTags.join(' ')} +${remaining} more` : displayTags.join(' ');
     }
 
-    const createDetailRow = (label, value, className) => {
-      if (!value) return null;
+    const createDetailRow = (label, value, className, options = {}) => {
+      if (value === null || value === undefined || value === '') return null;
+      const { depth = 0, visited } = options;
+      if (depth > 3) return null;
+      let content = value;
+      let seen = visited;
+      if (typeof content === 'object') {
+        seen = seen || new WeakSet();
+        if (seen.has(content)) {
+          content = '[Circular data]';
+        } else {
+          seen.add(content);
+          try {
+            content = JSON.stringify(content, null, 2);
+          } catch (err) {
+            content = String(content);
+          }
+        }
+      }
       const row = document.createElement('div');
       row.className = `${className} calendar-card__detail-row`;
       const header = document.createElement('div');
       header.className = 'detail-row__top';
       const labelEl = document.createElement('strong');
       labelEl.textContent = `${label}:`;
-
-    const postingTimeRow = postingTimeTip ? createDetailRow('Posting time tip', postingTimeTip, 'calendar-card__posting-tip') : null;
-    if (postingTimeRow) infoRows.appendChild(postingTimeRow);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'detail-copy-btn';
@@ -5327,20 +5341,26 @@ const createCard = (post) => {
         <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
         <rect x="4" y="5.5" width="8" height="10" rx="2"/>
       </svg>`;
+      const textValue = typeof content === 'string' ? content : String(content);
       btn.addEventListener('click', async () => {
+        if (!textValue) return;
         try {
-        await navigator.clipboard.writeText(value);
-        btn.classList.add('copied');
-        setTimeout(() => btn.classList.remove('copied'), 800);
-      } catch (e) {}
+          await navigator.clipboard.writeText(textValue);
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 800);
+        } catch (e) {}
       });
       header.append(labelEl, btn);
       const textEl = document.createElement('span');
       textEl.className = 'detail-text';
-      textEl.textContent = value;
+      textEl.textContent = textValue;
       row.append(header, textEl);
       return row;
     };
+    const postingTimeRow = postingTimeTip
+      ? createDetailRow('Posting time tip', postingTimeTip, 'calendar-card__posting-tip')
+      : null;
+    if (postingTimeRow) infoRows.appendChild(postingTimeRow);
     const buildLinkedAssetsRow = (entryData) => {
       if (true) return null; // hide calendar-surface AI assets
       const assets = Array.isArray(entryData?.assets) ? entryData.assets : [];
