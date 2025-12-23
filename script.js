@@ -5316,6 +5316,9 @@ const createCard = (post) => {
       header.className = 'detail-row__top';
       const labelEl = document.createElement('strong');
       labelEl.textContent = `${label}:`;
+
+    const postingTimeRow = postingTimeTip ? createDetailRow('Posting time tip', postingTimeTip, 'calendar-card__posting-tip') : null;
+    if (postingTimeRow) infoRows.appendChild(postingTimeRow);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'detail-copy-btn';

@@ -1411,7 +1411,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
   const postingTimeRules =
-    'Posting-time tips must name the right audience (students/athletes for sports niches, adult consumers for wellness, etc.), specify an exact clock time with an AM/PM range (e.g., 3:00–4:00 PM), and explain why that window works (e.g., practice wind-down, lunch break). Do NOT use vague terms like "morning" or "evening" without a clock time. Do NOT mention execs, founders, or enterprise audiences unless the niche is explicitly business/coaching.';
+    'Posting-time tips must target the right audience (students/athletes for sports, adult consumers for wellness, etc.), mention a specific clock time (e.g., 3:15 PM, 8 AM) with a rationale, and stay one sentence. Do NOT refer to days of the week or use vague words like "morning" without a clock time. Avoid exec/founder/enterprise audiences unless the niche is specifically business/coaching.';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
@@ -1716,6 +1716,9 @@ const POSTING_TIME_AUDIENCE_PATTERNS = [
   { match: /business|coach|consult|agency|strategy|growth|marketing|sales/, creator: 'ambitious creators and community builders', business: 'founders and growth leaders' },
   { match: /creator|influencer|lifestyle|content|story/, creator: 'your creative audience and community', business: 'marketing leaders and brand storytellers' },
 ];
+const POSTING_TIME_TIME_PATTERN = /\b((1[0-2]|[1-9])(:[0-5][0-9])?\s?(AM|PM))\b/i;
+const POSTING_TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
+const POSTING_TIME_DAY_PATTERN = /\b(mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
 
 function buildPinnedCommentLine(keyword = '', deliverable = '') {
   if (!keyword || !deliverable) return '';
@@ -1811,6 +1814,8 @@ function isPostingTimeTipValid(tip = '', classification = 'creator') {
   const cleaned = String(tip || '').trim();
   if (!cleaned) return false;
   if (classification !== 'business' && containsBannedPostingAudience(cleaned)) return false;
+  if (POSTING_TIME_DAY_PATTERN.test(cleaned)) return false;
+  if (!POSTING_TIME_TIME_PATTERN.test(cleaned) && !POSTING_TIME_24H_PATTERN.test(cleaned)) return false;
   return true;
 }
 
@@ -1847,7 +1852,7 @@ async function regeneratePostingTimeTip(post, classification, nicheStyle, brandC
 Niche/Style: ${nicheStyle || 'General'}
 Post summary: ${summary}
 ${bannedLine}
-Provide a single sentence posting time tip that names the audience and a plausible scroll window/time (e.g., "weekday mornings at 8am when parents scroll after drop-off"). Return only that sentence.`;
+Return ONLY one sentence for posting_time_tip. Mention the niche audience, include a specific clock time (e.g., 3:15 PM), explain why that window works, and do NOT mention days of the week or generic phrases like "morning" without a clock time.`;
   try {
     const raw = await callChatCompletion(prompt, { temperature: 0.5, maxTokens: 250 });
     const lines = (raw || '').split(/\\n+/).map((line) => line.trim()).filter(Boolean);
@@ -1869,6 +1874,9 @@ async function ensurePostingTimeTips(posts = [], classification, nicheStyle, bra
       }
     }
     if (!tip) {
+      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
+    }
+    if (!isPostingTimeTipValid(tip, classification)) {
       tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
     }
     post.postingTimeTip = tip;
