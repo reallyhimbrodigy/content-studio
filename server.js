@@ -1400,11 +1400,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
   const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
-1) Output must be exactly ONE line formatted: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
-2) Both sounds must be trending in the LAST 7 DAYS for this niche (platform-specific or creator-original audios).
-3) TikTok and Instagram entries must be DIFFERENT platform-specific tracks (if the same sound is trending on both, state "trending on both this week").
-4) Match the niche vibe (sports = high-energy, wellness = calming) but always return real sound titles and creators.
-5) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any invented descriptors or evergreen hits older than 90 days.`;
+1) First, identify the current Top 10 TikTok trending sounds for this niche (last 7 days).
+2) Then identify the current Top 10 Instagram Reels trending audios for this niche (last 7 days).
+3) Select ONE sound from TikTok and ONE DIFFERENT sound from Instagram; do NOT reuse the same audio.
+4) Sounds may be songs or platform-native creator audios and must suit the niche vibe (sports = high-energy, wellness = calming).
+5) Output ONLY the final line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>, with no BPM/genre/style/search descriptors.
+6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or evergreen hits older than 90 days.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
