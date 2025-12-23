@@ -5357,10 +5357,6 @@ const createCard = (post) => {
       row.append(header, textEl);
       return row;
     };
-    const postingTimeRow = postingTimeTip
-      ? createDetailRow('Posting time tip', postingTimeTip, 'calendar-card__posting-tip')
-      : null;
-    if (postingTimeRow) infoRows.appendChild(postingTimeRow);
     const buildLinkedAssetsRow = (entryData) => {
       if (true) return null; // hide calendar-surface AI assets
       const assets = Array.isArray(entryData?.assets) ? entryData.assets : [];
