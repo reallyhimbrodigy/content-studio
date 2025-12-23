@@ -5144,16 +5144,7 @@ const createCard = (post) => {
       weeklyPromo,
     } = entry;
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
-    (function logAudioDebug() {
-      if (typeof window === 'undefined') return;
-      const hostname = window.location?.hostname || '';
-      if (hostname && !['localhost', '127.0.0.1'].includes(hostname)) return;
-      const audioKeys = ['audio', 'suggestedAudio', 'tiktok_audio', 'instagram_audio', 'audioText'].filter((key) => key in entry);
-      console.log('[Calendar] rendering audio', { day: entryDay, audio: entry.audio, keys: Object.keys(entry), audioKeys });
-      if (audioKeys.length > 1) {
-        console.warn('[Calendar] detected multiple audio keys', audioKeys);
-      }
-    })();
+    // No inline audio overrides; display server-provided post.audio only.
 
     if (!card.dataset.pillar && pillar) {
       card.dataset.pillar = pillar;
