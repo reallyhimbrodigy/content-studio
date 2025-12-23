@@ -1508,7 +1508,7 @@ async function requestAudioCorrection(nicheStyle, brandContext, post, options = 
     temperature: 0.3,
     max_tokens: 200,
   });
-  const options = {
+  const requestOptions = {
     hostname: 'api.openai.com',
     path: '/v1/chat/completions',
     method: 'POST',
@@ -1519,7 +1519,7 @@ async function requestAudioCorrection(nicheStyle, brandContext, post, options = 
     },
   };
   try {
-    const json = await openAIRequest(options, payload);
+    const json = await openAIRequest(requestOptions, payload);
     const content = json?.choices?.[0]?.message?.content || '';
     const line = content.split(/\r?\n/)[0].trim();
     return normalizeAudioLine(line);
