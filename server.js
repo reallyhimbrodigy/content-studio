@@ -2959,7 +2959,7 @@ const server = http.createServer((req, res) => {
     posts = await dedupePinnedComments(posts, classification, nicheStyle);
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
-    console.log('[Audio samples]', posts.slice(0, 3).map((p) => p.audio));
+    console.log('[Audio sample]', posts.slice(0, Math.min(posts.length, 3)).map((p) => ({ day: p.day, audio: p.audio })));
     return posts;
   }
 
