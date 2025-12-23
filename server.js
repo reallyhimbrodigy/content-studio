@@ -308,6 +308,40 @@ function analyticsUpgradeRequired(res) {
   });
 }
 
+// Analytics window helpers: Free=30 days, Pro=90 days
+function getAnalyticsWindowDays(req) {
+  return isUserPro(req) ? 90 : 30;
+}
+
+function getSinceDate(days) {
+  const since = new Date();
+  since.setDate(since.getDate() - (Number.isFinite(days) ? days : 30));
+  return since;
+}
+
+function filterPostsByWindow(posts, days) {
+  if (!Array.isArray(posts) || !posts.length) return [];
+  const since = getSinceDate(days);
+  const cutoff = since.getTime();
+  return posts.filter((p) => {
+    const ts = p?.published_at || p?.publishedAt || p?.created_at || p?.createdAt;
+    if (!ts) return true; // if unknown date, keep it
+    const t = new Date(ts).getTime();
+    return Number.isFinite(t) ? t >= cutoff : true;
+  });
+}
+
+function filterSeriesByWindow(series, days) {
+  if (!Array.isArray(series) || !series.length) return [];
+  const since = getSinceDate(days);
+  const cutoff = since.getTime();
+  return series.filter((pt) => {
+    const ts = pt?.date || pt?.day || pt?.ts || pt?.timestamp;
+    const t = new Date(ts).getTime();
+    return Number.isFinite(t) ? t >= cutoff : true;
+  });
+}
+
 const CALENDAR_EXPORT_FEATURE_KEY = 'calendar_exports';
 
 const MAX_JSON_BODY = 1 * 1024 * 1024; // 1MB cap to prevent oversized payloads.
@@ -4424,19 +4458,9 @@ Output format:
     });
   }
 
-  if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
-    const isPro = isUserPro(req);
-    if (!isPro) {
-      return analyticsUpgradeRequired(res);
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      data: [
-        { day: 0, hour: 19, engagement: 0.8 },
-        { day: 1, hour: 20, engagement: 0.9 },
-        { day: 3, hour: 15, engagement: 0.5 },
-      ],
-    });
+  // Deprecated demo heatmap (kept for reference, path changed to avoid matching)
+  if (parsed.pathname === '/api/analytics/heatmap-demo' && req.method === 'GET') {
+    return sendJson(res, 200, { ok: true, data: [] });
   }
 
   if (parsed.pathname === '/api/analytics/posts' && req.method === 'GET') {
@@ -4523,7 +4547,8 @@ Output format:
           return sendJson(res, 500, { ok: false, error: 'engagement_fetch_failed' });
         }
 
-        const posts = (data && data.posts) || [];
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(((data && data.posts) || []), days);
         if (!posts.length) return sendJson(res, 200, { ok: true, engagement: 0 });
 
         let totalViews = 0;
@@ -4548,19 +4573,18 @@ Output format:
     (async () => {
       try {
         const promptlyUserId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, alerts: [] });
         }
+        const days = getAnalyticsWindowDays(req);
+        const since = getSinceDate(days).toISOString();
         const { data, error } = await supabaseAdmin
           .from('analytics_alerts')
           .select('*')
           .eq('user_id', promptlyUserId)
+          .gte('created_at', since)
           .order('created_at', { ascending: false })
-          .limit(20);
+          .limit(50);
         if (error) {
           return sendJson(res, 500, { ok: false, error: 'alerts_fetch_failed' });
         }
@@ -4577,10 +4601,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -4670,10 +4690,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -4688,7 +4704,9 @@ Output format:
           return sendJson(res, 500, { ok: false, error: 'top_posts_fetch_failed' });
         }
 
-        const posts = (data && data.posts) || [];
+        const postsRaw = (data && data.posts) || [];
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(postsRaw, days);
         const sorted = posts
           .map((p) => ({
             ...p,
@@ -4710,10 +4728,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
@@ -4728,7 +4742,8 @@ Output format:
           return sendJson(res, 500, { ok: false, error: 'heatmap_fetch_failed' });
         }
 
-        const posts = (data && data.posts) || [];
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(((data && data.posts) || []), days);
         const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
 
         posts.forEach((p) => {
@@ -4755,10 +4770,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, {
             ok: true,
@@ -4815,7 +4826,8 @@ Output format:
               }
             : null;
 
-        const posts = postsRows || [];
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(postsRows || [], days);
         const demographics = demoRow
           ? {
               age_groups: demoRow.age_groups || {},
@@ -4842,6 +4854,11 @@ Output format:
           return sendJson(res, 404, { ok: false, error: 'no_analytics' });
         }
 
+        // Add a range label hint so the client can display the window used
+        if (overview) {
+          overview.rangeLabel = `Last ${days} days`;
+        }
+
         return sendJson(res, 200, {
           ok: true,
           overview,
@@ -4862,10 +4879,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, trends: [] });
         }
@@ -4881,7 +4894,9 @@ Output format:
         }
 
         const trends = (data && data.followers) || [];
-        const sorted = trends.sort((a, b) => new Date(a.date) - new Date(b.date));
+        const days = getAnalyticsWindowDays(req);
+        const limited = filterSeriesByWindow(trends, days);
+        const sorted = limited.sort((a, b) => new Date(a.date) - new Date(b.date));
 
         return sendJson(res, 200, { ok: true, trends: sorted });
       } catch (err) {
@@ -4896,10 +4911,6 @@ Output format:
     (async () => {
       try {
         const userId = req.user && req.user.id;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return analyticsUpgradeRequired(res);
-        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, demographics: {} });
         }

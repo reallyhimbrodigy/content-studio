@@ -998,10 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateInsights() {
     const btn = document.getElementById('generate-insights-btn');
     const list = document.getElementById('insights-list');
-    if (!analyticsIsPro) {
-      openUpgradeCTA();
-      return;
-    }
+    // Allow Free users to generate insights; server will limit payload size for Free.
     try {
       if (btn) {
         btn.disabled = true;

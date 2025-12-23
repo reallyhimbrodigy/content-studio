@@ -7510,6 +7510,10 @@ body.view-landing .landing-section {
   position: relative;
 }
 
+body.view-landing {
+  scroll-behavior: smooth;
+}
+
 body.view-landing .landing-section + .landing-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

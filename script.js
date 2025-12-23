@@ -6729,13 +6729,7 @@ if (exportBtn) {
 // Export CSV button handler
 if (exportCsvBtn) {
   exportCsvBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock CSV export for Free tier
     await fetchLatestCalendarSnapshot();
 
     const niche = nicheInput ? nicheInput.value.trim() : '';
@@ -6763,13 +6757,7 @@ if (exportCsvBtn) {
 // Export ICS (calendar reminders)
 if (exportIcsBtn) {
   exportIcsBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock ICS export for Free tier
     await fetchLatestCalendarSnapshot();
 
     if (!currentCalendar || currentCalendar.length === 0) {
@@ -6791,13 +6779,7 @@ if (exportIcsBtn) {
 // ZIP export
 if (downloadZipBtn) {
   downloadZipBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock ZIP export for Free tier
 
     await fetchLatestCalendarSnapshot();
     
