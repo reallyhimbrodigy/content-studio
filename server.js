@@ -1401,9 +1401,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
   const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
 1) Output must be exactly ONE line formatted: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
-2) Both sounds must be trending in the LAST 7 DAYS for this niche (platform-native or creator-original audios).
-3) TikTok and Instagram entries must be DIFFERENT unless you explicitly state "trending on both this week.";
-4) Match the niche vibe (sports = high-energy, wellness = calming) while still returning real sound titles and creators.
+2) Both sounds must be trending in the LAST 7 DAYS for this niche (platform-specific or creator-original audios).
+3) TikTok and Instagram entries must be DIFFERENT platform-specific tracks (if the same sound is trending on both, state "trending on both this week").
+4) Match the niche vibe (sports = high-energy, wellness = calming) but always return real sound titles and creators.
 5) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any invented descriptors or evergreen hits older than 90 days.`;
   const classificationRules =
     classification === 'business'
@@ -1456,35 +1456,33 @@ function isAudioLineValid(line = '') {
   });
 }
 
-function isBadAudio(line = '') {
+function parseAudioSegments(line = '') {
   const text = normalizeAudioLine(line);
-  if (!text) return true;
-  // Missing platforms
-  if (!text.includes('TikTok:') || !text.includes('Instagram:')) return true;
-  // Banned tokens
-  if (AUDIO_INVALID_PATTERN.test(text)) return true;
-  // BPM/tempo ranges
-  if (AUDIO_DIGIT_PATTERN.test(text)) return true;
+  if (!text || !text.includes('TikTok:') || !text.includes('Instagram:')) return null;
   const segments = text.split(';').map((s) => s.trim()).filter(Boolean);
-  if (segments.length < 2) return true;
-  // Must use em dash creator separator
-  const usesEmDash = segments.every((s) => s.includes(' — '));
-  if (!usesEmDash) return true;
-  // Compare TikTok vs Instagram parts for equality after trimming
-  const tikTokPart = segments.find((s) => /^TikTok:/i.test(s)) || '';
-  const instagramPart = segments.find((s) => /^Instagram:/i.test(s)) || '';
-  const tikTokValue = tikTokPart.replace(/^TikTok:\s*/i, '').trim();
-  const instaValue = instagramPart.replace(/^Instagram:\s*/i, '').trim();
-  if (!tikTokValue || !instaValue) return true;
-  if (tikTokValue.toLowerCase() === instaValue.toLowerCase()) return true;
-  // Both sides must include a creator separator
-  const hasCreatorTikTok = /\s—\s/.test(tikTokValue);
-  const hasCreatorInstagram = /\s—\s/.test(instaValue);
-  if (!hasCreatorTikTok || !hasCreatorInstagram) return true;
+  if (segments.length < 2) return null;
+  const result = {};
+  for (const segment of segments) {
+    const match = segment.match(/^(TikTok|Instagram):\s*(.+)$/i);
+    if (!match) return null;
+    const platform = match[1].toLowerCase();
+    result[platform] = match[2].trim();
+  }
+  return result;
+}
+
+function isBadAudio(line = '') {
+  const segments = parseAudioSegments(line);
+  if (!segments) return true;
+  const { tiktok = '', instagram = '' } = segments;
+  if (!tiktok || !instagram) return true;
+  if (AUDIO_INVALID_PATTERN.test(line) || AUDIO_DIGIT_PATTERN.test(line)) return true;
+  if (tiktok.replace(/\s+/g, ' ').toLowerCase() === instagram.replace(/\s+/g, ' ').toLowerCase()) return true;
+  if (!/\s—\s/.test(tiktok) || !/\s—\s/.test(instagram)) return true;
   return false;
 }
 
-async function requestAudioCorrection(nicheStyle, brandContext, post) {
+async function requestAudioCorrection(nicheStyle, brandContext, post, options = {}) {
   if (!OPENAI_API_KEY) return '';
   const instructions = [
     'You are a content strategist who only lists REAL, LAST-7-DAYS TRENDING audio names.',
@@ -1492,12 +1490,14 @@ async function requestAudioCorrection(nicheStyle, brandContext, post) {
     'TikTok and Instagram MUST DIFFER unless the sound is verifiably trending on both.',
     'Do NOT include BPM, genre words, "search:", style, synth, neo-soul, moody, upbeat, or any descriptive adjectives—only the official sound name and creator.',
   ].join(' ');
+  const avoidParts = Array.isArray(options.avoidList) ? options.avoidList : [];
   const userParts = [
     `Niche: ${nicheStyle}`,
     brandContext ? `Brand context: ${brandContext}` : null,
     post.hook ? `Hook: ${post.hook}` : null,
     post.caption ? `Caption: ${post.caption}` : null,
     post.audio ? `Previous audio: ${post.audio}` : null,
+    avoidParts.length ? `Avoid: ${avoidParts.join(', ')}` : null,
   ].filter(Boolean).join('\n');
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
@@ -1529,25 +1529,48 @@ async function requestAudioCorrection(nicheStyle, brandContext, post) {
   }
 }
 
-async function ensureAudioLines(nicheStyle, brandContext, posts = []) {
+async function ensureAudioLines(nicheStyle, brandContext, posts = [], options = {}) {
   if (!Array.isArray(posts)) return posts;
+  const usedTikTok = options.usedTikTok || new Set();
+  const usedInstagram = options.usedInstagram || new Set();
   for (let idx = 0; idx < posts.length; idx += 1) {
     const post = posts[idx];
     const normalized = normalizeAudioLine(post.audio);
-    if (!isBadAudio(normalized)) {
+    const segments = parseAudioSegments(normalized);
+    const duplicate = segments
+      && usedTikTok.has(segments.tiktok?.toLowerCase())
+      && usedInstagram.has(segments.instagram?.toLowerCase());
+    if (!isBadAudio(normalized) && !duplicate) {
       post.audio = normalized;
+      if (segments) {
+        usedTikTok.add(segments.tiktok.toLowerCase());
+        usedInstagram.add(segments.instagram.toLowerCase());
+      }
       continue;
     }
     const dayLabel = post.day || idx + 1;
     console.warn('[Calendar] invalid audio string detected for day', dayLabel, normalized || post.audio);
-    const corrected = await requestAudioCorrection(nicheStyle, brandContext, post);
+    const avoidList = [
+      ...(segments?.tiktok ? [segments.tiktok] : []),
+      ...(segments?.instagram ? [segments.instagram] : []),
+      ...Array.from(usedTikTok),
+      ...Array.from(usedInstagram),
+    ];
+    const corrected = await requestAudioCorrection(nicheStyle, brandContext, post, { avoidList });
     if (!isBadAudio(corrected)) {
       post.audio = corrected;
+      const correctedSegments = parseAudioSegments(corrected);
+      if (correctedSegments) {
+        usedTikTok.add(correctedSegments.tiktok.toLowerCase());
+        usedInstagram.add(correctedSegments.instagram.toLowerCase());
+      }
     } else {
       console.warn('[Calendar] audio correction failed for day', dayLabel, corrected || normalized);
       post.audio = normalized || corrected || 'TikTok: TBD — Creator; Instagram: TBD — Creator';
     }
   }
+  options.usedTikTok = usedTikTok;
+  options.usedInstagram = usedInstagram;
   return posts;
 }
 
@@ -2886,7 +2909,8 @@ const server = http.createServer((req, res) => {
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
     let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
-    posts = await ensureAudioLines(nicheStyle, brandContext, posts);
+    const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
+    posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
     const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
     if (incomplete.length > 0) {
       const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
@@ -2934,7 +2958,7 @@ const server = http.createServer((req, res) => {
     posts = await dedupePinnedComments(posts, classification, nicheStyle);
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
-    console.log('[Audio]', posts[0]?.audio);
+    console.log('[Audio samples]', posts.slice(0, 3).map((p) => p.audio));
     return posts;
   }
 
@@ -3090,7 +3114,6 @@ const server = http.createServer((req, res) => {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
         // Temporary audio log for verification
-        console.log("[Audio]", posts[0]?.audio);
         return sendJson(res, 200, { posts });
       } catch (err) {
         const context = {
@@ -3156,7 +3179,8 @@ const server = http.createServer((req, res) => {
           }
         }
         // Ensure audio lines are valid and platform-specific after repairs
-        posts = await ensureAudioLines(nicheStyle, brandContext, posts);
+        const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
+        posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
         let promoCount = 0;
         const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
         posts = posts.map((p, idx) => {
@@ -3181,7 +3205,6 @@ const server = http.createServer((req, res) => {
         posts = ensureUniqueStrategyValues(posts);
         posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
         // Temporary audio log for verification
-        console.log("[Audio]", posts[0]?.audio);
         return sendJson(res, 200, { posts });
       } catch (err) {
         logServerError('calendar_generate_error', err, {
