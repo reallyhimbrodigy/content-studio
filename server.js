@@ -1400,12 +1400,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
   const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
   const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
-1) First, identify the current Top 10 TikTok trending sounds for this niche (last 7 days).
-2) Then identify the current Top 10 Instagram Reels trending audios for this niche (last 7 days).
-3) Select ONE sound from TikTok and ONE DIFFERENT sound from Instagram; do NOT reuse the same audio.
-4) Sounds may be songs or platform-native creator audios and must suit the niche vibe (sports = high-energy, wellness = calming).
-5) Output ONLY the final line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>, with no BPM/genre/style/search descriptors.
-6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or evergreen hits older than 90 days.`;
+1) First, list the current Top 10 trending TikTok sounds for this niche (platform-native or creator-original, last 7 days).
+2) Separately, list the Top 10 trending Instagram Reels audios for this niche (last 7 days).
+3) Choose ONE TikTok sound and ONE DIFFERENT Instagram sound; do NOT reuse the same audio unless you explicitly state "trending on both this week".
+4) Sounds may be songs or creator sounds and must lean into the niche vibe (sports = higher energy, wellness = calming), yet remain real titles.
+5) Output ONLY the final audio line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
+6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any evergreen hit older than 90 days (e.g., Blinding Lights, Levitating, Savage Love, Shape of You, Old Town Road).`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1437,6 +1437,7 @@ Rules:
 }
 const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
 const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
+const EVERGREEN_TITLES = ['blinding lights','levitating','savage love','shape of you','old town road','dance monkey'];
 
 function normalizeAudioLine(value) {
   if (!value && value !== 0) return '';
@@ -1480,6 +1481,10 @@ function isBadAudio(line = '') {
   if (AUDIO_INVALID_PATTERN.test(line) || AUDIO_DIGIT_PATTERN.test(line)) return true;
   if (tiktok.replace(/\s+/g, ' ').toLowerCase() === instagram.replace(/\s+/g, ' ').toLowerCase()) return true;
   if (!/\s—\s/.test(tiktok) || !/\s—\s/.test(instagram)) return true;
+  const combined = `${tiktok.toLowerCase()} ${instagram.toLowerCase()}`;
+  for (const title of EVERGREEN_TITLES) {
+    if (combined.includes(title)) return true;
+  }
   return false;
 }
 
