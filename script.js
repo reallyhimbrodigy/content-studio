@@ -8540,14 +8540,19 @@ async function onGenerateCalendarClick() {
   }
 }
 
+function bindGenerateCalendarButton() {
+  if (!generateBtn || generateBtn.dataset.calendarBound === '1') return;
+  generateBtn.addEventListener('click', onGenerateCalendarClick);
+  generateBtn.dataset.calendarBound = '1';
+}
+
 if (generateBtn) {
-  if (!generateBtn.dataset.calendarBound) {
-    generateBtn.addEventListener('click', onGenerateCalendarClick);
-    generateBtn.dataset.calendarBound = '1';
-  }
+  bindGenerateCalendarButton();
 } else if (calendarSection) {
   console.error("❌ Generate button not found - this is why Generate Calendar doesn't work");
 }
+
+document.addEventListener('DOMContentLoaded', bindGenerateCalendarButton);
 
 // Final diagnostic
 console.log("\n=== Event Listener Summary ===");
