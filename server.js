@@ -1212,7 +1212,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 }
 
 
-function openAIRequest(options, payload, retryCount = 0) {
+function openAIRequest(options, payload, retryCount = 0, maxRetries = 3) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
@@ -1223,11 +1223,11 @@ function openAIRequest(options, payload, retryCount = 0) {
             resolve(JSON.parse(data));
           } else {
             // Retry on 502, 503, 504 (server errors) up to 3 times
-            if ((res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) && retryCount < 3) {
+            if ((res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) && retryCount < maxRetries) {
               const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-              console.log(`OpenAI ${res.statusCode} error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+              console.log(`OpenAI ${res.statusCode} error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})...`);
               setTimeout(() => {
-                openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+                openAIRequest(options, payload, retryCount + 1, maxRetries).then(resolve).catch(reject);
               }, delay);
             } else {
               reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
@@ -1240,11 +1240,11 @@ function openAIRequest(options, payload, retryCount = 0) {
     });
     req.on('error', (err) => {
       // Retry on network errors up to 3 times
-      if (retryCount < 3) {
+      if (retryCount < maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`OpenAI network error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`, err.message);
+        console.log(`OpenAI network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})...`, err.message);
         setTimeout(() => {
-          openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+          openAIRequest(options, payload, retryCount + 1, maxRetries).then(resolve).catch(reject);
         }, delay);
       } else {
         reject(err);
@@ -1432,14 +1432,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? preset.nicheRules.join('\n')
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
-  const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
-  const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
-1) First, list the current Top 10 trending TikTok sounds for this niche (platform-native or creator-original, last 7 days).
-2) Separately, list the Top 10 trending Instagram Reels audios for this niche (last 7 days).
-3) Choose ONE TikTok sound and ONE DIFFERENT Instagram sound; do NOT reuse the same audio unless you explicitly state "trending on both this week".
-4) Sounds may be songs or creator sounds and must lean into the niche vibe (sports = higher energy, wellness = calming), yet remain real titles.
-5) Output ONLY the final audio line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
-6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any evergreen hit older than 90 days (e.g., Blinding Lights, Levitating, Savage Love, Shape of You, Old Town Road).`;
+  const qualityRules = `Quality Guidelines — Keep every text field plug-and-play:\n1) Hooks must be a single, punchy sentence without emojis or hashtags.\n2) Caption, platform captions, and scripts stay concise (<= 140 chars) and avoid emojis/hashtags—those belong only in the hashtags array.\n3) Hashtags live only inside the hashtags array as plain keywords; deliver 6–8 unique tags with no #.\n4) Format must remain \"Reel\" and formatIntent should briefly describe the visual intent.\n5) Story prompt, design notes, and posting tip should describe a single beat or audience insight in one sentence.\n6) Script and videoScript objects each include hook/body/cta strings with clear sequencing.`;
+  const audioRules = `Audio rules — Select one TikTok sound and one Instagram sound that are fresh (last 7 days). Output only the line: "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>". Keep it plain, avoid emojis, hashtags, "search:", or descriptive genre terms, and only reuse a sound on both platforms if it is clearly trending on both.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1447,31 +1441,167 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postingTimeRules =
     'Posting-time tips must target the right audience (students/athletes for sports, adult consumers for wellness, etc.), mention a specific clock time (e.g., 3:15 PM, 8 AM) with a rationale, and stay one sentence. Do NOT refer to days of the week or use vague words like "morning" without a clock time. Avoid exec/founder/enterprise audiences unless the niche is specifically business/coaching.';
   const strategyRules = `Strategy rules:
-1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
-2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
-3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
-4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
-5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
-6) Provide padded keyword/deliverable pairs instead of a full pinned_comment. pinned_keyword should be a single uppercase word (3–16 letters) that feels niche specific and does not duplicate the post title. pinned_deliverable should describe the resource you promise (checklist, template, roadmap, etc.).
-7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
-8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
+1) Provide a distinct strategy block for every post, referencing its idea, pillar, format, or CTA.
+2) Include angle, objective, numeric target_saves_pct/target_comments_pct (1-25), pinned_keyword, pinned_deliverable, and 3 hook_options tied to the concept.
+3) Angles and pinned keywords must be unique across the calendar and never repeat the title verbatim.
+4) Hook options should feel like real lead lines—business hooks lean on problems/outcomes/offers, creator hooks lean on relatability/story—and must stay concise.
+5) Pinned keyword must be uppercase 3–16 letters without stopwords, and pinned deliverable should promise a specific asset (checklist, template, roadmap, etc.).
+6) We will build the final pinned comment on the server; do not drop a finished sentence into the strategy block.`;
+  const outputRules = `Return EXACT JSON array of ${days} objects for days ${startDay}..${startDay + days - 1} using the structured schema named "calendar_posts". Keep all fields present (use empty strings when necessary), do not add Markdown or commentary outside the array, and let the schema enforce the required keys.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
-- tiktok_caption (final, trimmed block)
-- linkedin_caption (final, trimmed block)
-- postingTimeTip (single sentence describing an audience + scroll window)
-- audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both.
-- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}
+${audioRules}
+${strategyRules}
+${outputRules}
+${postingTimeRules}
+${classificationRules}${nicheSpecific}${promoGuardrail}
 
-Rules:
-- If unsure, invent concise, plausible content rather than omitting fields.
-- Always include every field above (use empty string only if absolutely necessary).
-- Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
-- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
-}
+Create a calendar for "${nicheStyle}".
+Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}, matching the structured schema above.`;
+
 const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
 const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
 const EVERGREEN_TITLES = ['blinding lights','levitating','savage love','shape of you','old town road','dance monkey'];
+
+const CALENDAR_SCRIPT_SCHEMA = {
+  type: 'object',
+  properties: {
+    hook: { type: 'string' },
+    body: { type: 'string' },
+    cta: { type: 'string' },
+  },
+  required: ['hook', 'body', 'cta'],
+  additionalProperties: false,
+};
+
+const CALENDAR_ENGAGEMENT_SCRIPTS_SCHEMA = {
+  type: 'object',
+  properties: {
+    commentReply: { type: 'string' },
+    dmReply: { type: 'string' },
+  },
+  required: ['commentReply', 'dmReply'],
+  additionalProperties: false,
+};
+
+const CALENDAR_STRATEGY_SCHEMA = {
+  type: 'object',
+  properties: {
+    angle: { type: 'string' },
+    objective: { type: 'string' },
+    target_saves_pct: { type: 'number', minimum: 1, maximum: 25 },
+    target_comments_pct: { type: 'number', minimum: 1, maximum: 25 },
+    pinned_keyword: { type: 'string' },
+    pinned_deliverable: { type: 'string' },
+    pinned_comment: { type: 'string' },
+    hook_options: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 3,
+      uniqueItems: true,
+    },
+  },
+  required: [
+    'angle',
+    'objective',
+    'target_saves_pct',
+    'target_comments_pct',
+    'pinned_keyword',
+    'pinned_deliverable',
+    'pinned_comment',
+    'hook_options',
+  ],
+  additionalProperties: false,
+};
+
+const CALENDAR_POST_ITEM_SCHEMA = {
+  type: 'object',
+  properties: {
+    day: { type: 'integer', minimum: 1 },
+    idea: { type: 'string' },
+    title: { type: 'string' },
+    type: { type: 'string', enum: ['educational', 'promotional', 'lifestyle', 'interactive'] },
+    hook: { type: 'string' },
+    caption: { type: 'string' },
+    hashtags: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 6,
+      maxItems: 10,
+    },
+    format: { type: 'string', enum: ['Reel'] },
+    formatIntent: { type: 'string' },
+    cta: { type: 'string' },
+    pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
+    storyPrompt: { type: 'string' },
+    designNotes: { type: 'string' },
+    repurpose: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 2,
+      maxItems: 4,
+    },
+    analytics: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 2,
+      maxItems: 4,
+    },
+    engagementScripts: CALENDAR_ENGAGEMENT_SCRIPTS_SCHEMA,
+    promoSlot: { type: 'boolean' },
+    weeklyPromo: { type: 'string' },
+    postingTimeTip: { type: 'string' },
+    script: CALENDAR_SCRIPT_SCHEMA,
+    videoScript: CALENDAR_SCRIPT_SCHEMA,
+    instagram_caption: { type: 'string' },
+    tiktok_caption: { type: 'string' },
+    linkedin_caption: { type: 'string' },
+    audio: { type: 'string' },
+    strategy: CALENDAR_STRATEGY_SCHEMA,
+  },
+  required: [
+    'day',
+    'idea',
+    'type',
+    'hook',
+    'caption',
+    'hashtags',
+    'format',
+    'formatIntent',
+    'cta',
+    'pillar',
+    'storyPrompt',
+    'designNotes',
+    'repurpose',
+    'analytics',
+    'engagementScripts',
+    'promoSlot',
+    'weeklyPromo',
+    'postingTimeTip',
+    'script',
+    'videoScript',
+    'instagram_caption',
+    'tiktok_caption',
+    'linkedin_caption',
+    'audio',
+    'strategy',
+  ],
+  additionalProperties: false,
+};
+
+const CALENDAR_POSTS_SCHEMA = {
+  type: 'array',
+  items: CALENDAR_POST_ITEM_SCHEMA,
+};
+
+const CALENDAR_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'calendar_posts',
+    strict: true,
+    schema: CALENDAR_POSTS_SCHEMA,
+  },
+};
 
 function normalizeAudioLine(value) {
   if (!value && value !== 0) return '';
@@ -1667,22 +1797,6 @@ ${snapshot}
 Rewrite this day from scratch with a fresh angle while respecting every schema field. ${schema}`;
 }
 
-function hasAllRequiredFields(p){
-  if (!p) return false;
-  const scriptObj = p.script || p.videoScript;
-  const ok = p.day!=null && p.idea && p.type && p.hook && p.caption && p.hashtags && Array.isArray(p.hashtags) && p.hashtags.length>=6
-    && p.format && p.cta && p.pillar && p.storyPrompt && p.designNotes
-    && p.repurpose && Array.isArray(p.repurpose) && p.repurpose.length>=2
-    && p.analytics && Array.isArray(p.analytics) && p.analytics.length>=2
-    && p.engagementScripts && p.engagementScripts.commentReply && p.engagementScripts.dmReply
-    && scriptObj && scriptObj.hook && scriptObj.body && scriptObj.cta
-    && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true)
-    && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string'
-    && typeof p.postingTimeTip === 'string' && p.postingTimeTip.trim()
-    && typeof p.audio === 'string' && p.audio.trim()
-    && hasValidStrategy(p);
-  return !!ok;
-}
 
 function parseStrategyPercent(value) {
   if (value === null || value === undefined) return NaN;
@@ -1966,44 +2080,6 @@ function logDuplicateStrategyValues(posts = []) {
   }
 }
 
-async function regeneratePostStrategy(post, nicheStyle, classification, brandContext) {
-  const keyword = extractStrategyKeyword(post.title || post.idea || nicheStyle).replace(/"/g, '');
-  const deliverables = classification === 'business'
-    ? ['audit', 'playbook', 'checklist', 'report', 'blueprint']
-    : ['mini-guide', 'cheat sheet', 'template', 'lookbook', 'routine'];
-  const deliverable = deliverables[(keyword.length || 1) % deliverables.length];
-  const patternInstructions =
-    classification === 'business'
-      ? 'Business hooks should call out a pain, show a proof or outcome, and close with a direct comment/DM CTA.'
-      : 'Creator hooks should feel like story time, contrarian take, or behind-the-scenes content that invites engagement.';
-  const prompt = `You are a content strategist. ${patternInstructions}
-Niche: ${nicheStyle}
-Post title: ${post.title || post.idea || 'Untitled'}
-Pillar: ${post.pillar || 'General'}
-
-Provide a JSON object with keys "angle", "objective", "pinned_comment", and "hook_options" (array of exactly 3 hooks). Each hook must be one sentence, mention the pain/outcome (business) or a relatable moment (creator), and end with a call-to-action to comment or DM. Pinned comment must follow this exact format: Comment <ONE_WORD_KEYWORD> and I'll send you <DELIVERABLE>. The keyword should be niche relevant and unique; the deliverable must be a specific resource tied to this post (checklist, template, roadmap, meal plan, etc.). Do not reuse the title verbatim or mention the words insight, angle, objective, or major objection.`;
-  try {
-    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 900 });
-    const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.hook_options || !Array.isArray(parsed.hook_options)) return null;
-    const savesPct = Number(parsed.target_saves_pct ?? post.strategy?.target_saves_pct ?? 5);
-    const commentsPct = Number(parsed.target_comments_pct ?? post.strategy?.target_comments_pct ?? 2);
-    const parsedKeyword = normalizeKeywordToken(parsed.pinned_keyword || parsed.pinnedKeyword || parsed.keyword || '');
-    const parsedDeliverable = String(parsed.pinned_deliverable || parsed.pinnedDeliverable || parsed.deliverable || '').trim();
-    return {
-      angle: String(parsed.angle || post.strategy?.angle || '').trim(),
-      objective: String(parsed.objective || post.strategy?.objective || '').trim(),
-      pinned_keyword: parsedKeyword,
-      pinned_deliverable: parsedDeliverable,
-      pinned_comment: buildPinnedCommentLine(parsedKeyword, parsedDeliverable),
-      target_saves_pct: Number.isFinite(savesPct) ? savesPct : 5,
-      target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : 2,
-      hook_options: parsed.hook_options.map((h) => String(h || '').trim()).filter(Boolean),
-    };
-  } catch (err) {
-    return null;
-  }
-}
 
 function deriveFallbackDeliverable(post = {}, classification = 'creator') {
   const text = [post.type, post.pillar, post.idea, post.caption, post.storyPrompt]
@@ -2089,134 +2165,6 @@ function buildFallbackStrategyPieces(post, classification, nicheStyle) {
   return { keyword, deliverable, hooks };
 }
 
-async function regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist = []) {
-  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
-  const blacklistLine = (Array.isArray(blacklist) && blacklist.length)
-    ? `Do NOT use these keywords: ${blacklist.join(', ')}.`
-    : '';
-  const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
-Post title: ${post.title || post.idea || 'Untitled'}
-Post summary: ${summary || 'Fresh concept'}
-
-${blacklistLine}
-Return a single uppercase keyword (3-16 letters) that feels specific to this post. Do NOT use stopwords (THE, A, AN, AND, OR, TO, OF, IN, ON, FOR, WITH, MY, YOUR, THIS, THAT). Do not reuse the title or any title word. Return only the keyword on its own line.`;
-  try {
-    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
-    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
-    return candidate ? normalizeKeywordToken(candidate) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-function selectUnusedFallbackKeyword(post, classification, nicheStyle, used = new Set()) {
-  const candidate = deriveFallbackKeyword(post, classification, nicheStyle, '', used);
-  if (candidate && !used.has(candidate) && isKeywordValid(candidate, post)) return candidate;
-  const fallbackPool = classification === 'business'
-    ? ['CLIENTS', 'SYSTEM', 'PROOF', 'GROWTH', 'PLAN', 'AUDIT', 'TRUST', 'COACH']
-    : ['ROUTINE', 'VIBES', 'STORY', 'CREW', 'FLOW', 'MOMENT', 'SPARK', 'FRESH'];
-  for (const option of fallbackPool) {
-    if (!used.has(option) && isKeywordValid(option, post)) return option;
-  }
-  for (const option of fallbackPool) {
-    if (isKeywordValid(option, post)) return option;
-  }
-  return classification === 'business' ? 'CLIENTS' : 'ROUTINE';
-}
-async function regeneratePinnedKeywordOnly(post, classification, nicheStyle) {
-  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
-  const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
-Post title: ${post.title || post.idea || 'Untitled'}
-Post summary: ${summary || 'Fresh concept'}
-
-Return a single uppercase keyword (3-16 letters) that feels specific to this post. Do NOT use stopwords (THE, A, AN, AND, OR, TO, OF, IN, ON, FOR, WITH, MY, YOUR, THIS, THAT). Do not reuse the title or any title word. Return only the keyword on its own line.`;
-  try {
-    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
-    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
-    return candidate ? normalizeKeywordToken(candidate) : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-async function regeneratePinnedDeliverableOnly(post, classification, nicheStyle) {
-  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
-  const prompt = `You are a content strategist for ${classification} creators. Niche: ${nicheStyle}.
-Post title: ${post.title || post.idea || 'Untitled'}
-Post summary: ${summary || 'Fresh concept'}
-
-Return one concise deliverable phrase (e.g., "my checklist", "my template pack", "my meal plan") that promises a specific resource tied to this post. Do not mention the title, insight, angle, or objective. Return only that phrase.`;
-  try {
-    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
-    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
-    return candidate || null;
-  } catch (_) {
-    return null;
-  }
-}
-
-async function ensurePinnedFieldsValid(strategy = {}, post, classification, nicheStyle) {
-  let keyword = normalizeKeywordToken(strategy.pinned_keyword || '');
-  let deliverable = String(strategy.pinned_deliverable || '').trim();
-  if (!isKeywordValid(keyword, post)) {
-    const regenerated = await regeneratePinnedKeywordOnly(post, classification, nicheStyle);
-    if (regenerated && isKeywordValid(regenerated, post)) {
-      keyword = regenerated;
-    } else {
-      keyword = deterministicKeywordFallback(post, classification, nicheStyle);
-    }
-  }
-  if (!isDeliverableValid(deliverable, post)) {
-    const regenerated = await regeneratePinnedDeliverableOnly(post, classification, nicheStyle);
-    if (regenerated && isDeliverableValid(regenerated, post)) {
-      deliverable = regenerated;
-    } else {
-      deliverable = deriveFallbackDeliverable(post, classification);
-    }
-  }
-  return {
-    ...strategy,
-    pinned_keyword: keyword,
-    pinned_deliverable: deliverable,
-    pinned_comment: buildPinnedCommentLine(keyword, deliverable),
-  };
-}
-
-async function dedupePinnedComments(posts = [], classification, nicheStyle) {
-  const usedKeywords = new Set();
-  for (const post of posts) {
-    const strategy = post.strategy || {};
-    const currentKeyword = normalizeKeywordToken(strategy.pinned_keyword || '');
-    if (currentKeyword && isKeywordValid(currentKeyword, post) && !usedKeywords.has(currentKeyword)) {
-      usedKeywords.add(currentKeyword);
-      continue;
-    }
-    const blacklist = [...usedKeywords];
-    let finalKeyword = currentKeyword;
-    let attempts = 0;
-    while (
-      (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) &&
-      attempts < 2
-    ) {
-      const regenerated = await regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist);
-      if (regenerated && isKeywordValid(regenerated, post) && !usedKeywords.has(regenerated)) {
-        finalKeyword = regenerated;
-        break;
-      }
-      if (regenerated) blacklist.push(regenerated);
-      attempts += 1;
-    }
-    if (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) {
-      finalKeyword = selectUnusedFallbackKeyword(post, classification, nicheStyle, usedKeywords);
-    }
-    const updatedStrategy = await ensurePinnedFieldsValid({ ...strategy, pinned_keyword: finalKeyword }, post, classification, nicheStyle);
-    if (updatedStrategy.pinned_keyword) {
-      usedKeywords.add(updatedStrategy.pinned_keyword);
-    }
-    post.strategy = updatedStrategy;
-  }
-  return posts;
-}
 
 function templateStrategyFromTitle(post, classification, nicheStyle) {
   const fallback = buildFallbackStrategyPieces(post, classification, nicheStyle);
@@ -2232,85 +2180,53 @@ function templateStrategyFromTitle(post, classification, nicheStyle) {
   };
 }
 
-async function sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext) {
+async function sanitizeStrategyCopy(posts, nicheStyle, classification) {
   const results = [];
   for (const post of posts) {
-    let strategy = post.strategy || {};
+    let strategy = normalizeStrategyForPost(post);
     if (isStrategyCopyBad(strategy, post)) {
-      const regenerated = await regeneratePostStrategy(post, nicheStyle, classification, brandContext);
-      if (regenerated && !isStrategyCopyBad(regenerated, post)) {
-        strategy = regenerated;
-      } else {
-        strategy = templateStrategyFromTitle(post, classification, nicheStyle);
-      }
+      strategy = templateStrategyFromTitle(post, classification, nicheStyle);
     }
-    strategy = await ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
+    strategy = ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
     post.strategy = strategy;
     results.push(post);
   }
   return results;
 }
 
-async function repairMissingFields(nicheStyle, brandContext, partialPosts){
-  try {
-    const schema = `Fill missing fields for each post. Keep existing values exactly as given. Return ONLY a JSON array with the same length and order. ALL fields must be present for every item (never omit):
-- day (number)
-- idea (string)
-- type (educational|promotional|lifestyle|interactive)
-- hook (single hook line)
-- caption (final caption)
-- hashtags (array of 6-8 strings)
-- format (must be "Reel")
-- cta (string)
-- pillar (Education|Social Proof|Promotion|Lifestyle)
-- storyPrompt (string <= 120 chars)
-- designNotes (string <= 120 chars)
-- repurpose (array of 2-3 short strings)
-- analytics (array of 2-3 strings)
-- engagementScripts { commentReply, dmReply } (each <= 140 chars)
-- promoSlot (boolean)
-- weeklyPromo (string; include empty string if promoSlot is false)
-- postingTimeTip (string; mention a niche audience + time/window)
-- script { hook, body, cta }
-- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, pinned_comment, hook_options }
-- instagram_caption (string)
-- tiktok_caption (string)
-- linkedin_caption (string)`;
-    const prompt = `Brand Context (optional):
-${brandContext || 'N/A'}
 
-Niche/Style: ${nicheStyle}
+function toPlainString(value) {
+  return String(value || '').trim();
+}
 
-Here are partial posts with some fields missing. Repair them to include ALL required fields with concise, plausible values. Preserve existing values verbatim.
-
-Partial posts (JSON array):
-${JSON.stringify(partialPosts)}
-
-${schema}`;
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4,
-      max_tokens: 3000,
-    });
-    const options = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-    };
-    const json = await openAIRequest(options, payload);
-    const content = json.choices?.[0]?.message?.content || '[]';
-    const { data } = parseLLMArray(content, { requireArray: true });
-    return Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.warn('repairMissingFields error:', e.message);
-    return [];
+function ensureStringArray(value, fallback = [], minLength = 0) {
+  const list = [];
+  const pushValue = (input) => {
+    const normalized = toPlainString(input).replace(/^#+/, '');
+    if (normalized) list.push(normalized);
+  };
+  if (Array.isArray(value)) {
+    value.forEach(pushValue);
+  } else if (typeof value === 'string') {
+    value.split(/[,\n]+/).forEach(pushValue);
   }
+  const fallbackList = (Array.isArray(fallback) ? fallback : [])
+    .map((item) => toPlainString(item))
+    .filter(Boolean);
+  while (list.length < minLength && fallbackList.length) {
+    list.push(fallbackList[list.length % fallbackList.length]);
+  }
+  if (!list.length && fallbackList.length) {
+    return fallbackList.slice(0, Math.max(minLength, fallbackList.length));
+  }
+  return list;
+}
+
+function normalizeScriptObject(source = {}) {
+  const hook = toPlainString(source.hook) || 'Stop scrolling—quick tip';
+  const body = toPlainString(source.body) || 'Show result • Explain 1 step • Tease benefit';
+  const cta = toPlainString(source.cta) || 'DM us to grab your spot';
+  return { hook, body, cta };
 }
 
 function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
@@ -2324,53 +2240,45 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
   const defaultHashtags = ['marketing', 'content', 'tips', 'learn', 'growth', 'brand'];
-  const out = Object.assign({}, post);
-  out.day = typeof out.day === 'number' ? out.day : fallbackDay;
-  out.idea = out.idea || out.title || 'Engaging post idea';
-  out.type = out.type || 'educational';
-  out.caption = out.caption || 'Quick tip that helps you today. Save this for later.';
-  out.hook = out.hook || (out.caption ? String(out.caption).split(/\n/)[0] : 'Stop scrolling quick tip');
-  if (!Array.isArray(out.hashtags)) {
-    if (typeof out.hashtags === 'string') {
-      out.hashtags = out.hashtags.split(/[,\s]+/).filter(Boolean);
-    } else {
-      out.hashtags = defaultHashtags.slice();
-    }
-  }
-  out.format = 'Reel';
-  out.cta = out.cta || 'DM us to book today';
-  out.pillar = out.pillar || 'Education';
-  out.storyPrompt = out.storyPrompt || "Share behind-the-scenes of today's work.";
-  out.designNotes = out.designNotes || 'Clean layout, bold headline, brand colors.';
-  out.postingTimeTip = typeof post.postingTimeTip === 'string' ? post.postingTimeTip : '';
-  if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
-    out.repurpose = ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'];
-  }
-  if (!Array.isArray(out.analytics) || !out.analytics.length) {
-    out.analytics = ['Reach', 'Saves'];
-  }
-  if (!out.engagementScripts) {
-    out.engagementScripts = { commentReply: '', dmReply: '' };
-  }
-  if (!out.engagementScripts.commentReply) {
-    out.engagementScripts.commentReply = 'Thanks! Want our quick guide?';
-  }
-  if (!out.engagementScripts.dmReply) {
-    out.engagementScripts.dmReply = 'Starts at $99. Want me to book you this week?';
-  }
-  if (typeof out.promoSlot !== 'boolean') out.promoSlot = !!out.weeklyPromo;
-  if (!out.promoSlot && out.weeklyPromo) out.weeklyPromo = '';
-  if (!out.script) out.script = { hook: '', body: '', cta: '' };
-  if (!out.script.hook) out.script.hook = 'Stop scrolling—quick tip';
-  if (!out.script.body) out.script.body = 'Show result • Explain 1 step • Tease benefit';
-  if (!out.script.cta) out.script.cta = 'DM us to grab your spot';
-  out.videoScript = out.script;
-  out.instagram_caption = (out.instagram_caption || out.caption || '').trim();
-  out.tiktok_caption = (out.tiktok_caption || out.caption || '').trim();
-  out.linkedin_caption = (out.linkedin_caption || out.caption || '').trim();
-  out.strategy = normalizeStrategyForPost(out);
-  return out;
+  const hashtags = ensureStringArray(post.hashtags || [], defaultHashtags, 6);
+  const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
+  const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
+  const script = normalizeScriptObject(post.script || post.videoScript || {});
+  const videoScript = { ...script };
+  const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || 'Thanks! Want our quick guide?';
+  const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || 'Starts at $99. Want me to book you this week?';
+  const normalized = {
+    day: typeof post.day === 'number' ? post.day : fallbackDay,
+    idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
+    title: toPlainString(post.title || post.idea || ''),
+    type: toPlainString(post.type || 'educational'),
+    hook: toPlainString(post.hook || script.hook || 'Stop scrolling quick tip'),
+    caption: toPlainString(post.caption || 'Quick tip that helps you today. Save this for later.'),
+    hashtags,
+    format: 'Reel',
+    formatIntent: toPlainString(post.formatIntent || ''),
+    cta: toPlainString(post.cta || 'DM us to book today'),
+    pillar: toPlainString(post.pillar || 'Education'),
+    storyPrompt: toPlainString(post.storyPrompt || "Share behind-the-scenes of today's work."),
+    designNotes: toPlainString(post.designNotes || 'Clean layout, bold headline, brand colors.'),
+    repurpose,
+    analytics,
+    engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
+    promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
+    weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
+    postingTimeTip: toPlainString(post.postingTimeTip || ''),
+    script,
+    videoScript,
+    instagram_caption: toPlainString(post.instagram_caption || post.caption || ''),
+    tiktok_caption: toPlainString(post.tiktok_caption || post.caption || ''),
+    linkedin_caption: toPlainString(post.linkedin_caption || post.caption || ''),
+    audio: toPlainString(post.audio || ''),
+    strategy: post.strategy || {},
+  };
+  if (!normalized.promoSlot) normalized.weeklyPromo = '';
+  return normalized;
 }
+
 
 function getPresetGuidelines(nicheStyle = '') {
   const s = String(nicheStyle || '').toLowerCase();
@@ -2389,13 +2297,14 @@ function getPresetGuidelines(nicheStyle = '') {
   return null;
 }
 
-function callOpenAI(nicheStyle, brandContext, opts = {}) {
+async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
     max_tokens: 4000,
+    response_format: CALENDAR_RESPONSE_FORMAT,
   });
   const options = {
     hostname: 'api.openai.com',
@@ -2407,26 +2316,36 @@ function callOpenAI(nicheStyle, brandContext, opts = {}) {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-  const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const fetchAndParse = async (attempt = 0) => {
-    const json = await openAIRequest(options, payload);
-    const content = json.choices?.[0]?.message?.content || '';
-    try {
-      const { data, attempts } = parseLLMArray(content, {
-        requireArray: true,
-        itemValidate: (p) => p && typeof p.day === 'number',
-      });
-      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
-      return data;
-    } catch (e) {
-      if (attempt < 1) { // Single parse-level retry (fresh completion)
-        if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', e.message);
-        return fetchAndParse(attempt + 1);
-      }
-      throw e;
+  const json = await openAIRequest(options, payload, 0, 1);
+  const content = json.choices?.[0]?.message?.content;
+  const structured = content && content.structured_output;
+  let data = [];
+  if (structured) {
+    if (Array.isArray(structured)) {
+      data = structured;
+    } else if (Array.isArray(structured.calendar_posts)) {
+      data = structured.calendar_posts;
+    } else if (Array.isArray(structured.data)) {
+      data = structured.data;
+    } else if (Array.isArray(structured.value)) {
+      data = structured.value;
     }
-  };
-  return fetchAndParse(0);
+  }
+  if (!data.length) {
+    if (Array.isArray(content)) {
+      data = content;
+    } else {
+      const text = typeof content === 'string' ? content : (content?.text || '');
+      if (text) {
+        const parsed = parseLLMArray(text, { requireArray: true });
+        data = parsed.data || [];
+      }
+    }
+  }
+  if (!Array.isArray(data)) {
+    throw new Error('OpenAI response did not include calendar posts');
+  }
+  return data;
 }
 
 function hasValidStrategy(post) {
@@ -2454,15 +2373,7 @@ function hasValidStrategy(post) {
   );
 }
 
-async function callOpenAIWithStrategy(nicheStyle, brandContext, opts = {}, attempt = 0) {
-  const posts = await callOpenAI(nicheStyle, brandContext, opts);
-  if (Array.isArray(posts) && posts.some((post) => !hasValidStrategy(post))) {
-    if (attempt >= 1) return posts;
-    console.warn('[Calendar] Strategy block validation failed; regenerating once.');
-    return callOpenAIWithStrategy(nicheStyle, brandContext, opts, attempt + 1);
-  }
-  return posts;
-}
+
 
 function loadBrand(userId) {
   try {
@@ -2958,39 +2869,19 @@ const server = http.createServer((req, res) => {
     const classification = categorizeNiche(nicheStyle);
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
-    console.log('[Calendar][Server][Perf] callOpenAI start');
-    let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
-    console.log('[Calendar][Server][Perf] callOpenAI end');
+    const callStart = Date.now();
+    console.log('[Calendar][Server][Perf] callOpenAI start', { nicheStyle, days, startDay, postsPerDay });
+    const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    const openDuration = Date.now() - callStart;
+    const validationStart = Date.now();
     const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
     console.log('[Calendar][Server][Perf] ensureAudioLines start');
-    posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
+    let posts = await ensureAudioLines(nicheStyle, brandContext, rawPosts, audioSets);
     console.log('[Calendar][Server][Perf] ensureAudioLines end');
-    const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
-    if (incomplete.length > 0) {
-      console.log('[Calendar][Server][Perf] repairMissingFields start', { missingCount: incomplete.length });
-      const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
-      if (Array.isArray(repaired) && repaired.length === incomplete.length) {
-        incomplete.forEach((entry, idx) => {
-          const fixed = repaired[idx] || {};
-          const merged = Object.assign({}, entry.p, fixed);
-          if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
-          if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
-          if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
-          if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
-          if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
-          if (!merged.engagementScripts) merged.engagementScripts = {};
-          if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
-          if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
-          if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
-          posts[entry.i] = merged;
-        });
-      }
-      console.log('[Calendar][Server][Perf] repairMissingFields end');
-    }
+    posts = posts.map((p, idx) => normalizePost(p, idx, startDay));
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
-    posts = posts.map((p, idx) => {
-      const normalized = normalizePost(p, idx, startDay);
+    posts = posts.map((normalized) => {
       const isPromo =
         !!normalized.promoSlot ||
         (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
@@ -3010,13 +2901,15 @@ const server = http.createServer((req, res) => {
     });
     posts = ensureUniqueStrategyValues(posts);
     posts = ensureUniqueStrategyValues(posts);
-    posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+    posts = await sanitizeStrategyCopy(posts, nicheStyle, classification);
     posts = await dedupePinnedComments(posts, classification, nicheStyle);
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
     if (posts.length) {
       console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
     }
+    const postProcessingMs = Date.now() - validationStart;
+    console.log('[Calendar][Server][Perf] callOpenAI timings', { openMs: openDuration, parseMs: postProcessingMs, postCount: posts.length });
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', { elapsedMs: Date.now() - tStart, count: posts.length });
     return posts;
   }
@@ -3218,70 +3111,11 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       const requestId = generateRequestId('generate');
       try {
-        const { nicheStyle, userId, days, startDay } = JSON.parse(body || '{}');
-        if (!nicheStyle) {
-          return sendJson(res, 400, { error: 'nicheStyle required' });
-        }
-        if (!OPENAI_API_KEY) {
-          return sendJson(res, 500, { error: 'OPENAI_API_KEY not set' });
-        }
-        const classification = categorizeNiche(nicheStyle);
-        const brand = userId ? loadBrand(userId) : null;
-        const brandContext = summarizeBrandForPrompt(brand);
-        let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay });
-        const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
-        if (incomplete.length > 0) {
-          const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
-          if (Array.isArray(repaired) && repaired.length === incomplete.length) {
-            incomplete.forEach((entry, idx) => {
-              const fixed = repaired[idx] || {};
-              const merged = Object.assign({}, entry.p, fixed);
-              if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
-              if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
-              if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
-              if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
-              if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
-              if (!merged.engagementScripts) merged.engagementScripts = {};
-              if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
-              if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
-              if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
-              posts[entry.i] = merged;
-            });
-          }
-        }
-        // Ensure audio lines are valid and platform-specific after repairs
-        const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
-        posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
-        let promoCount = 0;
-        const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
-        posts = posts.map((p, idx) => {
-          const normalized = normalizePost(p, idx, startDay);
-          const isPromo =
-            !!normalized.promoSlot ||
-            (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
-            (typeof normalized.cta === 'string' && promoKeywords.test(normalized.cta)) ||
-            (typeof normalized.idea === 'string' && promoKeywords.test(normalized.idea));
-          if (isPromo) {
-            promoCount += 1;
-            if (promoCount > 3) {
-              normalized.promoSlot = false;
-              normalized.weeklyPromo = '';
-              if (promoKeywords.test(normalized.idea || '')) {
-                normalized.idea = normalized.idea.replace(promoKeywords, '').trim() || 'Fresh content idea';
-              }
-            }
-          }
-          return normalized;
-        });
-        posts = ensureUniqueStrategyValues(posts);
-        posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
-        // Temporary audio log for verification
+        const payload = JSON.parse(body || '{}');
+        const posts = await generateCalendarPosts(payload);
         return sendJson(res, 200, { posts });
       } catch (err) {
-        logServerError('calendar_generate_error', err, {
-          requestId,
-          bodyPreview: body.slice(0, 400),
-        });
+        logServerError('calendar_generate_error', err, { requestId, bodyPreview: body.slice(0, 400) });
         respondWithServerError(res, err, { requestId });
       }
     });
