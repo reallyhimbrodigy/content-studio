@@ -51,8 +51,10 @@
     closeBtn.style.height = '28px';
     closeBtn.style.borderRadius = '50%';
     closeBtn.style.fontSize = '1rem';
-    closeBtn.style.display = 'grid';
-    closeBtn.style.placeItems = 'center';
+    closeBtn.style.display = 'flex';
+    closeBtn.style.alignItems = 'center';
+    closeBtn.style.justifyContent = 'center';
+    // grid-based centering caused the × to sit slightly off-center due to font metrics; flex keeps it perfectly centered.
     closeBtn.style.border = '1px solid rgba(255,255,255,0.15)';
     closeBtn.style.background = 'rgba(255,255,255,0.05)';
     closeBtn.style.color = 'inherit';
