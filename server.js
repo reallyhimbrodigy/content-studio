@@ -1637,7 +1637,6 @@ const CALENDAR_STRATEGY_SCHEMA = {
       type: 'array',
       items: { type: 'string' },
       minItems: 3,
-      uniqueItems: true,
     },
   },
   required: [
