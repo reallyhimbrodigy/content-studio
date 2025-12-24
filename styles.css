@@ -2796,6 +2796,9 @@ body {
   grid-template-columns: 1fr;
   gap: clamp(1.5rem, 4vw, 3.5rem);
   align-items: center;
+  width: 100%;
+  max-width: 1220px;
+  margin-inline: auto; /* center the hero grid block within the viewport */
 }
 
 .landing-hero__intro h1 {
