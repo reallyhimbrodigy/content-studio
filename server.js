@@ -1595,12 +1595,21 @@ const CALENDAR_POSTS_SCHEMA = {
   items: CALENDAR_POST_ITEM_SCHEMA,
 };
 
+const CALENDAR_POSTS_WRAPPER_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    posts: CALENDAR_POSTS_SCHEMA,
+  },
+  required: ['posts'],
+};
+
 const CALENDAR_RESPONSE_FORMAT = {
   type: 'json_schema',
   json_schema: {
     name: 'calendar_posts',
     strict: true,
-    schema: CALENDAR_POSTS_SCHEMA,
+    schema: CALENDAR_POSTS_WRAPPER_SCHEMA,
   },
 };
 
@@ -2320,33 +2329,46 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const json = await openAIRequest(options, payload, 0, 1);
   const content = json.choices?.[0]?.message?.content;
   const structured = content && content.structured_output;
-  let data = [];
+  let posts = [];
   if (structured) {
     if (Array.isArray(structured)) {
-      data = structured;
-    } else if (Array.isArray(structured.calendar_posts)) {
-      data = structured.calendar_posts;
-    } else if (Array.isArray(structured.data)) {
-      data = structured.data;
-    } else if (Array.isArray(structured.value)) {
-      data = structured.value;
+      posts = structured;
+    } else {
+      const candidate = structured.posts || structured.calendar_posts || structured.data || structured.value;
+      if (Array.isArray(candidate)) posts = candidate;
     }
   }
-  if (!data.length) {
-    if (Array.isArray(content)) {
-      data = content;
-    } else {
-      const text = typeof content === 'string' ? content : (content?.text || '');
-      if (text) {
-        const parsed = parseLLMArray(text, { requireArray: true });
-        data = parsed.data || [];
+  if (!posts.length && Array.isArray(content)) {
+    posts = content;
+  }
+  if (!posts.length) {
+    const text = typeof content === 'string' ? content : (content?.text || '');
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed?.posts)) {
+          posts = parsed.posts;
+        } else if (Array.isArray(parsed)) {
+          posts = parsed;
+        } else {
+          const fallback = parsed?.calendar_posts || parsed?.data || parsed?.value;
+          if (Array.isArray(fallback)) posts = fallback;
+        }
+        if (!posts.length) {
+          const { data } = parseLLMArray(text, { requireArray: true });
+          posts = data;
+        }
+      } catch (err) {
+        const { data } = parseLLMArray(text, { requireArray: true });
+        posts = data;
       }
     }
   }
-  if (!Array.isArray(data)) {
-    throw new Error('OpenAI response did not include calendar posts');
+  if (!Array.isArray(posts)) {
+    console.error('[Calendar] OpenAI response missing posts array', { content });
+    throw new Error('OpenAI response did not include posts array');
   }
-  return data;
+  return posts;
 }
 
 function hasValidStrategy(post) {
