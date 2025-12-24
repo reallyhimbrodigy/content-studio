@@ -1489,25 +1489,6 @@ function formatParseContext(context = {}) {
   return parts.join(' ');
 }
 
-function extractCalendarPostsFromResponse(response = {}) {
-  const choice = Array.isArray(response?.choices) ? response.choices[0] : null;
-  if (!choice) return null;
-  const message = choice?.message || {};
-  const content = message.content;
-  const structured = content?.structured_output
-    ?? content?.structuredOutput
-    ?? message?.structured_output
-    ?? message?.structuredOutput;
-  const structuredPosts = resolvePostsCandidate(structured);
-  if (Array.isArray(structuredPosts)) return structuredPosts;
-  const textSource = typeof content === 'string'
-    ? content
-    : (typeof content?.text === 'string' ? content.text : null);
-  const parsed = parseAiJson(textSource ?? content);
-  const candidate = resolvePostsCandidate(parsed);
-  return Array.isArray(candidate) ? candidate : null;
-}
-
 async function embedTextList(texts) {
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
   const payload = JSON.stringify({
@@ -1570,8 +1551,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? preset.nicheRules.join('\n')
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
-  const qualityRules = `Quality Guidelines — Keep every text field plug-and-play:\n1) Hooks must be a single, punchy sentence without emojis or hashtags.\n2) Caption, platform captions, and scripts stay concise (<= 140 chars) and avoid emojis/hashtags—those belong only in the hashtags array.\n3) Hashtags live only inside the hashtags array as plain keywords; deliver 6–8 unique tags with no #.\n4) Format must remain \"Reel\" and formatIntent should briefly describe the visual intent.\n5) Story prompt, design notes, and posting tip should describe a single beat or audience insight in one sentence.\n6) Script and videoScript objects each include hook/body/cta strings with clear sequencing.`;
-  const audioRules = `Audio rules — Select one TikTok sound and one Instagram sound that are fresh (last 7 days). Output only the line: "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>". Keep it plain, avoid emojis, hashtags, "search:", or descriptive genre terms, and only reuse a sound on both platforms if it is clearly trending on both.`;
+  const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+  const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
+1) First, list the current Top 10 trending TikTok sounds for this niche (platform-native or creator-original, last 7 days).
+2) Separately, list the Top 10 trending Instagram Reels audios for this niche (last 7 days).
+3) Choose ONE TikTok sound and ONE DIFFERENT Instagram sound; do NOT reuse the same audio unless you explicitly state "trending on both this week".
+4) Sounds may be songs or creator sounds and must lean into the niche vibe (sports = higher energy, wellness = calming), yet remain real titles.
+5) Output ONLY the final audio line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
+6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any evergreen hit older than 90 days (e.g., Blinding Lights, Levitating, Savage Love, Shape of You, Old Town Road).`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
@@ -1579,25 +1566,28 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postingTimeRules =
     'Posting-time tips must target the right audience (students/athletes for sports, adult consumers for wellness, etc.), mention a specific clock time (e.g., 3:15 PM, 8 AM) with a rationale, and stay one sentence. Do NOT refer to days of the week or use vague words like "morning" without a clock time. Avoid exec/founder/enterprise audiences unless the niche is specifically business/coaching.';
   const strategyRules = `Strategy rules:
-1) Provide a distinct strategy block for every post, referencing its idea, pillar, format, or CTA.
-2) Include angle, objective, numeric target_saves_pct/target_comments_pct (1-25), pinned_keyword, pinned_deliverable, and 3 hook_options tied to the concept.
-3) Angles and pinned keywords must be unique across the calendar and never repeat the title verbatim.
-4) Hook options should feel like real lead lines—business hooks lean on problems/outcomes/offers, creator hooks lean on relatability/story—and must stay concise.
-5) Pinned keyword must be uppercase 3–16 letters without stopwords, and pinned deliverable should promise a specific asset (checklist, template, roadmap, etc.).
-6) We will build the final pinned comment on the server; do not drop a finished sentence into the strategy block.`;
-  const outputRules = `Return EXACT JSON object with a top-level "posts" array containing ${days} objects for days ${startDay}..${startDay + days - 1} that match the schema above. Keep every field present (use empty strings when necessary), return ONLY valid JSON (no Markdown, no prose, no trailing text), and do not add commentary outside the object.`;
+1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
+2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
+3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
+4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
+5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
+6) Provide padded keyword/deliverable pairs instead of a full pinned_comment. pinned_keyword should be a single uppercase word (3–16 letters) that feels niche specific and does not duplicate the post title. pinned_deliverable should describe the resource you promise (checklist, template, roadmap, etc.).
+7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
+8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}
-${audioRules}
-${strategyRules}
-${outputRules}
-${postingTimeRules}
-${classificationRules}${nicheSpecific}${promoGuardrail}
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+- tiktok_caption (final, trimmed block)
+- linkedin_caption (final, trimmed block)
+- postingTimeTip (single sentence describing an audience + scroll window)
+- audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both.
+- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
 
-Create a calendar for "${nicheStyle}".
-Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}, matching the structured schema above.`;
+Rules:
+- If unsure, invent concise, plausible content rather than omitting fields.
+- Always include every field above (use empty string only if absolutely necessary).
+- Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
+- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
-
 const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
 const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
 const EVERGREEN_TITLES = ['blinding lights','levitating','savage love','shape of you','old town road','dance monkey'];
@@ -2491,49 +2481,49 @@ function getPresetGuidelines(nicheStyle = '') {
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.5,
+    max_tokens: 4000,
+  });
   const requestOptions = {
     hostname: 'api.openai.com',
     path: '/v1/chat/completions',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-
-  const sendCalendarRequest = async (messages) => {
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages,
-      temperature: 0.5,
-      max_tokens: 4000,
-      response_format: { type: 'json_object' },
-    });
-    requestOptions.headers['Content-Length'] = Buffer.byteLength(payload);
-    const json = await openAIRequest(requestOptions, payload, 0, 1);
-    return extractCalendarPostsFromResponse(json);
+  const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+  const fetchAndParse = async (attempt = 0) => {
+    const json = await openAIRequest(requestOptions, payload);
+    const content = json?.choices?.[0]?.message?.content || '';
+    try {
+      const { data, attempts } = parseLLMArray(content, {
+        requireArray: true,
+        itemValidate: (p) => p && typeof p.day === 'number',
+      }, {
+        endpoint: 'calendar',
+        ...loggingContext,
+      });
+      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+      return data;
+    } catch (err) {
+      if (attempt < 1) {
+        if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', err.message);
+        return fetchAndParse(attempt + 1);
+      }
+      const contextLabel = formatCalendarLogContext(loggingContext);
+      const label = contextLabel ? ` (${contextLabel})` : '';
+      console.warn(`[Calendar] parse failure${label}:`, err.message);
+      throw err;
+    }
   };
-
-  const baseMessages = [{ role: 'user', content: prompt }];
-  const firstPosts = await sendCalendarRequest(baseMessages);
-  if (Array.isArray(firstPosts)) {
-    return firstPosts;
-  }
-  const contextLabel = formatCalendarLogContext(loggingContext);
-  const contextSuffix = contextLabel ? ` @ ${contextLabel}` : '';
-  console.warn(`[Calendar] OpenAI parse failed for ${nicheStyle}${contextSuffix}; retrying with JSON-only reminder.`);
-  const repairMessages = [{
-    role: 'user',
-    content: `${prompt}\n\nReminder: return ONLY the JSON object defined above with the posts array, and do not add Markdown or commentary.`,
-  }];
-  const repairPosts = await sendCalendarRequest(repairMessages);
-  if (Array.isArray(repairPosts)) {
-    return repairPosts;
-  }
-  console.warn(`[Calendar] Unable to parse calendar posts for ${nicheStyle}${contextSuffix} after retry; continuing with ${Array.isArray(firstPosts) ? firstPosts.length : 0} entries.`);
-  return Array.isArray(firstPosts) ? firstPosts : [];
+  return fetchAndParse(0);
 }
-
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
   const strategy = post.strategy;
@@ -6092,4 +6082,5 @@ if (require.main === module) {
 module.exports = {
   ensurePinnedFieldsValid,
   dedupePinnedComments,
+  buildPrompt,
 };
