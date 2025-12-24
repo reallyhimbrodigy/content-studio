@@ -1458,6 +1458,7 @@ ${classificationRules}${nicheSpecific}${promoGuardrail}
 
 Create a calendar for "${nicheStyle}".
 Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}, matching the structured schema above.`;
+}
 
 const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
 const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
