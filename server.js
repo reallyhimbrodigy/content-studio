@@ -1585,7 +1585,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 4) Hook options should feel like real lead lines—business hooks lean on problems/outcomes/offers, creator hooks lean on relatability/story—and must stay concise.
 5) Pinned keyword must be uppercase 3–16 letters without stopwords, and pinned deliverable should promise a specific asset (checklist, template, roadmap, etc.).
 6) We will build the final pinned comment on the server; do not drop a finished sentence into the strategy block.`;
-  const outputRules = `Return EXACT JSON object named "calendar_posts" with a single property "posts" containing an array of ${days} objects for days ${startDay}..${startDay + days - 1} that match the schema above. Keep every field present (use empty strings when necessary), do not add Markdown or commentary outside the object, and let the schema enforce the required keys.`;
+  const outputRules = `Return EXACT JSON object with a top-level "posts" array containing ${days} objects for days ${startDay}..${startDay + days - 1} that match the schema above. Keep every field present (use empty strings when necessary), return ONLY valid JSON (no Markdown, no prose, no trailing text), and do not add commentary outside the object.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}
 ${audioRules}
@@ -1739,15 +1739,6 @@ const CALENDAR_POSTS_WRAPPER_SCHEMA = {
     posts: CALENDAR_POSTS_SCHEMA,
   },
   required: ['posts'],
-};
-
-const CALENDAR_RESPONSE_FORMAT = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'calendar_posts',
-    strict: true,
-    schema: CALENDAR_POSTS_WRAPPER_SCHEMA,
-  },
 };
 
 function normalizeAudioLine(value) {
@@ -2486,7 +2477,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       messages,
       temperature: 0.5,
       max_tokens: 4000,
-      response_format: CALENDAR_RESPONSE_FORMAT,
+      response_format: { type: 'json_object' },
     });
     requestOptions.headers['Content-Length'] = Buffer.byteLength(payload);
     const json = await openAIRequest(requestOptions, payload, 0, 1);
