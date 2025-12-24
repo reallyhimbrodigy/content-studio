@@ -1523,7 +1523,7 @@ const CALENDAR_STRATEGY_SCHEMA = {
 
 const CALENDAR_POST_ITEM_SCHEMA = {
   type: 'object',
-  additionalProperties: true,
+  additionalProperties: false,
   properties: {
     day: { type: 'integer', minimum: 1 },
     idea: { type: 'string' },
@@ -1594,7 +1594,6 @@ const CALENDAR_POST_ITEM_SCHEMA = {
     'audio',
     'strategy',
   ],
-  additionalProperties: false,
 };
 
 const CALENDAR_POSTS_SCHEMA = {
