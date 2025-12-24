@@ -2363,6 +2363,10 @@ function ensurePinnedFieldsValid(strategy = {}, post = {}, classification = 'cre
   };
 }
 
+async function dedupePinnedComments(posts = [], classification = 'creator', nicheStyle = '') {
+  return Array.isArray(posts) ? posts : [];
+}
+
 function ensureStringArray(value, fallback = [], minLength = 0) {
   const list = [];
   const pushValue = (input) => {
@@ -3098,7 +3102,15 @@ const server = http.createServer((req, res) => {
     posts = ensureUniqueStrategyValues(posts);
     posts = ensureUniqueStrategyValues(posts);
     posts = await sanitizeStrategyCopy(posts, nicheStyle, classification);
-    posts = await dedupePinnedComments(posts, classification, nicheStyle);
+    const helperType = typeof dedupePinnedComments;
+    if (helperType !== 'function') {
+      console.warn('[Calendar] dedupePinnedComments missing', {
+        requestId: loggingContext?.requestId || 'unknown',
+        helperType,
+      });
+    } else {
+      posts = await dedupePinnedComments(posts, classification, nicheStyle);
+    }
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
     if (posts.length) {
@@ -6009,67 +6021,75 @@ function serveFile(filePath, res) {
 }
 
 const PORT = process.env.PORT || 8000;
-// Run design asset pipeline on interval to progress renders (disabled when design lab is off).
-if (ENABLE_DESIGN_LAB) {
-  setInterval(() => {
-    advanceDesignAssetPipeline().catch((err) => {
-      console.error('[Pipeline] Tick error', err);
-    });
-  }, 20000);
+
+if (require.main === module) {
+  // Run design asset pipeline on interval to progress renders (disabled when design lab is off).
+  if (ENABLE_DESIGN_LAB) {
+    setInterval(() => {
+      advanceDesignAssetPipeline().catch((err) => {
+        console.error('[Pipeline] Tick error', err);
+      });
+    }, 20000);
+  }
+
+  // Daily analytics sync (06:00 America/Los_Angeles)
+  cron.schedule(
+    '0 6 * * *',
+    async () => {
+      console.log('[Cron] Daily analytics sync started');
+      try {
+        const { data: rows, error } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('user_id')
+          .eq('status', 'connected');
+
+        if (error || !rows || !rows.length) {
+          console.error('[Cron] No accounts or error:', error);
+          return;
+        }
+
+        const userIds = [...new Set(rows.map((r) => r.user_id))];
+
+        for (const userId of userIds) {
+          try {
+            console.log('[Cron] Sync user', userId);
+            await syncFollowerMetrics(userId);
+            await syncDemographics(userId);
+            await updateCachedAnalyticsForUser(userId);
+            await supabaseAdmin.from('analytics_sync_status').upsert({
+              user_id: userId,
+              last_sync: new Date().toISOString(),
+              status: 'success',
+              message: 'Daily cron sync completed',
+            });
+          } catch (userErr) {
+            console.error('[Cron] Error syncing user', userId, userErr);
+            await supabaseAdmin.from('analytics_sync_status').upsert({
+              user_id: userId,
+              last_sync: new Date().toISOString(),
+              status: 'failed',
+              message: 'Daily cron sync failed',
+            });
+          }
+        }
+
+        console.log('[Cron] Daily analytics sync finished');
+      } catch (err) {
+        console.error('[Cron] Fatal error in daily analytics sync', err);
+      }
+    },
+    {
+      timezone: 'America/Los_Angeles',
+    }
+  );
+
+  server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
+
+  process.on('uncaughtException', (err) => console.error('Uncaught:', err));
+  process.on('unhandledRejection', (r) => console.error('Unhandled rejection:', r));
 }
 
-// Daily analytics sync (06:00 America/Los_Angeles)
-cron.schedule(
-  '0 6 * * *',
-  async () => {
-    console.log('[Cron] Daily analytics sync started');
-    try {
-      const { data: rows, error } = await supabaseAdmin
-        .from('phyllo_accounts')
-        .select('user_id')
-        .eq('status', 'connected');
-
-      if (error || !rows || !rows.length) {
-        console.error('[Cron] No accounts or error:', error);
-        return;
-      }
-
-      const userIds = [...new Set(rows.map((r) => r.user_id))];
-
-      for (const userId of userIds) {
-        try {
-          console.log('[Cron] Sync user', userId);
-          await syncFollowerMetrics(userId);
-          await syncDemographics(userId);
-          await updateCachedAnalyticsForUser(userId);
-          await supabaseAdmin.from('analytics_sync_status').upsert({
-            user_id: userId,
-            last_sync: new Date().toISOString(),
-            status: 'success',
-            message: 'Daily cron sync completed',
-          });
-        } catch (userErr) {
-          console.error('[Cron] Error syncing user', userId, userErr);
-          await supabaseAdmin.from('analytics_sync_status').upsert({
-            user_id: userId,
-            last_sync: new Date().toISOString(),
-            status: 'failed',
-            message: 'Daily cron sync failed',
-          });
-        }
-      }
-
-      console.log('[Cron] Daily analytics sync finished');
-    } catch (err) {
-      console.error('[Cron] Fatal error in daily analytics sync', err);
-    }
-  },
-  {
-    timezone: 'America/Los_Angeles',
-  }
-);
-
-server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
-
-process.on('uncaughtException', (err) => console.error('Uncaught:', err));
-process.on('unhandledRejection', (r) => console.error('Unhandled rejection:', r));
+module.exports = {
+  ensurePinnedFieldsValid,
+  dedupePinnedComments,
+};
