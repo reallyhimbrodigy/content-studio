@@ -1261,10 +1261,95 @@ function openAIRequest(options, payload, retryCount = 0, maxRetries = 3) {
   });
 }
 
+function stripJsonFences(raw = '') {
+  return String(raw || '')
+    .replace(/```(?:json)?\s*/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+function captureJsonSegment(text, startIndex) {
+  const len = text.length;
+  let inString = false;
+  let escape = false;
+  const stack = [];
+  for (let i = startIndex; i < len; i += 1) {
+    const char = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === '\\') {
+        escape = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{' || char === '[') {
+      stack.push(char);
+      continue;
+    }
+    if (char === '}' || char === ']') {
+      if (!stack.length) break;
+      const opener = stack.pop();
+      if ((opener === '{' && char !== '}') || (opener === '[' && char !== ']')) break;
+      if (!stack.length) {
+        return text.slice(startIndex, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function extractJsonChunk(raw = '') {
+  const text = stripJsonFences(raw);
+  if (!text) return null;
+  for (let start = 0; start < text.length; start += 1) {
+    const char = text[start];
+    if (char !== '{' && char !== '[') continue;
+    const segment = captureJsonSegment(text, start);
+    if (segment) return segment.trim();
+  }
+  return null;
+}
+
+function parseAiJson(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'object') return raw;
+  const chunk = extractJsonChunk(raw);
+  if (!chunk) return null;
+  try {
+    return JSON.parse(chunk);
+  } catch (err) {
+    return null;
+  }
+}
+
+function resolvePostsCandidate(parsed) {
+  if (!parsed) return null;
+  if (Array.isArray(parsed)) return parsed;
+  const candidate = parsed.posts || parsed.calendar_posts || parsed.data || parsed.value;
+  if (Array.isArray(candidate)) return candidate;
+  return null;
+}
+
 // Generic sanitizer + parse attempts for LLM JSON array output.
 // Returns { data, attempts } where data is parsed array (or object wrapped into array) and attempts is diagnostics.
 function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
-  const diagnostics = { rawLength: rawContent.length, attempts: [] };
+  const diagnostics = { rawLength: String(rawContent || '').length, attempts: [] };
+  const directParsed = parseAiJson(rawContent);
+  const directPosts = resolvePostsCandidate(directParsed);
+  if (Array.isArray(directPosts)) {
+    const validated = typeof itemValidate === 'function'
+      ? directPosts.filter((item) => itemValidate(item))
+      : directPosts;
+    diagnostics.attempts.push('direct');
+    return { data: validated, attempts: diagnostics.attempts };
+  }
   let raw = String(rawContent || '').trim()
     .replace(/```\s*json\s*/gi, '')
     .replace(/```/g, '')
@@ -1376,6 +1461,25 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   throw new Error(msg);
 }
 
+function extractCalendarPostsFromResponse(response = {}) {
+  const choice = Array.isArray(response?.choices) ? response.choices[0] : null;
+  if (!choice) return null;
+  const message = choice?.message || {};
+  const content = message.content;
+  const structured = content?.structured_output
+    ?? content?.structuredOutput
+    ?? message?.structured_output
+    ?? message?.structuredOutput;
+  const structuredPosts = resolvePostsCandidate(structured);
+  if (Array.isArray(structuredPosts)) return structuredPosts;
+  const textSource = typeof content === 'string'
+    ? content
+    : (typeof content?.text === 'string' ? content.text : null);
+  const parsed = parseAiJson(textSource ?? content);
+  const candidate = resolvePostsCandidate(parsed);
+  return Array.isArray(candidate) ? candidate : null;
+}
+
 async function embedTextList(texts) {
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
   const payload = JSON.stringify({
@@ -1453,7 +1557,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 4) Hook options should feel like real lead lines—business hooks lean on problems/outcomes/offers, creator hooks lean on relatability/story—and must stay concise.
 5) Pinned keyword must be uppercase 3–16 letters without stopwords, and pinned deliverable should promise a specific asset (checklist, template, roadmap, etc.).
 6) We will build the final pinned comment on the server; do not drop a finished sentence into the strategy block.`;
-  const outputRules = `Return EXACT JSON array of ${days} objects for days ${startDay}..${startDay + days - 1} using the structured schema named "calendar_posts". Keep all fields present (use empty strings when necessary), do not add Markdown or commentary outside the array, and let the schema enforce the required keys.`;
+  const outputRules = `Return EXACT JSON object named "calendar_posts" with a single property "posts" containing an array of ${days} objects for days ${startDay}..${startDay + days - 1} that match the schema above. Keep every field present (use empty strings when necessary), do not add Markdown or commentary outside the object, and let the schema enforce the required keys.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}
 ${audioRules}
@@ -2218,7 +2322,7 @@ function toPlainString(value) {
 function ensureStringArray(value, fallback = [], minLength = 0) {
   const list = [];
   const pushValue = (input) => {
-    const normalized = toPlainString(input).replace(/^#+/, '');
+    const normalized = toPlainString(input);
     if (normalized) list.push(normalized);
   };
   if (Array.isArray(value)) {
@@ -2236,6 +2340,29 @@ function ensureStringArray(value, fallback = [], minLength = 0) {
     return fallbackList.slice(0, Math.max(minLength, fallbackList.length));
   }
   return list;
+}
+
+function ensureHashtagPrefix(value = '') {
+  const trimmed = toPlainString(value)
+    .replace(/^[#]+/, '')
+    .replace(/\s+/g, '');
+  return trimmed ? `#${trimmed}` : '';
+}
+
+function ensureHashtagArray(value, fallback = [], minLength = 0) {
+  const rawList = ensureStringArray(value, fallback, minLength);
+  const hashtags = rawList
+    .map(ensureHashtagPrefix)
+    .filter(Boolean);
+  const fallbackTags = (Array.isArray(fallback) ? fallback : [])
+    .map(ensureHashtagPrefix)
+    .filter(Boolean);
+  let idx = 0;
+  while (hashtags.length < minLength && fallbackTags.length) {
+    hashtags.push(fallbackTags[idx % fallbackTags.length]);
+    idx += 1;
+  }
+  return hashtags;
 }
 
 function normalizeScriptObject(source = {}) {
@@ -2256,7 +2383,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
   const defaultHashtags = ['marketing', 'content', 'tips', 'learn', 'growth', 'brand'];
-  const hashtags = ensureStringArray(post.hashtags || [], defaultHashtags, 6);
+  const hashtags = ensureHashtagArray(post.hashtags || [], defaultHashtags, 6);
   const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
   const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
   const script = normalizeScriptObject(post.script || post.videoScript || {});
@@ -2315,70 +2442,45 @@ function getPresetGuidelines(nicheStyle = '') {
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.5,
-    max_tokens: 4000,
-    response_format: CALENDAR_RESPONSE_FORMAT,
-  });
-  const options = {
+  const requestOptions = {
     hostname: 'api.openai.com',
     path: '/v1/chat/completions',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-  const json = await openAIRequest(options, payload, 0, 1);
-  const content = json.choices?.[0]?.message?.content;
-  const structured = content && content.structured_output;
-  let posts = [];
-  if (structured) {
-    if (Array.isArray(structured)) {
-      posts = structured;
-    } else {
-      const candidate = structured.posts || structured.calendar_posts || structured.data || structured.value;
-      if (Array.isArray(candidate)) posts = candidate;
-    }
+
+  const sendCalendarRequest = async (messages) => {
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages,
+      temperature: 0.5,
+      max_tokens: 4000,
+      response_format: CALENDAR_RESPONSE_FORMAT,
+    });
+    requestOptions.headers['Content-Length'] = Buffer.byteLength(payload);
+    const json = await openAIRequest(requestOptions, payload, 0, 1);
+    return extractCalendarPostsFromResponse(json);
+  };
+
+  const baseMessages = [{ role: 'user', content: prompt }];
+  const firstPosts = await sendCalendarRequest(baseMessages);
+  if (Array.isArray(firstPosts)) {
+    return firstPosts;
   }
-  if (!posts.length && Array.isArray(content)) {
-    posts = content;
+  console.warn(`[Calendar] OpenAI parse failed for ${nicheStyle}; retrying with JSON-only reminder.`);
+  const repairMessages = [{
+    role: 'user',
+    content: `${prompt}\n\nReminder: return ONLY the JSON object defined above with the posts array, and do not add Markdown or commentary.`,
+  }];
+  const repairPosts = await sendCalendarRequest(repairMessages);
+  if (Array.isArray(repairPosts)) {
+    return repairPosts;
   }
-  if (!posts.length) {
-    const text = typeof content === 'string' ? content : (content?.text || '');
-    if (text) {
-      try {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed?.posts)) {
-          posts = parsed.posts;
-        } else if (Array.isArray(parsed)) {
-          posts = parsed;
-        } else {
-          const fallback = parsed?.calendar_posts || parsed?.data || parsed?.value;
-          if (Array.isArray(fallback)) posts = fallback;
-        }
-        if (!posts.length) {
-          const { data } = parseLLMArray(text, { requireArray: true });
-          posts = data;
-        }
-      } catch (parseErr) {
-        const { data } = parseLLMArray(text, { requireArray: true });
-        posts = data;
-      }
-    }
-  }
-  if (!Array.isArray(posts)) {
-    console.error('[Calendar] OpenAI response missing posts array', { content });
-    const err = new Error('OpenAI response did not include posts array');
-    err.code = 'OPENAI_SCHEMA_ERROR';
-    err.statusCode = 502;
-    err.rawContent = content;
-    throw err;
-  }
-  return posts;
+  console.warn(`[Calendar] Unable to parse calendar posts for ${nicheStyle} after retry; continuing with ${Array.isArray(firstPosts) ? firstPosts.length : 0} entries.`);
+  return Array.isArray(firstPosts) ? firstPosts : [];
 }
 
 function hasValidStrategy(post) {
