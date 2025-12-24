@@ -6634,6 +6634,7 @@ function showGeneratingState() {
   if (btnText) btnText.textContent = 'Creating calendar with AI...';
   if (progressBar) progressBar.style.display = 'flex';
   if (progressFill) progressFill.style.width = '0%';
+  // Keep preparing brief; we'll switch to live batch progress immediately upon dispatch
   if (progressText) progressText.textContent = 'Preparing your calendar...';
 }
 
@@ -8105,21 +8106,60 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
   const runSignal = options.signal;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
-  console.log(`[Calendar] generateCalendarWithAI start runId=${thisRunId}`, { nicheStyle, postsPerDay });
+  const tStart = performance.now();
+  console.log(`[Calendar][Perf] generateCalendarWithAI start (t=${Math.round(tStart)}ms) runId=${thisRunId}`, { nicheStyle, postsPerDay });
 
   try {
-    const currentUserEmail = await getCurrentUser();
-    const currentUserId = await getCurrentUserId();
-    const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
+    // Resolve user context concurrently; do not block batch dispatch
+    const currentUserEmailPromise = getCurrentUser();
+    const currentUserIdPromise = getCurrentUserId();
+    const userIsProPromise = (async () => {
+      const email = await currentUserEmailPromise;
+      try {
+        return email ? await isPro(email) : false;
+      } catch (_) {
+        return false;
+      }
+    })();
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const batchSize = 5;
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
     const totalBatches = Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
+    // Incremental render state
+    const partialByIndex = {};
+    let firstRenderDone = false;
+    // Clear any previous calendar for a fresh incremental render
+    try {
+      currentCalendar = [];
+      renderCards(currentCalendar);
+    } catch (_) {}
+    // Switch to live generation progress immediately
+    {
+      const btn = document.getElementById('generate-calendar');
+      const textSpan = btn?.querySelector('.btn-text');
+      const pFill = document.getElementById('progress-fill');
+      const pText = document.getElementById('progress-text');
+      if (textSpan) textSpan.textContent = `Generating... (0/${totalPosts} posts)`;
+      if (pFill) pFill.style.width = `0%`;
+      if (pText) pText.textContent = `0 of ${totalPosts} posts created (0%)`;
+      console.log(`[Calendar][Perf] preparing cleared (t=${Math.round(performance.now())}ms)`);
+    }
     
     if (runSignal?.aborted) throw new Error('generation_cancelled');
-    const payloadUserId = currentUserId || currentUserEmail || undefined;
+    // Defer resolving userId until needed; don't gate first dispatch
+    let payloadUserId;
+    const payloadUserIdPromise = (async () => {
+      try {
+        const id = await currentUserIdPromise;
+        const email = await currentUserEmailPromise;
+        return id || email || undefined;
+      } catch (_) {
+        return undefined;
+      }
+    })();
+    let firstDispatchLogged = false;
     const fetchBatch = async (batchIndex, attempt = 0) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
@@ -8131,6 +8171,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
+      // Resolve payload user id lazily; do not block early dispatch if it’s still pending
+      if (typeof payloadUserId === 'undefined') {
+        payloadUserId = await payloadUserIdPromise;
+      }
       const payload = {
         nicheStyle,
         userId: payloadUserId,
@@ -8140,6 +8184,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       };
       if (thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
+      }
+      if (!firstDispatchLogged) {
+        console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
+        firstDispatchLogged = true;
       }
       console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
       let response;
@@ -8180,6 +8228,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
         throw new Error(`API error: ${detail}`);
       }
+      if (firstDispatchLogged) {
+        console.log(`[Calendar][Perf] first batch response received (t=${Math.round(performance.now())}ms)`);
+        // Only log once
+        firstDispatchLogged = false;
+      }
 
       if (parsedDetail?.error === 'upgrade_required') {
         if (parsedDetail?.feature === 'calendar_exports') {
@@ -8217,11 +8270,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (pFill) pFill.style.width = `${percent}%`;
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
 
+      const userIsPro = await userIsProPromise;
       if (userIsPro && batchPosts.length) {
         try {
           batchPosts = await generateVariantsForPosts(batchPosts, {
             nicheStyle,
-            userId: currentUserEmail,
+            userId: await currentUserEmailPromise,
             userIsPro: true,
           });
         } catch (variantErr) {
@@ -8229,11 +8283,38 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
       }
 
+      // Incremental render of this batch without changing final output strategy
+      try {
+        const baseIndex = batchIndex * batchSize;
+        const transformed = batchPosts.map((p, i) => {
+          const globalIndex = baseIndex + i;
+          const normalized = normalizePost(p, globalIndex, 1);
+          const dayIndex = Math.floor(globalIndex / normalizedFrequency) + 1;
+          const slot = (globalIndex % normalizedFrequency) + 1;
+          return { ...normalized, day: dayIndex, slot };
+        });
+        transformed.forEach((post, i) => {
+          const globalIndex = baseIndex + i;
+          partialByIndex[globalIndex] = post;
+        });
+        // Build a contiguous subset for rendering
+        const keys = Object.keys(partialByIndex).map((k) => Number(k)).sort((a, b) => a - b);
+        const subset = keys.map((k) => partialByIndex[k]);
+        currentCalendar = subset;
+        renderCards(currentCalendar);
+        if (!firstRenderDone && subset.length > 0) {
+          console.log(`[Calendar][Perf] first batch rendered (t=${Math.round(performance.now())}ms)`);
+          firstRenderDone = true;
+        }
+      } catch (e) {
+        console.warn('Incremental render failed for batch', batchIndex + 1, e);
+      }
+
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts };
     };
     
-    // Fire all 6 batches in parallel for maximum speed (~30 seconds)
+    // Fire all batches in parallel for maximum speed (~30 seconds)
     console.log(" Requesting all batches with retries...");
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const t0 = performance.now();
@@ -8281,6 +8362,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       throw new Error('generation_cancelled');
     }
 
+    const userIsPro = await userIsProPromise;
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
     } else {
@@ -8361,6 +8443,11 @@ async function onGenerateCalendarClick() {
     console.warn('[Calendar] Generation already running');
     return;
   }
+  // Perf: button click timestamp
+  try {
+    const tClick = performance.now();
+    console.log(`[Calendar][Perf] button click (t=${Math.round(tClick)}ms)`);
+  } catch (_) {}
   const niche = nicheInput ? nicheInput.value.trim() : "";
   console.log(" Generate clicked, niche:", niche);
   const { ok, msg } = validateNiche(niche);

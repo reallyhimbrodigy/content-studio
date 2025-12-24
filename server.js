@@ -2943,6 +2943,8 @@ const server = http.createServer((req, res) => {
   // helper to generate calendar posts (reuse logic from /api/generate-calendar)
   async function generateCalendarPosts(payload = {}) {
     const { nicheStyle, userId, days, startDay, postsPerDay } = payload;
+    const tStart = Date.now();
+    console.log('[Calendar][Server][Perf] generateCalendarPosts start', { nicheStyle, userId: !!userId, days, startDay, postsPerDay });
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -2956,11 +2958,16 @@ const server = http.createServer((req, res) => {
     const classification = categorizeNiche(nicheStyle);
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
+    console.log('[Calendar][Server][Perf] callOpenAI start');
     let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    console.log('[Calendar][Server][Perf] callOpenAI end');
     const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
+    console.log('[Calendar][Server][Perf] ensureAudioLines start');
     posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
+    console.log('[Calendar][Server][Perf] ensureAudioLines end');
     const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
     if (incomplete.length > 0) {
+      console.log('[Calendar][Server][Perf] repairMissingFields start', { missingCount: incomplete.length });
       const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
       if (Array.isArray(repaired) && repaired.length === incomplete.length) {
         incomplete.forEach((entry, idx) => {
@@ -2978,6 +2985,7 @@ const server = http.createServer((req, res) => {
           posts[entry.i] = merged;
         });
       }
+      console.log('[Calendar][Server][Perf] repairMissingFields end');
     }
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
@@ -3009,6 +3017,7 @@ const server = http.createServer((req, res) => {
     if (posts.length) {
       console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
     }
+    console.log('[Calendar][Server][Perf] generateCalendarPosts end', { elapsedMs: Date.now() - tStart, count: posts.length });
     return posts;
   }
 
@@ -3148,6 +3157,8 @@ const server = http.createServer((req, res) => {
         const user = await requireSupabaseUser(req);
         req.user = user;
         const isPro = isUserPro(req);
+        const tStart = Date.now();
+        console.log('[Calendar][Server][Perf] regen request received', { requestId, userId: user.id, isPro });
         if (!isPro) {
           const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
           if (usage >= 3) {
@@ -3159,11 +3170,21 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
+        console.log('[Calendar][Server][Perf] regen generation start', {
+          requestId,
+          days: body?.days,
+          startDay: body?.startDay,
+          postsPerDay: body?.postsPerDay,
+        });
         const posts = await generateCalendarPosts(body || {});
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
-        // Temporary audio log for verification
+        console.log('[Calendar][Server][Perf] regen response ready', {
+          requestId,
+          elapsedMs: Date.now() - tStart,
+          postCount: Array.isArray(posts) ? posts.length : 0,
+        });
         return sendJson(res, 200, { posts });
       } catch (err) {
         const context = {
