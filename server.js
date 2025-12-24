@@ -282,12 +282,18 @@ function logServerError(tag, err, info = {}) {
 
 function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
-  const status = statusCode || err?.statusCode || 500;
+  const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
+  const status = statusCode || err?.statusCode || (isOpenAISchema ? 502 : 500);
   const payload = {
-    error: err?.message || 'internal_error',
+    error: isOpenAISchema
+      ? { message: 'openai_schema_error' }
+      : { message: err?.message || 'internal_error', code: err?.code },
   };
   if (requestId) payload.requestId = requestId;
-  if (!isProduction && err?.stack) {
+  if (isOpenAISchema && !isProduction && err?.rawContent) {
+    payload.error.debug = err.rawContent;
+  }
+  if (!isOpenAISchema && !isProduction && err?.stack) {
     payload.debugStack = err.stack;
   }
   sendJson(res, status, payload);
@@ -1517,6 +1523,7 @@ const CALENDAR_STRATEGY_SCHEMA = {
 
 const CALENDAR_POST_ITEM_SCHEMA = {
   type: 'object',
+  additionalProperties: true,
   properties: {
     day: { type: 'integer', minimum: 1 },
     idea: { type: 'string' },
@@ -2358,7 +2365,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           const { data } = parseLLMArray(text, { requireArray: true });
           posts = data;
         }
-      } catch (err) {
+      } catch (parseErr) {
         const { data } = parseLLMArray(text, { requireArray: true });
         posts = data;
       }
@@ -2366,7 +2373,11 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   }
   if (!Array.isArray(posts)) {
     console.error('[Calendar] OpenAI response missing posts array', { content });
-    throw new Error('OpenAI response did not include posts array');
+    const err = new Error('OpenAI response did not include posts array');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 502;
+    err.rawContent = content;
+    throw err;
   }
   return posts;
 }
@@ -3111,15 +3122,18 @@ const server = http.createServer((req, res) => {
         };
         logServerError('calendar_regenerate_error', err, { requestId, context });
         if (res.headersSent) return;
-        const status = err?.statusCode || 500;
+        const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
+        const status = isSchemaError ? 502 : (err?.statusCode || 500);
         const payload = {
-          error: {
-            message: err?.message || 'Internal Server Error',
-            code: err?.code || 'CALENDAR_REGENERATE_FAILED',
-          },
+          error: isSchemaError
+            ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
+            : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
           requestId,
         };
-        if (!isProduction && err?.stack) {
+        if (isSchemaError && !isProduction && err?.rawContent) {
+          payload.error.debug = err.rawContent;
+        }
+        if (!isSchemaError && !isProduction && err?.stack) {
           payload.debugStack = err.stack;
         }
         return sendJson(res, status, payload);
