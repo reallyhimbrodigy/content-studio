@@ -2325,7 +2325,15 @@ async function sanitizeStrategyCopy(posts, nicheStyle, classification) {
     if (isStrategyCopyBad(strategy, post)) {
       strategy = templateStrategyFromTitle(post, classification, nicheStyle);
     }
-    strategy = ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
+    try {
+      strategy = ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
+    } catch (err) {
+      console.warn('[Calendar] ensurePinnedFieldsValid failure', {
+        type: typeof ensurePinnedFieldsValid,
+        keys: Object.keys(strategy || {}),
+      });
+      throw err;
+    }
     post.strategy = strategy;
     results.push(post);
   }
@@ -2335,6 +2343,24 @@ async function sanitizeStrategyCopy(posts, nicheStyle, classification) {
 
 function toPlainString(value) {
   return String(value || '').trim();
+}
+
+function ensurePinnedFieldsValid(strategy = {}, post = {}, classification = 'creator', nicheStyle = '') {
+  const normalizedStrategy = { ...strategy };
+  const candidateKeyword = normalizeKeywordToken(normalizedStrategy.pinned_keyword || '');
+  const candidateDeliverable = String(normalizedStrategy.pinned_deliverable || '').trim();
+  const finalKeyword = isKeywordValid(candidateKeyword, post)
+    ? candidateKeyword
+    : deterministicKeywordFallback(post, classification, nicheStyle);
+  const finalDeliverable = isDeliverableValid(candidateDeliverable, post)
+    ? candidateDeliverable
+    : deriveFallbackDeliverable(post, classification);
+  return {
+    ...normalizedStrategy,
+    pinned_keyword: finalKeyword,
+    pinned_deliverable: finalDeliverable,
+    pinned_comment: buildPinnedCommentLine(finalKeyword, finalDeliverable),
+  };
 }
 
 function ensureStringArray(value, fallback = [], minLength = 0) {
