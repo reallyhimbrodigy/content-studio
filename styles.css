@@ -2830,16 +2830,18 @@ body {
   .landing-hero__grid {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
     column-gap: 56px;
+    justify-content: center;
   }
 
+  /* keep the hero grid centered horizontally on desktop so the headline/CTAs align visually in the viewport */
   .landing-hero__intro,
   .landing-logos,
   .hero-proof,
   .landing-badges,
   .landing-hero__actions {
-    justify-content: flex-start;
-    text-align: left;
-    align-items: flex-start;
+    justify-content: center;
+    text-align: center;
+    align-items: center;
   }
 
   .landing-hero__actions {
