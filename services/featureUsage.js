@@ -29,7 +29,7 @@ async function getFeatureUsageCount(supabaseClient, userId, featureKey) {
     // If the table is missing in the current environment, default to zero
     if (msg.includes('feature_usage') || msg.includes('schema cache') || msg.includes('42P01')) {
       if (!tableMissingLogged) {
-        console.warn('[feature_usage] table missing; treating usage as 0');
+        console.debug('[feature_usage] table missing; treating usage as 0');
         tableMissingLogged = true;
       }
       return DEFAULT_COUNT;
@@ -63,7 +63,7 @@ async function incrementFeatureUsage(supabaseClient, userId, featureKey) {
     const msg = String(err.message || err);
     if (msg.includes('feature_usage') || msg.includes('schema cache') || msg.includes('42P01')) {
       if (!incrementMissingLogged) {
-        console.warn('[feature_usage] table missing; skipping increment');
+        console.debug('[feature_usage] table missing; skipping increment');
         incrementMissingLogged = true;
       }
       return DEFAULT_COUNT;
