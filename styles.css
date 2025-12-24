@@ -2765,6 +2765,7 @@ body {
   max-width: 1360px;
   margin: 0 auto;
   padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px);
+  justify-content: center; /* center the entire hero block within the viewport for balanced visual weight */
 }
 
 .landing-hero-content--center {
