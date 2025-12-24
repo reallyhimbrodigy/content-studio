@@ -1,5 +1,8 @@
 const DEFAULT_COUNT = 0;
 
+let tableMissingLogged = false;
+let incrementMissingLogged = false;
+
 async function getFeatureUsageCount(supabaseClient, userId, featureKey) {
   if (!supabaseClient || !userId || !featureKey) return DEFAULT_COUNT;
 
@@ -25,7 +28,10 @@ async function getFeatureUsageCount(supabaseClient, userId, featureKey) {
     const msg = String(err.message || err);
     // If the table is missing in the current environment, default to zero
     if (msg.includes('feature_usage') || msg.includes('schema cache') || msg.includes('42P01')) {
-      console.warn('[feature_usage] table missing; treating usage as 0');
+      if (!tableMissingLogged) {
+        console.warn('[feature_usage] table missing; treating usage as 0');
+        tableMissingLogged = true;
+      }
       return DEFAULT_COUNT;
     }
     throw err;
@@ -56,7 +62,10 @@ async function incrementFeatureUsage(supabaseClient, userId, featureKey) {
   } catch (err) {
     const msg = String(err.message || err);
     if (msg.includes('feature_usage') || msg.includes('schema cache') || msg.includes('42P01')) {
-      console.warn('[feature_usage] table missing; skipping increment');
+      if (!incrementMissingLogged) {
+        console.warn('[feature_usage] table missing; skipping increment');
+        incrementMissingLogged = true;
+      }
       return DEFAULT_COUNT;
     }
     throw err;

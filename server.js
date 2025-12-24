@@ -1339,7 +1339,7 @@ function resolvePostsCandidate(parsed) {
 
 // Generic sanitizer + parse attempts for LLM JSON array output.
 // Returns { data, attempts } where data is parsed array (or object wrapped into array) and attempts is diagnostics.
-function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
+function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}, context = {}) {
   const diagnostics = { rawLength: String(rawContent || '').length, attempts: [] };
   const directParsed = parseAiJson(rawContent);
   const directPosts = resolvePostsCandidate(directParsed);
@@ -1456,9 +1456,37 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
   } catch (e2) {
     diagnostics.attempts.push({ ok: false, fallbackError: e2.message });
   }
-  const truncated = raw.slice(0, 500);
-  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated;
-  throw new Error(msg);
+  const preview = raw.slice(0, 300);
+  const contextLabel = formatParseContext(context);
+  const messageParts = [
+    `Failed to parse JSON after attempts: ${lastErr && lastErr.message ? lastErr.message : 'unknown error'}`,
+  ];
+  if (contextLabel) {
+    messageParts.push(`context: ${contextLabel}`);
+  }
+  if (preview) {
+    messageParts.push(`preview: ${preview}`);
+  }
+  throw new Error(messageParts.join(' | '));
+}
+
+function formatCalendarLogContext(context = {}) {
+  const parts = [];
+  if (context.requestId) parts.push(`requestId=${context.requestId}`);
+  if (context.batchIndex !== undefined && context.batchIndex !== null) parts.push(`batchIndex=${context.batchIndex}`);
+  if (context.startDay !== undefined && context.startDay !== null) parts.push(`startDay=${context.startDay}`);
+  return parts.join(' ');
+}
+
+function formatParseContext(context = {}) {
+  if (!context || typeof context !== 'object') return '';
+  const parts = [];
+  if (context.endpoint) parts.push(`endpoint=${context.endpoint}`);
+  if (context.requestId) parts.push(`requestId=${context.requestId}`);
+  if (context.batchIndex !== undefined && context.batchIndex !== null) parts.push(`batchIndex=${context.batchIndex}`);
+  if (context.startDay !== undefined && context.startDay !== null) parts.push(`startDay=${context.startDay}`);
+  if (context.day !== undefined && context.day !== null) parts.push(`day=${context.day}`);
+  return parts.join(' ');
 }
 
 function extractCalendarPostsFromResponse(response = {}) {
@@ -2441,6 +2469,7 @@ function getPresetGuidelines(nicheStyle = '') {
 }
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
+  const { loggingContext = {} } = opts;
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
   const requestOptions = {
     hostname: 'api.openai.com',
@@ -2470,7 +2499,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   if (Array.isArray(firstPosts)) {
     return firstPosts;
   }
-  console.warn(`[Calendar] OpenAI parse failed for ${nicheStyle}; retrying with JSON-only reminder.`);
+  const contextLabel = formatCalendarLogContext(loggingContext);
+  const contextSuffix = contextLabel ? ` @ ${contextLabel}` : '';
+  console.warn(`[Calendar] OpenAI parse failed for ${nicheStyle}${contextSuffix}; retrying with JSON-only reminder.`);
   const repairMessages = [{
     role: 'user',
     content: `${prompt}\n\nReminder: return ONLY the JSON object defined above with the posts array, and do not add Markdown or commentary.`,
@@ -2479,7 +2510,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   if (Array.isArray(repairPosts)) {
     return repairPosts;
   }
-  console.warn(`[Calendar] Unable to parse calendar posts for ${nicheStyle} after retry; continuing with ${Array.isArray(firstPosts) ? firstPosts.length : 0} entries.`);
+  console.warn(`[Calendar] Unable to parse calendar posts for ${nicheStyle}${contextSuffix} after retry; continuing with ${Array.isArray(firstPosts) ? firstPosts.length : 0} entries.`);
   return Array.isArray(firstPosts) ? firstPosts : [];
 }
 
@@ -2988,9 +3019,17 @@ const server = http.createServer((req, res) => {
 
   // helper to generate calendar posts (reuse logic from /api/generate-calendar)
   async function generateCalendarPosts(payload = {}) {
-    const { nicheStyle, userId, days, startDay, postsPerDay } = payload;
+    const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
+    const loggingContext = context || {};
     const tStart = Date.now();
-    console.log('[Calendar][Server][Perf] generateCalendarPosts start', { nicheStyle, userId: !!userId, days, startDay, postsPerDay });
+    console.log('[Calendar][Server][Perf] generateCalendarPosts start', {
+      nicheStyle,
+      userId: !!userId,
+      days,
+      startDay,
+      postsPerDay,
+      context: loggingContext,
+    });
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -3005,8 +3044,14 @@ const server = http.createServer((req, res) => {
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
     const callStart = Date.now();
-    console.log('[Calendar][Server][Perf] callOpenAI start', { nicheStyle, days, startDay, postsPerDay });
-    const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    console.log('[Calendar][Server][Perf] callOpenAI start', {
+      nicheStyle,
+      days,
+      startDay,
+      postsPerDay,
+      context: loggingContext,
+    });
+    const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay, loggingContext });
     const openDuration = Date.now() - callStart;
     const validationStart = Date.now();
     const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
@@ -3044,8 +3089,17 @@ const server = http.createServer((req, res) => {
       console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
     }
     const postProcessingMs = Date.now() - validationStart;
-    console.log('[Calendar][Server][Perf] callOpenAI timings', { openMs: openDuration, parseMs: postProcessingMs, postCount: posts.length });
-    console.log('[Calendar][Server][Perf] generateCalendarPosts end', { elapsedMs: Date.now() - tStart, count: posts.length });
+    console.log('[Calendar][Server][Perf] callOpenAI timings', {
+      openMs: openDuration,
+      parseMs: postProcessingMs,
+      postCount: posts.length,
+      context: loggingContext,
+    });
+    console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
+      elapsedMs: Date.now() - tStart,
+      count: posts.length,
+      context: loggingContext,
+    });
     return posts;
   }
 
@@ -3204,7 +3258,14 @@ const server = http.createServer((req, res) => {
           startDay: body?.startDay,
           postsPerDay: body?.postsPerDay,
         });
-        const posts = await generateCalendarPosts(body || {});
+        const posts = await generateCalendarPosts({
+          ...(body || {}),
+          context: {
+            requestId,
+            batchIndex: body?.batchIndex,
+            startDay: body?.startDay,
+          },
+        });
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
@@ -3250,7 +3311,14 @@ const server = http.createServer((req, res) => {
       const requestId = generateRequestId('generate');
       try {
         const payload = JSON.parse(body || '{}');
-        const posts = await generateCalendarPosts(payload);
+        const posts = await generateCalendarPosts({
+          ...payload,
+          context: {
+            requestId,
+            batchIndex: payload?.batchIndex,
+            startDay: payload?.startDay,
+          },
+        });
         return sendJson(res, 200, { posts });
       } catch (err) {
         logServerError('calendar_generate_error', err, { requestId, bodyPreview: body.slice(0, 400) });
@@ -3842,7 +3910,7 @@ ${JSON.stringify(compactPosts)}`;
             const { data, attempts } = parseLLMArray(content, {
               requireArray: true,
               itemValidate: (v) => v && typeof v.day === 'number' && v.variants && typeof v.variants === 'object'
-            });
+            }, { endpoint: 'generate-variants' });
             if (debugEnabled) console.log('[VARIANTS PARSE] attempts:', attempts);
             return data;
           } catch (e) {
@@ -3904,7 +3972,7 @@ ${JSON.stringify(compactPosts)}`;
         };
         const json = await openAIRequest(options, payload);
         const content = json.choices?.[0]?.message?.content || '';
-        const { data } = parseLLMArray(content, { requireArray: true });
+        const { data } = parseLLMArray(content, { requireArray: true }, { endpoint: 'regen-day', day: Number(day) || null });
         if (!Array.isArray(data) || data.length === 0) {
           throw new Error('Model returned no data');
         }
