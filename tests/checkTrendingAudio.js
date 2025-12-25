@@ -22,7 +22,7 @@ async function run() {
     if (instagramValue !== expectedInstagramText) {
       throw new Error(`Instagram audio mismatch for day ${idx + 1}: got "${instagramValue}", expected "${expectedInstagramText}"`);
     }
-    ['@Creator', 'Creator', 'undefined', 'null'].forEach((bad) => {
+    ['Creator', 'undefined', 'null'].forEach((bad) => {
       if (audio.includes(bad)) {
         throw new Error(`Audio contains placeholder "${bad}" for day ${idx + 1}`);
       }

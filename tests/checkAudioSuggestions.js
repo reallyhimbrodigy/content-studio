@@ -27,7 +27,7 @@ if (!INSTAGRAM_TRENDING_TOP10.includes(instagramValue)) {
   throw new Error('Instagram audio not drawn from list.');
 }
 
-['@Creator', 'Creator', 'undefined', 'null'].forEach((bad) => {
+['Creator', 'undefined', 'null'].forEach((bad) => {
   if (line.includes(bad)) {
     throw new Error(`Audio line contains placeholder string: ${bad}`);
   }
