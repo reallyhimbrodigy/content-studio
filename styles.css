@@ -5808,6 +5808,10 @@ body.prefers-reduced-motion *::after {
   padding: 1rem;
 }
 
+#account-modal.modal-overlay {
+  z-index: 9999;
+}
+
 .modal-overlay .modal {
   width: min(560px, 90vw);
   background: var(--surface);
@@ -5829,12 +5833,15 @@ body.prefers-reduced-motion *::after {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(92vw, 560px);
-  max-height: 85vh;
-  overflow: hidden;
-  padding: 1.5rem;
+  width: min(calc(100vw - 64px), 860px);
+  max-width: 860px;
+  max-height: calc(100vh - 96px);
+  overflow: visible;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
+  border-radius: 20px;
+  box-sizing: border-box;
   z-index: 1100;
 }
 
@@ -5899,17 +5906,15 @@ body.prefers-reduced-motion *::after {
   border-radius: 10px 10px 0 0;
 }
 
-body.modal-open {
-  overflow: hidden;
-}
-
 @media (max-width: 768px) {
   .modal-overlay {
     padding: 0.75rem;
   }
   .modal-overlay .modal {
-    width: min(92vw, 640px);
-    max-height: 85vh;
+    width: calc(100vw - 32px);
+    max-width: 520px;
+    max-height: calc(100vh - 48px);
+    padding: 18px;
     margin: 0;
   }
 }
