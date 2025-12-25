@@ -40,11 +40,14 @@
 body {
   margin: 0;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
   background: radial-gradient(circle at 20% 20%, rgba(127, 90, 240, 0.25), transparent 55%),
     radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.18), transparent 60%),
     linear-gradient(135deg, #05040a 0%, #0f1121 60%, #07070f 100%);
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .app-shell {
@@ -7096,6 +7099,26 @@ html, body {
   .sidebar-backdrop {
     display: block;
   }
+  body.sidebar-open {
+    overflow: hidden;
+    position: relative;
+    height: 100%;
+  }
+  body.sidebar-open .app-main,
+  body.sidebar-open main,
+  body.sidebar-open .page-content,
+  body.sidebar-open .app-layout,
+  body.sidebar-open .hero {
+    margin-left: 0 !important;
+    transform: none !important;
+    width: 100%;
+    max-width: 100%;
+  }
+  body.sidebar-open .sidebar-backdrop,
+  .sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .sidebar-backdrop.visible {
     opacity: 1;
     pointer-events: auto;
@@ -7198,6 +7221,64 @@ html, body {
   .publish-card .actions button {
     flex: 1 1 100%;
     width: 100%;
+  }
+
+  .calendar-card *,
+  .publish-card *,
+  .panel *,
+  .modal *,
+  .hero *,
+  .settings-panel *,
+  .form-row *,
+  .grid * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .calendar__grid,
+  .publish-hub__grid,
+  .library-grid,
+  .feature-grid,
+  .analytics-grid,
+  .content-grid,
+  .cards,
+  .grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.9rem !important;
+  }
+
+  .calendar-card,
+  .publish-card,
+  .panel,
+  .card,
+  .modal,
+  .sheet,
+  .settings-panel,
+  .library-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  input,
+  select,
+  textarea,
+  button,
+  .row,
+  .form-row,
+  .settings-row,
+  .toolbar {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .modal,
+  .dialog,
+  .sheet,
+  .panel {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
   }
 
   #app {

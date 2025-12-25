@@ -119,7 +119,13 @@ const appLayout = document.querySelector('.app-layout');
 const proNavLinks = document.querySelectorAll('.sidebar-link--pro');
 const appSidebar = document.getElementById('app-sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
-const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+let sidebarBackdrop = document.getElementById('sidebar-backdrop');
+if (!sidebarBackdrop) {
+  sidebarBackdrop = document.createElement('div');
+  sidebarBackdrop.id = 'sidebar-backdrop';
+  sidebarBackdrop.className = 'sidebar-backdrop';
+  document.body.appendChild(sidebarBackdrop);
+}
 let fontPickers = [];
 let fontPickerListenersBound = false;
 const isMobileViewport = () => window.matchMedia('(max-width: 768px)').matches;
@@ -2087,6 +2093,7 @@ function applySidebarState(collapsed) {
   if (sidebarBackdrop) {
     sidebarBackdrop.classList.toggle('visible', !collapsed && isMobileViewport());
   }
+  document.body.classList.toggle('sidebar-open', !collapsed && isMobileViewport());
 }
 
 function initSidebar() {
@@ -2106,6 +2113,10 @@ function initSidebar() {
     const next = !appLayout.classList.contains('sidebar-collapsed');
     applySidebarState(next);
   });
+}
+
+if (sidebarBackdrop) {
+  sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
 }
 
 if (sidebarBackdrop) {
