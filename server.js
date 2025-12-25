@@ -3652,57 +3652,34 @@ ${JSON.stringify(compactPosts)}`;
   }
 
   if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
+    (async () => {
+      const requestId = generateRequestId('regen-day');
       try {
-        const { nicheStyle, day, post, userId } = JSON.parse(body || '{}');
+        const body = await readJsonBody(req);
+        const { nicheStyle, day, post, userId } = body || {};
         if (!nicheStyle || typeof day === 'undefined' || day === null) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'nicheStyle and day are required' }));
+          return sendJson(res, 400, { error: 'nicheStyle and day are required' });
         }
         if (!post || typeof post !== 'object') {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'post payload required' }));
+          return sendJson(res, 400, { error: 'post payload required' });
         }
-        if (!OPENAI_API_KEY) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
-        }
-        const brand = userId ? loadBrand(userId) : null;
-        const brandContext = summarizeBrandForPrompt(brand);
-        const prompt = buildSingleDayPrompt(nicheStyle, day, post, brandContext);
-        const payload = JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.55,
-          max_tokens: 1600,
+        const posts = await generateCalendarPosts({
+          nicheStyle,
+          userId,
+          days: 1,
+          startDay: Number(day),
+          context: { requestId, batchIndex: 0, startDay: Number(day) },
         });
-        const options = {
-          hostname: 'api.openai.com',
-          path: '/v1/chat/completions',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload),
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-          },
-        };
-        const json = await openAIRequest(options, payload);
-        const content = json.choices?.[0]?.message?.content || '';
-        const { data } = parseLLMArray(content, { requireArray: true }, { endpoint: 'regen-day', day: Number(day) || null });
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('Model returned no data');
+        const newPost = Array.isArray(posts) && posts.length ? posts[0] : null;
+        if (!newPost) {
+          throw new Error('Calendar generator returned no posts');
         }
-        const normalized = normalizePost(data[0], 0, Number(day) || 1, Number(day));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ post: normalized }));
+        return sendJson(res, 200, { post: newPost });
       } catch (err) {
         console.error('regen-day error:', err);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message || 'Failed to regenerate day' }));
+        return sendJson(res, 500, { error: err.message || 'Failed to regenerate day' });
       }
-    });
+    })();
     return;
   }
 
