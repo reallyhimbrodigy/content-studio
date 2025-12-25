@@ -2159,43 +2159,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   return normalized;
 }
 
-const STORY_PROMPT_SUFFIXES = [
-  'Add a poll sticker asking “Which is your favorite move?”',
-  'Invite viewers to DM their go-to power snack.',
-  'Prompt a quick poll on whether they prefer reels or carousels.',
-  'Encourage them to save this post for their next practice session.',
-  'Challenge them to duet this with their favorite drill.'
-];
-
-const buildDistributionPlanText = (post = {}) => {
-  const parts = [];
-  const repurpose = Array.isArray(post.repurpose) ? post.repurpose.map((item) => toPlainString(item)).filter(Boolean) : [];
-  if (repurpose.length) parts.push(repurpose.join(' • '));
-  const variants = post.variants || {};
-  const platformLines = [];
-  const ig = toPlainString(variants.instagram_caption || variants.igCaption || variants.igCaptionText);
-  if (ig) platformLines.push(`Instagram: ${ig}`);
-  const tt = toPlainString(variants.tiktok_caption || variants.tiktokCaption);
-  if (tt) platformLines.push(`TikTok: ${tt}`);
-  const ln = toPlainString(variants.linkedin_caption || variants.linkedinCaption);
-  if (ln) platformLines.push(`LinkedIn: ${ln}`);
-  if (platformLines.length) parts.push(platformLines.join(' | '));
-  return parts.filter(Boolean).join('\n');
-};
-
-const buildStoryPromptExpanded = (post = {}, dayIndex = 0) => {
-  const base = toPlainString(post.storyPrompt);
-  const suffix = toPlainString(STORY_PROMPT_SUFFIXES[Math.abs(Math.floor(dayIndex)) % STORY_PROMPT_SUFFIXES.length]);
-  return [base, suffix].filter(Boolean).join(' ').trim();
-};
-
-const enrichRegenPost = (post = {}, dayIndex = 0) => {
-  const enriched = { ...post };
-  enriched.distributionPlan = post.distributionPlan || buildDistributionPlanText(post);
-  enriched.storyPromptExpanded = post.storyPromptExpanded || buildStoryPromptExpanded(post, dayIndex);
-  return enriched;
-};
-
 const PRO_INTERACTIVE_PROMPTS = [
   'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
   'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
