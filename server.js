@@ -1765,105 +1765,74 @@ function parseAudioSegments(line = '') {
   return result;
 }
 
-function isBadAudio(line = '') {
-  const segments = parseAudioSegments(line);
-  if (!segments) return true;
-  const { tiktok = '', instagram = '' } = segments;
-  if (!tiktok || !instagram) return true;
-  if (AUDIO_INVALID_PATTERN.test(line) || AUDIO_DIGIT_PATTERN.test(line)) return true;
-  if (tiktok.replace(/\s+/g, ' ').toLowerCase() === instagram.replace(/\s+/g, ' ').toLowerCase()) return true;
-  if (!/\s—\s/.test(tiktok) || !/\s—\s/.test(instagram)) return true;
-  const combined = `${tiktok.toLowerCase()} ${instagram.toLowerCase()}`;
-  for (const title of EVERGREEN_TITLES) {
-    if (combined.includes(title)) return true;
-  }
-  return false;
-}
-
-const AUDIO_MATCH_KEYWORDS = [
-  'basketball', 'hoops', 'training', 'coach', 'workout', 'gym',
-  'grind', 'hustle', 'defense', 'dribbling', 'shooting', 'game day',
+const TRENDING_AUDIO_TTL = 6 * 60 * 60 * 1000;
+const DEFAULT_TIKTOK_AUDIO = [
+  { title: 'Heart of the Game', creator: '@courtcommand' },
+  { title: 'Baseline Anthem', creator: '@hoopnotes' },
+  { title: 'Clutch Moment', creator: '@rallycrew' },
+  { title: 'Prime Time Push', creator: '@coachpulse' },
+  { title: 'Slam Vision', creator: '@shotclockbeats' },
+  { title: 'Focus Grind', creator: '@dailyhoops' },
+  { title: 'Elevate Rhythm', creator: '@elevateflow' },
+  { title: 'Power Drive', creator: '@driveclub' },
+  { title: 'Sweat to the Beat', creator: '@sweatmode' },
+  { title: 'Courtside Bloom', creator: '@courtstories' },
+];
+const DEFAULT_INSTAGRAM_AUDIO = [
+  { title: 'Hoops Flow', creator: '@metro_pulse' },
+  { title: 'Defense Reset', creator: '@quartetbeats' },
+  { title: 'Sunset Circuit', creator: '@grindwave' },
+  { title: 'Game Day Prep', creator: '@coresynccollective' },
+  { title: 'No Sleep Shooting', creator: '@studio_rush' },
+  { title: 'Precision Run', creator: '@anthemtrainers' },
+  { title: 'Clutch Time Anthem', creator: '@rally.crew' },
+  { title: 'Backboard Echo', creator: '@pulseline' },
+  { title: 'Five-Star Footwork', creator: '@coachanthem' },
+  { title: 'Hardwood Stories', creator: '@elevate_sessions' },
 ];
 
-const TIKTOK_TRENDING_TOP10 = [
-  'Game Clock Hustle — DJ Bounce',
-  'Court Vision — Visionary Vibes',
-  'Baseline Drip — Coach Leary',
-  'Full Court Pressure — Ace Drummer',
-  'Breakthrough Stepback — Rhythm Raiders',
-  'Sweat Equity — Trainer Nova',
-  'Night Practice — City Hoops Collective',
-  'Victory Lap — Slam Tempo',
-  'Shot Clock Charge — Volley Beat',
-  'Playmaker Pulse — Hustle Assembly',
-];
+const trendingAudioCache = {
+  expiresAt: 0,
+  tiktok: [],
+  instagram: [],
+};
 
-const INSTAGRAM_TRENDING_TOP10 = [
-  'Hoops Flow — Metro Pulse',
-  'Defense Reset — Quartet Beats',
-  'Sunset Circuit — Grindwave',
-  'Game Day Prep — CoreSync Collective',
-  'No Sleep Shooting — Studio Rush',
-  'Precision Run — Anthem Trainers',
-  'Clutch Time Anthem — Rally Crew',
-  'Backboard Echo — Pulseline',
-  'Five-Star Footwork — Coach Anthem',
-  'Hardwood Stories — Elevate Sessions',
-];
-
-function scoreAudioEntry(entry = '', nicheStyle = '') {
-  const lowerEntry = String(entry || '').toLowerCase();
-  const lowerNiche = String(nicheStyle || '').toLowerCase();
-  let score = 0;
-  for (const keyword of AUDIO_MATCH_KEYWORDS) {
-    if (lowerEntry.includes(keyword) || lowerNiche.includes(keyword)) score += 2;
+function sanitizeTrendingEntry(entry = {}) {
+  const title = String(entry.title || '').trim();
+  const creator = String(entry.creator || '').trim();
+  if (!title || !creator || !creator.startsWith('@') || creator.length <= 1) {
+    return null;
   }
-  if (score === 0 && lowerEntry.includes(lowerNiche.trim())) {
-    score += 1;
-  }
-  return score;
+  return { title, creator };
 }
 
-function pickTrendingEntry(list, nicheStyle, recent = []) {
-  let best = null;
-  for (let index = 0; index < list.length; index += 1) {
-    const entry = String(list[index] || '');
-    const baseScore = scoreAudioEntry(entry, nicheStyle);
-    const recencyPenalty = recent.includes(index) ? -1 : 0;
-    const score = baseScore + recencyPenalty;
-    if (!best || score > best.score || (score === best.score && !recent.includes(index) && recent.includes(best.index))) {
-      best = { entry, index, score };
-    }
+function getTrendingAudioLists() {
+  const now = Date.now();
+  if (trendingAudioCache.expiresAt > now && trendingAudioCache.tiktok.length && trendingAudioCache.instagram.length) {
+    return trendingAudioCache;
   }
-  return best || { entry: list[0] || '', index: 0, score: 0 };
-}
-
-function buildTrendingAudioLine(nicheStyle, state = {}) {
-  state.recentTikTok = Array.isArray(state.recentTikTok) ? state.recentTikTok : [];
-  state.recentInstagram = Array.isArray(state.recentInstagram) ? state.recentInstagram : [];
-  const tiktok = pickTrendingEntry(TIKTOK_TRENDING_TOP10, nicheStyle, state.recentTikTok);
-  const instagram = pickTrendingEntry(INSTAGRAM_TRENDING_TOP10, nicheStyle, state.recentInstagram);
-  state.recentTikTok.push(tiktok.index);
-  state.recentInstagram.push(instagram.index);
-  if (state.recentTikTok.length > 5) state.recentTikTok.shift();
-  if (state.recentInstagram.length > 5) state.recentInstagram.shift();
-  return {
-    line: `TikTok: ${tiktok.entry}; Instagram: ${instagram.entry}`,
-    indexes: { tiktok: tiktok.index, instagram: instagram.index },
-  };
+  trendingAudioCache.tiktok = DEFAULT_TIKTOK_AUDIO
+    .map(sanitizeTrendingEntry)
+    .filter(Boolean);
+  trendingAudioCache.instagram = DEFAULT_INSTAGRAM_AUDIO
+    .map(sanitizeTrendingEntry)
+    .filter(Boolean);
+  trendingAudioCache.expiresAt = now + TRENDING_AUDIO_TTL;
+  return trendingAudioCache;
 }
 
 async function ensureAudioLines(nicheStyle, brandContext, posts = [], options = {}) {
   if (!Array.isArray(posts)) return posts;
+  const { tiktok: tiktokList, instagram: instagramList } = getTrendingAudioLists();
+  const tiktokLength = tiktokList.length;
+  const instagramLength = instagramList.length;
   for (let idx = 0; idx < posts.length; idx += 1) {
     const post = posts[idx];
-    const normalized = normalizeAudioLine(post.audio);
-    if (!isBadAudio(normalized)) {
-      post.audio = normalized;
-      continue;
-    }
-    const fallback = buildTrendingAudioLine(nicheStyle, options);
-    post.audio = fallback.line || '';
+    const tiktokEntry = tiktokLength ? tiktokList[idx % tiktokLength] : null;
+    const instagramEntry = instagramLength ? instagramList[(idx + 1) % instagramLength] : null;
+    const tiktokText = tiktokEntry ? `${tiktokEntry.title} — ${tiktokEntry.creator}` : '';
+    const instagramText = instagramEntry ? `${instagramEntry.title} — ${instagramEntry.creator}` : '';
+    post.audio = `TikTok: ${tiktokText}; Instagram: ${instagramText}`;
   }
   return posts;
 }
@@ -6079,7 +6048,6 @@ module.exports = {
   ensurePinnedFieldsValid,
   dedupePinnedComments,
   buildPrompt,
-  buildTrendingAudioLine,
-  TIKTOK_TRENDING_TOP10,
-  INSTAGRAM_TRENDING_TOP10,
+  ensureAudioLines,
+  getTrendingAudioLists,
 };
