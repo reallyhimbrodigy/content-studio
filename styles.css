@@ -7444,6 +7444,105 @@ html, body {
   }
 }
 
+@media (max-width: 768px) {
+  .profile-menu,
+  .profile-dropdown,
+  .modal,
+  .dialog,
+  .sheet,
+  .panel,
+  .settings-panel {
+    width: calc(100vw - 24px) !important;
+    max-width: 100% !important;
+    margin: 12px auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .profile-menu {
+    top: 60px;
+    right: 12px;
+    left: 12px;
+    border-radius: 14px;
+  }
+
+  .profile-menu-header,
+  .profile-dropdown button,
+  .profile-dropdown a {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    border: none;
+  }
+
+  .profile-dropdown > * {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .form-row,
+  .settings-row,
+  .toolbar,
+  .hero__cta,
+  .hero__features,
+  .calendar__filters,
+  .calendar__controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .cards,
+  .content-grid,
+  .library-grid,
+  .calendar__grid,
+  .publish-hub__grid,
+  .feature-grid,
+  .analytics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.9rem !important;
+  }
+
+  .card,
+  .calendar-card,
+  .publish-card,
+  .library-card,
+  .panel,
+  .settings-panel,
+  .content-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+  }
+
+  .grid,
+  .cards,
+  .content-grid,
+  .feature-grid,
+  .analytics-grid {
+    gap: 0.75rem !important;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sidebar-toggle {
+    z-index: 1100;
+  }
+}
+
 .sidebar-fixed-inner {
   display: flex;
   flex-direction: column;
