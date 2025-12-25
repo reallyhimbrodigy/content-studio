@@ -119,8 +119,10 @@ const appLayout = document.querySelector('.app-layout');
 const proNavLinks = document.querySelectorAll('.sidebar-link--pro');
 const appSidebar = document.getElementById('app-sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 let fontPickers = [];
 let fontPickerListenersBound = false;
+const isMobileViewport = () => window.matchMedia('(max-width: 768px)').matches;
   const exportIcsBtn = document.getElementById('export-ics');
   const downloadZipBtn = document.getElementById('download-zip');
   const copyAllCaptionsBtn = document.getElementById('copy-all-captions');
@@ -2070,6 +2072,21 @@ function applySidebarState(collapsed) {
   try {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
   } catch (_) {}
+  if (isMobileViewport()) {
+    if (!collapsed) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  } else {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.toggle('visible', !collapsed && isMobileViewport());
+  }
 }
 
 function initSidebar() {
@@ -2089,6 +2106,10 @@ function initSidebar() {
     const next = !appLayout.classList.contains('sidebar-collapsed');
     applySidebarState(next);
   });
+}
+
+if (sidebarBackdrop) {
+  sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
 }
 
 function inferAssetTypeFromAsset(asset = {}) {

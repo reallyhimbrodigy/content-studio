@@ -86,6 +86,17 @@ body {
   margin-left: 260px;
 }
 
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 45;
+  display: none;
+}
+
 .sidebar-toggle {
   position: fixed;
   top: 16px;
@@ -7082,15 +7093,29 @@ html, body {
   .app-layout {
     grid-template-columns: 0 1fr;
   }
+  .sidebar-backdrop {
+    display: block;
+  }
+  .sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .app-main {
+    margin-left: 0;
+    width: 100%;
+    min-height: 0;
+    overflow-x: hidden;
+  }
 
   .app-sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    width: 260px;
+    width: min(80vw, 320px);
     height: 100vh;
-    transform: translateX(-110%);
+    transform: translateX(-100%);
     border-radius: 0 20px 20px 0;
+    z-index: 50;
   }
 
   .app-sidebar:not(.collapsed) {
@@ -7144,14 +7169,23 @@ html, body {
   }
 
   /* Grid and cards */
-  .calendar__grid {
-    grid-template-columns: 1fr;
-    align-items: stretch;
+  .calendar,
+  .calendar__grid,
+  .calendar-card,
+  .publish-card,
+  .publish-hub__grid {
+    width: 100%;
+    max-width: 100%;
   }
 
-  .calendar-card {
+  .calendar__grid,
+  .publish-hub__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-card,
+  .publish-card {
     width: 100%;
-    min-height: 320px;
   }
 
   .calendar-card__actions,
@@ -7165,6 +7199,23 @@ html, body {
     flex: 1 1 100%;
     width: 100%;
   }
+
+  #app {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    min-height: 0;
+  }
+
+  .calendar__grid {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  /* Mobile verification:
+     1) iPhone viewport: open sidebar—the main content width remains unchanged; closing restores scroll.
+     2) Generate a calendar—cards render fully, vertical scroll works, no horizontal overflow.
+  */
 
   /* Stack main action buttons */
   .calendar__controls button,
