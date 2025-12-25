@@ -5906,12 +5906,12 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       parsed = { post: fallback };
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
-    const newPost = parsed.post;
-    if (
-      !Object.prototype.hasOwnProperty.call(newPost, 'distributionPlan') ||
-      !Object.prototype.hasOwnProperty.call(newPost, 'storyPromptExpanded')
-    ) {
-      throw new Error('Regeneration returned incomplete card data.');
+    let newPost = parsed.post;
+    if (window.cachedUserIsPro) {
+      newPost = enrichPostWithProFields(newPost, targetDay - 1, nicheStyle);
+      if (!newPost.storyPromptExpanded) {
+        throw new Error('Regeneration returned incomplete card data.');
+      }
     }
     if (!newPost.postingTimeTip && entry.postingTimeTip) {
       newPost.postingTimeTip = entry.postingTimeTip;
