@@ -33,13 +33,23 @@ function findOccurrences(pattern) {
 [
   'DEFAULT_TIKTOK_AUDIO',
   'DEFAULT_INSTAGRAM_AUDIO',
-  'TIKTOK_TRENDING_TOP10',
-  'INSTAGRAM_TRENDING_TOP10',
 ].forEach((pattern) => {
   const occurrences = findOccurrences(pattern);
-  if (occurrences.length !== 1 || occurrences[0] !== 'server.js') {
-    throw new Error(`Audio source pattern "${pattern}" must live only in server.js; found in ${occurrences.join(', ')}`);
+  if (occurrences.length > 0) {
+    throw new Error(`Legacy audio list "${pattern}" must be removed; found in ${occurrences.join(', ')}`);
   }
 });
+
+const phrase = 'Provide the current Top 10 trending TikTok audio and Top 10 trending Instagram audio.';
+const uniqueMatches = findOccurrences(phrase);
+if (uniqueMatches.length !== 1 || uniqueMatches[0] !== 'server/lib/trendingAudio.js') {
+  throw new Error(`Canonical trending audio descriptor must live only in server/lib/trendingAudio.js; found in ${uniqueMatches.join(', ')}`);
+}
+
+const placeholderTerm = '@' + 'Creator';
+const placeholderMatches = findOccurrences(placeholderTerm);
+if (placeholderMatches.length > 0) {
+  throw new Error(`Placeholder creator handles must be removed; found in ${placeholderMatches.join(', ')}`);
+}
 
 console.log('Audio source duplication guardrail passed.');

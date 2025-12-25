@@ -43,6 +43,10 @@ const {
   getPhylloAccountDetails,
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
+const {
+  getTrendingAudioLists,
+  getTrendingAudioPair,
+} = require('./server/lib/trendingAudio');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -1588,255 +1592,6 @@ Rules:
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
-const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
-const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
-const EVERGREEN_TITLES = ['blinding lights','levitating','savage love','shape of you','old town road','dance monkey'];
-
-const CALENDAR_SCRIPT_SCHEMA = {
-  type: 'object',
-  properties: {
-    hook: { type: 'string' },
-    body: { type: 'string' },
-    cta: { type: 'string' },
-  },
-  required: ['hook', 'body', 'cta'],
-  additionalProperties: false,
-};
-
-const CALENDAR_ENGAGEMENT_SCRIPTS_SCHEMA = {
-  type: 'object',
-  properties: {
-    commentReply: { type: 'string' },
-    dmReply: { type: 'string' },
-  },
-  required: ['commentReply', 'dmReply'],
-  additionalProperties: false,
-};
-
-const CALENDAR_STRATEGY_SCHEMA = {
-  type: 'object',
-  properties: {
-    angle: { type: 'string' },
-    objective: { type: 'string' },
-    target_saves_pct: { type: 'number', minimum: 1, maximum: 25 },
-    target_comments_pct: { type: 'number', minimum: 1, maximum: 25 },
-    pinned_keyword: { type: 'string' },
-    pinned_deliverable: { type: 'string' },
-    pinned_comment: { type: 'string' },
-    hook_options: {
-      type: 'array',
-      items: { type: 'string' },
-      minItems: 3,
-    },
-  },
-  required: [
-    'angle',
-    'objective',
-    'target_saves_pct',
-    'target_comments_pct',
-    'pinned_keyword',
-    'pinned_deliverable',
-    'pinned_comment',
-    'hook_options',
-  ],
-  additionalProperties: false,
-};
-
-const CALENDAR_POST_ITEM_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    day: { type: 'integer', minimum: 1 },
-    idea: { type: 'string' },
-    title: { type: 'string' },
-    type: { type: 'string', enum: ['educational', 'promotional', 'lifestyle', 'interactive'] },
-    hook: { type: 'string' },
-    caption: { type: 'string' },
-    hashtags: {
-      type: 'array',
-      items: { type: 'string' },
-      minItems: 6,
-      maxItems: 10,
-    },
-    format: { type: 'string', enum: ['Reel'] },
-    formatIntent: { type: 'string' },
-    cta: { type: 'string' },
-    pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
-    storyPrompt: { type: 'string' },
-    designNotes: { type: 'string' },
-    repurpose: {
-      type: 'array',
-      items: { type: 'string' },
-      minItems: 2,
-      maxItems: 4,
-    },
-    analytics: {
-      type: 'array',
-      items: { type: 'string' },
-      minItems: 2,
-      maxItems: 4,
-    },
-    engagementScripts: CALENDAR_ENGAGEMENT_SCRIPTS_SCHEMA,
-    promoSlot: { type: 'boolean' },
-    weeklyPromo: { type: 'string' },
-    postingTimeTip: { type: 'string' },
-    script: CALENDAR_SCRIPT_SCHEMA,
-    videoScript: CALENDAR_SCRIPT_SCHEMA,
-    instagram_caption: { type: 'string' },
-    tiktok_caption: { type: 'string' },
-    linkedin_caption: { type: 'string' },
-    audio: { type: 'string' },
-    strategy: CALENDAR_STRATEGY_SCHEMA,
-  },
-  required: [
-    'day',
-    'idea',
-    'type',
-    'hook',
-    'caption',
-    'hashtags',
-    'format',
-    'formatIntent',
-    'cta',
-    'pillar',
-    'storyPrompt',
-    'designNotes',
-    'repurpose',
-    'analytics',
-    'engagementScripts',
-    'promoSlot',
-    'weeklyPromo',
-    'postingTimeTip',
-    'script',
-    'videoScript',
-    'instagram_caption',
-    'tiktok_caption',
-    'linkedin_caption',
-    'audio',
-    'strategy',
-  ],
-};
-
-const CALENDAR_POSTS_SCHEMA = {
-  type: 'array',
-  items: CALENDAR_POST_ITEM_SCHEMA,
-};
-
-const CALENDAR_POSTS_WRAPPER_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    posts: CALENDAR_POSTS_SCHEMA,
-  },
-  required: ['posts'],
-};
-
-function normalizeAudioLine(value) {
-  if (!value && value !== 0) return '';
-  return String(value).trim().replace(/["'“”]/g, '').replace(/\s+/g, ' ');
-}
-
-function isAudioLineValid(line = '') {
-  const text = normalizeAudioLine(line);
-  if (!text) return false;
-  if (!text.includes('TikTok:') || !text.includes('Instagram:')) return false;
-  if (AUDIO_INVALID_PATTERN.test(text)) return false;
-  const segments = text.split(';').map((segment) => segment.trim()).filter(Boolean);
-  if (segments.length < 2) return false;
-  return segments.every((segment) => {
-    if (!/^(TikTok|Instagram):/i.test(segment)) return false;
-    // Require em dash separator between title and creator
-    return segment.includes(' — ');
-  });
-}
-
-function parseAudioSegments(line = '') {
-  const text = normalizeAudioLine(line);
-  if (!text || !text.includes('TikTok:') || !text.includes('Instagram:')) return null;
-  const segments = text.split(';').map((s) => s.trim()).filter(Boolean);
-  if (segments.length < 2) return null;
-  const result = {};
-  for (const segment of segments) {
-    const match = segment.match(/^(TikTok|Instagram):\s*(.+)$/i);
-    if (!match) return null;
-    const platform = match[1].toLowerCase();
-    result[platform] = match[2].trim();
-  }
-  return result;
-}
-
-const TRENDING_AUDIO_TTL = 6 * 60 * 60 * 1000;
-const DEFAULT_TIKTOK_AUDIO = [
-  { title: 'Heart of the Game', creator: '@courtcommand' },
-  { title: 'Baseline Anthem', creator: '@hoopnotes' },
-  { title: 'Clutch Moment', creator: '@rallycrew' },
-  { title: 'Prime Time Push', creator: '@coachpulse' },
-  { title: 'Slam Vision', creator: '@shotclockbeats' },
-  { title: 'Focus Grind', creator: '@dailyhoops' },
-  { title: 'Elevate Rhythm', creator: '@elevateflow' },
-  { title: 'Power Drive', creator: '@driveclub' },
-  { title: 'Sweat to the Beat', creator: '@sweatmode' },
-  { title: 'Courtside Bloom', creator: '@courtstories' },
-];
-const DEFAULT_INSTAGRAM_AUDIO = [
-  { title: 'Hoops Flow', creator: '@metro_pulse' },
-  { title: 'Defense Reset', creator: '@quartetbeats' },
-  { title: 'Sunset Circuit', creator: '@grindwave' },
-  { title: 'Game Day Prep', creator: '@coresynccollective' },
-  { title: 'No Sleep Shooting', creator: '@studio_rush' },
-  { title: 'Precision Run', creator: '@anthemtrainers' },
-  { title: 'Clutch Time Anthem', creator: '@rally.crew' },
-  { title: 'Backboard Echo', creator: '@pulseline' },
-  { title: 'Five-Star Footwork', creator: '@coachanthem' },
-  { title: 'Hardwood Stories', creator: '@elevate_sessions' },
-];
-
-const trendingAudioCache = {
-  expiresAt: 0,
-  tiktok: [],
-  instagram: [],
-};
-
-function sanitizeTrendingEntry(entry = {}) {
-  const title = String(entry.title || '').trim();
-  const creator = String(entry.creator || '').trim();
-  if (!title || !creator || !creator.startsWith('@') || creator.length <= 1) {
-    return null;
-  }
-  return { title, creator };
-}
-
-function getTrendingAudioLists() {
-  const now = Date.now();
-  if (trendingAudioCache.expiresAt > now && trendingAudioCache.tiktok.length && trendingAudioCache.instagram.length) {
-    return trendingAudioCache;
-  }
-  trendingAudioCache.tiktok = DEFAULT_TIKTOK_AUDIO
-    .map(sanitizeTrendingEntry)
-    .filter(Boolean);
-  trendingAudioCache.instagram = DEFAULT_INSTAGRAM_AUDIO
-    .map(sanitizeTrendingEntry)
-    .filter(Boolean);
-  trendingAudioCache.expiresAt = now + TRENDING_AUDIO_TTL;
-  return trendingAudioCache;
-}
-
-async function ensureAudioLines(nicheStyle, brandContext, posts = [], options = {}) {
-  if (!Array.isArray(posts)) return posts;
-  const { tiktok: tiktokList, instagram: instagramList } = getTrendingAudioLists();
-  const tiktokLength = tiktokList.length;
-  const instagramLength = instagramList.length;
-  for (let idx = 0; idx < posts.length; idx += 1) {
-    const post = posts[idx];
-    const tiktokEntry = tiktokLength ? tiktokList[idx % tiktokLength] : null;
-    const instagramEntry = instagramLength ? instagramList[(idx + 1) % instagramLength] : null;
-    const tiktokText = tiktokEntry ? `${tiktokEntry.title} — ${tiktokEntry.creator}` : '';
-    const instagramText = instagramEntry ? `${instagramEntry.title} — ${instagramEntry.creator}` : '';
-    post.audio = `TikTok: ${tiktokText}; Instagram: ${instagramText}`;
-  }
-  return posts;
-}
-
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
@@ -3029,11 +2784,19 @@ const server = http.createServer((req, res) => {
     const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay, loggingContext });
     const openDuration = Date.now() - callStart;
     const validationStart = Date.now();
-    const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
-    console.log('[Calendar][Server][Perf] ensureAudioLines start');
-    let posts = await ensureAudioLines(nicheStyle, brandContext, rawPosts, audioSets);
-    console.log('[Calendar][Server][Perf] ensureAudioLines end');
-    posts = posts.map((p, idx) => normalizePost(p, idx, startDay));
+    const audioLists = await getTrendingAudioLists();
+    let tiktokIndex = 0;
+    let instagramIndex = 0;
+    const tiktokLen = audioLists.tiktok.length;
+    const instagramLen = audioLists.instagram.length;
+    for (let idx = 0; idx < rawPosts.length; idx += 1) {
+      rawPosts[idx].audio = (tiktokLen && instagramLen)
+        ? await getTrendingAudioPair({ tiktokIndex, instagramIndex, lists: audioLists })
+        : '';
+      if (tiktokLen) tiktokIndex = (tiktokIndex + 1) % tiktokLen;
+      if (instagramLen) instagramIndex = (instagramIndex + 1) % instagramLen;
+    }
+    let posts = rawPosts.map((p, idx) => normalizePost(p, idx, startDay));
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
@@ -3068,9 +2831,6 @@ const server = http.createServer((req, res) => {
     }
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
-    if (posts.length) {
-      console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
-    }
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,
@@ -6048,6 +5808,4 @@ module.exports = {
   ensurePinnedFieldsValid,
   dedupePinnedComments,
   buildPrompt,
-  ensureAudioLines,
-  getTrendingAudioLists,
 };

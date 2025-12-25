@@ -1,32 +1,48 @@
-const { ensureAudioLines, getTrendingAudioLists } = require('../server.js');
+process.env.TRENDING_AUDIO_SKIP_FETCH = '1';
+
+const {
+  getTrendingAudioLists,
+  getTrendingAudioPair,
+  overrideCacheForTests,
+} = require('../server/lib/trendingAudio');
+
+const sampleTikTok = Array.from({ length: 10 }, (_, idx) => ({
+  sound: `TikTok Sound ${idx + 1}`,
+  creator: `@tiktok${idx + 1}`,
+}));
+const sampleInstagram = Array.from({ length: 10 }, (_, idx) => ({
+  sound: `Instagram Sound ${idx + 1}`,
+  creator: `@instagram${idx + 1}`,
+}));
+
+overrideCacheForTests({
+  tiktok: sampleTikTok,
+  instagram: sampleInstagram,
+});
 
 async function run() {
-  const posts = Array.from({ length: 10 }, (_, idx) => ({ day: idx + 1, audio: '' }));
-  const trending = getTrendingAudioLists();
-  await ensureAudioLines('basketball training coach', '', posts, {});
-  posts.forEach((post, idx) => {
-    const audio = post.audio || '';
-    if (!audio.startsWith('TikTok: ') || !audio.includes('; Instagram: ')) {
-      throw new Error(`Invalid audio format for day ${idx + 1}: ${audio}`);
+  const lists = await getTrendingAudioLists();
+  if (lists.tiktok.length !== 10 || lists.instagram.length !== 10) {
+    throw new Error('Trending lists must expose 10 entries each');
+  }
+  const line = await getTrendingAudioPair({ tiktokIndex: 2, instagramIndex: 5, lists });
+  const expectedTikTok = `TikTok: ${lists.tiktok[2].sound} — ${lists.tiktok[2].creator}`;
+  const expectedInstagram = `Instagram: ${lists.instagram[5].sound} — ${lists.instagram[5].creator}`;
+  if (!line.includes(expectedTikTok) || !line.includes(expectedInstagram)) {
+    throw new Error(`Audio line did not reuse list entries: ${line}`);
+  }
+  if (!line.endsWith('.')) {
+    throw new Error('Audio line must end with a period.');
+  }
+  const formatPattern = /^TikTok: .+ — @[^;]+; Instagram: .+ — @[^.]+.$/;
+  if (!formatPattern.test(line)) {
+    throw new Error(`Audio line format invalid: ${line}`);
+  }
+  const bannedTerms = [('@' + 'Creator'), ('@' + 'creator'), 'undefined', 'null', 'basketball', 'hoop'];
+  bannedTerms.forEach((ban) => {
+    if (line.toLowerCase().includes(ban.toLowerCase())) {
+      throw new Error(`Audio line contains blocked term: ${ban}`);
     }
-    const [tiktokPart, instagramPart] = audio.split(';').map((part) => part.trim());
-    const tiktokValue = tiktokPart.replace(/^TikTok:\s*/, '').trim();
-    const instagramValue = instagramPart.replace(/^Instagram:\s*/, '').trim();
-    const expectedTikTok = trending.tiktok[idx % trending.tiktok.length];
-    const expectedInstagram = trending.instagram[(idx + 1) % trending.instagram.length];
-    const expectedTikTokText = expectedTikTok ? `${expectedTikTok.title} — ${expectedTikTok.creator}` : '';
-    const expectedInstagramText = expectedInstagram ? `${expectedInstagram.title} — ${expectedInstagram.creator}` : '';
-    if (tiktokValue !== expectedTikTokText) {
-      throw new Error(`TikTok audio mismatch for day ${idx + 1}: got "${tiktokValue}", expected "${expectedTikTokText}"`);
-    }
-    if (instagramValue !== expectedInstagramText) {
-      throw new Error(`Instagram audio mismatch for day ${idx + 1}: got "${instagramValue}", expected "${expectedInstagramText}"`);
-    }
-    ['Creator', 'undefined', 'null'].forEach((bad) => {
-      if (audio.includes(bad)) {
-        throw new Error(`Audio contains placeholder "${bad}" for day ${idx + 1}`);
-      }
-    });
   });
   console.log('Trending audio test passed.');
 }

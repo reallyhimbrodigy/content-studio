@@ -1,36 +1,46 @@
+process.env.TRENDING_AUDIO_SKIP_FETCH = '1';
+
 const {
-  buildTrendingAudioLine,
-  TIKTOK_TRENDING_TOP10,
-  INSTAGRAM_TRENDING_TOP10,
-} = require('../server.js');
+  getTrendingAudioLists,
+  getTrendingAudioPair,
+  overrideCacheForTests,
+} = require('../server/lib/trendingAudio');
 
-const line = buildTrendingAudioLine('basketball training coach', {
-  recentTikTok: [],
-  recentInstagram: [],
-}).line;
+const sampleTikTok = Array.from({ length: 10 }, (_, idx) => ({
+  sound: `TikTok Sample ${idx + 1}`,
+  creator: `@tiktok_sample${idx + 1}`,
+}));
+const sampleInstagram = Array.from({ length: 10 }, (_, idx) => ({
+  sound: `Instagram Sample ${idx + 1}`,
+  creator: `@instagram_sample${idx + 1}`,
+}));
 
-if (!line.startsWith('TikTok: ')) {
-  throw new Error('Audio line must start with TikTok:');
-}
-if (!line.includes('; Instagram: ')) {
-  throw new Error('Audio line must include the Instagram portion.');
-}
-
-const [tiktokPart, instagramPart] = line.split(';').map((part) => part.trim());
-const tiktokValue = tiktokPart.replace(/^TikTok:\s*/, '');
-const instagramValue = instagramPart.replace(/^Instagram:\s*/, '');
-
-if (!TIKTOK_TRENDING_TOP10.includes(tiktokValue)) {
-  throw new Error('TikTok audio not drawn from list.');
-}
-if (!INSTAGRAM_TRENDING_TOP10.includes(instagramValue)) {
-  throw new Error('Instagram audio not drawn from list.');
-}
-
-['Creator', 'undefined', 'null'].forEach((bad) => {
-  if (line.includes(bad)) {
-    throw new Error(`Audio line contains placeholder string: ${bad}`);
-  }
+overrideCacheForTests({
+  tiktok: sampleTikTok,
+  instagram: sampleInstagram,
 });
 
-console.log('Audio suggestions check passed.');
+async function run() {
+  const lists = await getTrendingAudioLists();
+  const line = await getTrendingAudioPair({ tiktokIndex: 0, instagramIndex: 1, lists });
+  if (!line.startsWith('TikTok: ') || !line.includes('; Instagram: ')) {
+    throw new Error(`Audio line missing platform segments: ${line}`);
+  }
+  const [tiktokPart, instagramPart] = line.split(';').map((part) => part.trim());
+  if (!tiktokPart.includes(sampleTikTok[0].sound) || !tiktokPart.includes(sampleTikTok[0].creator)) {
+    throw new Error('TikTok segment did not come from the list.');
+  }
+  if (!instagramPart.includes(sampleInstagram[1].sound) || !instagramPart.includes(sampleInstagram[1].creator)) {
+    throw new Error('Instagram segment did not come from the list.');
+  }
+  const placeholderRegex = new RegExp('@' + 'Creator', 'i');
+  if (placeholderRegex.test(line) || /undefined/.test(line) || /null/.test(line)) {
+    throw new Error('Audio line contains placeholder text.');
+  }
+  console.log('Audio suggestions check passed.');
+}
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
