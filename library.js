@@ -427,7 +427,7 @@ if (signOutBtn) {
 
 
 function startNewCalendarFlow() {
-  window.location.href = '/';
+  window.location.href = '/calendar.html';
 }
 
 if (newCalendarBtn) {
