@@ -16,12 +16,14 @@ const {
   updateCachedAnalyticsForUser,
 } = require('./services/supabase-admin');
 const cron = require('node-cron');
-const {
-  uploadAssetFromUrl,
-  buildCloudinaryUrl,
-  isCloudinaryConfigured,
-  generateBrandedBackgroundImage,
-} = require('./services/cloudinary');
+let uploadAssetFromUrl = async () => null;
+let buildCloudinaryUrl = () => '';
+let generateBrandedBackgroundImage = async () => null;
+try {
+  ({ uploadAssetFromUrl, buildCloudinaryUrl, generateBrandedBackgroundImage } = require('./services/cloudinary'));
+} catch (err) {
+  console.log('[Assets] Cloudinary service unavailable; asset helpers disabled.');
+}
 const { getBrandBrainForUser } = require('./services/brand-brain');
 const {
   getPhylloPosts,
@@ -67,19 +69,6 @@ if (!OPENAI_API_KEY) {
 if (!STABILITY_API_KEY) {
   console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
 }
-if (!STORY_TEMPLATE_ID) {
-  console.warn('Warning: PLACID_STORY_TEMPLATE_ID is not set. Story assets will fail to render.');
-}
-if (!CAROUSEL_TEMPLATE_ID) {
-  console.warn('Warning: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will fail to render.');
-}
-console.log('[Placid config]', {
-  STORY_TEMPLATE_ID: STORY_TEMPLATE_ID ? '[set]' : '[missing]',
-  CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
-});
-validatePlacidTemplateConfig().catch((err) => {
-  console.error('[Placid] Template validation failed', err);
-});
 
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
