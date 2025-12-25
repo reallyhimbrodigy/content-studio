@@ -7363,9 +7363,14 @@ html, body {
   .app-sidebar:not(.collapsed) {
     transform: translateX(0);
   }
+.sidebar-backdrop {
+  display: block;
+  z-index: 1000;
+}
   .sidebar-backdrop {
-    display: block;
-    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
   }
   body.sidebar-open {
     overflow: hidden;
@@ -7380,6 +7385,26 @@ html, body {
   }
   .sidebar-toggle {
     z-index: 1100;
+  }
+  .app-sidebar {
+    z-index: 1015;
+    box-shadow: 0 24px 30px rgba(0, 0, 0, 0.2);
+  }
+  .app-main,
+  .app-layout,
+  main,
+  .page-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .app-main {
+    margin-left: 0;
+  }
+  .app-sidebar .sidebar-link {
+    min-height: 44px;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
   }
   .hero,
   .tabs,
