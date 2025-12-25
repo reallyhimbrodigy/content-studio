@@ -16,7 +16,6 @@ const {
   updateCachedAnalyticsForUser,
 } = require('./services/supabase-admin');
 const cron = require('node-cron');
-const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
 const {
   uploadAssetFromUrl,
   buildCloudinaryUrl,
@@ -832,15 +831,6 @@ async function handleGetDesignAsset(req, res, assetId) {
       return sendJson(res, 404, { error: 'Asset not found' });
     }
     let assetRow = data;
-    if (assetRow.status === 'rendering' || assetRow.status === 'queued') {
-      try {
-        await advanceDesignAssetPipeline();
-        const refreshed = await getDesignAssetById(assetId, user.id);
-        if (refreshed) assetRow = refreshed;
-      } catch (pipelineError) {
-        console.warn('Design asset inline pipeline tick failed', pipelineError?.message || pipelineError);
-      }
-    }
     return sendJson(res, 200, mapDesignAssetRow(assetRow));
   } catch (error) {
     console.error('Design asset fetch error:', error);
@@ -5734,15 +5724,6 @@ function serveFile(filePath, res) {
 const PORT = process.env.PORT || 8000;
 
 if (require.main === module) {
-  // Run design asset pipeline on interval to progress renders (disabled when design lab is off).
-  if (ENABLE_DESIGN_LAB) {
-    setInterval(() => {
-      advanceDesignAssetPipeline().catch((err) => {
-        console.error('[Pipeline] Tick error', err);
-      });
-    }, 20000);
-  }
-
   // Daily analytics sync (06:00 America/Los_Angeles)
   cron.schedule(
     '0 6 * * *',
