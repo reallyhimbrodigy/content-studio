@@ -2159,6 +2159,43 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   return normalized;
 }
 
+const STORY_PROMPT_SUFFIXES = [
+  'Add a poll sticker asking “Which is your favorite move?”',
+  'Invite viewers to DM their go-to power snack.',
+  'Prompt a quick poll on whether they prefer reels or carousels.',
+  'Encourage them to save this post for their next practice session.',
+  'Challenge them to duet this with their favorite drill.'
+];
+
+const buildDistributionPlanText = (post = {}) => {
+  const parts = [];
+  const repurpose = Array.isArray(post.repurpose) ? post.repurpose.map((item) => toPlainString(item)).filter(Boolean) : [];
+  if (repurpose.length) parts.push(repurpose.join(' • '));
+  const variants = post.variants || {};
+  const platformLines = [];
+  const ig = toPlainString(variants.instagram_caption || variants.igCaption || variants.igCaptionText);
+  if (ig) platformLines.push(`Instagram: ${ig}`);
+  const tt = toPlainString(variants.tiktok_caption || variants.tiktokCaption);
+  if (tt) platformLines.push(`TikTok: ${tt}`);
+  const ln = toPlainString(variants.linkedin_caption || variants.linkedinCaption);
+  if (ln) platformLines.push(`LinkedIn: ${ln}`);
+  if (platformLines.length) parts.push(platformLines.join(' | '));
+  return parts.filter(Boolean).join('\n');
+};
+
+const buildStoryPromptExpanded = (post = {}, dayIndex = 0) => {
+  const base = toPlainString(post.storyPrompt);
+  const suffix = toPlainString(STORY_PROMPT_SUFFIXES[Math.abs(Math.floor(dayIndex)) % STORY_PROMPT_SUFFIXES.length]);
+  return [base, suffix].filter(Boolean).join(' ').trim();
+};
+
+const enrichRegenPost = (post = {}, dayIndex = 0) => {
+  const enriched = { ...post };
+  enriched.distributionPlan = post.distributionPlan || buildDistributionPlanText(post);
+  enriched.storyPromptExpanded = post.storyPromptExpanded || buildStoryPromptExpanded(post, dayIndex);
+  return enriched;
+};
+
 const PRO_INTERACTIVE_PROMPTS = [
   'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
   'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
@@ -3703,19 +3740,18 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
     (async () => {
       const requestId = generateRequestId('regen-day');
-      let attempt = 0;
-      const { nicheStyle, day, post, userId } = await readJsonBody(req).catch(() => ({}));
-      if (!nicheStyle || typeof day === 'undefined' || day === null) {
-        return sendJson(res, 400, { error: 'nicheStyle and day are required' });
-      }
-      if (!post || typeof post !== 'object') {
-        return sendJson(res, 400, { error: 'post payload required' });
-      }
-      const dayNumber = Number(day);
-      const logContext = { requestId, userId: userId || null, nicheStyle, day: dayNumber };
-      console.log('[Calendar][Server] regen-day request', logContext);
-      const regenAttempt = async () => {
-        attempt += 1;
+      try {
+        const body = await readJsonBody(req);
+        const { nicheStyle, day, post, userId } = body || {};
+        if (!nicheStyle || typeof day === 'undefined' || day === null) {
+          return sendJson(res, 400, { error: 'nicheStyle and day are required' });
+        }
+        if (!post || typeof post !== 'object') {
+          return sendJson(res, 400, { error: 'post payload required' });
+        }
+        const dayNumber = Number(day);
+        const logContext = { requestId, userId: userId || null, nicheStyle, day: dayNumber };
+        console.log('[Calendar][Server] regen-day request', logContext);
         const posts = await generateCalendarPosts({
           nicheStyle,
           userId,
@@ -3726,22 +3762,11 @@ ${JSON.stringify(compactPosts)}`;
         const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
         if (!candidate) throw new Error('Calendar generator returned no posts');
         const enriched = enrichRegenPost(candidate, dayNumber - 1);
-        const missing = [];
-        if (!enriched.distributionPlan) missing.push('distributionPlan');
-        if (!enriched.storyPromptExpanded) missing.push('storyPromptExpanded');
-        return { post: enriched, missing };
-      };
-      try {
-        let result = await regenAttempt();
-        if (result.missing.length) {
-          console.warn('[Calendar] regen-day missing fields, retrying', { ...logContext, missing: result.missing, attempt });
-          result = await regenAttempt();
-        }
-        if (result.missing.length) {
-          console.error('[Calendar] regen-day failed to produce complete card', { ...logContext, missing: result.missing });
+        if (!enriched.distributionPlan || !enriched.storyPromptExpanded) {
+          console.error('[Calendar] regen-day missing required sections', logContext);
           return sendJson(res, 500, { error: 'Regeneration failed to populate required sections' });
         }
-        return sendJson(res, 200, { post: result.post });
+        return sendJson(res, 200, { post: enriched });
       } catch (err) {
         console.error('regen-day error:', err);
         return sendJson(res, 500, { error: err.message || 'Failed to regenerate day' });

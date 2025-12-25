@@ -5869,7 +5869,11 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     alert('Unable to determine which day to regenerate. Please try again.');
     return;
   }
-  const nicheStyle = (currentNiche || nicheInput?.value || '').trim() || 'content creator';
+  const nicheStyle = (currentNiche || nicheInput?.value || '').trim();
+  if (!nicheStyle) {
+    alert('Set your niche or content style before regenerating a day.');
+    return;
+  }
   const originalLabel = button ? button.textContent : '';
   const payloadPost = JSON.parse(JSON.stringify(entry || {}));
   delete payloadPost.multiPosts;
@@ -5911,12 +5915,6 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
     let newPost = parsed.post;
-    if (window.cachedUserIsPro) {
-      newPost = enrichPostWithProFields(newPost, targetDay - 1, nicheStyle);
-      if (!newPost.storyPromptExpanded) {
-        throw new Error('Regeneration returned incomplete card data.');
-      }
-    }
     if (!newPost.postingTimeTip && entry.postingTimeTip) {
       newPost.postingTimeTip = entry.postingTimeTip;
     }
