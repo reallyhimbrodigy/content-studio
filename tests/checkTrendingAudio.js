@@ -1,44 +1,36 @@
-process.env.TRENDING_AUDIO_SKIP_FETCH = '1';
+const { getMonthlyTrendingAudios, formatAudioLine, overrideCacheForTests } = require('../server/lib/trendingAudio');
 
-const {
-  getTrendingAudioLists,
-  getTrendingAudioPair,
-  overrideCacheForTests,
-} = require('../server/lib/trendingAudio');
-
+const monthKey = new Date().toISOString().slice(0, 7);
 const sampleTikTok = Array.from({ length: 10 }, (_, idx) => ({
-  sound: `TikTok Sound ${idx + 1}`,
+  title: `TikTok Sound ${idx + 1}`,
   creator: `@tiktok${idx + 1}`,
 }));
 const sampleInstagram = Array.from({ length: 10 }, (_, idx) => ({
-  sound: `Instagram Sound ${idx + 1}`,
+  title: `Instagram Sound ${idx + 1}`,
   creator: `@instagram${idx + 1}`,
 }));
 
 overrideCacheForTests({
+  monthKey,
+  fetchedAt: Date.now(),
   tiktok: sampleTikTok,
   instagram: sampleInstagram,
 });
 
 async function run() {
-  const lists = await getTrendingAudioLists();
-  if (lists.tiktok.length !== 10 || lists.instagram.length !== 10) {
+  const cache = await getMonthlyTrendingAudios({ requestId: 'test-trending-audio' });
+  if (cache.monthKey !== monthKey) {
+    throw new Error(`Expected monthKey ${monthKey}, got ${cache.monthKey}`);
+  }
+  if (cache.tiktok.length !== 10 || cache.instagram.length !== 10) {
     throw new Error('Trending lists must expose 10 entries each');
   }
-  const line = await getTrendingAudioPair({ tiktokIndex: 2, instagramIndex: 5, lists });
-  const expectedTikTok = `TikTok: ${lists.tiktok[2].sound} — ${lists.tiktok[2].creator}`;
-  const expectedInstagram = `Instagram: ${lists.instagram[5].sound} — ${lists.instagram[5].creator}`;
-  if (!line.includes(expectedTikTok) || !line.includes(expectedInstagram)) {
-    throw new Error(`Audio line did not reuse list entries: ${line}`);
-  }
-  if (!line.endsWith('.')) {
-    throw new Error('Audio line must end with a period.');
-  }
-  const formatPattern = /^TikTok: .+ — @[^;]+; Instagram: .+ — @[^.]+.$/;
-  if (!formatPattern.test(line)) {
+  const line = formatAudioLine(0, cache.tiktok[0], cache.instagram[0]);
+  const pattern = /^TikTok: .+ --@[A-Za-z0-9._]{2,}; Instagram: .+ - @[A-Za-z0-9._]{2,}$/;
+  if (!pattern.test(line)) {
     throw new Error(`Audio line format invalid: ${line}`);
   }
-  const bannedTerms = [('@' + 'Creator'), ('@' + 'creator'), 'undefined', 'null', 'basketball', 'hoop'];
+  const bannedTerms = ['@' + 'Creator', 'undefined', 'null', 'basketball', 'hoop'];
   bannedTerms.forEach((ban) => {
     if (line.toLowerCase().includes(ban.toLowerCase())) {
       throw new Error(`Audio line contains blocked term: ${ban}`);

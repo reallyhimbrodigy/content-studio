@@ -44,8 +44,8 @@ const {
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
-  getTrendingAudioLists,
-  getTrendingAudioPair,
+  getMonthlyTrendingAudios,
+  formatAudioLine,
 } = require('./server/lib/trendingAudio');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
@@ -2784,17 +2784,13 @@ const server = http.createServer((req, res) => {
     const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay, loggingContext });
     const openDuration = Date.now() - callStart;
     const validationStart = Date.now();
-    const audioLists = await getTrendingAudioLists();
-    let tiktokIndex = 0;
-    let instagramIndex = 0;
-    const tiktokLen = audioLists.tiktok.length;
-    const instagramLen = audioLists.instagram.length;
+    const audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
+    const tiktokLen = audioCache.tiktok.length;
+    const instagramLen = audioCache.instagram.length;
     for (let idx = 0; idx < rawPosts.length; idx += 1) {
-      rawPosts[idx].audio = (tiktokLen && instagramLen)
-        ? await getTrendingAudioPair({ tiktokIndex, instagramIndex, lists: audioLists })
-        : '';
-      if (tiktokLen) tiktokIndex = (tiktokIndex + 1) % tiktokLen;
-      if (instagramLen) instagramIndex = (instagramIndex + 1) % instagramLen;
+      const tiktokEntry = tiktokLen ? audioCache.tiktok[idx % tiktokLen] : null;
+      const instagramEntry = instagramLen ? audioCache.instagram[idx % instagramLen] : null;
+      rawPosts[idx].audio = formatAudioLine(idx, tiktokEntry, instagramEntry);
     }
     let posts = rawPosts.map((p, idx) => normalizePost(p, idx, startDay));
     let promoCount = 0;

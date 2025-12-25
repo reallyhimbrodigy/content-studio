@@ -40,7 +40,7 @@ function findOccurrences(pattern) {
   }
 });
 
-const phrase = 'Provide the current Top 10 trending TikTok audio and Top 10 trending Instagram audio.';
+const phrase = 'Top 10 trending TikTok audios';
 const uniqueMatches = findOccurrences(phrase);
 if (uniqueMatches.length !== 1 || uniqueMatches[0] !== 'server/lib/trendingAudio.js') {
   throw new Error(`Canonical trending audio descriptor must live only in server/lib/trendingAudio.js; found in ${uniqueMatches.join(', ')}`);
