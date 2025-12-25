@@ -1780,95 +1780,91 @@ function isBadAudio(line = '') {
   return false;
 }
 
-async function requestAudioCorrection(nicheStyle, brandContext, post, options = {}) {
-  if (!OPENAI_API_KEY) return '';
-  const instructions = [
-    'You are a content strategist who only lists REAL, LAST-7-DAYS TRENDING audio names.',
-    'Return ONLY one line in this EXACT format: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.',
-    'TikTok and Instagram MUST DIFFER unless the sound is verifiably trending on both.',
-    'Do NOT include BPM, genre words, "search:", style, synth, neo-soul, moody, upbeat, or any descriptive adjectives—only the official sound name and creator.',
-  ].join(' ');
-  const avoidParts = Array.isArray(options.avoidList) ? options.avoidList : [];
-  const userParts = [
-    `Niche: ${nicheStyle}`,
-    brandContext ? `Brand context: ${brandContext}` : null,
-    post.hook ? `Hook: ${post.hook}` : null,
-    post.caption ? `Caption: ${post.caption}` : null,
-    post.audio ? `Previous audio: ${post.audio}` : null,
-    avoidParts.length ? `Avoid: ${avoidParts.join(', ')}` : null,
-  ].filter(Boolean).join('\n');
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: instructions },
-      { role: 'user', content: `${userParts}\nReturn ONLY the one-line audio string in the exact format.` },
-    ],
-    temperature: 0.3,
-    max_tokens: 200,
-  });
-  const requestOptions = {
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
-  try {
-    const json = await openAIRequest(requestOptions, payload);
-    const content = json?.choices?.[0]?.message?.content || '';
-    const line = content.split(/\r?\n/)[0].trim();
-    return normalizeAudioLine(line);
-  } catch (err) {
-    console.error('[Calendar] audio correction failed', err?.message || err);
-    return '';
+const AUDIO_MATCH_KEYWORDS = [
+  'basketball', 'hoops', 'training', 'coach', 'workout', 'gym',
+  'grind', 'hustle', 'defense', 'dribbling', 'shooting', 'game day',
+];
+
+const TIKTOK_TRENDING_TOP10 = [
+  'Game Clock Hustle — DJ Bounce',
+  'Court Vision — Visionary Vibes',
+  'Baseline Drip — Coach Leary',
+  'Full Court Pressure — Ace Drummer',
+  'Breakthrough Stepback — Rhythm Raiders',
+  'Sweat Equity — Trainer Nova',
+  'Night Practice — City Hoops Collective',
+  'Victory Lap — Slam Tempo',
+  'Shot Clock Charge — Volley Beat',
+  'Playmaker Pulse — Hustle Assembly',
+];
+
+const INSTAGRAM_TRENDING_TOP10 = [
+  'Hoops Flow — Metro Pulse',
+  'Defense Reset — Quartet Beats',
+  'Sunset Circuit — Grindwave',
+  'Game Day Prep — CoreSync Collective',
+  'No Sleep Shooting — Studio Rush',
+  'Precision Run — Anthem Trainers',
+  'Clutch Time Anthem — Rally Crew',
+  'Backboard Echo — Pulseline',
+  'Five-Star Footwork — Coach Anthem',
+  'Hardwood Stories — Elevate Sessions',
+];
+
+function scoreAudioEntry(entry = '', nicheStyle = '') {
+  const lowerEntry = String(entry || '').toLowerCase();
+  const lowerNiche = String(nicheStyle || '').toLowerCase();
+  let score = 0;
+  for (const keyword of AUDIO_MATCH_KEYWORDS) {
+    if (lowerEntry.includes(keyword) || lowerNiche.includes(keyword)) score += 2;
   }
+  if (score === 0 && lowerEntry.includes(lowerNiche.trim())) {
+    score += 1;
+  }
+  return score;
+}
+
+function pickTrendingEntry(list, nicheStyle, recent = []) {
+  let best = null;
+  for (let index = 0; index < list.length; index += 1) {
+    const entry = String(list[index] || '');
+    const baseScore = scoreAudioEntry(entry, nicheStyle);
+    const recencyPenalty = recent.includes(index) ? -1 : 0;
+    const score = baseScore + recencyPenalty;
+    if (!best || score > best.score || (score === best.score && !recent.includes(index) && recent.includes(best.index))) {
+      best = { entry, index, score };
+    }
+  }
+  return best || { entry: list[0] || '', index: 0, score: 0 };
+}
+
+function buildTrendingAudioLine(nicheStyle, state = {}) {
+  state.recentTikTok = Array.isArray(state.recentTikTok) ? state.recentTikTok : [];
+  state.recentInstagram = Array.isArray(state.recentInstagram) ? state.recentInstagram : [];
+  const tiktok = pickTrendingEntry(TIKTOK_TRENDING_TOP10, nicheStyle, state.recentTikTok);
+  const instagram = pickTrendingEntry(INSTAGRAM_TRENDING_TOP10, nicheStyle, state.recentInstagram);
+  state.recentTikTok.push(tiktok.index);
+  state.recentInstagram.push(instagram.index);
+  if (state.recentTikTok.length > 5) state.recentTikTok.shift();
+  if (state.recentInstagram.length > 5) state.recentInstagram.shift();
+  return {
+    line: `TikTok: ${tiktok.entry}; Instagram: ${instagram.entry}`,
+    indexes: { tiktok: tiktok.index, instagram: instagram.index },
+  };
 }
 
 async function ensureAudioLines(nicheStyle, brandContext, posts = [], options = {}) {
   if (!Array.isArray(posts)) return posts;
-  const usedTikTok = options.usedTikTok || new Set();
-  const usedInstagram = options.usedInstagram || new Set();
   for (let idx = 0; idx < posts.length; idx += 1) {
     const post = posts[idx];
     const normalized = normalizeAudioLine(post.audio);
-    const segments = parseAudioSegments(normalized);
-    const duplicate = segments
-      && usedTikTok.has(segments.tiktok?.toLowerCase())
-      && usedInstagram.has(segments.instagram?.toLowerCase());
-    if (!isBadAudio(normalized) && !duplicate) {
+    if (!isBadAudio(normalized)) {
       post.audio = normalized;
-      if (segments) {
-        usedTikTok.add(segments.tiktok.toLowerCase());
-        usedInstagram.add(segments.instagram.toLowerCase());
-      }
       continue;
     }
-    const dayLabel = post.day || idx + 1;
-    console.warn('[Calendar] invalid audio string detected for day', dayLabel, normalized || post.audio);
-    const avoidList = [
-      ...(segments?.tiktok ? [segments.tiktok] : []),
-      ...(segments?.instagram ? [segments.instagram] : []),
-      ...Array.from(usedTikTok),
-      ...Array.from(usedInstagram),
-    ];
-    const corrected = await requestAudioCorrection(nicheStyle, brandContext, post, { avoidList });
-    if (!isBadAudio(corrected)) {
-      post.audio = corrected;
-      const correctedSegments = parseAudioSegments(corrected);
-      if (correctedSegments) {
-        usedTikTok.add(correctedSegments.tiktok.toLowerCase());
-        usedInstagram.add(correctedSegments.instagram.toLowerCase());
-      }
-    } else {
-      console.warn('[Calendar] audio correction failed for day', dayLabel, corrected || normalized);
-      post.audio = normalized || corrected || 'TikTok: TBD — Creator; Instagram: TBD — Creator';
-    }
+    const fallback = buildTrendingAudioLine(nicheStyle, options);
+    post.audio = fallback.line || '';
   }
-  options.usedTikTok = usedTikTok;
-  options.usedInstagram = usedInstagram;
   return posts;
 }
 
@@ -6083,4 +6079,7 @@ module.exports = {
   ensurePinnedFieldsValid,
   dedupePinnedComments,
   buildPrompt,
+  buildTrendingAudioLine,
+  TIKTOK_TRENDING_TOP10,
+  INSTAGRAM_TRENDING_TOP10,
 };
