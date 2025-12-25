@@ -7470,6 +7470,58 @@ html, body {
 }
 
 @media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .app-layout {
+    grid-template-columns: 1fr !important;
+    gap: 0.9rem;
+  }
+  .app-main,
+  main,
+  .page-content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .app-main {
+    margin-left: 0 !important;
+  }
+  .app-sidebar {
+    width: min(82vw, 320px);
+    transform: translateX(-110%) !important;
+    pointer-events: none !important;
+    transition: transform 220ms ease;
+  }
+  body.sidebar-open .app-sidebar,
+  .app-sidebar:not(.collapsed) {
+    transform: translateX(0) !important;
+    pointer-events: auto !important;
+  }
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+    z-index: 1005;
+  }
+  body.sidebar-open .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar-toggle {
+    position: fixed;
+    top: env(safe-area-inset-top, 12px);
+    left: 12px;
+    z-index: 1100;
+  }
+
   .profile-menu,
   .profile-dropdown,
   .modal,
