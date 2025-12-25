@@ -2801,6 +2801,10 @@ body {
   margin-inline: auto; /* center the hero grid block within the viewport */
 }
 
+.landing-hero__intro {
+  margin-inline: auto;
+}
+
 .landing-hero__intro h1 {
   font-size: clamp(2.6rem, 5vw, 4.2rem);
   margin: 0 0 1rem;
