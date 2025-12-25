@@ -3098,11 +3098,13 @@ function openAccountModal(initialTab = 'account') {
   }
   setAccountSettingsTab(initialTab);
   accountModal.style.display = 'flex';
+  document.body.classList.add('modal-open');
 }
 
 function closeAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
+  document.body.classList.remove('modal-open');
 }
 
 applyProfileSettings();
@@ -4603,6 +4605,14 @@ if (accountCloseBtn) {
 if (accountCancelBtn) {
   accountCancelBtn.addEventListener('click', () => {
     closeAccountModal();
+  });
+}
+
+if (accountModal) {
+  accountModal.addEventListener('click', (event) => {
+    if (event.target === accountModal) {
+      closeAccountModal();
+    }
   });
 }
 
