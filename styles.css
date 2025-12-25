@@ -5829,16 +5829,16 @@ body.prefers-reduced-motion *::after {
 }
 
 #account-modal .modal {
+  /* Account settings modal sizing fix */
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 900px;
-  max-width: calc(100vw - 64px);
-  height: auto;
-  max-height: calc(100vh - 96px);
+  width: min(900px, 92vw);
+  max-width: 92vw;
+  max-height: 88vh;
   overflow: visible;
-  padding: 28px 32px;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
   border-radius: 20px;
@@ -5878,9 +5878,10 @@ body.prefers-reduced-motion *::after {
 
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .modal-overlay .settings-tabs {
@@ -5912,11 +5913,17 @@ body.prefers-reduced-motion *::after {
     padding: 0.75rem;
   }
   .modal-overlay .modal {
+   width: calc(100vw - 32px);
+   max-width: 520px;
+   max-height: calc(100vh - 48px);
+   padding: 18px;
+   margin: 0;
+  }
+  #account-modal.modal-overlay .modal {
     width: calc(100vw - 32px);
-    max-width: 520px;
-    max-height: calc(100vh - 48px);
-    padding: 18px;
+    max-width: 540px;
     margin: 0;
+    padding: 20px;
   }
 }
 
