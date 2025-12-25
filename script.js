@@ -5834,10 +5834,14 @@ const createCard = (post) => {
       weeklyPromoEl,
       videoScriptEl,
       (() => {
-        const parts = [];
-        if (repurposeEl) parts.push(repurposeEl);
-        if (variantsEl) parts.push(variantsEl);
-        const value = parts.filter(Boolean).join('\n');
+        const value =
+          entry.distributionPlan ||
+          (() => {
+            const parts = [];
+            if (repurposeEl) parts.push(repurposeEl);
+            if (variantsEl) parts.push(variantsEl);
+            return parts.filter(Boolean).join('\n');
+          })();
         return value ? createDetailRow('Distribution Plan', value, 'calendar-card__distribution') : null;
       })(),
       assetsEl,

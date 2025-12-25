@@ -2159,6 +2159,55 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   return normalized;
 }
 
+const PRO_INTERACTIVE_PROMPTS = [
+  'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
+  'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
+  'Turn the story into a “This or That” sequence with a DM me button.',
+  'Collect audience input with a “Ask me anything about today’s tip” box.',
+  'Use a countdown sticker leading into tomorrow’s teaser.'
+];
+
+const DISTRIBUTION_PLAN_FALLBACK = 'Share this concept across Instagram, TikTok, and LinkedIn with the updated hook and CTA.';
+
+const pickCycledItem = (items = [], index = 0) => {
+  if (!items.length) return '';
+  const idx = Math.abs(Math.floor(index)) % items.length;
+  return items[idx];
+};
+
+const buildDistributionPlanText = (post = {}) => {
+  const parts = [];
+  const repurpose = Array.isArray(post.repurpose) ? post.repurpose.map((item) => toPlainString(item)).filter(Boolean) : [];
+  if (repurpose.length) {
+    parts.push(repurpose.join(' • '));
+  }
+  const variants = post.variants || {};
+  const variantLines = [];
+  const instagram = toPlainString(variants.instagram_caption || variants.igCaption || variants.igCaptionText);
+  if (instagram) variantLines.push(`Instagram: ${instagram}`);
+  const tiktok = toPlainString(variants.tiktok_caption || variants.tiktokCaption);
+  if (tiktok) variantLines.push(`TikTok: ${tiktok}`);
+  const linkedin = toPlainString(variants.linkedin_caption || variants.linkedinCaption);
+  if (linkedin) variantLines.push(`LinkedIn: ${linkedin}`);
+  if (variantLines.length) {
+    parts.push(variantLines.join(' | '));
+  }
+  return parts.filter(Boolean).join('\n');
+};
+
+const buildStoryPromptExpanded = (post = {}, dayIndex = 0) => {
+  const base = toPlainString(post.storyPrompt);
+  const suffix = pickCycledItem(PRO_INTERACTIVE_PROMPTS, dayIndex);
+  return [base, suffix].filter(Boolean).join(' ').trim();
+};
+
+const enrichRegenPost = (post = {}, dayIndex = 0) => {
+  const enriched = { ...post };
+  enriched.distributionPlan = buildDistributionPlanText(post) || DISTRIBUTION_PLAN_FALLBACK;
+  enriched.storyPromptExpanded = buildStoryPromptExpanded(post, dayIndex) || enriched.storyPrompt || '';
+  return enriched;
+};
+
 
 function getPresetGuidelines(nicheStyle = '') {
   const s = String(nicheStyle || '').toLowerCase();
@@ -3654,27 +3703,45 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
     (async () => {
       const requestId = generateRequestId('regen-day');
-      try {
-        const body = await readJsonBody(req);
-        const { nicheStyle, day, post, userId } = body || {};
-        if (!nicheStyle || typeof day === 'undefined' || day === null) {
-          return sendJson(res, 400, { error: 'nicheStyle and day are required' });
-        }
-        if (!post || typeof post !== 'object') {
-          return sendJson(res, 400, { error: 'post payload required' });
-        }
+      let attempt = 0;
+      const { nicheStyle, day, post, userId } = await readJsonBody(req).catch(() => ({}));
+      if (!nicheStyle || typeof day === 'undefined' || day === null) {
+        return sendJson(res, 400, { error: 'nicheStyle and day are required' });
+      }
+      if (!post || typeof post !== 'object') {
+        return sendJson(res, 400, { error: 'post payload required' });
+      }
+      const dayNumber = Number(day);
+      const logContext = { requestId, userId: userId || null, nicheStyle, day: dayNumber };
+      console.log('[Calendar][Server] regen-day request', logContext);
+      const regenAttempt = async () => {
+        attempt += 1;
         const posts = await generateCalendarPosts({
           nicheStyle,
           userId,
           days: 1,
-          startDay: Number(day),
-          context: { requestId, batchIndex: 0, startDay: Number(day) },
+          startDay: dayNumber,
+          context: { requestId, batchIndex: 0, startDay: dayNumber },
         });
-        const newPost = Array.isArray(posts) && posts.length ? posts[0] : null;
-        if (!newPost) {
-          throw new Error('Calendar generator returned no posts');
+        const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
+        if (!candidate) throw new Error('Calendar generator returned no posts');
+        const enriched = enrichRegenPost(candidate, dayNumber - 1);
+        const missing = [];
+        if (!enriched.distributionPlan) missing.push('distributionPlan');
+        if (!enriched.storyPromptExpanded) missing.push('storyPromptExpanded');
+        return { post: enriched, missing };
+      };
+      try {
+        let result = await regenAttempt();
+        if (result.missing.length) {
+          console.warn('[Calendar] regen-day missing fields, retrying', { ...logContext, missing: result.missing, attempt });
+          result = await regenAttempt();
         }
-        return sendJson(res, 200, { post: newPost });
+        if (result.missing.length) {
+          console.error('[Calendar] regen-day failed to produce complete card', { ...logContext, missing: result.missing });
+          return sendJson(res, 500, { error: 'Regeneration failed to populate required sections' });
+        }
+        return sendJson(res, 200, { post: result.post });
       } catch (err) {
         console.error('regen-day error:', err);
         return sendJson(res, 500, { error: err.message || 'Failed to regenerate day' });
