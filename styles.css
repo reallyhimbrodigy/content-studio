@@ -5819,6 +5819,25 @@ body.prefers-reduced-motion *::after {
   overflow-y: auto;
 }
 
+#account-modal.modal-overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+#account-modal .modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92vw, 560px);
+  max-height: 85vh;
+  overflow: hidden;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  z-index: 1100;
+}
+
 .modal-overlay .modal h3 {
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
@@ -5854,6 +5873,30 @@ body.prefers-reduced-motion *::after {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.modal-overlay .settings-tabs {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  flex-wrap: nowrap;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+
+.modal-overlay .settings-tabs button {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: none;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.95rem;
+  text-transform: none;
+  white-space: normal;
+  writing-mode: horizontal-tb;
+  transform: none;
+  border-radius: 10px 10px 0 0;
 }
 
 body.modal-open {
