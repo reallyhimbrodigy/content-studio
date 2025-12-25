@@ -5829,21 +5829,77 @@ body.prefers-reduced-motion *::after {
 }
 
 #account-modal .modal {
-  /* Account settings modal sizing fix */
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   width: min(900px, 92vw);
   max-width: 92vw;
-  max-height: 88vh;
+  max-height: none;
+  height: auto;
   overflow: visible;
   padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  border-radius: 20px;
+  border-radius: 18px;
   box-sizing: border-box;
   z-index: 1100;
+}
+
+.account-modal-overlay,
+.profile-modal-overlay,
+.modal-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.account-modal .modal-content,
+.profile-modal .modal-content,
+.modal-card .modal-content,
+#account-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.account-modal .modal-footer,
+.profile-modal .modal-footer,
+.modal-card .modal-footer,
+#account-modal .modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.account-modal input,
+.profile-modal input,
+.modal-card input,
+.account-modal label,
+.profile-modal label,
+.modal-card label,
+#account-modal input,
+#account-modal label {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .account-modal .modal,
+  .profile-modal .modal,
+  .modal-card .modal,
+  #account-modal .modal {
+    width: 94vw;
+    max-width: 94vw;
+    padding: 18px 16px;
+    border-radius: 16px;
+  }
 }
 
 .modal-overlay .modal h3 {
