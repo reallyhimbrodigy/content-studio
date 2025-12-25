@@ -7326,6 +7326,124 @@ html, body {
   }
 }
 
+@media (max-width: 480px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .app-layout,
+  .app-main,
+  main,
+  .page-content,
+  .library-container,
+  .feature-grid,
+  .analytics-grid,
+  .tabs,
+  .modal {
+    width: 100%;
+    max-width: 100%;
+  }
+  .app-layout {
+    display: block;
+  }
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: min(80vw, 320px);
+    min-width: 260px;
+    transform: translateX(-110%);
+    transition: transform 220ms ease;
+    z-index: 1010;
+    border-radius: 0 20px 20px 0;
+  }
+  .app-sidebar:not(.collapsed) {
+    transform: translateX(0);
+  }
+  .sidebar-backdrop {
+    display: block;
+    z-index: 1000;
+  }
+  body.sidebar-open {
+    overflow: hidden;
+  }
+  body.sidebar-open .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar-backdrop {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .sidebar-toggle {
+    z-index: 1100;
+  }
+  .hero,
+  .tabs,
+  .calendar__grid,
+  .library-grid,
+  .feature-grid,
+  .analytics-grid,
+  .grid {
+    margin: 0;
+  }
+  .calendar__grid,
+  .publish-hub__grid,
+  .library-grid,
+  .feature-grid,
+  .analytics-grid,
+  .cards {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+  .calendar-card,
+  .publish-card,
+  .panel,
+  .modal,
+  .card,
+  .settings-panel,
+  .library-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+    padding: 1rem;
+    overflow-wrap: anywhere;
+  }
+  .modal,
+  .dialog,
+  .sheet,
+  .panel {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+  }
+  .profile-menu,
+  .modal-content,
+  .profile-dropdown,
+  .panel {
+    box-sizing: border-box;
+  }
+  input,
+  select,
+  textarea,
+  button,
+  .row,
+  .form-row,
+  .settings-row,
+  .toolbar {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
 .sidebar-fixed-inner {
   display: flex;
   flex-direction: column;
