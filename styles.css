@@ -5882,6 +5882,24 @@ body.prefers-reduced-motion *::after {
   flex-wrap: wrap !important;
 }
 
+.account-page,
+.profile-accessibility-page,
+.settings-page {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  padding: 48px !important;
+  overflow: visible !important;
+}
+
+.app-content,
+.page-container,
+.main-content {
+  width: 100% !important;
+  max-width: none !important;
+}
+
 .account-modal-overlay,
 .profile-modal-overlay,
 .modal-overlay {
