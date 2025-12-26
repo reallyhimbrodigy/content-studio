@@ -4235,6 +4235,9 @@ a.ghost:hover {
   border-radius: 12px;
   font-size: 1.25rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .settings-tabs {
