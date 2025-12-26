@@ -5850,6 +5850,38 @@ body.prefers-reduced-motion *::after {
   z-index: 1100;
 }
 
+.account-settings-modal,
+.profile-accessibility-modal,
+.modal-content.account-settings,
+.modal-content.profile-accessibility {
+  width: min(960px, 92vw) !important;
+  max-width: 92vw !important;
+  height: auto !important;
+  max-height: 88vh !important;
+  padding: 28px 28px 22px !important;
+  border-radius: 18px !important;
+}
+
+.account-settings-modal *,
+.profile-accessibility-modal * {
+  box-sizing: border-box;
+}
+
+.modal,
+.modal-overlay,
+.modal-backdrop {
+  overflow: visible !important;
+}
+
+.account-settings-modal .modal-footer,
+.profile-accessibility-modal .modal-footer {
+  display: flex !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  margin-top: 18px !important;
+  flex-wrap: wrap !important;
+}
+
 .account-modal-overlay,
 .profile-modal-overlay,
 .modal-overlay {
