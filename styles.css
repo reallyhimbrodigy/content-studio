@@ -5873,44 +5873,45 @@ body.prefers-reduced-motion *::after {
   overflow: visible !important;
 }
 
- .account-settings-modal .modal-footer,
- .profile-accessibility-modal .modal-footer {
-   display: flex !important;
-   justify-content: center !important;
-   gap: 14px !important;
-   margin-top: 18px !important;
-   flex-wrap: wrap !important;
- }
+.account-settings-modal .modal-footer,
+.profile-accessibility-modal .modal-footer {
+  display: flex !important;
+  justify-content: center !important;
+  gap: 14px !important;
+  margin-top: 18px !important;
+  flex-wrap: wrap !important;
+}
 
- #account-modal.modal-overlay,
- .account-settings-modal,
- .profile-accessibility-modal {
-   position: fixed;
-   inset: 0;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   padding: 24px;
-   overflow: visible;
- }
+#account-modal.modal-overlay,
+.account-settings-modal,
+.profile-accessibility-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.6);
+}
 
- #account-modal .modal,
- .account-settings-modal .modal,
- .profile-accessibility-modal .modal {
-   position: relative;
-   width: min(900px, 92vw);
-   max-width: 92vw;
-   height: auto;
-   max-height: none;
-   overflow: visible;
-   transform: none;
-   scale: none;
-   padding: 32px 36px;
-   display: flex;
-   flex-direction: column;
-   gap: 24px;
-   border-radius: 20px;
-   box-sizing: border-box;
+#account-modal .modal,
+.account-settings-modal .modal,
+.profile-accessibility-modal .modal {
+  position: relative;
+  margin: 0;
+  transform: none;
+  width: min(900px, 92vw);
+  max-width: 92vw;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 32px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-radius: 20px;
+  box-sizing: border-box;
 }
 
 .account-page,
