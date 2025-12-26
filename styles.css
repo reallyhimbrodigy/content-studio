@@ -5797,8 +5797,8 @@ body.prefers-reduced-motion *::after {
 /* Modal */
 /* Brand Brain Modal */
 #account-modal.modal-overlay,
-.modal-overlay,
-.profile-modal-overlay {
+.profile-modal-overlay,
+.modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.65);
@@ -5806,12 +5806,10 @@ body.prefers-reduced-motion *::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  z-index: 1000;
-}
-
-#account-modal.modal-overlay {
-  z-index: 9999;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 10000;
 }
 
 .modal-overlay .modal {
@@ -5832,22 +5830,21 @@ body.prefers-reduced-motion *::after {
 
 #account-modal .modal {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(900px, calc(100vw - 48px));
-  max-width: 900px;
-  min-height: 520px;
-  max-height: calc(100vh - 48px);
-  height: auto;
-  overflow: visible;
-  padding: 28px 32px;
+  inset: 0;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  width: min(760px, calc(100vw - 32px));
+  max-width: 92vw;
+  height: auto;
+  max-height: calc(100vh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  padding: 32px;
+  gap: 24px;
   border-radius: 18px;
+  background: var(--surface);
   box-sizing: border-box;
-  z-index: 1100;
+  overflow: visible;
+  z-index: 11000;
 }
 
 .account-settings-modal,
@@ -8367,4 +8364,17 @@ body.view-landing .pricing-pill {
   body.view-landing .workflow-steps {
     grid-template-columns: 1fr;
   }
+}
+.app-shell,
+.app-layout,
+.app-main {
+  transition: none !important;
+}
+
+body:has(#account-modal.modal-overlay) .app-shell,
+body:has(#account-modal.modal-overlay) .app-layout,
+body:has(#account-modal.modal-overlay) .app-main {
+  transform: none !important;
+  filter: none !important;
+  overflow: visible !important;
 }
