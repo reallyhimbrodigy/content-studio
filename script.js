@@ -2796,7 +2796,7 @@ const POST_FREQUENCY_KEY = 'promptly_post_frequency';
 const PLAN_DETAILS = {
   pro: {
     label: 'Promptly Pro',
-    limits: 'Unlimited calendars · downloads & Brand Brain',
+    limits: '',
   },
   free: {
     label: 'Free plan',
