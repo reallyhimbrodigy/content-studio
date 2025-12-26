@@ -3,6 +3,7 @@ const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const {
@@ -42,6 +43,7 @@ const {
   fetchAccountEngagement,
   getPhylloUserByExternalId,
   getPhylloAccountDetails,
+  parsePhylloProducts,
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
@@ -62,6 +64,8 @@ const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
 const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
+const PHYLLO_ENVIRONMENT = process.env.PHYLLO_ENVIRONMENT || 'production';
+const PHYLLO_WEBHOOK_SIGNING_SECRET = process.env.PHYLLO_WEBHOOK_SIGNING_SECRET || '';
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
@@ -368,6 +372,74 @@ async function readJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+async function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let length = 0;
+    req.on('data', (chunk) => {
+      length += chunk.length;
+      if (length > MAX_JSON_BODY) {
+        const err = new Error('Payload too large');
+        err.statusCode = 413;
+        reject(err);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks, length));
+    });
+    req.on('error', (err) => reject(err));
+  });
+}
+
+function parsePhylloSignatureHeader(signatureHeader) {
+  if (!signatureHeader) return '';
+  const parts = String(signatureHeader)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    const idx = part.indexOf('=');
+    if (idx > 0) {
+      const key = part.slice(0, idx).trim().toLowerCase();
+      const value = part.slice(idx + 1).trim();
+      if (['sha256', 'signature', 'v1'].includes(key) && value) {
+        return value;
+      }
+    }
+  }
+  if (parts.length === 1) {
+    const single = parts[0];
+    const idx = single.indexOf('=');
+    if (idx > 0) {
+      return single.slice(idx + 1).trim();
+    }
+    return single;
+  }
+  return signatureHeader.trim();
+}
+
+function verifyPhylloWebhookSignature(rawBody, signatureHeader) {
+  if (!PHYLLO_WEBHOOK_SIGNING_SECRET) return true;
+  const signature = parsePhylloSignatureHeader(signatureHeader);
+  if (!signature) return false;
+  try {
+    const expected = crypto
+      .createHmac('sha256', PHYLLO_WEBHOOK_SIGNING_SECRET)
+      .update(rawBody)
+      .digest('hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+    const providedBuf = Buffer.from(signature, 'hex');
+    if (expectedBuf.length !== providedBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, providedBuf);
+  } catch (err) {
+    console.error('[Phyllo] webhook signature verification error', err);
+    return false;
+  }
 }
 
 async function requireSupabaseUser(req) {
@@ -3745,8 +3817,27 @@ ${JSON.stringify(compactPosts)}`;
   })();
 
   if (parsed.pathname === '/api/phyllo/webhook' && req.method === 'POST') {
-    readJsonBody(req)
-      .then((body) => {
+    (async () => {
+      try {
+        const rawBody = await readRawBody(req);
+        const signatureHeader =
+          req.headers['phyllo-signature'] ||
+          req.headers['x-phyllo-signature'] ||
+          req.headers['Phyllo-Signature'] ||
+          '';
+        if (!verifyPhylloWebhookSignature(rawBody, signatureHeader)) {
+          console.warn('[Phyllo] Webhook signature verification failed');
+          return sendJson(res, 401, { error: 'phyllo_webhook_invalid_signature' });
+        }
+
+        let body;
+        try {
+          body = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
+        } catch (parseErr) {
+          console.error('[Phyllo] Webhook JSON parse error', parseErr);
+          return sendJson(res, 400, { error: 'phyllo_webhook_invalid_json' });
+        }
+
         const eventType = body?.type || 'unknown';
         console.log('[Phyllo] Webhook event received:', eventType, body);
 
@@ -3793,11 +3884,11 @@ ${JSON.stringify(compactPosts)}`;
         }
 
         sendJson(res, 200, { received: true });
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error('[Phyllo] Webhook handler error:', err);
         sendJson(res, 500, { error: 'phyllo_webhook_error' });
-      });
+      }
+    })();
     return;
   }
 
@@ -3858,6 +3949,7 @@ ${JSON.stringify(compactPosts)}`;
         const token =
           (sdk && (sdk.token || sdk.sdk_token || sdk.access_token)) ||
           (sdk?.data && (sdk.data.token || sdk.data.sdk_token || sdk.data.access_token));
+        const phylloProducts = parsePhylloProducts();
 
         if (!token) {
           console.error('[Phyllo] SDK token missing in response:', sdk);
@@ -3872,7 +3964,8 @@ ${JSON.stringify(compactPosts)}`;
           ok: true,
           userId: phylloUser.id,
           token,
-          environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
+          environment: PHYLLO_ENVIRONMENT,
+          products: phylloProducts,
           clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
         });
       } catch (err) {

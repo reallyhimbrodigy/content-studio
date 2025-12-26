@@ -1,8 +1,13 @@
 const axios = require('axios');
 
-const PHYLLO_API_BASE_URL = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+const PHYLLO_API_BASE_URL = process.env.PHYLLO_API_BASE_URL;
+if (!PHYLLO_API_BASE_URL) {
+  throw new Error('PHYLLO_API_BASE_URL is required');
+}
 const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID;
 const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET;
+const PHYLLO_ENVIRONMENT = process.env.PHYLLO_ENVIRONMENT || 'production';
+const PHYLLO_PRODUCTS_RAW = process.env.PHYLLO_PRODUCTS || '';
 function getClient() {
   const basicAuth = Buffer.from(`${PHYLLO_CLIENT_ID}:${PHYLLO_CLIENT_SECRET}`).toString('base64');
 
@@ -38,11 +43,21 @@ async function getPhylloUserByExternalId(externalId) {
 
 async function createSdkToken({ userId }) {
   const client = getClient();
+  const products = parsePhylloProducts();
   const res = await client.post('/v1/sdk-tokens', {
     user_id: userId,
-    products: ['IDENTITY', 'ENGAGEMENT'],
+    products,
+    environment: PHYLLO_ENVIRONMENT,
   });
   return res.data;
+}
+
+function parsePhylloProducts() {
+  const parsed = PHYLLO_PRODUCTS_RAW.split(',').map((token) => token.trim()).filter(Boolean);
+  if (!parsed.length) {
+    return ['IDENTITY', 'ENGAGEMENT'];
+  }
+  return parsed;
 }
 
 async function getPhylloAccountDetails(accountId) {
@@ -76,4 +91,5 @@ module.exports = {
   getPhylloAccountDetails,
   fetchAccountContents,
   fetchAccountEngagement,
+  parsePhylloProducts,
 };
