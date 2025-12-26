@@ -4420,6 +4420,13 @@ async function bootstrapApp(attempt = 0) {
       });
     }
 
+    if (userIsPro) {
+      try {
+        await refreshBrandBrain();
+      } catch (err) {
+        console.warn('[BrandBrain] refresh on init failed', err);
+      }
+    }
     if (forceAppAfterAuth) {
       try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
       forceAppAfterAuth = false;
@@ -4437,6 +4444,8 @@ async function bootstrapApp(attempt = 0) {
     updateAccountPlanInfo('none');
     if (calendarExportUsageEl) calendarExportUsageEl.textContent = '';
     updateAccountLastLogin('');
+    brandBrainHydrated = false;
+    currentBrandText = '';
     if (publicNav) {
       publicNav.style.display = 'flex';
       console.log('✓ Public nav displayed');
@@ -4979,7 +4988,7 @@ function persistBrandKitLocal(kit, email = activeUserEmail) {
 
 async function refreshBrandBrain(force = false) {
   if (brandBrainHydrated && !force) return currentBrandText;
-  const userId = activeUserEmail || (await getCurrentUser());
+  const userId = await getCurrentUserId();
   if (!userId) return '';
   const localCopy = loadBrandBrainLocal(userId);
   let latestText = '';
@@ -4991,6 +5000,7 @@ async function refreshBrandBrain(force = false) {
     if (resp.ok) {
       const data = await resp.json().catch(() => ({}));
       latestText = data?.text || '';
+      console.log('[BrandBrain] loaded profile from Supabase', { userId });
     } else {
       console.warn('Brand profile request failed with status', resp.status);
     }
@@ -5044,44 +5054,46 @@ if (brandCancelBtn) {
     closeBrandModal();
   });
 }
-if (brandSaveBtn) {
-  brandSaveBtn.addEventListener('click', async () => {
-    const userId = await getCurrentUser();
-    if (!userId) {
-      alert('Please sign in to save Brand Brain.');
-      return;
-    }
-    const text = brandText ? brandText.value.trim() : '';
-    if (!text) {
-      if (brandStatus) brandStatus.textContent = 'Please paste some brand text.';
-      return;
-    }
-    try {
-      brandSaveBtn.disabled = true;
-      brandSaveBtn.textContent = 'Saving...';
-      const resp = await fetch('/api/brand/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, text }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Failed to save brand');
-      if (brandStatus) {
-        brandStatus.textContent = `✓ Brand Brain updated (${data.chunks} chunks). Future generations will match your voice.`;
-        brandStatus.classList.add('success');
+  if (brandSaveBtn) {
+    brandSaveBtn.addEventListener('click', async () => {
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        alert('Please sign in to save Brand Brain.');
+        return;
       }
-      currentBrandText = text;
-      persistBrandBrainLocal(text, userId);
-      brandProfileLoaded = true;
-      brandBrainHydrated = true;
-      setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
-    } catch (e) {
-      if (brandStatus) brandStatus.textContent = `Error: ${e.message}`;
-    } finally {
-      brandSaveBtn.disabled = false;
-      brandSaveBtn.textContent = 'Save to Brand Brain';
-    }
-  });
+      const text = brandText ? brandText.value.trim() : '';
+      if (!text) {
+        if (brandStatus) brandStatus.textContent = 'Please paste some brand text.';
+        return;
+      }
+      try {
+        brandSaveBtn.disabled = true;
+        brandSaveBtn.textContent = 'Saving...';
+        const resp = await fetch('/api/brand/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, text }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to save brand');
+        if (brandStatus) {
+          brandStatus.textContent = `✓ Brand Brain updated (${data.chunks} chunks). Future generations will match your voice.`;
+          brandStatus.classList.add('success');
+        }
+        currentBrandText = text;
+        persistBrandBrainLocal(text, userId);
+        brandProfileLoaded = true;
+        brandBrainHydrated = true;
+        console.log('[BrandBrain] preferences saved', { userId });
+        setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
+      } catch (e) {
+        if (brandStatus) brandStatus.textContent = `Error: ${e.message}`;
+        console.error('[BrandBrain] save failed', e);
+      } finally {
+        brandSaveBtn.disabled = false;
+        brandSaveBtn.textContent = 'Save to Brand Brain';
+      }
+    });
 }
 if (brandKitSaveBtn) {
   brandKitSaveBtn.addEventListener('click', (event) => {
