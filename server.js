@@ -1718,7 +1718,7 @@ TikTok: (1–2 sentences) include a pattern interrupt in the first five words + 
 LinkedIn: (1–2 sentences) include a credibility framing (lesson/insight) + a soft CTA that matches the post’s hook and CTA.
 Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance terms unless that is the niche; no numbers in any comment keyword; no placeholder junk; no extra lines.`; 
   const postingTimeRules =
-    'POSTING TIME TIP RULES (HARD): Output EXACTLY one sentence of ≤12 words. Include a specific time (e.g., “7am”, “12pm”, “6–8pm”) and one brief niche reason (before practice, after work, during lunch). No audience descriptors, marketing language, or filler. Avoid words like “scrolling,” “engaging,” “followers,” or “content.” Do NOT use multiple clauses beyond time + reason. Examples: “Post at 7am before practice starts.” “Post around 6pm after workouts finish.” “Post at noon during lunch.” Fallback: “Post at 7am before the day starts.”';
+    'POSTING TIME TIP RULES (HARD): Output EXACTLY one sentence of ≤12 words in the pattern “Post [time] [preposition] [reason].” Include a specific time (e.g., “7am”, “12pm”, “6–8pm”) and a reason tied to a real-world niche event (practice, workday, meals, commute). Do NOT use generic phrases like “daily routines”, “free time”, “scrolling”, “browsing”, “relaxing”, “downtime”, or “spare time.” Do NOT reference audience descriptors, marketing language, or multiple clauses beyond the time plus reason. Examples: “Post at 7am before practice starts.” “Post around 6pm after workouts finish.” “Post at noon during lunch.” Fallback: “Post at 7am before the day starts.”';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
@@ -2154,9 +2154,10 @@ async function ensurePostingTimeTips(posts = [], classification, nicheStyle, bra
     if (!tip) {
       tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
     }
-    if (!isPostingTimeTipValid(tip, classification)) {
-      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
-    }
+  if (!isPostingTimeTipValid(tip, classification)) {
+    tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
+  }
+    tip = ensureNichePostingTimeReason(tip, nicheStyle);
     post.postingTimeTip = tip;
   }
   return posts;
@@ -2174,6 +2175,31 @@ function truncatePostingTimeTip(tip = '') {
     }
   }
   return text.slice(0, end).trim();
+}
+
+function ensureNichePostingTimeReason(tip = '', nicheStyle = '') {
+  const text = String(tip || '').trim();
+  if (!text) return text;
+  const match = text.match(/^(Post\s+at\s+\S+)\s+(.+)$/i);
+  if (!match) return text;
+  const timePart = match[1];
+  const reason = match[2].toLowerCase();
+  const genericTerms = /daily routine|daily routines|free time|scrolling|browsing|relaxing|downtime|spare time/;
+  const tokens = (String(nicheStyle || '').toLowerCase().match(/[a-z]+/g) || []);
+  const hasAnchor = tokens.some((token) => token.length > 3 && reason.includes(token));
+  if (!genericTerms.test(reason) && hasAnchor) return text;
+  const fallback = derivePostingTimeReasonFallback(nicheStyle);
+  return `${timePart} ${fallback}`;
+}
+
+function derivePostingTimeReasonFallback(nicheStyle = '') {
+  const normalized = (nicheStyle || '').toLowerCase();
+  if (/basketball|soccer|coaching|youth/.test(normalized)) return 'after school ends';
+  if (/gym|fitness|training/.test(normalized)) return 'before or after workouts';
+  if (/nutrition|diet|meal/.test(normalized)) return 'before dinner decisions';
+  if (/real\s*estate|realtor/.test(normalized)) return 'after work hours';
+  if (/marketing|business|agency/.test(normalized)) return 'before the workday fills up';
+  return 'during a natural break in their day';
 }
 
 function ensureUniqueStrategyValues(posts = []) {
