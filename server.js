@@ -2143,10 +2143,12 @@ async function ensurePostingTimeTips(posts = [], classification, nicheStyle, bra
   const bannedTerms = classification === 'business' ? [] : POSTING_TIME_BANNED_AUDIENCE_TERMS;
   for (const post of posts) {
     let tip = String(post.postingTimeTip || '').trim();
+    tip = truncatePostingTimeTip(tip);
     if (!isPostingTimeTipValid(tip, classification)) {
       const regenerated = await regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms);
-      if (isPostingTimeTipValid(regenerated, classification)) {
-        tip = regenerated;
+      const cleaned = truncatePostingTimeTip(regenerated);
+      if (isPostingTimeTipValid(cleaned, classification)) {
+        tip = cleaned;
       }
     }
     if (!tip) {
@@ -2158,6 +2160,20 @@ async function ensurePostingTimeTips(posts = [], classification, nicheStyle, bra
     post.postingTimeTip = tip;
   }
   return posts;
+}
+
+function truncatePostingTimeTip(tip = '') {
+  const text = String(tip || '').trim();
+  if (!text) return text;
+  const lower = text.toLowerCase();
+  let end = text.length;
+  for (const marker of [' during ', ' when ', ' while ']) {
+    const idx = lower.indexOf(marker);
+    if (idx !== -1 && idx < end) {
+      end = idx;
+    }
+  }
+  return text.slice(0, end).trim();
 }
 
 function ensureUniqueStrategyValues(posts = []) {
