@@ -1606,20 +1606,40 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? preset.nicheRules.join('\n')
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
-  const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
-  const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
-1) First, list the current Top 10 trending TikTok sounds for this niche (platform-native or creator-original, last 7 days).
-2) Separately, list the Top 10 trending Instagram Reels audios for this niche (last 7 days).
-3) Choose ONE TikTok sound and ONE DIFFERENT Instagram sound; do NOT reuse the same audio unless you explicitly state "trending on both this week".
-4) Sounds may be songs or creator sounds and must lean into the niche vibe (sports = higher energy, wellness = calming), yet remain real titles.
-5) Output ONLY the final audio line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
-6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any evergreen hit older than 90 days (e.g., Blinding Lights, Levitating, Savage Love, Shape of You, Old Town Road).`;
+// DETAILS/HASHTAGS CONSTRAINTS (niche-locked, no generic filler)
+const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:
+1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string with pattern interrupt tied to the niche.
+2) Details/Hashtags: output only a plain list of 8–12 hashtags (no prose, bullets, or labels) that stay strictly niche-relevant to the user’s niche, offer type, and platform. Provide 3–5 core niche tags, 3–5 problem/outcome tags, and 1–2 local/brand/community tags (use the brand name if available). Ban cross-niche contamination and filler (#fyp, #viral, #trending, #explorepage, #instagood, #tiktok, #reels, #love). Do not introduce unrelated niches; if the niche is ambiguous, infer the closest interpretation from the category/title and stay consistent.
+3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
+4) Design: specify colors, typography, pacing, and end-card CTA.
+5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
+6) Engagement: natural, friendly scripts for comments & DMs.
+7) Format: ALWAYS set format to "Reel" (video); never Story/Carousel/Static.
+8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.
+9) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must be "Posting time tip: <time window> because <niche audience behavior reason>" (time window like 6–8 PM, no dates, tie to habits). Always stay niche-aligned (no off-niche terms) and platform-aligned, no generic “post when your audience is online,” no emojis, each line <= 120 characters. Keep concise and contextual.
+10) Keep outputs concise to avoid truncation.
+11) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+  const audioRules = `Audio rules for "${nicheStyle}":
+1) Recommend audio only for the platforms already listed in the card (TikTok, Instagram). Do not add extras.
+2) Pick sounds that reinforce the same emotional tone/archetype as the Hook/Reel Script (confessional, quiet win, pattern interrupt) and keep volume/energy low enough to support spoken dialogue.
+3) TikTok picks should be low-to-mid tempo and built for rewatches; Instagram picks should be clean and recognizable so captions stay readable.
+4) Stay niche-appropriate—avoid beauty/fashion cues for fitness, skip gimmicky meme sounds, and never promise virality or reference “trending to blow up.”
+5) Mention one subtitled, lightly trending sound per platform, format as: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
+6) Forbidden: “Guaranteed viral”, “Use any trending sound”, “High-energy hype track”, emojis.
+Choose audio that disappears behind the message, not competes with it.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
+  const distributionPlanRules = `Distribution Plan rules:
+Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the niche/brand context provided. Do not introduce any topic that is not in this niche. No unrelated references.
+Return EXACTLY three lines:
+Instagram: (1–2 sentences) include a save/share reason + one engagement loop (comment keyword or save prompt) that matches the post’s hook and CTA.
+TikTok: (1–2 sentences) include a pattern interrupt in the first five words + a watch-time loop (“part 2,” “wait for the last tip,” “most people miss this”) that matches the post’s hook and CTA.
+LinkedIn: (1–2 sentences) include a credibility framing (lesson/insight) + a soft CTA that matches the post’s hook and CTA.
+Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance terms unless that is the niche; no numbers in any comment keyword; no placeholder junk; no extra lines.`; 
   const postingTimeRules =
-    'Posting-time tips must target the right audience (students/athletes for sports, adult consumers for wellness, etc.), mention a specific clock time (e.g., 3:15 PM, 8 AM) with a rationale, and stay one sentence. Do NOT refer to days of the week or use vague words like "morning" without a clock time. Avoid exec/founder/enterprise audiences unless the niche is specifically business/coaching.';
+    'Posting-time tips must output exactly ONE concise sentence that ties timing to the audience’s real behavior (workday breaks, workouts, commutes, downtime, etc.). Use the pattern “Post when [audience behavior moment], because they’re more likely to [desired action].” Mention the platforms if the card already lists them; otherwise keep it niche-aware but general. Do NOT say “best time to post,” reference algorithms, claim “guaranteed reach,” or cite “optimal posting windows.” Avoid exact minute-level precision unless the situation explicitly calls for it. Timing should feel like common sense for the audience, not a growth hack. Examples: “Post when people are wrapping up their workday or heading to the gym, when motivation dips and relatability hits.” “Post mid-afternoon when decision fatigue sets in and reflective content performs better.”';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
@@ -1630,7 +1650,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
 Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
@@ -1673,16 +1693,28 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
   const qualityRules = `Quality Rules — Make each post plug-and-play and conversion-ready:
-1) Hook harder: first 3 seconds must be scroll-stopping; script.hook must punch.
+1) Hook: output ONE sentence (6–12 words, sentence case) that delivers a niche-specific cold open. Start with a pattern interrupt (curiosity, contrarian, “stop doing X”, “most people get X wrong”, “here’s why your X isn’t working”) plus an immediate payoff tied to the provided niche/topic. No hashtags, emojis, platform names, or vague phrases (“Meet our amazing client”, “Incredible transformation alert”, “Game changer”, “Level up”, “You won’t believe”). Never mention unrelated niches—if you aren’t 100% sure a term belongs to the niche/category/brand, omit it. Use vocabulary rooted in equipment, goals, routines, pain points, or inside jokes from <NICHE>. Think of it as the TikTok/Reels cold open line. Examples (niche-conditional):
+   - “Stop doing cardio like this—do this instead” (Fitness)
+   - “Your squat form is stealing your progress” (Fitness)
+   - “Your offer isn’t bad—your hook is” (Business)
+   - “The ad mistake killing your ROAS” (Business/Marketing)
+   - “This campaign won’t convert until you fix your hook” (Marketing)
+   - “Creators copying trends sound the same—here’s why that kills your voice” (Creator)
 2) Hashtags: mix broad + niche/local; 6–8 total to balance reach and targeting.
-3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
-4) Design notes: specify colors, typography, pacing, and end-card CTA.
+3) CTA: turn the ending into a reluctant aside—exactly one sentence that stays niche-relevant, avoids urgency/hype, and never uses “Buy”, “Join now”, “Sign up”, “Limited time”, “Don’t miss”, or “Click the link”. Frame it as a quiet suggestion or “I didn’t expect this to work” story, imply benefit without promising outcomes, and feel like a personal aside, not a marketing line. Example patterns:
+   - “If this feels familiar, this might help.”
+   - “I didn’t expect this to work, but it did.”
+   - “This helped more than I thought it would.”
+   - “If you’re stuck here too, you’ll want this.”
+   Forbidden: “Join our community today!”, “Start your journey now!”, “Get results fast!”, “Buy now”.
+4) Design notes: output 1–3 concise bullet points that reinforce the same archetype and emotional tone as the Hook/Caption/Reel Script, focusing on niche-specific elements (equipment, settings, attire, environments). Choose from allowed focuses such as a confessional close-up, over-specific pain captions, pattern-interrupt frames, or quiet-win restraint. Avoid introducing new topics, hiring language about platforms or growth, or generic advice (“Eye-catching”, “High-quality”, “Professional”, “On-brand”, “Aesthetic” unless the niche is beauty/design). Design should make the emotion readable in the first second.
 5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
-6) Engagement: natural, friendly scripts for comments & DMs.
-7) Format: ALWAYS set format to "Reel" (video-first); never Story/Carousel/Static.
-8) Captions: start with a short hook line, then 1–2 value lines (use \\n).
-9) Keep outputs concise to avoid truncation.
-10) CRITICAL: every post MUST include script { hook, body, cta }.`;
+6) Engagement Loop: provide exactly two conversational replies (comment + DM) that stay aligned with the niche/emotional thread. The comment reply should feel like a genuine reaction, ask one open-ended follow-up question (e.g., “That’s real. What part was hardest for you?”), and avoid links, urgency, selling, or unrelated niches. The DM reply should acknowledge the person, invite them to share more about their situation (e.g., “Glad this resonated. What are you working through right now?”), stay curious/empathic, and avoid new topics or offers. Forbidden phrases: “Buy”, “Join”, “Check out”, “Link in bio”, “Limited”, “Offer”. The goal is to keep the conversation going, not to convert.
+7) Reel Script: output exactly three labeled lines (Hook:, Body:, CTA:) totaling 15–30 spoken seconds. Stick to tension → relatability → quiet relief, remaining niche-specific and emotionally tied to the Hook/Caption. Hook must sound like an internal thought with a pattern interrupt and no hype or announcements. Body must admit what didn’t work, then mention what helped as a side effect (no hero narratives). CTA must be a reluctant admission or shared secret (no “join”, “buy”, “start”, “don’t miss”, “act now”), and avoid offers or unrelated niches. Forbidden phrases: “You can do it”, “Incredible results”, “Best program”, “Game changer”, “Join our community”. Write this as if talking to one person who feels called out, not an audience.
+8) Format: ALWAYS set format to "Reel" (video-first); never Story/Carousel/Static.
+9) Captions: output 2–4 short, conversational lines (line breaks allowed) that continue the emotional thread of the Hook. Line 1 should state a relatable pain or mistake tied to the niche, Line 2 should note what didn’t work, and Line 3 (optional) can describe the quiet change or relief. Avoid hashtags, emojis, hype words, corporate phrasing, promises of outcomes, or authority claims. Never mention unrelated niches. Forbidden: “Incredible transformation”, “Game changer”, “Level up”, “You can do it too”, “Best results”, “Experts say”. Write like a personal note someone would save, not an ad.
+10) Keep outputs concise to avoid truncation.
+11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio).`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
@@ -1768,9 +1800,19 @@ const POSTING_TIME_TIME_PATTERN = /\b((1[0-2]|[1-9])(:[0-5][0-9])?\s?(AM|PM))\b/
 const POSTING_TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const POSTING_TIME_DAY_PATTERN = /\b(mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
 
-function buildPinnedCommentLine(keyword = '', deliverable = '') {
-  if (!keyword || !deliverable) return '';
-  return `Comment ${keyword} and I'll send you ${deliverable}.`;
+function sanitizeKeywordForComment(keyword = '', nicheStyle = '') {
+  const lettersOnly = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
+  if (lettersOnly.length >= 4) {
+    return lettersOnly;
+  }
+  const fallback = sanitizeLettersOnly(nicheStyle, 4, 10) || 'ACCESS';
+  return fallback;
+}
+
+function buildPinnedCommentLine(keyword = '', deliverable = '', nicheStyle = '') {
+  const safeKeyword = sanitizeKeywordForComment(keyword, nicheStyle);
+  if (!safeKeyword || !deliverable) return '';
+  return `Comment "${safeKeyword}" and I'll send you ${deliverable}.`;
 }
 
 function parsePinnedCommentString(text = '') {
@@ -2214,11 +2256,12 @@ function ensurePinnedFieldsValid(strategy = {}, post = {}, classification = 'cre
   const finalDeliverable = isDeliverableValid(candidateDeliverable, post)
     ? candidateDeliverable
     : deriveFallbackDeliverable(post, classification);
+  const sanitizedKeyword = sanitizeKeywordForComment(finalKeyword, nicheStyle);
   return {
     ...normalizedStrategy,
-    pinned_keyword: finalKeyword,
+    pinned_keyword: sanitizedKeyword,
     pinned_deliverable: finalDeliverable,
-    pinned_comment: buildPinnedCommentLine(finalKeyword, finalDeliverable),
+    pinned_comment: buildPinnedCommentLine(sanitizedKeyword, finalDeliverable, nicheStyle),
   };
 }
 
