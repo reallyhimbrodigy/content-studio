@@ -1616,9 +1616,10 @@ const qualityRules = `Quality Rules — Make each post plug-and-play & conversio
 6) Engagement: natural, friendly scripts for comments & DMs.
 7) Format: ALWAYS set format to "Reel" (video); never Story/Carousel/Static.
 8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.
-9) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must be "Posting time tip: <time window> because <niche audience behavior reason>" (time window like 6–8 PM, no dates, tie to habits). Always stay niche-aligned (no off-niche terms) and platform-aligned, no generic “post when your audience is online,” no emojis, each line <= 120 characters. Keep concise and contextual.
-10) Keep outputs concise to avoid truncation.
-11) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+9) Pinned comment keyword rules: output \`Comment "KEYWORD" and I'll send you ...\` where KEYWORD is 4–10 letters, ALL CAPS, letters only, and tied to the niche. No numbers, symbols, or off-niche codes.
+10) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must be "Posting time tip: <time window> because <niche audience behavior reason>" (time window like 6–8 PM, no dates, tie to habits). Always stay niche-aligned (no off-niche terms) and platform-aligned, no generic “post when your audience is online,” no emojis, each line <= 120 characters. Keep concise and contextual.
+11) Keep outputs concise to avoid truncation.
+12) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
   const audioRules = `Audio rules for "${nicheStyle}":
 1) Recommend audio only for the platforms already listed in the card (TikTok, Instagram). Do not add extras.
 2) Pick sounds that reinforce the same emotional tone/archetype as the Hook/Reel Script (confessional, quiet win, pattern interrupt) and keep volume/energy low enough to support spoken dialogue.
@@ -1650,7 +1651,15 @@ Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
+  const globalHardRules = `GLOBAL HARD RULES (NON-NEGOTIABLE)
+- NICHE LOCK: Every line must reference the user's niche, offer, audience, and location. Do not mix niches.
+- ZERO CROSS-NICHE: Keep fitness content about workouts/nutrition; avoid skincare/real estate/crypto unless that's the niche.
+- RETENTION: Use short, punchy wording, pattern interrupts, open loops, and immediate benefit statements.
+- SALES PSYCH: Include one clear benefit, one proof cue, and a low-friction CTA without hype.
+- CONSISTENCY: Hook, caption, CTA, Story Prompt+, and pinned comment must reinforce the same angle.
+- NO PLACEHOLDERS: Avoid generic tags like [Client Name] unless provided.
+- BAN: No off-niche examples or regulated claims.`
+return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
 Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
@@ -1799,14 +1808,21 @@ const POSTING_TIME_AUDIENCE_PATTERNS = [
 const POSTING_TIME_TIME_PATTERN = /\b((1[0-2]|[1-9])(:[0-5][0-9])?\s?(AM|PM))\b/i;
 const POSTING_TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const POSTING_TIME_DAY_PATTERN = /\b(mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
+const NICHE_KEYWORD_FALLBACKS = [
+  { match: /fitness|gym|workout|trainer|training/, keyword: 'TRAIN' },
+  { match: /nutrition|diet|meal|recipe|food/, keyword: 'MEAL' },
+  { match: /beauty|skincare|spa|esthetic|derm/, keyword: 'GLOW' },
+  { match: /real\s*estate|realtor|homes|property/, keyword: 'HOME' },
+  { match: /marketing|ads|agency|growth/, keyword: 'LEADS' },
+  { match: /finance|invest|crypto|money/, keyword: 'WEALTH' },
+];
 
 function sanitizeKeywordForComment(keyword = '', nicheStyle = '') {
   const lettersOnly = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
   if (lettersOnly.length >= 4) {
     return lettersOnly;
   }
-  const fallback = sanitizeLettersOnly(nicheStyle, 4, 10) || 'ACCESS';
-  return fallback;
+  return deriveNicheFallbackKeyword(nicheStyle) || 'ACCESS';
 }
 
 function buildPinnedCommentLine(keyword = '', deliverable = '', nicheStyle = '') {
@@ -1826,6 +1842,16 @@ function parsePinnedCommentString(text = '') {
 
 function normalizeKeywordToken(value = '') {
   return String(value || '').trim().toUpperCase();
+}
+
+function deriveNicheFallbackKeyword(nicheStyle = '') {
+  const normalized = String(nicheStyle || '').toLowerCase();
+  for (const entry of NICHE_KEYWORD_FALLBACKS) {
+    if (entry.match.test(normalized)) {
+      return entry.keyword;
+    }
+  }
+  return '';
 }
 
 function getPostTitleWordSet(post = {}) {
