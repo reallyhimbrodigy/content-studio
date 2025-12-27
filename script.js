@@ -416,7 +416,7 @@ const PREFERRED_DELIVERABLES = [
 ];
 
 function sanitizePinnedKeyword(value) {
-  const normalized = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const normalized = String(value || '').toUpperCase().replace(/[^A-Z]/g, '');
   return normalized.length >= 3 && normalized.length <= 16 ? normalized : '';
 }
 
@@ -460,16 +460,18 @@ function buildPinnedCommentLine(keyword, deliverable) {
 }
 
 function ensureUniqueKeyword(keyword, usedSet, post) {
-  let base = sanitizePinnedKeyword(keyword) || deriveTitleKeywordCandidates(post)[0] || 'GUIDE';
-  let candidate = base;
-  const daySuffix = typeof post.day === 'number' ? String(post.day) : '';
+  const pool = getContextualKeywordPool(post?.strategy?.nicheStyle || post?.nicheStyle || '');
+  const fallback = pool[0] || 'ACCESS';
+  const sanitized = sanitizePinnedKeyword(keyword);
+  let candidate = sanitized || deriveTitleKeywordCandidates(post)[0] || fallback;
   let attempt = 0;
-  while (usedSet.has(candidate)) {
+  while (usedSet.has(candidate) && attempt < pool.length) {
+    candidate = pool[attempt % pool.length];
     attempt += 1;
-    candidate = `${base}${daySuffix || ''}${attempt || ''}`.slice(0, 16);
-    if (attempt > 5) break;
   }
-  if (PINNED_KEYWORD_STOPWORDS.has(candidate)) return `${base}${daySuffix || '' || '1'}`;
+  if (usedSet.has(candidate)) {
+    return fallback;
+  }
   return candidate;
 }
 
@@ -510,8 +512,15 @@ function preparePinnedCommentsForRender(posts = []) {
   });
 }
 
-const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z0-9]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
-const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
+const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
+const CONTEXTUAL_KEYWORD_MAP = {
+  fitness: ['TRAIN','SWEAT','STRONG','FIGHT'],
+  basketball: ['HOOPS','DRILLS','BALL'],
+  business: ['SCALE','GROW','PROFIT'],
+  marketing: ['LEADS','SALES','LAUNCH'],
+  creator: ['CREATE','IMPACT','INSPIRE'],
+};
+const DEFAULT_PINNED_FALLBACK_TOKENS = ['ACCESS','START','UNLOCK','GUIDE','SPARK','SHIFT','BOOST','WAVE'];
 const BANNED_POSTING_AUDIENCE_KEYWORDS = [
   'exec',
   'executive',
@@ -555,13 +564,20 @@ function ensureDeliverableHasMy(deliverable) {
   return `my ${normalized}`;
  }
 
+function getContextualKeywordPool(nicheStyle) {
+  const normalized = String(nicheStyle || '').toLowerCase();
+  for (const [context, keywords] of Object.entries(CONTEXTUAL_KEYWORD_MAP)) {
+    if (normalized.includes(context)) {
+      return keywords.slice();
+    }
+  }
+  return DEFAULT_PINNED_FALLBACK_TOKENS.slice();
+}
+
 function derivePinnedFallbackTokens(nicheStyle) {
-  const tokens = (String(nicheStyle || '')
-    .toUpperCase()
-    .match(/[A-Z0-9]{3,12}/g) || [])
-    .filter((token) => !PINNED_KEYWORD_STOPWORDS.has(token));
-  const combined = [...new Set([...tokens, ...DEFAULT_PINNED_FALLBACK_TOKENS])];
-  return combined.length ? combined : DEFAULT_PINNED_FALLBACK_TOKENS.slice();
+  const pool = getContextualKeywordPool(nicheStyle);
+  const filtered = pool.filter((token) => !PINNED_KEYWORD_STOPWORDS.has(token));
+  return filtered.length ? filtered : pool.slice();
 }
 
 function ensureUniquePinnedComments(posts, nicheStyle) {
