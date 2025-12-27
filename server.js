@@ -1630,7 +1630,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}
+Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - postingTimeTip (single sentence describing an audience + scroll window)
@@ -2001,6 +2002,16 @@ function deriveFallbackDeliverable(post = {}, classification = 'creator') {
   return classification === 'business' ? 'my blueprint' : 'my creative guide';
 }
 
+const NICHE_KEYWORD_BANK = {
+  fitness: ['TRAIN','GRIND','LIFT','FIGHT','STRONG'],
+  basketball: ['HOOP','DRILL','BALL'],
+  'real estate': ['LISTING','HOME','DEAL'],
+  beauty: ['GLOW','SKIN','LOOK'],
+  cooking: ['RECIPE','EAT','COOK'],
+  business: ['GROW','SCALE','LEAD'],
+  marketing: ['LEADS','SALES','LAUNCH'],
+  creator: ['CREATE','IMPACT','INSPIRE'],
+};
 const FALLBACK_KEYWORD_MAP = [
   { match: /basketball|athlete|sport|drills/, keywords: ['DRILLS', 'ATHLETE'] },
   { match: /fitness|nutrition|wellness|meal|recipe|gym/, keywords: ['MEAL'] },
@@ -2008,7 +2019,94 @@ const FALLBACK_KEYWORD_MAP = [
   { match: /creator|influencer|lifestyle|content|story/, keywords: ['ROUTINE', 'VIBES'] },
 ];
 
+function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
+  const letters = (String(value || '').toUpperCase().match(/[A-Z]+/g) || []).join('');
+  if (!letters) return '';
+  const truncated = letters.slice(0, maxLen);
+  if (truncated.length < minLen) return '';
+  return truncated;
+}
+
+function deriveNicheKeyword(nicheStyle = '') {
+  const normalized = String(nicheStyle || '').toLowerCase();
+  for (const [key, keywords] of Object.entries(NICHE_KEYWORD_BANK)) {
+    if (normalized.includes(key)) {
+      return keywords[0];
+    }
+  }
+  const sanitized = sanitizeLettersOnly(nicheStyle, 4, 10);
+  return sanitized || 'TIPS';
+}
+
+const STORY_PROMPT_BANNED_TERMS = {
+  fitness: ['facial','peel','skincare','glow level','dermaplane','serum','moisturizer'],
+  beauty: ['deadlift','bench press','macros','basketball','dribbling'],
+  basketball: ['facial','peel','macros','protein shake'],
+  cooking: ['facial','peel','dribbling','bench press'],
+};
+const STORY_PROMPT_TEMPLATES = {
+  fitness: 'Share your biggest workout challenge this week. Add a poll: “Morning or evening workouts?” plus a slider: “Motivation level”.',
+  generic: 'Share a quick story about your {niche} experience. Add a poll with two {niche} options and a 1–10 confidence slider.',
+};
+const STORY_PROMPT_KEYWORD_OVERRIDES = {
+  beauty: ['beauty', 'skin', 'skincare', 'glow', 'aesthetic'],
+};
+
+function deriveStoryPromptNicheKey(nicheStyle = '') {
+  const normalized = String(nicheStyle || '').toLowerCase();
+  for (const key of Object.keys(STORY_PROMPT_BANNED_TERMS)) {
+    if (normalized.includes(key)) return key;
+  }
+  return 'generic';
+}
+
+function sanitizeNicheLabel(nicheStyle = '') {
+  const plain = String(nicheStyle || '').trim();
+  return plain || 'your niche';
+}
+
+function extractNicheTokens(nicheStyle = '', hashtags = []) {
+  const tokens = new Set();
+  const source = String(nicheStyle || '').toLowerCase();
+  (source.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
+  (Array.isArray(hashtags) ? hashtags : []).forEach((tag) => {
+    const clean = String(tag || '').toLowerCase().replace(/^#/, '');
+    (clean.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
+  });
+  return tokens;
+}
+
+function buildStoryPromptTemplate(nicheStyle = '') {
+  const key = deriveStoryPromptNicheKey(nicheStyle);
+  const template = STORY_PROMPT_TEMPLATES[key] || STORY_PROMPT_TEMPLATES.generic;
+  const label = sanitizeNicheLabel(nicheStyle);
+  return template.replace(/{niche}/g, label);
+}
+
+function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashtags = []) {
+  const trimmed = String(storyPrompt || '').trim();
+  if (!trimmed) return buildStoryPromptTemplate(nicheStyle);
+  const lower = trimmed.toLowerCase();
+  const tokens = extractNicheTokens(nicheStyle, hashtags);
+  const hasNicheToken = tokens.size && [...tokens].some((token) => lower.includes(token));
+  const nicheKey = deriveStoryPromptNicheKey(nicheStyle);
+  const bannedTerms = STORY_PROMPT_BANNED_TERMS[nicheKey] || [];
+  const hasBanned = bannedTerms.some((term) => lower.includes(term));
+  const overrideTokens = STORY_PROMPT_KEYWORD_OVERRIDES[nicheKey] || [];
+  if (hasBanned && !overrideTokens.some((term) => tokens.has(term))) {
+    return buildStoryPromptTemplate(nicheStyle);
+  }
+  if (tokens.size && !hasNicheToken) {
+    return buildStoryPromptTemplate(nicheStyle);
+  }
+  return trimmed;
+}
+
 function deterministicKeywordFallback(post = {}, classification = 'creator', nicheStyle = '', used = new Set()) {
+  const nicheKeyword = deriveNicheKeyword(nicheStyle);
+  if (nicheKeyword && isKeywordValid(nicheKeyword, post) && !used.has(nicheKeyword)) {
+    return nicheKeyword;
+  }
   const text = [nicheStyle, post.idea, post.title, post.pillar, post.type].filter(Boolean).join(' ').toLowerCase();
   for (const entry of FALLBACK_KEYWORD_MAP) {
     if (entry.match.test(text)) {
@@ -2181,7 +2279,7 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
-function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
+function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
     err.code = 'BAD_REQUEST';
@@ -2199,6 +2297,8 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   const videoScript = { ...script };
   const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || 'Thanks! Want our quick guide?';
   const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || 'Starts at $99. Want me to book you this week?';
+  const rawStoryPrompt = toPlainString(post.storyPrompt || "Share behind-the-scenes of today's work.");
+  const storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
@@ -2211,7 +2311,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
     formatIntent: toPlainString(post.formatIntent || ''),
     cta: toPlainString(post.cta || 'DM us to book today'),
     pillar: toPlainString(post.pillar || 'Education'),
-    storyPrompt: toPlainString(post.storyPrompt || "Share behind-the-scenes of today's work."),
+    storyPrompt,
     designNotes: toPlainString(post.designNotes || 'Clean layout, bold headline, brand colors.'),
     repurpose,
     analytics,
@@ -2892,7 +2992,7 @@ const server = http.createServer((req, res) => {
       const instagramEntry = instagramLen ? audioCache.instagram[idx % instagramLen] : null;
       rawPosts[idx].audio = formatAudioLine(idx, tiktokEntry, instagramEntry);
     }
-    let posts = rawPosts.map((p, idx) => normalizePost(p, idx, startDay));
+    let posts = rawPosts.map((p, idx) => normalizePost(p, idx, startDay, undefined, nicheStyle));
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
