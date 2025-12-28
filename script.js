@@ -642,18 +642,17 @@ function normalizeContentCard(card) {
 }
 
 function ensureReelScriptHook(entry) {
-  if (!entry || typeof entry !== 'object') return 'Stop scrolling quick tip';
+  if (!entry || typeof entry !== 'object') return '';
   if (!entry.videoScript || typeof entry.videoScript !== 'object') {
     entry.videoScript = {};
   }
   const script = entry.videoScript;
   let hook = String(script.hook || '').trim();
-  if (!hook) {
-    const source = String(entry.idea || entry.title || entry.caption || '').trim();
-    hook = (source.split(/[.?!]/)[0] || '').trim();
-    if (!hook) hook = 'Stop scrolling quick tip';
-    script.hook = hook;
-  }
+    if (!hook) {
+      const source = String(entry.idea || entry.title || entry.caption || '').trim();
+      hook = (source.split(/[.?!]/)[0] || '').trim();
+      script.hook = hook;
+    }
   entry.videoScript = script;
   return hook;
 }
@@ -7444,7 +7443,7 @@ if (document.readyState === 'loading') {
 }
 
 const DEFAULT_IDEA_TEXT = 'Engaging post idea';
-const DEFAULT_CAPTION_TEXT = 'Quick tip that helps you today.\nSave this for later.';
+const DEFAULT_CAPTION_TEXT = '';
 const DEFAULT_STORY_PROMPT_TEXT = "Share behind-the-scenes of today's work.";
 
 const POST_SLOT_ANGLES = [
@@ -7908,7 +7907,7 @@ function mergeUnique(list, additions) {
 function applySlotAngle(post, angle, slotNumber) {
   if (!angle) return;
   const baseIdea = (post.idea || DEFAULT_IDEA_TEXT).trim();
-  const cta = post.cta || 'DM us to book today';
+  const cta = post.cta || '';
   if (angle.buildIdea) post.idea = angle.buildIdea(baseIdea, slotNumber);
   if (angle.buildCaption) post.caption = angle.buildCaption(baseIdea, cta, post.caption);
   if (angle.buildStoryPrompt) post.storyPrompt = angle.buildStoryPrompt(baseIdea);
@@ -7948,7 +7947,7 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
   if (!blueprint) return;
   const normalized = (keyword || 'your service').replace(/\s+/g, ' ').trim();
   const helpers = {
-    cta: post.cta || 'DM us to book today',
+    cta: post.cta || '',
     slotNumber,
     title: toTitleCase(normalized),
   };
@@ -8078,7 +8077,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     caption: p.caption || DEFAULT_CAPTION_TEXT,
     hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : ['marketing','content','tips','learn','growth','brand']),
     format: p.format || 'Reel',
-    cta: p.cta || 'DM us to book today',
+    cta: p.cta || '',
     pillar: p.pillar || 'Education',
     storyPrompt: p.storyPrompt || DEFAULT_STORY_PROMPT_TEXT,
     designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
@@ -8087,7 +8086,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
     promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
     weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
-    videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: 'DM us to grab your spot' },
+    videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: '' },
     variants: p.variants || undefined,
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply

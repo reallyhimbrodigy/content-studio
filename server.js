@@ -1623,11 +1623,8 @@ const qualityRules = `Quality Rules — Make each post plug-and-play & conversio
 - FORBIDDEN:
 - Any niche-mismatched terms (example: fitness card must not mention “facials”, “peels”, “glow”, skincare, real estate, etc.).
 - Generic filler like “Fuel your body right”, “Meet our amazing client”, “Let’s get started”, “Game changer”, “Level up”.
-- OUTPUT CHECK (PROMPT-LEVEL):
-- If you cannot produce a niche-locked hook under these rules, output this fallback hook format instead, filled with niche-specific terms:
-- “Stop making this [NICHE] mistake”
 2) Details/Hashtags: output only a plain list of 8–12 hashtags (no prose, bullets, or labels) that stay strictly niche-relevant to the user’s niche, offer type, and platform. Provide 3–5 core niche tags, 3–5 problem/outcome tags, and 1–2 local/brand/community tags (use the brand name if available). Ban cross-niche contamination and filler (#fyp, #viral, #trending, #explorepage, #instagood, #tiktok, #reels, #love). Do not introduce unrelated niches; if the niche is ambiguous, infer the closest interpretation from the category/title and stay consistent.
-3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
+3) CTA: a single, concise sentence that reflects the niche and offers a gentle call to action without canned phrases.
 4) Design: specify colors, typography, pacing, and end-card CTA.
 5) REMIX / SHARE RULES (HARD):
 - Output ONE follow-up action only (no lists).
@@ -1678,7 +1675,7 @@ FALLBACK (prompt-level): If unsure, choose Reel.
             FORBIDDEN TYPES: generic goals ("What’s your goal?"), preference questions without tension ("What do you like more?"), advice-seeking prompts ("What tips do you need?"), or off-niche content (no skincare/beauty terms unless the niche is beauty).
 ALGO/SALES REQUIREMENTS: the question should invite comments and longer replies and prime the viewer for Story Prompt+ without selling.
             FALLBACK (prompt level): if unsure, output "What’s the most frustrating part of [NICHE TOPIC] for you?" (fill in niche-specific wording).
-12) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must briefly describe an audience behavior reason tied to the niche (no generic “post when people are online,” no off-niche terms). Always keep the wording concise, contextual, and aligned with the format.
+12) Execution Notes: output two short lines. Line one should state the chosen format (Reel/Carousel/Story/Static) relative to the niche concept; line two should capture one concise execution cue or audience behavior reason relevant to that format. Keep the wording tight, niche-specific, and avoid canned phrasing.
 13) Keep outputs concise to avoid truncation.
 14) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
 
@@ -1701,11 +1698,7 @@ FORBIDDEN:
 
 ALGO / SALES REQUIREMENTS:
 - Choose audio that increases watch time by lowering friction, not spectacle.
-- If unsure, recommend a subtle or instrumental option.
-
-FALLBACK (prompt-level):
-TikTok: Subtle instrumental — @originalaudio
-Instagram: Low-key instrumental — @originalaudio`;
+- If unsure, recommend a subtle or instrumental option.`;
   const classificationRules =
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM.'
@@ -1713,10 +1706,10 @@ Instagram: Low-key instrumental — @originalaudio`;
   const distributionPlanRules = `Distribution Plan rules:
 Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the niche/brand context provided. Do not introduce any topic that is not in this niche. No unrelated references.
 Return EXACTLY three lines:
-Instagram: (1–2 sentences) include a save/share reason + one engagement loop (comment keyword or save prompt) that matches the post’s hook and CTA.
-TikTok: (1–2 sentences) include a pattern interrupt in the first five words + a watch-time loop (“part 2,” “wait for the last tip,” “most people miss this”) that matches the post’s hook and CTA.
-LinkedIn: (1–2 sentences) include a credibility framing (lesson/insight) + a soft CTA that matches the post’s hook and CTA.
-Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance terms unless that is the niche; no numbers in any comment keyword; no placeholder junk; no extra lines.`; 
+Instagram: a niche-specific caption tuned to save/share behavior that matches the post’s hook and CTA.
+TikTok: a pattern-interrupt caption with a watch-time loop that matches the post’s hook and CTA.
+LinkedIn: a credibility-focused caption with a soft CTA that matches the post’s hook and CTA.
+Hard rules: stay niche-locked; no off-topic nouns; no placeholder junk; do not add extra lines.`; 
   const postingTimeRules = '';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
@@ -2263,13 +2256,6 @@ const STORY_PROMPT_BANNED_TERMS = {
   basketball: ['facial','peel','macros','protein shake'],
   cooking: ['facial','peel','dribbling','bench press'],
 };
-const STORY_PROMPT_TEMPLATES = {
-  fitness: 'Share your biggest workout challenge this week. Add a poll: “Morning or evening workouts?” plus a slider: “Motivation level”.',
-  generic: 'Share a quick story about your {niche} experience. Add a poll with two {niche} options and a 1–10 confidence slider.',
-};
-const STORY_PROMPT_KEYWORD_OVERRIDES = {
-  beauty: ['beauty', 'skin', 'skincare', 'glow', 'aesthetic'],
-};
 const STORY_PROMPT_PLUS_FORBIDDEN = ['facial','peel','glow','botox','filler','serum','cleanser','moisturizer','acne','skincare','med spa','medspa','aesthetics','cosmetic','dermatology'];
 const STORY_PROMPT_PLUS_LOGGED = new Set();
 const STORY_PROMPT_DENYLIST = ['facial', 'peel', 'glow', 'skincare', 'botox', 'filler', 'med spa', 'lash', 'brow', 'aesthetic', 'dermal'];
@@ -2314,12 +2300,6 @@ function deriveStoryPromptOptionPair(nicheStyle = '') {
   return ['Option A', 'Option B'];
 }
 
-function buildStoryPromptPlusFallback(nicheStyle = '') {
-  const anchor = deriveStoryPromptAnchor(nicheStyle);
-  const optionPair = deriveStoryPromptOptionPair(nicheStyle);
-  return `Share your biggest ${anchor} question today. Add a poll: "${optionPair[0]}" vs "${optionPair[1]}" plus a slider labeled "${anchor} level". Add a question box: “Ask me anything about today’s ${anchor}.”`;
-}
-
 function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
   const trimmed = String(text || '').trim();
   const anchor = deriveStoryPromptAnchor(nicheStyle);
@@ -2330,7 +2310,7 @@ function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
   const hasForbidden = STORY_PROMPT_PLUS_FORBIDDEN.concat(STORY_PROMPT_DENYLIST).some((term) => lower.includes(term));
   const needsFallback = !trimmed || (!anchorMatch && anchor !== 'niche') || (hasForbidden && !isSkincareNiche);
   if (!needsFallback) return trimmed;
-  const fallback = buildStoryPromptPlusFallback(nicheStyle);
+  const fallback = '';
   const key = `${post.userId || 'anon'}|${nicheStyle}`;
   if (!STORY_PROMPT_PLUS_LOGGED.has(key)) {
     console.warn('[Calendar] StoryPromptPlusFallbackRegen', { userId: post.userId || null, niche: nicheStyle, original: trimmed || '[empty]' });
@@ -2340,8 +2320,7 @@ function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
 }
 
 function buildStoryPromptPlusNicheFallback(nicheStyle = '') {
-  const label = deriveStoryPromptAnchor(nicheStyle);
-  return `What’s your favorite ${label} choice? Add a poll with "Option A" vs "Option B" and a slider for ${label} interest level.`;
+  return '';
 }
 
 function validateNicheLock(card = {}, nicheStyle = '') {
@@ -2364,7 +2343,7 @@ function validateNicheLock(card = {}, nicheStyle = '') {
 
 if (process.env.NODE_ENV !== 'production') {
   const dev_niche = 'fast food burger joint';
-  const dev_story = sanitizeStoryPromptPlus(dev_niche, 'Facial or peel? Add a poll, glow level slider.');
+  const dev_story = sanitizeStoryPromptPlus(dev_niche, 'What’s your favorite combo right now? Add a poll and slider.');
   if (/facial|peel|glow/.test(dev_story.toLowerCase())) {
     console.warn('[Calendar][Dev] StoryPromptPlus sanitize failed to strip banned terms');
   }
@@ -2373,16 +2352,9 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
-function buildStoryPromptTemplate(nicheStyle = '') {
-  const key = deriveStoryPromptNicheKey(nicheStyle);
-  const template = STORY_PROMPT_TEMPLATES[key] || STORY_PROMPT_TEMPLATES.generic;
-  const label = sanitizeNicheLabel(nicheStyle);
-  return template.replace(/{niche}/g, label);
-}
-
 function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashtags = []) {
   const trimmed = String(storyPrompt || '').trim();
-  if (!trimmed) return buildStoryPromptTemplate(nicheStyle);
+  if (!trimmed) return '';
   const lower = trimmed.toLowerCase();
   const tokens = extractNicheTokens(nicheStyle, hashtags);
   const hasNicheToken = tokens.size && [...tokens].some((token) => lower.includes(token));
@@ -2391,10 +2363,10 @@ function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashta
   const hasBanned = bannedTerms.some((term) => lower.includes(term));
   const overrideTokens = STORY_PROMPT_KEYWORD_OVERRIDES[nicheKey] || [];
   if (hasBanned && !overrideTokens.some((term) => tokens.has(term))) {
-    return buildStoryPromptTemplate(nicheStyle);
+    return '';
   }
   if (tokens.size && !hasNicheToken) {
-    return buildStoryPromptTemplate(nicheStyle);
+    return '';
   }
   return trimmed;
 }
@@ -2581,7 +2553,7 @@ function ensureHashtagArray(value, fallback = [], minLength = 0) {
 function normalizeScriptObject(source = {}) {
   const hook = toPlainString(source.hook) || 'Stop scrolling—quick tip';
   const body = toPlainString(source.body) || 'Show result • Explain 1 step • Tease benefit';
-  const cta = toPlainString(source.cta) || 'DM us to grab your spot';
+  const cta = toPlainString(source.cta) || '';
   return { hook, body, cta };
 }
 
@@ -2595,14 +2567,14 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const fallbackDay = typeof forcedDay === 'number'
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
-  const defaultHashtags = ['marketing', 'content', 'tips', 'learn', 'growth', 'brand'];
-  const hashtags = ensureHashtagArray(post.hashtags || [], defaultHashtags, 6);
+  const defaultHashtags = [];
+  const hashtags = ensureHashtagArray(post.hashtags || [], defaultHashtags, 0);
   const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
   const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
   const script = normalizeScriptObject(post.script || post.videoScript || {});
   const videoScript = { ...script };
-  const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || 'Thanks! Want our quick guide?';
-  const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || 'Starts at $99. Want me to book you this week?';
+  const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
+  const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
   const rawStoryPrompt = toPlainString(post.storyPrompt || "Share behind-the-scenes of today's work.");
   const storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
   const normalized = {
@@ -2610,15 +2582,15 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
     title: toPlainString(post.title || post.idea || ''),
     type: toPlainString(post.type || 'educational'),
-    hook: toPlainString(post.hook || script.hook || 'Stop scrolling quick tip'),
-    caption: toPlainString(post.caption || 'Quick tip that helps you today. Save this for later.'),
+    hook: toPlainString(post.hook || script.hook || ''),
+    caption: toPlainString(post.caption || ''),
     hashtags,
     format: 'Reel',
     formatIntent: toPlainString(post.formatIntent || ''),
-    cta: toPlainString(post.cta || 'DM us to book today'),
+    cta: toPlainString(post.cta || ''),
     pillar: toPlainString(post.pillar || 'Education'),
     storyPrompt,
-    designNotes: toPlainString(post.designNotes || 'Clean layout, bold headline, brand colors.'),
+    designNotes: toPlainString(post.designNotes || ''),
     repurpose,
     analytics,
     engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
