@@ -8217,14 +8217,21 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const ct = response.headers.get('content-type') || '';
       const bodyIsHtml = /<!DOCTYPE/i.test(responseText.trim()) || ct.toLowerCase().includes('text/html') || responseText.trim().startsWith('<html');
       if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
-        const detail = parsedDetail?.error || response.statusText || 'invalid_response';
+        const data = parsedDetail || {};
+        let dataString = '';
+        try {
+          dataString = JSON.stringify(data);
+        } catch {
+          dataString = response.statusText || 'invalid_response';
+        }
+        const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
         const preview = responseText.slice(0, 300);
-        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview });
+        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview, msg });
         if (([502, 503, 504].includes(response.status) || response.status >= 500 || bodyIsHtml) && attempt < 3) {
           await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
           return fetchBatch(batchIndex, attempt + 1);
         }
-        throw new Error(`API error: ${detail}`);
+        throw new Error(msg);
       }
       if (firstDispatchLogged) {
         console.log(`[Calendar][Perf] first batch response received (t=${Math.round(performance.now())}ms)`);
@@ -8346,13 +8353,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
       )
     );
+    const rejectionEntries = settled.filter((entry) => entry.status === 'rejected');
+    if (rejectionEntries.length) {
+      rejectionEntries.forEach((entry) => console.error('[Calendar] batch rejected', entry.reason));
+      const firstRejection = rejectionEntries[0].reason;
+      const rejectionError = firstRejection instanceof Error
+        ? firstRejection
+        : new Error(firstRejection ? String(firstRejection) : 'Batch generation failed');
+      throw rejectionError;
+    }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
     const results = settled
       .filter((entry) => entry.status === 'fulfilled' && entry.value)
       .map((entry) => entry.value);
-    settled
-      .filter((entry) => entry.status === 'rejected')
-      .forEach((entry) => console.error('[Calendar] batch rejected', entry.reason));
 
     const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
     
@@ -8399,7 +8412,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
 
     if (!allPosts.length) {
-      throw new Error('API returned no posts');
+      throw new Error('Calendar generation returned 0 posts');
     }
 
     renderCards(allPosts);
@@ -8524,7 +8537,6 @@ async function onGenerateCalendarClick() {
     const { posts: aiGeneratedPosts, calendarId } = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
     if (currentGenerationRunId !== runId) {
       console.warn('[Calendar] Stale generation results ignored for run', runId);
-      hideGeneratingState(originalText);
       return;
     }
     console.log(" Received posts:", aiGeneratedPosts);
@@ -8536,7 +8548,6 @@ async function onGenerateCalendarClick() {
     currentNiche = niche;
     renderCards(currentCalendar);
     applyFilter("all");
-    hideGeneratingState(originalText);
     activeTab = 'plan';
     syncCalendarUIAfterDataChange({ scrollToCalendar: true });
     persistCurrentCalendarState();
@@ -8554,22 +8565,20 @@ async function onGenerateCalendarClick() {
   } catch (err) {
     if (err.message === 'generation_cancelled') {
       console.log('Calendar generation cancelled for run', runId);
-      hideGeneratingState(originalText);
       return;
     }
     console.error("❌ Failed to generate calendar:", err);
     console.error("❌ Error message:", err.message);
     console.error("❌ Full error:", err);
-    hideGeneratingState('Try Again');
     if (feedbackEl) {
       feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
       feedbackEl.classList.remove("success");
     }
     setTimeout(() => {
-      hideGeneratingState(originalText);
       if (feedbackEl) feedbackEl.textContent = "";
     }, 4000);
   } finally {
+    hideGeneratingState(originalText);
     isGeneratingCalendar = false;
     if (generationAbortController === controller) {
       generationAbortController = null;
