@@ -2207,6 +2207,7 @@ const FALLBACK_KEYWORD_MAP = [
   { match: /business|coach|consult|consulting|agency|strategy/, keywords: ['CLIENTS', 'SYSTEM'] },
   { match: /creator|influencer|lifestyle|content|story/, keywords: ['ROUTINE', 'VIBES'] },
 ];
+const STORY_PROMPT_KEYWORD_OVERRIDES = {};
 
 function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
   const letters = (String(value || '').toUpperCase().match(/[A-Z]+/g) || []).join('');
@@ -2315,7 +2316,11 @@ function isOverrideTokenSafe(token = '') {
 }
 
 function getSafeOverrideTokens(nicheKey = '') {
-  return (STORY_PROMPT_KEYWORD_OVERRIDES[nicheKey] || []).filter(isOverrideTokenSafe);
+  const overrides = (STORY_PROMPT_KEYWORD_OVERRIDES && typeof STORY_PROMPT_KEYWORD_OVERRIDES === 'object')
+    ? STORY_PROMPT_KEYWORD_OVERRIDES
+    : {};
+  const tokens = Array.isArray(overrides[nicheKey]) ? overrides[nicheKey] : [];
+  return tokens.filter(isOverrideTokenSafe);
 }
 
 function deriveStoryPromptAnchor(nicheStyle = '') {
