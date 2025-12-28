@@ -370,14 +370,6 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
     }
   });
   const daySuffix = typeof context.day === 'number' ? ` (Day ${context.day})` : '';
-  const fallbackHooks = [
-    `Open with ${angleText} by showing how ${label} solves a major objection${daySuffix}.`,
-    `Frame ${objectiveText} by comparing ${label} to the common mistake every viewer makes${daySuffix}.`,
-    `Ask what ${label} could feel like once ${angleText} lands${daySuffix}.`,
-  ];
-  while (dedupedHooks.length < 3) {
-    dedupedHooks.push(fallbackHooks[dedupedHooks.length % fallbackHooks.length]);
-  }
   const pinnedRaw = String(strategy.pinned_comment || strategy.pinnedComment || '').trim();
   const pinnedFallback = `Comment "${label}" and I’ll drop the ${angleText.toLowerCase()} insight${daySuffix}.`;
   const pinned = pinnedRaw || pinnedFallback;
@@ -647,12 +639,8 @@ function ensureReelScriptHook(entry) {
     entry.videoScript = {};
   }
   const script = entry.videoScript;
-  let hook = String(script.hook || '').trim();
-    if (!hook) {
-      const source = String(entry.idea || entry.title || entry.caption || '').trim();
-      hook = (source.split(/[.?!]/)[0] || '').trim();
-      script.hook = hook;
-    }
+  const hook = String(script.hook || '').trim();
+  script.hook = hook;
   entry.videoScript = script;
   return hook;
 }
@@ -943,7 +931,7 @@ function buildAssetContextFromEntry(entry = {}, day) {
     linkedDay: day,
     title: entry?.idea || entry?.title || `Day ${String(day).padStart(2, '0')}`,
     subtitle: entry?.caption || entry?.description || '',
-    cta: entry?.cta || 'Learn more',
+    cta: entry?.cta || '',
     prompt: entry?.prompt || '',
     tone: entry?.tone || '',
     campaign: entry?.campaign || '',
@@ -2584,7 +2572,7 @@ function buildAssetDetailBrandPreview(asset = {}) {
   const bodyFont = `${theme.bodyFont || 'Source Sans Pro'}`;
   const headline = escapeHtml(asset.title || asset.caption || 'Ready-to-post hook');
   const caption = escapeHtml(asset.caption || 'Share one sharp insight or proof point here.');
-  const cta = escapeHtml(asset.cta || 'Add CTA');
+  const cta = escapeHtml(asset.cta || '');
   const notes = escapeHtml(asset.notes || 'Add creative direction notes or animation cues.');
   const logoMarkup = theme.logo
     ? `<span class="asset-detail__brand-logo"><img src="${escapeHtml(theme.logo)}" alt="Brand logo" loading="lazy" /></span>`
@@ -5212,15 +5200,19 @@ const createCard = (post) => {
     };
 
 
-    const hooksEl = document.createElement('div');
-    hooksEl.className = 'calendar-card__hooks';
-    const hooksLabel = document.createElement('span');
-    hooksLabel.className = 'calendar-card__hooks-label';
-    hooksLabel.textContent = 'Hook';
-    const hookLine = document.createElement('p');
-    hookLine.className = 'calendar-card__hook-line';
-    hookLine.innerHTML = `<span class="calendar-card__format">Hook:</span>${escapeHtml(ensureReelScriptHook(entry))}`;
-    hooksEl.append(hooksLabel, hookLine);
+    const hookText = ensureReelScriptHook(entry);
+    let hooksEl = null;
+    if (hookText) {
+      hooksEl = document.createElement('div');
+      hooksEl.className = 'calendar-card__hooks';
+      const hooksLabel = document.createElement('span');
+      hooksLabel.className = 'calendar-card__hooks-label';
+      hooksLabel.textContent = 'Hook';
+      const hookLine = document.createElement('p');
+      hookLine.className = 'calendar-card__hook-line';
+      hookLine.textContent = hookText;
+      hooksEl.append(hooksLabel, hookLine);
+    }
 
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';
@@ -5688,7 +5680,7 @@ const createCard = (post) => {
     if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
       const scriptLines = [];
-      if (videoScript.hook) scriptLines.push(`Hook: ${videoScript.hook}`);
+      if (videoScript.hook) scriptLines.push(videoScript.hook);
       if (videoScript.body) scriptLines.push(`Body: ${videoScript.body}`);
       if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
@@ -5805,17 +5797,7 @@ const createCard = (post) => {
       promoSlotEl,
       weeklyPromoEl,
       videoScriptEl,
-      (() => {
-        const value =
-          entry.distributionPlan ||
-          (() => {
-            const parts = [];
-            if (repurposeEl) parts.push(repurposeEl);
-            if (variantsEl) parts.push(variantsEl);
-            return parts.filter(Boolean).join('\n');
-          })();
-        return value ? createDetailRow('Distribution Plan', value, 'calendar-card__distribution') : null;
-      })(),
+      entry.distributionPlan ? createDetailRow('Distribution Plan', entry.distributionPlan, 'calendar-card__distribution') : null,
       assetsEl,
       ...proDetailNodes,
       ...hiddenDetailNodes,
@@ -5826,7 +5808,8 @@ const createCard = (post) => {
     const pinnedBlock = entryEl._pinnedBlock;
     entryEl.append(infoRows, ideaEl, typeEl);
     if (pinnedBlock) entryEl.append(pinnedBlock);
-    entryEl.append(hooksEl, captionRow);
+    if (hooksEl) entryEl.append(hooksEl);
+    entryEl.append(captionRow);
     if (collapsedCtaEl) entryEl.append(collapsedCtaEl);
     if (executionNotesEl) entryEl.append(executionNotesEl);
     entryEl.append(details);
@@ -6504,14 +6487,6 @@ const slugify = (s = "") =>
     .replace(/(^-|-$)/g, "")
     .slice(0, 40);
 
-const proInteractivePrompts = [
-  'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
-  'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
-  'Turn the story into a “This or That” sequence with a DM me button.',
-  'Collect audience input with a “Ask me anything about today’s tip” box.',
-  'Use a countdown sticker leading into tomorrow’s teaser.'
-];
-
 const proFollowUpIdeas = [
   'Follow up with a testimonial carousel from a recent client.',
   'Share a short Reel showing the before/after from this concept.',
@@ -6546,18 +6521,9 @@ const pickCycled = (items, index = 0, offset = 0) => {
 
 const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   const baseCaption = (post.caption || post.idea || 'Share today’s win.').trim();
-  const nicheTag = buildNicheTag(nicheStyle);
-  const hashtagArray = Array.isArray(post.hashtags) ? post.hashtags.map(formatHashtag).filter(Boolean) : [];
-
-  const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
-  const interactive = pickCycled(proInteractivePrompts, index);
-
-    return {
-      ...post,
-    storyPromptExpanded: post.storyPrompt
-      ? `${post.storyPrompt} ${interactive}`
-      : interactive,
-    followUpIdea: pickCycled(proFollowUpIdeas, index)
+  return {
+    ...post,
+    followUpIdea: pickCycled(proFollowUpIdeas, index),
   };
 };
 
@@ -7147,7 +7113,7 @@ function buildPostHTML(post){
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     (engage.commentReply||engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply?`<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>`:''}${engage.dmReply?`<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
-    (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div><em>Hook:</em> ${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
+    (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div>${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
         + `${post.variants.igCaption?`<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>`:''}`
@@ -7444,443 +7410,275 @@ if (document.readyState === 'loading') {
 
 const DEFAULT_IDEA_TEXT = 'Engaging post idea';
 const DEFAULT_CAPTION_TEXT = '';
-const DEFAULT_STORY_PROMPT_TEXT = "Share behind-the-scenes of today's work.";
+const DEFAULT_STORY_PROMPT_TEXT = '';
 
 const POST_SLOT_ANGLES = [
   {
     name: 'Story spotlight',
-    buildIdea: (base) => `Story spotlight: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Story spotlight: ${base}. A real client walked in feeling stuck—we tweaked one move and the shift was wild. Ready for your own version? ${cta}`,
-    buildStoryPrompt: (base) => `Record a 30-second selfie story describing how ${base} played out for a real person. Highlight their before, the pivot, and the win.`,
-    designNotes: 'Use warm, candid footage plus on-screen captions that hit the turning point.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Story clip → Reel remix', 'Quote the testimonial in a carousel'],
     analytics: ['Saves', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `What happened when we doubled down on ${base}?`,
-      body: '1) Introduce the person\n2) Show the “aha” moment\n3) Reveal the result with a number.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Appreciate you checking out this story! Want the behind-the-scenes playbook for ${base.toLowerCase()}?`,
-      dmReply: `I can map out how ${base.toLowerCase()} would look for you—want me to send the cheatsheet?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
   {
     name: 'Proof drop',
-    buildIdea: (base) => `Proof drop: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Proof drop: ${base}. Screenshot a metric, testimonial, or before/after that shows the transformation. Spell out the levers you pulled and invite them to replicate it. ${cta}`,
-    buildStoryPrompt: (base) => `Film a voiceover scrolling through proof that ${base} works—circle the metric and narrate what changed.`,
-    designNotes: 'Bold numeric typography, tight crop on stats, branded highlight color.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Stat graphic → LinkedIn post', 'Metric → Email teaser'],
     analytics: ['Profile visits', 'Click-throughs'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Need receipts that ${base} delivers?`,
-      body: 'Walk through the numbers, then call out exactly what triggered the spike.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Wild, right? If you want to know how ${base.toLowerCase()} works in your setup, ask away.`,
-      dmReply: `Happy to unpack that proof point in DMs—want me to send the 3-step breakdown?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Myth bust',
-    buildIdea: (base) => `Myth busting: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Myth busting time: people still believe the wrong thing about ${base}. Call out the myth, stack your truth with one vivid example, and end with an empowering action step. ${cta}`,
-    buildStoryPrompt: (base) => `Record a quick myth-vs-truth reel pointing straight at the camera. Say “Myth:” then flip to “Here’s the truth about ${base}.”`,
-    designNotes: 'Split-screen or text overlay that literally says “Myth” and “Truth.”',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Myth vs Truth carousel', 'Save as FAQ highlight'],
     analytics: ['Comments', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Myth: ${base}. Truth: let me show you.`,
-      body: 'Call out the belief, explain why it fails, and gift them the new habit.',
-      cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Thanks for chiming in! Drop the next myth you hear all the time and I’ll break it down.',
-      dmReply: 'If you’re running into that myth in real time, shoot me the context—I’ll help you counter it.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Community question',
-    buildIdea: (base) => `Community question: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base) => `Community question: ${base}. Give your own POV first, then explicitly ask followers to share their routines, wins, or hurdles. Spotlight a few in Stories to keep the loop going.`,
-    buildStoryPrompt: (base) => `Film yourself asking the question about ${base}, then stitch replies throughout the day.`,
-    designNotes: 'Use a simple text-on-gradient background or selfie clip with captions + poll stickers.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn answers into a roundup post', 'Collect quotes for newsletter'],
     analytics: ['Comments', 'DMs'],
-    buildVideoScript: (base) => ({
-      hook: `Real talk: how are you approaching ${base}?`,
-      body: 'Share your stance, then ask them to weigh in with a specific emoji or keyword.',
-      cta: 'Drop your answer in the comments—best one gets a shoutout.',
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Love this perspective—mind if I feature it in Stories?',
-      dmReply: 'Got it! I’ll share a couple bonus tips that expand on your take.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Mini training',
-    buildIdea: (base) => `Mini training: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Mini training: ${base}. Lay out a 3-step checklist: the setup, the action, the win they should expect. Encourage followers to screenshot it, try it tonight, then tell you how it went. ${cta}`,
-    buildStoryPrompt: (base) => `Screen-record or slide through a whiteboard as you outline the 3 steps for ${base}.`,
-    designNotes: 'Use numbered typography, punchy verbs, and arrows that show progression.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Checklist → PDF lead magnet', 'Turn each step into a Story panel'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Here’s your 3-step plan for ${base}.`,
-      body: 'Step 1: set the stage. Step 2: show the action. Step 3: reveal the payoff.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Let me know when you run through those steps for ${base.toLowerCase()}—I’ll help troubleshoot.`,
-      dmReply: 'Shoot me your screenshot and I’ll personalize the next move.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Offer reminder',
-    buildIdea: (base) => `Offer reminder: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Offer reminder: tie ${base} back to the program, product, or slot you have open. Spell out exactly who it helps, what they get, and why this week is the best time to jump in. ${cta}`,
-    buildStoryPrompt: (base) => `Record a clip from your workspace or client area inviting them to claim the ${base}-style result.`,
-    designNotes: 'Show a behind-the-scenes moment plus bold CTA button on screen.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into an email CTA', 'Use as pinned Story highlight'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Spots open for people who want ${base}.`,
-      body: 'Explain what’s included, sprinkle urgency, and mention proof.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Just sent over details for ${base.toLowerCase()}—want me to hold a slot for you?`,
-      dmReply: `Here’s the mini application for ${base.toLowerCase()}. I’ll keep an eye out for your name!`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
   {
     name: 'Trend radar',
-    buildIdea: (base) => `Trend radar: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Trend radar: ${base}. Flag what’s changing this month, spell out how it impacts your audience, and recommend a micro-shift they can make today. ${cta}`,
-    buildStoryPrompt: (base) => `Film a quick “trend desk” explainer: headline, why it matters, what you’re advising.`,
-    designNotes: 'News-style lower thirds, ticker-inspired typography, animated arrows.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Trend note → Newsletter opener', 'Trend clip → LinkedIn post'],
     analytics: ['Shares', 'Profile visits'],
-    buildVideoScript: (base, cta) => ({
-      hook: `If ${base} is on your radar, here’s what to watch:`,
-      body: '1) Name the shift\n2) Show who it affects\n3) Give them a move to make',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Appreciate you keeping tabs on ${base.toLowerCase()} too—what signals are you seeing?`,
-      dmReply: `Want a custom read on how ${base.toLowerCase()} will hit your brand? Shoot me your niche and I’ll riff.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Swipe file',
-    buildIdea: (base) => `Swipe file: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Swipe file drop: ${base}. Outline the exact template, line-by-line, and invite followers to screenshot + tag you when they try it. ${cta}`,
-    buildStoryPrompt: (base) => `Share a “copy this” walkthrough: point to each line of the swipe file while narrating how to personalize it.`,
-    designNotes: 'Use cursor highlights, note-style backgrounds, or Notion-style cards.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Swipe → PDF lead magnet', 'Swipe → Carousel frames'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Steal this ${base} swipe in 3 lines.`,
-      body: 'Line 1: pattern interrupt\nLine 2: promise\nLine 3: CTA',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Tag me when you plug this ${base.toLowerCase()} swipe into your content—I’ll amplify my favorites.`,
-      dmReply: `Send me your version and I’ll tweak the hook for you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Build in public',
-    buildIdea: (base) => `Build in public: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Build-in-public check-in: show where ${base} is today, what broke, and the one experiment you’re running next. Transparently sharing the messy middle builds trust. ${cta}`,
-    buildStoryPrompt: (base) => `Record a short vlog clip walking through the “in-progress” dashboard tied to ${base}.`,
-    designNotes: 'B-roll of dashboards/whiteboards, handwritten annotations, quick status labels.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into blog progress log', 'Clip into YouTube Short'],
     analytics: ['Profile visits', 'DMs'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Building ${base} in public: here’s today’s update.`,
-      body: 'Current status → friction point → next micro-step.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `If you’re building ${base.toLowerCase()} too, let’s trade notes—what stage are you in?`,
-      dmReply: `Want to compare dashboards? I’ll send a Loom break-down.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Hot take',
-    buildIdea: (base) => `Hot take: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Hot take: ${base}. Lead with the spicy belief, back it with one data point or story, then give the “if you disagree, try this” olive branch. ${cta}`,
-    buildStoryPrompt: (base) => `Shoot a dramatic opener (zoom-in, clap, snap) before dropping the hot take about ${base}.`,
-    designNotes: 'Bold gradient background, motion blur text, reaction emojis.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into Twitter thread', 'Use as debate poll in Stories'],
     analytics: ['Comments', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Hot take: you’re doing ${base} wrong.`,
-      body: 'Explain the belief, cite proof, offer alternative.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Spicy! Drop your counterpoint—I’ll pin the best argument.`,
-      dmReply: `Totally cool if you disagree. Want me to send the full breakdown behind this take?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'FAQ clinic',
-    buildIdea: (base) => `FAQ clinic: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `FAQ clinic: answer the question you see nonstop about ${base}. Give the short version, the nuance, and a quick diagnostic so people know what bucket they’re in. ${cta}`,
-    buildStoryPrompt: (base) => `Use question stickers to collect the FAQs about ${base}, then stitch your answers.`,
-    designNotes: 'Clean Q&A cards, subtle borders, typewriter question text.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Compile into FAQ highlight', 'Turn into blog Q&A'],
     analytics: ['Replies', 'Profile visits'],
-    buildVideoScript: (base, cta) => ({
-      hook: `${base}? Here’s the real answer.`,
-      body: 'State the question → bust assumptions → recommend next step.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Got another ${base.toLowerCase()} question? Drop it and I’ll tackle it next.`,
-      dmReply: `I’ll send the long-form answer plus links—just say “FAQ me.”`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Client spotlight',
-    buildIdea: (base) => `Client spotlight: ${base}`,
+    buildIdea: (base) => base,
     buildCaption: (base, cta) => `Client spotlight: highlight one person who implemented ${base} and narrate their before/after. Tag them if they’re cool with it and share the exact prompt you gave them. ${cta}`,
-    buildStoryPrompt: (base) => `Record a short montage of the client’s win with captions describing the ${base} approach.`,
-    designNotes: 'Use testimonial card overlays, signature colors, and a hero photo.',
+    buildStoryPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into case study PDF', 'Send as sales follow-up asset'],
     analytics: ['Saves', 'Link clicks'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Client spotlight: how ${base} changed their week.`,
-      body: 'Introduce the client → describe pain → show the win + data.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Want the same ${base.toLowerCase()} result? I’ll send you the starter checklist.`,
-      dmReply: `Happy to intro you to this client if you’re curious—tap me and I’ll connect you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
 ];
 
 const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Aftercare blueprint',
-    idea: (subject, helpers) => `Aftercare blueprint: 72 hours after ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Glow insurance for ${subject}: here’s the 24-hour, 48-hour, and 72-hour checklist that keeps results locked in. Save it, tape it to your mirror, and tag us when you follow through. ${helpers.cta}`,
-    storyPrompt: (subject) => `Film your top three aftercare must-haves after ${subject} and label when to use them.`,
-    designNotes: 'Flat lay of products with annotated arrows and timestamps.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into printable checklist', 'Add to automated SMS follow-up'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Stop sabotaging ${subject} with weak aftercare.`,
-      body: 'Show the kit • explain why each step matters • highlight one common mistake.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Need me to text you this ${subject} aftercare plan? Drop “REMIND” below.`,
-      dmReply: `Send me a selfie after your ${subject} tomorrow and I’ll double-check healing for you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Event countdown',
-    idea: (subject, helpers) => `${helpers.title} countdown: when to book before a big event`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `VIP timeline alert: here’s exactly when to schedule ${subject} if you’re prepping for a wedding, shoot, or party. Screenshot the 5-day countdown and share it with your group chat. ${helpers.cta}`,
-    storyPrompt: () => 'Create a vertical timeline graphic and narrate each milestone.',
-    designNotes: 'Use timeline layout with dates and checkmarks.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Send to bridal leads', 'Turn into pinned Story highlight'],
     analytics: ['Saves', 'Shares'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Booking ${subject} before an event? Do this.`,
-      body: 'Day -7: prep • Day -3: treatment • Day -1: aftercare drill.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Tell me your event date and I’ll pop the ideal appointment windows in your DMs.',
-      dmReply: 'Drop the date + vibe and I’ll send a personalized countdown.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Ingredient face-off',
-    idea: (subject, helpers) => `Ingredient face-off inside ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Two MVP ingredients power this ${subject}. Let’s compare what each one does, who it’s best for, and how to know when you need it. ${helpers.cta}`,
-    storyPrompt: () => 'Film a side-by-side reel labeling each ingredient’s benefit.',
-    designNotes: 'Split-screen ingredient cards with icons.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into carousel explainer', 'Convert to email mini-lesson'],
     analytics: ['Saves', 'Comments'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Ingredient showdown inside your ${subject}.`,
-      body: 'Highlight ingredient A • highlight ingredient B • explain the combo magic.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Curious which ${subject} ingredient you need? Tell me your skin goal and I’ll answer.`,
-      dmReply: `Shoot me a photo of the products you already use—I’ll tell you if they pair with this ${subject}.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Membership spotlight',
-    idea: (subject, helpers) => `Membership perks for consistent ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `If you love ${subject}, the membership pays for itself. Here’s what weekly/biweekly visits unlock, the surprise perks, and the accountability you didn’t know you needed. ${helpers.cta}`,
-    storyPrompt: () => 'Record a walkthrough of the member portal or welcome kit.',
-    designNotes: 'Use card stack visuals with perk highlights.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into sales page section', 'Include in onboarding email'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Membership math for ${subject}: let’s break it down.`,
-      body: 'Cost vs value, bonus perks, and who it’s perfect for.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Want me to run the numbers based on your routine? Drop “membership” and I’ll DM you.',
-      dmReply: 'I’ll send over the full perk stack plus current openings—just say the word.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Seasonal switch-up',
-    idea: (subject, helpers) => `Seasonal switch-up: how ${subject} changes`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Seasons change, so should your ${subject}. Here’s how we tweak exfoliation, hydration, and LED time when temps swing. ${helpers.cta}`,
-    storyPrompt: () => 'Film B-roll of seasonal props (sun hat vs cozy scarf) and overlay tips.',
-    designNotes: 'Use split seasonal palette with icons.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Update blog seasonal guide', 'Send as quarterly reminder'],
     analytics: ['Shares', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Your ${subject} in winter vs summer.`,
-      body: 'Call out the mistakes • show your tweak • invite them to book the seasonal plan.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `What climate are you in? I’ll tailor the ${subject} switch-up for you.`,
-      dmReply: `Send me your current routine—I’ll highlight what to pause until spring.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'At-home vs pro',
-    idea: (subject, helpers) => `At-home vs pro results with ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `DIY can be cute, but here’s what only a pro ${subject} delivers. Outline the at-home steps we still love, then show the pro-only benefits. ${helpers.cta}`,
-    storyPrompt: () => 'Split screen reel: home routine on one side, pro tools on the other.',
-    designNotes: 'Use checklists + “pro only” stamps.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into lead magnet', 'Use as FAQ reply'],
     analytics: ['Saves', 'Profile visits'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Can you DIY ${subject}?`,
-      body: 'List what’s safe at home • list what’s better in-studio • call to action.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Curious if your at-home tools play nice with ${subject}? Tell me the brand.`,
-      dmReply: `Send me your cart screenshot and I’ll give a thumbs up/down.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Add-on stack',
-    idea: (subject, helpers) => `Add-on stack: level up your ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Want your ${subject} to hit harder? Stack it with these two add-ons. Share the price, time, and who each combo is perfect for. ${helpers.cta}`,
-    storyPrompt: () => 'Record a “choose your own adventure” Stories poll with add-on combos.',
-    designNotes: 'Use flow-chart arrows showing combinations.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Bundle into sales deck', 'Upsell via email'],
     analytics: ['Upsells', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `The add-on stack that makes ${subject} unstoppable.`,
-      body: 'Add-on 1 reason • Add-on 2 reason • real client reaction.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Tell me your goal and I’ll recommend the perfect ${subject} stack.`,
-      dmReply: `I’ll hold a spot for the combo you want—just drop your preferred day.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Pricing clarity',
-    idea: (subject, helpers) => `Pricing clarity: where your ${subject} investment goes`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Here’s what you pay for with ${subject}: sterile tools, licensed pros, medical-grade serums, and the follow-up plan. Transparency builds trust, so let’s show the receipt. ${helpers.cta}`,
-    storyPrompt: () => 'Film a reel labeling each cost bucket on-screen.',
-    designNotes: 'Receipt-style typography with highlighted lines.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Embed on pricing page', 'Send during sales consults'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Ever wonder why ${subject} costs what it does?`,
-      body: 'Line-item the investment • show what corners you refuse to cut.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Have a budget? Tell me and I’ll map what we can achieve inside it.',
-      dmReply: 'I’ll send financing + membership options—just DM “pricing.”',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Mistake audit',
-    idea: (subject, helpers) => `Mistakes we fix before ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `I see the same three mistakes right before ${subject}: wrong cleanser, skipping SPF, and sleeping on silk. Call them out, show how you correct them, and invite followers to audit themselves. ${helpers.cta}`,
-    storyPrompt: () => 'Create a carousel: “Did you do this?” → “Here’s the fix.”',
-    designNotes: 'Use bold red “fix this” banners.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Use as onboarding PDF', 'Share in welcome email'],
     analytics: ['Comments', 'Saves'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Don’t book ${subject} until you stop doing this.`,
-      body: 'Mistake • consequence • quick fix.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Confess your pre-appointment habits and I’ll doctor them up.',
-      dmReply: 'Send me your routine and I’ll flag what to pause before we treat you.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Audience pivot',
-    idea: (subject, helpers) => `${helpers.title} for first-timers`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Teens, men, and first-timers ask if ${subject} is “for them.” Answer with empathy: explain sensations, prep, and confidence boosts. ${helpers.cta}`,
-    storyPrompt: () => 'Interview a first-time client about how it actually felt.',
-    designNotes: 'Use approachable, friendly typography and candid photography.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Feature on FAQ page', 'Create pinned TikTok'],
     analytics: ['Follows', 'DMs'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `First ${subject}? Here’s what to expect.`,
-      body: 'Walk through arrival • treatment • aftercare.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'If it’s your first time, tell me your biggest worry—I’ll answer it publicly.',
-      dmReply: 'Drop me a “newbie” DM and I’ll voice-note the full rundown.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Tool + tech spotlight',
-    idea: (subject, helpers) => `Tool spotlight inside ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Let’s geek out over the tech that powers ${subject}. Break down how the tool works, safety checks you run, and the sensation clients actually feel. ${helpers.cta}`,
-    storyPrompt: () => 'Film a close-up of the tool in action with narration.',
-    designNotes: 'Use blueprint lines, arrows, and specs.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Add to diagnostic landing page', 'Send as “meet the tech” email'],
     analytics: ['Profile visits', 'Shares'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Meet the tech that makes ${subject} possible.`,
-      body: 'Show the interface • show calibration • show real-time results.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Got a gear question? I’m the nerd to ask.',
-      dmReply: 'I’ll send you the full spec sheet plus why we chose this model.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Progress diary',
-    idea: (subject, helpers) => `Progress diary: 3 visits of ${subject}`,
+    idea: (subject, helpers) => subject,
     caption: (subject, helpers) => `Document the journey: Visit 1 baseline, Visit 2 turning point, Visit 3 glow-up. People trust receipts, so show them the diary. ${helpers.cta}`,
-    storyPrompt: () => 'Compile voice memos or quick clips after each visit.',
-    designNotes: 'Scrapbook layout with Polaroid frames.',
+    storyPrompt: () => '',
+    designNotes: '',
     repurpose: ['Turn into blog case study', 'Use as nurture email arc'],
     analytics: ['Saves', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `What 3 ${subject} visits look like.`,
-      body: 'Baseline clip • mid-way clip • final reveal.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Want me to document your journey too? Say “diary me.”',
-      dmReply: 'I’ll send the consent form + how we keep your footage cute.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
 ];
 const UNIQUE_SUFFIXES = [
@@ -7919,7 +7717,7 @@ function applySlotAngle(post, angle, slotNumber) {
     post.videoScript = { ...(post.videoScript || {}), ...video };
   }
   const engagement = angle.buildEngagementScripts ? angle.buildEngagementScripts(baseIdea, cta) : null;
-  if (engagement) {
+  if (engagement && (engagement.commentReply || engagement.dmReply)) {
     post.engagementScripts = {
       commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
       dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
@@ -7964,7 +7762,7 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
     post.videoScript = { ...(post.videoScript || {}), ...video };
   }
   const engagement = blueprint.buildEngagementScripts ? blueprint.buildEngagementScripts(normalized, helpers) : null;
-  if (engagement) {
+  if (engagement && (engagement.commentReply || engagement.dmReply)) {
     post.engagementScripts = {
       commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
       dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
@@ -8075,18 +7873,18 @@ function normalizePost(p, idx = 0, startDay = 1) {
     idea: p.idea || p.title || DEFAULT_IDEA_TEXT,
     type: p.type || 'educational',
     caption: p.caption || DEFAULT_CAPTION_TEXT,
-    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : ['marketing','content','tips','learn','growth','brand']),
-    format: p.format || 'Reel',
+    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
+    format: p.format || '',
     cta: p.cta || '',
-    pillar: p.pillar || 'Education',
-    storyPrompt: p.storyPrompt || DEFAULT_STORY_PROMPT_TEXT,
-    designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
+    pillar: p.pillar || '',
+    storyPrompt: p.storyPrompt || '',
+    designNotes: p.designNotes || '',
     repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
     analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
     engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
     promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
     weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
-    videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: '' },
+    videoScript: p.videoScript || {},
     variants: p.variants || undefined,
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
@@ -9145,7 +8943,7 @@ function renderPublishHub(){
     if (post.weeklyPromo) fullTextParts.push(`Promo: ${post.weeklyPromo}`);
     if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
       const scriptLines = [];
-      if (post.videoScript.hook) scriptLines.push(`Hook: ${post.videoScript.hook}`);
+      if (post.videoScript.hook) scriptLines.push(post.videoScript.hook);
       if (post.videoScript.body) scriptLines.push(`Body: ${post.videoScript.body}`);
       if (post.videoScript.cta) scriptLines.push(`CTA: ${post.videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
