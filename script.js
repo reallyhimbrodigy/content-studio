@@ -641,39 +641,6 @@ function normalizeContentCard(card) {
   };
 }
 
-function cleanPinnedCommentLine(line) {
-  if (!line) return '';
-  let text = String(line).trim();
-  text = text.replace(/^(Pinned comment|Pin comment|Comment)\s*:?/i, '');
-  text = text.replace(/\bDay\s*\d+\b/gi, '');
-  text = text.replace(/\b(angle|objective)\b/gi, '');
-  text = text.replace(/by showing how/gi, '');
-  text = text.replace(/\(.*?\)/g, '');
-  text = text.replace(/^\s*[:-]+\s*/, '');
-  text = text.replace(/\s*[:-]+\s*$/, '');
-  text = text.replace(/\s+/g, ' ').trim();
-  return text;
-}
-
-function parsePinnedCommentLines(raw) {
-  if (!raw) return [];
-  return String(raw || '')
-    .split(/[\n•]+/)
-    .map(cleanPinnedCommentLine)
-    .filter(Boolean)
-    .slice(0, 2);
-}
-
-function ensurePinnedCommentDisplay(raw) {
-  if (!raw) return '';
-  const text = String(raw || '').trim();
-  if (!text) return '';
-  if (/^comment\s+/i.test(text)) {
-    return text.replace(/^comment\s+/i, 'Comment ');
-  }
-  return `Comment ${text}`;
-}
-
 function ensureReelScriptHook(entry) {
   if (!entry || typeof entry !== 'object') return 'Stop scrolling quick tip';
   if (!entry.videoScript || typeof entry.videoScript !== 'object') {
@@ -5233,8 +5200,6 @@ const createCard = (post) => {
       normalizedEntry.targetComments ||
       entry.targetComments ||
       '≥ 2% of views';
-    const pinnedValue = normalizedEntry.pinnedComment || 'Comment "MEAL" and I\'ll DM my pre-game checklist.';
-
     const addInfoRow = (label, value) => {
       if (!value) return;
       const row = document.createElement('div');
@@ -5247,30 +5212,6 @@ const createCard = (post) => {
       infoRows.appendChild(row);
     };
 
-
-    const pinnedLines = parsePinnedCommentLines(normalizedEntry.pinnedComment);
-    const pinnedSource = normalizedEntry.pinnedComment || pinnedLines[0] || pinnedValue;
-    const pinnedDisplayText = ensurePinnedCommentDisplay(pinnedSource);
-    if (pinnedDisplayText) {
-      const pinnedBlock = document.createElement('div');
-      pinnedBlock.className = 'calendar-card__pinned-comment';
-      const pinnedLabelEl = document.createElement('span');
-      pinnedLabelEl.className = 'calendar-card__pinned-comment-label';
-      pinnedLabelEl.textContent = 'Pinned comment';
-      const primaryLine = document.createElement('p');
-      primaryLine.className = 'calendar-card__pinned-comment-primary';
-      primaryLine.innerHTML = `<span class="calendar-card__format">Pinned comment:</span>${escapeHtml(pinnedDisplayText)}`;
-      pinnedBlock.append(pinnedLabelEl, primaryLine);
-      const altText = ensurePinnedCommentDisplay(pinnedLines[1]);
-      if (altText) {
-        const altLine = document.createElement('p');
-        altLine.className = 'calendar-card__pinned-comment-alt';
-        altLine.innerHTML = `<span class="calendar-card__format">Alt:</span>${escapeHtml(altText)}`;
-        pinnedBlock.append(altLine);
-      }
-      // store for later insertion
-      entryEl._pinnedBlock = pinnedBlock;
-    }
 
     const hooksEl = document.createElement('div');
     hooksEl.className = 'calendar-card__hooks';

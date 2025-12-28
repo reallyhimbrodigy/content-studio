@@ -1667,32 +1667,7 @@ FORBIDDEN:
 
 FALLBACK (prompt-level): If unsure, choose Reel.
 8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.
-9) PINNED COMMENT RULES (HARD):
-      Keyword rules
-      - Keyword must be a real, readable word tied to the niche.
-      - ALL CAPS, letters only (A–Z), length 3–8 characters.
-      - No codes, no abbreviations that don't read naturally.
-      Examples by niche:
-      - Restaurant / fast food: BURGER, MENU, DEAL, SAUCE, FRIES
-      - Sports coaching: TRAIN, HOOPS, DRILLS
-      - Fitness: LIFT, SWEAT, MEAL
-      - Generic fallback: START
-      Sales-mode rules
-      - Infer niche type: restaurant/fast food/cafe/bar/venue → NO SALES; coach/course/service/creator → sales allowed.
-      If NO SALES:
-      - Do NOT say “I'll send you my guide/plan/breakdown”.
-      - Do NOT imply funnels, lead magnets, or DMs.
-      - Use engagement-only phrasing (reply, share, vote, try).
-      If sales allowed:
-      - One soft conversion action is allowed (DM, send guide, next step) with no urgency spam.
-      Allowed formats:
-      - NO SALES: Comment “BURGER” and we’ll reply with our top pick.
-      - NO SALES: Comment “MENU” and we’ll reply with today’s favorite.
-      - SALES OK: Comment “TRAIN” and I’ll DM the plan.
-      - SALES OK: Comment “START” and I’ll send the breakdown.
-      Hard bans: No numbers. No fake words. No keywords that make the sentence sound broken.
-      Pinned comments should encourage replies and conversation, regardless of sales mode.
-10) OFFER / LEAD MAGNET RULES (HARD): describe ONE clear deliverable tied to the card topic. Frame it as a clarifier or simplifier, not a promised result, using low-pressure language aligned with the pinned keyword and CTA.
+10) OFFER / LEAD MAGNET RULES (HARD): describe ONE clear deliverable tied to the card topic. Frame it as a clarifier or simplifier, not a promised result.
       ALLOWED FRAMING: “the simple plan that cleared this up”, “the checklist I use”, “the breakdown that made this click”, “the template I wish I had earlier”, “the framework that simplified this”.
       FORBIDDEN FRAMING: “guaranteed results”, “transform your life”, “limited time”, “spots filling fast”, “exclusive access”, “free consultation”, “book now”, “join today”.
       SALES/ALGO REQUIREMENTS: make the deliverable feel like the natural next step after the pain; avoid hype and rely on relevance-driven curiosity.
@@ -1701,7 +1676,7 @@ FALLBACK (prompt-level): If unsure, choose Reel.
 12) STORY PROMPT RULES (HARD): output exactly one short question (no bullets, no lists). Must be niche-locked and tied to the same topic as the Hook/Caption. The question must trigger self-identification or confession and feel slightly uncomfortable but relatable. Do not introduce new topics, reuse unrelated niches, or include emojis, hashtags, CTAs, or platform mentions.
             ALLOWED PATTERNS (reference the niche/topic): "What part of [NICHE ACTIVITY] feels hardest right now?", "What do you keep trying that still isn’t working?", "What’s the one thing you’re stuck on with [NICHE TOPIC]?"
             FORBIDDEN TYPES: generic goals ("What’s your goal?"), preference questions without tension ("What do you like more?"), advice-seeking prompts ("What tips do you need?"), or off-niche content (no skincare/beauty terms unless the niche is beauty).
-            ALGO/SALES REQUIREMENTS: the question should invite comments and longer replies and prime the viewer for the pinned comment or Story Prompt+ without selling.
+ALGO/SALES REQUIREMENTS: the question should invite comments and longer replies and prime the viewer for Story Prompt+ without selling.
             FALLBACK (prompt level): if unsure, output "What’s the most frustrating part of [NICHE TOPIC] for you?" (fill in niche-specific wording).
 12) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must briefly describe an audience behavior reason tied to the niche (no generic “post when people are online,” no off-niche terms). Always keep the wording concise, contextual, and aligned with the format.
 13) Keep outputs concise to avoid truncation.
@@ -1733,8 +1708,8 @@ TikTok: Subtle instrumental — @originalaudio
 Instagram: Low-key instrumental — @originalaudio`;
   const classificationRules =
     classification === 'business'
-      ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
-      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
+      ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM.'
+      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling.';
   const distributionPlanRules = `Distribution Plan rules:
 Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the niche/brand context provided. Do not introduce any topic that is not in this niche. No unrelated references.
 Return EXACTLY three lines:
@@ -1751,7 +1726,7 @@ Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance
 5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
 6) Provide padded keyword/deliverable pairs instead of a full pinned_comment. pinned_keyword should be a single uppercase word (3–16 letters) that feels niche specific and does not duplicate the post title. pinned_deliverable should describe the resource you promise (checklist, template, roadmap, etc.).
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
-8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
+8) We will build the final strategy variables on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const nicheProfileBlock = buildNicheProfileBlock(nicheStyle, brandContext);
   const nicheDecisionBlock = `NICHE STYLE DECISION (MANDATORY)\nDetermine the niche\'s commercial intent category before writing sections.\nCategories: SELLING_DIRECT (restaurant/gym/agency/coach/SaaS/local service), CREATOR_MEDIA, INFO_COMMUNITY (clubs/nonprofits).\nIf SELLING_DIRECT or CREATOR_MEDIA, light sales tactics (soft CTA, subtle urgency, lead magnet) are allowed but must stay niche-appropriate.\nIf INFO_COMMUNITY, NO sales language (no “book now”, “spots fill fast”, “limited time”, “DM to buy”).\nAlways optimize for TikTok/IG retention (clear hook, curiosity gap, fast pacing, niche comment bait, platform-native prompts).\n`;
@@ -1760,7 +1735,7 @@ Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance
   - ZERO CROSS-NICHE: Keep fitness content about workouts/nutrition; avoid skincare/real estate/crypto unless that's the niche.
   - RETENTION: Use short, punchy wording, pattern interrupts, open loops, and immediate benefit statements.
   - SALES PSYCH: Include one clear benefit, one proof cue, and a low-friction CTA without hype.
-  - CONSISTENCY: Hook, caption, CTA, Story Prompt+, and pinned comment must reinforce the same angle.
+  - CONSISTENCY: Hook, caption, CTA, and Story Prompt+ must reinforce the same angle.
   - NO PLACEHOLDERS: Avoid generic tags like [Client Name] unless provided.
   - BAN: No off-niche examples or regulated claims.`;
   const salesModeGate = `SALES-MODE GATE (HARD RULES)
@@ -1781,7 +1756,7 @@ Rules:
   - Keep language natural and niche-appropriate.
 
 Algorithm mechanics (hooks, retention, interactions) remain allowed regardless of SALES_MODE.
-Apply these rules consistently across: Pinned comment, CTA, Story Prompt+, Engagement Loop.`;
+Apply these rules consistently across: CTA, Story Prompt+, Engagement Loop.`;
   const localRules = `LOCAL CONTEXT RULES (HARD):
   - Reference location ONLY if the user provided it.
   - Mention location no more than once per card, and keep it incidental and human.
@@ -2009,20 +1984,13 @@ function normalizeStrategyForPost(post = {}) {
   });
   const savesPct = clampStrategyPercent(parseStrategyPercent(raw.target_saves_pct ?? raw.target_saves ?? raw.targetSaves));
   const commentsPct = clampStrategyPercent(parseStrategyPercent(raw.target_comments_pct ?? raw.target_comments ?? raw.targetComments));
-  const pinnedKeywordRaw = String(raw.pinned_keyword || raw.pinnedKeyword || raw.keyword || '').trim();
-  const pinnedDeliverableRaw = String(raw.pinned_deliverable || raw.pinnedDeliverable || '').trim();
-  const pinnedCommentRaw = String(raw.pinned_comment || raw.pinnedComment || '').trim();
-  const parsedFromComment = pinnedCommentRaw ? parsePinnedCommentString(pinnedCommentRaw) : null;
-  const keyword = pinnedKeywordRaw || (parsedFromComment?.keyword || '');
-  const deliverable = pinnedDeliverableRaw || (parsedFromComment?.deliverable || '');
-  const builtComment = buildPinnedCommentLine(keyword, deliverable);
-  const commentLine = sanitizePinnedCommentText(builtComment || pinnedCommentRaw, post.nicheStyle || post.niche);
+  const keyword = String(raw.pinned_keyword || raw.pinnedKeyword || raw.keyword || '').trim();
+  const deliverable = String(raw.pinned_deliverable || raw.pinnedDeliverable || '').trim();
   return {
     angle: angleText,
     objective: objectiveText,
     pinned_keyword: keyword,
     pinned_deliverable: deliverable,
-    pinned_comment: commentLine,
     target_saves_pct: Number.isFinite(savesPct) ? savesPct : null,
     target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : null,
     hook_options: dedupedHooks,
