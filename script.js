@@ -5204,7 +5204,6 @@ const createCard = (post) => {
       pillar,
       storyPrompt,
       designNotes,
-      postingTimeTip,
       repurpose,
       analytics,
       engagementScripts,
@@ -5589,7 +5588,6 @@ const createCard = (post) => {
     };
     const executionNoteLines = [];
     if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
-    if (postingTimeTip && !isBusinessPostingAudience(postingTimeTip)) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
     const executionNotesEl = executionNoteLines.length
       ? (() => {
           const container = document.createElement('div');
@@ -5774,7 +5772,6 @@ const createCard = (post) => {
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (entry.audio) fullTextParts.push(`Audio: ${entry.audio}`);
-    if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
     if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
@@ -5838,9 +5835,6 @@ const createCard = (post) => {
       if (niche) parts.push(`Niche/local: ${niche}`);
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
-    }
-    if (window.cachedUserIsPro && entry.postingTimeTip) {
-      proDetailNodes.push(createDetailRow('Posting time tip', entry.postingTimeTip, 'calendar-card__posting-tip'));
     }
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
@@ -5953,9 +5947,6 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
     let newPost = parsed.post;
-    if (!newPost.postingTimeTip && entry.postingTimeTip) {
-      newPost.postingTimeTip = entry.postingTimeTip;
-    }
     let replaced = false;
     currentCalendar = currentCalendar.map((p) => {
       if (!replaced && p === entry) {
@@ -6589,14 +6580,6 @@ const proFollowUpIdeas = [
   'Send a newsletter recap that embeds today’s main CTA.'
 ];
 
-const proPostingTips = [
-  'Post weekday afternoons to catch students between classes.',
-  'Aim for early morning drops to reach execs before meetings.',
-  'Share on Saturday evenings when lifestyle audiences scroll longer.',
-  'Publish mid-week around lunch for the best B2B engagement.',
-  'Queue it for Sunday nights when planning-minded followers tune in.'
-];
-
 
 const capitalizeSentence = (text = '') => {
   if (!text) return '';
@@ -6631,7 +6614,6 @@ const enrichPostWithProFields = (post, index, nicheStyle = '') => {
 
     return {
       ...post,
-      postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
     storyPromptExpanded: post.storyPrompt
       ? `${post.storyPrompt} ${interactive}`
       : interactive,
@@ -7301,9 +7283,6 @@ function buildPostHTML(post){
   if (post.audio) {
     detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
   }
-  if (post.postingTimeTip) {
-    detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
-  }
   if (post.storyPromptExpanded) {
     detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
   }
@@ -7391,7 +7370,7 @@ function buildPostHTML(post){
     .calendar-card__format { display: inline-block; background: rgba(44, 177, 188, 0.13); color: #2cb1bc; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
     .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #7f5af0; font-size: 0.97rem; }
   .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__posting-tip, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
     .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
     .calendar-card__visual a:hover { text-decoration: underline; }

@@ -1703,7 +1703,7 @@ FALLBACK (prompt-level): If unsure, choose Reel.
             FORBIDDEN TYPES: generic goals ("What’s your goal?"), preference questions without tension ("What do you like more?"), advice-seeking prompts ("What tips do you need?"), or off-niche content (no skincare/beauty terms unless the niche is beauty).
             ALGO/SALES REQUIREMENTS: the question should invite comments and longer replies and prime the viewer for the pinned comment or Story Prompt+ without selling.
             FALLBACK (prompt level): if unsure, output "What’s the most frustrating part of [NICHE TOPIC] for you?" (fill in niche-specific wording).
-12) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must be "Posting time tip: <time window> because <niche audience behavior reason>" (time window like 6–8 PM, no dates, tie to habits). Always stay niche-aligned (no off-niche terms) and platform-aligned, no generic “post when your audience is online,” no emojis, each line <= 120 characters. Keep concise and contextual.
+12) Execution Notes: follow these hard rules—Output EXACTLY two lines under Execution Notes: first line must be "Format: <choice>" with Reel/Carousel/Story/Static (match platform: TikTok/Instagram prefer Reel unless concept needs Carousel/Story; LinkedIn prefers Static/Carousel). Second line must briefly describe an audience behavior reason tied to the niche (no generic “post when people are online,” no off-niche terms). Always keep the wording concise, contextual, and aligned with the format.
 13) Keep outputs concise to avoid truncation.
 14) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
 
@@ -1742,8 +1742,7 @@ Instagram: (1–2 sentences) include a save/share reason + one engagement loop (
 TikTok: (1–2 sentences) include a pattern interrupt in the first five words + a watch-time loop (“part 2,” “wait for the last tip,” “most people miss this”) that matches the post’s hook and CTA.
 LinkedIn: (1–2 sentences) include a credibility framing (lesson/insight) + a soft CTA that matches the post’s hook and CTA.
 Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance terms unless that is the niche; no numbers in any comment keyword; no placeholder junk; no extra lines.`; 
-  const postingTimeRules =
-    'POSTING TIME TIP RULES (HARD): Output EXACTLY one sentence of ≤12 words in the pattern “Post [time] [preposition] [reason].” Include a specific time (e.g., “7am”, “12pm”, “6–8pm”) and a reason tied to a real-world niche event (practice, workday, meals, commute). Do NOT use generic phrases like “daily routines”, “free time”, “scrolling”, “browsing”, “relaxing”, “downtime”, or “spare time.” Do NOT reference audience descriptors, marketing language, or multiple clauses beyond the time plus reason. Make the reason uniquely tied to the niche activity. Examples: “Post at 7am before practice starts.” “Post around 6pm after workouts finish.” “Post at noon during lunch.” Fallback: “Post at 7am before the day starts.”';
+  const postingTimeRules = '';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
@@ -1769,6 +1768,7 @@ Determine SALES_MODE based on the niche:
 - RESTAURANT / FAST FOOD / CAFE / BAR / VENUE / LOCAL SHOP → SALES_MODE = ENGAGEMENT_ONLY
 - COACH / CONSULTANT / AGENCY / COURSE / CREATOR / SERVICE → SALES_MODE = ALLOWED
 - Otherwise → SALES_MODE = ENGAGEMENT_ONLY
+
 
 Rules:
 - SALES_MODE = ENGAGEMENT_ONLY:
@@ -1903,11 +1903,10 @@ ALGO / SALES REQUIREMENTS:
 
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
-  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
+  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
 Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
-- postingTimeTip (single sentence describing an audience + scroll window)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both.
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
 
@@ -2033,26 +2032,6 @@ function normalizeStrategyForPost(post = {}) {
 const BANNED_TERMS = ['angle', 'objective', 'major objection', 'insight'];
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and I(?:'|’|`)?ll send you\s+(.+)\.$/i;
 const KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
-const POSTING_TIME_BANNED_AUDIENCE_TERMS = [
-  'exec', 'executive', 'executives', 'founder', 'founders', 'ceo', 'ceos', 'enterprise', 'board', 'investor', 'investors'
-];
-const POSTING_TIME_WINDOW_OPTIONS = [
-  'weekday mornings around 7am before practice or meetings begin',
-  'midweek lunch breaks around noon when phones pop up',
-  'weekday evenings around 7pm when people unwind and scroll',
-  'Saturday afternoons around 3pm during relaxed scrolling',
-  'Sunday evenings around 8pm when folks plan their week'
-];
-const POSTING_TIME_AUDIENCE_PATTERNS = [
-  { match: /basketball|athlete|sport|coach/, creator: 'local athletes and their parents', business: 'club directors and athletic directors' },
-  { match: /fitness|nutrition|wellness|gym|meal|trainer/, creator: 'wellness seekers and gym goers', business: 'studio owners and operations leads' },
-  { match: /beauty|skincare|esthetic|spa|salon/, creator: 'skincare fans and self-care seekers', business: 'boutique owners and studio managers' },
-  { match: /business|coach|consult|agency|strategy|growth|marketing|sales/, creator: 'ambitious creators and community builders', business: 'founders and growth leaders' },
-  { match: /creator|influencer|lifestyle|content|story/, creator: 'your creative audience and community', business: 'marketing leaders and brand storytellers' },
-];
-const POSTING_TIME_TIME_PATTERN = /\b((1[0-2]|[1-9])(:[0-5][0-9])?\s?(AM|PM))\b/i;
-const POSTING_TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
-const POSTING_TIME_DAY_PATTERN = /\b(mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
 const NICHE_KEYWORD_FALLBACKS = [
   { match: /fitness|gym|workout|trainer|training/, keyword: 'TRAIN' },
   { match: /nutrition|diet|meal|recipe|food/, keyword: 'MEAL' },
@@ -2166,148 +2145,6 @@ function isStrategyCopyBad(strategy = {}, post = {}) {
   return false;
 }
 
-function containsBannedPostingAudience(text = '') {
-  if (!text) return false;
-  const lower = String(text).toLowerCase();
-  return POSTING_TIME_BANNED_AUDIENCE_TERMS.some((term) => lower.includes(term));
-}
-
-function isPostingTimeTipValid(tip = '', classification = 'creator') {
-  const cleaned = String(tip || '').trim();
-  if (!cleaned) return false;
-  if (classification !== 'business' && containsBannedPostingAudience(cleaned)) return false;
-  if (POSTING_TIME_DAY_PATTERN.test(cleaned)) return false;
-  if (!POSTING_TIME_TIME_PATTERN.test(cleaned) && !POSTING_TIME_24H_PATTERN.test(cleaned)) return false;
-  return true;
-}
-
-function derivePostingAudience(post = {}, classification = 'creator', nicheStyle = '') {
-  const text = [nicheStyle, post.idea, post.title, post.pillar, post.caption].filter(Boolean).join(' ').toLowerCase();
-  for (const entry of POSTING_TIME_AUDIENCE_PATTERNS) {
-    if (entry.match.test(text)) return entry[classification] || entry.creator;
-  }
-  return classification === 'business'
-    ? 'founders and growth leaders'
-    : 'your niche community of curious fans';
-}
-
-function derivePostingTimeWindow(post = {}) {
-  if (!POSTING_TIME_WINDOW_OPTIONS.length) return 'during peak scrolling hours';
-  const idx = Number(post.day || 0) % POSTING_TIME_WINDOW_OPTIONS.length;
-  return POSTING_TIME_WINDOW_OPTIONS[idx] || POSTING_TIME_WINDOW_OPTIONS[0];
-}
-
-function derivePostingTimeTipFallback(post = {}, classification = 'creator', nicheStyle = '') {
-  const audience = derivePostingAudience(post, classification, nicheStyle);
-  const window = derivePostingTimeWindow(post);
-  const nicheHint = nicheStyle ? ` around your ${nicheStyle} content` : '';
-  return `Post ${window} when ${audience} are scrolling${nicheHint}.`.replace(/\s+/g, ' ').trim();
-}
-
-async function regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms = []) {
-  const summary = [post.idea, post.caption, post.pillar, post.cta].filter(Boolean).join(' | ') || 'Fresh concept';
-  const brandLine = brandContext ? `Brand context: ${brandContext}` : '';
-  const bannedLine = bannedTerms.length
-    ? `Avoid these audience keywords: ${bannedTerms.join(', ')}.`
-    : '';
-  const prompt = `You are a content strategist for ${classification} content. ${brandLine}
-Niche/Style: ${nicheStyle || 'General'}
-Post summary: ${summary}
-${bannedLine}
-Return ONLY one sentence for posting_time_tip. Mention the niche audience, include a specific clock time (e.g., 3:15 PM), explain why that window works, and do NOT mention days of the week or generic phrases like "morning" without a clock time.`;
-  try {
-    const raw = await callChatCompletion(prompt, { temperature: 0.5, maxTokens: 250 });
-    const lines = (raw || '').split(/\\n+/).map((line) => line.trim()).filter(Boolean);
-    return lines[0] || '';
-  } catch (err) {
-    return '';
-  }
-}
-
-async function ensurePostingTimeTips(posts = [], classification, nicheStyle, brandContext) {
-  if (!Array.isArray(posts)) return posts;
-  const bannedTerms = classification === 'business' ? [] : POSTING_TIME_BANNED_AUDIENCE_TERMS;
-  for (const post of posts) {
-    let tip = String(post.postingTimeTip || '').trim();
-    tip = truncatePostingTimeTip(tip);
-    if (!isPostingTimeTipValid(tip, classification)) {
-      const regenerated = await regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms);
-      const cleaned = truncatePostingTimeTip(regenerated);
-      if (isPostingTimeTipValid(cleaned, classification)) {
-        tip = cleaned;
-      }
-    }
-    if (!tip) {
-      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
-    }
-  if (!isPostingTimeTipValid(tip, classification)) {
-    tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
-  }
-    tip = ensureNichePostingTimeReason(tip, nicheStyle);
-    post.postingTimeTip = tip;
-  }
-  return posts;
-}
-
-function truncatePostingTimeTip(tip = '') {
-  const text = String(tip || '').trim();
-  if (!text) return text;
-  const lower = text.toLowerCase();
-  let end = text.length;
-  for (const marker of [' during ', ' when ', ' while ']) {
-    const idx = lower.indexOf(marker);
-    if (idx !== -1 && idx < end) {
-      end = idx;
-    }
-  }
-  return text.slice(0, end).trim();
-}
-
-function sanitizePostingTimeTipText(tip = '') {
-  const text = String(tip || '').trim();
-  if (!text) return text;
-  const lower = text.toLowerCase();
-  let end = text.length;
-  for (const marker of [' during ', ' when ']) {
-    const idx = lower.indexOf(marker);
-    if (idx !== -1 && idx < end) {
-      end = idx;
-    }
-  }
-  const snippet = text.slice(0, end).trim();
-  return snippet.replace(/[.,;:]+$/g, '').trim();
-}
-
-const POSTING_TIME_REASON_WARNED = new Set();
-
-function ensureNichePostingTimeReason(tip = '', nicheStyle = '') {
-  const text = String(tip || '').trim();
-  if (!text) return text;
-  const match = text.match(/^(Post\s+at\s+\S+)\s+(.+)$/i);
-  if (!match) return text;
-  const timePart = match[1];
-  const reason = match[2].toLowerCase();
-  const genericTerms = /daily routine|daily routines|free time|scrolling|browsing|relaxing|downtime|spare time/;
-  const tokens = (String(nicheStyle || '').toLowerCase().match(/[a-z]+/g) || []);
-  const hasAnchor = tokens.some((token) => token.length > 3 && reason.includes(token));
-  if (!genericTerms.test(reason) && hasAnchor) return text;
-  const fallback = derivePostingTimeReasonFallback(nicheStyle);
-  if (!POSTING_TIME_REASON_WARNED.has(text)) {
-    console.warn('[Calendar] posting time tip reason sanitized', { original: text, fallback, nicheStyle });
-    POSTING_TIME_REASON_WARNED.add(text);
-  }
-  return `${timePart} ${fallback}`;
-}
-
-function derivePostingTimeReasonFallback(nicheStyle = '') {
-  const normalized = (nicheStyle || '').toLowerCase();
-  if (/basketball|soccer|coaching|youth/.test(normalized)) return 'after school ends';
-  if (/gym|fitness|training/.test(normalized)) return 'before or after workouts';
-  if (/nutrition|diet|meal/.test(normalized)) return 'before dinner decisions';
-  if (/real\s*estate|realtor/.test(normalized)) return 'after work hours';
-  if (/marketing|business|agency/.test(normalized)) return 'before the workday fills up';
-  return 'during a natural break in their day';
-}
 
 function ensureUniqueStrategyValues(posts = []) {
   if (!Array.isArray(posts)) return posts;
@@ -2819,7 +2656,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
     promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
     weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
-    postingTimeTip: sanitizePostingTimeTipText(toPlainString(post.postingTimeTip || '')),
     script,
     videoScript,
     instagram_caption: toPlainString(post.instagram_caption || post.caption || ''),
@@ -3527,7 +3363,6 @@ const server = http.createServer((req, res) => {
     } else {
       posts = await dedupePinnedComments(posts, classification, nicheStyle);
     }
-    posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     posts = posts.map((post) => {
       if (!validateNicheLock(post, nicheStyle)) {
         const fallback = buildStoryPromptPlusNicheFallback(nicheStyle);
