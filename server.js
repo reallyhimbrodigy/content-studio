@@ -2234,11 +2234,23 @@ function deriveNicheKeyword(nicheStyle = '') {
   return sanitized || 'TIPS';
 }
 
+function stripOverridesFromPost(post = {}) {
+  if (!post || typeof post !== 'object') return post;
+  const sanitized = { ...(post || {}) };
+  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
+  });
+  return sanitized;
+}
+
 function stripStoryPromptOverrideFields(payload = {}) {
   const clean = { ...(payload || {}) };
-  ['storyPromptKeywordOverride', 'storyPromptKeyword', 'storyPromptOverride'].forEach((key) => {
+  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(clean, key)) delete clean[key];
   });
+  if (Array.isArray(clean.posts)) {
+    clean.posts = clean.posts.map(stripOverridesFromPost);
+  }
   return clean;
 }
 
