@@ -3591,6 +3591,7 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
+        const targetCalendarId = body?.calendarId ?? null;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
           days: body?.days,
@@ -3611,11 +3612,16 @@ const server = http.createServer((req, res) => {
           elapsedMs: Date.now() - tStart,
           postCount: Array.isArray(posts) ? posts.length : 0,
         });
-        const payload = { posts };
-        if (Array.isArray(regenContext.warnings) && regenContext.warnings.length) {
-          payload.warnings = regenContext.warnings;
+        const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
+        if (!Array.isArray(posts) || !posts.length) {
+          return sendJson(res, 500, {
+            error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
+            requestId,
+          });
         }
-        return sendJson(res, 200, payload);
+        const responsePayload = { calendarId: targetCalendarId, posts, requestId };
+        if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
+        return sendJson(res, 200, responsePayload);
       } catch (err) {
         const errorContext = {
           postsPerDay: body?.postsPerDay,
@@ -3647,21 +3653,18 @@ const server = http.createServer((req, res) => {
               ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
               ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
             ].filter(Boolean);
-            const payload = { posts };
-            if (warnings.length) payload.warnings = warnings;
-            return sendJson(res, 200, payload);
+            if (!Array.isArray(posts) || !posts.length) {
+              return sendJson(res, 500, {
+                error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
+                requestId,
+              });
+            }
+            const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts, requestId };
+            if (warnings.length) responsePayload.warnings = warnings;
+            return sendJson(res, 200, responsePayload);
           } catch (retryErr) {
             logServerError('calendar_regenerate_error', retryErr, { requestId, context: errorContext });
-            const warnings = [
-              ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
-              ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
-              {
-                code: STORY_PROMPT_KEYWORD_OVERRIDE_WARNING,
-                requestId,
-                day: body?.startDay ?? null,
-              },
-            ];
-            return sendJson(res, 200, { posts: [], warnings });
+            throw retryErr;
           }
         }
         logServerError('calendar_regenerate_error', err, { requestId, context: errorContext });

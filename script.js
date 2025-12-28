@@ -8127,6 +8127,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     // Incremental render state
     const partialByIndex = {};
     let firstRenderDone = false;
+    let generatedCalendarId = null;
     // Clear any previous calendar for a fresh incremental render
     try {
       currentCalendar = [];
@@ -8231,27 +8232,52 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         firstDispatchLogged = false;
       }
 
-      if (parsedDetail?.error === 'upgrade_required') {
-        if (parsedDetail?.feature === 'calendar_exports') {
+      const responsePayload = parsedDetail;
+      if (responsePayload?.error === 'upgrade_required') {
+        if (responsePayload?.feature === 'calendar_exports') {
           lockCalendarExportButtons();
         }
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
 
-      if (!parsedDetail || !Array.isArray(parsedDetail.posts)) {
+      if (!responsePayload) {
         console.error('[Calendar] fetchBatch invalid JSON response', {
           batchIndex,
-          payload,
+          payload: responsePayload,
           body: responseText,
         });
         throw new Error('API error: invalid_json');
       }
 
-      if (parsedDetail?.debugStack) {
-        console.log('[Calendar] fetchBatch debugStack:', parsedDetail.debugStack);
+      const postsCandidate =
+        responsePayload.posts ??
+        responsePayload.data?.posts ??
+        responsePayload.result?.posts ??
+        responsePayload.items ??
+        responsePayload;
+      const calendarId = responsePayload.calendarId ?? responsePayload.id ?? responsePayload.calendar?.id ?? null;
+      const requestIdFromPayload = responsePayload.requestId;
+      if (!Array.isArray(postsCandidate)) {
+        console.error('[Calendar] fetchBatch invalid JSON response', {
+          batchIndex,
+          payload: responsePayload,
+          body: responseText,
+        });
+        throw new Error('API error: invalid_json');
       }
-      let batchPosts = parsedDetail.posts;
+      if (!postsCandidate.length) {
+        const suffix = requestIdFromPayload ? ` (requestId=${requestIdFromPayload})` : '';
+        throw new Error(`API returned no posts${suffix}`);
+      }
+
+      if (responsePayload?.debugStack) {
+        console.log('[Calendar] fetchBatch debugStack:', responsePayload.debugStack);
+      }
+      let batchPosts = postsCandidate;
+      if (!generatedCalendarId && calendarId) {
+        generatedCalendarId = calendarId;
+      }
 
       // Update progress UI as each batch completes
       completedBatches++;
@@ -8308,7 +8334,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
 
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
-      return { batchIndex, posts: batchPosts };
+      return { batchIndex, posts: batchPosts, calendarId };
     };
     
     // Fire all batches in parallel for maximum speed (~30 seconds)
@@ -8330,8 +8356,14 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
 
     const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
     
+    orderedResults.forEach((result) => {
+      if (!generatedCalendarId && result?.calendarId) {
+        generatedCalendarId = result.calendarId;
+      }
+    });
+
     // Sort by batch index and flatten
-    let allPosts = orderedResults.flatMap(r => r.posts);
+    let allPosts = orderedResults.flatMap((r) => r.posts);
 
     // Normalize every post to guarantee required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
@@ -8366,8 +8398,14 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       allPosts = allPosts.map((post) => stripProFields(post));
     }
 
+    if (!allPosts.length) {
+      throw new Error('API returned no posts');
+    }
+
+    renderCards(allPosts);
+    console.log('[Calendar] rendered posts', allPosts.length);
     console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);
-    return allPosts;
+    return { posts: allPosts, calendarId: generatedCalendarId };
   } catch (err) {
     console.error(" generateCalendarWithAI error:", err);
     console.error(" Error details:", { message: err.message, stack: err.stack });
@@ -8483,7 +8521,7 @@ async function onGenerateCalendarClick() {
     console.log(" Calling API with niche:", niche);
     const postsPerDay = getPostFrequency();
     currentPostFrequency = postsPerDay;
-    const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
+    const { posts: aiGeneratedPosts, calendarId } = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
     if (currentGenerationRunId !== runId) {
       console.warn('[Calendar] Stale generation results ignored for run', runId);
       hideGeneratingState(originalText);
@@ -8492,7 +8530,9 @@ async function onGenerateCalendarClick() {
     console.log(" Received posts:", aiGeneratedPosts);
     incrementGenerationCount();
     currentCalendar = aiGeneratedPosts;
-    setCurrentCalendarId(null);
+    if (calendarId) {
+      setCurrentCalendarId(calendarId);
+    }
     currentNiche = niche;
     renderCards(currentCalendar);
     applyFilter("all");
