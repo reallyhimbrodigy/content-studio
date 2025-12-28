@@ -1673,7 +1673,8 @@ FALLBACK (prompt-level): If unsure, choose Reel.
       FORBIDDEN FRAMING: “guaranteed results”, “transform your life”, “limited time”, “spots filling fast”, “exclusive access”, “free consultation”, “book now”, “join today”.
       SALES/ALGO REQUIREMENTS: make the deliverable feel like the natural next step after the pain; avoid hype and rely on relevance-driven curiosity.
       FALLBACK (prompt-level): “the simple guide that explains this clearly” (adapt wording for the niche but keep the tone neutral).
-11) STORY PROMPT RULES (HARD): output exactly one short question (no bullets, no lists). Must be niche-locked and tied to the same topic as the Hook/Caption. The question must trigger self-identification or confession and feel slightly uncomfortable but relatable. Do not introduce new topics, reuse unrelated niches, or include emojis, hashtags, CTAs, or platform mentions.
+11) STORY PROMPT+ HARD RULES: STAY STRICTLY IN NICHE: {niche}. Use only concepts/products/activities that exist in this niche. NEVER reference skincare/medspa terms (facial, peel, glow, botox, filler, serum, cleanser, moisturizer, acne, skincare, med spa, medspa, aesthetics, cosmetic, dermatology) unless the niche is explicitly skincare/medspa. If unsure, default to a universal niche-safe prompt using the niche’s core products/services.
+12) STORY PROMPT RULES (HARD): output exactly one short question (no bullets, no lists). Must be niche-locked and tied to the same topic as the Hook/Caption. The question must trigger self-identification or confession and feel slightly uncomfortable but relatable. Do not introduce new topics, reuse unrelated niches, or include emojis, hashtags, CTAs, or platform mentions.
             ALLOWED PATTERNS (reference the niche/topic): "What part of [NICHE ACTIVITY] feels hardest right now?", "What do you keep trying that still isn’t working?", "What’s the one thing you’re stuck on with [NICHE TOPIC]?"
             FORBIDDEN TYPES: generic goals ("What’s your goal?"), preference questions without tension ("What do you like more?"), advice-seeking prompts ("What tips do you need?"), or off-niche content (no skincare/beauty terms unless the niche is beauty).
             ALGO/SALES REQUIREMENTS: the question should invite comments and longer replies and prime the viewer for the pinned comment or Story Prompt+ without selling.
@@ -2358,6 +2359,8 @@ const STORY_PROMPT_TEMPLATES = {
 const STORY_PROMPT_KEYWORD_OVERRIDES = {
   beauty: ['beauty', 'skin', 'skincare', 'glow', 'aesthetic'],
 };
+const STORY_PROMPT_PLUS_FORBIDDEN = ['facial','peel','glow','botox','filler','serum','cleanser','moisturizer','acne','skincare','med spa','medspa','aesthetics','cosmetic','dermatology'];
+const STORY_PROMPT_PLUS_LOGGED = new Set();
 
 function deriveStoryPromptNicheKey(nicheStyle = '') {
   const normalized = String(nicheStyle || '').toLowerCase();
@@ -2381,6 +2384,31 @@ function extractNicheTokens(nicheStyle = '', hashtags = []) {
     (clean.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
   });
   return tokens;
+}
+
+function buildStoryPromptPlusFallback(nicheStyle = '') {
+  const label = sanitizeNicheLabel(nicheStyle).toLowerCase();
+  const tokens = Array.from(extractNicheTokens(nicheStyle));
+  const optionA = tokens[0] || `${label} option`; 
+  const optionB = tokens[1] || `${label} alternate`;
+  const sliderLabel = tokens[2] || `${label} focus`;
+  return `Share your favorite ${label} moment. Add a poll with "${optionA}" vs "${optionB}", plus a slider labeled "${sliderLabel}". Add a question box: “What should we feature next?”`;
+}
+
+function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return buildStoryPromptPlusFallback(nicheStyle);
+  const lower = trimmed.toLowerCase();
+  const isSkincareNiche = /(skincare|skin care|medspa|med spa|aesthetic|cosmetic|dermatology)/i.test(nicheStyle);
+  const hasForbidden = STORY_PROMPT_PLUS_FORBIDDEN.some((term) => lower.includes(term));
+  if (!hasForbidden || isSkincareNiche) return trimmed;
+  const fallback = buildStoryPromptPlusFallback(nicheStyle);
+  const key = `${post.userId || 'anon'}|${nicheStyle}`;
+  if (!STORY_PROMPT_PLUS_LOGGED.has(key)) {
+    console.warn('[Calendar] StoryPromptPlusFallback', { userId: post.userId || null, niche: nicheStyle, original: trimmed });
+    STORY_PROMPT_PLUS_LOGGED.add(key);
+  }
+  return fallback;
 }
 
 function buildStoryPromptTemplate(nicheStyle = '') {
@@ -2686,7 +2714,8 @@ const buildDistributionPlanText = (post = {}) => {
 const buildStoryPromptExpanded = (post = {}, dayIndex = 0) => {
   const base = toPlainString(post.storyPrompt);
   const suffix = pickCycledItem(PRO_INTERACTIVE_PROMPTS, dayIndex);
-  return [base, suffix].filter(Boolean).join(' ').trim();
+  const combined = [base, suffix].filter(Boolean).join(' ').trim();
+  return sanitizeStoryPromptPlus(post.niche || post.nicheStyle || '', combined, post);
 };
 
 const enrichRegenPost = (post = {}, dayIndex = 0) => {
