@@ -1985,10 +1985,11 @@ function sanitizeKeywordForComment(keyword = '', nicheStyle = '') {
   return deriveNicheFallbackKeyword(nicheStyle) || 'ACCESS';
 }
 
-function buildPinnedCommentLine(keyword = '', deliverable = '', nicheStyle = '') {
+function buildPinnedCommentLine(keyword = '', deliverable = '', nicheStyle = '', salesMode = 'DIRECT_RESPONSE') {
   const safeKeyword = sanitizeKeywordForComment(keyword, nicheStyle);
   if (!safeKeyword || !deliverable) return '';
-  return `Comment "${safeKeyword}" and I'll send you ${deliverable}.`;
+  const action = salesMode === 'NON_DIRECT_RESPONSE' ? 'reply with' : 'send you';
+  return `Comment "${safeKeyword}" and I'll ${action} ${deliverable}.`;
 }
 
 function parsePinnedCommentString(text = '') {
@@ -2177,6 +2178,8 @@ function truncatePostingTimeTip(tip = '') {
   return text.slice(0, end).trim();
 }
 
+const POSTING_TIME_REASON_WARNED = new Set();
+
 function ensureNichePostingTimeReason(tip = '', nicheStyle = '') {
   const text = String(tip || '').trim();
   if (!text) return text;
@@ -2189,6 +2192,10 @@ function ensureNichePostingTimeReason(tip = '', nicheStyle = '') {
   const hasAnchor = tokens.some((token) => token.length > 3 && reason.includes(token));
   if (!genericTerms.test(reason) && hasAnchor) return text;
   const fallback = derivePostingTimeReasonFallback(nicheStyle);
+  if (!POSTING_TIME_REASON_WARNED.has(text)) {
+    console.warn('[Calendar] posting time tip reason sanitized', { original: text, fallback, nicheStyle });
+    POSTING_TIME_REASON_WARNED.add(text);
+  }
   return `${timePart} ${fallback}`;
 }
 
@@ -2274,14 +2281,24 @@ function deriveFallbackDeliverable(post = {}, classification = 'creator') {
 
 const NICHE_KEYWORD_BANK = {
   fitness: ['TRAIN','GRIND','LIFT','FIGHT','STRONG'],
-  basketball: ['HOOP','DRILL','BALL'],
+  basketball: ['HOOPS','DRILLS','SHOOT','DEFENSE','HANDLES'],
   'real estate': ['LISTING','HOME','DEAL'],
   beauty: ['GLOW','SKIN','LOOK'],
   cooking: ['RECIPE','EAT','COOK'],
+  restaurant: ['BURGER','FRIES','MENU','SAUCE','DEAL','ORDER'],
   business: ['GROW','SCALE','LEAD'],
   marketing: ['LEADS','SALES','LAUNCH'],
   creator: ['CREATE','IMPACT','INSPIRE'],
 };
+const DIRECT_RESPONSE_KEYWORDS = ['coach','consult','agency','course','training','consultant','creator','fitness','real estate','broker'];
+const NON_DIRECT_RESPONSE_KEYWORDS = ['restaurant','fast-food','cafe','local','diner','bar','retail','bakery','food'];
+const NON_DIRECT_DELIVERABLES = {
+  restaurant: 'reply with the best item to try first',
+  cafe: 'reply with my top pick',
+  food: 'reply with my favorite tasting note',
+  default: 'reply with my top pick',
+};
+const SANITIZED_KEYWORD_WARNED = new Set();
 const FALLBACK_KEYWORD_MAP = [
   { match: /basketball|athlete|sport|drills/, keywords: ['DRILLS', 'ATHLETE'] },
   { match: /fitness|nutrition|wellness|meal|recipe|gym/, keywords: ['MEAL'] },
@@ -2306,6 +2323,26 @@ function deriveNicheKeyword(nicheStyle = '') {
   }
   const sanitized = sanitizeLettersOnly(nicheStyle, 4, 10);
   return sanitized || 'TIPS';
+}
+
+function deriveSalesMode(post = {}, classification = 'creator', nicheStyle = '') {
+  const text = [post.businessType, post.industry, post.nicheCategory, classification, nicheStyle]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (DIRECT_RESPONSE_KEYWORDS.some((keyword) => text.includes(keyword))) return 'DIRECT_RESPONSE';
+  if (NON_DIRECT_RESPONSE_KEYWORDS.some((keyword) => text.includes(keyword))) return 'NON_DIRECT_RESPONSE';
+  return 'DIRECT_RESPONSE';
+}
+
+function deriveNonDirectDeliverable(nicheStyle = '') {
+  const normalized = (nicheStyle || '').toLowerCase();
+  for (const key of Object.keys(NON_DIRECT_DELIVERABLES)) {
+    if (key !== 'default' && normalized.includes(key)) {
+      return NON_DIRECT_DELIVERABLES[key];
+    }
+  }
+  return NON_DIRECT_DELIVERABLES.default;
 }
 
 const STORY_PROMPT_BANNED_TERMS = {
@@ -2485,11 +2522,19 @@ function ensurePinnedFieldsValid(strategy = {}, post = {}, classification = 'cre
     ? candidateDeliverable
     : deriveFallbackDeliverable(post, classification);
   const sanitizedKeyword = sanitizeKeywordForComment(finalKeyword, nicheStyle);
+  if (finalKeyword !== sanitizedKeyword && !SANITIZED_KEYWORD_WARNED.has(finalKeyword)) {
+    console.warn('[Calendar] sanitized pinned keyword', { original: finalKeyword, sanitized: sanitizedKeyword });
+    SANITIZED_KEYWORD_WARNED.add(finalKeyword);
+  }
+  const salesMode = deriveSalesMode(post, classification, nicheStyle);
+  const deliverableForMode = salesMode === 'NON_DIRECT_RESPONSE'
+    ? deriveNonDirectDeliverable(nicheStyle)
+    : finalDeliverable;
   return {
     ...normalizedStrategy,
     pinned_keyword: sanitizedKeyword,
-    pinned_deliverable: finalDeliverable,
-    pinned_comment: buildPinnedCommentLine(sanitizedKeyword, finalDeliverable, nicheStyle),
+    pinned_deliverable: deliverableForMode,
+    pinned_comment: buildPinnedCommentLine(sanitizedKeyword, deliverableForMode, nicheStyle, salesMode),
   };
 }
 
