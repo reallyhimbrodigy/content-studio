@@ -1667,13 +1667,37 @@ FORBIDDEN:
 
 FALLBACK (prompt-level): If unsure, choose Reel.
 8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.
-9) Pinned comment keyword rules: output \`Comment "KEYWORD" and I'll send you ...\` where KEYWORD is 4–10 letters, ALL CAPS, letters only, and tied to the niche. No numbers, symbols, or off-niche codes.
+9) PINNED COMMENT RULES (HARD):
+      Keyword rules
+      - Keyword must be a real, readable word tied to the niche.
+      - ALL CAPS, letters only (A–Z), length 3–8 characters.
+      - No codes, no abbreviations that don't read naturally.
+      Examples by niche:
+      - Restaurant / fast food: BURGER, MENU, DEAL, SAUCE, FRIES
+      - Sports coaching: TRAIN, HOOPS, DRILLS
+      - Fitness: LIFT, SWEAT, MEAL
+      - Generic fallback: START
+      Sales-mode rules
+      - Infer niche type: restaurant/fast food/cafe/bar/venue → NO SALES; coach/course/service/creator → sales allowed.
+      If NO SALES:
+      - Do NOT say “I'll send you my guide/plan/breakdown”.
+      - Do NOT imply funnels, lead magnets, or DMs.
+      - Use engagement-only phrasing (reply, share, vote, try).
+      If sales allowed:
+      - One soft conversion action is allowed (DM, send guide, next step) with no urgency spam.
+      Allowed formats:
+      - NO SALES: Comment “BURGER” and we’ll reply with our top pick.
+      - NO SALES: Comment “MENU” and we’ll reply with today’s favorite.
+      - SALES OK: Comment “TRAIN” and I’ll DM the plan.
+      - SALES OK: Comment “START” and I’ll send the breakdown.
+      Hard bans: No numbers. No fake words. No keywords that make the sentence sound broken.
+      Pinned comments should encourage replies and conversation, regardless of sales mode.
 10) OFFER / LEAD MAGNET RULES (HARD): describe ONE clear deliverable tied to the card topic. Frame it as a clarifier or simplifier, not a promised result, using low-pressure language aligned with the pinned keyword and CTA.
       ALLOWED FRAMING: “the simple plan that cleared this up”, “the checklist I use”, “the breakdown that made this click”, “the template I wish I had earlier”, “the framework that simplified this”.
       FORBIDDEN FRAMING: “guaranteed results”, “transform your life”, “limited time”, “spots filling fast”, “exclusive access”, “free consultation”, “book now”, “join today”.
       SALES/ALGO REQUIREMENTS: make the deliverable feel like the natural next step after the pain; avoid hype and rely on relevance-driven curiosity.
       FALLBACK (prompt-level): “the simple guide that explains this clearly” (adapt wording for the niche but keep the tone neutral).
-11) STORY PROMPT+ HARD RULES: STAY STRICTLY IN NICHE: {niche}. Use only concepts/products/activities that exist in this niche. NEVER reference skincare/medspa terms (facial, peel, glow, botox, filler, serum, cleanser, moisturizer, acne, skincare, med spa, medspa, aesthetics, cosmetic, dermatology) unless the niche is explicitly skincare/medspa. If unsure, default to a universal niche-safe prompt using the niche’s core products/services.
+ 11) STORY PROMPT+ HARD RULES: STAY STRICTLY IN NICHE: {niche}. Use only concepts/products/activities that exist in this niche. NEVER reference skincare/medspa terms (facial, peel, glow, botox, filler, serum, cleanser, moisturizer, acne, skincare, med spa, medspa, aesthetics, cosmetic, dermatology) unless the niche is explicitly skincare/medspa. Story Prompt+ must reference the niche directly and may only use stickers/questions that make sense for that niche. Poll options and slider labels must be niche-specific (e.g., burgers vs fries, coach vs drill, listings vs tours). Output exactly 1–2 sentences: first sentence is a niche-specific question, second sentence lists 1–2 IG Story interactions (poll/quiz/slider/question box) with niche-specific wording. No additional commentary or unrelated examples. Before returning Story Prompt+, re-scan for any word that implies another niche; if found, rewrite it to niche-specific wording.
 12) STORY PROMPT RULES (HARD): output exactly one short question (no bullets, no lists). Must be niche-locked and tied to the same topic as the Hook/Caption. The question must trigger self-identification or confession and feel slightly uncomfortable but relatable. Do not introduce new topics, reuse unrelated niches, or include emojis, hashtags, CTAs, or platform mentions.
             ALLOWED PATTERNS (reference the niche/topic): "What part of [NICHE ACTIVITY] feels hardest right now?", "What do you keep trying that still isn’t working?", "What’s the one thing you’re stuck on with [NICHE TOPIC]?"
             FORBIDDEN TYPES: generic goals ("What’s your goal?"), preference questions without tension ("What do you like more?"), advice-seeking prompts ("What tips do you need?"), or off-niche content (no skincare/beauty terms unless the niche is beauty).
@@ -1719,7 +1743,7 @@ TikTok: (1–2 sentences) include a pattern interrupt in the first five words + 
 LinkedIn: (1–2 sentences) include a credibility framing (lesson/insight) + a soft CTA that matches the post’s hook and CTA.
 Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance terms unless that is the niche; no numbers in any comment keyword; no placeholder junk; no extra lines.`; 
   const postingTimeRules =
-    'POSTING TIME TIP RULES (HARD): Output EXACTLY one sentence of ≤12 words in the pattern “Post [time] [preposition] [reason].” Include a specific time (e.g., “7am”, “12pm”, “6–8pm”) and a reason tied to a real-world niche event (practice, workday, meals, commute). Do NOT use generic phrases like “daily routines”, “free time”, “scrolling”, “browsing”, “relaxing”, “downtime”, or “spare time.” Do NOT reference audience descriptors, marketing language, or multiple clauses beyond the time plus reason. Examples: “Post at 7am before practice starts.” “Post around 6pm after workouts finish.” “Post at noon during lunch.” Fallback: “Post at 7am before the day starts.”';
+    'POSTING TIME TIP RULES (HARD): Output EXACTLY one sentence of ≤12 words in the pattern “Post [time] [preposition] [reason].” Include a specific time (e.g., “7am”, “12pm”, “6–8pm”) and a reason tied to a real-world niche event (practice, workday, meals, commute). Do NOT use generic phrases like “daily routines”, “free time”, “scrolling”, “browsing”, “relaxing”, “downtime”, or “spare time.” Do NOT reference audience descriptors, marketing language, or multiple clauses beyond the time plus reason. Make the reason uniquely tied to the niche activity. Examples: “Post at 7am before practice starts.” “Post around 6pm after workouts finish.” “Post at noon during lunch.” Fallback: “Post at 7am before the day starts.”';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
 2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
@@ -1730,6 +1754,8 @@ Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance
 7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
 8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
+  const nicheProfileBlock = buildNicheProfileBlock(nicheStyle, brandContext);
+  const nicheDecisionBlock = `NICHE STYLE DECISION (MANDATORY)\nDetermine the niche\'s commercial intent category before writing sections.\nCategories: SELLING_DIRECT (restaurant/gym/agency/coach/SaaS/local service), CREATOR_MEDIA, INFO_COMMUNITY (clubs/nonprofits).\nIf SELLING_DIRECT or CREATOR_MEDIA, light sales tactics (soft CTA, subtle urgency, lead magnet) are allowed but must stay niche-appropriate.\nIf INFO_COMMUNITY, NO sales language (no “book now”, “spots fill fast”, “limited time”, “DM to buy”).\nAlways optimize for TikTok/IG retention (clear hook, curiosity gap, fast pacing, niche comment bait, platform-native prompts).\n`;
   const globalHardRules = `GLOBAL HARD RULES (NON-NEGOTIABLE)
   - NICHE LOCK: Every line must reference the user's niche, offer, audience, and location. Do not mix niches.
   - ZERO CROSS-NICHE: Keep fitness content about workouts/nutrition; avoid skincare/real estate/crypto unless that's the niche.
@@ -1738,6 +1764,24 @@ Hard rules: stay niche-locked; no off-topic nouns; no random beauty/food/finance
   - CONSISTENCY: Hook, caption, CTA, Story Prompt+, and pinned comment must reinforce the same angle.
   - NO PLACEHOLDERS: Avoid generic tags like [Client Name] unless provided.
   - BAN: No off-niche examples or regulated claims.`;
+  const salesModeGate = `SALES-MODE GATE (HARD RULES)
+Determine SALES_MODE based on the niche:
+- RESTAURANT / FAST FOOD / CAFE / BAR / VENUE / LOCAL SHOP → SALES_MODE = ENGAGEMENT_ONLY
+- COACH / CONSULTANT / AGENCY / COURSE / CREATOR / SERVICE → SALES_MODE = ALLOWED
+- Otherwise → SALES_MODE = ENGAGEMENT_ONLY
+
+Rules:
+- SALES_MODE = ENGAGEMENT_ONLY:
+  - No sales or funnel language.
+  - No “I’ll send you my guide/plan/breakdown”.
+  - No urgency/scarcity (“book now”, “spots fill fast”, “limited time”).
+  - CTAs must be engagement-only: comment, vote, try, share, tag.
+- SALES_MODE = ALLOWED:
+  - One soft sales CTA is allowed.
+  - Keep language natural and niche-appropriate.
+
+Algorithm mechanics (hooks, retention, interactions) remain allowed regardless of SALES_MODE.
+Apply these rules consistently across: Pinned comment, CTA, Story Prompt+, Engagement Loop.`;
   const localRules = `LOCAL CONTEXT RULES (HARD):
   - Reference location ONLY if the user provided it.
   - Mention location no more than once per card, and keep it incidental and human.
@@ -1768,6 +1812,45 @@ ALGO / TRUST REQUIREMENTS:
 
 FALLBACK (prompt-level):
   - “This helped clear things up for me.”`;
+  const nicheStrategyBlock = `GLOBAL CALENDAR STRATEGY (MUST FOLLOW)
+You are generating a content calendar for a specific niche. Every field must be niche-locked. Unrelated topics are disallowed.
+
+Step 1 — Derive a Niche Profile:
+
+Niche: ${nicheStyle || 'Untitled'}
+Audience: who this is for (1 line)
+Offer Type: choose exactly one:
+PRODUCT (physical/digital product sold)
+SERVICE (local service business, appointment-based)
+CREATOR (influencer/creator who monetizes attention)
+COMMUNITY (club, group, organization)
+VENUE (restaurant, cafe, bar, fast food, hospitality)
+EDUCATION (coach, tutor, course, training)
+Sales Mode: choose exactly one:
+DIRECT_RESPONSE (aggressive CTA + conversion tactics allowed)
+SOFT_SELL (light CTA, value-first, minimal pressure)
+ENGAGEMENT_ONLY (NO sales tactics; only engagement + retention)
+Rules for Sales Mode selection:
+If Offer Type is VENUE => ENGAGEMENT_ONLY (no “book now”, no “spots fill fast”, no funnels).
+If Offer Type is CREATOR/COMMUNITY => SOFT_SELL or ENGAGEMENT_ONLY depending on niche tone.
+If Offer Type is SERVICE/EDUCATION => SOFT_SELL or DIRECT_RESPONSE allowed.
+If Offer Type is PRODUCT => SOFT_SELL or DIRECT_RESPONSE allowed.
+When in doubt: ENGAGEMENT_ONLY.
+
+Step 2 — Apply Niche Lock:
+For every section you generate, you MUST use niche-relevant nouns/verbs and avoid unrelated industries (no skincare/medspa terms unless niche is that, etc.). Rewrite until niche-locked.
+
+Step 3 — Algorithm/Retention Rules (ALWAYS ON):
+- Strong hook in first line (clear, niche-specific).
+- One clear interaction mechanic (poll/quiz/slider/question) matching the niche.
+- Keep instructions concise and concrete.
+
+Step 4 — Sales Tactics Rules:
+If Sales Mode=ENGAGEMENT_ONLY: no conversion tactics; CTAs must be engagement-based (comment, vote, share, tag, try it, save it).
+If Sales Mode=SOFT_SELL: allow one light CTA with no urgency.
+If Sales Mode=DIRECT_RESPONSE: urgency/offer framing allowed but still niche-locked.
+
+Output requirement: decide Offer Type + Sales Mode before generating fields and follow these rules across every section.`;
   const titleRules = `TITLE RULES (HARD):
   - Output a short, punchy title (4–9 words).
   - Must create tension or curiosity, NOT describe the content plainly.
@@ -1820,7 +1903,7 @@ ALGO / SALES REQUIREMENTS:
 
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
-return `You are a content strategist.${brandBlock}${presetBlock}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
+  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${postingTimeRules}${classificationRules}
 Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
@@ -1934,12 +2017,13 @@ function normalizeStrategyForPost(post = {}) {
   const keyword = pinnedKeywordRaw || (parsedFromComment?.keyword || '');
   const deliverable = pinnedDeliverableRaw || (parsedFromComment?.deliverable || '');
   const builtComment = buildPinnedCommentLine(keyword, deliverable);
+  const commentLine = sanitizePinnedCommentText(builtComment || pinnedCommentRaw, post.nicheStyle || post.niche);
   return {
     angle: angleText,
     objective: objectiveText,
     pinned_keyword: keyword,
     pinned_deliverable: deliverable,
-    pinned_comment: builtComment || pinnedCommentRaw,
+    pinned_comment: commentLine,
     target_saves_pct: Number.isFinite(savesPct) ? savesPct : null,
     target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : null,
     hook_options: dedupedHooks,
@@ -2179,6 +2263,21 @@ function truncatePostingTimeTip(tip = '') {
   return text.slice(0, end).trim();
 }
 
+function sanitizePostingTimeTipText(tip = '') {
+  const text = String(tip || '').trim();
+  if (!text) return text;
+  const lower = text.toLowerCase();
+  let end = text.length;
+  for (const marker of [' during ', ' when ']) {
+    const idx = lower.indexOf(marker);
+    if (idx !== -1 && idx < end) {
+      end = idx;
+    }
+  }
+  const snippet = text.slice(0, end).trim();
+  return snippet.replace(/[.,;:]+$/g, '').trim();
+}
+
 const POSTING_TIME_REASON_WARNED = new Set();
 
 function ensureNichePostingTimeReason(tip = '', nicheStyle = '') {
@@ -2315,6 +2414,13 @@ function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
   return truncated;
 }
 
+function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
+  const niche = String(nicheStyle || 'General').trim() || 'General';
+  const audience = brandContext ? `Audience: ${brandContext.split('\n')[0]}` : 'Audience: General';
+  const offer = 'Offer: N/A';
+  return `\n=== NICHE PROFILE (SOURCE OF TRUTH) ===\nNiche: ${niche}\n${audience}\n${offer}\nHard rules:\n- Every line MUST be directly relevant to the niche above.\n- NEVER include concepts from unrelated niches.\n- If uncertain, stay generic within the niche.\n- Avoid beauty/med-spa language unless the niche is beauty/med-spa.\n- Avoid discount-code vibes unless the niche explicitly uses it.\n=== END NICHE PROFILE ===\n`;
+}
+
 function deriveNicheKeyword(nicheStyle = '') {
   const normalized = String(nicheStyle || '').toLowerCase();
   for (const [key, keywords] of Object.entries(NICHE_KEYWORD_BANK)) {
@@ -2361,6 +2467,8 @@ const STORY_PROMPT_KEYWORD_OVERRIDES = {
 };
 const STORY_PROMPT_PLUS_FORBIDDEN = ['facial','peel','glow','botox','filler','serum','cleanser','moisturizer','acne','skincare','med spa','medspa','aesthetics','cosmetic','dermatology'];
 const STORY_PROMPT_PLUS_LOGGED = new Set();
+const STORY_PROMPT_DENYLIST = ['facial', 'peel', 'glow', 'skincare', 'botox', 'filler', 'med spa', 'lash', 'brow', 'aesthetic', 'dermal'];
+const STORY_PROMPT_ANCHOR_STOPWORDS = new Set(['a','an','the','and','for','with','of','to','in','on','at','by','your','our','my','this','that','these','those']);
 
 function deriveStoryPromptNicheKey(nicheStyle = '') {
   const normalized = String(nicheStyle || '').toLowerCase();
@@ -2386,29 +2494,78 @@ function extractNicheTokens(nicheStyle = '', hashtags = []) {
   return tokens;
 }
 
+function deriveStoryPromptAnchor(nicheStyle = '') {
+  const label = String(nicheStyle || '').toLowerCase().trim();
+  if (!label) return 'niche';
+  const words = label.split(/[^a-z]+/).filter((word) => word && !STORY_PROMPT_ANCHOR_STOPWORDS.has(word));
+  if (!words.length) return 'niche';
+  return words.slice(0, 2).join(' ');
+}
+
+function deriveStoryPromptOptionPair(nicheStyle = '') {
+  const lower = String(nicheStyle || '').toLowerCase();
+  if (/(restaurant|food|burger|pizza|cafe|diner)/.test(lower)) return ['Classic', 'Spicy'];
+  if (/(fitness|gym|training|coach)/.test(lower)) return ['Strength', 'Cardio'];
+  return ['Option A', 'Option B'];
+}
+
 function buildStoryPromptPlusFallback(nicheStyle = '') {
-  const label = sanitizeNicheLabel(nicheStyle).toLowerCase();
-  const tokens = Array.from(extractNicheTokens(nicheStyle));
-  const optionA = tokens[0] || `${label} option`; 
-  const optionB = tokens[1] || `${label} alternate`;
-  const sliderLabel = tokens[2] || `${label} focus`;
-  return `Share your favorite ${label} moment. Add a poll with "${optionA}" vs "${optionB}", plus a slider labeled "${sliderLabel}". Add a question box: “What should we feature next?”`;
+  const anchor = deriveStoryPromptAnchor(nicheStyle);
+  const optionPair = deriveStoryPromptOptionPair(nicheStyle);
+  return `Share your biggest ${anchor} question today. Add a poll: "${optionPair[0]}" vs "${optionPair[1]}" plus a slider labeled "${anchor} level". Add a question box: “Ask me anything about today’s ${anchor}.”`;
 }
 
 function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
   const trimmed = String(text || '').trim();
-  if (!trimmed) return buildStoryPromptPlusFallback(nicheStyle);
+  const anchor = deriveStoryPromptAnchor(nicheStyle);
   const lower = trimmed.toLowerCase();
+  const tokens = extractNicheTokens(nicheStyle);
+  const anchorMatch = anchor ? lower.includes(anchor.toLowerCase()) : false;
   const isSkincareNiche = /(skincare|skin care|medspa|med spa|aesthetic|cosmetic|dermatology)/i.test(nicheStyle);
-  const hasForbidden = STORY_PROMPT_PLUS_FORBIDDEN.some((term) => lower.includes(term));
-  if (!hasForbidden || isSkincareNiche) return trimmed;
+  const hasForbidden = STORY_PROMPT_PLUS_FORBIDDEN.concat(STORY_PROMPT_DENYLIST).some((term) => lower.includes(term));
+  const needsFallback = !trimmed || (!anchorMatch && anchor !== 'niche') || (hasForbidden && !isSkincareNiche);
+  if (!needsFallback) return trimmed;
   const fallback = buildStoryPromptPlusFallback(nicheStyle);
   const key = `${post.userId || 'anon'}|${nicheStyle}`;
   if (!STORY_PROMPT_PLUS_LOGGED.has(key)) {
-    console.warn('[Calendar] StoryPromptPlusFallback', { userId: post.userId || null, niche: nicheStyle, original: trimmed });
+    console.warn('[Calendar] StoryPromptPlusFallbackRegen', { userId: post.userId || null, niche: nicheStyle, original: trimmed || '[empty]' });
     STORY_PROMPT_PLUS_LOGGED.add(key);
   }
   return fallback;
+}
+
+function buildStoryPromptPlusNicheFallback(nicheStyle = '') {
+  const label = deriveStoryPromptAnchor(nicheStyle);
+  return `What’s your favorite ${label} choice? Add a poll with "Option A" vs "Option B" and a slider for ${label} interest level.`;
+}
+
+function validateNicheLock(card = {}, nicheStyle = '') {
+  if (!card || typeof card !== 'object') return true;
+  const lowerNiche = String(nicheStyle || '').toLowerCase();
+  const allow = /(skin|skincare|spa|med spa|cosmetic|aesthetic|derm)/.test(lowerNiche);
+  if (allow) return true;
+  const fieldsToCheck = [
+    card.storyPrompt,
+    card.storyPromptExpanded,
+    card.caption,
+    card.body,
+    card.pinnedComment,
+    card.engagementScripts?.commentReply,
+    card.engagementScripts?.dmReply,
+  ];
+  const combined = fieldsToCheck.filter(Boolean).join(' ').toLowerCase();
+  return !STORY_PROMPT_DENYLIST.some((term) => combined.includes(term));
+}
+
+if (process.env.NODE_ENV !== 'production') {
+  const dev_niche = 'fast food burger joint';
+  const dev_story = sanitizeStoryPromptPlus(dev_niche, 'Facial or peel? Add a poll, glow level slider.');
+  if (/facial|peel|glow/.test(dev_story.toLowerCase())) {
+    console.warn('[Calendar][Dev] StoryPromptPlus sanitize failed to strip banned terms');
+  }
+  if (!/fast|food/.test(dev_story.toLowerCase())) {
+    console.warn('[Calendar][Dev] StoryPromptPlus missing niche anchor', dev_story);
+  }
 }
 
 function buildStoryPromptTemplate(nicheStyle = '') {
@@ -2662,7 +2819,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
     promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
     weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
-    postingTimeTip: toPlainString(post.postingTimeTip || ''),
+    postingTimeTip: sanitizePostingTimeTipText(toPlainString(post.postingTimeTip || '')),
     script,
     videoScript,
     instagram_caption: toPlainString(post.instagram_caption || post.caption || ''),
@@ -3371,6 +3528,15 @@ const server = http.createServer((req, res) => {
       posts = await dedupePinnedComments(posts, classification, nicheStyle);
     }
     posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
+    posts = posts.map((post) => {
+      if (!validateNicheLock(post, nicheStyle)) {
+        const fallback = buildStoryPromptPlusNicheFallback(nicheStyle);
+        post.storyPrompt = fallback;
+        post.storyPromptExpanded = fallback;
+        console.warn('[NicheLock] Story Prompt+ fallback applied', { niche: nicheStyle, day: post.day });
+      }
+      return post;
+    });
     logDuplicateStrategyValues(posts);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
