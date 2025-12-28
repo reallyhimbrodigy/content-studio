@@ -2230,6 +2230,14 @@ function deriveNicheKeyword(nicheStyle = '') {
   return sanitized || 'TIPS';
 }
 
+function stripStoryPromptOverrideFields(payload = {}) {
+  const clean = { ...(payload || {}) };
+  ['storyPromptKeywordOverride', 'storyPromptKeyword', 'storyPromptOverride'].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(clean, key)) delete clean[key];
+  });
+  return clean;
+}
+
 function deriveSalesMode(post = {}, classification = 'creator', nicheStyle = '') {
   const text = [post.businessType, post.industry, post.nicheCategory, classification, nicheStyle]
     .filter(Boolean)
@@ -2283,6 +2291,15 @@ function extractNicheTokens(nicheStyle = '', hashtags = []) {
     (clean.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
   });
   return tokens;
+}
+
+function isOverrideTokenSafe(token = '') {
+  const normalized = String(token || '').trim();
+  return /^[A-Z]{3,12}$/.test(normalized.toUpperCase());
+}
+
+function getSafeOverrideTokens(nicheKey = '') {
+  return (STORY_PROMPT_KEYWORD_OVERRIDES[nicheKey] || []).filter(isOverrideTokenSafe);
 }
 
 function deriveStoryPromptAnchor(nicheStyle = '') {
@@ -2361,7 +2378,7 @@ function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashta
   const nicheKey = deriveStoryPromptNicheKey(nicheStyle);
   const bannedTerms = STORY_PROMPT_BANNED_TERMS[nicheKey] || [];
   const hasBanned = bannedTerms.some((term) => lower.includes(term));
-  const overrideTokens = STORY_PROMPT_KEYWORD_OVERRIDES[nicheKey] || [];
+  const overrideTokens = getSafeOverrideTokens(nicheKey);
   if (hasBanned && !overrideTokens.some((term) => tokens.has(term))) {
     return '';
   }
@@ -3526,6 +3543,26 @@ const server = http.createServer((req, res) => {
           startDay: body?.startDay,
           nicheStyle: body?.nicheStyle,
         };
+        const overrideError = String(err?.message || '').includes('STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED');
+        if (overrideError) {
+          console.warn('[Calendar][Server] regen override invalid, retrying without override', { requestId, context });
+          try {
+            const sanitizedBody = stripStoryPromptOverrideFields(body);
+            const posts = await generateCalendarPosts({
+              ...(sanitizedBody || {}),
+              context: {
+                requestId,
+                batchIndex: sanitizedBody?.batchIndex,
+                startDay: sanitizedBody?.startDay,
+              },
+            });
+            console.log('[Calendar][Server][Perf] regen override retry success', { requestId, context });
+            return sendJson(res, 200, { posts });
+          } catch (retryErr) {
+            logServerError('calendar_regenerate_error', retryErr, { requestId, context });
+            err = retryErr;
+          }
+        }
         logServerError('calendar_regenerate_error', err, { requestId, context });
         if (res.headersSent) return;
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
