@@ -2608,6 +2608,25 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   return normalized;
 }
 
+function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', loggingContext = {}) {
+  try {
+    return normalizePost(post, idx, startDay, forcedDay, nicheStyle);
+  } catch (err) {
+    const isOverrideError = String(err?.message || '').includes('STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED');
+    if (!isOverrideError) throw err;
+    console.warn('[Calendar] Story prompt override invalid, continuing without it', {
+      requestId: loggingContext?.requestId || 'unknown',
+      niche: nicheStyle,
+      message: err.message,
+    });
+    const sanitized = { ...post };
+    ['storyPromptKeywordOverride', 'storyPromptKeyword', 'storyPromptOverride'].forEach((key) => delete sanitized[key]);
+    sanitized.storyPrompt = sanitized.storyPrompt || '';
+    sanitized.storyPromptExpanded = sanitized.storyPromptExpanded || '';
+    return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle);
+  }
+}
+
 const PRO_INTERACTIVE_PROMPTS = [
   'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
   'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
@@ -3270,7 +3289,7 @@ const server = http.createServer((req, res) => {
       const instagramEntry = instagramLen ? audioCache.instagram[idx % instagramLen] : null;
       rawPosts[idx].audio = formatAudioLine(idx, tiktokEntry, instagramEntry);
     }
-    let posts = rawPosts.map((p, idx) => normalizePost(p, idx, startDay, undefined, nicheStyle));
+    let posts = rawPosts.map((p, idx) => normalizePostWithOverrideFallback(p, idx, startDay, undefined, nicheStyle, loggingContext));
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
