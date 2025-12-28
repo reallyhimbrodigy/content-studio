@@ -50,6 +50,10 @@ const {
   getMonthlyTrendingAudios,
   formatAudioLine,
 } = require('./server/lib/trendingAudio');
+const {
+  STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
+  validateStoryPromptKeywordOverride,
+} = require('./server/lib/storyPromptOverrideValidator');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -2625,22 +2629,89 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   return normalized;
 }
 
+const STORY_PROMPT_OVERRIDE_KEYS = [
+  'storyPromptKeywordOverride',
+  'storyPromptKeyword',
+  'storyPromptOverride',
+];
+const STORY_PROMPT_KEYWORD_OVERRIDE_WARNING = 'STORY_PROMPT_KEYWORD_OVERRIDE_SKIPPED';
+
+function getStoryPromptOverrideValue(post = {}) {
+  for (const key of STORY_PROMPT_OVERRIDE_KEYS) {
+    const candidate = post?.[key];
+    if (candidate === null || candidate === undefined) continue;
+    if (Array.isArray(candidate)) {
+      if (candidate.some((item) => String(item || '').trim())) return candidate;
+      continue;
+    }
+    if (String(candidate).trim()) return candidate;
+  }
+  return null;
+}
+
+function removeStoryPromptOverrideFields(post = {}) {
+  const sanitized = { ...(post || {}) };
+  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
+  });
+  sanitized.storyPrompt = sanitized.storyPrompt || '';
+  sanitized.storyPromptExpanded = sanitized.storyPromptExpanded || '';
+  return sanitized;
+}
+
+function computeOverrideDay(post = {}, idx = 0, startDay = 1) {
+  if (typeof post?.day === 'number') return post.day;
+  if (Number.isFinite(startDay)) {
+    return Number(startDay) + idx;
+  }
+  return idx + 1;
+}
+
+function pushOverrideWarning(loggingContext = {}, day = null) {
+  if (!Array.isArray(loggingContext.warnings)) return;
+  loggingContext.warnings.push({
+    code: STORY_PROMPT_KEYWORD_OVERRIDE_WARNING,
+    requestId: loggingContext.requestId || 'unknown',
+    day,
+  });
+}
+
 function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', loggingContext = {}) {
+  const rawOverride = getStoryPromptOverrideValue(post);
+  const overrideDay = computeOverrideDay(post, idx, startDay);
+  if (rawOverride) {
+    const validated = validateStoryPromptKeywordOverride(rawOverride, loggingContext);
+    if (!validated) {
+      pushOverrideWarning(loggingContext, overrideDay);
+      return normalizePost(removeStoryPromptOverrideFields(post), idx, startDay, forcedDay, nicheStyle);
+    }
+  }
   try {
     return normalizePost(post, idx, startDay, forcedDay, nicheStyle);
   } catch (err) {
-    const isOverrideError = String(err?.message || '').includes('STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED');
+    const isOverrideError = String(err?.message || '').includes(STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED);
     if (!isOverrideError) throw err;
-    console.warn('[Calendar] Story prompt override invalid, continuing without it', {
+    const contextMeta = {
       requestId: loggingContext?.requestId || 'unknown',
+      userId: loggingContext?.userId || null,
       niche: nicheStyle,
+      day: overrideDay,
+    };
+    console.warn('[Calendar] Story prompt override invalid, continuing without it', {
+      ...contextMeta,
       message: err.message,
     });
-    const sanitized = { ...post };
-    ['storyPromptKeywordOverride', 'storyPromptKeyword', 'storyPromptOverride'].forEach((key) => delete sanitized[key]);
-    sanitized.storyPrompt = sanitized.storyPrompt || '';
-    sanitized.storyPromptExpanded = sanitized.storyPromptExpanded || '';
-    return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle);
+    const sanitized = removeStoryPromptOverrideFields(post);
+    try {
+      return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle);
+    } catch (fallbackErr) {
+      console.warn('[Calendar] Story prompt override fallback failed, skipping post', {
+        ...contextMeta,
+        message: fallbackErr.message,
+      });
+      pushOverrideWarning(loggingContext, overrideDay);
+      return null;
+    }
   }
 }
 
@@ -3265,6 +3336,7 @@ const server = http.createServer((req, res) => {
   async function generateCalendarPosts(payload = {}) {
     const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
     const loggingContext = context || {};
+    if (userId) loggingContext.userId = userId;
     const tStart = Date.now();
     console.log('[Calendar][Server][Perf] generateCalendarPosts start', {
       nicheStyle,
@@ -3306,7 +3378,12 @@ const server = http.createServer((req, res) => {
       const instagramEntry = instagramLen ? audioCache.instagram[idx % instagramLen] : null;
       rawPosts[idx].audio = formatAudioLine(idx, tiktokEntry, instagramEntry);
     }
-    let posts = rawPosts.map((p, idx) => normalizePostWithOverrideFallback(p, idx, startDay, undefined, nicheStyle, loggingContext));
+    const normalizedPosts = [];
+    for (let idx = 0; idx < rawPosts.length; idx += 1) {
+      const normalized = normalizePostWithOverrideFallback(rawPosts[idx], idx, startDay, undefined, nicheStyle, loggingContext);
+      if (normalized) normalizedPosts.push(normalized);
+    }
+    let posts = normalizedPosts;
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
@@ -3495,6 +3572,7 @@ const server = http.createServer((req, res) => {
     (async () => {
       let body = null;
       const requestId = generateRequestId('regen');
+      const regenContext = { requestId, warnings: [] };
       try {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
@@ -3519,13 +3597,11 @@ const server = http.createServer((req, res) => {
           startDay: body?.startDay,
           postsPerDay: body?.postsPerDay,
         });
+        regenContext.batchIndex = body?.batchIndex;
+        regenContext.startDay = body?.startDay;
         const posts = await generateCalendarPosts({
           ...(body || {}),
-          context: {
-            requestId,
-            batchIndex: body?.batchIndex,
-            startDay: body?.startDay,
-          },
+          context: regenContext,
         });
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
@@ -3535,35 +3611,60 @@ const server = http.createServer((req, res) => {
           elapsedMs: Date.now() - tStart,
           postCount: Array.isArray(posts) ? posts.length : 0,
         });
-        return sendJson(res, 200, { posts });
+        const payload = { posts };
+        if (Array.isArray(regenContext.warnings) && regenContext.warnings.length) {
+          payload.warnings = regenContext.warnings;
+        }
+        return sendJson(res, 200, payload);
       } catch (err) {
-        const context = {
+        const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
           startDay: body?.startDay,
           nicheStyle: body?.nicheStyle,
         };
-        const overrideError = String(err?.message || '').includes('STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED');
+        const errorMessage = String(err?.message || '');
+        const overrideError = errorMessage.includes('STORY_PROMPT_KEYWORD_OVERRIDE') || errorMessage.includes('VALIDATE_FAILED');
         if (overrideError) {
-          console.warn('[Calendar][Server] regen override invalid, retrying without override', { requestId, context });
+          console.warn('[Calendar][Server] regen override invalid, retrying without override', { requestId, context: errorContext });
+          const sanitizedBody = stripStoryPromptOverrideFields(body);
+          const sanitizedContext = {
+            requestId,
+            batchIndex: sanitizedBody?.batchIndex,
+            startDay: sanitizedBody?.startDay,
+            warnings: [],
+          };
           try {
-            const sanitizedBody = stripStoryPromptOverrideFields(body);
             const posts = await generateCalendarPosts({
               ...(sanitizedBody || {}),
-              context: {
-                requestId,
-                batchIndex: sanitizedBody?.batchIndex,
-                startDay: sanitizedBody?.startDay,
-              },
+              context: sanitizedContext,
             });
-            console.log('[Calendar][Server][Perf] regen override retry success', { requestId, context });
-            return sendJson(res, 200, { posts });
+            if (!isPro) {
+              await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+            }
+            console.log('[Calendar][Server][Perf] regen override retry success', { requestId, context: errorContext });
+            const warnings = [
+              ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
+              ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
+            ].filter(Boolean);
+            const payload = { posts };
+            if (warnings.length) payload.warnings = warnings;
+            return sendJson(res, 200, payload);
           } catch (retryErr) {
-            logServerError('calendar_regenerate_error', retryErr, { requestId, context });
-            err = retryErr;
+            logServerError('calendar_regenerate_error', retryErr, { requestId, context: errorContext });
+            const warnings = [
+              ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
+              ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
+              {
+                code: STORY_PROMPT_KEYWORD_OVERRIDE_WARNING,
+                requestId,
+                day: body?.startDay ?? null,
+              },
+            ];
+            return sendJson(res, 200, { posts: [], warnings });
           }
         }
-        logServerError('calendar_regenerate_error', err, { requestId, context });
+        logServerError('calendar_regenerate_error', err, { requestId, context: errorContext });
         if (res.headersSent) return;
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
         const status = isSchemaError ? 502 : (err?.statusCode || 500);
