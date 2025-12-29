@@ -1877,22 +1877,22 @@ Hard rule: only include ideas and terminology that are clearly specific to the p
 
 Required Fields Rule:
 - Every post object MUST include a storyPrompt field.
-- storyPrompt must be a non-empty string tied to the post’s niche and topic.
+- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥20 words) describing what to show, say, and the CTA question.
 - Never return objects missing any required fields.
 
 Omission Forbiddance:
 - Never omit storyPrompt.
 - Never rename storyPrompt or return it under a different key.
-- Never return storyPrompt as null, empty, or whitespace.
+- Never return storyPrompt as null, empty, whitespace, or placeholder like 'TBD' or 'N/A'.
 
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
 - Keep storyPrompt on-topic, specific, and consistent with the niche.
-- No templates, no repeated scaffolds, no fixed phrases.
-- Each hook, caption, and storyPrompt must use distinct wording; do not reuse the same sentence template or scenario across multiple posts in the batch.
+- Avoid the recycled phrasing 'A real client walked in feeling stuck—we tweaked one move and the shift was wild' or 'What happened when we doubled down on X?' and never reuse a category label (e.g., 'Client Transformation Story') as the entire storyPrompt.
+- No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, and storyPrompts stay unique across posts.
 
 Output Contract Warning:
-- Responses missing any required field are invalid; fix internally before sending.
+- Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
 
 Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
@@ -1941,7 +1941,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 10) Keep outputs concise to avoid truncation.
 11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio).`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 sentences (at least 20 words) describing the story beats and CTA question.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
