@@ -1946,7 +1946,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 10) Keep outputs concise to avoid truncation.
 11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 sentences (at least 20 words) describing the story beats and CTA question. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question.`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 sentences (at least 20 words) describing the story beats and CTA question. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
@@ -2587,6 +2587,8 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
+const PLACEHOLDER_PROMPT_REGEX = /^(?:tbd|n\/a|null|undefined|none|story prompt here)$/i;
+
 const STORY_PROMPT_ALIASES = [
   'storyPrompt',
   'story_prompt',
@@ -2604,7 +2606,7 @@ function resolveStoryPromptValue(post = {}) {
     if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
     const value = post[key];
     const trimmed = toPlainString(value);
-    if (trimmed) return trimmed;
+    if (trimmed && !PLACEHOLDER_PROMPT_REGEX.test(trimmed)) return trimmed;
   }
   return '';
 }
@@ -2622,9 +2624,14 @@ function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
 
 const STORY_PROMPT_PLUS_ALIASES = [
   'storyPromptPlus',
-  'story_prompt_plus',
+  'storyPromptPlusInstructions',
+  'storyPromptPlusPrompt',
+  'storyPromptPlusText',
   'storyPrompt+',
   'story prompt plus',
+  'story_prompt_plus',
+  'story_prompt_plus_instructions',
+  'story_prompt_plus_prompt',
   'story_prompt_plus_text',
   'storyPromptExpanded',
   'story_prompt_expanded',
@@ -2635,7 +2642,7 @@ function resolveStoryPromptPlusValue(post = {}) {
     if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
     const value = post[key];
     const trimmed = toPlainString(value);
-    if (trimmed) return trimmed;
+    if (trimmed && !PLACEHOLDER_PROMPT_REGEX.test(trimmed)) return trimmed;
   }
   return '';
 }
@@ -2649,7 +2656,8 @@ function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
   const detail = hook || angle || topic;
   const cta = toPlainString(post.cta || 'What would you try next?');
   const question = cta.endsWith('?') ? cta : `${cta}?`;
-  return `Shape a ${format} story for ${niche} about ${detail}: describe the turning point, what changed, and ask ${question}`;
+  const base = toPlainString(post.storyPrompt || detail);
+  return `Shape a ${format} story for ${niche} about ${base}: describe the turning point, what changed, and ask ${question}`;
 }
 
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
