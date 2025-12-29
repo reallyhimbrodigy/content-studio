@@ -1705,8 +1705,8 @@ ALGO / SALES REQUIREMENTS:
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling.';
   const distributionPlanRules = `Distribution Plan rules:
-Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the niche/brand context provided. Do not introduce any topic that is not in this niche. No unrelated references.
-Return exactly 3–5 bullet points describing how to adapt this post’s concept across formats/platforms (what to keep, what to adjust). No sample captions, no canned “Instagram/TikTok/LinkedIn” lines; focus on practical tweaks. Hard rules: stay niche-locked; no placeholder junk; output bullets only.`; 
+- Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
+- Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction engagement/action idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
   const postingTimeRules = '';
   const strategyRules = `Strategy rules:
 1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
@@ -1874,6 +1874,7 @@ Hard rule: only include ideas and terminology that are clearly specific to the p
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
+- distributionPlan (string containing 3–5 unique, niche-specific bullets describing platform adaptations and follow-up actions; do not leave empty)
 
 Required Fields Rule:
 - Every post object MUST include a storyPrompt field.
@@ -1881,11 +1882,15 @@ Required Fields Rule:
 - Never return objects missing any required fields.
 - Every post object MUST include a storyPromptPlus field.
 - storyPromptPlus must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥12 words) that adds actionable detail or stakes and ends with a follow-up question.
+- Every post object MUST include a distributionPlan field.
+- distributionPlan must contain 3–5 unique, niche-specific bullets that describe platform adaptations, what to retain, what to adjust, and include an engagement/follow-up action; do not return this field empty or as a placeholder.
 
 Omission Forbiddance:
 - Never omit storyPrompt.
 - Never rename storyPrompt or return it under a different key.
 - Never return storyPrompt as null, empty, whitespace, or placeholder like 'TBD' or 'N/A'.
+- Never omit distributionPlan.
+- Never return distributionPlan as null, empty, whitespace, or placeholder.
 
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
@@ -1894,10 +1899,12 @@ Generation Guidance:
 - StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
 - If you are unsure, still output a best-effort storyPrompt and storyPromptPlus rather than omitting them, and verify each card has valid prompts before returning JSON.
+- DistributionPlan must consist of 3–5 unique bullets; each bullet should spell out a platform action, what to retain from the base content, and one engagement step that stays niche-locked. Avoid placeholder text, repeated templates, or filler sentences.
 
 Output Contract Warning:
 - Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
 - Before outputting JSON, also ensure each post has storyPromptPlus that meets its requirements; missing/invalid storyPromptPlus makes the response invalid.
+- Before outputting JSON, verify distributionPlan exists, contains 3–5 bullets, and follows the distribution guidance; missing or malformed distributionPlan makes the response invalid.
 
 Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
@@ -2588,6 +2595,7 @@ function normalizeScriptObject(source = {}) {
 }
 
 const PLACEHOLDER_PROMPT_REGEX = /^(?:tbd|n\/a|null|undefined|none|story prompt here)$/i;
+const DISTRIBUTION_PLACEHOLDER_REGEX = /^(?:tbd|n\/a|null|undefined|none|distribution plan here)$/i;
 
 const STORY_PROMPT_ALIASES = [
   'storyPrompt',
@@ -2637,6 +2645,15 @@ const STORY_PROMPT_PLUS_ALIASES = [
   'story_prompt_expanded',
 ];
 
+const DISTRIBUTION_PLAN_ALIASES = [
+  'distributionPlan',
+  'distribution_plan',
+  'distribution plan',
+  'distributionPlanSteps',
+  'distribution_plan_steps',
+  'distributionPlanText',
+];
+
 function resolveStoryPromptPlusValue(post = {}) {
   for (const key of STORY_PROMPT_PLUS_ALIASES) {
     if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
@@ -2645,6 +2662,30 @@ function resolveStoryPromptPlusValue(post = {}) {
     if (trimmed && !PLACEHOLDER_PROMPT_REGEX.test(trimmed)) return trimmed;
   }
   return '';
+}
+
+function resolveDistributionPlanValue(post = {}) {
+  for (const key of DISTRIBUTION_PLAN_ALIASES) {
+    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
+    const value = post[key];
+    const trimmed = toPlainString(value);
+    if (trimmed && !DISTRIBUTION_PLACEHOLDER_REGEX.test(trimmed)) return trimmed;
+  }
+  return '';
+}
+
+function buildDistributionPlanFallback(post = {}, nicheStyle = '') {
+  const hook = toPlainString(post.hook || post.idea || post.title || 'this insight');
+  const topic = toPlainString(post.topic || post.caption || 'today’s topic');
+  const cta = toPlainString(post.cta || 'What does this mean for you?');
+  const niche = toPlainString(nicheStyle || 'this niche');
+  const action = cta.endsWith('?') ? cta : `${cta}?`;
+  const bullets = [
+    `TikTok: pair the hook "${hook}" with fast-paced captions tied to ${niche} and end with ${action}`,
+    `Instagram: keep the same concept visually but slow the pacing to match the platform’s style and ask viewers to save/comment on ${topic}`,
+    `LinkedIn: highlight the strategic takeaway, mention the niche relevance, and invite professionals to weigh in with their experience`,
+  ];
+  return bullets.join('\n');
 }
 
 function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
@@ -2688,6 +2729,10 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   if (!storyPromptPlus) {
     storyPromptPlus = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptPlusFromPost(post, nicheStyle), hashtags);
   }
+  let distributionPlan = resolveDistributionPlanValue(post);
+  if (!distributionPlan) {
+    distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
+  }
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
@@ -2715,6 +2760,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     linkedin_caption: toPlainString(post.linkedin_caption || post.caption || ''),
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
+    distributionPlan,
   };
   if (!normalized.promoSlot) normalized.weeklyPromo = '';
   return normalized;
