@@ -38,10 +38,24 @@ function setAnalyticsUnauthenticatedState() {
 
 let analyticsIsPro = false;
 
+let supabaseMissingLogged = false;
+
+function resolveSupabaseClient() {
+  if (typeof window === 'undefined') return null;
+  return window.supabase || window.supabaseClient || null;
+}
+
 async function getAnalyticsAccessToken() {
-  if (typeof window === 'undefined' || !window.supabase) return null;
+  const supabaseClient = resolveSupabaseClient();
+  if (!supabaseClient) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Supabase client unavailable; ensure supabase.js is loaded before analytics.js');
+    }
+    return null;
+  }
   try {
-    const { data } = await window.supabase.auth.getSession();
+    const { data } = await supabaseClient.auth.getSession();
     return data?.session?.access_token || null;
   } catch (err) {
     console.warn('[Analytics] Unable to read Supabase session', err);
@@ -59,7 +73,7 @@ async function fetchAuthenticated(url, options = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
   const finalOptions = {
-    credentials: 'include',
+    credentials: 'same-origin',
     ...options,
     headers,
   };
@@ -136,7 +150,7 @@ async function fetchAnalyticsJson(url, options) {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const finalOptions = { ...(options || {}), headers };
   if (!finalOptions.credentials) {
-    finalOptions.credentials = 'include';
+    finalOptions.credentials = 'same-origin';
   }
   const res = await fetch(url, finalOptions);
 
