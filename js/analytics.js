@@ -42,7 +42,7 @@ let supabaseMissingLogged = false;
 
 function resolveSupabaseClient() {
   if (typeof window === 'undefined') return null;
-  return window.supabase || window.supabaseClient || null;
+  return window.supabaseClient || window.supabase || null;
 }
 
 async function getAnalyticsAccessToken() {
@@ -69,9 +69,13 @@ async function fetchAuthenticated(url, options = {}) {
     headers.set('Content-Type', 'application/json');
   }
   const token = await getAnalyticsAccessToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+  if (!token) {
+    return new Response(JSON.stringify({ ok: false, unauthorized: true }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
+  headers.set('Authorization', `Bearer ${token}`);
   const finalOptions = {
     credentials: 'same-origin',
     ...options,
@@ -147,7 +151,10 @@ const DEMO_ANALYTICS = {
 async function fetchAnalyticsJson(url, options) {
   const headers = new Headers(options?.headers || {});
   const token = await getAnalyticsAccessToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (!token) {
+    return { unauthorized: true, data: null };
+  }
+  headers.set('Authorization', `Bearer ${token}`);
   const finalOptions = { ...(options || {}), headers };
   if (!finalOptions.credentials) {
     finalOptions.credentials = 'same-origin';

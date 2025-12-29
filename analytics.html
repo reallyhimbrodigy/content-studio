@@ -10,6 +10,10 @@
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
     <link rel="stylesheet" href="styles.css" />
     <script src="assets/vendor/supabase.js"></script>
+    <script type="module">
+      import { supabase as promptlySupabase } from '/supabase-client.js';
+      window.supabaseClient = promptlySupabase;
+    </script>
   </head>
   <body class="analytics-view">
     <div class="app-shell">
