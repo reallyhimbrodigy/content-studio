@@ -1869,7 +1869,7 @@ ALGO / SALES REQUIREMENTS:
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (2-4 sentences, 20+ words, describe a story format, beats, and CTA question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (1-2 sentences, 8-20 words, describe a story format, beats, and CTA question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
@@ -1887,9 +1887,10 @@ Omission Forbiddance:
 
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
-- Keep storyPrompt on-topic, specific, and consistent with the niche.
-- Avoid the recycled phrasing 'A real client walked in feeling stuck—we tweaked one move and the shift was wild' or 'What happened when we doubled down on X?' and never reuse a category label (e.g., 'Client Transformation Story') as the entire storyPrompt.
+- Keep storyPrompt on-topic, specific, and consistent with the niche, and phrase it as an actionable question the creator can answer on camera.
+- Avoid the recycled phrasing 'A real client walked in feeling stuck—we tweaked one move and the shift was wild' or 'What happened when we doubled down on X?' and never reuse a category label (e.g., 'Client Transformation Story') as the entire storyPrompt. Never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, and storyPrompts stay unique across posts.
+- If you are unsure, still output a best-effort storyPrompt rather than omitting it, and verify each card has a valid storyPrompt before returning JSON.
 
 Output Contract Warning:
 - Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
@@ -2582,6 +2583,39 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
+const STORY_PROMPT_ALIASES = [
+  'storyPrompt',
+  'story_prompt',
+  'story prompt',
+  'storyPromptPlus',
+  'story_prompt_plus',
+  'storyPromptExpanded',
+  'story_prompt_expanded',
+  'storyPromptVariant',
+  'story_prompt_variant',
+];
+
+function resolveStoryPromptValue(post = {}) {
+  for (const key of STORY_PROMPT_ALIASES) {
+    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
+    const value = post[key];
+    const trimmed = toPlainString(value);
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
+  const format = toPlainString(post.format || 'Reel') || 'Reel';
+  const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
+  const hook = toPlainString(post.hook || '');
+  const niche = toPlainString(nicheStyle || 'this niche');
+  const cta = toPlainString(post.cta || 'What does that mean for you?');
+  const question = cta.endsWith('?') ? cta : `${cta}?`;
+  const description = hook ? `${hook} ${topic}` : topic;
+  return `Record a short ${format} story for ${niche} viewers about ${description}: show the setup, highlight the pivot point, and ask ${question}`;
+}
+
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
@@ -2600,8 +2634,11 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const videoScript = { ...script };
   const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
   const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
-  const rawStoryPrompt = toPlainString(post.storyPrompt || '');
-  const storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
+  const rawStoryPrompt = resolveStoryPromptValue(post);
+  let storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
+  if (!storyPrompt) {
+    storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptFromPost(post, nicheStyle), hashtags);
+  }
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
@@ -3391,6 +3428,15 @@ const server = http.createServer((req, res) => {
       }
       return post;
     });
+    const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
+    if (missingStoryPrompt.length) {
+      const missingDays = missingStoryPrompt.map((post) => `Day${post.day ?? '?'}`).join(', ');
+      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompt.length} posts missing storyPrompt (${missingDays})`);
+      err.code = 'CALENDAR_MISSING_STORY_PROMPT';
+      err.statusCode = 500;
+      err.requestId = loggingContext?.requestId;
+      throw err;
+    }
     logDuplicateStrategyValues(posts);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
