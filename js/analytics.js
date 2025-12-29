@@ -38,22 +38,44 @@ function setAnalyticsUnauthenticatedState() {
 
 let analyticsIsPro = false;
 
+const supabaseUrlMeta = document.querySelector('meta[name="supabase-url"]');
+const supabaseAnonKeyMeta = document.querySelector('meta[name="supabase-anon-key"]');
+const SUPABASE_META_URL = supabaseUrlMeta?.getAttribute('content')?.trim() || '';
+const SUPABASE_META_ANON_KEY = supabaseAnonKeyMeta?.getAttribute('content')?.trim() || '';
+let supabaseClientInstance = null;
 let supabaseMissingLogged = false;
 
-function resolveSupabaseClient() {
-  if (typeof window === 'undefined') return null;
-  return window.supabaseClient || window.supabase || null;
-}
-
-async function getAnalyticsAccessToken() {
-  const supabaseClient = resolveSupabaseClient();
-  if (!supabaseClient) {
+function ensureSupabaseClient() {
+  if (supabaseClientInstance) return supabaseClientInstance;
+  if (!SUPABASE_META_URL || !SUPABASE_META_ANON_KEY) {
     if (!supabaseMissingLogged) {
       supabaseMissingLogged = true;
-      console.error('[Analytics] Supabase client unavailable; ensure supabase.js is loaded before analytics.js');
+      console.error('[Analytics] Supabase credentials are missing; add meta tags for supabase-url and supabase-anon-key.');
     }
     return null;
   }
+  if (typeof window === 'undefined' || !window.supabase) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Supabase SDK not loaded; include https://cdn.jsdelivr.net/npm/@supabase/supabase-js before analytics.js.');
+    }
+    return null;
+  }
+  try {
+    supabaseClientInstance = window.supabase.createClient(SUPABASE_META_URL, SUPABASE_META_ANON_KEY);
+    return supabaseClientInstance;
+  } catch (err) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Failed to initialize Supabase client', err);
+    }
+    return null;
+  }
+}
+
+async function getAnalyticsAccessToken() {
+  const supabaseClient = ensureSupabaseClient();
+  if (!supabaseClient) return null;
   try {
     const { data } = await supabaseClient.auth.getSession();
     return data?.session?.access_token || null;

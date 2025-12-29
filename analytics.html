@@ -9,11 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
     <link rel="stylesheet" href="styles.css" />
-    <script src="assets/vendor/supabase.js"></script>
-    <script type="module">
-      import { supabase as promptlySupabase } from '/supabase-client.js';
-      window.supabaseClient = promptlySupabase;
-    </script>
+    <meta name="supabase-url" content="https://ejxkzsfruykvgeouymfy.supabase.co" />
+    <meta name="supabase-anon-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.81.1/dist/umd/supabase.js"></script>
   </head>
   <body class="analytics-view">
     <div class="app-shell">
@@ -279,7 +277,7 @@
     <script type="module" src="script.js"></script>
     <script src="https://cdn.getphyllo.com/connect/v2/phyllo-connect.js"></script>
     <script type="module" src="/js/analytics-render.js"></script>
-    <script type="module" src="/js/analytics.js"></script>
+    <script type="module" defer src="/js/analytics.js"></script>
     <script type="module" src="./footer.js"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
