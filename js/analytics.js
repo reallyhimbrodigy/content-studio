@@ -112,15 +112,15 @@ async function getAnalyticsAccessToken() {
   }
 }
 
-async function fetchAnalyticsJson(url, options) {
-  const headers = new Headers(options?.headers || {});
-  const token = await getAnalyticsAccessToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  const finalOptions = { ...(options || {}), headers };
-  if (!finalOptions.credentials) {
-    finalOptions.credentials = 'include';
-  }
-  const res = await fetch(url, finalOptions);
+  async function fetchAnalyticsJson(url, options) {
+    const headers = new Headers(options?.headers || {});
+    const token = await getAnalyticsAccessToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const finalOptions = { ...(options || {}), headers };
+    if (!finalOptions.credentials) {
+      finalOptions.credentials = 'include';
+    }
+    const res = await fetch(url, finalOptions);
 
   if (res.status === 401) {
     console.warn('[Analytics] unauthorized for', url);

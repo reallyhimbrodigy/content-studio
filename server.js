@@ -5559,16 +5559,25 @@ Output format:
     (async () => {
       try {
         let userId = req.user && req.user.id;
+        let authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
+        let authFailed = false;
         if (!userId && supabaseAdmin) {
-          try {
-            const authUser = await requireSupabaseUser(req);
-            userId = authUser?.id;
-          } catch (error) {
-            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            try {
+              const tokenUser = await requireSupabaseUser(req);
+              userId = tokenUser?.id;
+            } catch (error) {
+              authFailed = true;
+              console.warn('[Analytics heatmap] Authorization header present but invalid');
+            }
           }
         }
         if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          const hasAuthHeader = !!authHeader;
+          if (hasAuthHeader && !authFailed) {
+            console.warn('[Analytics heatmap] Authorization header provided but user lookup failed');
+          }
+          return sendJson(res, 401, { ok: false, error: 'unauthorized', auth: hasAuthHeader ? 'authorization_header' : 'cookie' });
         }
 
         const { data, error } = await supabaseAdmin
