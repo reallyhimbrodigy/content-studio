@@ -303,41 +303,6 @@ async function syncAccountMetricsForAnalytics(acct = {}, since = new Date(), unt
   }
 }
 
-  let phylloUser = null;
-  try {
-    phylloUser = await getPhylloUserByExternalId(externalId);
-  } catch (err) {
-    console.error('[Phyllo] getPhylloUserByExternalId failed', err?.response?.data || err);
-    throw err;
-  }
-  if (!phylloUser) {
-    phylloUser = await createPhylloUser({
-      name: `Promptly user ${promptlyUserId}`,
-      externalId,
-    });
-  }
-
-  if (!phylloUser?.id) {
-    throw new Error('Phyllo user lookup returned empty id');
-  }
-
-  if (supabaseAdmin) {
-    try {
-      await supabaseAdmin
-        .from('phyllo_users')
-        .upsert(
-          {
-            promptly_user_id: promptlyUserId,
-            phyllo_user_id: phylloUser.id,
-          },
-          { onConflict: 'promptly_user_id' }
-        );
-    } catch (err) {
-      console.warn('[Phyllo] failed to persist phyllo_users mapping', err);
-    }
-  }
-
-  return { phylloUserId: phylloUser.id, externalId };
 }
 
 if (!OPENAI_API_KEY) {
