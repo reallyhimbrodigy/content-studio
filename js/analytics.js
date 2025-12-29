@@ -130,25 +130,15 @@ const DEMO_ANALYTICS = {
   },
 };
 
-async function getAnalyticsAccessToken() {
-  try {
-    const token = await window.supabase?.auth?.getSession();
-    return token?.data?.session?.access_token || null;
-  } catch (error) {
-    console.warn('[Analytics] Unable to resolve Supabase session token', error);
-    return null;
+async function fetchAnalyticsJson(url, options) {
+  const headers = new Headers(options?.headers || {});
+  const token = await getAnalyticsAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const finalOptions = { ...(options || {}), headers };
+  if (!finalOptions.credentials) {
+    finalOptions.credentials = 'include';
   }
-}
-
-  async function fetchAnalyticsJson(url, options) {
-    const headers = new Headers(options?.headers || {});
-    const token = await getAnalyticsAccessToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-    const finalOptions = { ...(options || {}), headers };
-    if (!finalOptions.credentials) {
-      finalOptions.credentials = 'include';
-    }
-    const res = await fetch(url, finalOptions);
+  const res = await fetch(url, finalOptions);
 
   if (res.status === 401) {
     console.warn('[Analytics] unauthorized for', url);
