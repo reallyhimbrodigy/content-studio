@@ -5558,7 +5558,15 @@ Output format:
   if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
     (async () => {
       try {
-        const userId = req.user && req.user.id;
+        let userId = req.user && req.user.id;
+        if (!userId && supabaseAdmin) {
+          try {
+            const authUser = await requireSupabaseUser(req);
+            userId = authUser?.id;
+          } catch (error) {
+            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          }
+        }
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }

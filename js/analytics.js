@@ -116,7 +116,11 @@ async function fetchAnalyticsJson(url, options) {
   const headers = new Headers(options?.headers || {});
   const token = await getAnalyticsAccessToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const res = await fetch(url, { ...(options || {}), headers });
+  const finalOptions = { ...(options || {}), headers };
+  if (!finalOptions.credentials) {
+    finalOptions.credentials = 'include';
+  }
+  const res = await fetch(url, finalOptions);
 
   if (res.status === 401) {
     console.warn('[Analytics] unauthorized for', url);
@@ -285,10 +289,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadInsights() {
     try {
-      const res = await fetch('/api/analytics/insights');
-      const json = await res.json();
-      if (!json.ok) throw new Error('insights fetch failed');
-      renderInsights(json.insights || [], analyticsIsPro);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/insights');
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        renderInsights([], analyticsIsPro);
+        applyProButtonStyles();
+        return;
+      }
+      if (error) throw new Error('insights fetch failed');
+      renderInsights(data.insights || [], analyticsIsPro);
       applyProButtonStyles();
     } catch (err) {
       console.error('[Analytics] loadInsights error', err);
