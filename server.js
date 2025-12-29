@@ -2619,7 +2619,7 @@ function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
   const cta = toPlainString(post.cta || 'What does that mean for you?');
   const question = cta.endsWith('?') ? cta : `${cta}?`;
   const description = hook ? `${hook} ${topic}` : topic;
-  return `${format} story for ${niche} about ${description}. Keep it tied to this concept and end by asking ${question}`;
+  return `Record a short ${format} story for ${niche} viewers about ${description}: show the setup, highlight the pivot point, and ask ${question}`;
 }
 
 const STORY_PROMPT_PLUS_ALIASES = [
@@ -2657,7 +2657,7 @@ function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
   const cta = toPlainString(post.cta || 'What would you try next?');
   const question = cta.endsWith('?') ? cta : `${cta}?`;
   const base = toPlainString(post.storyPrompt || detail);
-  return `${format} story for ${niche} about ${base}. Add stakes or tactical detail tied to the same concept and finish by asking ${question}`;
+  return `Shape a ${format} story for ${niche} about ${base}: describe the turning point, what changed, and ask ${question}`;
 }
 
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
