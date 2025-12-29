@@ -1997,14 +1997,6 @@ function normalizeStrategyForPost(post = {}) {
 const BANNED_TERMS = ['angle', 'objective', 'major objection', 'insight'];
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and I(?:'|’|`)?ll send you\s+(.+)\.$/i;
 const KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
-const NICHE_KEYWORD_FALLBACKS = [
-  { match: /fitness|gym|workout|trainer|training/, keyword: 'TRAIN' },
-  { match: /nutrition|diet|meal|recipe|food/, keyword: 'MEAL' },
-  { match: /beauty|skincare|spa|esthetic|derm/, keyword: 'GLOW' },
-  { match: /real\s*estate|realtor|homes|property/, keyword: 'HOME' },
-  { match: /marketing|ads|agency|growth/, keyword: 'LEADS' },
-  { match: /finance|invest|crypto|money/, keyword: 'WEALTH' },
-];
 
 function sanitizeKeywordForComment(keyword = '', nicheStyle = '') {
   const lettersOnly = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
@@ -2035,12 +2027,6 @@ function normalizeKeywordToken(value = '') {
 }
 
 function deriveNicheFallbackKeyword(nicheStyle = '') {
-  const normalized = String(nicheStyle || '').toLowerCase();
-  for (const entry of NICHE_KEYWORD_FALLBACKS) {
-    if (entry.match.test(normalized)) {
-      return entry.keyword;
-    }
-  }
   return '';
 }
 
@@ -2589,9 +2575,9 @@ function ensureHashtagArray(value, fallback = [], minLength = 0) {
 }
 
 function normalizeScriptObject(source = {}) {
-  const hook = toPlainString(source.hook) || 'Stop scrolling—quick tip';
-  const body = toPlainString(source.body) || 'Show result • Explain 1 step • Tease benefit';
-  const cta = toPlainString(source.cta) || '';
+  const hook = toPlainString(source.hook);
+  const body = toPlainString(source.body);
+  const cta = toPlainString(source.cta);
   return { hook, body, cta };
 }
 
@@ -2613,7 +2599,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const videoScript = { ...script };
   const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
   const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
-  const rawStoryPrompt = toPlainString(post.storyPrompt || "Share behind-the-scenes of today's work.");
+  const rawStoryPrompt = toPlainString(post.storyPrompt || '');
   const storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
@@ -2671,8 +2657,6 @@ function removeStoryPromptOverrideFields(post = {}) {
   STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
   });
-  sanitized.storyPrompt = sanitized.storyPrompt || '';
-  sanitized.storyPromptExpanded = sanitized.storyPromptExpanded || '';
   return sanitized;
 }
 
@@ -2732,53 +2716,17 @@ function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDa
   }
 }
 
-const PRO_INTERACTIVE_PROMPTS = [
-  'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
-  'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
-  'Turn the story into a “This or That” sequence with a DM me button.',
-  'Collect audience input with a “Ask me anything about today’s tip” box.',
-  'Use a countdown sticker leading into tomorrow’s teaser.'
-];
+const buildDistributionPlanText = (post = {}) => toPlainString(post.distributionPlan || '');
 
-const DISTRIBUTION_PLAN_FALLBACK = 'Share this concept across Instagram, TikTok, and LinkedIn with the updated hook and CTA.';
-
-const pickCycledItem = (items = [], index = 0) => {
-  if (!items.length) return '';
-  const idx = Math.abs(Math.floor(index)) % items.length;
-  return items[idx];
-};
-
-const buildDistributionPlanText = (post = {}) => {
-  const parts = [];
-  const repurpose = Array.isArray(post.repurpose) ? post.repurpose.map((item) => toPlainString(item)).filter(Boolean) : [];
-  if (repurpose.length) {
-    parts.push(repurpose.join(' • '));
-  }
-  const variants = post.variants || {};
-  const variantLines = [];
-  const instagram = toPlainString(variants.instagram_caption || variants.igCaption || variants.igCaptionText);
-  if (instagram) variantLines.push(`Instagram: ${instagram}`);
-  const tiktok = toPlainString(variants.tiktok_caption || variants.tiktokCaption);
-  if (tiktok) variantLines.push(`TikTok: ${tiktok}`);
-  const linkedin = toPlainString(variants.linkedin_caption || variants.linkedinCaption);
-  if (linkedin) variantLines.push(`LinkedIn: ${linkedin}`);
-  if (variantLines.length) {
-    parts.push(variantLines.join(' | '));
-  }
-  return parts.filter(Boolean).join('\n');
-};
-
-const buildStoryPromptExpanded = (post = {}, dayIndex = 0) => {
-  const base = toPlainString(post.storyPrompt);
-  const suffix = pickCycledItem(PRO_INTERACTIVE_PROMPTS, dayIndex);
-  const combined = [base, suffix].filter(Boolean).join(' ').trim();
-  return sanitizeStoryPromptPlus(post.niche || post.nicheStyle || '', combined, post);
+const buildStoryPromptExpanded = (post = {}) => {
+  const text = toPlainString(post.storyPromptExpanded);
+  return sanitizeStoryPromptPlus(post.niche || post.nicheStyle || '', text, post);
 };
 
 const enrichRegenPost = (post = {}, dayIndex = 0) => {
   const enriched = { ...post };
-  enriched.distributionPlan = buildDistributionPlanText(post) || DISTRIBUTION_PLAN_FALLBACK;
-  enriched.storyPromptExpanded = buildStoryPromptExpanded(post, dayIndex) || enriched.storyPrompt || '';
+  enriched.distributionPlan = buildDistributionPlanText(post);
+  enriched.storyPromptExpanded = buildStoryPromptExpanded(post);
   return enriched;
 };
 

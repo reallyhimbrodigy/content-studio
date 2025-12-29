@@ -5704,7 +5704,7 @@ const createCard = (post) => {
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (entry.audio) fullTextParts.push(`Audio: ${entry.audio}`);
-    if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
+    if (entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
@@ -5773,7 +5773,7 @@ const createCard = (post) => {
     if (entry.audio) {
       hiddenDetailNodes.push(createDetailRow('Audio', entry.audio, 'calendar-card__audio'));
     }
-    if (window.cachedUserIsPro && entry.storyPromptExpanded) {
+    if (entry.storyPromptExpanded) {
       hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
     }
 
@@ -6532,7 +6532,6 @@ const stripProFields = (post) => {
   delete clone.captionVariations;
   delete clone.hashtagSets;
   delete clone.visualTemplate;
-  delete clone.storyPromptExpanded;
   delete clone.followUpIdea;
   return clone;
 };
@@ -7416,8 +7415,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Story spotlight',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Story spotlight: ${base}. A real client walked in feeling stuck—we tweaked one move and the shift was wild. Ready for your own version? ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Story clip → Reel remix', 'Quote the testimonial in a carousel'],
     analytics: ['Saves', 'Shares'],
@@ -7427,8 +7425,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Proof drop',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Proof drop: ${base}. Screenshot a metric, testimonial, or before/after that shows the transformation. Spell out the levers you pulled and invite them to replicate it. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Stat graphic → LinkedIn post', 'Metric → Email teaser'],
     analytics: ['Profile visits', 'Click-throughs'],
@@ -7438,8 +7435,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Myth bust',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Myth busting time: people still believe the wrong thing about ${base}. Call out the myth, stack your truth with one vivid example, and end with an empowering action step. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Myth vs Truth carousel', 'Save as FAQ highlight'],
     analytics: ['Comments', 'Shares'],
@@ -7449,8 +7445,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Community question',
     buildIdea: (base) => base,
-    buildCaption: (base) => `Community question: ${base}. Give your own POV first, then explicitly ask followers to share their routines, wins, or hurdles. Spotlight a few in Stories to keep the loop going.`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base) => base,
     designNotes: '',
     repurpose: ['Turn answers into a roundup post', 'Collect quotes for newsletter'],
     analytics: ['Comments', 'DMs'],
@@ -7460,8 +7455,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Mini training',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Mini training: ${base}. Lay out a 3-step checklist: the setup, the action, the win they should expect. Encourage followers to screenshot it, try it tonight, then tell you how it went. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Checklist → PDF lead magnet', 'Turn each step into a Story panel'],
     analytics: ['Saves', 'Replies'],
@@ -7471,8 +7465,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Offer reminder',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Offer reminder: tie ${base} back to the program, product, or slot you have open. Spell out exactly who it helps, what they get, and why this week is the best time to jump in. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Turn into an email CTA', 'Use as pinned Story highlight'],
     analytics: ['Profile visits', 'Link clicks'],
@@ -7482,8 +7475,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Trend radar',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Trend radar: ${base}. Flag what’s changing this month, spell out how it impacts your audience, and recommend a micro-shift they can make today. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Trend note → Newsletter opener', 'Trend clip → LinkedIn post'],
     analytics: ['Shares', 'Profile visits'],
@@ -7493,8 +7485,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Swipe file',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Swipe file drop: ${base}. Outline the exact template, line-by-line, and invite followers to screenshot + tag you when they try it. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Swipe → PDF lead magnet', 'Swipe → Carousel frames'],
     analytics: ['Saves', 'Replies'],
@@ -7504,8 +7495,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Build in public',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Build-in-public check-in: show where ${base} is today, what broke, and the one experiment you’re running next. Transparently sharing the messy middle builds trust. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Turn into blog progress log', 'Clip into YouTube Short'],
     analytics: ['Profile visits', 'DMs'],
@@ -7515,8 +7505,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Hot take',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Hot take: ${base}. Lead with the spicy belief, back it with one data point or story, then give the “if you disagree, try this” olive branch. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Turn into Twitter thread', 'Use as debate poll in Stories'],
     analytics: ['Comments', 'Shares'],
@@ -7526,8 +7515,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'FAQ clinic',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `FAQ clinic: answer the question you see nonstop about ${base}. Give the short version, the nuance, and a quick diagnostic so people know what bucket they’re in. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Compile into FAQ highlight', 'Turn into blog Q&A'],
     analytics: ['Replies', 'Profile visits'],
@@ -7537,8 +7525,7 @@ const POST_SLOT_ANGLES = [
   {
     name: 'Client spotlight',
     buildIdea: (base) => base,
-    buildCaption: (base, cta) => `Client spotlight: highlight one person who implemented ${base} and narrate their before/after. Tag them if they’re cool with it and share the exact prompt you gave them. ${cta}`,
-    buildStoryPrompt: () => '',
+    buildCaption: (base, cta) => base,
     designNotes: '',
     repurpose: ['Turn into case study PDF', 'Send as sales follow-up asset'],
     analytics: ['Saves', 'Link clicks'],
@@ -7551,8 +7538,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Aftercare blueprint',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Glow insurance for ${subject}: here’s the 24-hour, 48-hour, and 72-hour checklist that keeps results locked in. Save it, tape it to your mirror, and tag us when you follow through. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Turn into printable checklist', 'Add to automated SMS follow-up'],
     analytics: ['Saves', 'Replies'],
@@ -7562,8 +7548,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Event countdown',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `VIP timeline alert: here’s exactly when to schedule ${subject} if you’re prepping for a wedding, shoot, or party. Screenshot the 5-day countdown and share it with your group chat. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Send to bridal leads', 'Turn into pinned Story highlight'],
     analytics: ['Saves', 'Shares'],
@@ -7573,8 +7558,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Ingredient face-off',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Two MVP ingredients power this ${subject}. Let’s compare what each one does, who it’s best for, and how to know when you need it. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Turn into carousel explainer', 'Convert to email mini-lesson'],
     analytics: ['Saves', 'Comments'],
@@ -7584,8 +7568,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Membership spotlight',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `If you love ${subject}, the membership pays for itself. Here’s what weekly/biweekly visits unlock, the surprise perks, and the accountability you didn’t know you needed. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Turn into sales page section', 'Include in onboarding email'],
     analytics: ['Profile visits', 'Link clicks'],
@@ -7595,8 +7578,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Seasonal switch-up',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Seasons change, so should your ${subject}. Here’s how we tweak exfoliation, hydration, and LED time when temps swing. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Update blog seasonal guide', 'Send as quarterly reminder'],
     analytics: ['Shares', 'Replies'],
@@ -7606,8 +7588,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'At-home vs pro',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `DIY can be cute, but here’s what only a pro ${subject} delivers. Outline the at-home steps we still love, then show the pro-only benefits. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Turn into lead magnet', 'Use as FAQ reply'],
     analytics: ['Saves', 'Profile visits'],
@@ -7617,8 +7598,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Add-on stack',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Want your ${subject} to hit harder? Stack it with these two add-ons. Share the price, time, and who each combo is perfect for. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Bundle into sales deck', 'Upsell via email'],
     analytics: ['Upsells', 'Replies'],
@@ -7628,8 +7608,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Pricing clarity',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Here’s what you pay for with ${subject}: sterile tools, licensed pros, medical-grade serums, and the follow-up plan. Transparency builds trust, so let’s show the receipt. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Embed on pricing page', 'Send during sales consults'],
     analytics: ['Profile visits', 'Link clicks'],
@@ -7639,8 +7618,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Mistake audit',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `I see the same three mistakes right before ${subject}: wrong cleanser, skipping SPF, and sleeping on silk. Call them out, show how you correct them, and invite followers to audit themselves. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Use as onboarding PDF', 'Share in welcome email'],
     analytics: ['Comments', 'Saves'],
@@ -7650,8 +7628,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Audience pivot',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Teens, men, and first-timers ask if ${subject} is “for them.” Answer with empathy: explain sensations, prep, and confidence boosts. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Feature on FAQ page', 'Create pinned TikTok'],
     analytics: ['Follows', 'DMs'],
@@ -7661,8 +7638,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Tool + tech spotlight',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Let’s geek out over the tech that powers ${subject}. Break down how the tool works, safety checks you run, and the sensation clients actually feel. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Add to diagnostic landing page', 'Send as “meet the tech” email'],
     analytics: ['Profile visits', 'Shares'],
@@ -7672,8 +7648,7 @@ const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Progress diary',
     idea: (subject, helpers) => subject,
-    caption: (subject, helpers) => `Document the journey: Visit 1 baseline, Visit 2 turning point, Visit 3 glow-up. People trust receipts, so show them the diary. ${helpers.cta}`,
-    storyPrompt: () => '',
+    caption: (subject, helpers) => subject,
     designNotes: '',
     repurpose: ['Turn into blog case study', 'Use as nurture email arc'],
     analytics: ['Saves', 'Link clicks'],
@@ -7881,16 +7856,17 @@ function normalizePost(p, idx = 0, startDay = 1) {
     designNotes: p.designNotes || '',
     repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
     analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
-    engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
+    engagementScripts: p.engagementScripts || { commentReply: '', dmReply: '' },
     promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
     weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
     videoScript: p.videoScript || {},
     variants: p.variants || undefined,
+    distributionPlan: p.distributionPlan || '',
+    audio: p.audio || '',
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
   if (!out.engagementScripts.commentReply && p.engagementScript) out.engagementScripts.commentReply = p.engagementScript;
-  if (!out.engagementScripts.dmReply) out.engagementScripts.dmReply = out.engagementScripts.dmReply || '';
   // Ensure hashtags have # prefix for display purposes later
   out.hashtags = Array.isArray(out.hashtags) ? out.hashtags : [];
   return { ...p, ...out };
@@ -8182,6 +8158,58 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const bad = normalized.filter(p => !p.videoScript || !p.caption || !p.hashtags || !Array.isArray(p.hashtags) || !p.storyPrompt || !p.designNotes || !p.engagementScripts);
     if (bad.length) {
       console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
+    }
+    const missingCtas = normalized.filter((p) => !p.cta);
+    if (missingCtas.length) {
+      const missingDays = missingCtas.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_CTA: ${missingCtas.length} posts returned no CTA (${missingDays})`);
+    }
+    const missingHashtags = normalized.filter((p) => !(Array.isArray(p.hashtags) && p.hashtags.length));
+    if (missingHashtags.length) {
+      const missingDays = missingHashtags.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_HASHTAGS: ${missingHashtags.length} posts returned no hashtags (${missingDays})`);
+    }
+    const missingStoryPrompts = normalized.filter((p) => !p.storyPrompt);
+    if (missingStoryPrompts.length) {
+      const missingDays = missingStoryPrompts.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompts.length} posts returned no story prompt (${missingDays})`);
+    }
+    const missingStoryPromptPlus = normalized.filter((p) => !p.storyPromptExpanded);
+    if (missingStoryPromptPlus.length) {
+      const missingDays = missingStoryPromptPlus.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_STORY_PROMPT_PLUS: ${missingStoryPromptPlus.length} posts returned no story prompt+ (${missingDays})`);
+    }
+    const missingDesignNotes = normalized.filter((p) => !p.designNotes);
+    if (missingDesignNotes.length) {
+      const missingDays = missingDesignNotes.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_DESIGN_NOTES: ${missingDesignNotes.length} posts returned no design notes (${missingDays})`);
+    }
+    const missingEngagement = normalized.filter(
+      (p) => !(String(p.engagementScripts?.commentReply || '').trim() && String(p.engagementScripts?.dmReply || '').trim())
+    );
+    if (missingEngagement.length) {
+      const missingDays = missingEngagement.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_ENGAGEMENT: ${missingEngagement.length} posts returned incomplete engagement scripts (${missingDays})`);
+    }
+    const missingReelScript = normalized.filter(
+      (p) => {
+        const script = p.videoScript || {};
+        return !String(script.hook || '').trim() || !String(script.body || '').trim() || !String(script.cta || '').trim();
+      }
+    );
+    if (missingReelScript.length) {
+      const missingDays = missingReelScript.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_REEL_SCRIPT: ${missingReelScript.length} posts returned incomplete reel scripts (${missingDays})`);
+    }
+    const missingDistribution = normalized.filter((p) => !String(p.distributionPlan || '').trim());
+    if (missingDistribution.length) {
+      const missingDays = missingDistribution.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_DISTRIBUTION_PLAN: ${missingDistribution.length} posts returned no distribution plan (${missingDays})`);
+    }
+    const missingAudio = normalized.filter((p) => !String(p.audio || '').trim());
+    if (missingAudio.length) {
+      const missingDays = missingAudio.map((p) => `Day${p.day ?? '?'}`).join(', ');
+      throw new Error(`CALENDAR_MISSING_AUDIO: ${missingAudio.length} posts returned no audio (${missingDays})`);
     }
     allPosts = normalized.map((post, idx) => {
       const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
