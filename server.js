@@ -564,10 +564,9 @@ async function configurePhylloWebhook() {
 }
 
 function analyticsUpgradeRequired(res) {
-  return sendJson(res, 402, {
-    ok: false,
-    error: 'upgrade_required',
-    feature: 'analytics_full',
+  return sendJson(res, 200, {
+    disabled: true,
+    reason: 'upgrade_required',
   });
 }
 

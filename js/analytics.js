@@ -29,6 +29,13 @@ function lockAnalyticsSection(sectionKey) {
   }
 }
 
+function setAnalyticsUnauthenticatedState() {
+  const el = document.querySelector('[data-analytics-section="auth"]');
+  if (el) {
+    el.classList.add('analytics-section-unauthenticated');
+  }
+}
+
 let analyticsIsPro = false;
 
 const DEMO_ANALYTICS = {
@@ -95,8 +102,21 @@ const DEMO_ANALYTICS = {
   },
 };
 
+async function getAnalyticsAccessToken() {
+  try {
+    const token = await window.supabase?.auth?.getSession();
+    return token?.data?.session?.access_token || null;
+  } catch (error) {
+    console.warn('[Analytics] Unable to resolve Supabase session token', error);
+    return null;
+  }
+}
+
 async function fetchAnalyticsJson(url, options) {
-  const res = await fetch(url, options || {});
+  const headers = new Headers(options?.headers || {});
+  const token = await getAnalyticsAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch(url, { ...(options || {}), headers });
 
   if (res.status === 401) {
     console.warn('[Analytics] unauthorized for', url);
@@ -424,14 +444,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadHeatmap() {
     try {
-      const res = await fetch('/api/analytics/heatmap');
-      const json = await res.json();
-      if (json && json.error === 'upgrade_required') {
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/heatmap');
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        return;
+      }
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('heatmap');
         return;
       }
-      if (!json.ok) throw new Error('heatmap_fetch_failed');
-      renderHeatmap(json.heatmap || []);
+      if (error || !data || data.ok === false) throw new Error('heatmap_fetch_failed');
+      renderHeatmap(data.heatmap || []);
     } catch (err) {
       console.error('[Analytics] loadHeatmap error', err);
       const grid = document.getElementById('heatmap-grid');
@@ -496,10 +519,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/experiments');
       if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
         renderExperiments([]);
         return;
       }
-      if (data && data.error === 'upgrade_required') {
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('experiments');
         return;
       }
@@ -587,8 +611,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadGrowthReport() {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/reports/latest');
-      if (unauthorized) return;
-      if (data && data.error === 'upgrade_required') {
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        return;
+      }
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('report');
         return;
       }
