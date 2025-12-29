@@ -303,8 +303,6 @@ async function syncAccountMetricsForAnalytics(acct = {}, since = new Date(), unt
   }
 }
 
-}
-
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
 }
