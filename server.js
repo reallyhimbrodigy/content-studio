@@ -1869,11 +1869,29 @@ ALGO / SALES REQUIREMENTS:
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (15-120 chars; describe the story concept; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
 - strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
+
+Required Fields Rule:
+- Every post object MUST include a storyPrompt field.
+- storyPrompt must be a non-empty string tied to the post’s niche and topic.
+- Never return objects missing any required fields.
+
+Omission Forbiddance:
+- Never omit storyPrompt.
+- Never rename storyPrompt or return it under a different key.
+- Never return storyPrompt as null, empty, or whitespace.
+
+Generation Guidance:
+- Always generate storyPrompt naturally based on the post’s topic and niche.
+- Keep storyPrompt on-topic, specific, and consistent with the niche.
+- No templates, no repeated scaffolds, no fixed phrases.
+
+Output Contract Warning:
+- Responses missing any required field are invalid; fix internally before sending.
 
 Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
