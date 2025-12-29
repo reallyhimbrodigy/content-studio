@@ -724,6 +724,35 @@ async function requireSupabaseUser(req) {
   return data.user;
 }
 
+async function resolveAuthorizationHeaderUser(req) {
+  if (!supabaseAdmin) return null;
+  if (req.user) return req.user;
+  const authHeader =
+    (req.headers['authorization'] || req.headers['Authorization'] || '').trim();
+  if (!authHeader.toLowerCase().startsWith('bearer ')) {
+    return null;
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+  try {
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data?.user) {
+      console.warn('[Auth] Authorization header lookup failed', error?.message || 'invalid token');
+      return null;
+    }
+    req.user = data.user;
+    return data.user;
+  } catch (err) {
+    console.warn('[Auth] Authorization header processing error', err?.message || err);
+    return null;
+  }
+}
+
+async function ensureAnalyticsRequestUser(req) {
+  if (req.user) return req.user;
+  return resolveAuthorizationHeaderUser(req);
+}
+
 function parseLinkedDayFromKey(calendarDayId) {
   if (!calendarDayId) return null;
   const match = String(calendarDayId).match(/(\d{1,2})$/);
@@ -4785,6 +4814,11 @@ ${JSON.stringify(compactPosts)}`;
 
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
+      await ensureAnalyticsRequestUser(req);
+      const promptlyUserId = req.user && req.user.id;
+      if (!promptlyUserId) {
+        return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      }
       if (!process.env.PHYLLO_CLIENT_ID || !process.env.PHYLLO_CLIENT_SECRET) {
         console.error('[Phyllo] Missing PHYLLO_CLIENT_ID or PHYLLO_CLIENT_SECRET env vars');
         return sendJson(res, 200, {
@@ -4795,7 +4829,7 @@ ${JSON.stringify(compactPosts)}`;
       }
 
       try {
-        const externalId = 'sandbox-demo-user';
+        const externalId = String(promptlyUserId);
 
         // 1) try to find existing user
         let phylloUser = await getPhylloUserByExternalId(externalId);
@@ -4886,6 +4920,7 @@ ${JSON.stringify(compactPosts)}`;
     readJsonBody(req)
       .then(async (body) => {
         try {
+          await ensureAnalyticsRequestUser(req);
           const promptlyUserId = req.user && req.user.id;
           if (!promptlyUserId) {
             return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -4943,6 +4978,7 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/accounts' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const promptlyUserId = req.user && req.user.id;
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, data: [] });
@@ -4967,6 +5003,7 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/analytics/data' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const promptlyUserId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!promptlyUserId || !supabaseAdmin) {
@@ -5018,6 +5055,7 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/sync-posts' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const promptlyUserId = req.user && req.user.id;
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5165,6 +5203,7 @@ ${JSON.stringify(compactPosts)}`;
   if (parsed.pathname === '/api/phyllo/test-posts' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
@@ -5194,6 +5233,7 @@ ${JSON.stringify(compactPosts)}`;
     readJsonBody(req)
       .then(async (body) => {
         try {
+          await ensureAnalyticsRequestUser(req);
           const userId = req.user && req.user.id;
           const isPro = isUserPro(req);
           if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5333,6 +5373,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!userId || !supabaseAdmin) {
@@ -5363,6 +5404,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/engagement' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5403,6 +5445,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const promptlyUserId = req.user && req.user.id;
         if (!promptlyUserId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, alerts: [] });
@@ -5431,6 +5474,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/report/latest' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5478,6 +5522,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -5520,6 +5565,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/top-posts' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5558,26 +5604,10 @@ Output format:
   if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
     (async () => {
       try {
-        let userId = req.user && req.user.id;
-        let authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
-        let authFailed = false;
-        if (!userId && supabaseAdmin) {
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            try {
-              const tokenUser = await requireSupabaseUser(req);
-              userId = tokenUser?.id;
-            } catch (error) {
-              authFailed = true;
-              console.warn('[Analytics heatmap] Authorization header present but invalid');
-            }
-          }
-        }
+        await ensureAnalyticsRequestUser(req);
+        const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
-          const hasAuthHeader = !!authHeader;
-          if (hasAuthHeader && !authFailed) {
-            console.warn('[Analytics heatmap] Authorization header provided but user lookup failed');
-          }
-          return sendJson(res, 401, { ok: false, error: 'unauthorized', auth: hasAuthHeader ? 'authorization_header' : 'cookie' });
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
 
         const { data, error } = await supabaseAdmin
@@ -5617,6 +5647,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/full' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, {
@@ -5726,6 +5757,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/followers' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, trends: [] });
@@ -5758,6 +5790,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/demographics' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, { ok: true, demographics: {} });
@@ -5789,6 +5822,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/sync-status' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, {
@@ -5827,6 +5861,7 @@ Output format:
   if (parsed.pathname === '/api/phyllo/sync-audience' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const { user_id } = await parseJson(req);
         if (!user_id) {
           return sendJson(res, 400, { ok: false, error: 'missing_user_id' });
@@ -5844,6 +5879,7 @@ Output format:
   if (parsed.pathname === '/api/phyllo/sync-followers' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5880,6 +5916,7 @@ Output format:
   if (parsed.pathname === '/api/phyllo/sync-demographics' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5942,6 +5979,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/sync-status/update' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -5968,6 +6006,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -5998,6 +6037,7 @@ Output format:
     if (parsed.pathname.endsWith('/complete')) {
       (async () => {
         try {
+          await ensureAnalyticsRequestUser(req);
           const userId = req.user && req.user.id;
           const isPro = isUserPro(req);
           if (!isPro) {
@@ -6064,6 +6104,7 @@ Output format:
   if (parsed.pathname.startsWith('/api/analytics/experiments/') && req.method === 'DELETE') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -6098,6 +6139,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/reports' && req.method === 'POST') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -6158,6 +6200,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/reports/latest' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -6190,6 +6233,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = (req.user && req.user.id) || null;
         if (!userId || !supabaseAdmin) return sendJson(res, 200, { ok: true, data: [] });
         const { data: accounts, error: accountsError } = await supabaseAdmin
@@ -6218,6 +6262,7 @@ Output format:
   if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
     (async () => {
       try {
+        await ensureAnalyticsRequestUser(req);
         const userId = (req.user && req.user.id) || null;
         if (!userId || !supabaseAdmin) {
           sendJson(res, 401, { error: 'unauthorized' });

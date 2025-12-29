@@ -38,6 +38,34 @@ function setAnalyticsUnauthenticatedState() {
 
 let analyticsIsPro = false;
 
+async function getAnalyticsAccessToken() {
+  if (typeof window === 'undefined' || !window.supabase) return null;
+  try {
+    const { data } = await window.supabase.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch (err) {
+    console.warn('[Analytics] Unable to read Supabase session', err);
+    return null;
+  }
+}
+
+async function fetchAuthenticated(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const token = await getAnalyticsAccessToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const finalOptions = {
+    credentials: 'include',
+    ...options,
+    headers,
+  };
+  return fetch(url, finalOptions);
+}
+
 const DEMO_ANALYTICS = {
   overview: {
     followerGrowth: '+1,250 this month',
@@ -203,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function getPhylloInstance() {
     if (phylloConnectInstance) return phylloConnectInstance;
 
-    const res = await fetch('/api/phyllo/sdk-config');
+    const res = await fetchAuthenticated('/api/phyllo/sdk-config');
     if (!res.ok) {
       console.error('[Phyllo] sdk-config failed', res.status);
       return null;
@@ -237,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
 
       // Persist connection server-side (fire-and-forget)
-      fetch('/api/phyllo/account-connected', {
+      fetchAuthenticated('/api/phyllo/account-connected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -994,15 +1022,15 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.textContent = 'Refreshing...';
     }
     try {
-      await fetch('/api/phyllo/sync-posts', {
+      await fetchAuthenticated('/api/phyllo/sync-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetch('/api/phyllo/sync-followers', {
+      await fetchAuthenticated('/api/phyllo/sync-followers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetch('/api/phyllo/sync-demographics', {
+      await fetchAuthenticated('/api/phyllo/sync-demographics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -1024,7 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function handleAudienceSync() {
     try {
-      const res = await fetch('/api/phyllo/sync-audience', {
+    const res = await fetchAuthenticated('/api/phyllo/sync-audience', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: window.USER_ID }),
@@ -1049,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
         list.textContent = 'Analyzing your posts...';
       }
 
-      const res = await fetch('/api/analytics/insights', {
+      const res = await fetchAuthenticated('/api/analytics/insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ posts: [] }),
@@ -1057,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error('insights_generate_failed');
 
-      const latest = await fetch('/api/analytics/insights');
+      const latest = await fetchAuthenticated('/api/analytics/insights');
       const latestJson = await latest.json();
       if (latestJson.ok) {
         renderInsights(latestJson.insights || [], analyticsIsPro);
