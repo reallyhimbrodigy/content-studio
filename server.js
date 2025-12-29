@@ -3474,6 +3474,7 @@ const server = http.createServer((req, res) => {
         const fallback = buildStoryPromptPlusNicheFallback(nicheStyle);
         post.storyPrompt = fallback;
         post.storyPromptExpanded = fallback;
+        console.warn('[NicheLock] Story Prompt+ fallback applied', { niche: nicheStyle, day: post.day });
       }
       return post;
     });
@@ -3482,6 +3483,15 @@ const server = http.createServer((req, res) => {
       const missingDays = missingStoryPrompt.map((post) => `Day${post.day ?? '?'}`).join(', ');
       const err = new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompt.length} posts missing storyPrompt (${missingDays})`);
       err.code = 'CALENDAR_MISSING_STORY_PROMPT';
+      err.statusCode = 500;
+      err.requestId = loggingContext?.requestId;
+      throw err;
+    }
+    const missingStoryPromptPlus = posts.filter((post) => !String(post.storyPromptPlus || '').trim());
+    if (missingStoryPromptPlus.length) {
+      const missingDays = missingStoryPromptPlus.map((post) => `Day${post.day ?? '?'}`).join(', ');
+      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT_PLUS: ${missingStoryPromptPlus.length} posts missing storyPromptPlus (${missingDays})`);
+      err.code = 'CALENDAR_MISSING_STORY_PROMPT_PLUS';
       err.statusCode = 500;
       err.requestId = loggingContext?.requestId;
       throw err;
