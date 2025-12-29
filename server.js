@@ -1869,7 +1869,7 @@ ALGO / SALES REQUIREMENTS:
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (1-2 sentences, 8-20 words, describe a story format, beats, and CTA question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (1-2 sentences, 8-20 words, describe a story format, beats, and CTA question; do not leave empty)\n- storyPromptPlus (1-2 sentences, 12-30 words, expand on the same topic with extra stakes or tactical detail plus a follow-up question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
@@ -1879,6 +1879,8 @@ Required Fields Rule:
 - Every post object MUST include a storyPrompt field.
 - storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥20 words) describing what to show, say, and the CTA question.
 - Never return objects missing any required fields.
+- Every post object MUST include a storyPromptPlus field.
+- storyPromptPlus must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥12 words) that adds actionable detail or stakes and ends with a follow-up question.
 
 Omission Forbiddance:
 - Never omit storyPrompt.
@@ -1889,11 +1891,13 @@ Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
 - Keep storyPrompt on-topic, specific, and consistent with the niche, and phrase it as an actionable question the creator can answer on camera.
 - Avoid the recycled phrasing 'A real client walked in feeling stuck—we tweaked one move and the shift was wild' or 'What happened when we doubled down on X?' and never reuse a category label (e.g., 'Client Transformation Story') as the entire storyPrompt. Never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
+- StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question; do not repeat storyPrompt wording.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, and storyPrompts stay unique across posts.
 - If you are unsure, still output a best-effort storyPrompt rather than omitting it, and verify each card has a valid storyPrompt before returning JSON.
 
 Output Contract Warning:
 - Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
+- Before outputting JSON, also ensure each post has storyPromptPlus that meets its requirements; missing/invalid storyPromptPlus makes the response invalid.
 
 Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
@@ -1902,7 +1906,7 @@ Rules:
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
 }
 function sanitizePostForPrompt(post = {}) {
-  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
+  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
   const clone = { ...post };
   if (!clone.script && clone.videoScript) clone.script = clone.videoScript;
@@ -1942,7 +1946,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 10) Keep outputs concise to avoid truncation.
 11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 sentences (at least 20 words) describing the story beats and CTA question.`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 sentences (at least 20 words) describing the story beats and CTA question. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
@@ -2616,6 +2620,38 @@ function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
   return `Record a short ${format} story for ${niche} viewers about ${description}: show the setup, highlight the pivot point, and ask ${question}`;
 }
 
+const STORY_PROMPT_PLUS_ALIASES = [
+  'storyPromptPlus',
+  'story_prompt_plus',
+  'storyPrompt+',
+  'story prompt plus',
+  'story_prompt_plus_text',
+  'storyPromptExpanded',
+  'story_prompt_expanded',
+];
+
+function resolveStoryPromptPlusValue(post = {}) {
+  for (const key of STORY_PROMPT_PLUS_ALIASES) {
+    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
+    const value = post[key];
+    const trimmed = toPlainString(value);
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
+  const format = toPlainString(post.format || 'Reel') || 'Reel';
+  const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
+  const niche = toPlainString(nicheStyle || 'this niche');
+  const hook = toPlainString(post.hook || '');
+  const angle = toPlainString(post.angle || '');
+  const detail = hook || angle || topic;
+  const cta = toPlainString(post.cta || 'What would you try next?');
+  const question = cta.endsWith('?') ? cta : `${cta}?`;
+  return `Shape a ${format} story for ${niche} about ${detail}: describe the turning point, what changed, and ask ${question}`;
+}
+
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
@@ -2639,6 +2675,11 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   if (!storyPrompt) {
     storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptFromPost(post, nicheStyle), hashtags);
   }
+  const rawStoryPromptPlus = resolveStoryPromptPlusValue(post);
+  let storyPromptPlus = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPromptPlus, hashtags);
+  if (!storyPromptPlus) {
+    storyPromptPlus = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptPlusFromPost(post, nicheStyle), hashtags);
+  }
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
@@ -2652,6 +2693,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     cta: toPlainString(post.cta || ''),
     pillar: toPlainString(post.pillar || 'Education'),
     storyPrompt,
+    storyPromptPlus,
     designNotes: toPlainString(post.designNotes || ''),
     repurpose,
     analytics,
@@ -3433,6 +3475,15 @@ const server = http.createServer((req, res) => {
       const missingDays = missingStoryPrompt.map((post) => `Day${post.day ?? '?'}`).join(', ');
       const err = new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompt.length} posts missing storyPrompt (${missingDays})`);
       err.code = 'CALENDAR_MISSING_STORY_PROMPT';
+      err.statusCode = 500;
+      err.requestId = loggingContext?.requestId;
+      throw err;
+    }
+    const missingStoryPromptPlus = posts.filter((post) => !String(post.storyPromptPlus || '').trim());
+    if (missingStoryPromptPlus.length) {
+      const missingDays = missingStoryPromptPlus.map((post) => `Day${post.day ?? '?'}`).join(', ');
+      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT_PLUS: ${missingStoryPromptPlus.length} posts missing storyPromptPlus (${missingDays})`);
+      err.code = 'CALENDAR_MISSING_STORY_PROMPT_PLUS';
       err.statusCode = 500;
       err.requestId = loggingContext?.requestId;
       throw err;
