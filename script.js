@@ -8174,11 +8174,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const missingDays = missingStoryPrompts.map((p) => `Day${p.day ?? '?'}`).join(', ');
       throw new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompts.length} posts returned no story prompt (${missingDays})`);
     }
-    const missingStoryPromptPlus = normalized.filter((p) => !p.storyPromptExpanded);
-    if (missingStoryPromptPlus.length) {
-      const missingDays = missingStoryPromptPlus.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_STORY_PROMPT_PLUS: ${missingStoryPromptPlus.length} posts returned no story prompt+ (${missingDays})`);
-    }
     const missingDesignNotes = normalized.filter((p) => !p.designNotes);
     if (missingDesignNotes.length) {
       const missingDays = missingDesignNotes.map((p) => `Day${p.day ?? '?'}`).join(', ');
