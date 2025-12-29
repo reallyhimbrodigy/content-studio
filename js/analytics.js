@@ -196,11 +196,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
 
+    const environment = cfg.environment || 'production';
+    const allowSandbox = !!cfg.allowSandbox && cfg.allowSandbox === true;
+
     const instance = window.PhylloConnect.initialize({
       clientDisplayName: cfg.clientDisplayName,
-      environment: cfg.environment,
+      environment,
       userId: cfg.userId,
       token: cfg.token,
+      workPlatformIds: cfg.workPlatformIds || [],
+      allowSandbox,
       // no callbacks here
     });
 

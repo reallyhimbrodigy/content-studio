@@ -41,14 +41,46 @@ async function getPhylloUserByExternalId(externalId) {
   return null;
 }
 
-async function createSdkToken({ userId }) {
+const WORK_PLATFORMS_CACHE_TTL_MS = 5 * 60 * 1000;
+const allowedWorkPlatforms = new Set(['tiktok', 'instagram', 'youtube', 'linkedin']);
+let workPlatformsCache = { expiresAt: 0, ids: [] };
+
+async function getWorkPlatformIds() {
+  const now = Date.now();
+  if (workPlatformsCache.expiresAt > now && Array.isArray(workPlatformsCache.ids) && workPlatformsCache.ids.length) {
+    return workPlatformsCache.ids;
+  }
+  const client = getClient();
+  const res = await client.get('/v1/work-platforms');
+  const list = (res.data && (res.data.data || res.data)) || [];
+  const ids = [];
+  for (const item of list) {
+    const rawName = String(item.name || item.platform || '');
+    const name = rawName.trim().toLowerCase();
+    if (!name) continue;
+    if (allowedWorkPlatforms.has(name)) {
+      ids.push(item.id || item.work_platform_id || item.platform_id);
+    }
+  }
+  workPlatformsCache = {
+    ids: ids.filter(Boolean).slice(0, 4),
+    expiresAt: now + WORK_PLATFORMS_CACHE_TTL_MS,
+  };
+  return workPlatformsCache.ids;
+}
+
+async function createSdkToken({ userId, workPlatformIds = [] }) {
   const client = getClient();
   const products = parsePhylloProducts();
-  const res = await client.post('/v1/sdk-tokens', {
+  const payload = {
     user_id: userId,
     products,
     environment: PHYLLO_ENVIRONMENT,
-  });
+  };
+  if (Array.isArray(workPlatformIds) && workPlatformIds.length) {
+    payload.work_platform_ids = workPlatformIds.slice(0, 4);
+  }
+  const res = await client.post('/v1/sdk-tokens', payload);
   return res.data;
 }
 
@@ -84,6 +116,33 @@ async function fetchAccountEngagement({ accountId, since, until }) {
   return res.data;
 }
 
+async function listPhylloWebhooks() {
+  const client = getClient();
+  const res = await client.get('/v1/webhooks');
+  const payload = res.data && (res.data.data || res.data);
+  return Array.isArray(payload) ? payload : [];
+}
+
+async function ensurePhylloWebhook({ webhookUrl, events, environment, description }) {
+  const client = getClient();
+  const hooks = await listPhylloWebhooks();
+  const normalizedUrl = (webhookUrl || '').trim();
+  const payload = {
+    webhook_url: normalizedUrl,
+    events: Array.isArray(events) ? events : [],
+    environment,
+    description,
+  };
+
+  const existing = hooks.find((hook) => (hook.webhook_url || '').trim() === normalizedUrl);
+  if (existing && existing.id) {
+    const res = await client.patch(`/v1/webhooks/${existing.id}`, payload);
+    return res.data;
+  }
+  const res = await client.post('/v1/webhooks', payload);
+  return res.data;
+}
+
 module.exports = {
   createPhylloUser,
   createSdkToken,
@@ -92,4 +151,6 @@ module.exports = {
   fetchAccountContents,
   fetchAccountEngagement,
   parsePhylloProducts,
+  getWorkPlatformIds,
+  ensurePhylloWebhook,
 };

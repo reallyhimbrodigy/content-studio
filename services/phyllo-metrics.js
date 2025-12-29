@@ -1,27 +1,41 @@
-async function getPhylloPosts(accountId) {
-  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
-  const url = `${base}/v1/posts?account_id=${accountId}`;
+const PHYLLO_API_BASE_URL = process.env.PHYLLO_API_BASE_URL || 'https://api.insightiq.ai';
+const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID;
+const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET;
+
+if (!PHYLLO_CLIENT_ID || !PHYLLO_CLIENT_SECRET) {
+  console.warn('[Phyllo] PHYLLO_CLIENT_ID/PHYLLO_CLIENT_SECRET are not set');
+}
+
+const PHYLLO_AUTH_TOKEN = PHYLLO_CLIENT_ID && PHYLLO_CLIENT_SECRET
+  ? Buffer.from(`${PHYLLO_CLIENT_ID}:${PHYLLO_CLIENT_SECRET}`).toString('base64')
+  : '';
+
+async function phylloFetch(path, options = {}) {
+  const url = path.startsWith('http') ? path : `${PHYLLO_API_BASE_URL}${path}`;
+  const headers = {
+    Authorization: PHYLLO_AUTH_TOKEN ? `Basic ${PHYLLO_AUTH_TOKEN}` : undefined,
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
   const resp = await fetch(url, {
-    headers: {
-      'Client-Id': process.env.PHYLLO_CLIENT_ID,
-      'Client-Secret': process.env.PHYLLO_CLIENT_SECRET,
-      'Content-Type': 'application/json',
-    },
+    method: options.method || 'GET',
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
+  if (!resp.ok) {
+    const status = resp.status;
+    const statusText = resp.statusText;
+    console.error('[Phyllo] API request failed', path, status, statusText);
+  }
   return resp.json();
 }
 
+async function getPhylloPosts(accountId) {
+  return phylloFetch(`/v1/posts?account_id=${accountId}`);
+}
+
 async function getPhylloPostMetrics(postId) {
-  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
-  const url = `${base}/v1/posts/${postId}/metrics`;
-  const resp = await fetch(url, {
-    headers: {
-      'Client-Id': process.env.PHYLLO_CLIENT_ID,
-      'Client-Secret': process.env.PHYLLO_CLIENT_SECRET,
-      'Content-Type': 'application/json',
-    },
-  });
-  return resp.json();
+  return phylloFetch(`/v1/posts/${postId}/metrics`);
 }
 
 async function getUserPostMetrics(accounts = []) {
@@ -110,54 +124,24 @@ async function getAudienceDemographics(accounts = []) {
   // string: new single-user helper
   if (typeof accounts === 'string') {
     try {
-      const base = process.env.PHY_PRODUCTION_BASE_URL;
-      const clientId = process.env.PHY_PRODUCTION_CLIENT_ID;
-      const clientSecret = process.env.PHY_PRODUCTION_CLIENT_SECRET;
-      if (!base || !clientId || !clientSecret) {
-        console.error('[Phyllo] Missing production audience env vars');
-        return null;
-      }
-      const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-      const resp = await fetch(`${base}/v1/users/${accounts}/audience-demographics`, {
-        headers: {
-          Authorization: `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!resp.ok) {
-        console.error('[Phyllo] audience demographics fetch failed', resp.status);
-        return null;
-      }
-      return await resp.json();
+      return phylloFetch(`/v1/users/${accounts}/audience-demographics`);
     } catch (err) {
       console.error('[Phyllo] audience demographics error', err);
       return null;
     }
   }
 
-  // array: legacy multi-account helper
-  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
   const results = [];
-
   for (const acc of accounts) {
     if (!acc || !acc.creator_id) continue;
     try {
-      const url = `${base}/v1/creators/${acc.creator_id}/audience`;
-      const resp = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          'phyllo-client-id': process.env.PHYLLO_CLIENT_ID,
-          'phyllo-client-secret': process.env.PHYLLO_CLIENT_SECRET,
-        },
-      });
-      if (!resp.ok) continue;
-      const json = await resp.json();
-      results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: json });
+      const resp = await phylloFetch(`/v1/creators/${acc.creator_id}/audience`);
+      if (!resp) continue;
+      results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: resp });
     } catch (err) {
       // ignore per-account errors for now
     }
   }
-
   return results;
 }
 

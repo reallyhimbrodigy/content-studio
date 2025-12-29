@@ -44,6 +44,8 @@ const {
   getPhylloUserByExternalId,
   getPhylloAccountDetails,
   parsePhylloProducts,
+  getWorkPlatformIds,
+  ensurePhylloWebhook,
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
@@ -70,6 +72,273 @@ const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
 const PHYLLO_ENVIRONMENT = process.env.PHYLLO_ENVIRONMENT || 'production';
 const PHYLLO_WEBHOOK_SIGNING_SECRET = process.env.PHYLLO_WEBHOOK_SIGNING_SECRET || '';
+const PHYLLO_WEBHOOK_ENV = process.env.PHYLLO_WEBHOOK_ENV || 'production';
+const PHYLLO_WEBHOOK_URL =
+  process.env.PHYLLO_WEBHOOK_URL ||
+  (CANONICAL_HOST ? `${CANONICAL_HOST.replace(/\/+$/, '')}/api/phyllo/webhook` : '');
+const PHYLLO_WEBHOOK_DESCRIPTION = process.env.PHYLLO_WEBHOOK_DESCRIPTION || 'Promptly Phyllo webhook';
+const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
+  'ACCOUNTS.CONNECTED',
+  'ACCOUNTS.DISCONNECTED',
+  'PROFILES.UPDATED',
+  'CONTENTS.CREATED',
+  'CONTENTS.UPDATED',
+  'CONTENT_GROUPS.CREATED',
+  'CONTENT_GROUPS.UPDATED',
+  'COMMENTS.CREATED',
+  'AUDIENCE.UPDATED',
+].join(','))
+  .split(',')
+  .map((item) => String(item || '').trim())
+  .filter(Boolean);
+const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
+const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
+
+async function ensurePhylloUserForPromptlyUser(promptlyUserId) {
+  if (!promptlyUserId) throw new Error('Promptly user ID is required for Phyllo user lookup');
+  const externalId = String(promptlyUserId);
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('phyllo_users')
+        .select('phyllo_user_id')
+        .eq('promptly_user_id', promptlyUserId)
+        .single();
+      if (!error && data?.phyllo_user_id) {
+        return { phylloUserId: data.phyllo_user_id, externalId };
+      }
+    } catch (err) {
+      console.error('[Phyllo] fetch phyllo_users mapping failed', err);
+    }
+  }
+}
+
+async function resolvePromptlyUserIdFromPhyllo({ phylloUserId, phylloAccountId }) {
+  if (!supabaseAdmin) return null;
+  if (phylloUserId) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('phyllo_users')
+        .select('promptly_user_id')
+        .eq('phyllo_user_id', phylloUserId)
+        .single();
+      if (!error && data?.promptly_user_id) {
+        return data.promptly_user_id;
+      }
+    } catch (err) {
+      console.error('[Phyllo] resolvePromptlyUserIdFromPhyllo failed', err);
+    }
+  }
+  if (phylloAccountId) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('phyllo_accounts')
+        .select('promptly_user_id')
+        .eq('phyllo_account_id', phylloAccountId)
+        .single();
+      if (!error && data?.promptly_user_id) {
+        return data.promptly_user_id;
+      }
+    } catch (err) {
+      console.error('[Phyllo] resolvePromptlyUserIdFromPhyllo (account) failed', err);
+    }
+  }
+  return null;
+}
+
+async function processPhylloWebhookEvent(event = {}) {
+  if (!event || typeof event !== 'object') return;
+  const type = event?.type || 'unknown';
+  const data = event?.data || {};
+  const account = data.account || {};
+  const phylloUserId = account.user_id || data.user_id;
+  const phylloAccountId = account.id || data.account_id;
+  const promptlyUserId = await resolvePromptlyUserIdFromPhyllo({ phylloUserId, phylloAccountId });
+  const ensureAnalyticsRefresh = async () => {
+    if (promptlyUserId) {
+      try {
+        await updateCachedAnalyticsForUser(promptlyUserId);
+      } catch (err) {
+        console.error('[Phyllo] updateCachedAnalyticsForUser failed', err);
+      }
+    }
+  };
+
+  switch (type) {
+    case 'ACCOUNTS.CONNECTED':
+      if (supabaseAdmin && upsertPhylloAccount) {
+        try {
+          await upsertPhylloAccount({
+            userId: promptlyUserId,
+            phylloUserId,
+            platform: account.platform || account.work_platform_id || 'unknown',
+            accountId: phylloAccountId,
+            workPlatformId: account.work_platform_id,
+            handle: account.username || account.handle,
+            displayName: account.profile_name || account.display_name,
+            avatarUrl: account.avatar_url || account.profile?.avatar_url,
+          });
+        } catch (err) {
+          console.error('[Phyllo] webhook upsert account failed', err);
+        }
+      }
+      await ensureAnalyticsRefresh();
+      break;
+    case 'ACCOUNTS.DISCONNECTED':
+      if (supabaseAdmin && phylloAccountId) {
+        try {
+          await supabaseAdmin
+            .from('phyllo_accounts')
+            .update({ status: 'disconnected' })
+            .eq('phyllo_account_id', phylloAccountId);
+        } catch (err) {
+          console.error('[Phyllo] webhook disconnect update failed', err);
+        }
+      }
+      await ensureAnalyticsRefresh();
+      break;
+    case 'PROFILES.UPDATED':
+      if (supabaseAdmin && phylloAccountId) {
+        try {
+          await supabaseAdmin
+            .from('phyllo_accounts')
+            .update({
+              handle: account.username || account.handle || account.login,
+              display_name: account.profile_name || account.display_name,
+            })
+            .eq('phyllo_account_id', phylloAccountId);
+        } catch (err) {
+          console.error('[Phyllo] webhook profile update failed', err);
+        }
+      }
+      await ensureAnalyticsRefresh();
+      break;
+    case 'CONTENTS.CREATED':
+    case 'CONTENTS.UPDATED':
+    case 'CONTENT_GROUPS.CREATED':
+    case 'CONTENT_GROUPS.UPDATED':
+    case 'COMMENTS.CREATED':
+    case 'AUDIENCE.UPDATED':
+      await ensureAnalyticsRefresh();
+      break;
+    default:
+      await ensureAnalyticsRefresh();
+      break;
+  }
+}
+
+async function syncAccountMetricsForAnalytics(acct = {}, since = new Date(), until = new Date()) {
+  if (!acct || !acct.phyllo_account_id || !acct.promptly_user_id) return;
+  if (!supabaseAdmin) return;
+  try {
+    const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
+    await wait(50);
+    const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
+    const items = contents?.data || contents?.items || contents || [];
+    const metricsByDay = {};
+    for (const item of items) {
+      const contentId = item.id || item.content_id;
+      if (!contentId) continue;
+      const platform = item.platform || acct.work_platform_id || 'unknown';
+      const publishedAt = item.published_at || item.posted_at || item.created_at || null;
+      await supabaseAdmin.from('phyllo_posts').upsert(
+        {
+          phyllo_content_id: contentId,
+          phyllo_account_id: acct.phyllo_account_id,
+          promptly_user_id: acct.promptly_user_id,
+          platform,
+          title: item.title || item.caption || null,
+          caption: item.caption || null,
+          url: item.url || item.link || null,
+          published_at: publishedAt,
+        },
+        { onConflict: 'phyllo_content_id' }
+      );
+      const metrics = item.metrics || item.stats || item;
+      const views = Number(metrics.views || metrics.impressions || 0);
+      const likes = Number(metrics.likes || 0);
+      const comments = Number(metrics.comments || 0);
+      const shares = Number(metrics.shares || metrics.reposts || 0);
+      const saves = Number(metrics.saves || 0);
+      await supabaseAdmin.from('phyllo_post_metrics').insert({
+        phyllo_content_id: contentId,
+        collected_at: new Date().toISOString(),
+        views,
+        likes,
+        comments,
+        shares,
+        saves,
+      });
+      const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
+      if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+      metricsByDay[dateKey].views += views;
+      metricsByDay[dateKey].likes += likes;
+      metricsByDay[dateKey].comments += comments;
+      metricsByDay[dateKey].shares += shares;
+      metricsByDay[dateKey].saves += saves;
+    }
+    const engagementData = engagement?.data || engagement?.items || engagement || [];
+    engagementData.forEach((row) => {
+      const dateKey = row.date || row.day || row.collected_at;
+      if (!dateKey) return;
+      if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
+      metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
+      metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
+      metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
+    });
+    for (const [dateKey, agg] of Object.entries(metricsByDay)) {
+      await supabaseAdmin.from('phyllo_account_daily').upsert(
+        {
+          phyllo_account_id: acct.phyllo_account_id,
+          date: dateKey,
+          followers: agg.followers || null,
+          impressions: agg.impressions || agg.views || null,
+          engagement_rate: agg.engagement_rate || null,
+        },
+        { onConflict: 'phyllo_account_id,date' }
+      );
+    }
+  } catch (err) {
+    console.error('[Phyllo Sync] account refresh failed', acct.phyllo_account_id, err?.response?.data || err);
+  }
+}
+
+  let phylloUser = null;
+  try {
+    phylloUser = await getPhylloUserByExternalId(externalId);
+  } catch (err) {
+    console.error('[Phyllo] getPhylloUserByExternalId failed', err?.response?.data || err);
+    throw err;
+  }
+  if (!phylloUser) {
+    phylloUser = await createPhylloUser({
+      name: `Promptly user ${promptlyUserId}`,
+      externalId,
+    });
+  }
+
+  if (!phylloUser?.id) {
+    throw new Error('Phyllo user lookup returned empty id');
+  }
+
+  if (supabaseAdmin) {
+    try {
+      await supabaseAdmin
+        .from('phyllo_users')
+        .upsert(
+          {
+            promptly_user_id: promptlyUserId,
+            phyllo_user_id: phylloUser.id,
+          },
+          { onConflict: 'promptly_user_id' }
+        );
+    } catch (err) {
+      console.warn('[Phyllo] failed to persist phyllo_users mapping', err);
+    }
+  }
+
+  return { phylloUserId: phylloUser.id, externalId };
+}
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
@@ -304,6 +573,31 @@ function isUserPro(req) {
   if (req?.user?.isPro) return true;
   if (plan && (plan === 'pro' || plan === 'teams')) return true;
   return false;
+}
+
+function isUserAdmin(req) {
+  return !!req?.user?.isAdmin;
+}
+
+async function configurePhylloWebhook() {
+  if (!PHYLLO_WEBHOOK_URL) {
+    throw new Error('Phyllo webhook URL is not configured');
+  }
+  const events = PHYLLO_WEBHOOK_EVENTS || [];
+  const payload = await ensurePhylloWebhook({
+    webhookUrl: PHYLLO_WEBHOOK_URL,
+    events,
+    environment: PHYLLO_WEBHOOK_ENV,
+    description: PHYLLO_WEBHOOK_DESCRIPTION,
+  });
+  const webhookId = payload?.id || payload?.webhook_id;
+  if (webhookId) {
+    const map = loadCustomersMap();
+    map.phyllo_webhook_id = webhookId;
+    saveCustomersMap(map);
+    console.log('[Phyllo] webhook configured', webhookId);
+  }
+  return payload;
 }
 
 function analyticsUpgradeRequired(res) {
@@ -4487,78 +4781,43 @@ ${JSON.stringify(compactPosts)}`;
   })();
 
   if (parsed.pathname === '/api/phyllo/webhook' && req.method === 'POST') {
-    (async () => {
-      try {
-        const rawBody = await readRawBody(req);
-        const signatureHeader =
-          req.headers['phyllo-signature'] ||
-          req.headers['x-phyllo-signature'] ||
-          req.headers['Phyllo-Signature'] ||
-          '';
-        if (!verifyPhylloWebhookSignature(rawBody, signatureHeader)) {
-          console.warn('[Phyllo] Webhook signature verification failed');
-          return sendJson(res, 401, { error: 'phyllo_webhook_invalid_signature' });
-        }
-
-        let body;
-        try {
-          body = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
-        } catch (parseErr) {
-          console.error('[Phyllo] Webhook JSON parse error', parseErr);
-          return sendJson(res, 400, { error: 'phyllo_webhook_invalid_json' });
-        }
-
-        const eventType = body?.type || 'unknown';
-        console.log('[Phyllo] Webhook event received:', eventType, body);
-
-        if (eventType === 'ACCOUNTS.CONNECTED' && supabaseAdmin) {
-          const account = body?.data?.account;
-          if (account && account.id) {
-            const phylloAccountId = account.id;
-            const phylloUserId = account.user_id;
-            const platform = account.work_platform_id;
-            const username = account.username || null;
-            const profileName = account.profile_name || null;
-
-            supabaseAdmin
-              .from('phyllo_users')
-              .select('promptly_user_id')
-              .eq('phyllo_user_id', phylloUserId)
-              .single()
-              .then(({ data: userRow }) => {
-                if (!userRow) {
-                  console.warn('[Phyllo] No promptly user mapping for phyllo_user_id', phylloUserId);
-                  return;
-                }
-                const promptlyUserId = userRow.promptly_user_id;
-                return supabaseAdmin
-                  .from('phyllo_accounts')
-                  .upsert({
-                    phyllo_account_id: phylloAccountId,
-                    phyllo_user_id: phylloUserId,
-                    promptly_user_id: promptlyUserId,
-                    work_platform_id: platform,
-                    username,
-                    profile_name: profileName,
-                  }, { onConflict: 'phyllo_account_id' })
-                  .then(({ error }) => {
-                    if (error) {
-                      console.error('[Phyllo] upsert phyllo_accounts error', error);
-                    } else {
-                      console.log('[Phyllo] phyllo_account stored', phylloAccountId);
-                    }
-                  });
-              })
-              .catch((err) => console.error('[Phyllo] lookup phyllo_users failed', err));
-          }
-        }
-
-        sendJson(res, 200, { received: true });
-      } catch (err) {
-        console.error('[Phyllo] Webhook handler error:', err);
-        sendJson(res, 500, { error: 'phyllo_webhook_error' });
+    const chunks = [];
+    req.on('data', (chunk) => {
+      if (chunk) chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const rawBody = Buffer.concat(chunks || []);
+      const signatureHeader =
+        req.headers['phyllo-signature'] ||
+        req.headers['x-phyllo-signature'] ||
+        req.headers['Phyllo-Signature'] ||
+        '';
+      if (!verifyPhylloWebhookSignature(rawBody, signatureHeader)) {
+        console.warn('[Phyllo] Webhook signature verification failed');
+        return sendJson(res, 401, { error: 'phyllo_webhook_invalid_signature' });
       }
-    })();
+
+      let body;
+      try {
+        body = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
+      } catch (parseErr) {
+        console.error('[Phyllo] Webhook JSON parse error', parseErr);
+        return sendJson(res, 400, { error: 'phyllo_webhook_invalid_json' });
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ received: true }));
+
+      setImmediate(() => {
+        processPhylloWebhookEvent(body).catch((err) => {
+          console.error('[Phyllo] webhook processing error', err);
+        });
+      });
+    });
+    req.on('error', (err) => {
+      console.error('[Phyllo] webhook request error', err);
+      sendJson(res, 500, { error: 'phyllo_webhook_error' });
+    });
     return;
   }
 
@@ -4600,19 +4859,29 @@ ${JSON.stringify(compactPosts)}`;
           }
         }
 
+        const workPlatformIds = await getWorkPlatformIds();
         let sdk;
         try {
-          sdk = await createSdkToken({ userId: phylloUser.id });
+          sdk = await createSdkToken({ userId: phylloUser.id, workPlatformIds });
         } catch (err) {
           const status = err.response?.status;
           const data = err.response?.data;
-          console.error('[Phyllo] createSdkToken failed', status, data || err.message);
+          let details = data || err.message;
+          if (status === 401) {
+            console.error('[Phyllo] createSdkToken auth misconfiguration (Basic Auth invalid)', details);
+            details = 'Basic Auth failed; verify PHYLLO_CLIENT_ID/PHYLLO_CLIENT_SECRET';
+          } else if (status === 400 && (data?.code === 'incorrect_user_id' || data?.error_code === 'incorrect_user_id')) {
+            console.error('[Phyllo] createSdkToken failed because the Phyllo user is missing; ensure getOrCreatePhylloUser ran first', data);
+            details = 'Phyllo user missing; ensure getOrCreatePhylloUser ran before requesting SDK token';
+          } else {
+            console.error('[Phyllo] createSdkToken failed', status, details);
+          }
 
           return sendJson(res, 200, {
             ok: false,
             error: 'phyllo_create_sdk_token_failed',
             status,
-            details: data || err.message,
+            details,
           });
         }
 
@@ -4803,15 +5072,31 @@ ${JSON.stringify(compactPosts)}`;
           return sendJson(res, 500, { ok: false, error: 'db_error' });
         }
 
-        if (!accounts || accounts.length === 0) {
+        const windowThresholdMs = 24 * 60 * 60 * 1000;
+        const refreshCutoff = new Date(Date.now() - windowThresholdMs);
+        const eligibleAccounts = (accounts || []).filter((acc) => {
+          const lastUpdated = acc?.updated_at || acc?.connected_at;
+          if (!lastUpdated) return true;
+          const ts = new Date(lastUpdated);
+          if (!ts || Number.isNaN(ts.getTime())) return true;
+          return ts.getTime() < refreshCutoff.getTime();
+        });
+        if (!eligibleAccounts.length) {
           return sendJson(res, 200, { ok: true, syncedPosts: 0 });
+        }
+        if (accounts.length && eligibleAccounts.length === 0) {
+          console.log('[Phyllo] all accounts refreshed recently; skipping');
+        } else if (accounts.length && eligibleAccounts.length < accounts.length) {
+          console.log(`[Phyllo] skipping ${accounts.length - eligibleAccounts.length} account(s) refreshed within 24h`);
         }
 
         let totalSynced = 0;
+        const analyticsSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const analyticsUntil = new Date();
 
-      for (const acc of accounts) {
-        const postsResp = await getPhylloPosts(acc.account_id);
-        const posts = postsResp.data || [];
+        for (const acc of eligibleAccounts) {
+          const postsResp = await getPhylloPosts(acc.account_id);
+          const posts = postsResp.data || [];
 
           for (const p of posts) {
             const { data: postRows, error: postErr } = await upsertPhylloPost({
@@ -4860,9 +5145,19 @@ ${JSON.stringify(compactPosts)}`;
               continue;
             }
 
-            totalSynced += 1;
+          totalSynced += 1;
+          try {
+            await supabaseAdmin
+              .from('phyllo_accounts')
+              .update({ updated_at: new Date().toISOString() })
+              .eq('phyllo_account_id', acc.phyllo_account_id);
+          } catch (err) {
+            console.warn('[Phyllo] failed to update refreshed timestamp', err);
+          }
+          await syncAccountMetricsForAnalytics(acc, analyticsSince, analyticsUntil);
+          await wait(60);
+        }
       }
-    }
 
     // Demographics sync per account
     for (const acc of accounts) {
@@ -6133,6 +6428,22 @@ Output format:
     return;
   }
 
+  if (parsed.pathname === '/internal/phyllo/webhook-config' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!isUserAdmin(req)) {
+          return sendJson(res, 403, { ok: false, error: 'forbidden' });
+        }
+        const payload = await configurePhylloWebhook();
+        return sendJson(res, 200, { ok: true, data: payload });
+      } catch (err) {
+        console.error('[Phyllo] webhook config failed', err);
+        return sendJson(res, 500, { ok: false, error: 'phyllo_webhook_config_failed', details: err.message });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/internal/phyllo/sync' && req.method === 'POST') {
     (async () => {
       const token = req.headers['x-internal-token'] || '';
@@ -6149,70 +6460,7 @@ Output format:
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const until = new Date();
         for (const acct of accounts || []) {
-          try {
-            const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
-            const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
-            const items = contents?.data || contents?.items || contents || [];
-            const metricsByDay = {};
-            for (const item of items) {
-              const contentId = item.id || item.content_id;
-              if (!contentId) continue;
-              const platform = item.platform || acct.work_platform_id || 'unknown';
-              const publishedAt = item.published_at || item.posted_at || item.created_at || null;
-              await supabaseAdmin.from('phyllo_posts').upsert({
-                phyllo_content_id: contentId,
-                phyllo_account_id: acct.phyllo_account_id,
-                promptly_user_id: acct.promptly_user_id,
-                platform,
-                title: item.title || item.caption || null,
-                caption: item.caption || null,
-                url: item.url || item.link || null,
-                published_at: publishedAt,
-              }, { onConflict: 'phyllo_content_id' });
-              const metrics = item.metrics || item.stats || item;
-              const views = Number(metrics.views || metrics.impressions || 0);
-              const likes = Number(metrics.likes || 0);
-              const comments = Number(metrics.comments || 0);
-              const shares = Number(metrics.shares || metrics.reposts || 0);
-              const saves = Number(metrics.saves || 0);
-              await supabaseAdmin.from('phyllo_post_metrics').insert({
-                phyllo_content_id: contentId,
-                collected_at: new Date().toISOString(),
-                views,
-                likes,
-                comments,
-                shares,
-                saves,
-              });
-              const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
-              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
-              metricsByDay[dateKey].views += views;
-              metricsByDay[dateKey].likes += likes;
-              metricsByDay[dateKey].comments += comments;
-              metricsByDay[dateKey].shares += shares;
-              metricsByDay[dateKey].saves += saves;
-            }
-            const engagementData = engagement?.data || engagement?.items || engagement || [];
-            engagementData.forEach((row) => {
-              const dateKey = row.date || row.day || row.collected_at;
-              if (!dateKey) return;
-              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
-              metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
-              metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
-              metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
-            });
-            for (const [dateKey, agg] of Object.entries(metricsByDay)) {
-              await supabaseAdmin.from('phyllo_account_daily').upsert({
-                phyllo_account_id: acct.phyllo_account_id,
-                date: dateKey,
-                followers: agg.followers || null,
-                impressions: agg.impressions || agg.views || null,
-                engagement_rate: agg.engagement_rate || null,
-              }, { onConflict: 'phyllo_account_id,date' });
-            }
-          } catch (err) {
-            console.error('[Phyllo Sync] account failed', acct.phyllo_account_id, err?.response?.data || err);
-          }
+          await syncAccountMetricsForAnalytics(acct, since, until);
         }
         sendJson(res, 200, { ok: true, accounts: (accounts || []).length });
       } catch (err) {
