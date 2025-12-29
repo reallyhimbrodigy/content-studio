@@ -2582,6 +2582,28 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
+const STORY_PROMPT_ALIASES = [
+  'storyPrompt',
+  'story_prompt',
+  'story prompt',
+  'storyPromptPlus',
+  'story_prompt_plus',
+  'storyPromptExpanded',
+  'story_prompt_expanded',
+  'storyPromptVariant',
+  'story_prompt_variant',
+];
+
+function resolveStoryPromptValue(post = {}) {
+  for (const key of STORY_PROMPT_ALIASES) {
+    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
+    const value = post[key];
+    const text = toPlainString(value);
+    if (text) return text;
+  }
+  return '';
+}
+
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
@@ -2600,7 +2622,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const videoScript = { ...script };
   const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
   const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
-  const rawStoryPrompt = toPlainString(post.storyPrompt || '');
+  const rawStoryPrompt = toPlainString(resolveStoryPromptValue(post));
   const storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
@@ -3391,6 +3413,15 @@ const server = http.createServer((req, res) => {
       }
       return post;
     });
+    const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
+    if (missingStoryPrompt.length) {
+      const missingDays = missingStoryPrompt.map((post) => `Day${post.day ?? '?'}`).join(', ');
+      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompt.length} posts missing storyPrompt (${missingDays})`);
+      err.code = 'CALENDAR_MISSING_STORY_PROMPT';
+      err.statusCode = 500;
+      err.requestId = loggingContext?.requestId;
+      throw err;
+    }
     logDuplicateStrategyValues(posts);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
