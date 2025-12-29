@@ -1890,10 +1890,10 @@ Omission Forbiddance:
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
 - Keep storyPrompt on-topic, specific, and consistent with the niche, and phrase it as an actionable question the creator can answer on camera.
-- Avoid the recycled phrasing 'A real client walked in feeling stuck—we tweaked one move and the shift was wild' or 'What happened when we doubled down on X?' and never reuse a category label (e.g., 'Client Transformation Story') as the entire storyPrompt. Never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
-- StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question; do not repeat storyPrompt wording.
-- No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, and storyPrompts stay unique across posts.
-- If you are unsure, still output a best-effort storyPrompt rather than omitting it, and verify each card has a valid storyPrompt before returning JSON.
+- Avoid recycled scaffolds, repeated category labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
+- StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
+- No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
+- If you are unsure, still output a best-effort storyPrompt and storyPromptPlus rather than omitting them, and verify each card has valid prompts before returning JSON.
 
 Output Contract Warning:
 - Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
@@ -1934,7 +1934,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
   const qualityRules = `Quality Rules — Make each post plug-and-play and conversion-ready:
-1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Begin with a genuine pattern interrupt referencing a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches, platforms, or the category name itself, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or stock scaffolds such as “What happened when…”, “Ready for your own version?”, or “Let us know!”. Never reuse any phrase that appears in another card this month—each hook must be novel, grounded, and non-generic.
+1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Begin with a genuine pattern interrupt referencing a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches, platforms, or the category name itself, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
 2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and ban filler (#fyp, #viral, #trending, #explorepage, #instagood, #tiktok, #reels, #love).
 3) CTA: write one short call-to-action (4–10 words) that is specific to this post’s topic. Do not output generic prompts such as “Thoughts?”, “Let us know!”, “Tell me what you think”, or “Share your story.” Never include “DM me” unless the context explicitly involves booking/consult calls, and avoid advising direct “Book now”/“Sign up” style language. Output only the CTA text with no label or prefix.
 4) Design notes: output 2–4 bullet points tied directly to this post’s concept. Each bullet should describe concrete visual choices (lighting, shot type, on-screen text, pacing) that reinforce the specific message and feel native to the niche. Avoid generic advice or filler (no “use warm footage”, “keep it high energy”, “add captions”). Output only bullets.
