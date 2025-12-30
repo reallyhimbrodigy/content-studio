@@ -7872,6 +7872,19 @@ function normalizePost(p, idx = 0, startDay = 1) {
   return { ...p, ...out };
 }
 
+function ensureCtaFallback(post = {}) {
+  const current = String(post.cta || '').trim();
+  if (current) return current;
+  const pillar = String(post.pillar || '').toLowerCase();
+  const format = String(post.format || '').toLowerCase();
+  const promoSlot = !!post.promoSlot;
+  if (promoSlot || pillar.includes('promo')) return 'Book now';
+  if (pillar.includes('social proof')) return 'See the proof';
+  if (format.includes('story')) return 'Watch this';
+  if (format.includes('static')) return 'Check it out';
+  return 'Learn more';
+}
+
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
   const runSignal = options.signal;
@@ -8162,8 +8175,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const missingCtas = normalized.filter((p) => !p.cta);
     if (missingCtas.length) {
       const missingDays = missingCtas.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_CTA: ${missingCtas.length} posts returned no CTA (${missingDays})`);
+      console.warn(`⚠️ Filled CTA defaults for ${missingCtas.length} posts (${missingDays})`);
     }
+    normalized.forEach((p) => {
+      p.cta = ensureCtaFallback(p);
+    });
     const missingHashtags = normalized.filter((p) => !(Array.isArray(p.hashtags) && p.hashtags.length));
     if (missingHashtags.length) {
       const missingDays = missingHashtags.map((p) => `Day${p.day ?? '?'}`).join(', ');

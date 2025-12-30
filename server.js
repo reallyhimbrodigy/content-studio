@@ -3334,6 +3334,19 @@ function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
   return direction.join(' ').trim() || `Visuals should stay focused on ${topic}.`;
 }
 
+function ensureCtaFallback(post = {}) {
+  const current = String(post.cta || '').trim();
+  if (current) return current;
+  const pillar = String(post.pillar || '').toLowerCase();
+  const format = String(post.format || '').toLowerCase();
+  const promoSlot = !!post.promoSlot;
+  if (promoSlot || pillar.includes('promo')) return 'Book now';
+  if (pillar.includes('social proof')) return 'See the proof';
+  if (format.includes('story')) return 'Watch this';
+  if (format.includes('static')) return 'Check it out';
+  return 'Learn more';
+}
+
 function computePostCountTarget(days, postsPerDay) {
   const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
   const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
@@ -4325,6 +4338,18 @@ const server = http.createServer((req, res) => {
       missingBefore: designNotesMissingBefore,
       missingAfter: designNotesMissingAfter,
       sampleLength: posts[0] ? String(posts[0].designNotes || '').length : 0,
+    });
+    const ctaMissingBefore = posts.filter((post) => !String(post.cta || '').trim()).length;
+    posts.forEach((post) => {
+      post.cta = ensureCtaFallback(post);
+    });
+    const ctaMissingAfter = posts.filter((post) => !String(post.cta || '').trim()).length;
+    console.log('[Calendar][Server][CTA]', {
+      requestId: loggingContext?.requestId,
+      startDay,
+      missingBefore: ctaMissingBefore,
+      missingAfter: ctaMissingAfter,
+      autoFilled: Math.max(0, ctaMissingBefore - ctaMissingAfter),
     });
     if (targetCount && posts.length < targetCount) {
       const needed = targetCount - posts.length;
