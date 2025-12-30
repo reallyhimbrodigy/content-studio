@@ -1929,6 +1929,36 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 }
 
 
+const OPENAI_MAX_CONCURRENCY = (() => {
+  const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 2;
+})();
+const OPENAI_CHUNK_MAX_DAYS = (() => {
+  const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
+  return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
+})();
+const OPENAI_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.OPENAI_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 1000 ? configured : 50000;
+})();
+const openAiQueue = [];
+let openAiActiveRequests = 0;
+async function withOpenAiSlot(fn) {
+  if (openAiActiveRequests >= OPENAI_MAX_CONCURRENCY) {
+    await new Promise((resolve) => {
+      openAiQueue.push(resolve);
+    });
+  }
+  openAiActiveRequests += 1;
+  try {
+    return await fn();
+  } finally {
+    openAiActiveRequests -= 1;
+    const next = openAiQueue.shift();
+    if (next) next();
+  }
+}
+
 function openAIRequest(options, payload, retryCount = 0, maxRetries = 3, signal = null) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
@@ -2545,6 +2575,9 @@ ALGO / SALES REQUIREMENTS:
 
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
+  const verbosityGate = opts.reduceVerbosity
+    ? '\n\nRetry mode: keep each field concise, trim narrative flourishes, and focus on the essential actions for this niche within the shorter chunk.'
+    : '';
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
 - storyPrompt (1-2 short sentences max, a non-empty, niche-tailored free-form creator note that varies its opening across posts; optionally end with a single question mark but never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below"; do not leave empty)
 - tiktok_caption (final, trimmed block)
@@ -2588,6 +2621,7 @@ Rules:
 - Always include every field above (use empty string only if absolutely necessary).
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
 - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+${verbosityGate ? `\n${verbosityGate}` : ''}`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
@@ -3755,7 +3789,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     },
   };
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const json = await openAIRequest(requestOptions, payload, 0, 3, opts.signal);
+  const json = await withOpenAiSlot(() =>
+    openAIRequest(requestOptions, payload, 0, 3, opts.signal)
+  );
   const content = json?.choices?.[0]?.message?.content || '';
   try {
     const { data, attempts } = parseLLMArray(
@@ -4324,105 +4360,124 @@ const server = http.createServer((req, res) => {
       startDay,
       postsPerDay,
     };
-    const aiTimeoutMs = 32000;
-    const aiMaxTokens = 3000;
-    const aiMaxAttempts = 2;
+    const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : null;
+    const safePostsPerDay =
+      Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : null;
+    const perDay = safePostsPerDay || 1;
+    const targetCount = computePostCountTarget(days, postsPerDay);
+    const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+    const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
+    const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const chunkMetrics = [];
     const parseErrors = [];
+    let aggregatedRawPosts = [];
+    let remainingDays = daysToGenerate;
+    let processedDays = 0;
+    const chunkBaseTokens = 3200;
+    const chunkMinTokens = 1400;
+    const chunkTokenDelta = 600;
+    const chunkMaxAttempts = 3;
 
-    const callOpenAiAttempt = async (label) => {
-      const controller = typeof AbortController === 'function' ? new AbortController() : null;
-      const signal = controller?.signal;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), aiTimeoutMs) : null;
-      const attemptStart = Date.now();
-      try {
-        const result = await callOpenAI(nicheStyle, brandContext, {
-          days,
-          startDay,
-          postsPerDay,
-          loggingContext,
-          maxTokens: aiMaxTokens,
-          signal,
-        });
-        const rawLength = String(result.rawContent || '').length;
-        const latency = Date.now() - attemptStart;
-        console.log('[Calendar][Server][Perf] callOpenAI response', {
-          label,
-          requestId: logContext.requestId,
-          days,
-          startDay,
-          postsPerDay,
-          rawLength,
-          latency,
-        });
-        return { result, rawLength, latency };
-      } catch (err) {
-        const normalizedErr = err?.code === 'OPENAI_ABORTED'
-          ? (() => {
-              const timeoutErr = new Error('OpenAI request timed out');
-              timeoutErr.code = 'OPENAI_TIMEOUT';
-              return timeoutErr;
-            })()
-          : err;
-        const isRetryable =
-          normalizedErr?.code === 'OPENAI_TIMEOUT' || normalizedErr?.code === 'OPENAI_PARSE_ERROR';
-        if (isRetryable) {
-          parseErrors.push({
-            label,
-            code: normalizedErr.code,
-            message: normalizedErr.message,
-          });
-        }
-        throw normalizedErr;
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-    };
-
-    const callOpenAiWithRetries = async () => {
+    async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
+      const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       let attempt = 0;
-      while (attempt < aiMaxAttempts) {
-        const label = attempt === 0 ? 'initial' : `retry-${attempt}`;
+      let lastError = null;
+      while (attempt < chunkMaxAttempts) {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const signal = controller?.signal;
+        let timeoutId = null;
+        if (controller) {
+          timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+        }
+        const attemptStart = Date.now();
+        const maxTokensForAttempt = Math.max(chunkMinTokens, chunkBaseTokens - attempt * chunkTokenDelta);
+        const reduceVerbosity = attempt > 0;
         try {
-          return await callOpenAiAttempt(label);
-        } catch (err) {
-          const shouldRetry =
-            err?.code === 'OPENAI_TIMEOUT' || err?.code === 'OPENAI_PARSE_ERROR';
-          if (!shouldRetry || attempt >= aiMaxAttempts - 1) {
-            throw err;
-          }
-          console.warn('[Calendar] OpenAI call failed, retrying', {
-            ...logContext,
-            label,
-            error: err?.message,
-            code: err?.code,
+          const result = await callOpenAI(nicheStyle, brandContext, {
+            days: chunkDays,
+            startDay: chunkStartDay,
+            postsPerDay: perDay,
+            loggingContext: chunkContext,
+            maxTokens: maxTokensForAttempt,
+            signal,
+            reduceVerbosity,
           });
-          attempt += 1;
+          const latency = Date.now() - attemptStart;
+          if (timeoutId) clearTimeout(timeoutId);
+          return {
+            posts: Array.isArray(result.posts) ? result.posts : [],
+            rawLength: String(result.rawContent || '').length,
+            latency,
+            retryCount: attempt,
+            error: null,
+            fallback: false,
+          };
+        } catch (err) {
+          if (timeoutId) clearTimeout(timeoutId);
+          lastError = err;
+          const isRetryable = err?.code === 'OPENAI_TIMEOUT' || err?.code === 'OPENAI_PARSE_ERROR';
+          const duration = Date.now() - attemptStart;
+          if (isRetryable) {
+            parseErrors.push({
+              chunkIndex,
+              startDay: chunkStartDay,
+              days: chunkDays,
+              attempt,
+              code: err.code,
+              message: err.message,
+            });
+            if (attempt < chunkMaxAttempts - 1) {
+              const backoff = 1000 * Math.pow(2, attempt);
+              await wait(backoff);
+              attempt += 1;
+              continue;
+            }
+            return {
+              posts: [],
+              rawLength: 0,
+              latency: duration,
+              retryCount: attempt,
+              error: err,
+              fallback: true,
+            };
+          }
+          throw err;
+        } finally {
+          if (timeoutId) clearTimeout(timeoutId);
         }
       }
-      throw new Error('OpenAI call retries exhausted');
-    };
-
-    const openAiResultEntry = await callOpenAiWithRetries();
-    let rawPosts = Array.isArray(openAiResultEntry.result.posts) ? openAiResultEntry.result.posts : [];
-    let rawLength = openAiResultEntry.rawLength;
-    let openAiLatency = openAiResultEntry.latency;
-    if (!rawPosts.length) {
-      console.warn('[Calendar] OpenAI returned empty posts, retrying', logContext);
-      try {
-        const retryResult = await callOpenAiAttempt('empty-retry');
-        rawPosts = Array.isArray(retryResult.result.posts) ? retryResult.result.posts : [];
-        rawLength = Math.max(rawLength, retryResult.rawLength);
-        openAiLatency = retryResult.latency;
-      } catch (err) {
-        console.warn('[Calendar] OpenAI empty retry failed', {
-          ...logContext,
-          error: err?.message,
-          code: err?.code,
-        });
-      }
+      return {
+        posts: [],
+        rawLength: 0,
+        latency: 0,
+        retryCount: chunkMaxAttempts - 1,
+        error: lastError,
+        fallback: true,
+      };
     }
+
+    while (remainingDays > 0) {
+      const chunkDays = Math.min(remainingDays, chunkLimit);
+      const chunkStartDay = fallbackStart + processedDays;
+      const chunkIndex = chunkMetrics.length;
+      const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex);
+      aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
+      chunkMetrics.push({
+        chunkIndex,
+        startDay: chunkStartDay,
+        days: chunkDays,
+        rawLength: chunkResult.rawLength,
+        duration: chunkResult.latency,
+        retryCount: chunkResult.retryCount,
+        fallback: chunkResult.fallback,
+        error: chunkResult.error ? chunkResult.error.message : undefined,
+      });
+      remainingDays -= chunkDays;
+      processedDays += chunkDays;
+    }
+
     if (parseErrors.length) {
-      console.warn('[Calendar] OpenAI parse/timeout issues', {
+      console.warn('[Calendar] OpenAI chunk parse/timeout issues', {
         requestId: logContext.requestId,
         days,
         startDay,
@@ -4430,9 +4485,25 @@ const server = http.createServer((req, res) => {
         errors: parseErrors,
       });
     }
+
+    console.log('[Calendar][Server][Chunks]', {
+      requestId: logContext.requestId,
+      startDay,
+      days,
+      postsPerDay,
+      chunkCount: chunkMetrics.length,
+      chunkDetails: chunkMetrics,
+    });
+
+    const rawPosts = aggregatedRawPosts;
+    if (!rawPosts.length) {
+      console.warn('[Calendar] No posts returned across chunks, relying on fallback posts', logContext);
+    }
     const rawCtaMissing = rawPosts.filter((post) => !hasCtaValue(post)).length;
     const rawEngagementMissing = rawPosts.filter((post) => !hasEngagementValue(post)).length;
+    const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
     const openDuration = Date.now() - callStart;
+    const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
     const audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
     const tiktokLen = audioCache.tiktok.length;
@@ -4474,9 +4545,6 @@ const server = http.createServer((req, res) => {
         post.storyPromptPlus = ensureStoryPromptPlusFallback(post, nicheStyle);
       });
     }
-    const targetCount = computePostCountTarget(days, postsPerDay);
-    const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-    const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
     const designNotesMissingBefore = posts.filter((post) => !String(post.designNotes || '').trim()).length;
     posts.forEach((post) => {
       post.designNotes = ensureDesignNotesFallback(post, nicheStyle);
