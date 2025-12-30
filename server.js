@@ -2257,61 +2257,79 @@ function extractStrategyKeyword(text = '') {
   return tokens.length ? tokens[0] : 'this topic';
 }
 
-function buildCalendarSchemaBlock(totalPostsRequired) {
-  const minItems = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
-  return [
-    'STRICT JSON SCHEMA (ALL FIELDS REQUIRED, STRINGS MUST BE NON-EMPTY):',
-    '{',
-    '  "type": "array",',
-    `  "minItems": ${minItems},`,
-    `  "maxItems": ${minItems},`,
-    '  "items": {',
-    '    "type": "object",',
-    '    "required": ["day","title","hook","caption","cta","hashtags","script","reelScript","designNotes","storyPrompt","engagementScripts"],',
-    '    "properties": {',
-    '      "day": { "type": "number" },',
-    '      "title": { "type": "string", "minLength": 1 },',
-    '      "hook": { "type": "string", "minLength": 1 },',
-    '      "caption": { "type": "string", "minLength": 1 },',
-    '      "cta": { "type": "string", "minLength": 1 },',
-    '      "designNotes": { "type": "string", "minLength": 1 },',
-    '      "storyPrompt": { "type": "string", "minLength": 1 },',
-    '      "hashtags": {',
-    '        "type": "array",',
-    '        "minItems": 6,',
-    '        "items": { "type": "string", "minLength": 1 }',
-    '      },',
-    '      "script": {',
-    '        "type": "object",',
-    '        "required": ["hook","body","cta"],',
-    '        "properties": {',
-    '          "hook": { "type": "string", "minLength": 1 },',
-    '          "body": { "type": "string", "minLength": 1 },',
-    '          "cta": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      },',
-    '      "reelScript": {',
-    '        "type": "object",',
-    '        "required": ["hook","body","cta"],',
-    '        "properties": {',
-    '          "hook": { "type": "string", "minLength": 1 },',
-    '          "body": { "type": "string", "minLength": 1 },',
-    '          "cta": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      },',
-    '      "engagementScripts": {',
-    '        "type": "object",',
-    '        "required": ["commentReply","dmReply"],',
-    '        "properties": {',
-    '          "commentReply": { "type": "string", "minLength": 1 },',
-    '          "dmReply": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      }',
-    '    }',
-    '  }',
-    '}',
-    `Return EXACTLY ${minItems} objects that obey this schema and keep "reelScript" identical to "script".`,
-  ].join('\n');
+function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
+  const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
+  const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['day', 'title', 'hook', 'caption', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts'],
+    properties: {
+      day: {
+        type: 'integer',
+        minimum: safeMin,
+        maximum: safeMax,
+      },
+      title: { type: 'string', minLength: 1 },
+      hook: { type: 'string', minLength: 1 },
+      caption: { type: 'string', minLength: 1 },
+      cta: { type: 'string', minLength: 1 },
+      designNotes: { type: 'string', minLength: 1 },
+      storyPrompt: { type: 'string', minLength: 1 },
+      storyPromptPlus: { type: 'string', minLength: 1 },
+      hashtags: {
+        type: 'array',
+        minItems: 6,
+        items: { type: 'string', minLength: 1 },
+      },
+      script: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hook', 'body', 'cta'],
+        properties: {
+          hook: { type: 'string', minLength: 1 },
+          body: { type: 'string', minLength: 1 },
+          cta: { type: 'string', minLength: 1 },
+        },
+      },
+      reelScript: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hook', 'body', 'cta'],
+        properties: {
+          hook: { type: 'string', minLength: 1 },
+          body: { type: 'string', minLength: 1 },
+          cta: { type: 'string', minLength: 1 },
+        },
+      },
+      engagementScripts: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['commentReply', 'dmReply'],
+        properties: {
+          commentReply: { type: 'string', minLength: 1 },
+          dmReply: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  };
+}
+
+function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
+  const safeCount = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['posts'],
+    properties: {
+      posts: {
+        type: 'array',
+        minItems: safeCount,
+        maxItems: safeCount,
+        items: buildCalendarPostSchema(minDay, maxDay),
+      },
+    },
+  };
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -2438,7 +2456,6 @@ ALGO / SALES REQUIREMENTS:
       ? Number(opts.postsPerDay)
       : 1;
   const totalPostsRequired = days * postsPerDaySetting;
-  const schemaBlock = buildCalendarSchemaBlock(totalPostsRequired);
   const distributionPlanRules = `Distribution Plan rules:
 - Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
 - Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction engagement/action idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
@@ -2606,8 +2623,8 @@ If unsure, choose Lifestyle over Educational to preserve relatability and engage
   const verbosityGate = opts.reduceVerbosity
     ? '\n\nRetry mode: keep each field concise, trim narrative flourishes, and focus on the essential actions for this niche within the shorter chunk.'
     : '';
+  const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-${schemaBlock}
 - storyPrompt (1-2 short sentences max, a non-empty, niche-tailored free-form creator note that varies its opening across posts; optionally end with a single question mark but never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below"; do not leave empty)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
@@ -2649,7 +2666,8 @@ Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
 - Always include every field above (use empty string only if absolutely necessary).
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
-  - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.${verbosityGate ? `\n${verbosityGate}` : ''}`;
+- Return JSON that matches the provided schema via response_format. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel}, postsPerDay=${postsPerDaySetting}, niche=${nicheStyle}. Only output the JSON array that fits the response schema; do not add prose, markdown, or explanatory text.
+- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.${verbosityGate ? `\n${verbosityGate}` : ''}`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
@@ -3447,22 +3465,6 @@ function sanitizeCtaText(value) {
   return String(value || '').trim().replace(/[!?]/g, '');
 }
 
-function hasCtaValue(post = {}) {
-  const candidate =
-    sanitizeCtaText(post.cta) ||
-    sanitizeCtaText(post.callToAction) ||
-    sanitizeCtaText(post.call_to_action) ||
-    sanitizeCtaText(post.cta_text);
-  return Boolean(candidate);
-}
-
-function hasEngagementValue(post = {}) {
-  const comment =
-    toPlainString(post.engagementScripts?.commentReply || post.engagementScript || post.engagement_comment);
-  const dm = toPlainString(post.engagementScripts?.dmReply || post.engagementDm || post.engagement_dm);
-  return Boolean(comment) && Boolean(dm);
-}
-
 function hasNormalizedEngagement(post = {}) {
   const comment = toPlainString(post.engagementScripts?.commentReply);
   const dm = toPlainString(post.engagementScripts?.dmReply);
@@ -3557,175 +3559,6 @@ function validatePostCompleteness(post = {}) {
   }
 
   return missing;
-}
-
-function extractFirstSentence(value = '') {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  const match = text.match(/[^.!?]+[.!?]?/);
-  if (match) {
-    return match[0].trim();
-  }
-  return text;
-}
-
-function buildFallbackCaption(title = '', nicheStyle = '') {
-  const headline = toPlainString(title || 'this topic');
-  const niche = toPlainString(nicheStyle || 'your niche');
-  return `${headline} is a timely idea for ${niche}. Break down why it matters, how viewers can try it, and invite them to share what they would do next.`;
-}
-
-function buildFallbackCta(nicheStyle = '', platform = '') {
-  const normalizedNiche = String(nicheStyle || '').toLowerCase();
-  const normalizedPlatform = String(platform || '').toLowerCase();
-  const medSpaMatch = /med\s*spa|spa|skincare|facials|aesthetic|clinic/.test(normalizedNiche);
-  const dmStyleMatch = /coach|consult|consultant|strategy|agency|advisory/.test(normalizedNiche) || /dm/.test(normalizedPlatform);
-  if (medSpaMatch) return 'Book now.';
-  if (dmStyleMatch) return 'DM us to get started.';
-  return 'Learn more.';
-}
-
-function buildCalendarHashtagFallback(nicheStyle = '', title = '', platform = '') {
-  const tokens = [];
-  const addToken = (value) => {
-    const sanitized = sanitizeHashtagToken(value);
-    if (sanitized && !tokens.includes(sanitized)) tokens.push(sanitized);
-  };
-  const normalizedNiche = toPlainString(nicheStyle || '');
-  if (normalizedNiche) addToken(normalizedNiche);
-  if (platform) addToken(platform);
-  const medSpaMatch = /med\s*spa|spa|skincare|facials|clinic/.test(normalizedNiche.toLowerCase());
-  if (medSpaMatch) {
-    addToken('medspa');
-    addToken('facials');
-    addToken('skincare');
-  }
-  ['selfcare', 'glowup'].forEach(addToken);
-  const titleTokens = (String(title || '')
-    .toLowerCase()
-    .match(/[a-z0-9]+/g) || [])
-    .slice(0, 4);
-  titleTokens.forEach(addToken);
-  const nicheTokens = (normalizedNiche.toLowerCase().match(/[a-z0-9]+/g) || []).slice(0, 3);
-  nicheTokens.forEach(addToken);
-  const extras = ['content', 'creator', 'shortform', 'story', 'strategy', 'tips', 'insight', 'daily', 'plan', 'workflow', 'framework', 'ideas'];
-  extras.forEach(addToken);
-  let fillerIndex = 0;
-  while (tokens.length < 12) {
-    addToken(`content${fillerIndex}`);
-    fillerIndex += 1;
-  }
-  return tokens.slice(0, Math.max(8, MIN_HASHTAGS)).map((token) => `#${token}`);
-}
-
-function buildFallbackReelScript(post = {}, context = {}) {
-  const { nicheStyle = '', platform = '' } = context;
-  const hookSource = post.reelScript?.hook || post.hook || post.title || '';
-  const hook = toPlainString(hookSource) || `Stop scrolling — quick ${nicheStyle || 'niche'} tip.`;
-  const topic = toPlainString(post.title || post.idea || post.caption || 'this idea');
-  const cta = toPlainString(post.cta || '');
-  const fallbackCta = cta || buildFallbackCta(nicheStyle, platform);
-  const bodyLines = [
-    `Beat 1: Explain why ${topic} matters for ${nicheStyle || 'this niche'} and what problem it solves.`,
-    `Beat 2: Show a behind-the-scenes detail or how it fits into a ${nicheStyle || 'creator'} routine.`,
-    `Close: ${fallbackCta}`,
-  ];
-  return {
-    hook,
-    body: bodyLines.join('\n'),
-    cta: fallbackCta,
-  };
-}
-
-function buildEngagementScriptsFallback(post = {}, context = {}) {
-  const topic = toPlainString(post.title || post.caption || post.idea || 'this idea');
-  const niche = toPlainString(context.nicheStyle || '');
-  const descriptor = niche ? `${topic} for ${niche}` : topic;
-  return {
-    commentReply: `Pinned comment: Share your biggest takeaway about ${descriptor}.`,
-    dmReply: `Reply script: Appreciate the interest—happy to chat more about ${descriptor}.`,
-  };
-}
-
-function normalizeCalendarPost(post = {}, context = {}) {
-  const filled = new Set();
-  if (!post || typeof post !== 'object') return { filledFields: [] };
-  const dayFromContext = Number.isFinite(Number(context.day)) ? Number(context.day) : null;
-  const fallbackDay =
-    dayFromContext !== null && dayFromContext !== undefined
-      ? dayFromContext
-      : Number.isFinite(Number(post.day))
-        ? Number(post.day)
-        : 1;
-  if (!Number.isFinite(Number(post.day))) {
-    post.day = fallbackDay;
-    filled.add('day');
-  }
-  const platform = toPlainString(context.platform || post.format || post.platform || 'Reel');
-  if (!isNonEmptyString(post.title)) {
-    post.title = `Topic for Day ${fallbackDay}`;
-    filled.add('title');
-  }
-  if (!isNonEmptyString(post.hook)) {
-    const captionSource = post.caption || post.body || '';
-    const firstSentence = extractFirstSentence(captionSource);
-    post.hook = firstSentence || `Stop scrolling — quick ${context.nicheStyle || 'niche'} tip.`;
-    filled.add('hook');
-  }
-  if (!isNonEmptyString(post.caption)) {
-    post.caption = buildFallbackCaption(post.title, context.nicheStyle);
-    filled.add('caption');
-  }
-  if (!isNonEmptyString(post.cta)) {
-    post.cta = buildFallbackCta(context.nicheStyle, platform);
-    filled.add('cta');
-  }
-  if (!isNonEmptyString(post.designNotes)) {
-    post.designNotes = ensureDesignNotesFallback(post, context.nicheStyle);
-    filled.add('designNotes');
-  }
-  if (!isNonEmptyString(post.storyPrompt)) {
-    post.storyPrompt = ensureStoryPromptFallback(post, context.nicheStyle);
-    filled.add('storyPrompt');
-  }
-  const hashtagCount = Array.isArray(post.hashtags)
-    ? post.hashtags.filter((tag) => isNonEmptyString(tag)).length
-    : 0;
-  if (hashtagCount < Math.max(8, MIN_HASHTAGS)) {
-    post.hashtags = ensureHashtagArray(post.hashtags || [], buildCalendarHashtagFallback(context.nicheStyle, post.title, platform), Math.max(8, MIN_HASHTAGS));
-    filled.add('hashtags');
-  }
-  const scriptFallback = buildFallbackReelScript(post, { nicheStyle: context.nicheStyle, platform });
-  const scriptTarget = post.script && typeof post.script === 'object' ? post.script : {};
-  const scriptNeedsFill =
-    !isNonEmptyString(scriptTarget.hook) ||
-    !isNonEmptyString(scriptTarget.body) ||
-    !isNonEmptyString(scriptTarget.cta);
-  if (scriptNeedsFill) {
-    post.script = { ...scriptFallback };
-    filled.add('script');
-  }
-  const reelTarget = post.reelScript && typeof post.reelScript === 'object' ? post.reelScript : {};
-  const reelNeedsFill =
-    !isNonEmptyString(reelTarget.hook) ||
-    !isNonEmptyString(reelTarget.body) ||
-    !isNonEmptyString(reelTarget.cta);
-  if (reelNeedsFill) {
-    post.reelScript = { ...scriptFallback };
-    filled.add('reelScript');
-  }
-  const engagement = post.engagementScripts || {};
-  const hasComment = isNonEmptyString(engagement.commentReply || engagement.comment || post.engagementScript);
-  const hasDm = isNonEmptyString(engagement.dmReply || engagement.dm || post.engagementDm);
-  if (!hasComment || !hasDm) {
-    const fallbackEngagement = buildEngagementScriptsFallback(post, context);
-    post.engagementScripts = {
-      commentReply: hasComment ? toPlainString(engagement.commentReply || engagement.comment || post.engagementScript) : fallbackEngagement.commentReply,
-      dmReply: hasDm ? toPlainString(engagement.dmReply || engagement.dm || post.engagementDm) : fallbackEngagement.dmReply,
-    };
-    filled.add('engagementScripts');
-  }
-  return { filledFields: Array.from(filled) };
 }
 
 function computePostCountTarget(days, postsPerDay) {
@@ -4054,11 +3887,28 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       : maxTokenCap;
   const maxTokens = Math.min(preferredTokens, maxTokenCap);
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
+  const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
+  const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
+  const postsPerDay = Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0 ? Number(opts.postsPerDay) : 1;
+  const expectedChunkCount = chunkDays * postsPerDay;
+  const schema = buildCalendarSchemaObject(
+    expectedChunkCount,
+    chunkStartDay,
+    Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+  );
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.5,
     max_tokens: maxTokens,
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'calendar_batch',
+        strict: true,
+        schema,
+      },
+    },
   });
   const requestOptions = {
     hostname: 'api.openai.com',
@@ -4074,6 +3924,26 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     ? Math.max(1, Math.min(Number(opts.maxAttempts), 2))
     : Math.min(OPENAI_MAX_ATTEMPTS, 2);
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+  const extractContentText = (json) => {
+    const messageContent = json?.choices?.[0]?.message?.content;
+    if (!messageContent) return '';
+    if (typeof messageContent === 'string') return messageContent;
+    if (Array.isArray(messageContent)) {
+      return messageContent
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.value === 'string') return item.value;
+          if (typeof item?.content === 'string') return item.content;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+    }
+    if (typeof messageContent?.text === 'string') return messageContent.text;
+    if (typeof messageContent?.value === 'string') return messageContent.value;
+    return '';
+  };
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const attemptStart = Date.now();
     const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
@@ -4087,22 +3957,36 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     });
     try {
       const json = await Promise.race([requestPromise, timeoutPromise]);
-      const content = json?.choices?.[0]?.message?.content || '';
-      const { data, attempts } = parseLLMArray(
-        content,
-        {
-          requireArray: true,
-          itemValidate: (p) => p && typeof p === 'object',
-        },
-        {
-          endpoint: 'calendar',
-          ...loggingContext,
-        }
-      );
-      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+      const content = extractContentText(json);
+      if (debugEnabled) {
+        console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(content || '{}');
+      } catch (parseErr) {
+        const err = new Error('Failed to parse OpenAI response');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.rawContent = content;
+        throw err;
+      }
+      const posts = Array.isArray(parsed.posts) ? parsed.posts : null;
+      if (!Array.isArray(posts)) {
+        const err = new Error('OpenAI response missing posts array');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.details = { provided: parsed };
+        err.rawContent = content;
+        throw err;
+      }
+      if (posts.length !== expectedChunkCount) {
+        const err = new Error('Calendar response count mismatch');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.details = { expectedCount: expectedChunkCount, actualCount: posts.length };
+        err.rawContent = content;
+        throw err;
+      }
       return {
-        posts: data,
-        attempts,
+        posts,
         rawContent: content,
         latency: Date.now() - attemptStart,
         retryCount: attempt,
@@ -4790,65 +4674,31 @@ const server = http.createServer((req, res) => {
       err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
       throw err;
     }
-    const missingFieldsReportBefore = [];
-    const missingFieldsMap = new Map();
+    const missingFieldsReport = [];
     rawPosts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
       if (!missing.length) return;
       const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
       const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      const entry = { index: idx, day, slot, missing };
-      missingFieldsReportBefore.push(entry);
-      missingFieldsMap.set(idx, entry);
+      missingFieldsReport.push({ index: idx, day, slot, missing });
     });
-    const autoFillSamples = [];
-    if (missingFieldsReportBefore.length) {
-      console.warn('[Calendar][Server][SchemaValidation] missing fields detected, auto-filling', {
+    if (missingFieldsReport.length) {
+      const err = new Error('Calendar response missing required fields');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 500;
+      err.details = missingFieldsReport;
+      console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
         requestId: loggingContext?.requestId,
         startDay,
         days,
         postsPerDay,
-        missingFields: missingFieldsReportBefore.length,
-        detailSamples: missingFieldsReportBefore.slice(0, 3),
+        expectedCount,
+        actualCount: rawPosts.length,
+        missingFields: missingFieldsReport.length,
+        responseLength: rawLength,
+        detailSamples: missingFieldsReport.slice(0, 3),
       });
-      rawPosts.forEach((post, idx) => {
-        const entry = missingFieldsMap.get(idx);
-        if (!entry) return;
-        const platform = toPlainString(post.format || post.platform || 'Reel');
-        const fillResult = normalizeCalendarPost(post, {
-          nicheStyle,
-          day: entry.day,
-          slot: entry.slot,
-          platform,
-        });
-        if (fillResult?.filledFields?.length) {
-          autoFillSamples.push({
-            index: idx,
-            day: entry.day,
-            slot: entry.slot,
-            fields: fillResult.filledFields,
-          });
-        }
-      });
-    }
-    const missingFieldsReportAfter = [];
-    rawPosts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
-      if (!missing.length) return;
-      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      missingFieldsReportAfter.push({ index: idx, day, slot, missing });
-    });
-    const autoFilledCount = Math.max(0, missingFieldsReportBefore.length - missingFieldsReportAfter.length);
-    if (missingFieldsReportAfter.length) {
-      console.warn('[Calendar][Server][SchemaValidation] fields still missing after auto-fill', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay,
-        missingFieldsAfter: missingFieldsReportAfter.length,
-        detailSamples: missingFieldsReportAfter.slice(0, 3),
-      });
+      throw err;
     }
     console.log('[Calendar][Server][SchemaValidation]', {
       requestId: loggingContext?.requestId,
@@ -4857,22 +4707,14 @@ const server = http.createServer((req, res) => {
       postsPerDay,
       expectedCount: expectedCount || rawPosts.length,
       actualCount: rawPosts.length,
-      missingFieldsBefore: missingFieldsReportBefore.length,
-      missingFieldsAfter: missingFieldsReportAfter.length,
-      autoFilledCount,
-      autoFillSamples: autoFillSamples.slice(0, 3),
-      sampleMissingFields: missingFieldsReportBefore.slice(0, 3),
+      missingFieldsBefore: missingFieldsReport.length,
+      missingFieldsAfter: 0,
       retryUsed: false,
       responseLength: rawLength,
     });
-    const rawHashtagsMissing = rawPosts.filter(
-      (post) => !(Array.isArray(post.hashtags) && post.hashtags.length)
-    ).length;
     if (!rawPosts.length) {
       console.warn('[Calendar] No posts returned across chunks, relying on fallback posts', logContext);
     }
-    const rawCtaMissing = rawPosts.filter((post) => !hasCtaValue(post)).length;
-    const rawEngagementMissing = rawPosts.filter((post) => !hasEngagementValue(post)).length;
     const openDuration = Date.now() - callStart;
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
@@ -4890,84 +4732,6 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
-    const hashtagsMissingAfter = posts.filter(
-      (post) => !(Array.isArray(post.hashtags) && post.hashtags.length)
-    ).length;
-    const hashtagsAutoFilled = Math.max(0, rawHashtagsMissing - hashtagsMissingAfter);
-    console.log('[Calendar][Server][Hashtags]', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      missingRaw: rawHashtagsMissing,
-      missingAfter: hashtagsMissingAfter,
-      autoFilled: hashtagsAutoFilled,
-    });
-    const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
-    if (missingStoryPrompt.length) {
-      console.warn('[Calendar] Missing storyPrompt; applying fallback prompts', {
-        requestId: loggingContext?.requestId,
-        missing: missingStoryPrompt.length,
-        days,
-        startDay,
-        postsPerDay,
-      });
-      missingStoryPrompt.forEach((post) => {
-        post.storyPrompt = ensureStoryPromptFallback(post, nicheStyle);
-      });
-    }
-    const missingStoryPromptPlus = posts.filter((post) => !String(post.storyPromptPlus || '').trim());
-    if (missingStoryPromptPlus.length) {
-      console.warn('[Calendar] Missing storyPromptPlus; applying fallback prompts', {
-        requestId: loggingContext?.requestId,
-        missing: missingStoryPromptPlus.length,
-        days,
-        startDay,
-        postsPerDay,
-      });
-      missingStoryPromptPlus.forEach((post) => {
-        post.storyPromptPlus = ensureStoryPromptPlusFallback(post, nicheStyle);
-      });
-    }
-    const designNotesMissingBefore = posts.filter((post) => !String(post.designNotes || '').trim()).length;
-    posts.forEach((post) => {
-      post.designNotes = ensureDesignNotesFallback(post, nicheStyle);
-    });
-    const designNotesMissingAfter = posts.filter((post) => !String(post.designNotes || '').trim()).length;
-    console.log('[Calendar][Server][DesignNotes]', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      missingBefore: designNotesMissingBefore,
-      missingAfter: designNotesMissingAfter,
-      sampleLength: posts[0] ? String(posts[0].designNotes || '').length : 0,
-    });
-    const ctaMissingAfter = posts.filter((post) => !String(post.cta || '').trim()).length;
-    const ctaAutoFilled = Math.max(0, rawCtaMissing - ctaMissingAfter);
-    console.log('[Calendar][Server][CTA]', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      missingRaw: rawCtaMissing,
-      missingAfter: ctaMissingAfter,
-      autoFilled: ctaAutoFilled,
-    });
-    const engagementMissingAfter = posts.filter((post) => !hasNormalizedEngagement(post)).length;
-    const engagementAutoFilled = Math.max(0, rawEngagementMissing - engagementMissingAfter);
-    console.log('[Calendar][Server][Engagement]', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      missingRaw: rawEngagementMissing,
-      missingAfter: engagementMissingAfter,
-      autoFilled: engagementAutoFilled,
-      sampleLength: posts[0]?.engagementScripts?.commentReply
-        ? String(posts[0].engagementScripts.commentReply).length
-        : 0,
-    });
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {

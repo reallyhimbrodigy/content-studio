@@ -6616,10 +6616,6 @@ let currentGenerationRunId = 0;
 let generationAbortController = null;
 let calendarRunCounter = 0;
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // Export usage lock state
 let calendarExportsLocked = false;
 
@@ -7872,19 +7868,6 @@ function normalizePost(p, idx = 0, startDay = 1) {
   return { ...p, ...out };
 }
 
-function ensureCtaFallback(post = {}) {
-  const current = String(post.cta || '').trim();
-  if (current) return current;
-  const pillar = String(post.pillar || '').toLowerCase();
-  const format = String(post.format || '').toLowerCase();
-  const promoSlot = !!post.promoSlot;
-  if (promoSlot || pillar.includes('promo')) return 'Book now';
-  if (pillar.includes('social proof')) return 'See the proof';
-  if (format.includes('story')) return 'Watch this';
-  if (format.includes('static')) return 'Check it out';
-  return 'Learn more';
-}
-
 // OpenAI API integration (via backend proxy)
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
   const runSignal = options.signal;
@@ -7945,7 +7928,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
     })();
     let firstDispatchLogged = false;
-    const fetchBatch = async (batchIndex, attempt = 0) => {
+    const fetchBatch = async (batchIndex) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
@@ -7975,24 +7958,15 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         firstDispatchLogged = true;
       }
       console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
-      let response;
-      try {
-        response = await fetchWithAuth('/api/calendar/regenerate', {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-          signal: runSignal,
-        });
-      } catch (err) {
-        if (err.name === 'AbortError' && attempt < 3 && !runSignal?.aborted) {
-          await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
-          return fetchBatch(batchIndex, attempt + 1);
-        }
-        throw err;
-      }
+      const response = await fetchWithAuth('/api/calendar/regenerate', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: runSignal,
+      });
       const responseText = await response.text();
       const parsedDetail = (() => {
         try {
@@ -8014,10 +7988,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
         const preview = responseText.slice(0, 300);
         console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview, msg });
-        if (([502, 503, 504].includes(response.status) || response.status >= 500 || bodyIsHtml) && attempt < 3) {
-          await wait(500 * Math.pow(2, attempt) + Math.random() * 250);
-          return fetchBatch(batchIndex, attempt + 1);
-        }
         throw new Error(msg);
       }
       if (firstDispatchLogged) {
@@ -8132,7 +8102,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     };
     
     // Fire all batches in parallel for maximum speed (~30 seconds)
-    console.log(" Requesting all batches with retries...");
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const t0 = performance.now();
     const settled = await Promise.allSettled(
@@ -8167,61 +8136,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
 
     // Normalize every post to guarantee required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
-    // Simple integrity check
-    const bad = normalized.filter(p => !p.videoScript || !p.caption || !p.hashtags || !Array.isArray(p.hashtags) || !p.storyPrompt || !p.designNotes || !p.engagementScripts);
-    if (bad.length) {
-      console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
-    }
-    const missingCtas = normalized.filter((p) => !p.cta);
-    if (missingCtas.length) {
-      const missingDays = missingCtas.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      console.warn(`⚠️ Filled CTA defaults for ${missingCtas.length} posts (${missingDays})`);
-    }
-    normalized.forEach((p) => {
-      p.cta = ensureCtaFallback(p);
-    });
-    const missingHashtags = normalized.filter((p) => !(Array.isArray(p.hashtags) && p.hashtags.length));
-    if (missingHashtags.length) {
-      const missingDays = missingHashtags.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_HASHTAGS: ${missingHashtags.length} posts returned no hashtags (${missingDays})`);
-    }
-    const missingStoryPrompts = normalized.filter((p) => !p.storyPrompt);
-    if (missingStoryPrompts.length) {
-      const missingDays = missingStoryPrompts.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompts.length} posts returned no story prompt (${missingDays})`);
-    }
-    const missingDesignNotes = normalized.filter((p) => !p.designNotes);
-    if (missingDesignNotes.length) {
-      const missingDays = missingDesignNotes.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_DESIGN_NOTES: ${missingDesignNotes.length} posts returned no design notes (${missingDays})`);
-    }
-    const missingEngagement = normalized.filter(
-      (p) => !(String(p.engagementScripts?.commentReply || '').trim() && String(p.engagementScripts?.dmReply || '').trim())
-    );
-    if (missingEngagement.length) {
-      const missingDays = missingEngagement.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_ENGAGEMENT: ${missingEngagement.length} posts returned incomplete engagement scripts (${missingDays})`);
-    }
-    const missingReelScript = normalized.filter(
-      (p) => {
-        const script = p.videoScript || {};
-        return !String(script.hook || '').trim() || !String(script.body || '').trim() || !String(script.cta || '').trim();
-      }
-    );
-    if (missingReelScript.length) {
-      const missingDays = missingReelScript.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_REEL_SCRIPT: ${missingReelScript.length} posts returned incomplete reel scripts (${missingDays})`);
-    }
-    const missingDistribution = normalized.filter((p) => !String(p.distributionPlan || '').trim());
-    if (missingDistribution.length) {
-      const missingDays = missingDistribution.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_DISTRIBUTION_PLAN: ${missingDistribution.length} posts returned no distribution plan (${missingDays})`);
-    }
-    const missingAudio = normalized.filter((p) => !String(p.audio || '').trim());
-    if (missingAudio.length) {
-      const missingDays = missingAudio.map((p) => `Day${p.day ?? '?'}`).join(', ');
-      throw new Error(`CALENDAR_MISSING_AUDIO: ${missingAudio.length} posts returned no audio (${missingDays})`);
-    }
     allPosts = normalized.map((post, idx) => {
       const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
       const slot = (idx % normalizedFrequency) + 1;
