@@ -2528,7 +2528,7 @@ ALGO / SALES REQUIREMENTS:
 FALLBACK (prompt-level):
 If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (1-2 sentences, 8-20 words, describe a story format, beats, and CTA question; do not leave empty)\n- storyPromptPlus (1-2 sentences, 12-30 words, expand on the same topic with extra stakes or tactical detail plus a follow-up question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
+Hard rule: only include ideas and terminology that are clearly specific to the provided niche; never mention unrelated niches.${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (1-2 sentences, ≥20 words, a single plain-language creative direction tied to the niche/topic; actionable, varied across posts, and free of templated scaffolding; do not leave empty)\n- storyPromptPlus (1-2 sentences, 12-30 words, expand on the same topic with extra stakes or tactical detail plus a follow-up question; do not leave empty)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats; cta urgent)\n- instagram_caption (final, trimmed block)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
@@ -2537,7 +2537,7 @@ Hard rule: only include ideas and terminology that are clearly specific to the p
 
 Required Fields Rule:
 - Every post object MUST include a storyPrompt field.
-- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥20 words) describing what to show, say, and the CTA question.
+- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥20 words) that deliver a single creative direction in plain language, reference the niche/topic, stay actionable, avoid repeated lead-ins or boilerplate, omit "!?" punctuation, and vary across posts while honoring the no-template directive (no "Record a…", "Reel", "for {niche} viewers", "show the setup", "highlight the pivot point").
 - Never return objects missing any required fields.
 - Every post object MUST include a storyPromptPlus field.
 - storyPromptPlus must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥12 words) that adds actionable detail or stakes and ends with a follow-up question.
@@ -2553,7 +2553,7 @@ Omission Forbiddance:
 
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
-- Keep storyPrompt on-topic, specific, and consistent with the niche, and phrase it as an actionable question the creator can answer on camera.
+- Keep storyPrompt on-topic, specific, and consistent with the niche. Present it as a single actionable creative direction (hook idea, shot list, narrator beat, on-screen text idea, etc.) that references the niche/topic, avoids recycled scaffolds or repeated lead-ins, skips template phrases like "Record a…", "Reel", "for {niche} viewers", "show the setup", "highlight the pivot point", omits "!?" punctuation, and varies wording across posts.
 - Avoid recycled scaffolds, repeated category labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
 - StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
@@ -3279,14 +3279,14 @@ function resolveStoryPromptValue(post = {}) {
 }
 
 function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
-  const format = toPlainString(post.format || 'Reel') || 'Reel';
   const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
   const hook = toPlainString(post.hook || '');
   const niche = toPlainString(nicheStyle || 'this niche');
   const cta = toPlainString(post.cta || 'What does that mean for you?');
   const question = cta.endsWith('?') ? cta : `${cta}?`;
   const description = hook ? `${hook} ${topic}` : topic;
-  return `Record a short ${format} story for ${niche} viewers about ${description}: show the setup, highlight the pivot point, and ask ${question}`;
+  const prefix = niche ? `${niche} focus: ` : '';
+  return `${prefix}${description}. ${question}`;
 }
 
 const STORY_PROMPT_PLUS_ALIASES = [
