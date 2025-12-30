@@ -1919,7 +1919,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
       : 'Keep the layout hero-image forward with concise overlays that stay under 12 total English words.',
     'All copy must be real English words (no lorem ipsum, no pseudo text).',
     'Avoid dense paragraphs—use large typography, capsule shapes, stickers, and gradient blocks so it is visually appealing, not a page of text.',
-    'Ensure the design feels native to Instagram/TikTok algorithms: bold hook, social proof mid-frame, urgent CTA at the end.',
+    'Ensure the design feels native to Instagram/TikTok: bold hook, social proof mid-frame, urgent CTA at the end.',
     'Use bold, legible typography and high-contrast layering suitable for mobile.',
     paletteTokens.length ? `Stick to this palette: ${paletteTokens.join(', ')}.` : '',
     fontTokens.length ? `Typography should pair ${fontTokens.join(' + ')}.` : '',
@@ -2355,102 +2355,45 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
 // DETAILS/HASHTAGS CONSTRAINTS (niche-locked, no generic filler)
-const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:
+  const qualityRules = `Quality Rules — Make each post actionable and specific:
 1) HOOK RULES (HARD):
 - Output a single Hook line only.
-- 4–9 words. No emojis. No hashtags. No quotes. No exclamation spam.
-- Must be explicitly tied to the niche/topic of THIS card (use the niche keywords already present in the card’s title/category/context).
-- Must use a proven short-form retention mechanic: curiosity gap OR contrarian claim OR “common mistake” callout OR specific outcome promise.
-- Must include ONE concrete specificity anchor (number, timeframe, or specific outcome) BUT ONLY if it naturally fits the niche and does not introduce randomness.
-- Must not mention unrelated industries, treatments, products, or jargon outside the niche.
-- Must not contain placeholders like [Client Name], [Your City], [Brand], etc.
-- SALES/ALGO REQUIREMENTS:
-- Optimize for first-1-second stop: pattern interrupt wording (“Stop doing X”, “You’re doing X wrong”, “Nobody tells you this”, “The real reason X”, “Do this instead”).
-- Make the viewer self-identify (call out the exact audience pain/goal implied by the niche).
-- If the card is local/service-based, imply urgency/scarcity WITHOUT sounding spammy (“limited slots”, “this week”, “openings”) but keep it subtle.
-- FORBIDDEN:
-- Any niche-mismatched terms (example: fitness card must not mention “facials”, “peels”, “glow”, skincare, real estate, etc.).
-- Generic filler like “Fuel your body right”, “Meet our amazing client”, “Let’s get started”, “Game changer”, “Level up”.
-2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and ban filler (#fyp, #viral, #trending, #explorepage, #instagood, #tiktok, #reels, #love). If the brand name applies, include it once.
-3) CTA: a single, concise sentence that reflects the niche and offers a gentle call to action without canned phrases.
-4) Design: specify colors, typography, pacing, and end-card CTA.
+- 4–9 words. No emojis, hashtags, quotes, or exclamation spam.
+- Tie the hook explicitly to the card’s topic and niche keywords.
+- Build curiosity or highlight a clear payoff that comes from this idea.
+- Include a concrete specificity anchor (number, timeframe, or outcome) only when it fits naturally.
+- Avoid unrelated industries, treatments, or jargon.
+- Do not use placeholders like [Client Name], [Your City], or [Brand].
+2) Hashtags: generate 6–10 tags that align closely with the niche and concept, avoid generic/filler tags, and keep them varied across posts.
+3) CTA: a single concise sentence that reflects the niche without canned phrasing.
+4) Design: describe relevant colors, typography, pacing, and the end-card CTA.
 5) REMIX / SHARE RULES (HARD):
-- Output ONE follow-up action only (no lists).
-- Follow-up must be low-friction and directly derived from the SAME post; no new concepts.
-- Stay within the same niche, pain point, and emotional thread.
-- Increase retention or comments (reply-to-comment, remix a comment, quick clarification).
-- No new offers, topics, or CTAs.
-
-ALLOWED: “Reply to the top comment with a quick clarification.”, “Remix this answering the most common objection.”, “Share a short follow-up explaining the one part people ask about.”, “Go live briefly to answer the main question this sparked.”
-
-FORBIDDEN:
-- “Host a workshop”, “Launch a challenge”, “Promote another post”, “Announce an offer”, and any off-niche activity.
-
-ALGO / SALES REQUIREMENTS:
-- Follow-up should feel reactive and reward engagement; invite more comments.
-
-FALLBACK (prompt-level): “Reply to the most common comment with a short follow-up.”
-6) Engagement: natural, friendly scripts for comments & DMs.
+- Output one follow-up action per post.
+- Keep it low-friction, niche-relevant, and rooted in the same idea.
+- Provide a practical variation or next step without launching new offers.
+6) Comment Response: deliver specific replies or prompts that feel direct yet natural.
 7) FORMAT RULES (HARD):
-- Output EXACTLY one format from {Reel, Carousel, Story, Static}.
-- Format must be chosen via retention mechanics + sales intent.
-
-FORMAT SELECTION GUIDANCE:
-- Reel: strong hook, spoken delivery, pattern interrupt, emotional tension, or confession.
-- Carousel: step-by-step clarification, visual before/after, or misconception debunk.
-- Story: polls/sliders/question boxes or low-friction engagement.
-- Static: single sharp insight with no motion/spoken delivery needed.
-
-ALGO / SALES REQUIREMENTS:
-- Prefer Reel unless another format clearly outperforms it.
-- Avoid Static for content meant to drive comments or DMs.
-- Format must support the Hook, Story Prompt, and CTA already defined.
-
-FORBIDDEN:
-- No random rotations or new format names.
-- Do not pick a format that conflicts with the Reel Script or Story Prompt.
-
-FALLBACK (prompt-level): If unsure, choose Reel.
-8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.
-10) OFFER / LEAD MAGNET RULES (HARD): describe ONE clear deliverable tied to the card topic. Frame it as a clarifier or simplifier, not a promised result.
-      ALLOWED FRAMING: “the simple plan that cleared this up”, “the checklist I use”, “the breakdown that made this click”, “the template I wish I had earlier”, “the framework that simplified this”.
-      FORBIDDEN FRAMING: “guaranteed results”, “transform your life”, “limited time”, “spots filling fast”, “exclusive access”, “free consultation”, “book now”, “join today”.
-      SALES/ALGO REQUIREMENTS: make the deliverable feel like the natural next step after the pain; avoid hype and rely on relevance-driven curiosity.
-      FALLBACK (prompt-level): “the simple guide that explains this clearly” (adapt wording for the niche but keep the tone neutral).
-11) STORY PROMPT+ HARD RULES: Write a second, distinct Story variation for this post in the niche: {niche}. It must stay niche-locked (never borrow unrelated industries, including the banned skincare/medspa terms unless the niche is explicitly skincare). Choose a different structure than the primary Story prompt (e.g., quick Q&A, myth vs fact, mini checklist, tempo shift). Output 2–4 sentences describing what to show/say, ensuring the phrasing never repeats the Story Prompt text or shared scaffolds. Focus on prompt-specific interactions (stickers, questions, polls) only when they fit organically; do not rely on templates like “This or That” unless the content naturally warrants it. Before returning Story Prompt+, double-check for any cross-niche words and replace them with niche-specific terminology.
-12) Story Prompt:
-- Provide 1–2 short sentences max that read like a natural creator note describing what to show or say in this Story, tie the wording to the provided niche ({nicheStyle}) and the post’s concept, and vary the opening across posts.
-- Keep the language conversational, stay niche-specific, allow either no question or a single normal question mark, and ban "!?" or canned CTA templates such as "Tag a friend", "DM us", or "Comment below".
-- Output only the prompt text; one line per post, no additional commentary.
-13) Execution Notes: output 2–4 bullet points focused on this post’s niche concept. Each bullet should describe practical execution direction (shot type, pacing, structure, feel) tied directly to the topic; avoid generic filming advice. Output only bullets, no labels.
-14) Keep outputs concise to avoid truncation.
-15) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta written as a short, plain-language beat outline for the niche; avoid templated framing like "Record a short Reel..." or "show the setup/pivot", keep the CTA natural, and do not include "!?" punctuation.`;
+- Choose exactly one format from {Reel, Carousel, Story, Static} that fits the story.
+- Reel should support spoken delivery; Carousel should highlight steps or comparison; Story should lean on native interaction; Static should deliver one sharp insight.
+- Avoid formats that conflict with the defined Hook, Story Prompt, or CTA.
+8) Captions: provide one platform-neutral caption (Instagram/TikTok/LinkedIn) per card.
+9) Story Prompt+: write a second variation (2–4 sentences) that expands the concept with fresh structure and stays on topic.
+10) Story Prompt: deliver 1–2 sentences describing what to show/say for the Story; keep the language conversational and niche-focused without canned CTAs.
+11) Execution Notes: list 2–4 bullet points with concrete visual/production guidance.
+12) Screening: finish with a concise script (3–6 lines) that includes hook, body, and CTA in plain language without template prompts.`;
 
   const audioRules = `AUDIO RULES (HARD):
-- Output audio suggestions ONLY for the platforms already listed in the card.
-- Sounds must support spoken delivery and retention; never overpower the voice.
-- Prefer low-to-mid tempo, neutral or lightly trending choices that feel native.
-- Keep tone niche-appropriate (no hype for confessional, no soft ambient for high energy demos).
-- Audio should feel optional, not essential; keep it in the background.
-- Choose one TikTok audio and one Instagram audio from the provided candidate list. Avoid repeating the same audio in adjacent days or reusing the same pair across the month.
+	- Output audio suggestions ONLY for the platforms already listed in the card.
+	- Sounds must support spoken delivery and feel native to the niche.
+	- Keep audio optional, understated, and avoid reusing the same pair across the month.
 
-CREDIT FORMAT (exact):
-- TikTok: <Sound name> — @creator
-- Instagram: <Sound name> — @artist
-
-FORBIDDEN:
-- “Guaranteed viral” claims
-- “Use any trending sound” directives
-- Meme/comedy/novelty audio unless the archetype is humor-based
-- Platform instructions (“tap sound”, “use this trend”)
-
-ALGO / SALES REQUIREMENTS:
-- Choose audio that increases watch time by lowering friction, not spectacle.
-- If unsure, recommend a subtle or instrumental option.`;
+	CREDIT FORMAT (exact):
+	- TikTok: <Sound name> — @creator
+	- Instagram: <Sound name> — @artist`;
   const classificationRules =
     classification === 'business'
-      ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM.'
-      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling.';
+      ? 'Business/coaching hooks must focus on problems, outcomes, and offers with clear, respectful language.'
+      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive promotion.';
   const postsPerDaySetting =
     Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0
       ? Number(opts.postsPerDay)
@@ -2458,170 +2401,32 @@ ALGO / SALES REQUIREMENTS:
   const totalPostsRequired = days * postsPerDaySetting;
   const distributionPlanRules = `Distribution Plan rules:
 - Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
-- Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction engagement/action idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
+- Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction next-step idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
   const postingTimeRules = '';
   const strategyRules = `Strategy rules:
-1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
-2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
-3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
-4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
-5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
-6) Provide padded keyword/deliverable pairs instead of a full pinned_comment. pinned_keyword should be a single uppercase word (3–16 letters) that feels niche specific and does not duplicate the post title. pinned_deliverable should describe the resource you promise (checklist, template, roadmap, etc.).
-7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
-8) We will build the final strategy variables on the server; do not return the completed sentence as a strategy field.`;
+1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
+2) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
+3) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
+4) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
+5) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers in plain language, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
+6) We will build the final strategy variables on the server; do not return the completed sentence as a strategy field.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const nicheProfileBlock = buildNicheProfileBlock(nicheStyle, brandContext);
-  const nicheDecisionBlock = `NICHE STYLE DECISION (MANDATORY)\nDetermine the niche\'s commercial intent category before writing sections.\nCategories: SELLING_DIRECT (restaurant/gym/agency/coach/SaaS/local service), CREATOR_MEDIA, INFO_COMMUNITY (clubs/nonprofits).\nIf SELLING_DIRECT or CREATOR_MEDIA, light sales tactics (soft CTA, subtle urgency, lead magnet) are allowed but must stay niche-appropriate.\nIf INFO_COMMUNITY, NO sales language (no “book now”, “spots fill fast”, “limited time”, “DM to buy”).\nAlways optimize for TikTok/IG retention (clear hook, curiosity gap, fast pacing, niche comment bait, platform-native prompts).\n`;
-  const globalHardRules = `GLOBAL HARD RULES (NON-NEGOTIABLE)
-  - NICHE LOCK: Every line must reference the user's niche, offer, audience, and location. Do not mix niches.
-  - ZERO CROSS-NICHE: Keep fitness content about workouts/nutrition; avoid skincare/real estate/crypto unless that's the niche.
-  - RETENTION: Use short, punchy wording, pattern interrupts, open loops, and immediate benefit statements.
-  - SALES PSYCH: Include one clear benefit, one proof cue, and a low-friction CTA without hype.
-  - CONSISTENCY: Hook, caption, CTA, and Story Prompt+ must reinforce the same angle.
-  - NO PLACEHOLDERS: Avoid generic tags like [Client Name] unless provided.
-  - BAN: No off-niche examples or regulated claims.`;
-  const salesModeGate = `SALES-MODE GATE (HARD RULES)
-Determine SALES_MODE based on the niche:
-- RESTAURANT / FAST FOOD / CAFE / BAR / VENUE / LOCAL SHOP → SALES_MODE = ENGAGEMENT_ONLY
-- COACH / CONSULTANT / AGENCY / COURSE / CREATOR / SERVICE → SALES_MODE = ALLOWED
-- Otherwise → SALES_MODE = ENGAGEMENT_ONLY
-
-
-Rules:
-- SALES_MODE = ENGAGEMENT_ONLY:
-  - No sales or funnel language.
-  - No “I’ll send you my guide/plan/breakdown”.
-  - No urgency/scarcity (“book now”, “spots fill fast”, “limited time”).
-  - CTAs must be engagement-only: comment, vote, try, share, tag.
-- SALES_MODE = ALLOWED:
-  - One soft sales CTA is allowed.
-  - Keep language natural and niche-appropriate.
-
-Algorithm mechanics (hooks, retention, interactions) remain allowed regardless of SALES_MODE.
-Apply these rules consistently across: CTA, Story Prompt+, Engagement Loop.`;
-  const localRules = `LOCAL CONTEXT RULES (HARD):
-  - Reference location ONLY if the user provided it.
-  - Mention location no more than once per card, and keep it incidental and human.
-  - Use location to add relatability or specificity, never urgency.
-  - Avoid salesy lines like “serving”, “book now in”, or “spots filling fast in” + {LOCATION}.
-  - ALLOWED: “Around {LOCATION}, this is a common issue…”, “I see this a lot with people training in {LOCATION}.”, “For anyone in {LOCATION} dealing with this…”.
-  - FORBIDDEN: “Best gym in {LOCATION}”, “Serving {LOCATION}”, “Spots filling fast in {LOCATION}”, “Book now in {LOCATION}”.
-  - ALGO / SALES REQUIREMENTS: mention location only when it increases credibility without hurting shareability; omit it if it lowers general relevance.
-  - FALLBACK (prompt-level): if location is missing/unclear, omit any location references.`;
-  const claimsRules = `CLAIMS & GUARANTEES RULES (HARD):
-  - Do NOT promise results, timelines, or guarantees.
-  - Do NOT use medical, financial, or legal claims unless the niche explicitly allows them.
-  - Frame benefits as personal experience, clarity, simplification, or relief—not outcomes.
-  - Use phrasing like “this helped me”, “this clarified”, or “this made it simpler” instead of “this will get you X”.
-  - Avoid absolutes such as “always”, “never”, “guaranteed”, or “proven”.
-
-ALLOWED EMPHASIS:
-  - “This helped clear things up for me.”
-  - “This made the next step feel simpler.”
-  - “This gave me more clarity on the pain point.”
-
-FORBIDDEN PHRASES:
-  - “Guaranteed results”, “Transform your life”, “Change lives”, “Proven to work”, “Get results fast”, “Scientifically proven” (unless the niche explicitly requires and cites a source).
-
-ALGO / TRUST REQUIREMENTS:
-  - Conservative, relatable language increases trust, watch time, and comments.
-  - Favor curiosity and personal relatability over bold claims.
-
-FALLBACK (prompt-level):
-  - “This helped clear things up for me.”`;
-  const nicheStrategyBlock = `GLOBAL CALENDAR STRATEGY (MUST FOLLOW)
-You are generating a content calendar for a specific niche. Every field must be niche-locked. Unrelated topics are disallowed.
-
-Step 1 — Derive a Niche Profile:
-
-Niche: ${nicheStyle || 'Untitled'}
-Audience: who this is for (1 line)
-Offer Type: choose exactly one:
-PRODUCT (physical/digital product sold)
-SERVICE (local service business, appointment-based)
-CREATOR (influencer/creator who monetizes attention)
-COMMUNITY (club, group, organization)
-VENUE (restaurant, cafe, bar, fast food, hospitality)
-EDUCATION (coach, tutor, course, training)
-Sales Mode: choose exactly one:
-DIRECT_RESPONSE (aggressive CTA + conversion tactics allowed)
-SOFT_SELL (light CTA, value-first, minimal pressure)
-ENGAGEMENT_ONLY (NO sales tactics; only engagement + retention)
-Rules for Sales Mode selection:
-If Offer Type is VENUE => ENGAGEMENT_ONLY (no “book now”, no “spots fill fast”, no funnels).
-If Offer Type is CREATOR/COMMUNITY => SOFT_SELL or ENGAGEMENT_ONLY depending on niche tone.
-If Offer Type is SERVICE/EDUCATION => SOFT_SELL or DIRECT_RESPONSE allowed.
-If Offer Type is PRODUCT => SOFT_SELL or DIRECT_RESPONSE allowed.
-When in doubt: ENGAGEMENT_ONLY.
-
-Step 2 — Apply Niche Lock:
-For every section you generate, you MUST use niche-relevant nouns/verbs and avoid unrelated industries (no skincare/medspa terms unless niche is that, etc.). Rewrite until niche-locked.
-
-Step 3 — Algorithm/Retention Rules (ALWAYS ON):
-- Strong hook in first line (clear, niche-specific).
-- One clear interaction mechanic (poll/quiz/slider/question) matching the niche.
-- Keep instructions concise and concrete.
-
-Step 4 — Sales Tactics Rules:
-If Sales Mode=ENGAGEMENT_ONLY: no conversion tactics; CTAs must be engagement-based (comment, vote, share, tag, try it, save it).
-If Sales Mode=SOFT_SELL: allow one light CTA with no urgency.
-If Sales Mode=DIRECT_RESPONSE: urgency/offer framing allowed but still niche-locked.
-
-Output requirement: decide Offer Type + Sales Mode before generating fields and follow these rules across every section.`;
-  const titleRules = `TITLE RULES (HARD):
-  - Output a short, punchy title (4–9 words).
-  - Must create tension or curiosity, NOT describe the content plainly.
-  - Must be niche-locked and clearly relevant to the card’s topic.
-  - Must hint at a problem, mistake, contradiction, or unexpected insight.
-  - Must NOT sound educational, corporate, or motivational.
-  - Must NOT include emojis, hashtags, exclamation points, or CTA language.
-  - Must NOT include numbers unless they naturally fit the niche and add clarity (no random “Top 5” lists).
-
-ALLOWED TITLE PATTERNS:
-  - “Why This Still Isn’t Working”
-  - “You’re Probably Doing This Wrong”
-  - “The Part Nobody Explains”
-  - “This Should’ve Been Simpler”
-  - “What Most People Miss About [NICHE TOPIC]”
-
-FORBIDDEN TITLE TYPES:
-  - Generic educational titles (“Nutrition Tips for Fitness”)
-  - Promotional titles (“Client Transformation Story”)
-  - Outcome promises (“Get Fit Fast”, “Guaranteed Results”)
-  - Broad motivational phrases (“Fuel Your Body Right”, “Start Your Journey”)
-
-ALGO / SALES REQUIREMENTS:
-  - Title should feel like the first line of a Reel/TikTok, not a blog post.
-  - It should make the viewer feel personally called out or curious enough to stop scrolling.
-
-FALLBACK (prompt-level):
-If unsure, output:
-  “The Part Nobody Talks About”
-  (Adapt wording slightly using niche-specific terms if possible.)`;
-  const categoryRules = `CATEGORY RULES (HARD):
-- Output EXACTLY one category from the existing allowed set already used by the app (do NOT invent new categories).
-- Category must reflect the primary intent of the card, not the surface topic.
-- Category must align with short-form algorithm behavior and sales psychology.
-
-INTENT MAPPING (informative only):
-- Relatable pain/mistake/confusion → Lifestyle.
-- Explaining a concept after calling out tension → Educational.
-- Showing proof/result without hype → Testimonial (or equivalent label).
-- Driving action/booking with a soft CTA → Promotional (only when genuinely offer-focused).
-
-FORBIDDEN CATEGORY USE:
-- Do NOT default everything to Educational.
-- Do NOT use Promotional unless the card centers on an offer.
-- Do NOT mismatch (e.g., calling a confessional pain post “Educational”).
-
-ALGO / SALES REQUIREMENTS:
-- Category should set expectation without killing curiosity.
-- Prefer categories that keep content feeling native and non-ad-like.
-
-FALLBACK (prompt-level):
-If unsure, choose Lifestyle over Educational to preserve relatability and engagement.`;
+  const nicheDecisionBlock = '';
+  const globalHardRules = `GLOBAL RULES:
+  - Keep every line focused on the card’s topic.
+  - Avoid placeholders and keep language simple.
+  - Deliver the required fields without promotional spin; keep guidance straightforward and helpful.`;
+  const salesModeGate = '';
+  const localRules = '';
+  const claimsRules = '';
+  const nicheStrategyBlock = '';
+  const titleRules = `TITLE RULES:
+- Provide a short (4–9 word) title that hints at the post’s idea.
+- Keep it simple, avoid gimmicks, and stay on topic.`;
+  const categoryRules = '';
   const verbosityGate = opts.reduceVerbosity
-    ? '\n\nRetry mode: keep each field concise, trim narrative flourishes, and focus on the essential actions for this niche within the shorter chunk.'
+    ? '\n\nRetry mode: keep each field concise and focus on the core action for this niche.'
     : '';
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
@@ -2629,12 +2434,12 @@ If unsure, choose Lifestyle over Educational to preserve relatability and engage
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
 - audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
-- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
+- strategy { angle, objective, target_saves_pct, target_comments_pct, hook_options }
 - distributionPlan (string containing 3–5 unique, niche-specific bullets describing platform adaptations and follow-up actions; do not leave empty)
 
 Required Fields Rule:
 - Every post object MUST include a storyPrompt field.
-- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 short sentences max that read like a free-form creator note, vary their openings across posts, allow either no question or a single normal question mark, never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below".
+- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 short sentences max that read like a free-form creator note, vary their openings across posts, allow either no question or a single normal question mark, never include "!?", never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below", and never end with the niche name, content category, or metadata tag (no trailing “. med spa”, “- med spa”, “(med spa)”, etc.).
 - Never return objects missing any required fields.
 - Every post object MUST include a storyPromptPlus field.
 - storyPromptPlus must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥12 words) that adds actionable detail or stakes and ends with a follow-up question.
@@ -2651,7 +2456,7 @@ Omission Forbiddance:
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
   - Keep storyPrompt on-topic, specific to the niche and the post’s concept, and phrase it as a free-form creator note (hook idea, shot list, narrator beat, on-screen text idea, etc.) that varies its opening and phrasing across posts, allow either no question or a single question mark, never include "!?", and ban canned CTAs such as "Tag a friend", "DM us", or "Comment below". Do not mention or repeat the niche name anywhere in storyPrompt (including the end of the sentence); the niche should influence the tone/insight, not the literal wording.
-- Avoid recycled scaffolds, repeated category labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
+- Avoid recycled scaffolds, repeated labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
 - StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
 - If you are unsure, still output a best-effort storyPrompt and storyPromptPlus rather than omitting them, and verify each card has valid prompts before returning JSON.
@@ -2697,16 +2502,16 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const brandBlock = brandContext
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
-  const qualityRules = `Quality Rules — Make each post plug-and-play and conversion-ready:
-1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Begin with a genuine pattern interrupt referencing a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches, platforms, or the category name itself, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
-2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and ban filler (#fyp, #viral, #trending, #explorepage, #instagood, #tiktok, #reels, #love).
+  const qualityRules = `Quality Rules — Make each post specific and actionable:
+1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Reference a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches or platforms, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
+2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and keep filler tags to a minimum.
 3) CTA: write one short call-to-action (4–10 words) that is specific to this post’s topic. Do not output generic prompts such as “Thoughts?”, “Let us know!”, “Tell me what you think”, or “Share your story.” Never include “DM me” unless the context explicitly involves booking/consult calls, and avoid advising direct “Book now”/“Sign up” style language. Output only the CTA text with no label or prefix.
 4) Design notes: output 2–4 bullet points tied directly to this post’s concept. Each bullet should describe concrete visual choices (lighting, shot type, on-screen text, pacing) that reinforce the specific message and feel native to the niche. Avoid generic advice or filler (no “use warm footage”, “keep it high energy”, “add captions”). Output only bullets.
 5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
-6) Engagement Loop: output two items tied to the niche and post concept: (1) a sample reply to a viewer comment (1–2 sentences) that feels specific, helpful, and avoids generic gratitude; (2) a follow-up prompt (1 sentence) that nudges the viewer to keep the conversation going on the same topic. Do not include boilerplate “DM me” pushes, sales scripts, or repeated templates. Output only those two items.
+6) Response Guidance: output two items tied to the niche and post concept: (1) a sample reply to a viewer comment (1–2 sentences) that feels specific, helpful, and speaks to the idea without slipping into promotional language; (2) a follow-up prompt (1 sentence) that nudges the viewer to keep the conversation going on the same topic. Avoid boilerplate “DM me” pushes or scripted closings; keep both items informative and grounded in the niche. Output only those two items.
 7) Reel Script: write 3–6 short lines that form a niche-specific mini script rooted in this post’s concept. Each line should feel concrete (no generic “introduce, explain, close” scaffolds); vary the structure line-to-line and let the closing line naturally lead into the CTA. Avoid reusing the same phrasing from other cards. Output only the script lines (no extra labels or commentary).
 8) Format: Choose the best format for this post in the niche: {nicheStyle}, based on the post’s concept/context. Output exactly one value from this allowed list: Reel, Story, Carousel, Static. Output only the single value.
-        9) CAPTION BODY RULES (HARD): write 2–4 sentences that follow the same emotional thread as the Hook and stay tightly anchored to the post’s unique idea. Avoid template prefixes, “story spotlight” labels, or category names in the copy. Keep the tone concrete and niche-credible; do not repeat scaffolds from other posts. Use natural wording (no hashtags, emojis, platform references, or salesy slogans). End with a single, non-generic question that relates directly to the topic. Output only the caption text.
+        9) CAPTION BODY RULES (HARD): write 2–4 sentences that follow the same emotional thread as the Hook and stay tightly anchored to the post’s unique idea. Avoid template prefixes or “story spotlight” labels. Keep the tone concrete and niche-credible; do not repeat scaffolds from other posts. Use natural wording (no hashtags, emojis, platform references, or overly promotional language). End with a single, non-generic question that relates directly to the topic. Output only the caption text.
 10) Keep outputs concise to avoid truncation.
 11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';

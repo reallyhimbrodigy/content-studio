@@ -5175,10 +5175,8 @@ const createCard = (post) => {
 
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
-    const categoryText = (normalizedEntry.category || entry.category || pillar || '').toString();
-    const hasEducationalPillar = categoryText.toLowerCase().includes('educational');
-    const angleValue = normalizedEntry.angle || (hasEducationalPillar ? 'Authority-building framework' : 'Myth-busting education');
-    const objectiveValue = normalizedEntry.objective || 'Drive saves + profile visits (education -> authority)';
+    const angleValue = normalizedEntry.angle || 'Fresh creator angle';
+    const objectiveValue = normalizedEntry.objective || 'Share a clear takeaway that invites viewers in';
     const targetSavesValue =
       normalizedEntry.targetSaves ||
       entry.targetSaves ||
