@@ -259,6 +259,12 @@ function openUpgradeCTA() {
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
+  const ANALYTICS_WORK_PLATFORM_IDS = [
+    'de55aeec-0dc8-4119-bf90-16b3d1f0c987', // TikTok
+    '9bb8913b-ddd9-430b-a66a-d74d846e6c66', // Instagram
+  ];
+  const ANALYTICS_PLATFORM_LABELS = ['TikTok', 'Instagram'];
+
   let phylloConnectInstance = null;
   let tokenExpiredTimeout = null;
 
@@ -367,10 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const config = phylloConfigCache || (await fetchPhylloConfig());
       if (!config) return;
       phylloConfigCache = config;
+      config.workPlatformIds = ANALYTICS_WORK_PLATFORM_IDS.slice();
       if (config.token) {
         console.log('[Phyllo] connect config ready', {
           environment: config.environment,
           userId: config.userId,
+          workPlatformCount: config.workPlatformIds.length,
+          platforms: ANALYTICS_PLATFORM_LABELS,
           tokenLength: config.token.length,
         });
       }
