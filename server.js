@@ -5757,6 +5757,94 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  if (parsed.pathname === '/api/phyllo/accounts/connect' && req.method === 'POST') {
+    readJsonBody(req)
+      .then(async (body) => {
+        try {
+          const user = await ensureAnalyticsRequestUser(req);
+          if (!user) {
+            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          }
+          const {
+            userId: phylloUserId,
+            accountId,
+            workPlatformId,
+            platform,
+            handle,
+            displayName,
+            avatarUrl,
+          } = body || {};
+          if (!phylloUserId || !accountId || !workPlatformId) {
+            return sendJson(res, 400, { ok: false, error: 'missing_fields' });
+          }
+          if (!supabaseAdmin || !upsertPhylloAccount) {
+            return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+          }
+          const { error } = await upsertPhylloAccount({
+            userId: user.id,
+            phylloUserId,
+            platform: platform || 'unknown',
+            accountId,
+            workPlatformId,
+            handle,
+            displayName,
+            avatarUrl,
+          });
+          if (error) {
+            console.error('[Phyllo] accounts/connect upsert error', error);
+            return sendJson(res, 500, { ok: false, error: 'db_error' });
+          }
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error('[Phyllo] accounts/connect error', err);
+          return sendJson(res, 500, { ok: false, error: 'server_error' });
+        }
+      })
+      .catch((err) => {
+        console.error('[Phyllo] accounts/connect parse error', err);
+        sendJson(res, 500, { ok: false, error: 'parse_error' });
+      });
+    return;
+  }
+
+  if (parsed.pathname === '/api/phyllo/accounts/disconnect' && req.method === 'POST') {
+    readJsonBody(req)
+      .then(async (body) => {
+        try {
+          const user = await ensureAnalyticsRequestUser(req);
+          if (!user) {
+            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+          }
+          const { userId: phylloUserId, accountId } = body || {};
+          if (!phylloUserId || !accountId) {
+            return sendJson(res, 400, { ok: false, error: 'missing_fields' });
+          }
+          if (!supabaseAdmin) {
+            return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+          }
+          const { error } = await supabaseAdmin
+            .from('phyllo_accounts')
+            .update({ status: 'disconnected' })
+            .eq('user_id', user.id)
+            .eq('phyllo_user_id', phylloUserId)
+            .eq('account_id', accountId);
+          if (error) {
+            console.error('[Phyllo] accounts/disconnect update error', error);
+            return sendJson(res, 500, { ok: false, error: 'db_error' });
+          }
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          console.error('[Phyllo] accounts/disconnect error', err);
+          return sendJson(res, 500, { ok: false, error: 'server_error' });
+        }
+      })
+      .catch((err) => {
+        console.error('[Phyllo] accounts/disconnect parse error', err);
+        sendJson(res, 500, { ok: false, error: 'parse_error' });
+      });
+    return;
+  }
+
   if (parsed.pathname === '/api/phyllo/accounts' && req.method === 'GET') {
     handlePhylloAccounts(req, res);
     return;

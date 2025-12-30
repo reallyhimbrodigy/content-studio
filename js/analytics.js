@@ -259,84 +259,107 @@ function openUpgradeCTA() {
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
+  const PHYLLO_CONNECT_CONFIG = {
+    clientDisplayName: 'Promptly',
+    environment: 'production',
+    userId: 'af3d8d76-874e-4984-a17f-972d5b66ebb6',
+    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWYzZDhkNzYtODc0ZS00OTg0LWExN2YtOTcyZDViNjZlYmI2IiwidGVuYW50X2lkIjoiNTMxYjkxNTMtYjRkMy00NDQxLTkwMzMtYTA2NzgyMzBmMzExIiwidGVuYW50X2FwcF9pZCI6IjA1ZTZjYTQzLWI0ZDktNGRlMy1iZjM2LWFkZjhjYmEyNTg3MSIsInByb2R1Y3RzIjpbIklOQ09NRSIsIlBVQkxJU0hfQ09OVEVOVCIsIklERU5USVRZX0FVRElFTkNFIiwiSURFTlRJVFkiLCJFTkdBR0VNRU5UX0FVRElFTkNFIiwiRU5HQUdFTUVOVCIsIkFDVElWSVRZIl0sImlzcyI6Imh0dHBzOi8vYXBpLmdldHBoeWxsby5jb20iLCJhdWQiOiJodHRwczovL2FwaS5nZXRwaHlsbG8uY29tL3YxL2ludGVybmFsIiwiaWF0IjoxNzY3MTM0NTA4LjA0NzkzNywiZXhwIjoxNzY3NzM5MzA4LjA0NzkzMn0.RdXYaljvZvXKzVlblitwM_bWOdgHAudhiSrVtrWSfVY',
+  };
+
   let phylloConnectInstance = null;
+  let tokenExpiredTimeout = null;
 
-  async function getPhylloInstance() {
-    if (phylloConnectInstance) return phylloConnectInstance;
-
-    const res = await fetchAuthenticated('/api/phyllo/sdk-config');
-    if (!res.ok) {
-      console.error('[Phyllo] sdk-config failed', res.status);
-      return null;
+  function showTokenExpiredNotice() {
+    const statusEl = document.getElementById('sync-status');
+    if (!statusEl) return;
+    statusEl.textContent = 'Phyllo session expired; reconnect to refresh analytics.';
+    if (tokenExpiredTimeout) {
+      clearTimeout(tokenExpiredTimeout);
     }
+    tokenExpiredTimeout = setTimeout(() => {
+      loadSyncStatus();
+      tokenExpiredTimeout = null;
+    }, 12000);
+  }
 
-    const cfg = await res.json();
-    if (!cfg || cfg.ok === false) {
-      console.error('[Phyllo] sdk-config error', cfg);
-      return null;
-    }
-
-    if (!window.PhylloConnect) {
-      console.error('[Phyllo] PhylloConnect not available');
-      return null;
-    }
-
-    const environment = cfg.environment || 'production';
-    const allowSandbox = !!cfg.allowSandbox && cfg.allowSandbox === true;
-
-    const instance = window.PhylloConnect.initialize({
-      clientDisplayName: cfg.clientDisplayName,
-      environment,
-      userId: cfg.userId,
-      token: cfg.token,
-      workPlatformIds: cfg.workPlatformIds || [],
-      allowSandbox,
-      // no callbacks here
-    });
-
-    instance.on('accountConnected', function (accountId, workPlatformId, userId) {
-      console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
-
-      // Persist connection server-side (fire-and-forget)
-      fetchAuthenticated('/api/phyllo/account-connected', {
+  async function persistPhylloConnection(action, payload) {
+    try {
+      const res = await fetchAuthenticated(`/api/phyllo/accounts/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phylloUserId: userId,
-          accountId,
-          workPlatformId,
-          platform: 'unknown',
-          handle: null,
-          displayName: null,
-          avatarUrl: null,
-        }),
-      }).catch((err) => console.error('[Phyllo] failed to persist accountConnected', err));
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        console.error(`[Phyllo] ${action} failed`, res.status, detail);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error(`[Phyllo] ${action} error`, err);
+      return false;
+    }
+  }
+
+  function attachPhylloEvents(instance) {
+    instance.on('accountConnected', async (accountId, workPlatformId, userId) => {
+      console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
+      const saved = await persistPhylloConnection('connect', {
+        userId,
+        accountId,
+        workPlatformId,
+      });
+      if (saved) {
+        loadConnectedAccounts();
+        loadSyncStatus();
+      }
     });
 
-    instance.on('accountDisconnected', function (accountId, workPlatformId, userId) {
+    instance.on('accountDisconnected', async (accountId, workPlatformId, userId) => {
       console.log('[Phyllo] accountDisconnected', { accountId, workPlatformId, userId });
+      const saved = await persistPhylloConnection('disconnect', {
+        userId,
+        accountId,
+        workPlatformId,
+      });
+      if (saved) {
+        loadConnectedAccounts();
+      }
     });
 
-    instance.on('tokenExpired', function (userId) {
+    instance.on('tokenExpired', (userId) => {
       console.log('[Phyllo] tokenExpired for user', userId);
-      // later: refresh token via /api/phyllo/sdk-config
+      showTokenExpiredNotice();
     });
 
-    instance.on('exit', function (reason, userId) {
+    instance.on('exit', (reason, userId) => {
       console.log('[Phyllo] exit', { reason, userId });
     });
 
-    instance.on('connectionFailure', function (reason, workPlatformId, userId) {
+    instance.on('connectionFailure', (reason, workPlatformId, userId) => {
       console.log('[Phyllo] connectionFailure', { reason, workPlatformId, userId });
     });
+  }
 
-    phylloConnectInstance = instance;
-    return instance;
+  function getPhylloInstance() {
+    if (phylloConnectInstance) return phylloConnectInstance;
+    if (!window.PhylloConnect) {
+      console.error('[Phyllo] PhylloConnect SDK is not loaded');
+      return null;
+    }
+    try {
+      const instance = window.PhylloConnect.initialize(PHYLLO_CONNECT_CONFIG);
+      attachPhylloEvents(instance);
+      phylloConnectInstance = instance;
+      return instance;
+    } catch (err) {
+      console.error('[Phyllo] unable to initialize', err);
+      return null;
+    }
   }
 
   async function openPhyllo() {
     try {
-      const instance = await getPhylloInstance();
+      const instance = getPhylloInstance();
       if (!instance) return;
       instance.open();
     } catch (err) {
