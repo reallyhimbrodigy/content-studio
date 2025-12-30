@@ -2376,6 +2376,64 @@ ALGO / SALES REQUIREMENTS:
     classification === 'business'
       ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM.'
       : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling.';
+  const postsPerDaySetting =
+    Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0
+      ? Number(opts.postsPerDay)
+      : 1;
+  const totalPostsRequired = days * postsPerDaySetting;
+  const schemaBlock = [
+    'STRICT JSON SCHEMA (ALL FIELDS REQUIRED, STRINGS MUST BE NON-EMPTY):',
+    '{',
+    '  "type": "array",',
+    `  "minItems": ${totalPostsRequired},`,
+    `  "maxItems": ${totalPostsRequired},`,
+    '  "items": {',
+    '    "type": "object",',
+    '    "required": ["day","title","hook","caption","cta","hashtags","script","reelScript","designNotes","storyPrompt","engagementScripts"],',
+    '    "properties": {',
+    '      "day": { "type": "number" },',
+    '      "title": { "type": "string", "minLength": 1 },',
+    '      "hook": { "type": "string", "minLength": 1 },',
+    '      "caption": { "type": "string", "minLength": 1 },',
+    '      "cta": { "type": "string", "minLength": 1 },',
+    '      "designNotes": { "type": "string", "minLength": 1 },',
+    '      "storyPrompt": { "type": "string", "minLength": 1 },',
+    '      "hashtags": {',
+    '        "type": "array",',
+    '        "minItems": 6,',
+    '        "items": { "type": "string", "minLength": 1 }',
+    '      },',
+    '      "script": {',
+    '        "type": "object",',
+    '        "required": ["hook","body","cta"],',
+    '        "properties": {',
+    '          "hook": { "type": "string", "minLength": 1 },',
+    '          "body": { "type": "string", "minLength": 1 },',
+    '          "cta": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      },',
+    '      "reelScript": {',
+    '        "type": "object",',
+    '        "required": ["hook","body","cta"],',
+    '        "properties": {',
+    '          "hook": { "type": "string", "minLength": 1 },',
+    '          "body": { "type": "string", "minLength": 1 },',
+    '          "cta": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      },',
+    '      "engagementScripts": {',
+    '        "type": "object",',
+    '        "required": ["commentReply","dmReply"],',
+    '        "properties": {',
+    '          "commentReply": { "type": "string", "minLength": 1 },',
+    '          "dmReply": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      }',
+    '    }',
+    '  }',
+    '}',
+    `Return EXACTLY ${totalPostsRequired} objects that obey this schema and keep "reelScript" identical to "script".`,
+  ].join('\n');
   const distributionPlanRules = `Distribution Plan rules:
 - Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
 - Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction engagement/action idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
@@ -2544,6 +2602,7 @@ If unsure, choose Lifestyle over Educational to preserve relatability and engage
     ? '\n\nRetry mode: keep each field concise, trim narrative flourishes, and focus on the essential actions for this niche within the shorter chunk.'
     : '';
   return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
+${schemaBlock}
 - storyPrompt (1-2 short sentences max, a non-empty, niche-tailored free-form creator note that varies its opening across posts; optionally end with a single question mark but never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below"; do not leave empty)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
@@ -3294,73 +3353,6 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
-function isScriptComplete(script = {}) {
-  return Boolean(
-    toPlainString(script?.hook) &&
-    toPlainString(script?.body) &&
-    toPlainString(script?.cta)
-  );
-}
-
-function flattenScriptValue(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) {
-    return value.map(flattenScriptValue).filter(Boolean).join(' ');
-  }
-  if (typeof value === 'object') {
-    return Object.values(value).map(flattenScriptValue).filter(Boolean).join(' ');
-  }
-  return String(value);
-}
-
-function hasScriptContent(script = {}) {
-  if (typeof script === 'string') {
-    return Boolean(script.trim());
-  }
-  const flattened = flattenScriptValue(script);
-  return flattened && flattened.replace(/\s/g, '').length >= 20;
-}
-
-function buildScriptFallback(post = {}, nicheStyle = '') {
-  const topic = toPlainString(post.title || post.idea || post.hook || nicheStyle || 'this idea');
-  const hookCandidate = toPlainString(post.hook || post.title || post.idea || '');
-  const hook = hookCandidate || `Talk through why ${topic} matters.`;
-  const detailLine = toPlainString(post.caption || post.storyPrompt || post.storyPromptPlus || '');
-  const detail = detailLine || `why ${topic} matters for ${nicheStyle || 'this audience'}`;
-  const form = toPlainString(nicheStyle || 'this niche');
-  const bodyLines = [
-    `Beat 1: Open with ${detail}.`,
-    `Beat 2: Show how ${topic} shows up for ${form}.`,
-    `Beat 3: Seal the idea with a quick application or contrast.`,
-  ].slice(0, 3);
-  const body = bodyLines.join('\n');
-  const ctaCandidate =
-    sanitizeCtaText(post.cta) ||
-    sanitizeCtaText(post.callToAction) ||
-    sanitizeCtaText(post.call_to_action) ||
-    sanitizeCtaText(post.cta_text);
-  const cta = ctaCandidate || 'Learn more';
-  return { hook, body, cta };
-}
-
-function ensureCompleteScript(script, post = {}, { nicheStyle = '' } = {}) {
-  const normalized = {
-    hook: toPlainString(script.hook),
-    body: toPlainString(script.body),
-    cta: sanitizeCtaText(script.cta),
-  };
-  if (isScriptComplete(normalized)) {
-    return normalized;
-  }
-  const fallback = buildScriptFallback(post, nicheStyle);
-  return {
-    hook: normalized.hook || fallback.hook,
-    body: normalized.body || fallback.body,
-    cta: normalized.cta || fallback.cta,
-  };
-}
-
 const PLACEHOLDER_PROMPT_REGEX = /^(?:tbd|n\/a|null|undefined|none|story prompt here)$/i;
 const DISTRIBUTION_PLACEHOLDER_REGEX = /^(?:tbd|n\/a|null|undefined|none|distribution plan here)$/i;
 
@@ -3482,11 +3474,9 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
   );
   const topic = toPlainString(post.title || post.idea || post.hook || nicheStyle || 'this topic');
   const topicLabel = topic || 'this topic';
-  const pinnedComment = commentCandidate || `Pinned comment: Appreciate you noticing this idea about ${topicLabel}; here's why it matters.`;
-  const replyScript = dmCandidate || `Reply script: Happy to keep unpacking ${topicLabel} when you're ready.`;
   return {
-    commentReply: pinnedComment,
-    dmReply: replyScript,
+    commentReply: commentCandidate || `Appreciate you noticing this idea about ${topicLabel}.`,
+    dmReply: dmCandidate || `Happy to keep unpacking ${topicLabel}.`,
   };
 }
 
@@ -3506,6 +3496,62 @@ function ensureCtaFallback(post = {}) {
   if (format.includes('story') || format.includes('reel')) return 'Watch this';
   if (format.includes('static')) return 'Check it out';
   return 'Learn more';
+}
+
+const MIN_HASHTAGS = 6;
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && Boolean(value.trim());
+}
+
+function validatePostCompleteness(post = {}) {
+  const missing = [];
+  const checkString = (value, key) => {
+    if (!isNonEmptyString(value) && !missing.includes(key)) {
+      missing.push(key);
+    }
+  };
+  checkString(post.title, 'title');
+  checkString(post.hook, 'hook');
+  checkString(post.caption, 'caption');
+  checkString(post.cta, 'cta');
+  checkString(post.storyPrompt, 'storyPrompt');
+  checkString(post.designNotes, 'designNotes');
+  if (!Number.isFinite(Number(post.day))) missing.push('day');
+
+  const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
+  const validHashtags = hashtags
+    .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+    .filter(Boolean);
+  if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
+
+  const scriptCandidate = post.script || post.videoScript;
+  if (!scriptCandidate) {
+    missing.push('script');
+  } else {
+    checkString(scriptCandidate.hook, 'script.hook');
+    checkString(scriptCandidate.body, 'script.body');
+    checkString(scriptCandidate.cta, 'script.cta');
+  }
+
+  const reelCandidate = post.reelScript || post.reel_script || post.script || post.videoScript;
+  if (!reelCandidate) {
+    missing.push('reelScript');
+  } else {
+    checkString(reelCandidate.hook, 'reelScript.hook');
+    checkString(reelCandidate.body, 'reelScript.body');
+    checkString(reelCandidate.cta, 'reelScript.cta');
+  }
+
+  const engagement = post.engagementScripts;
+  if (!engagement) {
+    missing.push('engagementScripts');
+  } else {
+    checkString(engagement.commentReply, 'engagementScripts.commentReply');
+    checkString(engagement.dmReply, 'engagementScripts.dmReply');
+  }
+
+  return missing;
 }
 
 function computePostCountTarget(days, postsPerDay) {
@@ -3654,7 +3700,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
   const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
   const scriptSource = post.script || post.videoScript || post.reelScript || {};
-  const script = ensureCompleteScript(normalizeScriptObject(scriptSource), post, { nicheStyle });
+  const script = normalizeScriptObject(scriptSource);
   const videoScript = { ...script };
   const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
   const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
@@ -3902,122 +3948,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   throw new Error('OpenAI call retries exhausted');
 }
 
-function sanitizePromptField(field = '') {
-  return toPlainString(field).replace(/[\r\n]+/g, ' ').trim();
-}
-
-function buildMissingScriptPrompt(nicheStyle, brandContext, entries, postsPerDay = 1) {
-  const nicheLabel = nicheStyle ? `"${nicheStyle}"` : 'the requested niche';
-  const brandBlock = brandContext ? `Brand context:\n${brandContext}` : '';
-  const entryLines = entries.map((entry) => {
-    const title = sanitizePromptField(entry.title) || 'Untitled post';
-    const hook = sanitizePromptField(entry.hook);
-    const caption = sanitizePromptField(entry.caption);
-    const storyPrompt = sanitizePromptField(entry.storyPrompt);
-    const details = [];
-    if (hook) details.push(`Hook: "${hook}".`);
-    if (caption) details.push(`Caption: "${caption}".`);
-    if (storyPrompt) details.push(`Story prompt: "${storyPrompt}".`);
-    return `Day ${entry.day} · Slot ${entry.slot}: ${title}. ${details.join(' ')}`.trim();
-  }).join('\n');
-  const slotGuidance = Number(postsPerDay) > 1
-    ? `Slots are numbered 1-${postsPerDay} for each day.`
-    : 'Each day only has slot 1.';
-  return [
-    `You are finishing a ${nicheLabel} content calendar. The posts listed below already have hooks, captions, and story prompts, but their reel_script objects are missing.`,
-    brandBlock,
-    `For every entry, return exactly one JSON array containing objects with these keys: "day" (number), "slot" (1-based index for the post within that day), and "script" (an object with { hook, body, cta }). Write each field in plain, creator-style language; do not use templates such as "Record a short Reel..." or "show the setup/pivot", and do not include "!?" punctuation. Keep each CTA 2–6 words and tied to the niche details below.`,
-    slotGuidance,
-    `Each script.body should include 6-10 short lines (one sentence per line) that form a quick beat outline building toward the CTA, stay niche-locked, and avoid canned phrasing.`,
-    `Each body should expand on the provided concept while staying niche-locked. Do not add other fields, commentary, or markdown—just the JSON array.`,
-    `Missing entries (per day/slot):\n${entryLines}`,
-    `Return JSON only with no extra text.`,
-  ].filter(Boolean).join('\n\n');
-}
-
-async function callOpenAIMissingScripts({
-  entries,
-  nicheStyle,
-  brandContext,
-  postsPerDay = 1,
-  loggingContext = {},
-} = {}) {
-  if (!Array.isArray(entries) || !entries.length) {
-    return { scripts: [], attempts: [], rawContent: '', latency: 0, retryCount: 0 };
-  }
-  const prompt = buildMissingScriptPrompt(nicheStyle, brandContext, entries, postsPerDay);
-  const maxTokens = 1200;
-  const maxAttempts = 1;
-  const basePayload = {
-    model: 'gpt-4o-mini',
-    temperature: 0.5,
-    messages: [{ role: 'user', content: prompt }],
-  };
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const payload = JSON.stringify({ ...basePayload, max_tokens: maxTokens });
-    const requestOptions = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-    };
-    const attemptStart = Date.now();
-    const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
-    const timeoutPromise = new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        const timeoutErr = new Error('OpenAI script retry timed out');
-        timeoutErr.code = 'OPENAI_TIMEOUT';
-        reject(timeoutErr);
-      }, OPENAI_GENERATION_TIMEOUT_MS);
-      requestPromise.finally(() => clearTimeout(timeoutId));
-    });
-    try {
-      const json = await Promise.race([requestPromise, timeoutPromise]);
-      const content = json?.choices?.[0]?.message?.content || '';
-      const { data, attempts } = parseLLMArray(
-        content,
-        {
-          requireArray: true,
-          itemValidate: (item) => {
-            if (!item || typeof item !== 'object') return false;
-            const day = Number(item.day);
-            const scriptField = item.script || item.reel_script || item.reelScript;
-            return Number.isFinite(day) && scriptField && typeof scriptField === 'object';
-          },
-        },
-        {
-          endpoint: 'calendar_script_retry',
-          ...loggingContext,
-        }
-      );
-      return {
-        scripts: data,
-        attempts,
-        rawContent: content,
-        latency: Date.now() - attemptStart,
-        retryCount: attempt,
-      };
-    } catch (err) {
-      const isRetryable =
-        err?.code === 'OPENAI_TIMEOUT' ||
-        err?.code === 'OPENAI_PARSE_ERROR' ||
-        err?.code === 'OPENAI_BACKEND_ERROR';
-      if (attempt >= maxAttempts - 1 || !isRetryable) {
-        const contextLabel = formatCalendarLogContext(loggingContext);
-        const label = contextLabel ? ` (${contextLabel})` : '';
-        console.warn(`[Calendar] script retry failed${label}:`, err.message);
-        throw err;
-      }
-      const backoff = 1000 + Math.round(Math.random() * 500);
-      await wait(backoff);
-    }
-  }
-  throw new Error('OpenAI script retry exhausted');
-}
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
   const strategy = post.strategy;
@@ -4522,65 +4452,6 @@ const server = http.createServer((req, res) => {
   // ---------------------------------------------------------------------------
 
   // helper to generate calendar posts (reuse logic from /api/generate-calendar)
-  function detectMissingScriptEntries(rawPosts = [], startDay = 1, postsPerDay = 1) {
-    const perDay = Number.isFinite(Number(postsPerDay)) && postsPerDay > 0 ? Number(postsPerDay) : 1;
-    const entries = [];
-    for (let idx = 0; idx < rawPosts.length; idx += 1) {
-      const post = rawPosts[idx] || {};
-      const scriptCandidate = normalizeScriptObject(post.script || post.videoScript || post.reelScript || {});
-      if (isScriptComplete(scriptCandidate)) continue;
-      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
-      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      entries.push({
-        index: idx,
-        day,
-        slot,
-        title: toPlainString(post.title || post.idea || ''),
-        hook: toPlainString(post.hook || scriptCandidate.hook || ''),
-        storyPrompt: toPlainString(post.storyPrompt || ''),
-        caption: toPlainString(post.caption || ''),
-      });
-    }
-    return entries;
-  }
-
-  function applyScriptSuggestions(rawPosts = [], suggestions = [], scriptEntries = [], nicheStyle = '') {
-    if (!Array.isArray(suggestions) || !suggestions.length) return 0;
-    const slotMap = new Map();
-    const dayQueues = new Map();
-    for (const entry of scriptEntries) {
-      const key = `${entry.day}:${entry.slot}`;
-      slotMap.set(key, entry.index);
-      if (!dayQueues.has(entry.day)) dayQueues.set(entry.day, []);
-      dayQueues.get(entry.day).push(entry.index);
-    }
-    let applied = 0;
-    for (const item of suggestions) {
-      const day = Number(item.day);
-      if (!Number.isFinite(day)) continue;
-      const slot = Number.isFinite(Number(item.slot)) ? Number(item.slot) : 1;
-      let targetIndex = slotMap.get(`${day}:${slot}`);
-      if (targetIndex === undefined) {
-        const queue = dayQueues.get(day) || [];
-        targetIndex = queue.shift();
-      } else {
-        const queue = dayQueues.get(day);
-        if (queue) {
-          dayQueues.set(day, queue.filter((idx) => idx !== targetIndex));
-        }
-      }
-      if (targetIndex === undefined || targetIndex < 0 || targetIndex >= rawPosts.length) continue;
-      const rawScript = item.script || item.reel_script || item.reelScript || {};
-      const normalized = normalizeScriptObject(rawScript);
-      if (!normalized.hook && !normalized.body && !normalized.cta) continue;
-      const complete = ensureCompleteScript(normalized, rawPosts[targetIndex], { nicheStyle });
-      rawPosts[targetIndex].script = complete;
-      rawPosts[targetIndex].videoScript = complete;
-      rawPosts[targetIndex].reelScript = complete;
-      applied += 1;
-    }
-    return applied;
-  }
   async function generateCalendarPosts(payload = {}) {
     const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
     const loggingContext = context || {};
@@ -4626,6 +4497,7 @@ const server = http.createServer((req, res) => {
       Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : null;
     const perDay = safePostsPerDay || 1;
     const targetCount = computePostCountTarget(days, postsPerDay);
+    const expectedCount = Number.isFinite(Number(targetCount)) ? targetCount : null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
@@ -4722,80 +4594,65 @@ const server = http.createServer((req, res) => {
       timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
       chunkDetails: chunkMetrics,
     });
+    const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
 
     const rawPosts = aggregatedRawPosts;
-    let scriptEntriesBefore = [];
-    const scriptRetryStats = {
-      missingBefore: 0,
-      missingAfterRetry: 0,
-      retryRan: false,
-      error: undefined,
-      attempts: [],
-      suggestions: 0,
-      rawLength: 0,
-      filled: 0,
-      retryCount: 0,
-      repairMethod: 'none',
-      repairUsedOpenAI: false,
-      repairUsedTemplate: false,
-    };
-    try {
-      scriptEntriesBefore = detectMissingScriptEntries(rawPosts, fallbackStart, perDay, nicheStyle);
-      scriptRetryStats.missingBefore = scriptEntriesBefore.length;
-      if (scriptEntriesBefore.length) {
-        try {
-          const scriptResponse = await callOpenAIMissingScripts({
-            entries: scriptEntriesBefore,
-            nicheStyle,
-            brandContext,
-            postsPerDay: perDay,
-            loggingContext,
-          });
-          scriptRetryStats.retryRan = true;
-          scriptRetryStats.rawLength = String(scriptResponse.rawContent || '').length;
-          scriptRetryStats.attempts = Array.isArray(scriptResponse.attempts) ? scriptResponse.attempts : [];
-          scriptRetryStats.retryCount = Number.isFinite(scriptResponse.retryCount)
-            ? scriptResponse.retryCount
-            : 0;
-          scriptRetryStats.suggestions = Array.isArray(scriptResponse.scripts)
-            ? scriptResponse.scripts.length
-            : 0;
-        scriptRetryStats.filled = applyScriptSuggestions(rawPosts, scriptResponse.scripts, scriptEntriesBefore, nicheStyle);
-          scriptRetryStats.repairUsedOpenAI = scriptRetryStats.filled > 0;
-          scriptRetryStats.repairMethod = scriptRetryStats.repairUsedOpenAI ? 'openai' : 'template';
-        } catch (err) {
-          scriptRetryStats.error = String(err?.message || err);
-          scriptRetryStats.repairMethod = 'template';
-        }
-      }
-    } catch (err) {
-      scriptRetryStats.error = scriptRetryStats.error || String(err?.message || err);
-      scriptRetryStats.repairMethod = 'template';
-      scriptRetryStats.repairUsedTemplate = true;
-      console.error('[Calendar] script repair failure', {
+    if (expectedCount && rawPosts.length !== expectedCount) {
+      const err = new Error('Calendar response count mismatch');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 500;
+      err.details = {
+        expectedCount,
+        actualCount: rawPosts.length,
+      };
+      console.warn('[Calendar][Server][SchemaValidation] count mismatch', {
         requestId: loggingContext?.requestId,
         startDay,
         days,
         postsPerDay,
-        err: err?.message || err,
+        ...err.details,
+        responseLength: rawLength,
       });
+      throw err;
     }
-    let scriptEntriesAfter = [];
-    try {
-      scriptEntriesAfter = detectMissingScriptEntries(rawPosts, fallbackStart, perDay, nicheStyle);
-    } catch (err) {
-      scriptEntriesAfter = [];
+    const missingFieldsReport = [];
+    rawPosts.forEach((post, idx) => {
+      const missing = validatePostCompleteness(post);
+      if (!missing.length) return;
+      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+      missingFieldsReport.push({ index: idx, day, slot, missing });
+    });
+    if (missingFieldsReport.length) {
+      const err = new Error('Calendar response missing required fields');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 500;
+      err.details = missingFieldsReport;
+      console.warn('[Calendar][Server][SchemaValidation]', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        postsPerDay,
+        expectedCount,
+        actualCount: rawPosts.length,
+        missingFields: missingFieldsReport.length,
+        retryUsed: false,
+        responseLength: rawLength,
+        detailSamples: missingFieldsReport.slice(0, 3),
+      });
+      throw err;
     }
-    scriptRetryStats.missingAfterRetry = scriptEntriesAfter.length;
-    scriptRetryStats.repairUsedTemplate =
-      scriptRetryStats.repairUsedTemplate ||
-      (!scriptRetryStats.repairUsedOpenAI && scriptRetryStats.missingAfterRetry > 0);
-    console.log('[Calendar][Server][ScriptRetry]', {
+    console.log('[Calendar][Server][SchemaValidation]', {
       requestId: loggingContext?.requestId,
       startDay,
       days,
       postsPerDay,
-      ...scriptRetryStats,
+      expectedCount: expectedCount || rawPosts.length,
+      actualCount: rawPosts.length,
+      missingFieldsBefore: missingFieldsReport.length,
+      missingFieldsAfter: 0,
+      retryUsed: false,
+      responseLength: rawLength,
     });
     const rawHashtagsMissing = rawPosts.filter(
       (post) => !(Array.isArray(post.hashtags) && post.hashtags.length)
@@ -4805,7 +4662,6 @@ const server = http.createServer((req, res) => {
     }
     const rawCtaMissing = rawPosts.filter((post) => !hasCtaValue(post)).length;
     const rawEngagementMissing = rawPosts.filter((post) => !hasEngagementValue(post)).length;
-    const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
     const openDuration = Date.now() - callStart;
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
@@ -4876,31 +4732,6 @@ const server = http.createServer((req, res) => {
       missingAfter: designNotesMissingAfter,
       sampleLength: posts[0] ? String(posts[0].designNotes || '').length : 0,
     });
-    const scriptMissingAfterNormalization = posts.filter((post) => !hasScriptContent(post.script)).length;
-    const parseErrorSummary = parseErrors.length
-      ? parseErrors.map((entry) => ({ code: entry.code, message: entry.message }))
-      : undefined;
-    console.log('[Calendar][Server][ReelScript]', {
-      requestId: loggingContext?.requestId,
-      batchIndex: loggingContext?.batchIndex,
-      startDay,
-      days,
-      postsPerDay,
-      rawResponseLength: rawLength,
-      parseErrors: parseErrorSummary,
-      missingBeforeRepair: scriptRetryStats.missingBefore,
-      missingAfterRepair: scriptRetryStats.missingAfterRetry,
-      missingAfterNormalization: scriptMissingAfterNormalization,
-      repairMethod: scriptRetryStats.repairMethod,
-      repairUsedOpenAI: scriptRetryStats.repairUsedOpenAI,
-      repairUsedTemplate: scriptRetryStats.repairUsedTemplate,
-      retryRan: scriptRetryStats.retryRan,
-      retryError: scriptRetryStats.error,
-      retryAttempts: scriptRetryStats.retryCount,
-      suggestions: scriptRetryStats.suggestions,
-      filled: scriptRetryStats.filled,
-      responseLength: scriptRetryStats.rawLength,
-    });
     const ctaMissingAfter = posts.filter((post) => !String(post.cta || '').trim()).length;
     const ctaAutoFilled = Math.max(0, rawCtaMissing - ctaMissingAfter);
     console.log('[Calendar][Server][CTA]', {
@@ -4926,31 +4757,6 @@ const server = http.createServer((req, res) => {
         ? String(posts[0].engagementScripts.commentReply).length
         : 0,
     });
-    if (targetCount && posts.length < targetCount) {
-      const needed = targetCount - posts.length;
-      for (let extra = 0; extra < needed; extra += 1) {
-        const day = computePostDayIndex(posts.length + extra, fallbackStart, perDay);
-        const fallback = buildFallbackPost(nicheStyle, day);
-        fallback.storyPrompt = ensureStoryPromptFallback(fallback, nicheStyle);
-        fallback.storyPromptPlus = ensureStoryPromptPlusFallback(fallback, nicheStyle);
-        posts.push(fallback);
-      }
-      console.warn('[Calendar] Added fallback posts to meet target count', {
-        requestId: loggingContext?.requestId,
-        added: needed,
-        targetCount,
-      });
-    } else if (targetCount && posts.length > targetCount) {
-      posts = posts.slice(0, targetCount);
-    } else if (!targetCount && !posts.length) {
-      const fallbackDay = computePostDayIndex(0, fallbackStart, perDay);
-      const fallback = buildFallbackPost(nicheStyle, fallbackDay);
-      posts.push(fallback);
-      console.warn('[Calendar] Added fallback post when no generated posts returned', {
-        requestId: loggingContext?.requestId,
-        day: fallbackDay,
-      });
-    }
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
@@ -5005,7 +4811,7 @@ const server = http.createServer((req, res) => {
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
       count: posts.length,
-      expectedCount: targetCount || posts.length,
+      expectedCount: expectedCount || posts.length,
       rawLength,
       latencyMs: openAiLatency,
       context: loggingContext,
@@ -5249,8 +5055,13 @@ const server = http.createServer((req, res) => {
             : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
           requestId,
         };
-        if (isSchemaError && !isProduction && err?.rawContent) {
-          payload.error.debug = err.rawContent;
+        if (isSchemaError) {
+          if (!isProduction && err?.rawContent) {
+            payload.error.debug = err.rawContent;
+          }
+          if (err?.details) {
+            payload.error.details = err.details;
+          }
         }
         if (!isSchemaError && !isProduction && err?.stack) {
           payload.debugStack = err.stack;
