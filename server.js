@@ -1937,9 +1937,13 @@ const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
   return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
 })();
-const OPENAI_TIMEOUT_MS = (() => {
-  const configured = Number(process.env.OPENAI_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured >= 1000 ? configured : 50000;
+const OPENAI_GENERATION_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.OPENAI_GENERATION_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 120000 ? configured : 120000;
+})();
+const OPENAI_MAX_ATTEMPTS = (() => {
+  const configured = Number(process.env.OPENAI_MAX_ATTEMPTS);
+  return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
 })();
 const openAiQueue = [];
 let openAiActiveRequests = 0;
@@ -1959,66 +1963,27 @@ async function withOpenAiSlot(fn) {
   }
 }
 
-function openAIRequest(options, payload, retryCount = 0, maxRetries = 3, signal = null) {
+function openAIRequest(options, payload) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {
-        cleanup();
         try {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             resolve(JSON.parse(data));
           } else {
-            // Retry on 502, 503, 504 (server errors) up to 3 times
-            if ((res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) && retryCount < maxRetries) {
-              const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-              console.log(`OpenAI ${res.statusCode} error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})...`);
-              setTimeout(() => {
-                openAIRequest(options, payload, retryCount + 1, maxRetries, signal).then(resolve).catch(reject);
-              }, delay);
-            } else {
-              reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
-            }
+            const err = new Error(`OpenAI error ${res.statusCode}: ${data}`);
+            err.code = 'OPENAI_BACKEND_ERROR';
+            err.statusCode = res.statusCode;
+            reject(err);
           }
         } catch (err) {
           reject(err);
         }
       });
     });
-    const abortError = new Error('OpenAI request aborted');
-    abortError.code = 'OPENAI_ABORTED';
-    const handleAbort = () => {
-      req.destroy(abortError);
-    };
-    const cleanup = () => {
-      if (signal) {
-        signal.removeEventListener('abort', handleAbort);
-      }
-    };
-    if (signal) {
-      if (signal.aborted) {
-        cleanup();
-        return reject(abortError);
-      }
-      signal.addEventListener('abort', handleAbort);
-    }
-    req.on('error', (err) => {
-      cleanup();
-      if (err.code === 'OPENAI_ABORTED') {
-        return reject(err);
-      }
-      // Retry on network errors up to 3 times
-      if (retryCount < maxRetries) {
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`OpenAI network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})...`, err.message);
-        setTimeout(() => {
-          openAIRequest(options, payload, retryCount + 1, maxRetries, signal).then(resolve).catch(reject);
-        }, delay);
-      } else {
-        reject(err);
-      }
-    });
+    req.on('error', reject);
     if (payload) req.write(payload);
     req.end();
   });
@@ -3297,6 +3262,31 @@ function ensureHashtagArray(value, fallback = [], minLength = 0) {
   return hashtags;
 }
 
+function sanitizeHashtagToken(value = '') {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  return normalized;
+}
+
+function buildFallbackHashtagList(nicheStyle = '', platform = '') {
+  const tokens = [];
+  const addToken = (value) => {
+    const sanitized = sanitizeHashtagToken(value);
+    if (sanitized && !tokens.includes(sanitized)) tokens.push(sanitized);
+  };
+  addToken(nicheStyle);
+  addToken(platform);
+  const extras = ['content', 'creator', 'shortform', 'story', 'strategy', 'engagement', 'tips', 'insight', 'daily', 'plan', 'workflow', 'framework', 'ideas'];
+  extras.forEach(addToken);
+  let fillerIndex = 0;
+  while (tokens.length < 8) {
+    addToken(`content${fillerIndex}`);
+    fillerIndex += 1;
+  }
+  return tokens.slice(0, 15).map((token) => `#${token}`);
+}
+
 function normalizeScriptObject(source = {}) {
   const hook = toPlainString(source.hook);
   const body = toPlainString(source.body);
@@ -3589,8 +3579,9 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
   const fallbackDay = typeof forcedDay === 'number'
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
-  const defaultHashtags = [];
-  const hashtags = ensureHashtagArray(post.hashtags || [], defaultHashtags, 0);
+  const platform = toPlainString(post.format || post.platform || 'Reel');
+  const fallbackHashtags = buildFallbackHashtagList(nicheStyle, platform);
+  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, 8);
   const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
   const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
   const script = normalizeScriptObject(post.script || post.videoScript || {});
@@ -3787,33 +3778,56 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
+  const maxAttempts = Number.isFinite(Number(opts.maxAttempts))
+    ? Math.max(1, Number(opts.maxAttempts))
+    : OPENAI_MAX_ATTEMPTS;
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const json = await withOpenAiSlot(() =>
-    openAIRequest(requestOptions, payload, 0, 3, opts.signal)
-  );
-  const content = json?.choices?.[0]?.message?.content || '';
-  try {
-    const { data, attempts } = parseLLMArray(
-      content,
-      {
-        requireArray: true,
-        itemValidate: (p) => p && typeof p === 'object',
-      },
-      {
-        endpoint: 'calendar',
-        ...loggingContext,
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const attemptStart = Date.now();
+    const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
+    const timeoutPromise = new Promise((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        const timeoutErr = new Error('OpenAI request timed out');
+        timeoutErr.code = 'OPENAI_TIMEOUT';
+        reject(timeoutErr);
+      }, OPENAI_GENERATION_TIMEOUT_MS);
+      requestPromise.finally(() => clearTimeout(timeoutId));
+    });
+    try {
+      const json = await Promise.race([requestPromise, timeoutPromise]);
+      const content = json?.choices?.[0]?.message?.content || '';
+      const { data, attempts } = parseLLMArray(
+        content,
+        {
+          requireArray: true,
+          itemValidate: (p) => p && typeof p === 'object',
+        },
+        {
+          endpoint: 'calendar',
+          ...loggingContext,
+        }
+      );
+      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+      return {
+        posts: data,
+        attempts,
+        rawContent: content,
+        latency: Date.now() - attemptStart,
+        retryCount: attempt,
+      };
+    } catch (err) {
+      const isRetryable = err?.code === 'OPENAI_TIMEOUT' || err?.code === 'OPENAI_PARSE_ERROR' || err?.code === 'OPENAI_BACKEND_ERROR';
+      if (attempt >= maxAttempts - 1 || !isRetryable) {
+        const contextLabel = formatCalendarLogContext(loggingContext);
+        const label = contextLabel ? ` (${contextLabel})` : '';
+        console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
+        throw err;
       }
-    );
-    if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
-    return { posts: data, attempts, rawContent: content };
-  } catch (err) {
-    err.code = 'OPENAI_PARSE_ERROR';
-    err.rawContent = content;
-    const contextLabel = formatCalendarLogContext(loggingContext);
-    const label = contextLabel ? ` (${contextLabel})` : '';
-    console.warn(`[Calendar] parse failure${label}:`, err.message);
-    throw err;
+      const backoff = 1000 + Math.round(Math.random() * 500);
+      await wait(backoff);
+    }
   }
+  throw new Error('OpenAI call retries exhausted');
 }
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
@@ -4374,85 +4388,48 @@ const server = http.createServer((req, res) => {
     let processedDays = 0;
     const chunkBaseTokens = 3200;
     const chunkMinTokens = 1400;
-    const chunkTokenDelta = 600;
-    const chunkMaxAttempts = 3;
 
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
-      let attempt = 0;
-      let lastError = null;
-      while (attempt < chunkMaxAttempts) {
-        const controller = typeof AbortController === 'function' ? new AbortController() : null;
-        const signal = controller?.signal;
-        let timeoutId = null;
-        if (controller) {
-          timeoutId = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-        }
-        const attemptStart = Date.now();
-        const maxTokensForAttempt = Math.max(chunkMinTokens, chunkBaseTokens - attempt * chunkTokenDelta);
-        const reduceVerbosity = attempt > 0;
-        try {
-          const result = await callOpenAI(nicheStyle, brandContext, {
-            days: chunkDays,
-            startDay: chunkStartDay,
-            postsPerDay: perDay,
-            loggingContext: chunkContext,
-            maxTokens: maxTokensForAttempt,
-            signal,
-            reduceVerbosity,
-          });
-          const latency = Date.now() - attemptStart;
-          if (timeoutId) clearTimeout(timeoutId);
-          return {
-            posts: Array.isArray(result.posts) ? result.posts : [],
-            rawLength: String(result.rawContent || '').length,
-            latency,
-            retryCount: attempt,
-            error: null,
-            fallback: false,
-          };
-        } catch (err) {
-          if (timeoutId) clearTimeout(timeoutId);
-          lastError = err;
-          const isRetryable = err?.code === 'OPENAI_TIMEOUT' || err?.code === 'OPENAI_PARSE_ERROR';
-          const duration = Date.now() - attemptStart;
-          if (isRetryable) {
-            parseErrors.push({
-              chunkIndex,
-              startDay: chunkStartDay,
-              days: chunkDays,
-              attempt,
-              code: err.code,
-              message: err.message,
-            });
-            if (attempt < chunkMaxAttempts - 1) {
-              const backoff = 1000 * Math.pow(2, attempt);
-              await wait(backoff);
-              attempt += 1;
-              continue;
-            }
-            return {
-              posts: [],
-              rawLength: 0,
-              latency: duration,
-              retryCount: attempt,
-              error: err,
-              fallback: true,
-            };
-          }
-          throw err;
-        } finally {
-          if (timeoutId) clearTimeout(timeoutId);
-        }
+      const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
+      const attemptStart = Date.now();
+      try {
+        const result = await callOpenAI(nicheStyle, brandContext, {
+          days: chunkDays,
+          startDay: chunkStartDay,
+          postsPerDay: perDay,
+          loggingContext: chunkContext,
+          maxTokens: chunkMaxTokens,
+        });
+        const latency = result.latency || Date.now() - attemptStart;
+        return {
+          posts: Array.isArray(result.posts) ? result.posts : [],
+          rawLength: String(result.rawContent || '').length,
+          latency,
+          retryCount: typeof result.retryCount === 'number' ? result.retryCount : 0,
+          error: null,
+          fallback: false,
+          abortReason: null,
+        };
+      } catch (err) {
+        const duration = Date.now() - attemptStart;
+        parseErrors.push({
+          chunkIndex,
+          startDay: chunkStartDay,
+          days: chunkDays,
+          code: err?.code,
+          message: err?.message,
+        });
+        return {
+          posts: [],
+          rawLength: 0,
+          latency: duration,
+          retryCount: OPENAI_MAX_ATTEMPTS - 1,
+          error: err,
+          fallback: true,
+          abortReason: err?.code,
+        };
       }
-      return {
-        posts: [],
-        rawLength: 0,
-        latency: 0,
-        retryCount: chunkMaxAttempts - 1,
-        error: lastError,
-        fallback: true,
-      };
     }
 
     while (remainingDays > 0) {
@@ -4470,6 +4447,8 @@ const server = http.createServer((req, res) => {
         retryCount: chunkResult.retryCount,
         fallback: chunkResult.fallback,
         error: chunkResult.error ? chunkResult.error.message : undefined,
+        timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+        abortReason: chunkResult.abortReason,
       });
       remainingDays -= chunkDays;
       processedDays += chunkDays;
@@ -4491,10 +4470,14 @@ const server = http.createServer((req, res) => {
       days,
       postsPerDay,
       chunkCount: chunkMetrics.length,
+      timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
       chunkDetails: chunkMetrics,
     });
 
     const rawPosts = aggregatedRawPosts;
+    const rawHashtagsMissing = rawPosts.filter(
+      (post) => !(Array.isArray(post.hashtags) && post.hashtags.length)
+    ).length;
     if (!rawPosts.length) {
       console.warn('[Calendar] No posts returned across chunks, relying on fallback posts', logContext);
     }
@@ -4518,6 +4501,19 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    const hashtagsMissingAfter = posts.filter(
+      (post) => !(Array.isArray(post.hashtags) && post.hashtags.length)
+    ).length;
+    const hashtagsAutoFilled = Math.max(0, rawHashtagsMissing - hashtagsMissingAfter);
+    console.log('[Calendar][Server][Hashtags]', {
+      requestId: loggingContext?.requestId,
+      startDay,
+      days,
+      postsPerDay,
+      missingRaw: rawHashtagsMissing,
+      missingAfter: hashtagsMissingAfter,
+      autoFilled: hashtagsAutoFilled,
+    });
     const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
     if (missingStoryPrompt.length) {
       console.warn('[Calendar] Missing storyPrompt; applying fallback prompts', {
