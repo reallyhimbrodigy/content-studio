@@ -2620,8 +2620,7 @@ Rules:
 - If unsure, invent concise, plausible content rather than omitting fields.
 - Always include every field above (use empty string only if absolutely necessary).
 - Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
-- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
-${verbosityGate ? `\n${verbosityGate}` : ''}`;
+  - Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.${verbosityGate ? `\n${verbosityGate}` : ''}`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
