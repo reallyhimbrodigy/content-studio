@@ -194,7 +194,7 @@ async function syncAudience(userId) {
 }
 
 async function syncFollowerMetrics(userId) {
-  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const base = PHYLLO_API_BASE_URL;
   let total = 0;
   const followerSeries = [];
 
@@ -255,7 +255,7 @@ async function syncFollowerMetrics(userId) {
 }
 
 async function syncDemographics(userId) {
-  const base = process.env.PHYLLO_API_BASE_URL || 'https://api.sandbox.getphyllo.com';
+  const base = PHYLLO_API_BASE_URL;
   const demographics = {};
 
   try {
