@@ -2326,13 +2326,17 @@ FALLBACK (prompt-level): If unsure, choose Reel.
       SALES/ALGO REQUIREMENTS: make the deliverable feel like the natural next step after the pain; avoid hype and rely on relevance-driven curiosity.
       FALLBACK (prompt-level): “the simple guide that explains this clearly” (adapt wording for the niche but keep the tone neutral).
 11) STORY PROMPT+ HARD RULES: Write a second, distinct Story variation for this post in the niche: {niche}. It must stay niche-locked (never borrow unrelated industries, including the banned skincare/medspa terms unless the niche is explicitly skincare). Choose a different structure than the primary Story prompt (e.g., quick Q&A, myth vs fact, mini checklist, tempo shift). Output 2–4 sentences describing what to show/say, ensuring the phrasing never repeats the Story Prompt text or shared scaffolds. Focus on prompt-specific interactions (stickers, questions, polls) only when they fit organically; do not rely on templates like “This or That” unless the content naturally warrants it. Before returning Story Prompt+, double-check for any cross-niche words and replace them with niche-specific terminology.
-12) Story Prompt:
-- Provide 1–2 sentences that read like a natural creator note describing what to show or say in this Story, tie the wording to the provided niche ({nicheStyle}) and the post’s concept, and vary the opening and phrasing across posts.
-- Keep the language conversational, stay niche-specific, avoid template scaffolds, never end with "!?" punctuation, and skip repeated CTA clichés such as "Tag a friend", "DM us", or "Comment below" unless the idea genuinely calls for them.
-- Output only the prompt text, one line per post (no additional commentary).
-13) Execution Notes: output 2–4 bullet points focused on this post’s niche concept. Each bullet should describe practical execution direction (shot type, pacing, structure, feel) tied directly to the topic; avoid generic filming advice. Output only bullets, no labels.
-14) Keep outputs concise to avoid truncation.
-15) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+12) Story Prompt: write one calm, natural sentence aimed at the creator describing what to talk about in this Story. Keep the wording conversational, tie it to the provided niche ({nicheStyle}) and the post’s unique concept, and avoid category labels, marketing tags, or template phrases. Do not include exclamation marks, slogans, instructional scaffolding (no “show”, “highlight”, “ask”, etc.), or forced CTAs. Output only the prompt text.
+
+BAN LIST:
+- No exclamation marks or question marks followed by exclamation marks.
+- No slogans (“glow-up”, “starts now”, “don’t miss”, “tag a friend”, “client transformation story”).
+- No instructional scaffolding (“show the setup”, “highlight the pivot”, “walk through the steps”, “ask viewers to”).
+- No category labels within the sentence.
+- No marketing punctuation or hype (“!!!”, “?!”, “⚡”).
+12) Execution Notes: output 2–4 bullet points focused on this post’s niche concept. Each bullet should describe practical execution direction (shot type, pacing, structure, feel) tied directly to the topic; avoid generic filming advice. Output only bullets, no labels.
+13) Keep outputs concise to avoid truncation.
+14) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
 
   const audioRules = `AUDIO RULES (HARD):
 - Output audio suggestions ONLY for the platforms already listed in the card.
@@ -3277,18 +3281,12 @@ function resolveStoryPromptValue(post = {}) {
 function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
   const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
   const hook = toPlainString(post.hook || '');
-  const niche = toPlainString(nicheStyle || '');
-  const parts = [hook, topic]
-    .map((part) => toPlainString(part))
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (niche) {
-    const normalizedNiche = niche.trim();
-    if (normalizedNiche && !parts.some((part) => part.toLowerCase().includes(normalizedNiche.toLowerCase()))) {
-      parts.push(normalizedNiche);
-    }
-  }
-  return parts.join('. ');
+  const niche = toPlainString(nicheStyle || 'this niche');
+  const cta = toPlainString(post.cta || 'What does that mean for you?');
+  const question = cta.endsWith('?') ? cta : `${cta}?`;
+  const description = hook ? `${hook} ${topic}` : topic;
+  const prefix = niche ? `${niche} focus: ` : '';
+  return `${prefix}${description}. ${question}`;
 }
 
 const STORY_PROMPT_PLUS_ALIASES = [
@@ -3350,20 +3348,16 @@ function buildDistributionPlanFallback(post = {}, nicheStyle = '') {
 }
 
 function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
+  const format = toPlainString(post.format || 'Reel') || 'Reel';
+  const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
+  const niche = toPlainString(nicheStyle || 'this niche');
   const hook = toPlainString(post.hook || '');
   const angle = toPlainString(post.angle || '');
-  const detail = toPlainString(post.storyPrompt || post.caption || post.topic || post.idea || '');
-  const niche = toPlainString(nicheStyle || '');
-  const parts = [hook, angle, detail]
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (niche) {
-    const normalizedNiche = niche.trim();
-    if (normalizedNiche && !parts.some((part) => part.toLowerCase().includes(normalizedNiche.toLowerCase()))) {
-      parts.push(normalizedNiche);
-    }
-  }
-  return parts.join('. ');
+  const detail = hook || angle || topic;
+  const cta = toPlainString(post.cta || 'What would you try next?');
+  const question = cta.endsWith('?') ? cta : `${cta}?`;
+  const base = toPlainString(post.storyPrompt || detail);
+  return `Shape a ${format} story for ${niche} about ${base}: describe the turning point, what changed, and ask ${question}`;
 }
 
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
