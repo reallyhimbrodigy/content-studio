@@ -3311,6 +3311,29 @@ function ensureStoryPromptPlusFallback(post = {}, nicheStyle = '') {
   return `Add more detail about ${nicheStyle || 'the topic'}?`;
 }
 
+function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
+  const existing = String(post.designNotes || '').trim();
+  if (existing) return existing;
+  const idea = toPlainString(post.idea || post.title || post.hook || '');
+  const promptRef = toPlainString(post.storyPrompt || '').trim();
+  const topic = idea || promptRef || 'this topic';
+  const format = toPlainString(post.format || 'Reel').toLowerCase();
+  const niche = toPlainString(nicheStyle || 'your niche');
+  const direction = [];
+  if (format) {
+    direction.push(`Frame this ${format} with visual cues that spotlight ${topic}.`);
+  } else {
+    direction.push(`Use visuals that underline ${topic}.`);
+  }
+  if (niche) {
+    direction.push(`Tie palette and props to ${niche} so the story feels anchored.`);
+  }
+  if (promptRef) {
+    direction.push(`Let the movement echo "${promptRef}" while keeping transitions smooth.`);
+  }
+  return direction.join(' ').trim() || `Visuals should stay focused on ${topic}.`;
+}
+
 function computePostCountTarget(days, postsPerDay) {
   const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
   const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
@@ -4292,6 +4315,17 @@ const server = http.createServer((req, res) => {
     const targetCount = computePostCountTarget(days, postsPerDay);
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
+    const designNotesMissingBefore = posts.filter((post) => !String(post.designNotes || '').trim()).length;
+    posts.forEach((post) => {
+      post.designNotes = ensureDesignNotesFallback(post, nicheStyle);
+    });
+    const designNotesMissingAfter = posts.filter((post) => !String(post.designNotes || '').trim()).length;
+    console.log('[Calendar][Server][DesignNotes]', {
+      requestId: loggingContext?.requestId,
+      missingBefore: designNotesMissingBefore,
+      missingAfter: designNotesMissingAfter,
+      sampleLength: posts[0] ? String(posts[0].designNotes || '').length : 0,
+    });
     if (targetCount && posts.length < targetCount) {
       const needed = targetCount - posts.length;
       for (let extra = 0; extra < needed; extra += 1) {
