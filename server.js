@@ -3277,12 +3277,97 @@ function resolveStoryPromptValue(post = {}) {
 function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
   const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
   const hook = toPlainString(post.hook || '');
-  const niche = toPlainString(nicheStyle || 'this niche');
-  const cta = toPlainString(post.cta || 'What does that mean for you?');
-  const question = cta.endsWith('?') ? cta : `${cta}?`;
-  const description = hook ? `${hook} ${topic}` : topic;
-  const prefix = niche ? `${niche} focus: ` : '';
-  return `${prefix}${description}. ${question}`;
+  const niche = toPlainString(nicheStyle || '');
+  const parts = [hook, topic]
+    .map((part) => toPlainString(part))
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (niche) {
+    const normalizedNiche = niche.trim();
+    if (normalizedNiche && !parts.some((part) => part.toLowerCase().includes(normalizedNiche.toLowerCase()))) {
+      parts.push(normalizedNiche);
+    }
+  }
+  return parts.join('. ');
+}
+
+function ensureStoryPromptFallback(post = {}, nicheStyle = '') {
+  const current = String(post.storyPrompt || '').trim();
+  if (current) return current;
+  const fallback = buildStoryPromptFromPost(post, nicheStyle);
+  if (fallback) return fallback;
+  const idea = toPlainString(post.idea || post.title || 'talk through this insight');
+  if (idea) return `${idea}.`;
+  return `Share an idea about ${nicheStyle || 'your niche'}.`;
+}
+
+function ensureStoryPromptPlusFallback(post = {}, nicheStyle = '') {
+  const current = String(post.storyPromptPlus || '').trim();
+  if (current) return current;
+  const fallback = buildStoryPromptPlusFromPost(post, nicheStyle);
+  if (fallback) return fallback;
+  const idea = toPlainString(post.idea || post.title || 'add more context');
+  if (idea) return `Add context to ${idea} and ask what viewers think?`;
+  return `Add more detail about ${nicheStyle || 'the topic'}?`;
+}
+
+function computePostCountTarget(days, postsPerDay) {
+  const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
+  const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
+  if (safeDays && safePerDay) {
+    return Math.max(1, Math.round(safeDays)) * Math.max(1, Math.round(safePerDay));
+  }
+  return null;
+}
+
+function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
+  const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
+  return baseStart + Math.floor(index / perDay);
+}
+
+function buildFallbackPost(nicheStyle = '', day = 1) {
+  const normalizedNiche = toPlainString(nicheStyle || 'this niche').trim();
+  const sanitizedNiche = normalizedNiche || 'this niche';
+  const idea = `Placeholder idea about ${sanitizedNiche}`;
+  const baseHashtag = sanitizedNiche.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'niche';
+  return {
+    day,
+    idea,
+    title: idea,
+    type: 'lifestyle',
+    hook: `Share a quick tip about ${sanitizedNiche}.`,
+    caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
+    hashtags: [`#${baseHashtag}`],
+    format: 'Reel',
+    formatIntent: '',
+    cta: 'Let me know what you think.',
+    pillar: 'Lifestyle',
+    storyPrompt: `Talk briefly about ${sanitizedNiche} and invite a reaction.`,
+    storyPromptPlus: `Add proof or context on ${sanitizedNiche} and ask what viewers would try next?`,
+    designNotes: 'Neutral background with subtle motion.',
+    repurpose: [],
+    analytics: [],
+    engagementScripts: { commentReply: 'Thanks! What would you try next?', dmReply: 'Happy to share more details.' },
+    promoSlot: false,
+    weeklyPromo: '',
+    script: { hook: 'Quick hook', body: 'Explain the idea fast.', cta: 'Ask for feedback.' },
+    instagram_caption: '',
+    tiktok_caption: '',
+    linkedin_caption: '',
+    audio: '',
+    strategy: {
+      angle: `Placeholder angle for ${sanitizedNiche}`,
+      objective: 'engagement',
+      target_saves_pct: 3,
+      target_comments_pct: 2,
+      pinned_keyword: 'IDEA',
+      pinned_deliverable: 'Checklist',
+      hook_options: ['Hook 1', 'Hook 2', 'Hook 3'],
+      pinned_comment: `Tell me what you think.`,
+    },
+    distributionPlan: '',
+  };
 }
 
 const STORY_PROMPT_PLUS_ALIASES = [
@@ -3476,33 +3561,35 @@ function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDa
       return normalizePost(removeStoryPromptOverrideFields(post), idx, startDay, forcedDay, nicheStyle);
     }
   }
-  try {
-    return normalizePost(post, idx, startDay, forcedDay, nicheStyle);
-  } catch (err) {
-    const isOverrideError = String(err?.message || '').includes(STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED);
-    if (!isOverrideError) throw err;
-    const contextMeta = {
-      requestId: loggingContext?.requestId || 'unknown',
-      userId: loggingContext?.userId || null,
-      niche: nicheStyle,
-      day: overrideDay,
-    };
-    console.warn('[Calendar] Story prompt override invalid, continuing without it', {
-      ...contextMeta,
-      message: err.message,
-    });
-    const sanitized = removeStoryPromptOverrideFields(post);
     try {
-      return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle);
-    } catch (fallbackErr) {
-      console.warn('[Calendar] Story prompt override fallback failed, skipping post', {
+      return normalizePost(post, idx, startDay, forcedDay, nicheStyle);
+    } catch (err) {
+      const isOverrideError = String(err?.message || '').includes(STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED);
+      if (!isOverrideError) throw err;
+      const contextMeta = {
+        requestId: loggingContext?.requestId || 'unknown',
+        userId: loggingContext?.userId || null,
+        niche: nicheStyle,
+        day: overrideDay,
+      };
+      console.warn('[Calendar] Story prompt override invalid, continuing without it', {
         ...contextMeta,
-        message: fallbackErr.message,
+        message: err.message,
       });
-      pushOverrideWarning(loggingContext, overrideDay);
-      return null;
+      const sanitized = removeStoryPromptOverrideFields(post);
+      try {
+        return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle);
+      } catch (fallbackErr) {
+        const fallbackDay = computePostDayIndex(idx, startDay);
+        console.warn('[Calendar] Story prompt override fallback failed, using fallback post', {
+          ...contextMeta,
+          message: fallbackErr.message,
+        });
+        pushOverrideWarning(loggingContext, overrideDay);
+        const fallbackPost = buildFallbackPost(nicheStyle, fallbackDay);
+        return fallbackPost;
+      }
     }
-  }
 }
 
 const buildDistributionPlanText = (post = {}) => toPlainString(post.distributionPlan || '');
@@ -3557,26 +3644,26 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     },
   };
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const fetchAndParse = async (attempt = 0) => {
-    const json = await openAIRequest(requestOptions, payload);
-    const content = json?.choices?.[0]?.message?.content || '';
-    try {
-      const { data, attempts } = parseLLMArray(content, {
-        requireArray: true,
-        itemValidate: (p) => p && typeof p.day === 'number',
-      }, {
-        endpoint: 'calendar',
-        ...loggingContext,
-      });
-      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
-      return data;
-    } catch (err) {
-      if (attempt < 1) {
-        if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', err.message);
-        return fetchAndParse(attempt + 1);
-      }
-      const contextLabel = formatCalendarLogContext(loggingContext);
-      const label = contextLabel ? ` (${contextLabel})` : '';
+    const fetchAndParse = async (attempt = 0) => {
+      const json = await openAIRequest(requestOptions, payload);
+      const content = json?.choices?.[0]?.message?.content || '';
+      try {
+        const { data, attempts } = parseLLMArray(content, {
+          requireArray: true,
+          itemValidate: (p) => p && typeof p === 'object',
+        }, {
+          endpoint: 'calendar',
+          ...loggingContext,
+        });
+        if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+        return { posts: data, attempts, rawContent: content };
+      } catch (err) {
+        if (attempt < 1) {
+          if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', err.message);
+          return fetchAndParse(attempt + 1);
+        }
+        const contextLabel = formatCalendarLogContext(loggingContext);
+        const label = contextLabel ? ` (${contextLabel})` : '';
       console.warn(`[Calendar] parse failure${label}:`, err.message);
       throw err;
     }
@@ -4121,7 +4208,45 @@ const server = http.createServer((req, res) => {
       postsPerDay,
       context: loggingContext,
     });
-    const rawPosts = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay, loggingContext });
+    const logContext = {
+      requestId: loggingContext?.requestId || 'unknown',
+      days,
+      startDay,
+      postsPerDay,
+    };
+
+    const callOpenAiAttempt = async (label) => {
+      const result = await callOpenAI(nicheStyle, brandContext, { days, startDay, postsPerDay, loggingContext });
+      const rawLength = String(result.rawContent || '').length;
+      console.log('[Calendar][Server][Perf] callOpenAI response', {
+        label,
+        requestId: logContext.requestId,
+        days,
+        startDay,
+        postsPerDay,
+        rawLength,
+      });
+      return { result, rawLength };
+    };
+
+    const callOpenAiWithParseRetry = async () => {
+      try {
+        return await callOpenAiAttempt('initial');
+      } catch (err) {
+        console.warn('[Calendar] OpenAI parse failed, retrying', { ...logContext, error: err?.message });
+        return callOpenAiAttempt('parse-retry');
+      }
+    };
+
+    const openAiResultEntry = await callOpenAiWithParseRetry();
+    let rawPosts = Array.isArray(openAiResultEntry.result.posts) ? openAiResultEntry.result.posts : [];
+    let rawLength = openAiResultEntry.rawLength;
+    if (!rawPosts.length) {
+      console.warn('[Calendar] OpenAI returned empty posts, retrying', logContext);
+      const retryResult = await callOpenAiAttempt('empty-retry');
+      rawPosts = Array.isArray(retryResult.result.posts) ? retryResult.result.posts : [];
+      rawLength = Math.max(rawLength, retryResult.rawLength);
+    }
     const openDuration = Date.now() - callStart;
     const validationStart = Date.now();
     const audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
@@ -4138,6 +4263,60 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
+    if (missingStoryPrompt.length) {
+      console.warn('[Calendar] Missing storyPrompt; applying fallback prompts', {
+        requestId: loggingContext?.requestId,
+        missing: missingStoryPrompt.length,
+        days,
+        startDay,
+        postsPerDay,
+      });
+      missingStoryPrompt.forEach((post) => {
+        post.storyPrompt = ensureStoryPromptFallback(post, nicheStyle);
+      });
+    }
+    const missingStoryPromptPlus = posts.filter((post) => !String(post.storyPromptPlus || '').trim());
+    if (missingStoryPromptPlus.length) {
+      console.warn('[Calendar] Missing storyPromptPlus; applying fallback prompts', {
+        requestId: loggingContext?.requestId,
+        missing: missingStoryPromptPlus.length,
+        days,
+        startDay,
+        postsPerDay,
+      });
+      missingStoryPromptPlus.forEach((post) => {
+        post.storyPromptPlus = ensureStoryPromptPlusFallback(post, nicheStyle);
+      });
+    }
+    const targetCount = computePostCountTarget(days, postsPerDay);
+    const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+    const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
+    if (targetCount && posts.length < targetCount) {
+      const needed = targetCount - posts.length;
+      for (let extra = 0; extra < needed; extra += 1) {
+        const day = computePostDayIndex(posts.length + extra, fallbackStart, perDay);
+        const fallback = buildFallbackPost(nicheStyle, day);
+        fallback.storyPrompt = ensureStoryPromptFallback(fallback, nicheStyle);
+        fallback.storyPromptPlus = ensureStoryPromptPlusFallback(fallback, nicheStyle);
+        posts.push(fallback);
+      }
+      console.warn('[Calendar] Added fallback posts to meet target count', {
+        requestId: loggingContext?.requestId,
+        added: needed,
+        targetCount,
+      });
+    } else if (targetCount && posts.length > targetCount) {
+      posts = posts.slice(0, targetCount);
+    } else if (!targetCount && !posts.length) {
+      const fallbackDay = computePostDayIndex(0, fallbackStart, perDay);
+      const fallback = buildFallbackPost(nicheStyle, fallbackDay);
+      posts.push(fallback);
+      console.warn('[Calendar] Added fallback post when no generated posts returned', {
+        requestId: loggingContext?.requestId,
+        day: fallbackDay,
+      });
+    }
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
@@ -4179,35 +4358,20 @@ const server = http.createServer((req, res) => {
       }
       return post;
     });
-    const missingStoryPrompt = posts.filter((post) => !String(post.storyPrompt || '').trim());
-    if (missingStoryPrompt.length) {
-      const missingDays = missingStoryPrompt.map((post) => `Day${post.day ?? '?'}`).join(', ');
-      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT: ${missingStoryPrompt.length} posts missing storyPrompt (${missingDays})`);
-      err.code = 'CALENDAR_MISSING_STORY_PROMPT';
-      err.statusCode = 500;
-      err.requestId = loggingContext?.requestId;
-      throw err;
-    }
-    const missingStoryPromptPlus = posts.filter((post) => !String(post.storyPromptPlus || '').trim());
-    if (missingStoryPromptPlus.length) {
-      const missingDays = missingStoryPromptPlus.map((post) => `Day${post.day ?? '?'}`).join(', ');
-      const err = new Error(`CALENDAR_MISSING_STORY_PROMPT_PLUS: ${missingStoryPromptPlus.length} posts missing storyPromptPlus (${missingDays})`);
-      err.code = 'CALENDAR_MISSING_STORY_PROMPT_PLUS';
-      err.statusCode = 500;
-      err.requestId = loggingContext?.requestId;
-      throw err;
-    }
     logDuplicateStrategyValues(posts);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,
       parseMs: postProcessingMs,
       postCount: posts.length,
+      rawLength,
       context: loggingContext,
     });
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
       count: posts.length,
+      expectedCount: targetCount || posts.length,
+      rawLength,
       context: loggingContext,
     });
     return posts;
