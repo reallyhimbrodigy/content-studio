@@ -259,13 +259,6 @@ function openUpgradeCTA() {
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
-  const PHYLLO_CONNECT_CONFIG = {
-    clientDisplayName: 'Promptly',
-    environment: 'production',
-    userId: 'af3d8d76-874e-4984-a17f-972d5b66ebb6',
-    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWYzZDhkNzYtODc0ZS00OTg0LWExN2YtOTcyZDViNjZlYmI2IiwidGVuYW50X2lkIjoiNTMxYjkxNTMtYjRkMy00NDQxLTkwMzMtYTA2NzgyMzBmMzExIiwidGVuYW50X2FwcF9pZCI6IjA1ZTZjYTQzLWI0ZDktNGRlMy1iZjM2LWFkZjhjYmEyNTg3MSIsInByb2R1Y3RzIjpbIklOQ09NRSIsIlBVQkxJU0hfQ09OVEVOVCIsIklERU5USVRZX0FVRElFTkNFIiwiSURFTlRJVFkiLCJFTkdBR0VNRU5UX0FVRElFTkNFIiwiRU5HQUdFTUVOVCIsIkFDVElWSVRZIl0sImlzcyI6Imh0dHBzOi8vYXBpLmdldHBoeWxsby5jb20iLCJhdWQiOiJodHRwczovL2FwaS5nZXRwaHlsbG8uY29tL3YxL2ludGVybmFsIiwiaWF0IjoxNzY3MTM0NTA4LjA0NzkzNywiZXhwIjoxNzY3NzM5MzA4LjA0NzkzMn0.RdXYaljvZvXKzVlblitwM_bWOdgHAudhiSrVtrWSfVY',
-  };
-
   let phylloConnectInstance = null;
   let tokenExpiredTimeout = null;
 
@@ -340,27 +333,50 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function getPhylloInstance() {
-    if (phylloConnectInstance) return phylloConnectInstance;
-    if (!window.PhylloConnect) {
-      console.error('[Phyllo] PhylloConnect SDK is not loaded');
-      return null;
-    }
+  async function fetchPhylloConfig() {
     try {
-      const instance = window.PhylloConnect.initialize(PHYLLO_CONNECT_CONFIG);
-      attachPhylloEvents(instance);
-      phylloConnectInstance = instance;
-      return instance;
+      const res = await fetchAuthenticated('/api/phyllo/connect-config');
+      if (!res.ok) {
+        console.error('[Phyllo] connect-config failed', res.status);
+        return null;
+      }
+      const parsed = await res.json();
+      if (!parsed || parsed.ok === false) {
+        console.error('[Phyllo] connect-config error', parsed);
+        return null;
+      }
+      return parsed.config;
     } catch (err) {
-      console.error('[Phyllo] unable to initialize', err);
+      console.error('[Phyllo] connect-config request failed', err);
       return null;
     }
   }
 
+  let phylloConfigCache = null;
+
   async function openPhyllo() {
     try {
-      const instance = getPhylloInstance();
-      if (!instance) return;
+      if (!window.PhylloConnect) {
+        console.error('[Phyllo] PhylloConnect SDK is not loaded');
+        return;
+      }
+      if (phylloConnectInstance) {
+        phylloConnectInstance.open();
+        return;
+      }
+      const config = phylloConfigCache || (await fetchPhylloConfig());
+      if (!config) return;
+      phylloConfigCache = config;
+      if (config.token) {
+        console.log('[Phyllo] connect config ready', {
+          environment: config.environment,
+          userId: config.userId,
+          tokenLength: config.token.length,
+        });
+      }
+      const instance = window.PhylloConnect.initialize(config);
+      attachPhylloEvents(instance);
+      phylloConnectInstance = instance;
       instance.open();
     } catch (err) {
       console.error('[Phyllo] connect error', err);

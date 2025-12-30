@@ -5697,6 +5697,28 @@ ${JSON.stringify(compactPosts)}`;
     return;
   }
 
+  if (parsed.pathname === '/api/phyllo/connect-config' && req.method === 'GET') {
+    (async () => {
+      try {
+        await ensureAnalyticsRequestUser(req);
+        return sendJson(res, 200, {
+          ok: true,
+          config: {
+            clientDisplayName: 'Promptly',
+            environment: 'production',
+            userId: 'af3d8d76-874e-4984-a17f-972d5b66ebb6',
+            token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWYzZDhkNzYtODc0ZS00OTg0LWExN2YtOTcyZDViNjZlYmI2IiwidGVuYW50X2lkIjoiNTMxYjkxNTMtYjRkMy00NDQxLTkwMzMtYTA2NzgyMzBmMzExIiwidGVuYW50X2FwcF9pZCI6IjA1ZTZjYTQzLWI0ZDktNGRlMy1iZjM2LWFkZjhjYmEyNTg3MSIsInByb2R1Y3RzIjpbIklOQ09NRSIsIlBVQkxJU0hfQ09OVEVOVCIsIklERU5USVRZX0FVRElFTkNFIiwiSURFTlRJVFkiLCJFTkdBR0VNRU5UX0FVRElFTkNFIiwiRU5HQUdFTUVOVCIsIkFDVElWSVRZIl0sImlzcyI6Imh0dHBzOi8vYXBpLmdldHBoeWxsby5jb20iLCJhdWQiOiJodHRwczovL2FwaS5nZXRwaHlsbG8uY29tL3YxL2ludGVybmFsIiwiaWF0IjoxNzY3MTM0NTA4LjA0NzkzNywiZXhwIjoxNzY3NzM5MzA4LjA0NzkzMn0.RdXYaljvZvXKzVlblitwM_bWOdgHAudhiSrVtrWSfVY',
+            workPlatformIds: [],
+          },
+        });
+      } catch (err) {
+        console.error('[Phyllo] connect-config error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
+    return;
+  }
+
   // Mock analytics endpoints (no Supabase/OpenAI yet)
   if (parsed.pathname === '/api/phyllo/account-connected' && req.method === 'POST') {
     readJsonBody(req)
