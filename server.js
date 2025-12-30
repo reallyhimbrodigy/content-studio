@@ -2650,7 +2650,7 @@ Omission Forbiddance:
 
 Generation Guidance:
 - Always generate storyPrompt naturally based on the post’s topic and niche.
-- Keep storyPrompt on-topic, specific to the niche and the post’s concept, and phrase it as a free-form creator note (hook idea, shot list, narrator beat, on-screen text idea, etc.) that varies its opening and phrasing across posts, allow either no question or a single question mark, never include "!?", and ban canned CTAs such as "Tag a friend", "DM us", or "Comment below".
+  - Keep storyPrompt on-topic, specific to the niche and the post’s concept, and phrase it as a free-form creator note (hook idea, shot list, narrator beat, on-screen text idea, etc.) that varies its opening and phrasing across posts, allow either no question or a single question mark, never include "!?", and ban canned CTAs such as "Tag a friend", "DM us", or "Comment below". Do not mention or repeat the niche name anywhere in storyPrompt (including the end of the sentence); the niche should influence the tone/insight, not the literal wording.
 - Avoid recycled scaffolds, repeated category labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
 - StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
 - No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
@@ -3459,6 +3459,23 @@ function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
     direction.push(`Let the movement echo "${promptRef}" while keeping transitions smooth.`);
   }
   return direction.join(' ').trim() || `Visuals should stay focused on ${topic}.`;
+}
+
+function escapeRegexPattern(value = '') {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function sanitizeStoryPromptFromNiche(text = '', nicheStyle = '') {
+  const raw = String(text || '').trim();
+  if (!raw) return raw;
+  const niche = String(nicheStyle || '').trim();
+  if (!niche) return raw;
+  const escaped = escapeRegexPattern(niche);
+  const trailing = new RegExp(`[\\s\\-—|:.]*${escaped}[\\s\\-—|:.]*$`, 'i');
+  if (trailing.test(raw)) {
+    return raw.replace(trailing, '').trim().replace(/\s+$/, '');
+  }
+  return raw;
 }
 
 function sanitizeCtaText(value) {
@@ -4732,6 +4749,9 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    posts.forEach((post) => {
+      post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
+    });
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
