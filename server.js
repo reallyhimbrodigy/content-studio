@@ -2257,6 +2257,63 @@ function extractStrategyKeyword(text = '') {
   return tokens.length ? tokens[0] : 'this topic';
 }
 
+function buildCalendarSchemaBlock(totalPostsRequired) {
+  const minItems = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
+  return [
+    'STRICT JSON SCHEMA (ALL FIELDS REQUIRED, STRINGS MUST BE NON-EMPTY):',
+    '{',
+    '  "type": "array",',
+    `  "minItems": ${minItems},`,
+    `  "maxItems": ${minItems},`,
+    '  "items": {',
+    '    "type": "object",',
+    '    "required": ["day","title","hook","caption","cta","hashtags","script","reelScript","designNotes","storyPrompt","engagementScripts"],',
+    '    "properties": {',
+    '      "day": { "type": "number" },',
+    '      "title": { "type": "string", "minLength": 1 },',
+    '      "hook": { "type": "string", "minLength": 1 },',
+    '      "caption": { "type": "string", "minLength": 1 },',
+    '      "cta": { "type": "string", "minLength": 1 },',
+    '      "designNotes": { "type": "string", "minLength": 1 },',
+    '      "storyPrompt": { "type": "string", "minLength": 1 },',
+    '      "hashtags": {',
+    '        "type": "array",',
+    '        "minItems": 6,',
+    '        "items": { "type": "string", "minLength": 1 }',
+    '      },',
+    '      "script": {',
+    '        "type": "object",',
+    '        "required": ["hook","body","cta"],',
+    '        "properties": {',
+    '          "hook": { "type": "string", "minLength": 1 },',
+    '          "body": { "type": "string", "minLength": 1 },',
+    '          "cta": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      },',
+    '      "reelScript": {',
+    '        "type": "object",',
+    '        "required": ["hook","body","cta"],',
+    '        "properties": {',
+    '          "hook": { "type": "string", "minLength": 1 },',
+    '          "body": { "type": "string", "minLength": 1 },',
+    '          "cta": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      },',
+    '      "engagementScripts": {',
+    '        "type": "object",',
+    '        "required": ["commentReply","dmReply"],',
+    '        "properties": {',
+    '          "commentReply": { "type": "string", "minLength": 1 },',
+    '          "dmReply": { "type": "string", "minLength": 1 }',
+    '        }',
+    '      }',
+    '    }',
+    '  }',
+    '}',
+    `Return EXACTLY ${minItems} objects that obey this schema and keep "reelScript" identical to "script".`,
+  ].join('\n');
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2381,59 +2438,7 @@ ALGO / SALES REQUIREMENTS:
       ? Number(opts.postsPerDay)
       : 1;
   const totalPostsRequired = days * postsPerDaySetting;
-  const schemaBlock = [
-    'STRICT JSON SCHEMA (ALL FIELDS REQUIRED, STRINGS MUST BE NON-EMPTY):',
-    '{',
-    '  "type": "array",',
-    `  "minItems": ${totalPostsRequired},`,
-    `  "maxItems": ${totalPostsRequired},`,
-    '  "items": {',
-    '    "type": "object",',
-    '    "required": ["day","title","hook","caption","cta","hashtags","script","reelScript","designNotes","storyPrompt","engagementScripts"],',
-    '    "properties": {',
-    '      "day": { "type": "number" },',
-    '      "title": { "type": "string", "minLength": 1 },',
-    '      "hook": { "type": "string", "minLength": 1 },',
-    '      "caption": { "type": "string", "minLength": 1 },',
-    '      "cta": { "type": "string", "minLength": 1 },',
-    '      "designNotes": { "type": "string", "minLength": 1 },',
-    '      "storyPrompt": { "type": "string", "minLength": 1 },',
-    '      "hashtags": {',
-    '        "type": "array",',
-    '        "minItems": 6,',
-    '        "items": { "type": "string", "minLength": 1 }',
-    '      },',
-    '      "script": {',
-    '        "type": "object",',
-    '        "required": ["hook","body","cta"],',
-    '        "properties": {',
-    '          "hook": { "type": "string", "minLength": 1 },',
-    '          "body": { "type": "string", "minLength": 1 },',
-    '          "cta": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      },',
-    '      "reelScript": {',
-    '        "type": "object",',
-    '        "required": ["hook","body","cta"],',
-    '        "properties": {',
-    '          "hook": { "type": "string", "minLength": 1 },',
-    '          "body": { "type": "string", "minLength": 1 },',
-    '          "cta": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      },',
-    '      "engagementScripts": {',
-    '        "type": "object",',
-    '        "required": ["commentReply","dmReply"],',
-    '        "properties": {',
-    '          "commentReply": { "type": "string", "minLength": 1 },',
-    '          "dmReply": { "type": "string", "minLength": 1 }',
-    '        }',
-    '      }',
-    '    }',
-    '  }',
-    '}',
-    `Return EXACTLY ${totalPostsRequired} objects that obey this schema and keep "reelScript" identical to "script".`,
-  ].join('\n');
+  const schemaBlock = buildCalendarSchemaBlock(totalPostsRequired);
   const distributionPlanRules = `Distribution Plan rules:
 - Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
 - Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction engagement/action idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
@@ -3554,6 +3559,175 @@ function validatePostCompleteness(post = {}) {
   return missing;
 }
 
+function extractFirstSentence(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/[^.!?]+[.!?]?/);
+  if (match) {
+    return match[0].trim();
+  }
+  return text;
+}
+
+function buildFallbackCaption(title = '', nicheStyle = '') {
+  const headline = toPlainString(title || 'this topic');
+  const niche = toPlainString(nicheStyle || 'your niche');
+  return `${headline} is a timely idea for ${niche}. Break down why it matters, how viewers can try it, and invite them to share what they would do next.`;
+}
+
+function buildFallbackCta(nicheStyle = '', platform = '') {
+  const normalizedNiche = String(nicheStyle || '').toLowerCase();
+  const normalizedPlatform = String(platform || '').toLowerCase();
+  const medSpaMatch = /med\s*spa|spa|skincare|facials|aesthetic|clinic/.test(normalizedNiche);
+  const dmStyleMatch = /coach|consult|consultant|strategy|agency|advisory/.test(normalizedNiche) || /dm/.test(normalizedPlatform);
+  if (medSpaMatch) return 'Book now.';
+  if (dmStyleMatch) return 'DM us to get started.';
+  return 'Learn more.';
+}
+
+function buildCalendarHashtagFallback(nicheStyle = '', title = '', platform = '') {
+  const tokens = [];
+  const addToken = (value) => {
+    const sanitized = sanitizeHashtagToken(value);
+    if (sanitized && !tokens.includes(sanitized)) tokens.push(sanitized);
+  };
+  const normalizedNiche = toPlainString(nicheStyle || '');
+  if (normalizedNiche) addToken(normalizedNiche);
+  if (platform) addToken(platform);
+  const medSpaMatch = /med\s*spa|spa|skincare|facials|clinic/.test(normalizedNiche.toLowerCase());
+  if (medSpaMatch) {
+    addToken('medspa');
+    addToken('facials');
+    addToken('skincare');
+  }
+  ['selfcare', 'glowup'].forEach(addToken);
+  const titleTokens = (String(title || '')
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [])
+    .slice(0, 4);
+  titleTokens.forEach(addToken);
+  const nicheTokens = (normalizedNiche.toLowerCase().match(/[a-z0-9]+/g) || []).slice(0, 3);
+  nicheTokens.forEach(addToken);
+  const extras = ['content', 'creator', 'shortform', 'story', 'strategy', 'tips', 'insight', 'daily', 'plan', 'workflow', 'framework', 'ideas'];
+  extras.forEach(addToken);
+  let fillerIndex = 0;
+  while (tokens.length < 12) {
+    addToken(`content${fillerIndex}`);
+    fillerIndex += 1;
+  }
+  return tokens.slice(0, Math.max(8, MIN_HASHTAGS)).map((token) => `#${token}`);
+}
+
+function buildFallbackReelScript(post = {}, context = {}) {
+  const { nicheStyle = '', platform = '' } = context;
+  const hookSource = post.reelScript?.hook || post.hook || post.title || '';
+  const hook = toPlainString(hookSource) || `Stop scrolling — quick ${nicheStyle || 'niche'} tip.`;
+  const topic = toPlainString(post.title || post.idea || post.caption || 'this idea');
+  const cta = toPlainString(post.cta || '');
+  const fallbackCta = cta || buildFallbackCta(nicheStyle, platform);
+  const bodyLines = [
+    `Beat 1: Explain why ${topic} matters for ${nicheStyle || 'this niche'} and what problem it solves.`,
+    `Beat 2: Show a behind-the-scenes detail or how it fits into a ${nicheStyle || 'creator'} routine.`,
+    `Close: ${fallbackCta}`,
+  ];
+  return {
+    hook,
+    body: bodyLines.join('\n'),
+    cta: fallbackCta,
+  };
+}
+
+function buildEngagementScriptsFallback(post = {}, context = {}) {
+  const topic = toPlainString(post.title || post.caption || post.idea || 'this idea');
+  const niche = toPlainString(context.nicheStyle || '');
+  const descriptor = niche ? `${topic} for ${niche}` : topic;
+  return {
+    commentReply: `Pinned comment: Share your biggest takeaway about ${descriptor}.`,
+    dmReply: `Reply script: Appreciate the interest—happy to chat more about ${descriptor}.`,
+  };
+}
+
+function normalizeCalendarPost(post = {}, context = {}) {
+  const filled = new Set();
+  if (!post || typeof post !== 'object') return { filledFields: [] };
+  const dayFromContext = Number.isFinite(Number(context.day)) ? Number(context.day) : null;
+  const fallbackDay =
+    dayFromContext !== null && dayFromContext !== undefined
+      ? dayFromContext
+      : Number.isFinite(Number(post.day))
+        ? Number(post.day)
+        : 1;
+  if (!Number.isFinite(Number(post.day))) {
+    post.day = fallbackDay;
+    filled.add('day');
+  }
+  const platform = toPlainString(context.platform || post.format || post.platform || 'Reel');
+  if (!isNonEmptyString(post.title)) {
+    post.title = `Topic for Day ${fallbackDay}`;
+    filled.add('title');
+  }
+  if (!isNonEmptyString(post.hook)) {
+    const captionSource = post.caption || post.body || '';
+    const firstSentence = extractFirstSentence(captionSource);
+    post.hook = firstSentence || `Stop scrolling — quick ${context.nicheStyle || 'niche'} tip.`;
+    filled.add('hook');
+  }
+  if (!isNonEmptyString(post.caption)) {
+    post.caption = buildFallbackCaption(post.title, context.nicheStyle);
+    filled.add('caption');
+  }
+  if (!isNonEmptyString(post.cta)) {
+    post.cta = buildFallbackCta(context.nicheStyle, platform);
+    filled.add('cta');
+  }
+  if (!isNonEmptyString(post.designNotes)) {
+    post.designNotes = ensureDesignNotesFallback(post, context.nicheStyle);
+    filled.add('designNotes');
+  }
+  if (!isNonEmptyString(post.storyPrompt)) {
+    post.storyPrompt = ensureStoryPromptFallback(post, context.nicheStyle);
+    filled.add('storyPrompt');
+  }
+  const hashtagCount = Array.isArray(post.hashtags)
+    ? post.hashtags.filter((tag) => isNonEmptyString(tag)).length
+    : 0;
+  if (hashtagCount < Math.max(8, MIN_HASHTAGS)) {
+    post.hashtags = ensureHashtagArray(post.hashtags || [], buildCalendarHashtagFallback(context.nicheStyle, post.title, platform), Math.max(8, MIN_HASHTAGS));
+    filled.add('hashtags');
+  }
+  const scriptFallback = buildFallbackReelScript(post, { nicheStyle: context.nicheStyle, platform });
+  const scriptTarget = post.script && typeof post.script === 'object' ? post.script : {};
+  const scriptNeedsFill =
+    !isNonEmptyString(scriptTarget.hook) ||
+    !isNonEmptyString(scriptTarget.body) ||
+    !isNonEmptyString(scriptTarget.cta);
+  if (scriptNeedsFill) {
+    post.script = { ...scriptFallback };
+    filled.add('script');
+  }
+  const reelTarget = post.reelScript && typeof post.reelScript === 'object' ? post.reelScript : {};
+  const reelNeedsFill =
+    !isNonEmptyString(reelTarget.hook) ||
+    !isNonEmptyString(reelTarget.body) ||
+    !isNonEmptyString(reelTarget.cta);
+  if (reelNeedsFill) {
+    post.reelScript = { ...scriptFallback };
+    filled.add('reelScript');
+  }
+  const engagement = post.engagementScripts || {};
+  const hasComment = isNonEmptyString(engagement.commentReply || engagement.comment || post.engagementScript);
+  const hasDm = isNonEmptyString(engagement.dmReply || engagement.dm || post.engagementDm);
+  if (!hasComment || !hasDm) {
+    const fallbackEngagement = buildEngagementScriptsFallback(post, context);
+    post.engagementScripts = {
+      commentReply: hasComment ? toPlainString(engagement.commentReply || engagement.comment || post.engagementScript) : fallbackEngagement.commentReply,
+      dmReply: hasDm ? toPlainString(engagement.dmReply || engagement.dm || post.engagementDm) : fallbackEngagement.dmReply,
+    };
+    filled.add('engagementScripts');
+  }
+  return { filledFields: Array.from(filled) };
+}
+
 function computePostCountTarget(days, postsPerDay) {
   const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
   const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
@@ -4613,34 +4787,68 @@ const server = http.createServer((req, res) => {
         ...err.details,
         responseLength: rawLength,
       });
+      err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
       throw err;
     }
-    const missingFieldsReport = [];
+    const missingFieldsReportBefore = [];
+    const missingFieldsMap = new Map();
     rawPosts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
       if (!missing.length) return;
       const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
       const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      missingFieldsReport.push({ index: idx, day, slot, missing });
+      const entry = { index: idx, day, slot, missing };
+      missingFieldsReportBefore.push(entry);
+      missingFieldsMap.set(idx, entry);
     });
-    if (missingFieldsReport.length) {
-      const err = new Error('Calendar response missing required fields');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 500;
-      err.details = missingFieldsReport;
-      console.warn('[Calendar][Server][SchemaValidation]', {
+    const autoFillSamples = [];
+    if (missingFieldsReportBefore.length) {
+      console.warn('[Calendar][Server][SchemaValidation] missing fields detected, auto-filling', {
         requestId: loggingContext?.requestId,
         startDay,
         days,
         postsPerDay,
-        expectedCount,
-        actualCount: rawPosts.length,
-        missingFields: missingFieldsReport.length,
-        retryUsed: false,
-        responseLength: rawLength,
-        detailSamples: missingFieldsReport.slice(0, 3),
+        missingFields: missingFieldsReportBefore.length,
+        detailSamples: missingFieldsReportBefore.slice(0, 3),
       });
-      throw err;
+      rawPosts.forEach((post, idx) => {
+        const entry = missingFieldsMap.get(idx);
+        if (!entry) return;
+        const platform = toPlainString(post.format || post.platform || 'Reel');
+        const fillResult = normalizeCalendarPost(post, {
+          nicheStyle,
+          day: entry.day,
+          slot: entry.slot,
+          platform,
+        });
+        if (fillResult?.filledFields?.length) {
+          autoFillSamples.push({
+            index: idx,
+            day: entry.day,
+            slot: entry.slot,
+            fields: fillResult.filledFields,
+          });
+        }
+      });
+    }
+    const missingFieldsReportAfter = [];
+    rawPosts.forEach((post, idx) => {
+      const missing = validatePostCompleteness(post);
+      if (!missing.length) return;
+      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+      missingFieldsReportAfter.push({ index: idx, day, slot, missing });
+    });
+    const autoFilledCount = Math.max(0, missingFieldsReportBefore.length - missingFieldsReportAfter.length);
+    if (missingFieldsReportAfter.length) {
+      console.warn('[Calendar][Server][SchemaValidation] fields still missing after auto-fill', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        postsPerDay,
+        missingFieldsAfter: missingFieldsReportAfter.length,
+        detailSamples: missingFieldsReportAfter.slice(0, 3),
+      });
     }
     console.log('[Calendar][Server][SchemaValidation]', {
       requestId: loggingContext?.requestId,
@@ -4649,8 +4857,11 @@ const server = http.createServer((req, res) => {
       postsPerDay,
       expectedCount: expectedCount || rawPosts.length,
       actualCount: rawPosts.length,
-      missingFieldsBefore: missingFieldsReport.length,
-      missingFieldsAfter: 0,
+      missingFieldsBefore: missingFieldsReportBefore.length,
+      missingFieldsAfter: missingFieldsReportAfter.length,
+      autoFilledCount,
+      autoFillSamples: autoFillSamples.slice(0, 3),
+      sampleMissingFields: missingFieldsReportBefore.slice(0, 3),
       retryUsed: false,
       responseLength: rawLength,
     });
@@ -5045,9 +5256,15 @@ const server = http.createServer((req, res) => {
             throw retryErr;
           }
         }
-        logServerError('calendar_regenerate_error', err, { requestId, context: errorContext });
-        if (res.headersSent) return;
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
+        const logInfo = { requestId, context: errorContext };
+        if (isSchemaError) {
+          if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
+          if (err?.details) logInfo.schemaPayload = err.details;
+          if (err?.rawContent) logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
+        }
+        logServerError('calendar_regenerate_error', err, logInfo);
+        if (res.headersSent) return;
         const status = isSchemaError ? 502 : (err?.statusCode || 500);
         const payload = {
           error: isSchemaError
@@ -5059,8 +5276,10 @@ const server = http.createServer((req, res) => {
           if (!isProduction && err?.rawContent) {
             payload.error.debug = err.rawContent;
           }
-          if (err?.details) {
-            payload.error.details = err.details;
+          const detailPayload = { ...(err?.details || {}) };
+          if (err?.schemaSnippet) detailPayload.schemaSnippet = err.schemaSnippet;
+          if (Object.keys(detailPayload).length) {
+            payload.error.details = detailPayload;
           }
         }
         if (!isSchemaError && !isProduction && err?.stack) {
