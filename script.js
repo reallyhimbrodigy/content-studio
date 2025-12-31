@@ -5173,6 +5173,23 @@ const createCard = (post) => {
       card.dataset.pillar = pillar;
     }
 
+    const buildSuggestedAudioText = (audio) => {
+      if (!audio || typeof audio !== 'object') return '';
+      const lines = [];
+      const addLine = (label, entry) => {
+        if (!entry || !entry.title) return;
+        const pieces = [entry.title];
+        if (entry.creator) pieces.push(entry.creator);
+        lines.push(`${label}: ${pieces.join(' — ')}`);
+      };
+      addLine('TikTok', audio.tiktok);
+      addLine('Instagram', audio.instagram);
+      addLine('Audio', audio.generic);
+      if (!lines.length && audio.platform && audio.title) {
+        lines.push(`${audio.platform}: ${audio.title}`);
+      }
+      return lines.join(' | ');
+    };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
     const angleValue = normalizedEntry.angle || 'Fresh creator angle';
@@ -5486,6 +5503,7 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
+    const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio || (entry.audio ? { generic: { title: entry.audio } } : null));
     const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
       if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
@@ -5701,7 +5719,7 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (entry.audio) fullTextParts.push(`Audio: ${entry.audio}`);
+    if (suggestedAudioText) fullTextParts.push(`Suggested audio: ${suggestedAudioText}`);
     if (entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
@@ -5768,8 +5786,10 @@ const createCard = (post) => {
     }
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
-    if (entry.audio) {
-      hiddenDetailNodes.push(createDetailRow('Audio', entry.audio, 'calendar-card__audio'));
+    if (suggestedAudioText) {
+      hiddenDetailNodes.push(
+        createDetailRow('Suggested audio', suggestedAudioText, 'calendar-card__audio suggested-audio')
+      );
     }
     if (entry.storyPromptExpanded) {
       hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
@@ -6825,7 +6845,14 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
     }
     const variantEntries = Array.isArray(body.variants) ? body.variants : [];
     const byDay = new Map(variantEntries.map((entry) => [entry.day, entry.variants]));
-    merged = merged.map((post) => (byDay.has(post.day) ? { ...post, variants: byDay.get(post.day) } : post));
+    merged = merged.map((post) => {
+      if (!byDay.has(post.day)) return post;
+      const variants = byDay.get(post.day);
+      const mergedVariants = { ...post.variants, ...variants };
+      return { ...post, variants: mergedVariants };
+    });
+    const variantAudioCount = merged.filter(hasSuggestedAudio).length;
+    console.log('[Calendar] variants audio preserved', { variantAudioCount });
   }
 
   return merged;
@@ -7039,6 +7066,26 @@ function toCsv(headers, rows){
   return [headers.join(','), ...rows.map(r=>r.map(esc).join(','))].join('\n');
 }
 
+function formatSuggestedAudioDisplay(post = {}) {
+  const audio = post?.suggestedAudio;
+  if (!audio || typeof audio !== 'object') return '';
+  const lines = [];
+  const addLine = (label, entry) => {
+    if (!entry || !entry.title) return;
+    const parts = [entry.title];
+    if (entry.creator) parts.push(entry.creator);
+    lines.push(`${label}: ${parts.join(' — ')}`);
+  };
+  addLine('TikTok', audio.tiktok);
+  addLine('Instagram', audio.instagram);
+  addLine('Audio', audio.generic);
+  if (!lines.length && audio.platform && audio.title) {
+    lines.push(`${audio.platform}: ${audio.title}`);
+  }
+  return lines.join(' | ');
+}
+
+
 function suggestSchedule(posts){
   const base = new Date();
   base.setHours(0,0,0,0);
@@ -7180,7 +7227,10 @@ function buildPostHTML(post){
     );
   }
   if (post.audio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
+    const audioHtmlText = formatSuggestedAudioDisplay(post);
+    if (audioHtmlText) {
+      detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
+    }
   }
   if (post.storyPromptExpanded) {
     detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
@@ -7836,6 +7886,44 @@ function ensureGlobalVariety(posts) {
 }
 
 // Normalize a post to guarantee all required fields exist
+function normalizeSuggestedAudio(post = {}) {
+  if (!post || typeof post !== 'object') return null;
+  if (post.suggestedAudio && typeof post.suggestedAudio === 'object') return post.suggestedAudio;
+  if (post.suggested_audio && typeof post.suggested_audio === 'object') return post.suggested_audio;
+  const fallbackTitle =
+    (typeof post.audio === 'string' && post.audio.trim()) ||
+    (typeof post.trendingAudio === 'string' && post.trendingAudio.trim()) ||
+    (typeof post.audioSuggestion === 'string' && post.audioSuggestion.trim());
+  if (fallbackTitle) {
+    return {
+      generic: {
+        platform: 'generic',
+        title: fallbackTitle.trim(),
+        creator: null,
+        url: null,
+        usageNote: null,
+      },
+    };
+  }
+  return null;
+}
+
+function hasSuggestedAudio(post) {
+  const audio = post?.suggestedAudio;
+  return Boolean(audio && typeof audio === 'object' && Object.keys(audio).length);
+}
+
+function getSuggestedAudioTitle(post) {
+  const audio = post?.suggestedAudio;
+  if (!audio || typeof audio !== 'object') return '';
+  return (
+    (audio.tiktok && audio.tiktok.title) ||
+    (audio.instagram && audio.instagram.title) ||
+    (audio.generic && audio.generic.title) ||
+    ''
+  );
+}
+
 function normalizePost(p, idx = 0, startDay = 1) {
   const out = {
     day: typeof p.day === 'number' ? p.day : (startDay + idx),
@@ -7857,6 +7945,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     variants: p.variants || undefined,
     distributionPlan: p.distributionPlan || '',
     audio: p.audio || '',
+    suggestedAudio: normalizeSuggestedAudio(p),
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
@@ -8141,13 +8230,25 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
 
     // Normalize every post to guarantee required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
+    const preAudioCount = normalized.filter(hasSuggestedAudio).length;
+    console.log(`[Calendar] audio pre render run ${thisRunId}`, { preAudioCount });
     allPosts = normalized.map((post, idx) => {
       const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
       const slot = (idx % normalizedFrequency) + 1;
       return { ...post, day: dayIndex, slot };
     });
-    allPosts.forEach((post) => {
-      console.log(`[Calendar] audio assigned run ${thisRunId}`, { day: post.day, audio: post.audio });
+    const assignedAudioCount = allPosts.filter(hasSuggestedAudio).length;
+    const audioSample = allPosts
+      .filter(hasSuggestedAudio)
+      .slice(0, 2)
+      .map((post) => ({
+        day: post.day,
+        title: post.title,
+        audioTitle: getSuggestedAudioTitle(post),
+      }));
+    console.log(`[Calendar] audio assigned run ${thisRunId}`, {
+      assignedAudioCount,
+      sample: audioSample,
     });
 
     if (normalizedFrequency > 1) {
@@ -8172,6 +8273,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
 
     renderCards(allPosts);
+    requestAnimationFrame(() => {
+      const audioNodes = document.querySelectorAll('.suggested-audio');
+      console.log(`[Calendar] DOM suggested audio nodes run ${thisRunId}`, { nodeCount: audioNodes.length });
+    });
     console.log('[Calendar] rendered posts', allPosts.length);
     console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);
     return { posts: allPosts, calendarId: generatedCalendarId };

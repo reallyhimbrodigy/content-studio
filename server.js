@@ -52,6 +52,7 @@ const {
   STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
   validateStoryPromptKeywordOverride,
 } = require('./server/lib/storyPromptOverrideValidator');
+const { getMonthlyTrendingAudios } = require('./server/lib/trendingAudio');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -2376,6 +2377,26 @@ function normalizeCalendarSignature(value = '') {
 function buildCalendarSchemaBlock(expectedCount) {
   return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
+
+function buildSuggestedAudioEntry(index, cache = {}) {
+  if (!cache || typeof cache !== 'object') return null;
+  const result = {};
+  const addEntry = (label, platform, array) => {
+    if (!Array.isArray(array) || !array.length) return;
+    const entry = array[index % array.length];
+    if (!entry || !entry.title) return;
+    result[label] = {
+      platform,
+      title: entry.title,
+      creator: entry.creator || null,
+      url: entry.url || null,
+      usageNote: null,
+    };
+  };
+  addEntry('tiktok', 'TikTok', cache.tiktok);
+  addEntry('instagram', 'Instagram', cache.instagram);
+  return Object.keys(result).length ? result : null;
+}
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
@@ -4339,6 +4360,21 @@ const server = http.createServer((req, res) => {
     const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
 
     const rawPosts = aggregatedRawPosts;
+    let audioCache = { tiktok: [], instagram: [] };
+    try {
+      audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
+    } catch (audioErr) {
+      console.warn('[Calendar] trending audio fetch failed', {
+        requestId: loggingContext?.requestId,
+        error: audioErr?.message || audioErr,
+      });
+    }
+    rawPosts.forEach((post, idx) => {
+      const audioEntry = buildSuggestedAudioEntry(idx, audioCache);
+      if (audioEntry) {
+        post.suggestedAudio = audioEntry;
+      }
+    });
     if (expectedCount && rawPosts.length !== expectedCount) {
       const err = new Error('Calendar response count mismatch');
       err.code = 'OPENAI_SCHEMA_ERROR';
@@ -4480,6 +4516,13 @@ const server = http.createServer((req, res) => {
       postCount: posts.length,
       rawLength,
       context: loggingContext,
+    });
+    const suggestedAudioCount = posts.filter(
+      (post) => post?.suggestedAudio && Object.keys(post.suggestedAudio || {}).length
+    ).length;
+    console.log('[Calendar] audio summary', {
+      requestId: loggingContext?.requestId,
+      suggestedAudioCount,
     });
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
