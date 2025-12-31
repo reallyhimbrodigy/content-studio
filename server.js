@@ -5279,99 +5279,10 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/generate-variants' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
-      try {
-        const { posts, nicheStyle, userId } = JSON.parse(body || '{}');
-        if (!Array.isArray(posts) || posts.length === 0) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'posts array required' }));
-        }
-        if (!OPENAI_API_KEY) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
-        }
-        const brand = userId ? loadBrand(userId) : null;
-        const brandContext = summarizeBrandForPrompt(brand);
-
-        // Keep batch small to avoid timeouts
-        const MAX = 15;
-        if (posts.length > MAX) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: `too many posts; max ${MAX} per request` }));
-        }
-
-        const compactPosts = posts.map(p => ({
-          day: p.day,
-          caption: p.caption,
-          hashtags: Array.isArray(p.hashtags) ? p.hashtags.slice(0, 8) : p.hashtags,
-          cta: p.cta,
-          format: p.format,
-          pillar: p.pillar,
-        }));
-
-        const sys = `You transform captions into platform-specific variants. Be concise and keep JSON valid.`;
-        const rules = `Rules:
-- Respect brand tone if given.
-- Keep hashtags balanced (6â8) except LinkedIn (0â3).
-- IG: 2 short lines max; keep or improve hook; keep hashtags.
-- TikTok: punchy, 80â150 chars, 4â8 hashtags; fun tone.
-- LinkedIn: 2â3 sentences, professional, minimal hashtags (0â3), soft CTA.
-Return ONLY JSON array of objects: { day, variants: { igCaption, tiktokCaption, linkedinCaption } } in same order as input.`;
-        const prompt = `${brandContext ? `Brand Context:
-${brandContext}
-
-` : ''}${rules}
-
-Input posts (JSON):
-${JSON.stringify(compactPosts)}`;
-
-        const payload = JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: sys },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 3500,
-        });
-        const options = {
-          hostname: 'api.openai.com',
-          path: '/v1/chat/completions',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload),
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-          },
-        };
-
-        const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-        const fetchAndParse = async (attempt=0) => {
-          const json = await openAIRequest(options, payload);
-          const content = json.choices?.[0]?.message?.content || '';
-          try {
-            const { data, attempts } = parseLLMArray(content, {
-              requireArray: true,
-              itemValidate: (v) => v && typeof v.day === 'number' && v.variants && typeof v.variants === 'object'
-            }, { endpoint: 'generate-variants' });
-            if (debugEnabled) console.log('[VARIANTS PARSE] attempts:', attempts);
-            return data;
-          } catch (e) {
-            if (attempt < 1) {
-              if (debugEnabled) console.warn('[VARIANTS PARSE] retry after failure:', e.message);
-              return fetchAndParse(attempt+1);
-            }
-            throw e;
-          }
-        };
-        const parsed = await fetchAndParse(0);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ variants: parsed }));
-      } catch (err) {
-        console.error('Variants error:', err);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
-      }
+    req.on('end', () => {
+      console.log('[Calendar] generate-variants called; returning stub variants');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ variants: [] }));
     });
     return;
   }

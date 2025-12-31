@@ -8075,18 +8075,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
 
       const userIsPro = await userIsProPromise;
-      if (userIsPro && batchPosts.length) {
-        try {
-          batchPosts = await generateVariantsForPosts(batchPosts, {
-            nicheStyle,
-            userId: await currentUserEmailPromise,
-            userIsPro: true,
-          });
-        } catch (variantErr) {
-          console.warn('Variant generation failed for batch', batchIndex + 1, variantErr);
-        }
-      }
-
       // Incremental render of this batch without changing final output strategy
       try {
         const baseIndex = batchIndex * batchSize;
