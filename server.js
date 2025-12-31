@@ -49,10 +49,6 @@ const {
 } = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
-  getMonthlyTrendingAudios,
-  formatAudioLine,
-} = require('./server/lib/trendingAudio');
-const {
   STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
   validateStoryPromptKeywordOverride,
 } = require('./server/lib/storyPromptOverrideValidator');
@@ -515,17 +511,27 @@ function logServerError(tag, err, info = {}) {
 function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
   const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
+  const requestIdValue = requestId || generateRequestId('server_error');
   const status = statusCode || err?.statusCode || (isOpenAISchema ? 502 : 500);
+  const code = isOpenAISchema ? 'OPENAI_SCHEMA_ERROR' : err?.code || 'server_error';
+  const message = isOpenAISchema ? 'openai_schema_error' : err?.message || 'internal_error';
   const payload = {
-    error: isOpenAISchema
-      ? { message: 'openai_schema_error' }
-      : { message: err?.message || 'internal_error', code: err?.code },
+    error: {
+      code,
+      message,
+      requestId: requestIdValue,
+    },
   };
-  if (requestId) payload.requestId = requestId;
-  if (isOpenAISchema && !isProduction && err?.rawContent) {
-    payload.error.debug = err.rawContent;
-  }
-  if (!isOpenAISchema && !isProduction && err?.stack) {
+  if (isOpenAISchema) {
+    const detailPayload = { ...(err?.details || {}) };
+    if (err?.schemaSnippet) detailPayload.schemaSnippet = err.schemaSnippet;
+    if (Object.keys(detailPayload).length) {
+      payload.error.details = detailPayload;
+    }
+    if (!isProduction && err?.rawContent) {
+      payload.error.debug = err.rawContent;
+    }
+  } else if (!isProduction && err?.stack) {
     payload.debugStack = err.stack;
   }
   sendJson(res, status, payload);
@@ -2335,150 +2341,21 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
-  const classification = categorizeNiche(nicheStyle);
-  const brandBlock = brandContext
-    ? `\n\nBrand Context: ${brandContext}\n\n`
-    : '\n';
-  const preset = getPresetGuidelines(nicheStyle);
-  const presetGuidelines = (() => {
-    if (!preset) return '';
-    if (Array.isArray(preset.presetGuidelines)) {
-      return preset.presetGuidelines.join('\n');
-    }
-    return preset.presetGuidelines || '';
-  })();
-  const presetBlock = presetGuidelines
-    ? `\n\nPreset Guidelines for this niche:\n${presetGuidelines}\n\n`
-    : '\n';
-  const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
-    ? preset.nicheRules.join('\n')
-    : '';
-  const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
-// DETAILS/HASHTAGS CONSTRAINTS (niche-locked, no generic filler)
-  const qualityRules = `Quality Rules — Make each post actionable and specific:
-1) HOOK RULES (HARD):
-- Output a single Hook line only.
-- 4–9 words. No emojis, hashtags, quotes, or exclamation spam.
-- Tie the hook explicitly to the card’s topic and niche keywords.
-- Build curiosity or highlight a clear payoff that comes from this idea.
-- Include a concrete specificity anchor (number, timeframe, or outcome) only when it fits naturally.
-- Avoid unrelated industries, treatments, or jargon.
-- Do not use placeholders like [Client Name], [Your City], or [Brand].
-2) Hashtags: generate 6–10 tags that align closely with the niche and concept, avoid generic/filler tags, and keep them varied across posts.
-3) CTA: a single concise sentence that reflects the niche without canned phrasing.
-4) Design: describe relevant colors, typography, pacing, and the end-card CTA.
-5) REMIX / SHARE RULES (HARD):
-- Output one follow-up action per post.
-- Keep it low-friction, niche-relevant, and rooted in the same idea.
-- Provide a practical variation or next step without launching new offers.
-6) Comment Response: deliver specific replies or prompts that feel direct yet natural.
-7) FORMAT RULES (HARD):
-- Choose exactly one format from {Reel, Carousel, Story, Static} that fits the story.
-- Reel should support spoken delivery; Carousel should highlight steps or comparison; Story should lean on native interaction; Static should deliver one sharp insight.
-- Avoid formats that conflict with the defined Hook, Story Prompt, or CTA.
-8) Captions: provide one platform-neutral caption (Instagram/TikTok/LinkedIn) per card.
-9) Story Prompt+: write a second variation (2–4 sentences) that expands the concept with fresh structure and stays on topic.
-10) Story Prompt: deliver 1–2 sentences describing what to show/say for the Story; keep the language conversational and niche-focused without canned CTAs.
-11) Execution Notes: list 2–4 bullet points with concrete visual/production guidance.
-12) Screening: finish with a concise script (3–6 lines) that includes hook, body, and CTA in plain language without template prompts.`;
-
-  const audioRules = `AUDIO RULES (HARD):
-	- Output audio suggestions ONLY for the platforms already listed in the card.
-	- Sounds must support spoken delivery and feel native to the niche.
-	- Keep audio optional, understated, and avoid reusing the same pair across the month.
-
-	CREDIT FORMAT (exact):
-	- TikTok: <Sound name> — @creator
-	- Instagram: <Sound name> — @artist`;
-  const classificationRules =
-    classification === 'business'
-      ? 'Business/coaching hooks must focus on problems, outcomes, and offers with clear, respectful language.'
-      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive promotion.';
   const postsPerDaySetting =
     Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0
       ? Number(opts.postsPerDay)
       : 1;
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
-  const distributionPlanRules = `Distribution Plan rules:
-- Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
-- Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction next-step idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
-  const postingTimeRules = '';
-  const strategyRules = `Strategy rules:
-1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
-2) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
-3) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
-4) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
-5) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers in plain language, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
-6) We will build the final strategy variables on the server; do not return the completed sentence as a strategy field.`;
-  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const nicheProfileBlock = buildNicheProfileBlock(nicheStyle, brandContext);
-  const nicheDecisionBlock = '';
-  const globalHardRules = `GLOBAL RULES:
-  - Keep every line focused on the card’s topic.
-  - Avoid placeholders and keep language simple.
-  - Deliver the required fields without promotional spin; keep guidance straightforward and helpful.`;
-  // Uniqueness guardrail keeps the batch fresh without repeated angles/titles.
-  const uniquenessRules = `UNIQUENESS GUIDANCE:
-  - Within this ${dayRangeLabel} batch, no two posts may reuse the same title, core topic/angle, or near-duplicate noun phrase (small wording tweaks that keep the same concept).
-  - Rotate among the listed subtopics (beginner concepts, misconceptions, step-by-step how-to, checklist, common mistakes, terminology explainer, behind-the-scenes, tool/process, FAQ, myths vs facts, quick audit, do/don’t, scenario-based example) so each card covers a distinct slice of the niche.
-  - Title, hook, and caption must each stay unique; avoid repeating the same opening pattern for hooks, and do not restate the same idea verbatim in captions.
-  - Before finalizing JSON, internally verify the entire batch for duplicate titles/topics/angles and rewrite any card that collides until every post is distinct.`;
-  const salesModeGate = '';
-  const localRules = '';
-  const claimsRules = '';
-  const nicheStrategyBlock = '';
-  const titleRules = `TITLE RULES:
-- Provide a short (4–9 word) title that hints at the post’s idea.
-- Keep it simple, avoid gimmicks, and stay on topic.`;
-  const categoryRules = '';
-  const verbosityGate = opts.reduceVerbosity
-    ? '\n\nRetry mode: keep each field concise and focus on the core action for this niche.'
-    : '';
-  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${uniquenessRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
-- storyPrompt (1-2 short sentences max, a non-empty, niche-tailored free-form creator note that varies its opening across posts; optionally end with a single question mark but never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below"; do not leave empty)
-- tiktok_caption (final, trimmed block)
-- linkedin_caption (final, trimmed block)
-- audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both. Avoid repeating the same audio choices on adjacent days or reusing the same pair multiple times in the calendar.
-- strategy { angle, objective, target_saves_pct, target_comments_pct, hook_options }
-- distributionPlan (string containing 3–5 unique, niche-specific bullets describing platform adaptations and follow-up actions; do not leave empty)
-
-Required Fields Rule:
-- Every post object MUST include a storyPrompt field.
-- storyPrompt must be a non-empty string tied to the post’s niche and topic, 1-2 short sentences max that read like a free-form creator note, vary their openings across posts, allow either no question or a single normal question mark, never include "!?", never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below", and never end with the niche name, content category, or metadata tag (no trailing “. med spa”, “- med spa”, “(med spa)”, etc.).
-- Never return objects missing any required fields.
-- Every post object MUST include a storyPromptPlus field.
-- storyPromptPlus must be a non-empty string tied to the post’s niche and topic, 1-2 sentences (≥12 words) that adds actionable detail or stakes and ends with a follow-up question.
-- Every post object MUST include a distributionPlan field.
-- distributionPlan must contain 3–5 unique, niche-specific bullets that describe platform adaptations, what to retain, what to adjust, and include an engagement/follow-up action; do not return this field empty or as a placeholder.
-
-Omission Forbiddance:
-- Never omit storyPrompt.
-- Never rename storyPrompt or return it under a different key.
-- Never return storyPrompt as null, empty, whitespace, or placeholder like 'TBD' or 'N/A'.
-- Never omit distributionPlan.
-- Never return distributionPlan as null, empty, whitespace, or placeholder.
-
-Generation Guidance:
-- Always generate storyPrompt naturally based on the post’s topic and niche.
-  - Keep storyPrompt on-topic, specific to the niche and the post’s concept, and phrase it as a free-form creator note (hook idea, shot list, narrator beat, on-screen text idea, etc.) that varies its opening and phrasing across posts, allow either no question or a single question mark, never include "!?", and ban canned CTAs such as "Tag a friend", "DM us", or "Comment below". Do not mention or repeat the niche name anywhere in storyPrompt (including the end of the sentence); the niche should influence the tone/insight, not the literal wording.
-- Avoid recycled scaffolds, repeated labels, or generic filler, and never include placeholders like 'TBD', 'N/A', or 'story prompt here'.
-- StoryPromptPlus should expand on the same concept with additional stakes, proof, or emotional detail, remain niche-specific, and end with a follow-up question without replicating the storyPrompt wording.
-- No templates, no repeated scaffolds, no fixed phrases; vary structure/wording so hooks, captions, storyPrompts, and storyPromptPlus entries stay unique across posts.
-- If you are unsure, still output a best-effort storyPrompt and storyPromptPlus rather than omitting them, and verify each card has valid prompts before returning JSON.
-- DistributionPlan must consist of 3–5 unique bullets; each bullet should spell out a platform action, what to retain from the base content, and one engagement step that stays niche-locked. Avoid placeholder text, repeated templates, or filler sentences.
-
-Output Contract Warning:
-- Before outputting JSON, self-verify each post has storyPrompt that meets these requirements; missing/invalid storyPrompts make the response invalid.
-- Before outputting JSON, also ensure each post has storyPromptPlus that meets its requirements; missing/invalid storyPromptPlus makes the response invalid.
-- Before outputting JSON, verify distributionPlan exists, contains 3–5 bullets, and follows the distribution guidance; missing or malformed distributionPlan makes the response invalid.
-
-Rules:
-- If unsure, invent concise, plausible content rather than omitting fields.
-- Always include every field above (use empty string only if absolutely necessary).
-- Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
-- Return JSON that matches the provided schema via response_format. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel}, postsPerDay=${postsPerDaySetting}, niche=${nicheStyle}. Only output the JSON array that fits the response schema; do not add prose, markdown, or explanatory text.
-- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.${verbosityGate ? `\n${verbosityGate}` : ''}`;
+  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
+` : '';
+  return `You are a thoughtful calendar writer${cleanNiche}.
+${brandBlock}Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Return ONLY a JSON array with ${totalPostsRequired} objects; no prose, markdown, or extra keys.
+Each object must include the required fields (day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, engagementScripts) with non-empty, meaningful values. Script and reelScript should each include hook, body, and cta entries, and engagementScripts must provide both commentReply and dmReply.
+All posts in this batch must cover different topic areas; titles must be unique and avoid reusing the same procedure or topic phrasing. Vary angles (education, myth vs fact, behind-the-scenes, safety/aftercare, FAQs, comparisons, seasonal considerations) while keeping the tone neutral and non-manipulative.
+StoryPrompt should read like a concise creator note and must never append the niche label at the end of the sentence.
+`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
@@ -3708,12 +3585,12 @@ function getPresetGuidelines(nicheStyle = '') {
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-  const maxTokenCap = opts.reduceVerbosity ? 2200 : 3200;
-  const preferredTokens =
+  const maxTokenCap = opts.reduceVerbosity ? 1400 : 1600;
+  const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
       ? Number(opts.maxTokens)
       : maxTokenCap;
-  const maxTokens = Math.min(preferredTokens, maxTokenCap);
+  const maxTokens = Math.min(requestedTokens, maxTokenCap);
   const prompt = buildPrompt(nicheStyle, brandContext, opts);
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
@@ -4392,8 +4269,8 @@ const server = http.createServer((req, res) => {
     let aggregatedRawPosts = [];
     let remainingDays = daysToGenerate;
     let processedDays = 0;
-    const chunkBaseTokens = 2400;
-    const chunkMinTokens = 1400;
+    const chunkBaseTokens = 1600;
+    const chunkMinTokens = 1000;
 
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
@@ -4546,14 +4423,6 @@ const server = http.createServer((req, res) => {
     const openDuration = Date.now() - callStart;
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
-    const audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
-    const tiktokLen = audioCache.tiktok.length;
-    const instagramLen = audioCache.instagram.length;
-    for (let idx = 0; idx < rawPosts.length; idx += 1) {
-      const tiktokEntry = tiktokLen ? audioCache.tiktok[idx % tiktokLen] : null;
-      const instagramEntry = instagramLen ? audioCache.instagram[idx % instagramLen] : null;
-      rawPosts[idx].audio = formatAudioLine(idx, tiktokEntry, instagramEntry);
-    }
     const normalizedPosts = [];
     for (let idx = 0; idx < rawPosts.length; idx += 1) {
       const normalized = normalizePostWithOverrideFallback(rawPosts[idx], idx, startDay, undefined, nicheStyle, loggingContext);
