@@ -2348,13 +2348,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
-` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
   return `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Return ONLY a JSON array with ${totalPostsRequired} objects; no prose, markdown, or extra keys.
-Each object must include the required fields (day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, engagementScripts) with non-empty, meaningful values. Script and reelScript should each include hook, body, and cta entries, and engagementScripts must provide both commentReply and dmReply.
-All posts in this batch must cover different topic areas; titles must be unique and avoid reusing the same procedure or topic phrasing. Vary angles (education, myth vs fact, behind-the-scenes, safety/aftercare, FAQs, comparisons, seasonal considerations) while keeping the tone neutral and non-manipulative.
-StoryPrompt should read like a concise creator note and must never append the niche label at the end of the sentence.
+${brandBlock}Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Return JSON only; no prose, markdown, or extra keys. 
+Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. Scripts and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+
+Uniqueness contract:
+- Imagine a 30-day topic pool for this niche and choose only the least similar entries for this batch so all five titles stay unique, no two hooks reuse the same structure, captions avoid repeating the same procedure/benefit pair, hashtags differ, and designNotes/storyPrompt stay distinct.
+- Pretend other batches run in parallel; pick uncommon, non-generic topics and avoid the most obvious repeated themes. Do not rephrase near-duplicates or recycle the same opening phrases.
+- storyPrompt must feel like a standalone creator prompt/question and must never append the niche label (no “... med spa”, “... fitness coach”, etc.).
+
+All posts in this batch must cover different topic areas while keeping tone neutral and non-manipulative.
 `;
 }
 function sanitizePostForPrompt(post = {}) {
