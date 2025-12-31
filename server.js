@@ -3448,6 +3448,13 @@ function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
   return `Shape a ${format} story for ${niche} about ${base}: describe the turning point, what changed, and ask ${question}`;
 }
 
+function extractSuggestedAudioFromPost(post = {}) {
+  if (!post || typeof post !== 'object') return null;
+  const candidate = post.suggestedAudio ?? post.suggested_audio;
+  if (candidate && typeof candidate === 'object' && Object.keys(candidate).length) return candidate;
+  return null;
+}
+
 function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
@@ -3510,6 +3517,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '') 
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
     distributionPlan,
+    suggestedAudio: extractSuggestedAudioFromPost(post),
   };
   if (!normalized.promoSlot) normalized.weeklyPromo = '';
   normalized.cta = ensureCtaFallback(normalized);
