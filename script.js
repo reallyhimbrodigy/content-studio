@@ -7867,6 +7867,15 @@ function normalizePost(p, idx = 0, startDay = 1) {
 }
 
 // OpenAI API integration (via backend proxy)
+function normalizeCalendarSignature(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 120);
+}
+
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
   const runSignal = options.signal;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
@@ -7892,6 +7901,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const totalPosts = totalDays * normalizedFrequency;
     const totalBatches = Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
+    const usedSignaturesForRun = [];
     // Incremental render state
     const partialByIndex = {};
     let firstRenderDone = false;
@@ -7947,6 +7957,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         days: requestSize,
         startDay,
         postsPerDay: normalizedFrequency,
+        usedSignatures: usedSignaturesForRun.slice(),
       };
       if (thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
@@ -8028,6 +8039,14 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         });
         throw new Error('API error: invalid_json');
       }
+
+      postsCandidate.forEach((post) => {
+        const signature = normalizeCalendarSignature(post.title);
+        if (signature && !usedSignaturesForRun.includes(signature)) {
+          usedSignaturesForRun.push(signature);
+        }
+      });
+
       if (!postsCandidate.length) {
         const suffix = requestIdFromPayload ? ` (requestId=${requestIdFromPayload})` : '';
         throw new Error(`API returned no posts${suffix}`);

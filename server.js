@@ -2348,18 +2348,33 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
+` : '';
+  const usedSignatures = (Array.isArray(opts.usedSignatures) ? opts.usedSignatures : [])
+    .map((sig) => normalizeCalendarSignature(sig))
+    .filter(Boolean);
+  const usedBlock = usedSignatures.length
+    ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
+    : 'No prior signatures to avoid yet.';
   return `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Return JSON only; no prose, markdown, or extra keys. 
-Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. Scripts and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
-
-Uniqueness contract:
-- Imagine a 30-day topic pool for this niche and choose only the least similar entries for this batch so all five titles stay unique, no two hooks reuse the same structure, captions avoid repeating the same procedure/benefit pair, hashtags differ, and designNotes/storyPrompt stay distinct.
-- Pretend other batches run in parallel; pick uncommon, non-generic topics and avoid the most obvious repeated themes. Do not rephrase near-duplicates or recycle the same opening phrases.
-- storyPrompt must feel like a standalone creator prompt/question and must never append the niche label (no “... med spa”, “... fitness coach”, etc.).
-
-All posts in this batch must cover different topic areas while keeping tone neutral and non-manipulative.
+${brandBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
+Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
+Uniqueness: imagine a 30-day topic pool and select a distinct subset for this batch so titles, hooks, captions, designNotes, and storyPrompts stay different, avoiding the same opening patterns. ${usedBlock}
 `;
+}
+
+function normalizeCalendarSignature(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 120);
+}
+
+function buildCalendarSchemaBlock(expectedCount) {
+  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
@@ -3629,9 +3644,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-  const maxAttempts = Number.isFinite(Number(opts.maxAttempts))
-    ? Math.max(1, Math.min(Number(opts.maxAttempts), 2))
-    : Math.min(OPENAI_MAX_ATTEMPTS, 2);
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
   const extractContentText = (json) => {
     const messageContent = json?.choices?.[0]?.message?.content;
@@ -3653,68 +3665,58 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     if (typeof messageContent?.value === 'string') return messageContent.value;
     return '';
   };
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const attemptStart = Date.now();
-    const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
-    const timeoutPromise = new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        const timeoutErr = new Error('OpenAI request timed out');
-        timeoutErr.code = 'OPENAI_TIMEOUT';
-        reject(timeoutErr);
-      }, OPENAI_GENERATION_TIMEOUT_MS);
-      requestPromise.finally(() => clearTimeout(timeoutId));
-    });
-    try {
-      const json = await Promise.race([requestPromise, timeoutPromise]);
-      const content = extractContentText(json);
-      if (debugEnabled) {
-        console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
-      }
-      let parsed = null;
-      try {
-        parsed = JSON.parse(content || '{}');
-      } catch (parseErr) {
-        const err = new Error('Failed to parse OpenAI response');
-        err.code = 'OPENAI_SCHEMA_ERROR';
-        err.rawContent = content;
-        throw err;
-      }
-      const posts = Array.isArray(parsed.posts) ? parsed.posts : null;
-      if (!Array.isArray(posts)) {
-        const err = new Error('OpenAI response missing posts array');
-        err.code = 'OPENAI_SCHEMA_ERROR';
-        err.details = { provided: parsed };
-        err.rawContent = content;
-        throw err;
-      }
-      if (posts.length !== expectedChunkCount) {
-        const err = new Error('Calendar response count mismatch');
-        err.code = 'OPENAI_SCHEMA_ERROR';
-        err.details = { expectedCount: expectedChunkCount, actualCount: posts.length };
-        err.rawContent = content;
-        throw err;
-      }
-      return {
-        posts,
-        rawContent: content,
-        latency: Date.now() - attemptStart,
-        retryCount: attempt,
-      };
-    } catch (err) {
-      const isRetryable = ['OPENAI_TIMEOUT', 'OPENAI_ABORTED', 'OPENAI_BACKEND_ERROR'].includes(err?.code);
-      if (attempt >= maxAttempts - 1 || !isRetryable) {
-        const contextLabel = formatCalendarLogContext(loggingContext);
-        const label = contextLabel ? ` (${contextLabel})` : '';
-        console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
-        throw err;
-      }
-      const backoff = 1000 + Math.round(Math.random() * 1000);
-      await wait(backoff);
+  const attemptStart = Date.now();
+  const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
+  const timeoutPromise = new Promise((_, reject) => {
+    const timeoutId = setTimeout(() => {
+      const timeoutErr = new Error('OpenAI request timed out');
+      timeoutErr.code = 'OPENAI_TIMEOUT';
+      reject(timeoutErr);
+    }, OPENAI_GENERATION_TIMEOUT_MS);
+    requestPromise.finally(() => clearTimeout(timeoutId));
+  });
+  try {
+    const json = await Promise.race([requestPromise, timeoutPromise]);
+    const content = extractContentText(json);
+    if (debugEnabled) {
+      console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
+    let parsed = null;
+    try {
+      parsed = JSON.parse(content || '{}');
+    } catch (parseErr) {
+      const err = new Error('Failed to parse OpenAI response');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.rawContent = content;
+      throw err;
+    }
+    const posts = Array.isArray(parsed.posts) ? parsed.posts : null;
+    if (!Array.isArray(posts)) {
+      const err = new Error('OpenAI response missing posts array');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.details = { provided: parsed };
+      err.rawContent = content;
+      throw err;
+    }
+    if (posts.length !== expectedChunkCount) {
+      const err = new Error('Calendar response count mismatch');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.details = { expectedCount: expectedChunkCount, actualCount: posts.length };
+      err.rawContent = content;
+      throw err;
+    }
+    return {
+      posts,
+      rawContent: content,
+      latency: Date.now() - attemptStart,
+    };
+  } catch (err) {
+    const contextLabel = formatCalendarLogContext(loggingContext);
+    const label = contextLabel ? ` (${contextLabel})` : '';
+    console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
+    throw err;
   }
-  throw new Error('OpenAI call retries exhausted');
 }
-
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
   const strategy = post.strategy;
@@ -4268,8 +4270,9 @@ const server = http.createServer((req, res) => {
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const incomingSignatures = Array.isArray(payload.usedSignatures) ? payload.usedSignatures : [];
+    const normalizedUsedSignatures = Array.from(new Set(incomingSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean)));
     const chunkMetrics = [];
-    const parseErrors = [];
     let aggregatedRawPosts = [];
     let remainingDays = daysToGenerate;
     let processedDays = 0;
@@ -4279,45 +4282,20 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const attemptStart = Date.now();
-      try {
-        const result = await callOpenAI(nicheStyle, brandContext, {
-          days: chunkDays,
-          startDay: chunkStartDay,
-          postsPerDay: perDay,
-          loggingContext: chunkContext,
-          maxTokens: chunkMaxTokens,
-          reduceVerbosity: true,
-        });
-        const latency = result.latency || Date.now() - attemptStart;
-        return {
-          posts: Array.isArray(result.posts) ? result.posts : [],
-          rawLength: String(result.rawContent || '').length,
-          latency,
-          retryCount: typeof result.retryCount === 'number' ? result.retryCount : 0,
-          error: null,
-          fallback: false,
-          abortReason: null,
-        };
-      } catch (err) {
-        const duration = Date.now() - attemptStart;
-        parseErrors.push({
-          chunkIndex,
-          startDay: chunkStartDay,
-          days: chunkDays,
-          code: err?.code,
-          message: err?.message,
-        });
-        return {
-          posts: [],
-          rawLength: 0,
-          latency: duration,
-          retryCount: OPENAI_MAX_ATTEMPTS - 1,
-          error: err,
-          fallback: true,
-          abortReason: err?.code,
-        };
-      }
+      const result = await callOpenAI(nicheStyle, brandContext, {
+        days: chunkDays,
+        startDay: chunkStartDay,
+        postsPerDay: perDay,
+        loggingContext: chunkContext,
+        maxTokens: chunkMaxTokens,
+        reduceVerbosity: true,
+        usedSignatures: normalizedUsedSignatures,
+      });
+      return {
+        posts: Array.isArray(result.posts) ? result.posts : [],
+        rawLength: String(result.rawContent || '').length,
+        latency: result.latency || 0,
+      };
     }
 
     while (remainingDays > 0) {
@@ -4332,26 +4310,11 @@ const server = http.createServer((req, res) => {
         days: chunkDays,
         rawLength: chunkResult.rawLength,
         duration: chunkResult.latency,
-        retryCount: chunkResult.retryCount,
-        fallback: chunkResult.fallback,
-        error: chunkResult.error ? chunkResult.error.message : undefined,
         timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-        abortReason: chunkResult.abortReason,
       });
       remainingDays -= chunkDays;
       processedDays += chunkDays;
     }
-
-    if (parseErrors.length) {
-      console.warn('[Calendar] OpenAI chunk parse/timeout issues', {
-        requestId: logContext.requestId,
-        days,
-        startDay,
-        postsPerDay,
-        errors: parseErrors,
-      });
-    }
-
     console.log('[Calendar][Server][Chunks]', {
       requestId: logContext.requestId,
       startDay,
@@ -4422,7 +4385,7 @@ const server = http.createServer((req, res) => {
       responseLength: rawLength,
     });
     if (!rawPosts.length) {
-      console.warn('[Calendar] No posts returned across chunks, relying on fallback posts', logContext);
+      console.warn('[Calendar] No posts returned across chunks', logContext);
     }
     const openDuration = Date.now() - callStart;
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
@@ -4433,6 +4396,19 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    const signatureSet = new Set(normalizedUsedSignatures);
+    for (const post of posts) {
+      const signature = normalizeCalendarSignature(post.title);
+      if (!signature) continue;
+      if (signatureSet.has(signature)) {
+        const dupErr = new Error('Duplicate post detected');
+        dupErr.code = 'DUPLICATE_POSTS';
+        dupErr.statusCode = 500;
+        dupErr.details = { signature };
+        throw dupErr;
+      }
+      signatureSet.add(signature);
+    }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
     });
@@ -4648,6 +4624,10 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
+        const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
+        const sanitizedUsedSignatures = Array.from(
+          new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
+        );
         const targetCalendarId = body?.calendarId ?? null;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
@@ -4659,6 +4639,7 @@ const server = http.createServer((req, res) => {
         regenContext.startDay = body?.startDay;
         const posts = await generateCalendarPosts({
           ...(body || {}),
+          usedSignatures: sanitizedUsedSignatures,
           context: regenContext,
         });
         if (!isPro) {
@@ -4700,6 +4681,7 @@ const server = http.createServer((req, res) => {
           try {
             const posts = await generateCalendarPosts({
               ...(sanitizedBody || {}),
+              usedSignatures: sanitizedUsedSignatures,
               context: sanitizedContext,
             });
             if (!isPro) {
