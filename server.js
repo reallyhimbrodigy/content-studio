@@ -3389,17 +3389,29 @@ function resolveDistributionPlanValue(post = {}) {
 }
 
 function buildDistributionPlanFallback(post = {}, nicheStyle = '') {
-  const hook = toPlainString(post.hook || post.idea || post.title || 'this insight');
+  const idea = toPlainString(post.idea || post.title || 'this insight');
   const topic = toPlainString(post.topic || post.caption || 'today’s topic');
-  const cta = toPlainString(post.cta || 'What does this mean for you?');
-  const niche = toPlainString(nicheStyle || 'this niche');
-  const action = cta.endsWith('?') ? cta : `${cta}?`;
-  const bullets = [
-    `TikTok: pair the hook "${hook}" with fast-paced captions tied to ${niche} and end with ${action}`,
-    `Instagram: keep the same concept visually but slow the pacing to match the platform’s style and ask viewers to save/comment on ${topic}`,
-    `LinkedIn: highlight the strategic takeaway, mention the niche relevance, and invite professionals to weigh in with their experience`,
+  const hook = toPlainString(post.hook || idea);
+  const cta = toPlainString(post.cta || 'Share your thoughts below.');
+  const ctaClause = cta.endsWith('?') ? cta : `${cta}.`;
+  const tiktokBullets = [
+    `Start by surfacing the clearest value from ${idea} in the first two seconds and keep pacing brisk.`,
+    `Use three visual beats (setup, detail, payoff) that echo ${topic} and end with the CTA described above.`,
+    `Caption: one sentence that names the idea plus the CTA clause.`,
   ];
-  return bullets.join('\n');
+  const instagramBullets = [
+    `Reel: layer three clips that walk through the main steps and add short text beats tied to ${topic}.`,
+    `Caption: quick hook + supporting detail + CTA clause; invite viewers to save or comment on what they learned.`,
+  ];
+  const linkedinBullets = [
+    `Write 2–3 sentences that frame the insight, share a practical takeaway, and close with the CTA clause.`,
+  ];
+  const entries = [
+    `TikTok:\n- ${tiktokBullets.join('\n- ')}`,
+    `Instagram:\n- ${instagramBullets.join('\n- ')}`,
+    `LinkedIn:\n- ${linkedinBullets.join('\n- ')}`,
+  ];
+  return entries.join('\n');
 }
 
 function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
