@@ -2360,7 +2360,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ${brandBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
 Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
 StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
-Uniqueness: imagine a 30-day topic pool and select a distinct subset for this batch so titles, hooks, captions, designNotes, and storyPrompts stay different, avoiding the same opening patterns. ${usedBlock}
+Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${usedBlock}
 `;
 }
 
@@ -4397,17 +4397,23 @@ const server = http.createServer((req, res) => {
     }
     let posts = normalizedPosts;
     const signatureSet = new Set(normalizedUsedSignatures);
+    const duplicates = [];
     for (const post of posts) {
       const signature = normalizeCalendarSignature(post.title);
       if (!signature) continue;
       if (signatureSet.has(signature)) {
-        const dupErr = new Error('Duplicate post detected');
-        dupErr.code = 'DUPLICATE_POSTS';
-        dupErr.statusCode = 500;
-        dupErr.details = { signature };
-        throw dupErr;
+        duplicates.push({ day: post.day, signature });
+      } else {
+        signatureSet.add(signature);
       }
-      signatureSet.add(signature);
+    }
+    if (duplicates.length) {
+      console.warn('[Calendar] duplicate signatures detected; continuing', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        duplicates,
+      });
     }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
