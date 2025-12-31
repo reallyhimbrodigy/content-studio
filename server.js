@@ -2399,6 +2399,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       ? Number(opts.postsPerDay)
       : 1;
   const totalPostsRequired = days * postsPerDaySetting;
+  const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const distributionPlanRules = `Distribution Plan rules:
 - Generate a Distribution Plan for the SAME NICHE and SAME POST as the content card. Use the provided niche/brand context and stay tightly niche-locked.
 - Return exactly 3–5 bullet points that describe how to adapt this concept across formats/platforms, specify what to keep, detail what to adjust, and end with a low-friction next-step idea. Bullets must be unique, actionable, and free of placeholders or template phrases. Output bullets only; do not output sample captions or canned “Instagram/TikTok/LinkedIn” lines.`; 
@@ -2417,6 +2418,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   - Keep every line focused on the card’s topic.
   - Avoid placeholders and keep language simple.
   - Deliver the required fields without promotional spin; keep guidance straightforward and helpful.`;
+  // Uniqueness guardrail keeps the batch fresh without repeated angles/titles.
+  const uniquenessRules = `UNIQUENESS GUIDANCE:
+  - Within this ${dayRangeLabel} batch, no two posts may reuse the same title, core topic/angle, or near-duplicate noun phrase (small wording tweaks that keep the same concept).
+  - Rotate among the listed subtopics (beginner concepts, misconceptions, step-by-step how-to, checklist, common mistakes, terminology explainer, behind-the-scenes, tool/process, FAQ, myths vs facts, quick audit, do/don’t, scenario-based example) so each card covers a distinct slice of the niche.
+  - Title, hook, and caption must each stay unique; avoid repeating the same opening pattern for hooks, and do not restate the same idea verbatim in captions.
+  - Before finalizing JSON, internally verify the entire batch for duplicate titles/topics/angles and rewrite any card that collides until every post is distinct.`;
   const salesModeGate = '';
   const localRules = '';
   const claimsRules = '';
@@ -2428,8 +2435,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const verbosityGate = opts.reduceVerbosity
     ? '\n\nRetry mode: keep each field concise and focus on the core action for this niche.'
     : '';
-  const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
-  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
+  return `You are a content strategist.${brandBlock}${nicheDecisionBlock}${presetBlock}${nicheProfileBlock}${globalHardRules}${uniquenessRules}${salesModeGate}${titleRules}${categoryRules}${localRules}${claimsRules}${qualityRules}${audioRules}${distributionPlanRules}${strategyRules}${classificationRules}
 - storyPrompt (1-2 short sentences max, a non-empty, niche-tailored free-form creator note that varies its opening across posts; optionally end with a single question mark but never include "!?", and never use canned CTA templates such as "Tag a friend", "DM us", or "Comment below"; do not leave empty)
 - tiktok_caption (final, trimmed block)
 - linkedin_caption (final, trimmed block)
