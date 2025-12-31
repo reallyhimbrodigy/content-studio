@@ -2357,12 +2357,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const usedBlock = usedSignatures.length
     ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
     : 'No prior signatures to avoid yet.';
+  const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   return `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
-Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
-StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
-Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${usedBlock}
-`;
+ ${brandBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
+ Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
+ Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
+ `;
 }
 
 function normalizeCalendarSignature(value = '') {
@@ -2378,25 +2379,151 @@ function buildCalendarSchemaBlock(expectedCount) {
   return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
-function buildSuggestedAudioEntry(index, cache = {}) {
-  if (!cache || typeof cache !== 'object') return null;
-  const result = {};
-  const addEntry = (label, platform, array) => {
-    if (!Array.isArray(array) || !array.length) return;
-    const entry = array[index % array.length];
-    if (!entry || !entry.title) return;
-    result[label] = {
-      platform,
-      title: entry.title,
-      creator: entry.creator || null,
-      url: entry.url || null,
-      usageNote: null,
-    };
-  };
-  addEntry('tiktok', 'TikTok', cache.tiktok);
-  addEntry('instagram', 'Instagram', cache.instagram);
-  return Object.keys(result).length ? result : null;
+function sanitizeJsonContent(content = '') {
+  if (typeof content !== 'string') return '';
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return content;
+  }
+  let snippet = content.slice(firstBrace, lastBrace + 1);
+  snippet = snippet.replace(/,\s*([}\]])/g, '$1');
+  snippet = snippet.replace(/[\u2018\u2019]/g, "'");
+  return snippet;
 }
+
+function parseCalendarPostsFromContent(content = '') {
+  if (!content) return null;
+  try {
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed.posts) ? parsed.posts : null;
+  } catch {
+    return null;
+  }
+}
+
+function tryParsePosts(content = '', expectedCount = null) {
+  const posts = parseCalendarPostsFromContent(content);
+  if (!Array.isArray(posts)) {
+    return { posts: null, reason: 'missing_posts', parsed: null };
+  }
+  if (expectedCount !== null && posts.length !== expectedCount) {
+    return { posts: null, reason: 'count_mismatch', parsed: posts };
+  }
+  return { posts, reason: null };
+}
+
+function buildFallbackChunkPosts(nicheStyle, startDay, postsPerDay, totalCount) {
+  const fallback = [];
+  for (let idx = 0; idx < totalCount; idx += 1) {
+    const day = computePostDayIndex(idx, startDay, postsPerDay);
+    fallback.push(buildFallbackPost(nicheStyle, day));
+  }
+  return fallback;
+}
+
+function stableHash(value = '') {
+  let hash = 0;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash << 5) - hash + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function determineSuggestedAudioPlatform(post = {}, idx = 0) {
+  const hint = String(post.platform || post.format || post.type || '').toLowerCase();
+  if (hint.includes('tiktok')) return 'tiktok';
+  if (hint.includes('instagram')) return 'instagram';
+  return idx % 2 === 0 ? 'tiktok' : 'instagram';
+}
+
+function buildAudioSearchUrl(platform = 'tiktok', title = '', artist = '') {
+  const query = encodeURIComponent(`${title} ${artist}`.replace(/\s+/g, ' ').trim());
+  if (platform === 'instagram') {
+    return `https://www.instagram.com/explore/tags/${query || 'trending'}`;
+  }
+  return `https://www.tiktok.com/search?q=${query || 'trending+sound'}`;
+}
+
+function selectTrendingEntry(list = [], key = '') {
+  if (!Array.isArray(list) || !list.length) return null;
+  const index = stableHash(key) % list.length;
+  return list[index];
+}
+
+function buildTrendingSuggestedAudio(entry, platform) {
+  if (!entry || typeof entry !== 'object') return null;
+  const title = toPlainString(entry.title || '').trim();
+  const artist = toPlainString(entry.creator || '').trim();
+  if (!title || !artist) return null;
+  const normalizedPlatform = platform === 'instagram' ? 'instagram' : 'tiktok';
+  return {
+    platform: normalizedPlatform,
+    title,
+    artist,
+    url: buildAudioSearchUrl(normalizedPlatform, title, artist),
+    isFallback: false,
+  };
+}
+
+function buildFallbackSuggestedAudio(post = {}, idx = 0, platform) {
+  const normalizedPlatform = platform === 'instagram' ? 'instagram' : 'tiktok';
+  const number = ((Number(post.day) || idx + 1) % 9) + 1;
+  const title = `Promptly Mood ${number}`;
+  const artist = 'Promptly Mix';
+  return {
+    platform: normalizedPlatform,
+    title,
+    artist,
+    url: buildAudioSearchUrl(normalizedPlatform, title, artist),
+    isFallback: true,
+  };
+}
+
+function isValidSuggestedAudio(audio = {}) {
+  if (!audio || typeof audio !== 'object') return false;
+  return Boolean(String(audio.title || '').trim() && String(audio.artist || '').trim());
+}
+
+function ensureSuggestedAudioForPosts(posts = [], { audioCache = {}, requestId, chunkStartDay = 1, postsPerDay = 1 } = {}) {
+  if (!Array.isArray(posts) || !posts.length) {
+    return { total: 0, missingBefore: 0, missingAfter: 0, missingAfterFinal: 0, fallbackCount: 0 };
+  }
+  const cache = audioCache && typeof audioCache === 'object' ? audioCache : {};
+  const stats = { total: posts.length, missingBefore: 0, missingAfter: 0, missingAfterFinal: 0, fallbackCount: 0 };
+  posts.forEach((post, idx) => {
+    const beforeValid = isValidSuggestedAudio(post.suggestedAudio);
+    if (!beforeValid) stats.missingBefore += 1;
+    const platform = determineSuggestedAudioPlatform(post, idx);
+    const seed = `${cache.monthKey || ''}|${post.day || computePostDayIndex(idx, chunkStartDay, postsPerDay)}|${platform}|${toPlainString(post.title || post.idea || post.caption || '')}`;
+    const trendingEntry = selectTrendingEntry(cache[platform], seed);
+    let audio = trendingEntry ? buildTrendingSuggestedAudio(trendingEntry, platform) : null;
+    if (!audio) {
+      audio = buildFallbackSuggestedAudio(post, idx, platform);
+    }
+    post.suggestedAudio = audio;
+  });
+  const missingAfterBeforeFallback = posts.filter((post) => !isValidSuggestedAudio(post.suggestedAudio)).length;
+  stats.missingAfter = missingAfterBeforeFallback;
+  if (missingAfterBeforeFallback > 0) {
+    console.error('[Calendar] missing suggestedAudio after assignment; forcing fallback', {
+      requestId,
+      missingCount: missingAfterBeforeFallback,
+    });
+    posts.forEach((post, idx) => {
+      if (!isValidSuggestedAudio(post.suggestedAudio)) {
+        const platform = determineSuggestedAudioPlatform(post, idx);
+        post.suggestedAudio = buildFallbackSuggestedAudio(post, idx, platform);
+      }
+    });
+  }
+  stats.missingAfterFinal = posts.filter((post) => !isValidSuggestedAudio(post.suggestedAudio)).length;
+  stats.fallbackCount = posts.filter((post) => post?.suggestedAudio?.isFallback).length;
+  return stats;
+}
+
 function sanitizePostForPrompt(post = {}) {
   const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
@@ -3651,7 +3778,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       ? Number(opts.maxTokens)
       : maxTokenCap;
   const maxTokens = Math.min(requestedTokens, maxTokenCap);
-  const prompt = buildPrompt(nicheStyle, brandContext, opts);
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0 ? Number(opts.postsPerDay) : 1;
@@ -3661,30 +3787,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     chunkStartDay,
     Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
   );
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.5,
-    max_tokens: maxTokens,
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'calendar_batch',
-        strict: true,
-        schema,
-      },
-    },
-  });
-  const requestOptions = {
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
   const extractContentText = (json) => {
     const messageContent = json?.choices?.[0]?.message?.content;
@@ -3706,57 +3808,118 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     if (typeof messageContent?.value === 'string') return messageContent.value;
     return '';
   };
-  const attemptStart = Date.now();
-  const requestPromise = withOpenAiSlot(() => openAIRequest(requestOptions, payload));
-  const timeoutPromise = new Promise((_, reject) => {
-    const timeoutId = setTimeout(() => {
-      const timeoutErr = new Error('OpenAI request timed out');
-      timeoutErr.code = 'OPENAI_TIMEOUT';
-      reject(timeoutErr);
-    }, OPENAI_GENERATION_TIMEOUT_MS);
-    requestPromise.finally(() => clearTimeout(timeoutId));
+  const buildRequestOptions = (payload) => ({
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
   });
-  try {
+  const attemptStart = Date.now();
+  const contextLabel = formatCalendarLogContext(loggingContext);
+  const label = contextLabel ? ` (${contextLabel})` : '';
+  const attemptRequest = async (extraInstructions = '') => {
+    const attemptTimestamp = Date.now();
+    const attemptOpts = {
+      ...opts,
+      days: chunkDays,
+      startDay: chunkStartDay,
+      postsPerDay,
+      extraInstructions,
+    };
+    const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.5,
+      max_tokens: maxTokens,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'calendar_batch',
+          strict: true,
+          schema,
+        },
+      },
+    });
+    const requestPromise = withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload));
+    const timeoutPromise = new Promise((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        const timeoutErr = new Error('OpenAI request timed out');
+        timeoutErr.code = 'OPENAI_TIMEOUT';
+        reject(timeoutErr);
+      }, OPENAI_GENERATION_TIMEOUT_MS);
+      requestPromise.finally(() => clearTimeout(timeoutId));
+    });
     const json = await Promise.race([requestPromise, timeoutPromise]);
     const content = extractContentText(json);
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
-    let parsed = null;
-    try {
-      parsed = JSON.parse(content || '{}');
-    } catch (parseErr) {
-      const err = new Error('Failed to parse OpenAI response');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.rawContent = content;
-      throw err;
+    return { content, latency: Date.now() - attemptTimestamp };
+  };
+
+  try {
+    let lastLatency = 0;
+    let parsedContent = '';
+    let parseResult = null;
+
+    const firstResponse = await attemptRequest('');
+    parsedContent = firstResponse.content;
+    lastLatency = firstResponse.latency;
+    parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+
+    if (!parseResult.posts) {
+      const sanitized = sanitizeJsonContent(parsedContent);
+      if (sanitized && sanitized !== parsedContent) {
+        parsedContent = sanitized;
+        parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+      }
     }
-    const posts = Array.isArray(parsed.posts) ? parsed.posts : null;
-    if (!Array.isArray(posts)) {
-      const err = new Error('OpenAI response missing posts array');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.details = { provided: parsed };
-      err.rawContent = content;
-      throw err;
+
+    if (!parseResult.posts) {
+      const retryInstructions =
+        'If the previous response failed, return ONLY JSON in the form { "posts": [ ... ] } and do not add any explanation.';
+      const retryResponse = await attemptRequest(retryInstructions);
+      parsedContent = retryResponse.content;
+      lastLatency = retryResponse.latency;
+      parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+      if (!parseResult.posts) {
+        const sanitizedRetry = sanitizeJsonContent(parsedContent);
+        if (sanitizedRetry && sanitizedRetry !== parsedContent) {
+          parsedContent = sanitizedRetry;
+          parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+        }
+      }
     }
-    if (posts.length !== expectedChunkCount) {
-      const err = new Error('Calendar response count mismatch');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.details = { expectedCount: expectedChunkCount, actualCount: posts.length };
-      err.rawContent = content;
-      throw err;
+
+    if (parseResult && parseResult.posts) {
+      return {
+        posts: parseResult.posts,
+        rawContent: parsedContent,
+        latency: lastLatency,
+      };
     }
-    return {
-      posts,
-      rawContent: content,
-      latency: Date.now() - attemptStart,
-    };
+
+    const fallbackReason = parseResult ? parseResult.reason : 'unknown reason';
+    console.warn(`[Calendar] callOpenAI parse fallback${label}: ${fallbackReason}`);
   } catch (err) {
-    const contextLabel = formatCalendarLogContext(loggingContext);
-    const label = contextLabel ? ` (${contextLabel})` : '';
     console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
-    throw err;
   }
+
+  const fallbackPosts = buildFallbackChunkPosts(nicheStyle, chunkStartDay, postsPerDay, expectedChunkCount);
+  console.warn(
+    `[Calendar] callOpenAI returning fallback posts${label}: expected ${expectedChunkCount}, returning ${fallbackPosts.length}`
+  );
+  return {
+    posts: fallbackPosts,
+    rawContent: '',
+    latency: Date.now() - attemptStart,
+    fallback: true,
+  };
 }
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
@@ -4368,7 +4531,7 @@ const server = http.createServer((req, res) => {
     const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
 
     const rawPosts = aggregatedRawPosts;
-    let audioCache = { tiktok: [], instagram: [] };
+    let audioCache = { tiktok: [], instagram: [], monthKey: '' };
     try {
       audioCache = await getMonthlyTrendingAudios({ requestId: loggingContext?.requestId });
     } catch (audioErr) {
@@ -4377,12 +4540,6 @@ const server = http.createServer((req, res) => {
         error: audioErr?.message || audioErr,
       });
     }
-    rawPosts.forEach((post, idx) => {
-      const audioEntry = buildSuggestedAudioEntry(idx, audioCache);
-      if (audioEntry) {
-        post.suggestedAudio = audioEntry;
-      }
-    });
     if (expectedCount && rawPosts.length !== expectedCount) {
       const err = new Error('Calendar response count mismatch');
       err.code = 'OPENAI_SCHEMA_ERROR';
@@ -4516,6 +4673,22 @@ const server = http.createServer((req, res) => {
       return post;
     });
     logDuplicateStrategyValues(posts);
+    const audioStats = ensureSuggestedAudioForPosts(posts, {
+      audioCache,
+      requestId: loggingContext?.requestId,
+      chunkStartDay: startDay,
+      postsPerDay: perDay,
+    });
+    const audioSample = posts
+      .slice(0, 2)
+      .map((post) => ({
+        day: post.day,
+        platform: post?.suggestedAudio?.platform || '',
+        title: post?.suggestedAudio?.title || '',
+        artist: post?.suggestedAudio?.artist || '',
+        isFallback: Boolean(post?.suggestedAudio?.isFallback),
+      }))
+      .filter((entry) => entry.title || entry.artist);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,
@@ -4525,12 +4698,14 @@ const server = http.createServer((req, res) => {
       rawLength,
       context: loggingContext,
     });
-    const suggestedAudioCount = posts.filter(
-      (post) => post?.suggestedAudio && Object.keys(post.suggestedAudio || {}).length
-    ).length;
     console.log('[Calendar] audio summary', {
       requestId: loggingContext?.requestId,
-      suggestedAudioCount,
+      totalPosts: audioStats.total,
+      missingBefore: audioStats.missingBefore,
+      missingAfter: audioStats.missingAfter,
+      missingAfterFinal: audioStats.missingAfterFinal,
+      fallbackCount: audioStats.fallbackCount,
+      sample: audioSample,
     });
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
@@ -4679,6 +4854,22 @@ const server = http.createServer((req, res) => {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
         req.user = user;
+        try {
+          const response = await supabaseAdmin
+            .from('profiles')
+            .select('subscription_plan')
+            .eq('id', user.id)
+            .single();
+          if (response?.data?.subscription_plan) {
+            req.user.plan = response.data.subscription_plan;
+          }
+        } catch (planErr) {
+          console.warn('[Calendar] failed to resolve subscription plan', {
+            requestId,
+            userId: user.id,
+            error: planErr?.message || planErr,
+          });
+        }
         const isPro = isUserPro(req);
         const tStart = Date.now();
         console.log('[Calendar][Server][Perf] regen request received', { requestId, userId: user.id, isPro });

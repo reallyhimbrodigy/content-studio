@@ -5175,20 +5175,17 @@ const createCard = (post) => {
 
     const buildSuggestedAudioText = (audio) => {
       if (!audio || typeof audio !== 'object') return '';
-      const lines = [];
-      const addLine = (label, entry) => {
-        if (!entry || !entry.title) return;
-        const pieces = [entry.title];
-        if (entry.creator) pieces.push(entry.creator);
-        lines.push(`${label}: ${pieces.join(' — ')}`);
-      };
-      addLine('TikTok', audio.tiktok);
-      addLine('Instagram', audio.instagram);
-      addLine('Audio', audio.generic);
-      if (!lines.length && audio.platform && audio.title) {
-        lines.push(`${audio.platform}: ${audio.title}`);
+      const title = String(audio.title || '').trim();
+      const artist = String(audio.artist || '').trim();
+      if (!title && !artist) return '';
+      const platform = String(audio.platform || '').trim();
+      const detail = [title, artist].filter(Boolean).join(' — ');
+      const fallbackSuffix = audio.isFallback ? ' (fallback)' : '';
+      if (platform) {
+        const label = `${platform.charAt(0).toUpperCase()}${platform.slice(1)}`;
+        return `${label}: ${detail}${fallbackSuffix}`;
       }
-      return lines.join(' | ');
+      return `${detail}${fallbackSuffix}`;
     };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
@@ -5503,7 +5500,18 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
-    const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio || (entry.audio ? { generic: { title: entry.audio } } : null));
+    const suggestedAudioText = buildSuggestedAudioText(
+      entry.suggestedAudio ||
+        (entry.audio
+          ? {
+              platform: 'generic',
+              title: entry.audio,
+              artist: 'Promptly Mix',
+              url: '',
+              isFallback: true,
+            }
+          : null)
+    );
     const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
       if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
@@ -7068,21 +7076,15 @@ function toCsv(headers, rows){
 
 function formatSuggestedAudioDisplay(post = {}) {
   const audio = post?.suggestedAudio;
-  if (!audio || typeof audio !== 'object') return '';
-  const lines = [];
-  const addLine = (label, entry) => {
-    if (!entry || !entry.title) return;
-    const parts = [entry.title];
-    if (entry.creator) parts.push(entry.creator);
-    lines.push(`${label}: ${parts.join(' — ')}`);
-  };
-  addLine('TikTok', audio.tiktok);
-  addLine('Instagram', audio.instagram);
-  addLine('Audio', audio.generic);
-  if (!lines.length && audio.platform && audio.title) {
-    lines.push(`${audio.platform}: ${audio.title}`);
+  if (!isValidSuggestedAudio(audio)) return '';
+  const platformHint = String(audio.platform || '').trim();
+  const detail = [audio.title, audio.artist].filter(Boolean).join(' — ');
+  const fallbackSuffix = audio.isFallback ? ' (fallback)' : '';
+  if (platformHint) {
+    const label = `${platformHint.charAt(0).toUpperCase()}${platformHint.slice(1)}`;
+    return `${label}: ${detail}${fallbackSuffix}`;
   }
-  return lines.join(' | ');
+  return `${detail}${fallbackSuffix}`;
 }
 
 
@@ -7886,42 +7888,70 @@ function ensureGlobalVariety(posts) {
 }
 
 // Normalize a post to guarantee all required fields exist
-function normalizeSuggestedAudio(post = {}) {
-  if (!post || typeof post !== 'object') return null;
-  if (post.suggestedAudio && typeof post.suggestedAudio === 'object') return post.suggestedAudio;
-  if (post.suggested_audio && typeof post.suggested_audio === 'object') return post.suggested_audio;
-  const fallbackTitle =
-    (typeof post.audio === 'string' && post.audio.trim()) ||
-    (typeof post.trendingAudio === 'string' && post.trendingAudio.trim()) ||
-    (typeof post.audioSuggestion === 'string' && post.audioSuggestion.trim());
-  if (fallbackTitle) {
-    return {
-      generic: {
-        platform: 'generic',
-        title: fallbackTitle.trim(),
-        creator: null,
-        url: null,
-        usageNote: null,
-      },
-    };
+function determineClientAudioPlatform(post = {}, idx = 0) {
+  const hint = String(post.platform || post.format || post.type || '').toLowerCase();
+  if (hint.includes('tiktok')) return 'tiktok';
+  if (hint.includes('instagram')) return 'instagram';
+  return idx % 2 === 0 ? 'tiktok' : 'instagram';
+}
+
+function buildClientAudioUrl(platform, title, artist) {
+  const query = encodeURIComponent(`${title} ${artist}`.replace(/\s+/g, ' ').trim() || 'trending sound');
+  if (platform === 'instagram') {
+    return `https://www.instagram.com/explore/tags/${query}`;
   }
-  return null;
+  return `https://www.tiktok.com/search?q=${query}`;
+}
+
+function buildClientFallbackSuggestedAudio(post = {}, idx = 0) {
+  const platform = determineClientAudioPlatform(post, idx);
+  const number = ((Number(post.day) || idx + 1) % 9) + 1;
+  const title = `Promptly Mood ${number}`;
+  const artist = 'Promptly Mix';
+  return {
+    platform,
+    title,
+    artist,
+    url: buildClientAudioUrl(platform, title, artist),
+    isFallback: true,
+  };
+}
+
+function isValidSuggestedAudio(audio = {}) {
+  if (!audio || typeof audio !== 'object') return false;
+  return Boolean(String(audio.title || '').trim() && String(audio.artist || '').trim());
+}
+
+function normalizeSuggestedAudio(post = {}, idx = 0) {
+  if (!post || typeof post !== 'object') return buildClientFallbackSuggestedAudio(post, idx);
+  const candidate = post.suggestedAudio || post.suggested_audio;
+  if (candidate && typeof candidate === 'object') {
+    const title = String(candidate.title || candidate.name || '').trim();
+    const artist = String(candidate.artist || candidate.creator || '').trim();
+    if (title && artist) {
+      const platformHint = String(candidate.platform || '').trim().toLowerCase();
+      const platform = platformHint || determineClientAudioPlatform(post, idx);
+      const url = String(candidate.url || '').trim() || buildClientAudioUrl(platform, title, artist);
+      return {
+        platform,
+        title,
+        artist,
+        url,
+        isFallback: Boolean(candidate.isFallback),
+      };
+    }
+  }
+  return buildClientFallbackSuggestedAudio(post, idx);
 }
 
 function hasSuggestedAudio(post) {
-  const audio = post?.suggestedAudio;
-  return Boolean(audio && typeof audio === 'object' && Object.keys(audio).length);
+  return isValidSuggestedAudio(post?.suggestedAudio);
 }
 
 function getSuggestedAudioTitle(post) {
   const audio = post?.suggestedAudio;
-  if (!audio || typeof audio !== 'object') return '';
-  return (
-    (audio.tiktok && audio.tiktok.title) ||
-    (audio.instagram && audio.instagram.title) ||
-    (audio.generic && audio.generic.title) ||
-    ''
-  );
+  if (!isValidSuggestedAudio(audio)) return '';
+  return audio.title;
 }
 
 function normalizePost(p, idx = 0, startDay = 1) {
@@ -7945,7 +7975,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     variants: p.variants || undefined,
     distributionPlan: p.distributionPlan || '',
     audio: p.audio || '',
-    suggestedAudio: normalizeSuggestedAudio(p),
+    suggestedAudio: normalizeSuggestedAudio(p, idx),
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
@@ -8275,6 +8305,15 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     renderCards(allPosts);
     requestAnimationFrame(() => {
       const audioNodes = document.querySelectorAll('.suggested-audio');
+      const totalPosts = allPosts.length;
+      const validAudioCount = allPosts.filter(hasSuggestedAudio).length;
+      const fallbackAudioCount = allPosts.filter((post) => post?.suggestedAudio?.isFallback).length;
+      console.log(`[Calendar] audio render summary run ${thisRunId}`, {
+        totalPosts,
+        validAudioCount,
+        fallbackAudioCount,
+        renderedAudioRows: audioNodes.length,
+      });
       console.log(`[Calendar] DOM suggested audio nodes run ${thisRunId}`, { nodeCount: audioNodes.length });
     });
     console.log('[Calendar] rendered posts', allPosts.length);
