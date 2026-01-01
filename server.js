@@ -4506,11 +4506,17 @@ const server = http.createServer((req, res) => {
 
     const rawPosts = aggregatedRawPosts;
     const audioCache = payload?.trendingAudio;
-    if (!audioCache) {
+    const allowMissingAudio = Boolean(payload?.allowMissingSuggestedAudio);
+    if (!audioCache && !allowMissingAudio) {
       const err = new Error('Trending audio missing for generation');
       err.code = 'TRENDING_AUDIO_UNAVAILABLE';
       err.details = { requestId: loggingContext?.requestId };
       throw err;
+    }
+    if (!audioCache && allowMissingAudio) {
+      console.warn('[Calendar][Server] missing trending audio but allowMissingSuggestedAudio enabled', {
+        requestId: loggingContext?.requestId,
+      });
     }
     if (expectedCount && rawPosts.length !== expectedCount) {
       const err = new Error('Calendar response count mismatch');
@@ -4903,14 +4909,19 @@ const server = http.createServer((req, res) => {
             code: audioErr?.code || 'TRENDING_AUDIO_UNAVAILABLE',
           });
         }
+        const requestedPostsPerDay =
+          Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
+            ? Number(body.postsPerDay)
+            : 1;
+        const allowMissingAudioInRegen = !Boolean(trendingAudio);
         const posts = await generateCalendarPosts({
           ...(body || {}),
+          postsPerDay: requestedPostsPerDay,
           usedSignatures: sanitizedUsedSignatures,
           trendingAudio,
-          allowMissingSuggestedAudio: true,
+          allowMissingSuggestedAudio: allowMissingAudioInRegen,
           context: regenContext,
         });
-        const allowMissingAudioInRegen = !Boolean(trendingAudio);
         if (allowMissingAudioInRegen) {
           console.warn('[Calendar] regen-day running without trending audio', { requestId });
         }
