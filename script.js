@@ -6833,20 +6833,37 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
   }
   if (!resolvedIsPro) return posts;
 
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) {
+    console.debug('[Calendar] skipping generate-variants (no auth token)');
+    return posts;
+  }
   const chunkSize = 15;
+  let variantAuthWarningLogged = false;
   let merged = posts.map((post) => ({ ...post }));
   for (let i = 0; i < merged.length; i += chunkSize) {
     const chunk = merged.slice(i, i + chunkSize);
     if (!chunk.length) continue;
     const resp = await fetch('/api/generate-variants', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         posts: chunk,
         nicheStyle,
         userId: resolvedUserId,
       }),
     });
+    if (resp.status === 401) {
+      if (!variantAuthWarningLogged) {
+        variantAuthWarningLogged = true;
+        console.warn('[Calendar] generate-variants unauthorized, skipping platform sync');
+      }
+      return posts;
+    }
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const error = new Error(body.error || 'Variant generation failed');
