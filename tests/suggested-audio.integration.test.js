@@ -23,7 +23,7 @@ const posts = Array.from({ length: 5 }, (_, idx) => ({
   storyPrompt: 'Prompt',
   storyPromptPlus: 'Prompt plus',
   engagementScripts: { commentReply: 'Comment', dmReply: 'DM' },
-});
+}));
 
 const stats = ensureSuggestedAudioForPosts(posts, { audioCache });
 
@@ -42,10 +42,10 @@ posts.forEach((post, idx) => {
   assert(post.suggestedAudio, `post ${idx + 1} missing suggestedAudio`);
   assert(post.suggestedAudio.tiktok?.title, `TikTok title missing for day ${post.day}`);
   assert(post.suggestedAudio.tiktok?.artist, `TikTok artist missing for day ${post.day}`);
-  assert(post.suggestedAudio.tiktok?.url.startsWith('https://'), `TikTok url invalid for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.suggestedAudio.tiktok?.title), `TikTok title contains URL for day ${post.day}`);
   assert(post.suggestedAudio.instagram?.title, `Instagram title missing for day ${post.day}`);
   assert(post.suggestedAudio.instagram?.artist, `Instagram artist missing for day ${post.day}`);
-  assert(post.suggestedAudio.instagram?.url.startsWith('https://'), `Instagram url invalid for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.suggestedAudio.instagram?.artist), `Instagram artist contains URL for day ${post.day}`);
 });
 
 console.log('Suggested audio assignment integration test passed.');

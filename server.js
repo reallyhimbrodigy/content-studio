@@ -2432,28 +2432,28 @@ function stableHash(value = '') {
   return Math.abs(hash);
 }
 
-function buildAudioSearchUrl(platform = 'tiktok', title = '', artist = '') {
-  const query = encodeURIComponent(`${title} ${artist}`.replace(/\s+/g, ' ').trim());
-  if (platform === 'instagram') {
-    return `https://www.instagram.com/explore/tags/${query || 'trending'}`;
-  }
-  return `https://www.tiktok.com/search?q=${query || 'trending+sound'}`;
-}
-
 function selectTrendingEntry(list = [], key = '') {
   if (!Array.isArray(list) || !list.length) return null;
   const index = stableHash(key) % list.length;
   return list[index];
 }
 
-function buildTrendingSuggestedAudio(entry = {}, platform = 'tiktok') {
+function sanitizeAudioText(value = '') {
+  let text = toPlainString(value || '').trim();
+  text = text.replace(/\(link:[^)]+\)/gi, '');
+  text = text.replace(/https?:\/\/\S+/gi, '');
+  text = text.replace(/^@+/g, '');
+  text = text.replace(/[\u2018\u2019]/g, "'");
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+function buildTrendingSuggestedAudio(entry = {}) {
   if (!entry || typeof entry !== 'object') return null;
-  const title = toPlainString(entry.title || entry.name || '').trim();
-  const artist = toPlainString(entry.artist || entry.creator || '').trim();
+  const title = sanitizeAudioText(entry.title || entry.name || '');
+  const artist = sanitizeAudioText(entry.artist || entry.creator || '');
   if (!title || !artist) return null;
-  const urlCandidate = toPlainString(entry.url || '');
-  const url = urlCandidate || buildAudioSearchUrl(platform, title, artist);
-  return { title, artist, url };
+  return { title, artist };
 }
 
 function isPlatformEntryComplete(entry = {}) {
@@ -2461,8 +2461,7 @@ function isPlatformEntryComplete(entry = {}) {
     entry &&
     typeof entry === 'object' &&
     String(entry.title || '').trim() &&
-    String(entry.artist || '').trim() &&
-    String(entry.url || '').trim().startsWith('http')
+    String(entry.artist || '').trim()
   );
 }
 
@@ -2515,8 +2514,8 @@ function ensureSuggestedAudioForPosts(posts = [], { audioCache = {}, requestId, 
     const seedBase = `${cache.monthKey || ''}|${post.day || computePostDayIndex(idx, chunkStartDay, postsPerDay)}|${toPlainString(post.title || post.idea || post.caption || '')}`;
     const tiktokEntry = selectTrendingEntry(cache.tiktok, `${seedBase}|tiktok`);
     const instagramEntry = selectTrendingEntry(cache.instagram, `${seedBase}|instagram`);
-    const tiktok = buildTrendingSuggestedAudio(tiktokEntry, 'tiktok');
-    const instagram = buildTrendingSuggestedAudio(instagramEntry, 'instagram');
+    const tiktok = buildTrendingSuggestedAudio(tiktokEntry);
+    const instagram = buildTrendingSuggestedAudio(instagramEntry);
     post.suggestedAudio = {
       tiktok,
       instagram,

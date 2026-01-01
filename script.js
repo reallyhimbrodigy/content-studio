@@ -5180,8 +5180,7 @@ const createCard = (post) => {
         const parts = [entry.title];
         if (entry.artist) parts.push(entry.artist);
         const detail = parts.join(' — ');
-        const withUrl = entry.url ? `${detail} (link: ${entry.url})` : detail;
-        return `${label}: ${withUrl}`;
+        return `${label}: ${detail}`;
       };
       const lines = [];
       const tiktokLine = buildLine('TikTok', audio.tiktok);
