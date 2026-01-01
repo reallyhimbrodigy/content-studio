@@ -11,6 +11,7 @@ const HOLIDAY_KEYWORDS = [
   'xmas',
   'holiday',
   'santa',
+  'st nick',
   'claus',
   'reindeer',
   'jingle',
@@ -25,6 +26,20 @@ const HOLIDAY_KEYWORDS = [
   'stocking',
   'carol',
   'winter wonderland',
+  'most wonderful time',
+  'happy xmas',
+  'silent night',
+  'deck the halls',
+  'let it snow',
+  'rudolph',
+  'frosty',
+  'white christmas',
+  'little drummer',
+  'auld lang syne',
+  'underneath the tree',
+  'baby its cold outside',
+  'rockin around',
+  'christmas tree',
   'merry',
   'season',
   'seasons',
@@ -40,17 +55,26 @@ const HOLIDAY_KEYWORDS = [
 const HOLIDAY_EXACT_TITLES = new Set([
   'all i want for christmas is you',
   'rockin around the christmas tree',
+  'rocking around the christmas tree',
   'jingle bell rock',
   'a holly jolly christmas',
   'last christmas',
   'feliz navidad',
   'its the most wonderful time of the year',
+  'most wonderful time of the year',
   'let it snow',
+  'let it snow let it snow let it snow',
   'santa tell me',
   'underneath the tree',
   'youre a mean one mr grinch',
+  'youre a mean one mister grinch',
   'baby its cold outside',
+  'silent night',
+  'deck the halls',
   'white christmas',
+  'winter wonderland',
+  'the little drummer boy',
+  'auld lang syne',
   'the christmas song',
   'mistletoe',
 ]);
@@ -65,6 +89,8 @@ const HOLIDAY_TITLE_ARTIST_PAIRS = new Set([
   'its the most wonderful time of the year|andy williams',
   'santa tell me|ariana grande',
   'underneath the tree|kelly clarkson',
+  'baby its cold outside|dean martin',
+  'youre a mean one mr grinch|thurl ravenscroft',
 ]);
 
 const EVERGREEN_FALLBACK = [
@@ -294,7 +320,7 @@ async function getBillboardHot100Entries({ requestId } = {}) {
       return {
         entries: filtered.slice(0, BILLBOARD_SELECTION_COUNT),
         chartDate: result.chartDate,
-        source: 'billboard',
+        source: 'billboard_hot100_nonholiday',
         filteredOut,
       };
     }
@@ -309,7 +335,7 @@ async function getBillboardHot100Entries({ requestId } = {}) {
             return {
               entries: prevFiltered.slice(0, BILLBOARD_SELECTION_COUNT),
               chartDate: prevResult.chartDate || prevDate,
-              source: 'billboard-prev-week',
+              source: 'billboard_hot100_nonholiday_prev_week',
               filteredOut: prevFilteredOut,
             };
           }
@@ -320,17 +346,22 @@ async function getBillboardHot100Entries({ requestId } = {}) {
     return {
       entries: fallback,
       chartDate: result.chartDate,
-      source: 'fallback',
+      source: 'fallback_nonholiday',
       filteredOut,
     };
   } catch (err) {
     const fallback = filterHolidayEntries(getEvergreenFallbackList()).slice(0, BILLBOARD_SELECTION_COUNT);
-    return { entries: fallback, chartDate: 'fallback', source: 'fallback', filteredOut: 0 };
+    return { entries: fallback, chartDate: 'fallback', source: 'fallback_nonholiday', filteredOut: 0 };
   }
+}
+
+async function getNonHolidayHot100({ requestId } = {}) {
+  return getBillboardHot100Entries({ requestId });
 }
 
 module.exports = {
   getBillboardHot100Entries,
+  getNonHolidayHot100,
   getEvergreenFallbackList,
   filterHolidayEntries,
   isHolidayTrack,

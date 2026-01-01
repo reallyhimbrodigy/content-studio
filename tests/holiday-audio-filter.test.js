@@ -13,6 +13,9 @@ const assert = (condition, message) => {
 
 assert(isHolidayTrack("Baby It's Cold Outside", 'Dean Martin') === true, 'expected holiday track match');
 assert(isHolidayTrack('Underneath the Tree', 'Kelly Clarkson') === true, 'expected holiday track match');
+assert(isHolidayTrack('Rockin Around The Christmas Tree', 'Brenda Lee') === true, 'expected holiday track match');
+assert(isHolidayTrack('It’s The Most Wonderful Time Of The Year', 'Andy Williams') === true, 'expected holiday track match');
+assert(isHolidayTrack('Auld Lang Syne', 'Traditional') === true, 'expected holiday track match');
 assert(isHolidayTrack('Blinding Lights', 'The Weeknd') === false, 'expected non-holiday track');
 
 const sample = [

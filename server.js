@@ -52,7 +52,11 @@ const {
   STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
   validateStoryPromptKeywordOverride,
 } = require('./server/lib/storyPromptOverrideValidator');
-const { getBillboardHot100Entries, getEvergreenFallbackList } = require('./server/lib/billboardHot100');
+const {
+  getBillboardHot100Entries,
+  getEvergreenFallbackList,
+  isHolidayTrack,
+} = require('./server/lib/billboardHot100');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -4874,6 +4878,24 @@ const server = http.createServer((req, res) => {
       holidayFilteredOut: Number(filteredOut) || 0,
       sample: audioSample,
     });
+    if (!isProduction) {
+      const holidayHits = posts.filter((post) => {
+        const tk = post?.suggestedAudio?.tiktok;
+        const ig = post?.suggestedAudio?.instagram;
+        return (
+          (tk && isHolidayTrack(tk.title, tk.artist)) ||
+          (ig && isHolidayTrack(ig.title, ig.artist))
+        );
+      });
+      if (holidayHits.length) {
+        const sample = holidayHits.slice(0, 2).map((post) => ({
+          day: post.day,
+          tiktok: post?.suggestedAudio?.tiktok,
+          instagram: post?.suggestedAudio?.instagram,
+        }));
+        throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
+      }
+    }
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
       count: posts.length,
