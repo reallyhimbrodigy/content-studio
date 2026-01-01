@@ -3,11 +3,13 @@ const { getMonthlyTrendingAudios, formatAudioLine, overrideCacheForTests } = req
 const monthKey = new Date().toISOString().slice(0, 7);
 const sampleTikTok = Array.from({ length: 10 }, (_, idx) => ({
   title: `TikTok Sound ${idx + 1}`,
-  creator: `@tiktok${idx + 1}`,
+  artist: `@tiktok${idx + 1}`,
+  url: `https://www.tiktok.com/music/${idx + 1}`,
 }));
 const sampleInstagram = Array.from({ length: 10 }, (_, idx) => ({
   title: `Instagram Sound ${idx + 1}`,
-  creator: `@instagram${idx + 1}`,
+  artist: `@instagram${idx + 1}`,
+  url: `https://www.instagram.com/reel/${idx + 1}`,
 }));
 
 overrideCacheForTests({
