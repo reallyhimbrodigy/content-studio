@@ -4822,7 +4822,7 @@ const server = http.createServer((req, res) => {
       return post;
     });
     logDuplicateStrategyValues(posts);
-    const { entries: billboardEntries, chartDate, source: audioSource } = await getBillboardHot100Entries({
+    const { entries: billboardEntries, chartDate, source: audioSource, filteredOut } = await getBillboardHot100Entries({
       requestId: loggingContext?.requestId,
     });
     const audioStats = ensureSuggestedAudioForPosts(posts, {
@@ -4871,6 +4871,7 @@ const server = http.createServer((req, res) => {
       missingAudio: audioStats.missingAudio,
       source: audioSource,
       chartDate,
+      holidayFilteredOut: Number(filteredOut) || 0,
       sample: audioSample,
     });
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {

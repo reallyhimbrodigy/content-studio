@@ -11,37 +11,60 @@ const HOLIDAY_KEYWORDS = [
   'xmas',
   'holiday',
   'santa',
+  'claus',
   'reindeer',
-  'sleigh',
-  'mistletoe',
-  'snowman',
   'jingle',
-  'bells',
-  'winter',
-  'rudolph',
-  'frosty',
-  'noel',
+  'mistletoe',
+  'holly',
   'yuletide',
-  'hanukkah',
-  'kwanzaa',
+  'noel',
   'nativity',
+  'sleigh',
+  'snowman',
+  'gingerbread',
+  'stocking',
   'carol',
-  'silent night',
-  'deck the halls',
+  'winter wonderland',
+  'merry',
+  'season',
+  'seasons',
+  'grinch',
+  'hanukkah',
+  'menorah',
+  'kwanzaa',
+  'new year',
+  'bell',
+  'bells',
 ];
 
 const HOLIDAY_EXACT_TITLES = new Set([
   'all i want for christmas is you',
-  'last christmas',
-  'jingle bell rock',
   'rockin around the christmas tree',
-  'santa tell me',
+  'jingle bell rock',
+  'a holly jolly christmas',
+  'last christmas',
+  'feliz navidad',
   'its the most wonderful time of the year',
   'let it snow',
-  'feliz navidad',
+  'santa tell me',
+  'underneath the tree',
+  'youre a mean one mr grinch',
+  'baby its cold outside',
   'white christmas',
   'the christmas song',
   'mistletoe',
+]);
+
+const HOLIDAY_TITLE_ARTIST_PAIRS = new Set([
+  'all i want for christmas is you|mariah carey',
+  'rockin around the christmas tree|brenda lee',
+  'jingle bell rock|bobby helms',
+  'a holly jolly christmas|burl ives',
+  'last christmas|wham',
+  'feliz navidad|jose feliciano',
+  'its the most wonderful time of the year|andy williams',
+  'santa tell me|ariana grande',
+  'underneath the tree|kelly clarkson',
 ]);
 
 const EVERGREEN_FALLBACK = [
@@ -99,6 +122,24 @@ function cleanText(value = '') {
   return decodeHtmlEntities(stripTags(value)).replace(/\s+/g, ' ').trim();
 }
 
+function normalizeHolidayText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isHolidayTrack(title = '', artist = '') {
+  const normalizedTitle = normalizeHolidayText(title);
+  const normalizedArtist = normalizeHolidayText(artist);
+  if (!normalizedTitle) return false;
+  if (HOLIDAY_EXACT_TITLES.has(normalizedTitle)) return true;
+  if (HOLIDAY_TITLE_ARTIST_PAIRS.has(`${normalizedTitle}|${normalizedArtist}`)) return true;
+  const combined = `${normalizedTitle} ${normalizedArtist}`.trim();
+  return HOLIDAY_KEYWORDS.some((keyword) => combined.includes(keyword));
+}
+
 function formatChartDate(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -106,18 +147,18 @@ function formatChartDate(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function isHolidayEntry(entry = {}) {
-  const title = String(entry.title || '').toLowerCase().trim();
-  const artist = String(entry.artist || '').toLowerCase().trim();
-  if (!title) return false;
-  const normalizedTitle = title.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (HOLIDAY_EXACT_TITLES.has(normalizedTitle)) return true;
-  const combined = `${title} ${artist}`;
-  return HOLIDAY_KEYWORDS.some((keyword) => combined.includes(keyword));
+function shiftChartDate(chartDate, days) {
+  const parts = String(chartDate || '').split('-').map((value) => Number(value));
+  if (parts.length !== 3 || parts.some((value) => !Number.isFinite(value))) return null;
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return formatChartDate(date);
 }
 
 function filterHolidayEntries(entries = []) {
-  return entries.filter((entry) => entry && !isHolidayEntry(entry));
+  return entries.filter((entry) => entry && !isHolidayTrack(entry.title || '', entry.artist || ''));
 }
 
 function parseBillboardEntries(html = '') {
@@ -248,12 +289,43 @@ async function getBillboardHot100Entries({ requestId } = {}) {
   try {
     const result = await getBillboardHot100({ requestId });
     const filtered = filterHolidayEntries(result.entries || []);
+    const filteredOut = (result.entries || []).length - filtered.length;
     if (filtered.length >= BILLBOARD_MIN_ENTRIES) {
-      return { entries: filtered.slice(0, BILLBOARD_SELECTION_COUNT), chartDate: result.chartDate, source: 'billboard' };
+      return {
+        entries: filtered.slice(0, BILLBOARD_SELECTION_COUNT),
+        chartDate: result.chartDate,
+        source: 'billboard',
+        filteredOut,
+      };
     }
-    return { entries: getEvergreenFallbackList().slice(0, BILLBOARD_SELECTION_COUNT), chartDate: result.chartDate, source: 'fallback' };
+    if (result.chartDate) {
+      const prevDate = shiftChartDate(result.chartDate, -7);
+      if (prevDate) {
+        try {
+          const prevResult = await fetchBillboardChart({ chartDate: prevDate, requestId });
+          const prevFiltered = filterHolidayEntries(prevResult.entries || []);
+          const prevFilteredOut = (prevResult.entries || []).length - prevFiltered.length;
+          if (prevFiltered.length >= BILLBOARD_MIN_ENTRIES) {
+            return {
+              entries: prevFiltered.slice(0, BILLBOARD_SELECTION_COUNT),
+              chartDate: prevResult.chartDate || prevDate,
+              source: 'billboard-prev-week',
+              filteredOut: prevFilteredOut,
+            };
+          }
+        } catch (prevErr) {}
+      }
+    }
+    const fallback = filterHolidayEntries(getEvergreenFallbackList()).slice(0, BILLBOARD_SELECTION_COUNT);
+    return {
+      entries: fallback,
+      chartDate: result.chartDate,
+      source: 'fallback',
+      filteredOut,
+    };
   } catch (err) {
-    return { entries: getEvergreenFallbackList().slice(0, BILLBOARD_SELECTION_COUNT), chartDate: 'fallback', source: 'fallback' };
+    const fallback = filterHolidayEntries(getEvergreenFallbackList()).slice(0, BILLBOARD_SELECTION_COUNT);
+    return { entries: fallback, chartDate: 'fallback', source: 'fallback', filteredOut: 0 };
   }
 }
 
@@ -261,4 +333,5 @@ module.exports = {
   getBillboardHot100Entries,
   getEvergreenFallbackList,
   filterHolidayEntries,
+  isHolidayTrack,
 };
