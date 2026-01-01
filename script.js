@@ -5174,13 +5174,19 @@ const createCard = (post) => {
     }
 
     const buildSuggestedAudioText = (audio) => {
-      if (!audio) return '';
-      if (typeof audio === 'string') return audio.trim();
-      if (typeof audio !== 'object') return '';
-      const title = sanitizeSuggestedAudioText(audio.title || '');
-      const artist = sanitizeSuggestedAudioText(audio.artist || '');
-      if (!title && !artist) return '';
-      return artist ? `${title} — ${artist}` : title;
+      const normalized = normalizeSuggestedAudio({ suggestedAudio: audio });
+      if (!normalized) return '';
+      const formatLine = (label, entry) => {
+        const item = normalizeAudioItem(entry);
+        if (!item) return '';
+        return `${label}: ${item.title} — ${item.artist}`;
+      };
+      const lines = [];
+      const tiktokLine = formatLine('TikTok', normalized.tiktok);
+      if (tiktokLine) lines.push(tiktokLine);
+      const instagramLine = formatLine('Instagram', normalized.instagram);
+      if (instagramLine) lines.push(instagramLine);
+      return lines.join('\n');
     };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
@@ -5497,9 +5503,7 @@ const createCard = (post) => {
 
     const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio);
     const audioRowText = suggestedAudioText || 'Audio missing for this post.';
-    if (!suggestedAudioText && isLocalDevHost) {
-      console.error('[Calendar] missing suggested audio', { day: entryDay });
-    }
+    // Audio completeness is summarized once per generation run.
     const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
       if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
@@ -7218,13 +7222,14 @@ function toCsv(headers, rows){
 
 function formatSuggestedAudioDisplay(post = {}) {
   const audio = post?.suggestedAudio;
-  if (!audio) return '';
-  if (typeof audio === 'string') return audio.trim();
-  if (typeof audio !== 'object') return '';
-  const title = sanitizeSuggestedAudioText(audio.title || '');
-  const artist = sanitizeSuggestedAudioText(audio.artist || '');
-  if (!title && !artist) return '';
-  return artist ? `${title} — ${artist}` : title;
+  const normalized = normalizeSuggestedAudio({ suggestedAudio: audio });
+  if (!normalized) return '';
+  const lines = [];
+  const tiktok = normalizeAudioItem(normalized.tiktok);
+  if (tiktok) lines.push(`TikTok: ${tiktok.title} — ${tiktok.artist}`);
+  const instagram = normalizeAudioItem(normalized.instagram);
+  if (instagram) lines.push(`Instagram: ${instagram.title} — ${instagram.artist}`);
+  return lines.join('\n');
 }
 
 
@@ -8036,37 +8041,72 @@ function sanitizeSuggestedAudioText(value = '') {
     .trim();
 }
 
-function sanitizeSuggestedAudio(entry = {}) {
-  if (!entry || typeof entry !== 'object') return null;
-  const title = sanitizeSuggestedAudioText(entry.title || entry.name || '');
-  const artist = sanitizeSuggestedAudioText(entry.artist || entry.creator || '');
-  if (!title || !artist) return null;
-  return { title, artist, source: entry.source || '', chartDate: entry.chartDate || '' };
-}
-
-function isValidSuggestedAudio(audio = {}) {
-  if (!audio || typeof audio !== 'object') return false;
-  const title = sanitizeSuggestedAudioText(audio.title || '');
-  const artist = sanitizeSuggestedAudioText(audio.artist || '');
-  return Boolean(title && artist);
-}
-
-function normalizeSuggestedAudio(post = {}, idx = 0) {
-  const candidate = post.suggestedAudio || post.suggested_audio;
-  if (candidate && typeof candidate === 'object') {
-    const normalized = sanitizeSuggestedAudio(candidate);
-    if (normalized) return normalized;
-  }
-  if (typeof candidate === 'string') {
-    const cleaned = sanitizeSuggestedAudioText(candidate);
+function normalizeAudioItem(entry) {
+  if (!entry) return null;
+  if (typeof entry === 'string') {
+    const cleaned = sanitizeSuggestedAudioText(entry);
     const parts = cleaned.split(/\s+—\s+|\s+-\s+/);
     if (parts.length >= 2) {
       const title = parts.shift().trim();
       const artist = parts.join(' - ').trim();
       return title && artist ? { title, artist } : null;
     }
+    return null;
   }
-  return null;
+  if (typeof entry !== 'object') return null;
+  const title = sanitizeSuggestedAudioText(entry.title || entry.name || '');
+  const artist = sanitizeSuggestedAudioText(entry.artist || entry.creator || '');
+  if (!title || !artist) return null;
+  return { title, artist };
+}
+
+function isValidSuggestedAudio(audio = {}) {
+  if (!audio || typeof audio !== 'object') return false;
+  return Boolean(normalizeAudioItem(audio.tiktok) && normalizeAudioItem(audio.instagram));
+}
+
+function normalizeSuggestedAudio(post = {}) {
+  const candidate = post.suggestedAudio || post.suggested_audio;
+  if (!candidate) return null;
+  let tiktok = null;
+  let instagram = null;
+  let source = '';
+  let chartDate = '';
+  if (Array.isArray(candidate)) {
+    candidate.forEach((entry) => {
+      const platform = String(entry?.platform || entry?.source || '').toLowerCase();
+      const item = normalizeAudioItem(entry);
+      if (!item) return;
+      if (platform.includes('tiktok')) tiktok = item;
+      if (platform.includes('instagram')) instagram = item;
+    });
+  } else if (typeof candidate === 'string') {
+    const item = normalizeAudioItem(candidate);
+    if (item) {
+      tiktok = item;
+      instagram = item;
+    }
+  } else if (typeof candidate === 'object') {
+    source = candidate.source || '';
+    chartDate = candidate.chartDate || '';
+    if (candidate.tiktok || candidate.instagram) {
+      tiktok = normalizeAudioItem(candidate.tiktok);
+      instagram = normalizeAudioItem(candidate.instagram);
+    } else {
+      const item = normalizeAudioItem(candidate);
+      if (item) {
+        tiktok = item;
+        instagram = item;
+      }
+    }
+  }
+  const fallback = tiktok || instagram || null;
+  return {
+    tiktok: tiktok || fallback,
+    instagram: instagram || fallback,
+    source,
+    chartDate,
+  };
 }
 
 function hasSuggestedAudio(post) {
@@ -8074,9 +8114,11 @@ function hasSuggestedAudio(post) {
 }
 
 function getSuggestedAudioTitle(post) {
-  const title = sanitizeSuggestedAudioText(post?.suggestedAudio?.title || '');
-  const artist = sanitizeSuggestedAudioText(post?.suggestedAudio?.artist || '');
-  if (!title) return '';
+  const audio = normalizeSuggestedAudio(post);
+  const item = audio?.tiktok || audio?.instagram || null;
+  if (!item || !item.title) return '';
+  const title = sanitizeSuggestedAudioText(item.title);
+  const artist = sanitizeSuggestedAudioText(item.artist || '');
   return artist ? `${title} — ${artist}` : title;
 }
 
@@ -8396,13 +8438,18 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const isDevMode =
       typeof process === 'undefined' || !process.env || process.env.NODE_ENV !== 'production';
     if (isDevMode) {
-      const incompleteAudio = allPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio));
-      if (incompleteAudio.length) {
-        const sample = incompleteAudio.slice(0, 3).map((post) => ({
-          day: post.day,
-          missing: 'title_or_artist',
-        }));
-        console.error('[Calendar] incomplete suggestedAudio', { runId: thisRunId, sample });
+      const missingTikTok = allPosts.filter(
+        (post) => !normalizeAudioItem(post?.suggestedAudio?.tiktok)
+      ).length;
+      const missingInstagram = allPosts.filter(
+        (post) => !normalizeAudioItem(post?.suggestedAudio?.instagram)
+      ).length;
+      if (missingTikTok || missingInstagram) {
+        console.warn('[Calendar] incomplete suggestedAudio platforms', {
+          runId: thisRunId,
+          missingTikTok,
+          missingInstagram,
+        });
       }
     }
     const assignedAudioCount = allPosts.filter(hasSuggestedAudio).length;

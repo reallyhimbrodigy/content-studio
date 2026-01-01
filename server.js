@@ -2450,9 +2450,12 @@ function sanitizeAudioText(value = '') {
 
 function isValidSuggestedAudio(audio = {}) {
   if (!audio || typeof audio !== 'object') return false;
-  const title = sanitizeAudioText(audio.title || '');
-  const artist = sanitizeAudioText(audio.artist || '');
-  return Boolean(title && artist);
+  const tiktok = audio.tiktok;
+  const instagram = audio.instagram;
+  return (
+    tiktok && typeof tiktok === 'object' && tiktok.title && tiktok.artist &&
+    instagram && typeof instagram === 'object' && instagram.title && instagram.artist
+  );
 }
 
 function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], requestId, chunkStartDay = 1, postsPerDay = 1, chartDate = 'latest', source = 'billboard' } = {}) {
@@ -2469,8 +2472,8 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], requestId
     const title = sanitizeAudioText(entry?.title || '');
     const artist = sanitizeAudioText(entry?.artist || '');
     post.suggestedAudio = {
-      title,
-      artist,
+      tiktok: title && artist ? { title, artist } : null,
+      instagram: title && artist ? { title, artist } : null,
       source,
       chartDate,
     };
@@ -3421,32 +3424,63 @@ function sanitizeSuggestedAudioEntry(entry = {}) {
 
 function normalizeSuggestedAudioValue(candidate, fallbackEntry = null) {
   const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+  const fallbackItem = { title: fallback.title, artist: fallback.artist };
   if (!candidate) {
-    return { title: fallback.title, artist: fallback.artist };
+    return { tiktok: fallbackItem, instagram: fallbackItem };
   }
   if (typeof candidate === 'string') {
     const parsed = normalizeSuggestedAudioFromText(candidate);
-    return {
+    const item = {
       title: parsed.title || fallback.title,
       artist: parsed.artist || fallback.artist,
     };
+    return { tiktok: item, instagram: item };
+  }
+  if (Array.isArray(candidate)) {
+    let tiktok = null;
+    let instagram = null;
+    candidate.forEach((entry) => {
+      const platform = String(entry?.platform || entry?.source || '').toLowerCase();
+      const normalized = sanitizeSuggestedAudioEntry(entry || {});
+      if (!normalized.title || !normalized.artist) return;
+      if (platform.includes('tiktok')) tiktok = normalized;
+      if (platform.includes('instagram')) instagram = normalized;
+    });
+    const fallbackNormalized = tiktok || instagram || fallbackItem;
+    return {
+      tiktok: tiktok || fallbackNormalized,
+      instagram: instagram || fallbackNormalized,
+    };
   }
   if (candidate && typeof candidate === 'object') {
+    if (candidate.tiktok || candidate.instagram) {
+      const tiktok = sanitizeSuggestedAudioEntry(candidate.tiktok || {});
+      const instagram = sanitizeSuggestedAudioEntry(candidate.instagram || {});
+      const fallbackNormalized = tiktok.title ? tiktok : (instagram.title ? instagram : fallbackItem);
+      return {
+        tiktok: tiktok.title ? tiktok : fallbackNormalized,
+        instagram: instagram.title ? instagram : fallbackNormalized,
+        source: candidate.source || '',
+        chartDate: candidate.chartDate || '',
+      };
+    }
     const hasDirect = candidate.title || candidate.name || candidate.track;
     if (hasDirect) {
       const sanitized = sanitizeSuggestedAudioEntry(candidate);
-      return {
+      const item = {
         title: sanitized.title || fallback.title,
         artist: sanitized.artist || fallback.artist,
       };
+      return { tiktok: item, instagram: item };
     }
     const sanitized = sanitizeSuggestedAudioEntry(candidate);
-    return {
+    const item = {
       title: sanitized.title || fallback.title,
       artist: sanitized.artist || fallback.artist,
     };
+    return { tiktok: item, instagram: item };
   }
-  return { title: fallback.title, artist: fallback.artist };
+  return { tiktok: fallbackItem, instagram: fallbackItem };
 }
 
 function fillMissingFieldsFromFallback(post = {}, fallback = {}, missingFields = [], nicheStyle = '') {
@@ -3683,11 +3717,11 @@ function extractSuggestedAudioFromPost(post = {}) {
   if (!candidate) return null;
   if (typeof candidate === 'string') {
     const parsed = normalizeSuggestedAudioFromText(candidate);
-    return parsed.title ? parsed : null;
+    return parsed.title ? { tiktok: parsed, instagram: parsed } : null;
   }
   if (typeof candidate === 'object') {
     const normalized = normalizeSuggestedAudioValue(candidate);
-    return normalized.title ? normalized : null;
+    return normalized.tiktok?.title ? normalized : null;
   }
   return null;
 }
@@ -4799,14 +4833,29 @@ const server = http.createServer((req, res) => {
       chunkStartDay: startDay,
       postsPerDay: perDay,
     });
+    const fallbackAudioEntry = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+    let normalizedAudioCount = 0;
+    posts = posts.map((post) => {
+      if (!post || !isValidSuggestedAudio(post.suggestedAudio)) {
+        normalizedAudioCount += 1;
+        post.suggestedAudio = normalizeSuggestedAudioValue(post.suggestedAudio, fallbackAudioEntry);
+      }
+      return post;
+    });
+    if (normalizedAudioCount) {
+      console.log('[Calendar] normalized suggestedAudio shape', {
+        requestId: loggingContext?.requestId,
+        normalizedAudioCount,
+      });
+    }
     const audioSample = posts
       .slice(0, 2)
       .map((post) => ({
         day: post.day,
-        title: post?.suggestedAudio?.title,
-        artist: post?.suggestedAudio?.artist,
+        tiktok: post?.suggestedAudio?.tiktok,
+        instagram: post?.suggestedAudio?.instagram,
       }))
-      .filter((entry) => entry.title);
+      .filter((entry) => entry.tiktok?.title || entry.instagram?.title);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,

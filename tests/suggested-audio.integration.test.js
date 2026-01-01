@@ -29,10 +29,12 @@ assert(stats.missingAudio === 0, 'expected no missing audio after assignment');
 
 posts.forEach((post, idx) => {
   assert(post.suggestedAudio, `post ${idx + 1} missing suggestedAudio`);
-  assert(post.suggestedAudio.title, `Audio title missing for day ${post.day}`);
-  assert(post.suggestedAudio.artist, `Audio artist missing for day ${post.day}`);
-  assert(!/https?:\/\//i.test(post.suggestedAudio.title), `Audio title contains URL for day ${post.day}`);
-  assert(!/https?:\/\//i.test(post.suggestedAudio.artist), `Audio artist contains URL for day ${post.day}`);
+  assert(post.suggestedAudio.tiktok?.title, `TikTok title missing for day ${post.day}`);
+  assert(post.suggestedAudio.tiktok?.artist, `TikTok artist missing for day ${post.day}`);
+  assert(post.suggestedAudio.instagram?.title, `Instagram title missing for day ${post.day}`);
+  assert(post.suggestedAudio.instagram?.artist, `Instagram artist missing for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.suggestedAudio.tiktok?.title), `TikTok title contains URL for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.suggestedAudio.instagram?.artist), `Instagram artist contains URL for day ${post.day}`);
 });
 
 console.log('Suggested audio assignment integration test passed.');
