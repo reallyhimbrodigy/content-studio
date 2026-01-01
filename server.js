@@ -4910,6 +4910,24 @@ const server = http.createServer((req, res) => {
           allowMissingSuggestedAudio: true,
           context: regenContext,
         });
+        const allowMissingAudioInRegen = !Boolean(trendingAudio);
+        if (allowMissingAudioInRegen) {
+          console.warn('[Calendar] regen-day running without trending audio', { requestId });
+        }
+        const incompleteAudio = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio));
+        if (incompleteAudio.length && !allowMissingAudioInRegen) {
+          console.error('[Calendar] regen audio incomplete despite cache', {
+            requestId,
+            missing: incompleteAudio.map((post) => post.day),
+          });
+          return sendJson(res, 502, {
+            error: {
+              code: 'SUGGESTED_AUDIO_INCOMPLETE',
+              message: 'Trending audio assignment failed for some posts',
+              details: { days: incompleteAudio.map((post) => post.day) },
+            },
+          });
+        }
         const suggestedAudioTikTokCount = posts.filter((post) => Boolean(post?.suggestedAudio?.tiktok?.title)).length;
         const suggestedAudioInstagramCount = posts.filter((post) => Boolean(post?.suggestedAudio?.instagram?.title)).length;
         const missingEitherCount = posts.filter((post) => !post?.suggestedAudio?.tiktok || !post?.suggestedAudio?.instagram).length;
