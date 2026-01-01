@@ -14,7 +14,7 @@ const posts = Array.from({ length: 5 }, (_, idx) => ({
 }));
 
 const audioEntries = getEvergreenFallbackList();
-const stats = ensureSuggestedAudioForPosts(posts, { audioEntries, chartDate: '2024-01-06' });
+const stats = ensureSuggestedAudioForPosts(posts, { audioEntries });
 
 const assert = (condition, message) => {
   if (!condition) {
@@ -29,12 +29,8 @@ assert(stats.missingAudio === 0, 'expected no missing audio after assignment');
 
 posts.forEach((post, idx) => {
   assert(post.suggestedAudio, `post ${idx + 1} missing suggestedAudio`);
-  assert(post.suggestedAudio.tiktok?.title, `TikTok title missing for day ${post.day}`);
-  assert(post.suggestedAudio.tiktok?.artist, `TikTok artist missing for day ${post.day}`);
-  assert(post.suggestedAudio.instagram?.title, `Instagram title missing for day ${post.day}`);
-  assert(post.suggestedAudio.instagram?.artist, `Instagram artist missing for day ${post.day}`);
-  assert(!/https?:\/\//i.test(post.suggestedAudio.tiktok?.title), `TikTok title contains URL for day ${post.day}`);
-  assert(!/https?:\/\//i.test(post.suggestedAudio.instagram?.artist), `Instagram artist contains URL for day ${post.day}`);
+  assert(/.+ - .+/.test(post.suggestedAudio), `Audio string format missing for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.suggestedAudio), `Audio string contains URL for day ${post.day}`);
 });
 
 console.log('Suggested audio assignment integration test passed.');

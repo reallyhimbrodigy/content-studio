@@ -1,6 +1,7 @@
 const {
   isHolidayTrack,
   filterHolidayEntries,
+  normalizeAudioString,
 } = require('../server/lib/billboardHot100');
 
 const assert = (condition, message) => {
@@ -17,6 +18,10 @@ assert(isHolidayTrack('Rockin Around The Christmas Tree', 'Brenda Lee') === true
 assert(isHolidayTrack('It’s The Most Wonderful Time Of The Year', 'Andy Williams') === true, 'expected holiday track match');
 assert(isHolidayTrack('Auld Lang Syne', 'Traditional') === true, 'expected holiday track match');
 assert(isHolidayTrack('Blinding Lights', 'The Weeknd') === false, 'expected non-holiday track');
+assert(
+  normalizeAudioString('Blinding Lights', 'The Weeknd') === 'Blinding Lights - The Weeknd',
+  'expected audio string normalization'
+);
 
 const sample = [
   { title: "Baby It's Cold Outside", artist: 'Dean Martin', rank: 1 },

@@ -5174,19 +5174,15 @@ const createCard = (post) => {
     }
 
     const buildSuggestedAudioText = (audio) => {
-      const normalized = normalizeSuggestedAudio({ suggestedAudio: audio });
-      if (!normalized) return '';
-      const formatLine = (label, entry) => {
-        const item = normalizeAudioItem(entry);
-        if (!item) return '';
-        return `${label}: ${item.title} — ${item.artist}`;
-      };
-      const lines = [];
-      const tiktokLine = formatLine('TikTok', normalized.tiktok);
-      if (tiktokLine) lines.push(tiktokLine);
-      const instagramLine = formatLine('Instagram', normalized.instagram);
-      if (instagramLine) lines.push(instagramLine);
-      return lines.join('\n');
+      if (!audio || typeof audio !== 'string') return '';
+      const cleaned = sanitizeSuggestedAudioText(audio);
+      const parts = cleaned.split(/\s+-\s+/);
+      if (parts.length >= 2) {
+        const title = parts.shift().trim();
+        const artist = parts.join(' - ').trim();
+        return title && artist ? `${title} - ${artist}` : '';
+      }
+      return '';
     };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
@@ -7222,14 +7218,15 @@ function toCsv(headers, rows){
 
 function formatSuggestedAudioDisplay(post = {}) {
   const audio = post?.suggestedAudio;
-  const normalized = normalizeSuggestedAudio({ suggestedAudio: audio });
-  if (!normalized) return '';
-  const lines = [];
-  const tiktok = normalizeAudioItem(normalized.tiktok);
-  if (tiktok) lines.push(`TikTok: ${tiktok.title} — ${tiktok.artist}`);
-  const instagram = normalizeAudioItem(normalized.instagram);
-  if (instagram) lines.push(`Instagram: ${instagram.title} — ${instagram.artist}`);
-  return lines.join('\n');
+  if (!audio || typeof audio !== 'string') return '';
+  const cleaned = sanitizeSuggestedAudioText(audio);
+  const parts = cleaned.split(/\s+-\s+/);
+  if (parts.length >= 2) {
+    const title = parts.shift().trim();
+    const artist = parts.join(' - ').trim();
+    return title && artist ? `${title} - ${artist}` : '';
+  }
+  return '';
 }
 
 
@@ -8035,78 +8032,30 @@ function ensureGlobalVariety(posts) {
 // Normalize a post to guarantee all required fields exist
 function sanitizeSuggestedAudioText(value = '') {
   return String(value || '')
+    .replace(/^(tiktok|instagram)\s*:\s*/i, '')
     .replace(/\bhttps?:\/\/\S+/gi, '')
     .replace(/@[A-Za-z0-9._-]+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function normalizeAudioItem(entry) {
-  if (!entry) return null;
-  if (typeof entry === 'string') {
-    const cleaned = sanitizeSuggestedAudioText(entry);
-    const parts = cleaned.split(/\s+—\s+|\s+-\s+/);
-    if (parts.length >= 2) {
-      const title = parts.shift().trim();
-      const artist = parts.join(' - ').trim();
-      return title && artist ? { title, artist } : null;
-    }
-    return null;
-  }
-  if (typeof entry !== 'object') return null;
-  const title = sanitizeSuggestedAudioText(entry.title || entry.name || '');
-  const artist = sanitizeSuggestedAudioText(entry.artist || entry.creator || '');
-  if (!title || !artist) return null;
-  return { title, artist };
-}
-
-function isValidSuggestedAudio(audio = {}) {
-  if (!audio || typeof audio !== 'object') return false;
-  return Boolean(normalizeAudioItem(audio.tiktok) && normalizeAudioItem(audio.instagram));
+function isValidSuggestedAudio(audio = '') {
+  if (!audio || typeof audio !== 'string') return false;
+  return /.+\s-\s.+/.test(audio);
 }
 
 function normalizeSuggestedAudio(post = {}) {
   const candidate = post.suggestedAudio || post.suggested_audio;
-  if (!candidate) return null;
-  let tiktok = null;
-  let instagram = null;
-  let source = '';
-  let chartDate = '';
-  if (Array.isArray(candidate)) {
-    candidate.forEach((entry) => {
-      const platform = String(entry?.platform || entry?.source || '').toLowerCase();
-      const item = normalizeAudioItem(entry);
-      if (!item) return;
-      if (platform.includes('tiktok')) tiktok = item;
-      if (platform.includes('instagram')) instagram = item;
-    });
-  } else if (typeof candidate === 'string') {
-    const item = normalizeAudioItem(candidate);
-    if (item) {
-      tiktok = item;
-      instagram = item;
-    }
-  } else if (typeof candidate === 'object') {
-    source = candidate.source || '';
-    chartDate = candidate.chartDate || '';
-    if (candidate.tiktok || candidate.instagram) {
-      tiktok = normalizeAudioItem(candidate.tiktok);
-      instagram = normalizeAudioItem(candidate.instagram);
-    } else {
-      const item = normalizeAudioItem(candidate);
-      if (item) {
-        tiktok = item;
-        instagram = item;
-      }
-    }
+  if (!candidate) return '';
+  if (typeof candidate !== 'string') return '';
+  const cleaned = sanitizeSuggestedAudioText(candidate);
+  const parts = cleaned.split(/\s+-\s+/);
+  if (parts.length >= 2) {
+    const title = parts.shift().trim();
+    const artist = parts.join(' - ').trim();
+    return title && artist ? `${title} - ${artist}` : '';
   }
-  const fallback = tiktok || instagram || null;
-  return {
-    tiktok: tiktok || fallback,
-    instagram: instagram || fallback,
-    source,
-    chartDate,
-  };
+  return '';
 }
 
 function hasSuggestedAudio(post) {
@@ -8115,11 +8064,7 @@ function hasSuggestedAudio(post) {
 
 function getSuggestedAudioTitle(post) {
   const audio = normalizeSuggestedAudio(post);
-  const item = audio?.tiktok || audio?.instagram || null;
-  if (!item || !item.title) return '';
-  const title = sanitizeSuggestedAudioText(item.title);
-  const artist = sanitizeSuggestedAudioText(item.artist || '');
-  return artist ? `${title} — ${artist}` : title;
+  return audio || '';
 }
 
 function normalizePost(p, idx = 0, startDay = 1) {
@@ -8438,17 +8383,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const isDevMode =
       typeof process === 'undefined' || !process.env || process.env.NODE_ENV !== 'production';
     if (isDevMode) {
-      const missingTikTok = allPosts.filter(
-        (post) => !normalizeAudioItem(post?.suggestedAudio?.tiktok)
-      ).length;
-      const missingInstagram = allPosts.filter(
-        (post) => !normalizeAudioItem(post?.suggestedAudio?.instagram)
-      ).length;
-      if (missingTikTok || missingInstagram) {
-        console.warn('[Calendar] incomplete suggestedAudio platforms', {
+      const missingAudio = allPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
+      if (missingAudio) {
+        console.warn('[Calendar] incomplete suggestedAudio', {
           runId: thisRunId,
-          missingTikTok,
-          missingInstagram,
+          missingAudio,
         });
       }
     }
@@ -8492,7 +8431,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const audioNodes = document.querySelectorAll('.suggested-audio');
       const totalPosts = allPosts.length;
       const validAudioCount = allPosts.filter(hasSuggestedAudio).length;
-      const fallbackAudioCount = allPosts.filter((post) => post?.suggestedAudio?.source === 'fallback').length;
+      const fallbackAudioCount = 0;
       console.log(`[Calendar] audio render summary run ${thisRunId}`, {
         totalPosts,
         validAudioCount,

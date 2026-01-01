@@ -11,6 +11,7 @@ const HOLIDAY_KEYWORDS = [
   'xmas',
   'holiday',
   'santa',
+  'saint nick',
   'st nick',
   'claus',
   'reindeer',
@@ -20,16 +21,21 @@ const HOLIDAY_KEYWORDS = [
   'yuletide',
   'noel',
   'nativity',
+  'jesus',
+  'mary',
+  'bethlehem',
   'sleigh',
+  'snow',
   'snowman',
   'gingerbread',
   'stocking',
   'carol',
+  'winter',
   'winter wonderland',
   'most wonderful time',
   'happy xmas',
   'silent night',
-  'deck the halls',
+  'deck the',
   'let it snow',
   'rudolph',
   'frosty',
@@ -154,6 +160,18 @@ function normalizeHolidayText(value = '') {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeAudioString(title = '', artist = '') {
+  const cleanTitle = cleanText(String(title || '')).replace(/^(tiktok|instagram)\s*:\s*/i, '');
+  const cleanArtist = cleanText(String(artist || '')).replace(/^(tiktok|instagram)\s*:\s*/i, '');
+  const combined = `${cleanTitle} - ${cleanArtist}`
+    .replace(/[–—]/g, '-')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*["']+|["']+\s*$/g, '')
+    .trim();
+  return combined;
 }
 
 function isHolidayTrack(title = '', artist = '') {
@@ -355,8 +373,68 @@ async function getBillboardHot100Entries({ requestId } = {}) {
   }
 }
 
-async function getNonHolidayHot100({ requestId } = {}) {
-  return getBillboardHot100Entries({ requestId });
+async function getNonHolidayHot100({ chartDate = null, minCount = BILLBOARD_MIN_ENTRIES, requestId } = {}) {
+  const attempts = [];
+  if (chartDate) attempts.push(chartDate);
+  if (!attempts.length) attempts.push('latest');
+  if (attempts.length < 3) attempts.push(shiftChartDate(attempts[0], 7));
+  if (attempts.length < 3) attempts.push(shiftChartDate(attempts[0], -7));
+
+  const tracks = [];
+  const seen = new Set();
+  let filteredOut = 0;
+  let chartDateUsed = null;
+  let source = 'billboard_hot100_nonholiday';
+
+  for (let i = 0; i < attempts.length && tracks.length < minCount; i += 1) {
+    const attemptDate = attempts[i];
+    if (!attemptDate) continue;
+    let result;
+    try {
+      if (attemptDate === 'latest') {
+        result = await getBillboardHot100({ requestId });
+      } else {
+        result = await fetchBillboardChart({ chartDate: attemptDate, requestId });
+      }
+    } catch (err) {
+      continue;
+    }
+    const entries = result.entries || [];
+    const filtered = filterHolidayEntries(entries);
+    filteredOut += entries.length - filtered.length;
+    if (!chartDateUsed && (result.chartDate || attemptDate)) {
+      chartDateUsed = result.chartDate || attemptDate;
+    }
+    filtered.forEach((entry) => {
+      const audioString = normalizeAudioString(entry.title, entry.artist);
+      if (!audioString) return;
+      const key = audioString.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      tracks.push({ title: cleanText(entry.title), artist: cleanText(entry.artist), rank: entry.rank, audioString });
+    });
+  }
+
+  if (!tracks.length) {
+    const fallback = filterHolidayEntries(getEvergreenFallbackList());
+    fallback.forEach((entry) => {
+      const audioString = normalizeAudioString(entry.title, entry.artist);
+      if (!audioString) return;
+      const key = audioString.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      tracks.push({ title: entry.title, artist: entry.artist, rank: entry.rank, audioString });
+    });
+    source = 'fallback_nonholiday';
+    chartDateUsed = chartDateUsed || 'fallback';
+  }
+
+  return {
+    chartDateUsed: chartDateUsed || 'latest',
+    tracks,
+    filteredOut,
+    source,
+  };
 }
 
 module.exports = {
@@ -365,4 +443,5 @@ module.exports = {
   getEvergreenFallbackList,
   filterHolidayEntries,
   isHolidayTrack,
+  normalizeAudioString,
 };

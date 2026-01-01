@@ -53,9 +53,10 @@ const {
   validateStoryPromptKeywordOverride,
 } = require('./server/lib/storyPromptOverrideValidator');
 const {
-  getBillboardHot100Entries,
+  getNonHolidayHot100,
   getEvergreenFallbackList,
   isHolidayTrack,
+  normalizeAudioString,
 } = require('./server/lib/billboardHot100');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
@@ -2452,36 +2453,30 @@ function sanitizeAudioText(value = '') {
   return text;
 }
 
-function isValidSuggestedAudio(audio = {}) {
-  if (!audio || typeof audio !== 'object') return false;
-  const tiktok = audio.tiktok;
-  const instagram = audio.instagram;
-  return (
-    tiktok && typeof tiktok === 'object' && tiktok.title && tiktok.artist &&
-    instagram && typeof instagram === 'object' && instagram.title && instagram.artist
-  );
+function isValidSuggestedAudio(audio = '') {
+  if (!audio || typeof audio !== 'string') return false;
+  return /.+\s-\s.+/.test(audio);
 }
 
-function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], requestId, chunkStartDay = 1, postsPerDay = 1, chartDate = 'latest', source = 'billboard' } = {}) {
+function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStartDay = 1, postsPerDay = 1 } = {}) {
   if (!Array.isArray(posts) || !posts.length) {
     return { total: 0, missingAudio: 0 };
   }
-  const list = Array.isArray(audioEntries) && audioEntries.length ? audioEntries : getEvergreenFallbackList();
+  const list = Array.isArray(audioEntries) ? audioEntries : [];
   const stats = { total: posts.length, missingAudio: 0 };
   posts.forEach((post, idx) => {
+    if (!list.length) {
+      post.suggestedAudio = '';
+      stats.missingAudio += 1;
+      return;
+    }
     const dayIndex = Number(post.day) || computePostDayIndex(idx, chunkStartDay, postsPerDay);
     const postIndex = Number.isFinite(Number(post.slot)) ? Number(post.slot) - 1 : (idx % postsPerDay);
     const pickIndex = (dayIndex + postIndex) % list.length;
     const entry = selectBillboardEntry(list, pickIndex) || selectBillboardEntry(list, idx);
-    const title = sanitizeAudioText(entry?.title || '');
-    const artist = sanitizeAudioText(entry?.artist || '');
-    post.suggestedAudio = {
-      tiktok: title && artist ? { title, artist } : null,
-      instagram: title && artist ? { title, artist } : null,
-      source,
-      chartDate,
-    };
-    if (!title || !artist) stats.missingAudio += 1;
+    const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
+    post.suggestedAudio = audioString || '';
+    if (!audioString) stats.missingAudio += 1;
   });
   return stats;
 }
@@ -3428,63 +3423,24 @@ function sanitizeSuggestedAudioEntry(entry = {}) {
 
 function normalizeSuggestedAudioValue(candidate, fallbackEntry = null) {
   const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-  const fallbackItem = { title: fallback.title, artist: fallback.artist };
+  const fallbackString = normalizeAudioString(fallback.title, fallback.artist);
   if (!candidate) {
-    return { tiktok: fallbackItem, instagram: fallbackItem };
+    return fallbackString;
   }
   if (typeof candidate === 'string') {
     const parsed = normalizeSuggestedAudioFromText(candidate);
-    const item = {
-      title: parsed.title || fallback.title,
-      artist: parsed.artist || fallback.artist,
-    };
-    return { tiktok: item, instagram: item };
-  }
-  if (Array.isArray(candidate)) {
-    let tiktok = null;
-    let instagram = null;
-    candidate.forEach((entry) => {
-      const platform = String(entry?.platform || entry?.source || '').toLowerCase();
-      const normalized = sanitizeSuggestedAudioEntry(entry || {});
-      if (!normalized.title || !normalized.artist) return;
-      if (platform.includes('tiktok')) tiktok = normalized;
-      if (platform.includes('instagram')) instagram = normalized;
-    });
-    const fallbackNormalized = tiktok || instagram || fallbackItem;
-    return {
-      tiktok: tiktok || fallbackNormalized,
-      instagram: instagram || fallbackNormalized,
-    };
+    return normalizeAudioString(parsed.title || fallback.title, parsed.artist || fallback.artist);
   }
   if (candidate && typeof candidate === 'object') {
-    if (candidate.tiktok || candidate.instagram) {
-      const tiktok = sanitizeSuggestedAudioEntry(candidate.tiktok || {});
-      const instagram = sanitizeSuggestedAudioEntry(candidate.instagram || {});
-      const fallbackNormalized = tiktok.title ? tiktok : (instagram.title ? instagram : fallbackItem);
-      return {
-        tiktok: tiktok.title ? tiktok : fallbackNormalized,
-        instagram: instagram.title ? instagram : fallbackNormalized,
-        source: candidate.source || '',
-        chartDate: candidate.chartDate || '',
-      };
-    }
     const hasDirect = candidate.title || candidate.name || candidate.track;
     if (hasDirect) {
       const sanitized = sanitizeSuggestedAudioEntry(candidate);
-      const item = {
-        title: sanitized.title || fallback.title,
-        artist: sanitized.artist || fallback.artist,
-      };
-      return { tiktok: item, instagram: item };
+      return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
     }
     const sanitized = sanitizeSuggestedAudioEntry(candidate);
-    const item = {
-      title: sanitized.title || fallback.title,
-      artist: sanitized.artist || fallback.artist,
-    };
-    return { tiktok: item, instagram: item };
+    return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
   }
-  return { tiktok: fallbackItem, instagram: fallbackItem };
+  return fallbackString;
 }
 
 function fillMissingFieldsFromFallback(post = {}, fallback = {}, missingFields = [], nicheStyle = '') {
@@ -3720,12 +3676,11 @@ function extractSuggestedAudioFromPost(post = {}) {
   const candidate = post.suggestedAudio ?? post.suggested_audio;
   if (!candidate) return null;
   if (typeof candidate === 'string') {
-    const parsed = normalizeSuggestedAudioFromText(candidate);
-    return parsed.title ? { tiktok: parsed, instagram: parsed } : null;
+    return candidate.trim();
   }
   if (typeof candidate === 'object') {
     const normalized = normalizeSuggestedAudioValue(candidate);
-    return normalized.tiktok?.title ? normalized : null;
+    return normalized || null;
   }
   return null;
 }
@@ -4826,13 +4781,17 @@ const server = http.createServer((req, res) => {
       return post;
     });
     logDuplicateStrategyValues(posts);
-    const { entries: billboardEntries, chartDate, source: audioSource, filteredOut } = await getBillboardHot100Entries({
+    const {
+      tracks: billboardEntries,
+      chartDateUsed,
+      source: audioSource,
+      filteredOut,
+    } = await getNonHolidayHot100({
       requestId: loggingContext?.requestId,
+      minCount: 20,
     });
     const audioStats = ensureSuggestedAudioForPosts(posts, {
       audioEntries: billboardEntries,
-      chartDate,
-      source: audioSource,
       requestId: loggingContext?.requestId,
       chunkStartDay: startDay,
       postsPerDay: perDay,
@@ -4856,10 +4815,9 @@ const server = http.createServer((req, res) => {
       .slice(0, 2)
       .map((post) => ({
         day: post.day,
-        tiktok: post?.suggestedAudio?.tiktok,
-        instagram: post?.suggestedAudio?.instagram,
+        audio: post?.suggestedAudio,
       }))
-      .filter((entry) => entry.tiktok?.title || entry.instagram?.title);
+      .filter((entry) => entry.audio);
     const postProcessingMs = Date.now() - validationStart;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,
@@ -4874,24 +4832,20 @@ const server = http.createServer((req, res) => {
       totalPosts: audioStats.total,
       missingAudio: audioStats.missingAudio,
       source: audioSource,
-      chartDate,
+      chartDate: chartDateUsed,
       holidayFilteredOut: Number(filteredOut) || 0,
       sample: audioSample,
     });
     if (!isProduction) {
       const holidayHits = posts.filter((post) => {
-        const tk = post?.suggestedAudio?.tiktok;
-        const ig = post?.suggestedAudio?.instagram;
-        return (
-          (tk && isHolidayTrack(tk.title, tk.artist)) ||
-          (ig && isHolidayTrack(ig.title, ig.artist))
-        );
+        const value = post?.suggestedAudio || '';
+        const parsed = normalizeSuggestedAudioFromText(value);
+        return parsed?.title && isHolidayTrack(parsed.title, parsed.artist);
       });
       if (holidayHits.length) {
         const sample = holidayHits.slice(0, 2).map((post) => ({
           day: post.day,
-          tiktok: post?.suggestedAudio?.tiktok,
-          instagram: post?.suggestedAudio?.instagram,
+          audio: post?.suggestedAudio,
         }));
         throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
       }
