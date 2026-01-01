@@ -1,5 +1,16 @@
 const https = require('https');
-const { supabaseAdmin } = require('../services/supabase-admin');
+let supabaseAdmin;
+let supabaseImportWarningLogged = false;
+try {
+  const supabaseService = require('../../services/supabase-admin');
+  supabaseAdmin = supabaseService?.supabaseAdmin || null;
+} catch (err) {
+  supabaseAdmin = null;
+  if (!supabaseImportWarningLogged) {
+    console.warn('[TrendingAudio] Supabase admin client unavailable; trending audio persistence will fail', err?.message);
+    supabaseImportWarningLogged = true;
+  }
+}
 
 const OPENAI_HOST = 'api.openai.com';
 const OPENAI_PATH = '/v1/chat/completions';
