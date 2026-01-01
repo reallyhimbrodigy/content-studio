@@ -3405,6 +3405,173 @@ function validatePostCompleteness(post = {}) {
   return missing;
 }
 
+function stripSuggestedAudioLinks(value = '') {
+  let text = String(value || '').trim();
+  if (!text) return '';
+  text = text.replace(/\([^)]*(https?:\/\/|link:)[^)]*\)/gi, '');
+  text = text.replace(/\bhttps?:\/\/\S+/gi, '');
+  text = text.replace(/\blink:\s*\S+/gi, '');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+function splitSuggestedAudioTitleArtist(text = '') {
+  const cleaned = stripSuggestedAudioLinks(text).replace(/^(tiktok|instagram)\s*[:\-]\s*/i, '').trim();
+  if (!cleaned) return { title: '', artist: '' };
+  const parts = cleaned.split(/\s+—\s+|\s+-\s+/);
+  if (parts.length <= 1) return { title: cleaned, artist: '' };
+  const title = parts.shift().trim();
+  const artist = parts.join(' - ').trim();
+  return { title, artist };
+}
+
+function normalizeSuggestedAudioFromText(text = '') {
+  const raw = String(text || '');
+  const tiktokMatch = raw.match(/tiktok\s*[:\-]\s*([^\n]+)/i);
+  const instagramMatch = raw.match(/instagram\s*[:\-]\s*([^\n]+)/i);
+  if (tiktokMatch || instagramMatch) {
+    return {
+      tiktok: splitSuggestedAudioTitleArtist(tiktokMatch ? tiktokMatch[1] : ''),
+      instagram: splitSuggestedAudioTitleArtist(instagramMatch ? instagramMatch[1] : ''),
+    };
+  }
+  const shared = splitSuggestedAudioTitleArtist(raw);
+  return { tiktok: shared, instagram: shared };
+}
+
+function sanitizeSuggestedAudioEntry(entry = {}) {
+  const title = stripSuggestedAudioLinks(entry.title || entry.name || entry.sound || entry.track || '');
+  const artist = stripSuggestedAudioLinks(entry.artist || entry.creator || entry.by || '');
+  return { title, artist };
+}
+
+function normalizeSuggestedAudioValue(candidate, fallbackTitle = 'Trending sound') {
+  const fallbackArtist = 'Check TikTok/Instagram search';
+  const fallbackEntry = { title: fallbackTitle, artist: fallbackArtist };
+  if (!candidate) {
+    return { tiktok: fallbackEntry, instagram: fallbackEntry };
+  }
+  if (typeof candidate === 'string') {
+    const parsed = normalizeSuggestedAudioFromText(candidate);
+    return {
+      tiktok: parsed.tiktok?.title ? sanitizeSuggestedAudioEntry(parsed.tiktok) : fallbackEntry,
+      instagram: parsed.instagram?.title ? sanitizeSuggestedAudioEntry(parsed.instagram) : fallbackEntry,
+    };
+  }
+  if (candidate && typeof candidate === 'object') {
+    const hasDirect = candidate.title || candidate.name || candidate.track;
+    if (hasDirect) {
+      const sanitized = sanitizeSuggestedAudioEntry(candidate);
+      const entry = sanitized.title ? sanitized : fallbackEntry;
+      return { tiktok: entry, instagram: entry };
+    }
+    const tiktok = sanitizeSuggestedAudioEntry(candidate.tiktok || {});
+    const instagram = sanitizeSuggestedAudioEntry(candidate.instagram || {});
+    return {
+      tiktok: tiktok.title ? tiktok : fallbackEntry,
+      instagram: instagram.title ? instagram : fallbackEntry,
+    };
+  }
+  return { tiktok: fallbackEntry, instagram: fallbackEntry };
+}
+
+function fillMissingFieldsFromFallback(post = {}, fallback = {}, missingFields = [], nicheStyle = '') {
+  const missingSet = new Set(missingFields || []);
+  if (missingSet.has('title')) post.title = post.title || fallback.title;
+  if (missingSet.has('hook')) post.hook = post.hook || fallback.hook;
+  if (missingSet.has('caption')) post.caption = post.caption || fallback.caption;
+  if (missingSet.has('cta')) post.cta = post.cta || fallback.cta;
+  if (missingSet.has('storyPrompt')) post.storyPrompt = post.storyPrompt || fallback.storyPrompt;
+  if (missingSet.has('designNotes')) post.designNotes = post.designNotes || fallback.designNotes;
+  if (missingSet.has('hashtags')) {
+    post.hashtags = Array.isArray(post.hashtags) && post.hashtags.length
+      ? post.hashtags
+      : buildFallbackHashtagList(nicheStyle || fallback.nicheStyle || '', post.format || 'Reel');
+  }
+  if (missingSet.has('script') || missingSet.has('script.hook') || missingSet.has('script.body') || missingSet.has('script.cta')) {
+    post.script = {
+      hook: post.script?.hook || fallback.script?.hook || fallback.hook,
+      body: post.script?.body || fallback.script?.body || fallback.caption,
+      cta: post.script?.cta || fallback.script?.cta || fallback.cta,
+    };
+  }
+  if (missingSet.has('reelScript') || missingSet.has('reelScript.hook') || missingSet.has('reelScript.body') || missingSet.has('reelScript.cta')) {
+    post.reelScript = post.reelScript || post.script || fallback.script || {};
+  }
+  if (missingSet.has('engagementScripts') || missingSet.has('engagementScripts.commentReply') || missingSet.has('engagementScripts.dmReply')) {
+    post.engagementScripts = post.engagementScripts || fallback.engagementScripts;
+  }
+  return post;
+}
+
+function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1) {
+  const normalized = normalizePostWithOverrideFallback(rawPost, 0, dayNumber, dayNumber, nicheStyle);
+  const applied = [];
+  if (!isNonEmptyString(normalized.title)) {
+    normalized.title = normalized.idea || `Day ${String(dayNumber).padStart(2, '0')} idea`;
+    applied.push('title');
+  }
+  if (!isNonEmptyString(normalized.hook)) {
+    normalized.hook = `Start with ${normalized.idea || 'a key insight'}.`;
+    applied.push('hook');
+  }
+  normalized.cta = ensureCtaFallback(normalized);
+  if (!isNonEmptyString(normalized.caption)) {
+    normalized.caption = `${normalized.hook} ${normalized.cta}.`.trim();
+    applied.push('caption');
+  }
+  if (!isNonEmptyString(normalized.storyPrompt)) {
+    normalized.storyPrompt = ensureStoryPromptFallback(normalized, nicheStyle);
+    applied.push('storyPrompt');
+  }
+  normalized.storyPromptPlus = ensureStoryPromptPlusFallback(normalized, nicheStyle);
+  normalized.storyPromptExpanded = sanitizeStoryPromptPlus(nicheStyle, normalized.storyPromptPlus, normalized);
+  if (!isNonEmptyString(normalized.designNotes)) {
+    normalized.designNotes = ensureDesignNotesFallback(normalized, nicheStyle);
+    applied.push('designNotes');
+  }
+  if (!isNonEmptyString(normalized.distributionPlan)) {
+    normalized.distributionPlan = buildDistributionPlanFallback(normalized, nicheStyle);
+    applied.push('distributionPlan');
+  }
+  normalized.engagementScripts = ensureEngagementScriptsFallback(normalized, nicheStyle);
+  const scriptBase = {
+    hook: normalized.script?.hook || normalized.hook,
+    body: normalized.script?.body || normalized.caption || normalized.idea,
+    cta: normalized.script?.cta || normalized.cta,
+  };
+  normalized.script = scriptBase;
+  normalized.videoScript = normalized.videoScript && normalized.videoScript.hook ? normalized.videoScript : scriptBase;
+  normalized.reelScript = normalized.reelScript || scriptBase;
+  normalized.suggestedAudio = normalizeSuggestedAudioValue(
+    normalized.suggestedAudio || rawPost.suggestedAudio || rawPost.suggested_audio
+  );
+  let missing = validatePostCompleteness(normalized);
+  if (missing.length) {
+    const fallback = buildFallbackPost(nicheStyle, dayNumber);
+    fillMissingFieldsFromFallback(normalized, fallback, missing, nicheStyle);
+    missing = validatePostCompleteness(normalized);
+  }
+  return { post: normalized, missingFields: missing, appliedFixes: applied };
+}
+
+function runRegenNormalizationSelfTest() {
+  if (isProduction) return;
+  const sample = 'TikTok: Calm Down — Rema (link: https://tiktok.com)\\nInstagram: Watermelon Sugar — Harry Styles';
+  const parsed = normalizeSuggestedAudioFromText(sample);
+  if (!parsed.tiktok?.title || !parsed.instagram?.title) {
+    console.warn('[Calendar][Test] suggested audio normalize failed', { parsed });
+  }
+  const repaired = ensureRegenRequiredFields({ day: 1, idea: 'Test idea' }, 'Test niche', 1);
+  if (repaired.missingFields.length) {
+    console.warn('[Calendar][Test] regen normalization missing fields', repaired.missingFields);
+  }
+}
+
+if (!isProduction) {
+  runRegenNormalizationSelfTest();
+}
+
 function computePostCountTarget(days, postsPerDay) {
   const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
   const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
@@ -5608,7 +5775,11 @@ const server = http.createServer((req, res) => {
         }
         const dayNumber = Number(day);
         const resolvedUserId = user?.id || userId || null;
-        const logContext = { requestId, userId: resolvedUserId, nicheStyle, day: dayNumber };
+        const postsPerDay =
+          Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
+            ? Number(body.postsPerDay)
+            : 1;
+        const logContext = { requestId, userId: resolvedUserId, nicheStyle, day: dayNumber, postsPerDay };
         console.log('[Calendar][Server] regen-day request', logContext);
         let trendingAudio = null;
         try {
@@ -5620,40 +5791,73 @@ const server = http.createServer((req, res) => {
             code: audioErr?.code || 'TRENDING_AUDIO_UNAVAILABLE',
           });
         }
-        let posts;
-        try {
-          posts = await generateCalendarPosts({
-            nicheStyle,
-            userId: resolvedUserId,
-            days: 1,
-            startDay: dayNumber,
-            trendingAudio,
-            allowMissingSuggestedAudio: !trendingAudio,
-            context: { requestId, batchIndex: 0, startDay: dayNumber },
-          });
-        } catch (genErr) {
-          if (genErr?.code === 'TRENDING_AUDIO_UNAVAILABLE') {
-            console.warn('[Calendar] regen-day retry without trending audio', { requestId });
+        const allowMissingSuggestedAudio = !trendingAudio;
+        const maxAttempts = 2;
+        let attempt = 0;
+        let normalized = null;
+        let missingFields = [];
+        let appliedFixes = [];
+        while (attempt < maxAttempts) {
+          attempt += 1;
+          let posts;
+          try {
             posts = await generateCalendarPosts({
               nicheStyle,
               userId: resolvedUserId,
               days: 1,
               startDay: dayNumber,
-              trendingAudio: null,
-              allowMissingSuggestedAudio: true,
-              context: { requestId, batchIndex: 0, startDay: dayNumber },
+              postsPerDay,
+              trendingAudio,
+              allowMissingSuggestedAudio,
+              context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
             });
-          } else {
-            throw genErr;
+          } catch (genErr) {
+            if (genErr?.code === 'TRENDING_AUDIO_UNAVAILABLE') {
+              console.warn('[Calendar] regen-day retry without trending audio', { requestId });
+              posts = await generateCalendarPosts({
+                nicheStyle,
+                userId: resolvedUserId,
+                days: 1,
+                startDay: dayNumber,
+                postsPerDay,
+                trendingAudio: null,
+                allowMissingSuggestedAudio: true,
+                context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
+              });
+            } else {
+              throw genErr;
+            }
           }
+          const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
+          if (!candidate) throw new Error('Calendar generator returned no posts');
+          const normalizedResult = ensureRegenRequiredFields(candidate, nicheStyle, dayNumber);
+          normalized = normalizedResult.post;
+          missingFields = normalizedResult.missingFields || [];
+          appliedFixes = normalizedResult.appliedFixes || [];
+          if (!missingFields.length) break;
+          console.warn('[Calendar] regen-day missing fields after normalization', {
+            requestId,
+            attempt,
+            missingFields,
+          });
         }
-        const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
-        if (!candidate) throw new Error('Calendar generator returned no posts');
-        const enriched = enrichRegenPost(candidate, dayNumber - 1);
-        if (!enriched.distributionPlan || !enriched.storyPromptExpanded) {
-          console.error('[Calendar] regen-day missing required sections', logContext);
-          return sendJson(res, 500, { error: 'Regeneration failed to populate required sections' });
+        if (!normalized) throw new Error('Regeneration failed to normalize output');
+        if (missingFields.length) {
+          return sendJson(res, 422, {
+            error: 'REGEN_INVALID_OUTPUT',
+            message: 'Regeneration did not return required fields.',
+            requestId,
+            missingFields,
+          });
         }
+        if (appliedFixes.length || allowMissingSuggestedAudio) {
+          console.log('[Calendar] regen-day normalized output', {
+            requestId,
+            appliedFixes,
+            allowMissingSuggestedAudio,
+          });
+        }
+        const enriched = enrichRegenPost(normalized, dayNumber - 1);
         return sendJson(res, 200, { post: enriched });
       } catch (err) {
         console.error('regen-day error:', err);

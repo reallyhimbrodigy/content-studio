@@ -5951,6 +5951,7 @@ if (grid) {
     }
     try {
       const currentUser = await getCurrentUser();
+      const currentUserId = await getCurrentUserId();
       const userIsPro = await isPro(currentUser);
       if (!userIsPro) {
         showUpgradeModal();
@@ -5958,7 +5959,7 @@ if (grid) {
       }
       const entry = button._calendarEntry || resolveCalendarEntryByDayIndex(day, entryIndex);
       // Test note: verify clicking regenerate after filter/frequency changes triggers a single request.
-      await handleRegenerateDay(entry, day, button, { currentUser });
+      await handleRegenerateDay(entry, day, button, { currentUserEmail: currentUser, currentUserId });
     } catch (err) {
       console.error('[Calendar] Regen click handler failed', err);
       setRegenError(button, 'Regenerate failed. Please try again.');
@@ -5969,7 +5970,7 @@ if (grid) {
 async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
   const targetDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   const button = triggerEl || null;
-  const { currentUser: providedUser } = options;
+  const { currentUserEmail: providedEmail, currentUserId: providedUserId } = options;
   setRegenError(button, '');
   if (!targetDay || !entry) {
     setRegenError(button, 'Unable to determine which day to regenerate. Please try again.');
@@ -5988,7 +5989,12 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
       button.disabled = true;
       button.textContent = 'Regenerating…';
     }
-    const currentUser = providedUser || (await getCurrentUser());
+    const currentUser = providedEmail || (await getCurrentUser());
+    const currentUserId = providedUserId || (await getCurrentUserId());
+    const postsPerDay = Math.max(currentPostFrequency || 1, 1);
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day request start', { day: targetDay, postsPerDay });
+    }
     let parsed = null;
     if (regenDaySupported) {
       const resp = await fetchWithAuth('/api/regen-day', {
@@ -5997,9 +6003,10 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
           day: targetDay,
           nicheStyle,
           post: payloadPost,
-          userId: currentUser || undefined,
+          userId: currentUserId || undefined,
           calendarId: currentCalendarId || undefined,
           calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
+          postsPerDay,
         }),
       });
       if (resp.status === 404) {
@@ -6007,7 +6014,8 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
       } else {
         parsed = await resp.json().catch(() => ({}));
         if (!resp.ok) {
-          throw new Error(parsed.error || 'Failed to regenerate this day');
+          const message = parsed?.message || parsed?.error?.message || parsed?.error || 'Failed to regenerate this day';
+          throw new Error(message);
         }
       }
     }
@@ -6041,6 +6049,9 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
     persistCurrentCalendarState();
     syncCalendarUIAfterDataChange();
     await ensurePlatformVariantsForCurrentCalendar('regen');
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day request complete', { day: targetDay });
+    }
   } catch (err) {
     const message = err?.message || 'Failed to regenerate this day.';
     console.error('Regenerate day failed:', err);
