@@ -2456,38 +2456,6 @@ function buildTrendingSuggestedAudio(entry = {}) {
   return { title, artist };
 }
 
-function isPlatformEntryComplete(entry = {}) {
-  return (
-    entry &&
-    typeof entry === 'object' &&
-    String(entry.title || '').trim() &&
-    String(entry.artist || '').trim()
-  );
-}
-
-function requireCompleteSuggestedAudio(post = {}, context = {}) {
-  const audio = post?.suggestedAudio;
-  if (!audio || typeof audio !== 'object') {
-    const err = new Error('suggestedAudio missing');
-    err.code = 'SUGGESTED_AUDIO_INCOMPLETE';
-    err.details = { day: post?.day, reason: 'missing_object' };
-    throw err;
-  }
-  const { tiktok, instagram } = audio;
-  if (!isPlatformEntryComplete(tiktok) || !isPlatformEntryComplete(instagram)) {
-    const err = new Error('suggestedAudio missing platform data');
-    err.code = 'SUGGESTED_AUDIO_INCOMPLETE';
-    err.details = {
-      day: post?.day,
-      missingTikTok: !isPlatformEntryComplete(tiktok),
-      missingInstagram: !isPlatformEntryComplete(instagram),
-      context,
-    };
-    throw err;
-  }
-  return audio;
-}
-
 function isValidSuggestedAudio(audio = {}) {
   if (!audio || typeof audio !== 'object') return false;
   const tiktok = audio.tiktok;
@@ -2498,38 +2466,32 @@ function isValidSuggestedAudio(audio = {}) {
   );
 }
 
-function ensureSuggestedAudioForPosts(posts = [], { audioCache = {}, requestId, chunkStartDay = 1, postsPerDay = 1 } = {}) {
+function ensureSuggestedAudioForPosts(posts = [], { audioCache = {}, requestId, chunkStartDay = 1, postsPerDay = 1, allowMissingAudio = false } = {}) {
   if (!Array.isArray(posts) || !posts.length) {
     return { total: 0, missingTikTok: 0, missingInstagram: 0, missingBoth: 0 };
   }
   const cache = audioCache && typeof audioCache === 'object' ? audioCache : {};
-  if (!Array.isArray(cache.tiktok) || !Array.isArray(cache.instagram) || !cache.tiktok.length || !cache.instagram.length) {
-    const err = new Error('Trending audio cache missing entries');
-    err.code = 'TRENDING_AUDIO_FETCH_FAILED';
-    throw err;
+  const hasCache = Array.isArray(cache.tiktok) && cache.tiktok.length && Array.isArray(cache.instagram) && cache.instagram.length;
+  if (!hasCache && !allowMissingAudio) {
+    console.warn('[Calendar] trending audio cache empty; generating without audio', { requestId });
   }
   const stats = { total: posts.length, missingTikTok: 0, missingInstagram: 0, missingBoth: 0 };
   const fetchedAt = new Date().toISOString();
   posts.forEach((post, idx) => {
     const seedBase = `${cache.monthKey || ''}|${post.day || computePostDayIndex(idx, chunkStartDay, postsPerDay)}|${toPlainString(post.title || post.idea || post.caption || '')}`;
-    const tiktokEntry = selectTrendingEntry(cache.tiktok, `${seedBase}|tiktok`);
-    const instagramEntry = selectTrendingEntry(cache.instagram, `${seedBase}|instagram`);
+    const tiktokEntry = hasCache ? selectTrendingEntry(cache.tiktok, `${seedBase}|tiktok`) : null;
+    const instagramEntry = hasCache ? selectTrendingEntry(cache.instagram, `${seedBase}|instagram`) : null;
     const tiktok = buildTrendingSuggestedAudio(tiktokEntry);
     const instagram = buildTrendingSuggestedAudio(instagramEntry);
     post.suggestedAudio = {
-      tiktok,
-      instagram,
-      source: 'trendingAudio',
+      tiktok: tiktok || { title: '', artist: '' },
+      instagram: instagram || { title: '', artist: '' },
+      source: hasCache ? 'trendingAudio' : 'fallback',
       fetchedAt,
     };
     if (!tiktok) stats.missingTikTok += 1;
     if (!instagram) stats.missingInstagram += 1;
   });
-  try {
-    posts.forEach((post) => requireCompleteSuggestedAudio(post, { requestId }));
-  } catch (err) {
-    throw err;
-  }
   stats.missingBoth = posts.filter((post) => !isValidSuggestedAudio(post.suggestedAudio)).length;
   return stats;
 }
@@ -4683,11 +4645,13 @@ const server = http.createServer((req, res) => {
       return post;
     });
     logDuplicateStrategyValues(posts);
+    const allowMissingSuggestedAudio = Boolean(payload?.allowMissingSuggestedAudio);
     const audioStats = ensureSuggestedAudioForPosts(posts, {
       audioCache,
       requestId: loggingContext?.requestId,
       chunkStartDay: startDay,
       postsPerDay: perDay,
+      allowMissingAudio: allowMissingSuggestedAudio,
     });
     const audioSample = posts
       .slice(0, 2)
@@ -4714,7 +4678,7 @@ const server = http.createServer((req, res) => {
       missingBoth: audioStats.missingBoth,
       sample: audioSample,
     });
-    if (audioStats.missingBoth > 0) {
+    if (audioStats.missingBoth > 0 && !allowMissingSuggestedAudio) {
       if (attempt < 2) {
         console.warn('[Calendar] missing audio platforms, retrying generation', {
           requestId: loggingContext?.requestId,
@@ -4732,6 +4696,12 @@ const server = http.createServer((req, res) => {
         missingBoth: audioStats.missingBoth,
       };
       throw err;
+    } else if (allowMissingSuggestedAudio && audioStats.missingBoth > 0) {
+      console.warn('[Calendar] allowMissingSuggestedAudio used; continuing despite missing audio', {
+        requestId: loggingContext?.requestId,
+        missingTikTok: audioStats.missingTikTok,
+        missingInstagram: audioStats.missingInstagram,
+      });
     }
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
@@ -4927,38 +4897,19 @@ const server = http.createServer((req, res) => {
         try {
           trendingAudio = await getMonthlyTrendingAudios({ requestId });
         } catch (audioErr) {
-          console.error('[Calendar] trending audio fetch failed', {
+          console.warn('[Calendar] regen-day trending audio unavailable, continuing without it', {
             requestId,
             error: audioErr?.message || audioErr,
             code: audioErr?.code || 'TRENDING_AUDIO_UNAVAILABLE',
-          });
-          return sendJson(res, 502, {
-            error: {
-              code: audioErr?.code || 'TRENDING_AUDIO_UNAVAILABLE',
-              message: 'Unable to fetch current trending audio.',
-            },
           });
         }
         const posts = await generateCalendarPosts({
           ...(body || {}),
           usedSignatures: sanitizedUsedSignatures,
           trendingAudio,
+          allowMissingSuggestedAudio: true,
           context: regenContext,
         });
-        const incompleteAudio = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio));
-        if (incompleteAudio.length) {
-          console.error('[Calendar] regen audio incomplete', {
-            requestId,
-            missing: incompleteAudio.map((post) => post.day),
-          });
-          return sendJson(res, 502, {
-            error: {
-              code: 'SUGGESTED_AUDIO_INCOMPLETE',
-              message: 'Trending audio assignment failed for some posts',
-              details: { days: incompleteAudio.map((post) => post.day) },
-            },
-          });
-        }
         const suggestedAudioTikTokCount = posts.filter((post) => Boolean(post?.suggestedAudio?.tiktok?.title)).length;
         const suggestedAudioInstagramCount = posts.filter((post) => Boolean(post?.suggestedAudio?.instagram?.title)).length;
         const missingEitherCount = posts.filter((post) => !post?.suggestedAudio?.tiktok || !post?.suggestedAudio?.instagram).length;
