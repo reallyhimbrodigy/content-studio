@@ -84,13 +84,19 @@ function decodeHtmlEntities(value = '') {
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .trim();
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
 }
 
 function stripTags(value = '') {
-  return decodeHtmlEntities(String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  return String(value || '').replace(/<[^>]*>/g, '');
+}
+
+function cleanText(value = '') {
+  return decodeHtmlEntities(stripTags(value)).replace(/\s+/g, ' ').trim();
 }
 
 function formatChartDate(date = new Date()) {
@@ -104,7 +110,7 @@ function isHolidayEntry(entry = {}) {
   const title = String(entry.title || '').toLowerCase().trim();
   const artist = String(entry.artist || '').toLowerCase().trim();
   if (!title) return false;
-  const normalizedTitle = title.replace(/[^a-z0-9\\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normalizedTitle = title.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
   if (HOLIDAY_EXACT_TITLES.has(normalizedTitle)) return true;
   const combined = `${title} ${artist}`;
   return HOLIDAY_KEYWORDS.some((keyword) => combined.includes(keyword));
@@ -118,20 +124,32 @@ function parseBillboardEntries(html = '') {
   const rows = html.split('<div class="o-chart-results-list-row-container">').slice(1);
   const entries = [];
   rows.forEach((row) => {
-    const rankMatch = row.match(/data-detail-target=\"(\\d+)\"/);
-    const titleMatch = row.match(/id=\"title-of-a-story\"[^>]*>([\\s\\S]*?)<\\/h3>/i);
-    const artistMatch = row.match(/<span[^>]*class=\"[^"]*c-label[^"]*a-no-trucate[^"]*\"[^>]*>([\\s\\S]*?)<\\/span>/i);
+    const rankMatch = row.match(/data-detail-target="(\d+)"/);
+    const titleMatch = row.match(/id="title-of-a-story"[^>]*>([\s\S]*?)<\/h3>/i);
+    const artistMatch = row.match(/<span[^>]*class="[^"]*c-label[^"]*a-no-trucate[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
     const rank = rankMatch ? Number(rankMatch[1]) : null;
-    const title = titleMatch ? stripTags(titleMatch[1]) : '';
-    const artist = artistMatch ? stripTags(artistMatch[1]) : '';
+    const title = titleMatch ? cleanText(titleMatch[1]) : '';
+    const artist = artistMatch ? cleanText(artistMatch[1]) : '';
     if (!title || !artist) return;
     entries.push({ rank: rank || entries.length + 1, title, artist });
   });
+  if (!entries.length) {
+    const titleMatches = Array.from(
+      html.matchAll(/<h3[^>]*class="[^"]*c-title[^"]*"[^>]*>([\s\S]*?)<\/h3>/gi)
+    ).map((match) => cleanText(match[1])).filter(Boolean);
+    const artistMatches = Array.from(
+      html.matchAll(/<span[^>]*class="[^"]*c-label[^"]*a-no-trucate[^"]*"[^>]*>([\s\S]*?)<\/span>/gi)
+    ).map((match) => cleanText(match[1])).filter(Boolean);
+    const count = Math.min(titleMatches.length, artistMatches.length);
+    for (let i = 0; i < count; i += 1) {
+      entries.push({ rank: i + 1, title: titleMatches[i], artist: artistMatches[i] });
+    }
+  }
   return entries;
 }
 
 function extractChartDate(html = '') {
-  const match = html.match(/id=\"chart-date-picker\"[^>]*data-date=\"([^\"]+)\"/i);
+  const match = html.match(/id="chart-date-picker"[^>]*data-date="([^"]+)"/i);
   return match ? match[1] : null;
 }
 
