@@ -4905,6 +4905,13 @@ body.prefers-reduced-motion *::after {
   flex-shrink: 0;
 }
 
+.calendar-card__regen-error {
+  margin-top: 0.5rem;
+  color: rgba(255, 132, 132, 0.98);
+  font-size: 0.85rem;
+  white-space: pre-line;
+}
+
 .calendar-card::after {
   content: attr(data-pillar);
   position: absolute;

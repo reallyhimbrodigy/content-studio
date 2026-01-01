@@ -5768,8 +5768,21 @@ const createCard = (post) => {
     if (btnCopyFull) actionsEl.append(btnCopyFull);
     if (btnDownloadDoc) actionsEl.appendChild(btnDownloadDoc);
     const regenBtn = makeBtn('Regenerate');
-    attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
+    regenBtn.dataset.action = 'regen-day';
+    regenBtn.dataset.day = String(entryDay);
+    regenBtn.dataset.entryIndex = String(idx);
+    if (entry?.calendar_day_id || entry?.calendarDayId || entry?.id) {
+      regenBtn.dataset.calendarDayId = String(entry.calendar_day_id || entry.calendarDayId || entry.id);
+    }
+    regenBtn._calendarEntry = entry;
+    regenBtn.classList.remove('ghost');
+    regenBtn.classList.add('pro-gradient-btn');
     actionsEl.appendChild(regenBtn);
+    const regenError = document.createElement('div');
+    regenError.className = 'calendar-card__regen-error';
+    regenError.setAttribute('role', 'alert');
+    regenError.hidden = true;
+    actionsEl.appendChild(regenError);
 
     if (entry.variants) {
       // variant captions still show in detail rows; copy buttons removed
@@ -5844,16 +5857,127 @@ const createCard = (post) => {
   }
 };
 
-async function handleRegenerateDay(entry, entryDay, triggerEl) {
+const isLocalDevHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+function resolveCalendarEntryByDayIndex(targetDay, entryIndex) {
+  if (!Array.isArray(currentCalendar) || !currentCalendar.length) return null;
+  const dayNumber = Number(targetDay);
+  const freq = Math.max(currentPostFrequency || 1, 1);
+  if (freq <= 1) {
+    if (Number.isFinite(dayNumber)) {
+      const match = currentCalendar.find((post) => Number(post.day) === dayNumber);
+      if (match) return match;
+    }
+    if (Number.isFinite(entryIndex) && currentCalendar[entryIndex]) return currentCalendar[entryIndex];
+    return null;
+  }
+  const grouped = new Map();
+  let fallbackIndex = 0;
+  currentCalendar.forEach((post) => {
+    const dayKey = typeof post.day === 'number' ? post.day : Math.floor(fallbackIndex / freq) + 1;
+    fallbackIndex += 1;
+    if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+    grouped.get(dayKey).push(post);
+  });
+  const entries = grouped.get(dayNumber);
+  if (!entries || !entries.length) return null;
+  const resolvedIndex = Number.isFinite(entryIndex) ? entryIndex : 0;
+  return entries[resolvedIndex] || entries[0];
+}
+
+function rebuildCalendarCardForDay(targetDay) {
+  if (!grid || !Array.isArray(currentCalendar)) return;
+  const dayNumber = Number(targetDay);
+  if (!Number.isFinite(dayNumber)) return;
+  const freq = Math.max(currentPostFrequency || 1, 1);
+  let postToRender = null;
+  if (freq <= 1) {
+    postToRender = currentCalendar.find((post) => Number(post.day) === dayNumber) || null;
+  } else {
+    const grouped = new Map();
+    let fallbackIndex = 0;
+    currentCalendar.forEach((post) => {
+      const dayKey = typeof post.day === 'number' ? post.day : Math.floor(fallbackIndex / freq) + 1;
+      fallbackIndex += 1;
+      if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+      grouped.get(dayKey).push(post);
+    });
+    const entries = grouped.get(dayNumber);
+    if (entries && entries.length) {
+      postToRender = { ...entries[0], day: dayNumber, multiPosts: entries };
+    }
+  }
+  if (!postToRender) return;
+  const selector = `.calendar-card[data-day="${String(dayNumber)}"]`;
+  const existing = grid.querySelector(selector);
+  const nextCard = createCard(postToRender);
+  if (existing) {
+    existing.replaceWith(nextCard);
+  } else if (!grid.querySelector('.calendar-card')) {
+    grid.appendChild(nextCard);
+  }
+}
+
+function getRegenErrorEl(triggerEl) {
+  if (!triggerEl) return null;
+  const actions = triggerEl.closest('.calendar-card__actions');
+  if (!actions) return null;
+  return actions.querySelector('.calendar-card__regen-error');
+}
+
+function setRegenError(triggerEl, message) {
+  const errorEl = getRegenErrorEl(triggerEl);
+  if (!errorEl) return;
+  if (message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  } else {
+    errorEl.textContent = '';
+    errorEl.hidden = true;
+  }
+}
+
+// Delegate regen clicks so the handler survives card re-renders.
+if (grid) {
+  grid.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="regen-day"]');
+    if (!button || !grid.contains(button)) return;
+    if (button.disabled) return;
+    const day = Number(button.dataset.day);
+    const entryIndex = Number(button.dataset.entryIndex);
+    const calendarDayId = button.dataset.calendarDayId || null;
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day click', { day, calendarDayId, entryIndex });
+    }
+    try {
+      const currentUser = await getCurrentUser();
+      const userIsPro = await isPro(currentUser);
+      if (!userIsPro) {
+        showUpgradeModal();
+        return;
+      }
+      const entry = button._calendarEntry || resolveCalendarEntryByDayIndex(day, entryIndex);
+      // Test note: verify clicking regenerate after filter/frequency changes triggers a single request.
+      await handleRegenerateDay(entry, day, button, { currentUser });
+    } catch (err) {
+      console.error('[Calendar] Regen click handler failed', err);
+      setRegenError(button, 'Regenerate failed. Please try again.');
+    }
+  });
+}
+
+async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
   const targetDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   const button = triggerEl || null;
+  const { currentUser: providedUser } = options;
+  setRegenError(button, '');
   if (!targetDay || !entry) {
-    alert('Unable to determine which day to regenerate. Please try again.');
+    setRegenError(button, 'Unable to determine which day to regenerate. Please try again.');
     return;
   }
   const nicheStyle = (currentNiche || nicheInput?.value || '').trim();
   if (!nicheStyle) {
-    alert('Set your niche or content style before regenerating a day.');
+    setRegenError(button, 'Set your niche or content style before regenerating a day.');
     return;
   }
   const originalLabel = button ? button.textContent : '';
@@ -5864,17 +5988,18 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       button.disabled = true;
       button.textContent = 'Regenerating…';
     }
-    const currentUser = await getCurrentUser();
+    const currentUser = providedUser || (await getCurrentUser());
     let parsed = null;
     if (regenDaySupported) {
-      const resp = await fetch('/api/regen-day', {
+      const resp = await fetchWithAuth('/api/regen-day', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           day: targetDay,
           nicheStyle,
           post: payloadPost,
           userId: currentUser || undefined,
+          calendarId: currentCalendarId || undefined,
+          calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
         }),
       });
       if (resp.status === 404) {
@@ -5912,13 +6037,14 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     if (!replaced) {
       currentCalendar = [...currentCalendar, newPost];
     }
-    renderCards(currentCalendar);
+    rebuildCalendarCardForDay(Number(newPost?.day) || targetDay);
     persistCurrentCalendarState();
     syncCalendarUIAfterDataChange();
     await ensurePlatformVariantsForCurrentCalendar('regen');
   } catch (err) {
+    const message = err?.message || 'Failed to regenerate this day.';
     console.error('Regenerate day failed:', err);
-    alert(err.message || 'Failed to regenerate this day.');
+    setRegenError(button, `Regenerate failed: ${message}`);
   } finally {
     if (button) {
       button.disabled = false;

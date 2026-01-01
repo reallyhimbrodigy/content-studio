@@ -5596,6 +5596,8 @@ const server = http.createServer((req, res) => {
     (async () => {
       const requestId = generateRequestId('regen-day');
       try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
         const body = await readJsonBody(req);
         const { nicheStyle, day, post, userId } = body || {};
         if (!nicheStyle || typeof day === 'undefined' || day === null) {
@@ -5605,15 +5607,46 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 400, { error: 'post payload required' });
         }
         const dayNumber = Number(day);
-        const logContext = { requestId, userId: userId || null, nicheStyle, day: dayNumber };
+        const resolvedUserId = user?.id || userId || null;
+        const logContext = { requestId, userId: resolvedUserId, nicheStyle, day: dayNumber };
         console.log('[Calendar][Server] regen-day request', logContext);
-        const posts = await generateCalendarPosts({
-          nicheStyle,
-          userId,
-          days: 1,
-          startDay: dayNumber,
-          context: { requestId, batchIndex: 0, startDay: dayNumber },
-        });
+        let trendingAudio = null;
+        try {
+          trendingAudio = await getMonthlyTrendingAudios({ requestId });
+        } catch (audioErr) {
+          console.warn('[Calendar] regen-day trending audio unavailable, continuing without it', {
+            requestId,
+            error: audioErr?.message || audioErr,
+            code: audioErr?.code || 'TRENDING_AUDIO_UNAVAILABLE',
+          });
+        }
+        let posts;
+        try {
+          posts = await generateCalendarPosts({
+            nicheStyle,
+            userId: resolvedUserId,
+            days: 1,
+            startDay: dayNumber,
+            trendingAudio,
+            allowMissingSuggestedAudio: !trendingAudio,
+            context: { requestId, batchIndex: 0, startDay: dayNumber },
+          });
+        } catch (genErr) {
+          if (genErr?.code === 'TRENDING_AUDIO_UNAVAILABLE') {
+            console.warn('[Calendar] regen-day retry without trending audio', { requestId });
+            posts = await generateCalendarPosts({
+              nicheStyle,
+              userId: resolvedUserId,
+              days: 1,
+              startDay: dayNumber,
+              trendingAudio: null,
+              allowMissingSuggestedAudio: true,
+              context: { requestId, batchIndex: 0, startDay: dayNumber },
+            });
+          } else {
+            throw genErr;
+          }
+        }
         const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
         if (!candidate) throw new Error('Calendar generator returned no posts');
         const enriched = enrichRegenPost(candidate, dayNumber - 1);
@@ -5624,7 +5657,8 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { post: enriched });
       } catch (err) {
         console.error('regen-day error:', err);
-        return sendJson(res, 500, { error: err.message || 'Failed to regenerate day' });
+        const status = err.statusCode || 500;
+        return sendJson(res, status, { error: err.message || 'Failed to regenerate day' });
       }
     })();
     return;
