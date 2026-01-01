@@ -1,92 +1,38 @@
 const https = require('https');
-let supabaseAdmin;
-let supabaseImportWarningLogged = false;
-try {
-  const supabaseService = require('../../services/supabase-admin');
-  supabaseAdmin = supabaseService?.supabaseAdmin || null;
-} catch (err) {
-  supabaseAdmin = null;
-  if (!supabaseImportWarningLogged) {
-    console.warn('[TrendingAudio] Supabase admin client unavailable; trending audio persistence will fail', err?.message);
-    supabaseImportWarningLogged = true;
-  }
-}
 
 const OPENAI_HOST = 'api.openai.com';
 const OPENAI_PATH = '/v1/chat/completions';
 const OPENAI_MODEL = 'gpt-4o-mini';
-const CREATOR_REGEX = /^@[A-Za-z0-9._]{2,}$/;
 const REQUIRED_ENTRIES = 10;
+const CREATOR_REGEX = /^@[A-Za-z0-9._]{2,}$/;
+
+let cachedMonthKey = null;
+let cachedAudio = null;
+let overrideCache = null;
 
 function getMonthKey(date = new Date()) {
   return date.toISOString().slice(0, 7);
 }
 
-function ensureSupabase() {
-  if (!supabaseAdmin) {
-    const err = new Error('Supabase admin client not configured');
-    err.code = 'TRENDING_AUDIO_UNAVAILABLE';
-    throw err;
-  }
+function buildPrompt(monthKey, extraInstructions = '') {
+  const lines = [
+    `Gather the current Top 10 trending TikTok audios and Top 10 trending Instagram Reels audios for ${monthKey}.`,
+    'Each entry must represent a real, current audio with its creator handle.',
+    'Respond with STRICT JSON only, no explanation, following the schema below.',
+    '{ "tiktok": [ { "title": "string", "creator": "@handle", "url": "https://..." } ], "instagram": [ { "title": "string", "creator": "@handle", "url": "https://..." } ] }',
+    `Return exactly ${REQUIRED_ENTRIES} entries for each platform.`,
+    'Do not invent creators, placeholders, or example names.',
+  ];
+  if (extraInstructions) lines.push(extraInstructions);
+  return lines.join('\n');
 }
 
-function formatAudioLine(index, tiktokEntry, instagramEntry) {
-  if (!tiktokEntry || !instagramEntry) return '';
-  return `TikTok: ${tiktokEntry.title} --${tiktokEntry.artist}; Instagram: ${instagramEntry.title} - ${instagramEntry.artist}`;
-}
-
-async function readMonthlyAudio(monthKey) {
-  ensureSupabase();
-  const { data, error } = await supabaseAdmin
-    .from('trending_audio_monthly')
-    .select('month_key, tiktok, instagram, source, created_at')
-    .eq('month_key', monthKey)
-    .maybeSingle();
-  if (error) {
-    const err = new Error(`Failed to read trending audio from DB: ${error.message}`);
-    err.code = 'TRENDING_AUDIO_UNAVAILABLE';
-    throw err;
-  }
-  return data;
-}
-
-async function upsertMonthlyAudio({ monthKey, tiktok, instagram, source = 'openai' }) {
-  ensureSupabase();
-  const payload = {
-    month_key: monthKey,
-    tiktok,
-    instagram,
-    source,
-    created_at: new Date().toISOString(),
-  };
-  const { error } = await supabaseAdmin
-    .from('trending_audio_monthly')
-    .upsert(payload, { onConflict: 'month_key' });
-  if (error) {
-    const err = new Error(`Failed to persist trending audio: ${error.message}`);
-    err.code = 'TRENDING_AUDIO_UNAVAILABLE';
-    throw err;
-  }
-}
-
-function buildPrompt(monthKey) {
-  return [
-    `Use the latest web search results to identify the Top 10 trending TikTok audios and Top 10 trending Instagram Reels audios for ${monthKey}.`,
-    'Do not invent titles or handles; only return real audios and actual creators with @ handles.',
-    'Creators must start with @ and be active, not placeholders.',
-    'Respond with STRICT JSON only (no markdown, no explanation) matching this schema:',
-    '{ "tiktok": [{ "title": "string", "creator": "@handle" }], "instagram": [{ "title": "string", "creator": "@handle" }] }',
-    `Return exactly ${REQUIRED_ENTRIES} entries per platform.`,
-    'Do not include basketball or generic filler names unless the audio truly ranks in the Top 10 for the month.',
-  ].join(' ');
-}
-
-function buildPayload(monthKey) {
+function buildPayload(monthKey, extraInstructions = '') {
   return JSON.stringify({
     model: OPENAI_MODEL,
     temperature: 0.3,
     max_tokens: 1200,
-    messages: [{ role: 'user', content: buildPrompt(monthKey) }],
+    messages: [{ role: 'user', content: buildPrompt(monthKey, extraInstructions) }],
     response_format: {
       type: 'json_schema',
       json_schema: {
@@ -104,10 +50,11 @@ function buildPayload(monthKey) {
               items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['title', 'creator'],
+                required: ['title', 'creator', 'url'],
                 properties: {
                   title: { type: 'string' },
                   creator: { type: 'string' },
+                  url: { type: 'string' },
                 },
               },
             },
@@ -118,10 +65,11 @@ function buildPayload(monthKey) {
               items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['title', 'creator'],
+                required: ['title', 'creator', 'url'],
                 properties: {
                   title: { type: 'string' },
                   creator: { type: 'string' },
+                  url: { type: 'string' },
                 },
               },
             },
@@ -132,7 +80,7 @@ function buildPayload(monthKey) {
   });
 }
 
-function openAIRequest(payload, retryCount = 0, maxRetries = 3) {
+function openAIRequest(payload, retryCount = 0, maxRetries = 2) {
   return new Promise((resolve, reject) => {
     const req = https.request(
       {
@@ -159,15 +107,10 @@ function openAIRequest(payload, retryCount = 0, maxRetries = 3) {
               return reject(err);
             }
           }
-          if (
-            [502, 503, 504].includes(res.statusCode) &&
-            retryCount < maxRetries
-          ) {
+          if ([502, 503, 504].includes(res.statusCode) && retryCount < maxRetries) {
             const delay = Math.pow(2, retryCount) * 1000;
             return setTimeout(() => {
-              openAIRequest(payload, retryCount + 1, maxRetries)
-                .then(resolve)
-                .catch(reject);
+              openAIRequest(payload, retryCount + 1, maxRetries).then(resolve).catch(reject);
             }, delay);
           }
           return reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
@@ -178,9 +121,7 @@ function openAIRequest(payload, retryCount = 0, maxRetries = 3) {
       if (retryCount < maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
         return setTimeout(() => {
-          openAIRequest(payload, retryCount + 1, maxRetries)
-            .then(resolve)
-            .catch(reject);
+          openAIRequest(payload, retryCount + 1, maxRetries).then(resolve).catch(reject);
         }, delay);
       }
       return reject(err);
@@ -193,18 +134,26 @@ function openAIRequest(payload, retryCount = 0, maxRetries = 3) {
 function parseResponse(json) {
   const choice = json?.choices?.[0]?.message?.content;
   if (!choice) throw new Error('Missing OpenAI content');
-  try {
-    return JSON.parse(choice);
-  } catch (err) {
-    throw new Error('Failed to parse OpenAI trending audio payload');
+  if (typeof choice === 'string') {
+    try {
+      return JSON.parse(choice);
+    } catch (err) {
+      throw new Error('Failed to parse OpenAI trending audio payload');
+    }
   }
+  return choice;
 }
 
-function isValidUrl(url = '') {
-  return /^https:\/\/[^\s]+$/i.test(String(url || '').trim());
+function isValidUrl(url = '', platform = '') {
+  const cleaned = String(url || '').trim();
+  if (!cleaned.startsWith('https://')) return false;
+  const lower = cleaned.toLowerCase();
+  if (platform === 'TikTok' && !lower.includes('tiktok.com')) return false;
+  if (platform === 'Instagram' && !lower.includes('instagram.com')) return false;
+  return true;
 }
 
-function ensureTrendingEntries(list, platform = 'tikTok') {
+function ensureTrendingEntries(list, platform = 'TikTok') {
   if (!Array.isArray(list) || list.length !== REQUIRED_ENTRIES) {
     const err = new Error(`Expected ${REQUIRED_ENTRIES} ${platform} entries`);
     err.code = 'TRENDING_AUDIO_INVALID';
@@ -212,94 +161,90 @@ function ensureTrendingEntries(list, platform = 'tikTok') {
   }
   return list.map((item, idx) => {
     if (!item || typeof item !== 'object') {
-      throw new Error(`Invalid ${platform} entry at index ${idx}`);
-    }
-    const title = String(item.title || item.name || '').trim();
-    const artist = String(item.artist || item.creator || '').trim();
-    const url = String(item.url || '').trim();
-    if (!title || !artist || !isValidUrl(url)) {
-      const err = new Error(`Invalid ${platform} metadata at index ${idx}`);
+      const err = new Error(`Invalid ${platform} entry at index ${idx}`);
       err.code = 'TRENDING_AUDIO_INVALID';
       throw err;
     }
-    return { title, artist, url };
+    const title = String(item.title || '').trim();
+    const creator = String(item.creator || '').trim();
+    const url = String(item.url || '').trim();
+    if (!title || !creator || !url) {
+      const err = new Error(`Missing metadata for ${platform} entry at index ${idx}`);
+      err.code = 'TRENDING_AUDIO_INVALID';
+      throw err;
+    }
+    if (!isValidUrl(url, platform)) {
+      const err = new Error(`Invalid URL for ${platform} entry at index ${idx}`);
+      err.code = 'TRENDING_AUDIO_INVALID';
+      throw err;
+    }
+    if (!CREATOR_REGEX.test(creator)) {
+      const err = new Error(`Invalid creator handle for ${platform} entry at index ${idx}`);
+      err.code = 'TRENDING_AUDIO_INVALID';
+      throw err;
+    }
+    return { title, artist: creator, url };
   });
 }
 
-async function fetchTrendingAudioTop10({ monthKey: providedMonthKey } = {}) {
-  const monthKey = providedMonthKey || getMonthKey();
-  const payload = buildPayload(monthKey);
+async function requestTrendingAudio({ monthKey, requestId, extraInstructions = '' } = {}) {
+  const payload = buildPayload(monthKey, extraInstructions);
   const json = await openAIRequest(payload);
   const parsed = parseResponse(json);
   const tiktokEntries = ensureTrendingEntries(parsed.tiktok, 'TikTok');
   const instagramEntries = ensureTrendingEntries(parsed.instagram, 'Instagram');
-  console.log(`[TrendingAudio] fetched top10 for ${monthKey}`);
-  return {
-    monthKey,
-    tiktok: tiktokEntries,
-    instagram: instagramEntries,
-  };
+  console.log(
+    `[TrendingAudio] fetched data for ${monthKey}${requestId ? ` (requestId=${requestId})` : ''}`
+  );
+  return { monthKey, tiktok: tiktokEntries, instagram: instagramEntries };
+}
+
+async function fetchTrendingAudioTop10({ monthKey: providedMonthKey, requestId } = {}) {
+  const monthKey = providedMonthKey || getMonthKey();
+  let lastError = null;
+  try {
+    return await requestTrendingAudio({ monthKey, requestId });
+  } catch (err) {
+    lastError = err;
+    console.warn('[TrendingAudio] first fetch attempt failed', { monthKey, requestId, reason: err.message });
+  }
+  try {
+    return await requestTrendingAudio({
+      monthKey,
+      requestId,
+      extraInstructions: 'Retry: return only JSON that strictly matches the requested schema with no extra text.',
+    });
+  } catch (err) {
+    const failure = new Error(`Trending audio invalid: ${err.message || lastError?.message || 'unknown'}`);
+    failure.code = err.code || lastError?.code || 'TRENDING_AUDIO_UNAVAILABLE';
+    throw failure;
+  }
 }
 
 async function getMonthlyTrendingAudios({ requestId } = {}) {
   const monthKey = getMonthKey();
-  let cached = null;
-  try {
-    cached = await readMonthlyAudio(monthKey);
-  } catch (err) {
-    console.warn('[TrendingAudio] read failure', err.message);
+  if (overrideCache) {
+    console.log(`[TrendingAudio] using override cache for ${monthKey}`);
+    return overrideCache;
   }
-  if (cached && cached.tiktok && cached.instagram) {
-    console.log(
-      `[TrendingAudio] cache hit (db) for ${monthKey} ${requestId ? `(requestId=${requestId})` : ''}`
-    );
-    console.log(
-      `[TrendingAudio] source=db month=${monthKey} tik=${cached.tiktok.length} ig=${cached.instagram.length}`
-    );
-    logSample(cached);
-    return {
-      monthKey: cached.month_key || monthKey,
-      tiktok: cached.tiktok,
-      instagram: cached.instagram,
-    };
+  if (cachedMonthKey === monthKey && cachedAudio) {
+    console.log(`[TrendingAudio] cache hit for ${monthKey}`);
+    return cachedAudio;
   }
-  try {
-    const fresh = await fetchTrendingAudioTop10({ monthKey });
-    await upsertMonthlyAudio({
-      monthKey: fresh.monthKey,
-      tiktok: fresh.tiktok,
-      instagram: fresh.instagram,
-      source: 'openai',
-    });
-    logSample(fresh);
-    console.log(
-      `[TrendingAudio] source=openai month=${fresh.monthKey} tik=${fresh.tiktok.length} ig=${fresh.instagram.length}`
-    );
-    return fresh;
-  } catch (err) {
-    const fetchErr = new Error(`Trending audio unavailable: ${err.message || 'unknown error'}`);
-    fetchErr.code = err.code || 'TRENDING_AUDIO_UNAVAILABLE';
-    throw fetchErr;
-  }
+  const fresh = await fetchTrendingAudioTop10({ monthKey, requestId });
+  cachedMonthKey = monthKey;
+  cachedAudio = fresh;
+  return fresh;
 }
 
-function logSample(cache) {
-  if (!cache || !cache.tiktok || !cache.instagram) return;
-  const sampleLines = [
-    formatAudioLine(0, cache.tiktok[0], cache.instagram[0]),
-    formatAudioLine(1, cache.tiktok[1], cache.instagram[1]),
-  ].filter(Boolean);
-  console.log('[TrendingAudio] sample lines:', sampleLines);
+function formatAudioLine(index, tiktokEntry, instagramEntry) {
+  if (!tiktokEntry || !instagramEntry) return '';
+  return `TikTok: ${tiktokEntry.title} --${tiktokEntry.artist}; Instagram: ${instagramEntry.title} - ${instagramEntry.artist}`;
 }
 
-async function overrideCacheForTests(cache) {
+function overrideCacheForTests(cache) {
   if (!cache || typeof cache !== 'object') return;
-  await upsertMonthlyAudio({
-    monthKey: cache.monthKey || cache.month_key,
-    tiktok: cache.tiktok,
-    instagram: cache.instagram,
-    source: cache.source || 'test',
-  });
+  overrideCache = cache;
 }
 
 module.exports = {
