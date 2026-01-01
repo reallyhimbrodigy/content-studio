@@ -5508,7 +5508,7 @@ const createCard = (post) => {
     if (!entry.suggestedAudio?.tiktok?.title || !entry.suggestedAudio?.tiktok?.artist) missingPlatforms.push('TikTok');
     if (!entry.suggestedAudio?.instagram?.title || !entry.suggestedAudio?.instagram?.artist) missingPlatforms.push('Instagram');
     const audioRowText = suggestedAudioText || 'Audio missing for this post.';
-    if (missingPlatforms.length) {
+    if (missingPlatforms.length && !suggestedAudioText) {
       console.error('[Calendar] missing suggested audio platform', {
         day: entryDay,
         missing: missingPlatforms,

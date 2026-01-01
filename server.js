@@ -5068,6 +5068,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (parsed.pathname === '/api/generate-variants' && req.method === 'POST') {
+    (async () => {
+      try {
+        await requireSupabaseUser(req);
+        return sendJson(res, 200, { variants: [] });
+      } catch (err) {
+        const status = err?.statusCode || 401;
+        console.error('[Calendar] generate-variants error', { error: err?.message || err });
+        return sendJson(res, status, {
+          error: err?.message || 'generate_variants_failed',
+        });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/generate-calendar' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
