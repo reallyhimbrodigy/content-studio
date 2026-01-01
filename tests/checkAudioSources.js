@@ -40,10 +40,9 @@ function findOccurrences(pattern) {
   }
 });
 
-const phrase = 'Top 10 trending TikTok audios';
-const uniqueMatches = findOccurrences(phrase);
-if (uniqueMatches.length !== 1 || uniqueMatches[0] !== 'server/lib/trendingAudio.js') {
-  throw new Error(`Canonical trending audio descriptor must live only in server/lib/trendingAudio.js; found in ${uniqueMatches.join(', ')}`);
+const billboardModule = path.join(ROOT, 'server', 'lib', 'billboardHot100.js');
+if (!fs.existsSync(billboardModule)) {
+  throw new Error('Billboard Hot 100 source module missing at server/lib/billboardHot100.js');
 }
 
 const placeholderTerm = '@' + 'Creator';

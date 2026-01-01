@@ -1,44 +1,32 @@
-const { getMonthlyTrendingAudios, formatAudioLine, overrideCacheForTests } = require('../server/lib/trendingAudio');
-
-const monthKey = new Date().toISOString().slice(0, 7);
-const sampleTikTok = Array.from({ length: 10 }, (_, idx) => ({
-  title: `TikTok Sound ${idx + 1}`,
-  artist: `@tiktok${idx + 1}`,
-  url: `https://www.tiktok.com/music/${idx + 1}`,
-}));
-const sampleInstagram = Array.from({ length: 10 }, (_, idx) => ({
-  title: `Instagram Sound ${idx + 1}`,
-  artist: `@instagram${idx + 1}`,
-  url: `https://www.instagram.com/reel/${idx + 1}`,
-}));
-
-overrideCacheForTests({
-  monthKey,
-  fetchedAt: Date.now(),
-  tiktok: sampleTikTok,
-  instagram: sampleInstagram,
-});
+const {
+  getBillboardHot100Entries,
+  getEvergreenFallbackList,
+  filterHolidayEntries,
+} = require('../server/lib/billboardHot100');
 
 async function run() {
-  const cache = await getMonthlyTrendingAudios({ requestId: 'test-trending-audio' });
-  if (cache.monthKey !== monthKey) {
-    throw new Error(`Expected monthKey ${monthKey}, got ${cache.monthKey}`);
+  const fallback = getEvergreenFallbackList();
+  if (fallback.length < 25) {
+    throw new Error('Evergreen fallback list must include at least 25 entries.');
   }
-  if (cache.tiktok.length !== 10 || cache.instagram.length !== 10) {
-    throw new Error('Trending lists must expose 10 entries each');
+  const filtered = filterHolidayEntries([{ title: 'All I Want For Christmas Is You', artist: 'Mariah Carey' }]);
+  if (filtered.length !== 0) {
+    throw new Error('Holiday filter must exclude classic holiday tracks.');
   }
-  const line = formatAudioLine(0, cache.tiktok[0], cache.instagram[0]);
-  const pattern = /^TikTok: .+ --@[A-Za-z0-9._]{2,}; Instagram: .+ - @[A-Za-z0-9._]{2,}$/;
-  if (!pattern.test(line)) {
-    throw new Error(`Audio line format invalid: ${line}`);
+  const result = await getBillboardHot100Entries({ requestId: 'test-billboard' });
+  if (!Array.isArray(result.entries) || result.entries.length < 1) {
+    throw new Error('Billboard Hot 100 must return entries.');
   }
-  const bannedTerms = ['@' + 'Creator', 'undefined', 'null', 'basketball', 'hoop'];
-  bannedTerms.forEach((ban) => {
-    if (line.toLowerCase().includes(ban.toLowerCase())) {
-      throw new Error(`Audio line contains blocked term: ${ban}`);
+  result.entries.slice(0, 5).forEach((entry) => {
+    if (!entry.title || !entry.artist) {
+      throw new Error('Billboard entries must include title and artist.');
+    }
+    const combined = `${entry.title} ${entry.artist}`.toLowerCase();
+    if (combined.includes('http') || combined.includes('@')) {
+      throw new Error('Billboard entries must not include links or handles.');
     }
   });
-  console.log('Trending audio test passed.');
+  console.log('Billboard audio test passed.');
 }
 
 run().catch((err) => {
