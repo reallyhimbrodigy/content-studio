@@ -1,4 +1,4 @@
-import { supabase } from './supabase-client.js';
+import { getSupabaseClient } from './supabase-client.js';
 import { initTheme } from './theme.js';
 
 // Apply theme on page load
@@ -62,6 +62,8 @@ if (resetPasswordForm) {
       resetFeedbackEl.className = 'auth-feedback';
       
       // Update the user's password
+      const supabase = getSupabaseClient();
+      
       const { data, error } = await supabase.auth.updateUser({
         password: newPassword
       });
@@ -91,6 +93,7 @@ if (resetPasswordForm) {
 // Check if user has a valid session on page load
 (async () => {
   try {
+    const supabase = getSupabaseClient();
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error) {
