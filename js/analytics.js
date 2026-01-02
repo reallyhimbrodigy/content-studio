@@ -353,19 +353,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchPhylloConfig() {
     try {
-      const res = await fetchAuthenticated('/api/phyllo/connect-config');
+      const res = await fetchAuthenticated('/api/phyllo/sdk-config');
       if (!res.ok) {
-        console.error('[Phyllo] connect-config failed', res.status);
+        console.error('[Phyllo] sdk-config failed', res.status);
         return null;
       }
       const parsed = await res.json();
       if (!parsed || parsed.ok === false) {
-        console.error('[Phyllo] connect-config error', parsed);
+        console.error('[Phyllo] sdk-config error', parsed);
         return null;
       }
-      return parsed.config;
+      return {
+        clientDisplayName: parsed.clientDisplayName,
+        environment: parsed.environment,
+        userId: parsed.userId,
+        token: parsed.token,
+        products: parsed.products || [],
+      };
     } catch (err) {
-      console.error('[Phyllo] connect-config request failed', err);
+      console.error('[Phyllo] sdk-config request failed', err);
       return null;
     }
   }
@@ -386,6 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!config) return;
       phylloConfigCache = config;
       config.workPlatformIds = ANALYTICS_WORK_PLATFORM_IDS.slice();
+      config.origin = window.location.origin;
       if (config.token) {
         console.log('[Phyllo] connect config ready', {
           environment: config.environment,
@@ -1153,18 +1160,32 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.textContent = 'Refreshing...';
     }
     try {
-      await fetchAuthenticated('/api/phyllo/sync-posts', {
+      const syncPostsRes = await fetchAuthenticated('/api/phyllo/sync-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetchAuthenticated('/api/phyllo/sync-followers', {
+      if (!syncPostsRes.ok) {
+        const detail = await syncPostsRes.json().catch(() => ({}));
+        throw new Error(detail?.error || 'sync_posts_failed');
+      }
+
+      const syncFollowersRes = await fetchAuthenticated('/api/phyllo/sync-followers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetchAuthenticated('/api/phyllo/sync-demographics', {
+      if (!syncFollowersRes.ok) {
+        const detail = await syncFollowersRes.json().catch(() => ({}));
+        throw new Error(detail?.error || 'sync_followers_failed');
+      }
+
+      const syncDemographicsRes = await fetchAuthenticated('/api/phyllo/sync-demographics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!syncDemographicsRes.ok) {
+        const detail = await syncDemographicsRes.json().catch(() => ({}));
+        throw new Error(detail?.error || 'sync_demographics_failed');
+      }
 
       await loadSyncStatus();
       await loadFullAnalytics();
@@ -1173,6 +1194,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadInsights();
     } catch (err) {
       console.error('[Analytics] refreshAllData error', err);
+      setAnalyticsError('Couldn’t refresh analytics data. Try again in a moment.');
     } finally {
       if (btn) {
         btn.disabled = false;

@@ -143,11 +143,10 @@ async function getUserPostMetrics(accounts = [], options = {}) {
 
 async function getAudienceDemographics(accounts = [], options = {}) {
   // Overloaded helper:
-  // - If an array is provided, use legacy creator_id flow (sandbox)
-  // - If a string is provided, treat it as phylloUserId and call production audience-demographics endpoint
+  // - If a string is provided, treat it as phylloUserId and call production audience-demographics endpoint.
+  // - If an array is provided, prefer phyllo_user_id; fall back to legacy creator_id flow (sandbox).
   if (!accounts) return null;
 
-  // string: new single-user helper
   if (typeof accounts === 'string') {
     try {
       return phylloFetch(`/v1/users/${accounts}/audience-demographics`, options);
@@ -157,14 +156,26 @@ async function getAudienceDemographics(accounts = [], options = {}) {
     }
   }
 
+  if (!Array.isArray(accounts)) return null;
+
+  const withUserId = accounts.find((acc) => acc && acc.phyllo_user_id);
+  if (withUserId && withUserId.phyllo_user_id) {
+    try {
+      return phylloFetch(`/v1/users/${withUserId.phyllo_user_id}/audience-demographics`, options);
+    } catch (err) {
+      console.error('[Phyllo] audience demographics error', err);
+      return null;
+    }
+  }
+
   const results = [];
   for (const acc of accounts) {
     if (!acc || !acc.creator_id) continue;
-      try {
-        const resp = await phylloFetch(`/v1/creators/${acc.creator_id}/audience`, options);
-        if (!resp) continue;
-        results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: resp });
-      } catch (err) {
+    try {
+      const resp = await phylloFetch(`/v1/creators/${acc.creator_id}/audience`, options);
+      if (!resp) continue;
+      results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: resp });
+    } catch (err) {
       // ignore per-account errors for now
     }
   }
@@ -336,36 +347,4 @@ module.exports = {
   syncAudience,
   syncFollowerMetrics,
   syncDemographics,
-  getAudienceDemographics,
 };
-
-async function getAudienceDemographics(phylloUserId) {
-  try {
-    const base = process.env.PHY_PRODUCTION_BASE_URL;
-    const clientId = process.env.PHY_PRODUCTION_CLIENT_ID;
-    const clientSecret = process.env.PHY_PRODUCTION_CLIENT_SECRET;
-
-    if (!base || !clientId || !clientSecret) {
-      console.error('[Phyllo] Missing production audience env vars');
-      return null;
-    }
-
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const resp = await fetch(`${base}/v1/users/${phylloUserId}/audience-demographics`, {
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!resp.ok) {
-      console.error('[Phyllo] audience demographics fetch failed', resp.status);
-      return null;
-    }
-
-    return await resp.json();
-  } catch (err) {
-    console.error('[Phyllo] audience demographics error', err);
-    return null;
-  }
-}

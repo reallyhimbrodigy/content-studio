@@ -504,6 +504,7 @@ function sendJson(res, statusCode, payload) {
 }
 
 const isProduction = process.env.NODE_ENV === 'production';
+const DEBUG_ANALYTICS = process.env.DEBUG_ANALYTICS === 'true';
 
 function generateRequestId(prefix = 'req') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -644,6 +645,14 @@ async function fetchPhylloAnalyticsSnapshot({ userId, requestId, route }) {
     setAnalyticsCache(cacheKey, empty);
     return empty;
   }
+  if (DEBUG_ANALYTICS) {
+    console.log('[Analytics][Debug] connected accounts', {
+      requestId,
+      route,
+      userId,
+      count: accounts.length,
+    });
+  }
   const missingPhyllo = getMissingPhylloEnvVars();
   if (missingPhyllo.length) {
     logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
@@ -662,7 +671,21 @@ async function fetchPhylloAnalyticsSnapshot({ userId, requestId, route }) {
   });
 
   try {
+    if (DEBUG_ANALYTICS) {
+      console.log('[Analytics][Debug] fetching Phyllo metrics', {
+        requestId,
+        route,
+        userId,
+      });
+    }
     const metrics = await getUserPostMetrics(accounts, { requestId, userId });
+    if (DEBUG_ANALYTICS) {
+      console.log('[Analytics][Debug] fetching Phyllo demographics', {
+        requestId,
+        route,
+        userId,
+      });
+    }
     const demographicsRaw = await getAudienceDemographics(accounts, { requestId, userId });
     const overview = {
       follower_growth: metrics?.summary?.followerGrowth ?? null,
@@ -5977,15 +6000,10 @@ const server = http.createServer((req, res) => {
         if (!user) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
-        return sendJson(res, 200, {
-          ok: true,
-          config: {
-            clientDisplayName: 'Promptly',
-            environment: 'production',
-            userId: 'af3d8d76-874e-4984-a17f-972d5b66ebb6',
-            token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWYzZDhkNzYtODc0ZS00OTg0LWExN2YtOTcyZDViNjZlYmI2IiwidGVuYW50X2lkIjoiNTMxYjkxNTMtYjRkMy00NDQxLTkwMzMtYTA2NzgyMzBmMzExIiwidGVuYW50X2FwcF9pZCI6IjA1ZTZjYTQzLWI0ZDktNGRlMy1iZjM2LWFkZjhjYmEyNTg3MSIsInByb2R1Y3RzIjpbIklOQ09NRSIsIlBVQkxJU0hfQ09OVEVOVCIsIklERU5USVRZX0FVRElFTkNFIiwiSURFTlRJVFkiLCJFTkdBR0VNRU5UX0FVRElFTkNFIiwiRU5HQUdFTUVOVCIsIkFDVElWSVRZIl0sImlzcyI6Imh0dHBzOi8vYXBpLmdldHBoeWxsby5jb20iLCJhdWQiOiJodHRwczovL2FwaS5nZXRwaHlsbG8uY29tL3YxL2ludGVybmFsIiwiaWF0IjoxNzY3MTM0NTA4LjA0NzkzNywiZXhwIjoxNzY3NzM5MzA4LjA0NzkzMn0.RdXYaljvZvXKzVlblitwM_bWOdgHAudhiSrVtrWSfVY',
-            workPlatformIds: [],
-          },
+        return sendJson(res, 410, {
+          ok: false,
+          error: 'deprecated_use_sdk_config',
+          message: 'Use /api/phyllo/sdk-config for Phyllo Connect initialization.',
         });
       } catch (err) {
         console.error('[Phyllo] connect-config error', err);
@@ -6202,27 +6220,52 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/phyllo/sync-posts' && req.method === 'POST') {
     (async () => {
+      const requestId = generateRequestId('phyllo_sync_posts');
       try {
-        await ensureAnalyticsRequestUser(req);
-        const promptlyUserId = req.user && req.user.id;
-        if (!promptlyUserId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        const user = await ensureAnalyticsRequestUser(req);
+        if (!user || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
         }
 
-        const { data: accounts, error: accErr } = await supabaseAdmin
-          .from('phyllo_accounts')
-          .select('*')
-          .eq('user_id', promptlyUserId)
-          .eq('status', 'connected');
+        const missingPhyllo = getMissingPhylloEnvVars();
+        if (missingPhyllo.length) {
+          logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
+            requestId,
+            route: '/api/phyllo/sync-posts',
+            missing: missingPhyllo,
+          });
+          return sendJson(res, 502, { ok: false, error: 'phyllo_env_missing', requestId });
+        }
 
-        if (accErr) {
-          console.error('[Phyllo] load accounts error', accErr);
-          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
+          user.id,
+          requestId,
+          '/api/phyllo/sync-posts'
+        );
+        if (accountsError) {
+          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+        }
+        if (!accounts.length) {
+          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
+        }
+        if (DEBUG_ANALYTICS) {
+          console.log('[Analytics][Debug] sync-demographics accounts', {
+            requestId,
+            userId: user.id,
+            count: accounts.length,
+          });
+        }
+        if (DEBUG_ANALYTICS) {
+          console.log('[Analytics][Debug] sync-posts accounts', {
+            requestId,
+            userId: user.id,
+            count: accounts.length,
+          });
         }
 
         const windowThresholdMs = 24 * 60 * 60 * 1000;
         const refreshCutoff = new Date(Date.now() - windowThresholdMs);
-        const eligibleAccounts = (accounts || []).filter((acc) => {
+        const eligibleAccounts = accounts.filter((acc) => {
           const lastUpdated = acc?.updated_at || acc?.connected_at;
           if (!lastUpdated) return true;
           const ts = new Date(lastUpdated);
@@ -6230,120 +6273,148 @@ const server = http.createServer((req, res) => {
           return ts.getTime() < refreshCutoff.getTime();
         });
         if (!eligibleAccounts.length) {
-          return sendJson(res, 200, { ok: true, syncedPosts: 0 });
-        }
-        if (accounts.length && eligibleAccounts.length === 0) {
-          console.log('[Phyllo] all accounts refreshed recently; skipping');
-        } else if (accounts.length && eligibleAccounts.length < accounts.length) {
-          console.log(`[Phyllo] skipping ${accounts.length - eligibleAccounts.length} account(s) refreshed within 24h`);
+          return sendJson(res, 200, { ok: true, syncedPosts: 0, requestId });
         }
 
         let totalSynced = 0;
+        let upstreamOk = true;
         const analyticsSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const analyticsUntil = new Date();
 
         for (const acc of eligibleAccounts) {
-          const postsResp = await getPhylloPosts(acc.account_id);
-          const posts = postsResp.data || [];
+          const accountId = acc.account_id || acc.phyllo_account_id;
+          if (!accountId) continue;
 
+          let postsResp;
+          try {
+            postsResp = await getPhylloPosts(accountId, { requestId, userId: user.id });
+          } catch (err) {
+            upstreamOk = false;
+            logServerError('phyllo_sync_posts_fetch_failed', err, {
+              requestId,
+              route: '/api/phyllo/sync-posts',
+              userId: user.id,
+              accountId,
+            });
+            continue;
+          }
+
+          const posts = postsResp?.data || [];
           for (const p of posts) {
-            const { data: postRows, error: postErr } = await upsertPhylloPost({
-              phylloAccountId: acc.id,
-              platform: acc.platform || p.platform,
-              platformPostId: p.id,
-              title: p.title || null,
-              caption: p.caption || null,
-              url: p.url || null,
-              publishedAt: p.published_at || null,
-            });
+            try {
+              const { data: postRows, error: postErr } = await upsertPhylloPost({
+                phylloAccountId: accountId,
+                platform: acc.platform || p.platform,
+                platformPostId: p.id,
+                title: p.title || null,
+                caption: p.caption || null,
+                url: p.url || null,
+                publishedAt: p.published_at || null,
+              });
 
-            if (postErr) {
-              console.error('[Phyllo] upsertPhylloPost error', postErr);
-              continue;
+              if (postErr) {
+                logServerError('phyllo_upsert_post_error', postErr, {
+                  requestId,
+                  route: '/api/phyllo/sync-posts',
+                });
+                continue;
+              }
+
+              const postRow = Array.isArray(postRows) ? postRows[0] : postRows;
+              if (!postRow || !postRow.id) continue;
+
+              let metricsResp;
+              try {
+                metricsResp = await getPhylloPostMetrics(p.id, { requestId, userId: user.id });
+              } catch (err) {
+                upstreamOk = false;
+                logServerError('phyllo_sync_post_metrics_failed', err, {
+                  requestId,
+                  route: '/api/phyllo/sync-posts',
+                  postId: p.id,
+                });
+                continue;
+              }
+
+              const m = metricsResp?.data || {};
+              const views = m.views || 0;
+              const likes = m.likes || 0;
+              const comments = m.comments || 0;
+              const shares = m.shares || 0;
+              const saves = m.saves || 0;
+              const watchTimeSeconds = m.watch_time_seconds || 0;
+              const retentionPct = m.retention_pct || null;
+
+              const { error: metricsErr } = await insertPhylloPostMetrics({
+                phylloPostId: postRow.id,
+                capturedAt: new Date().toISOString(),
+                views,
+                likes,
+                comments,
+                shares,
+                saves,
+                watchTimeSeconds,
+                retentionPct,
+              });
+
+              if (metricsErr) {
+                logServerError('phyllo_insert_metrics_error', metricsErr, {
+                  requestId,
+                  route: '/api/phyllo/sync-posts',
+                });
+                continue;
+              }
+
+              totalSynced += 1;
+            } catch (err) {
+              logServerError('phyllo_sync_post_error', err, {
+                requestId,
+                route: '/api/phyllo/sync-posts',
+                accountId,
+              });
+              upstreamOk = false;
             }
+          }
 
-            const postRow = Array.isArray(postRows) ? postRows[0] : postRows;
-            if (!postRow || !postRow.id) continue;
-
-            const metricsResp = await getPhylloPostMetrics(p.id);
-            const m = metricsResp.data || {};
-
-            const views = m.views || 0;
-            const likes = m.likes || 0;
-            const comments = m.comments || 0;
-            const shares = m.shares || 0;
-            const saves = m.saves || 0;
-            const watchTimeSeconds = m.watch_time_seconds || 0;
-            const retentionPct = m.retention_pct || null;
-
-            const { error: metricsErr } = await insertPhylloPostMetrics({
-              phylloPostId: postRow.id,
-              capturedAt: new Date().toISOString(),
-              views,
-              likes,
-              comments,
-              shares,
-              saves,
-              watchTimeSeconds,
-              retentionPct,
-            });
-
-            if (metricsErr) {
-              console.error('[Phyllo] insertPhylloPostMetrics error', metricsErr);
-              continue;
-            }
-
-          totalSynced += 1;
           try {
             await supabaseAdmin
               .from('phyllo_accounts')
               .update({ updated_at: new Date().toISOString() })
-              .eq('phyllo_account_id', acc.phyllo_account_id);
+              .eq('account_id', accountId);
           } catch (err) {
             console.warn('[Phyllo] failed to update refreshed timestamp', err);
           }
-          await syncAccountMetricsForAnalytics(acc, analyticsSince, analyticsUntil);
+
+          await syncAccountMetricsForAnalytics(
+            {
+              ...acc,
+              phyllo_account_id: acc.phyllo_account_id || accountId,
+              promptly_user_id: acc.promptly_user_id || acc.user_id || user.id,
+            },
+            analyticsSince,
+            analyticsUntil
+          );
           await wait(60);
         }
-      }
 
-    // Demographics sync per account
-    for (const acc of accounts) {
-      try {
-        const demoResp = await getAudienceDemographics(acc.phyllo_user_id);
-        if (!demoResp) continue;
-        const payload = demoResp.data || demoResp;
-        const age_groups = payload.age_groups || payload.age || {};
-        const countries = payload.countries || payload.location || {};
-        const languages = payload.languages || payload.language || {};
-        const genders = payload.genders || payload.gender || {};
-
-        const { error: demoErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
-          user_id: promptlyUserId,
-          phyllo_user_id: acc.phyllo_user_id,
-          account_id: acc.account_id,
-          platform: acc.platform || acc.work_platform_id || 'unknown',
-          age_groups,
-          countries,
-          languages,
-          genders,
-          updated_at: new Date().toISOString(),
-        });
-        if (demoErr) {
-          console.error('[Phyllo] demographics upsert error', demoErr);
+        try {
+          await updateCachedAnalyticsForUser(user.id);
+        } catch (err) {
+          console.warn('[Phyllo] updateCachedAnalyticsForUser failed', err);
         }
+
+        if (!upstreamOk) {
+          return sendJson(res, 502, { ok: false, error: 'upstream_failed', syncedPosts: totalSynced, requestId });
+        }
+        return sendJson(res, 200, { ok: true, syncedPosts: totalSynced, requestId });
       } catch (err) {
-        console.error('[Phyllo] demographics sync error', err);
+        logServerError('phyllo_sync_posts_error', err, {
+          requestId,
+          route: '/api/phyllo/sync-posts',
+          userId: req.user?.id,
+        });
+        return sendJson(res, 502, { ok: false, error: 'phyllo_sync_posts_failed', requestId });
       }
-    }
-
-    await updateCachedAnalyticsForUser(promptlyUserId);
-
-    return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
-  } catch (err) {
-    console.error('[Phyllo] /api/phyllo/sync-posts error', err);
-    return sendJson(res, 500, { ok: false, error: 'server_error' });
-  }
     })();
     return;
   }
@@ -6520,30 +6591,51 @@ Output format:
 
   if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
     (async () => {
+      const requestId = generateRequestId('analytics_insights');
       try {
-        await ensureAnalyticsRequestUser(req);
-        const userId = req.user && req.user.id;
+        const user = await ensureAnalyticsRequestUser(req);
         const isPro = isUserPro(req);
-        if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        if (!user || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
         }
+
+        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
+          user.id,
+          requestId,
+          '/api/analytics/insights'
+        );
+        if (accountsError) {
+          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+        }
+        if (!accounts.length) {
+          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
+        }
+
         const { data, error } = await supabaseAdmin
           .from('analytics_insights')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1);
         if (error) {
-          return sendJson(res, 500, { ok: false, error: 'insights_fetch_failed' });
+          logServerError('analytics_insights_fetch_failed', error, {
+            requestId,
+            route: '/api/analytics/insights',
+            userId: user.id,
+          });
+          return sendJson(res, 502, { ok: false, error: 'insights_fetch_failed', requestId });
         }
         let insights = (data && data[0] && data[0].insights) || [];
         if (!isPro && Array.isArray(insights)) {
           insights = insights.slice(0, 2);
         }
-        return sendJson(res, 200, { ok: true, insights });
+        return sendJson(res, 200, { ok: true, insights, requestId });
       } catch (err) {
-        console.error('[Analytics insights fetch] error', err);
-        return sendJson(res, 500, { ok: false, error: 'server_error' });
+        logServerError('analytics_insights_fetch_error', err, {
+          requestId,
+          route: '/api/analytics/insights',
+        });
+        return sendJson(res, 502, { ok: false, error: 'analytics_insights_failed', requestId });
       }
     })();
     return;
@@ -6841,32 +6933,52 @@ Output format:
 
   if (parsed.pathname === '/api/phyllo/sync-demographics' && req.method === 'POST') {
     (async () => {
+      const requestId = generateRequestId('phyllo_sync_demographics');
       try {
-        await ensureAnalyticsRequestUser(req);
-        const userId = req.user && req.user.id;
-        if (!userId || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-        }
-        // Load connected accounts
-        const { data: accounts, error: accErr } = await supabaseAdmin
-          .from('phyllo_accounts')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('status', 'connected');
-
-        if (accErr) {
-          console.error('[Phyllo] sync-demographics accounts error', accErr);
-          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        const user = await ensureAnalyticsRequestUser(req);
+        if (!user || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
         }
 
-        if (!accounts || !accounts.length) {
-          return sendJson(res, 200, { ok: true, demographics: {} });
+        const missingPhyllo = getMissingPhylloEnvVars();
+        if (missingPhyllo.length) {
+          logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
+            requestId,
+            route: '/api/phyllo/sync-demographics',
+            missing: missingPhyllo,
+          });
+          return sendJson(res, 502, { ok: false, error: 'phyllo_env_missing', requestId });
+        }
+
+        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
+          user.id,
+          requestId,
+          '/api/phyllo/sync-demographics'
+        );
+        if (accountsError) {
+          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+        }
+        if (!accounts.length) {
+          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
+        }
+
+        let upstreamOk = true;
+        const audience = await getAudienceDemographics(accounts, { requestId, userId: user.id });
+        const platformMap = new Map();
+        if (Array.isArray(audience)) {
+          audience.forEach((row) => {
+            if (!row) return;
+            const key = String(row.platform || 'unknown').toLowerCase();
+            if (!platformMap.has(key)) platformMap.set(key, row.audience || row);
+          });
         }
 
         for (const acc of accounts) {
           try {
-            const audience = await getAudienceDemographics(acc.phyllo_user_id || acc.creator_id ? [{ creator_id: acc.creator_id, platform: acc.platform, work_platform_id: acc.work_platform_id }] : []);
-            const payload = audience && audience[0] ? audience[0].audience || {} : {};
+            const platformKey = String(acc.platform || acc.work_platform_id || 'unknown').toLowerCase();
+            const payload = Array.isArray(audience)
+              ? platformMap.get(platformKey) || {}
+              : audience || {};
 
             const age_groups = payload.age || payload.age_groups || {};
             const countries = payload.location || payload.countries || {};
@@ -6874,9 +6986,9 @@ Output format:
             const genders = payload.gender || payload.genders || {};
 
             const { error: upsertErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
-              user_id: userId,
+              user_id: user.id,
               phyllo_user_id: acc.phyllo_user_id,
-              account_id: acc.account_id,
+              account_id: acc.account_id || acc.phyllo_account_id,
               platform: acc.platform || acc.work_platform_id || 'unknown',
               age_groups,
               countries,
@@ -6886,17 +6998,31 @@ Output format:
             });
 
             if (upsertErr) {
-              console.error('[Phyllo] demographics upsert error', upsertErr);
+              logServerError('phyllo_demographics_upsert_error', upsertErr, {
+                requestId,
+                route: '/api/phyllo/sync-demographics',
+              });
             }
           } catch (err) {
-            console.error('[Phyllo] sync-demographics per-account error', err);
+            upstreamOk = false;
+            logServerError('phyllo_sync_demographics_account_error', err, {
+              requestId,
+              route: '/api/phyllo/sync-demographics',
+            });
           }
         }
 
-        return sendJson(res, 200, { ok: true });
+        if (!upstreamOk) {
+          return sendJson(res, 502, { ok: false, error: 'upstream_failed', requestId });
+        }
+        return sendJson(res, 200, { ok: true, requestId });
       } catch (err) {
-        console.error('[Phyllo] sync-demographics error', err);
-        return sendJson(res, 500, { ok: false, error: 'phyllo_sync_demographics_failed' });
+        logServerError('phyllo_sync_demographics_error', err, {
+          requestId,
+          route: '/api/phyllo/sync-demographics',
+          userId: req.user?.id,
+        });
+        return sendJson(res, 502, { ok: false, error: 'phyllo_sync_demographics_failed', requestId });
       }
     })();
     return;
