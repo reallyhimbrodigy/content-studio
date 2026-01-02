@@ -191,8 +191,18 @@ async function fetchAnalyticsJson(url, options) {
   }
 
   if (!res.ok) {
-    console.warn('[Analytics] fetch failed', url, res.status, res.headers.get('x-request-id'));
-    return { error: true, data: null };
+    const requestId = res.headers.get('x-request-id');
+    let errorPayload = null;
+    try {
+      errorPayload = await res.json();
+    } catch (e) {
+      errorPayload = null;
+    }
+    console.warn('[Analytics] fetch failed', url, res.status, requestId);
+    if (errorPayload && requestId) {
+      errorPayload.requestId = errorPayload.requestId || requestId;
+    }
+    return { error: true, data: errorPayload, status: res.status };
   }
 
   try {
@@ -450,6 +460,8 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(({ data, unauthorized, error }) => {
         if (unauthorized) return;
         if (error || !data || data.ok === false) {
+          const errorCode = data?.error_code || data?.error || 'phyllo_accounts_failed';
+          setAnalyticsError(`Couldn’t load connected accounts (${errorCode}).`);
           hasConnectedAccounts = false;
           renderConnectedAccounts([]);
           updateConnectedAccountsStrip([]);
@@ -462,6 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .catch((err) => {
         console.error('[Phyllo] loadConnectedAccounts error', err);
+        setAnalyticsError('Couldn’t load connected accounts.');
         hasConnectedAccounts = false;
         renderConnectedAccounts([]);
         updateConnectedAccountsStrip([]);
@@ -518,6 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/full');
       let analyticsData = data;
       const upstreamFailed = Boolean(analyticsData && analyticsData.upstream_ok === false);
+      const errorCode = error ? analyticsData?.error_code || analyticsData?.error : null;
       const useDemo = DEMO_MODE && !hasConnectedAccounts &&
         (unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData));
       if (useDemo) {
@@ -526,7 +540,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setAnalyticsError('Demo mode: showing sample analytics.');
       } else {
         renderDemoBadge(false);
-        setAnalyticsError(upstreamFailed ? 'Couldn’t load analytics right now.' : '');
+        if (errorCode) {
+          setAnalyticsError(`Couldn’t load analytics (${errorCode}).`);
+        } else {
+          setAnalyticsError(upstreamFailed ? 'Couldn’t load analytics right now.' : '');
+        }
         if (!analyticsData) analyticsData = {};
       }
 
@@ -1166,7 +1184,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!syncPostsRes.ok) {
         const detail = await syncPostsRes.json().catch(() => ({}));
-        throw new Error(detail?.error || 'sync_posts_failed');
+        const code = detail?.error_code || detail?.error || 'sync_posts_failed';
+        setAnalyticsError(`Couldn’t sync posts (${code}).`);
+        throw new Error(code);
       }
 
       const syncFollowersRes = await fetchAuthenticated('/api/phyllo/sync-followers', {
@@ -1175,7 +1195,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!syncFollowersRes.ok) {
         const detail = await syncFollowersRes.json().catch(() => ({}));
-        throw new Error(detail?.error || 'sync_followers_failed');
+        const code = detail?.error_code || detail?.error || 'sync_followers_failed';
+        setAnalyticsError(`Couldn’t sync followers (${code}).`);
+        throw new Error(code);
       }
 
       const syncDemographicsRes = await fetchAuthenticated('/api/phyllo/sync-demographics', {
@@ -1184,7 +1206,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!syncDemographicsRes.ok) {
         const detail = await syncDemographicsRes.json().catch(() => ({}));
-        throw new Error(detail?.error || 'sync_demographics_failed');
+        const code = detail?.error_code || detail?.error || 'sync_demographics_failed';
+        setAnalyticsError(`Couldn’t sync demographics (${code}).`);
+        throw new Error(code);
       }
 
       await loadSyncStatus();

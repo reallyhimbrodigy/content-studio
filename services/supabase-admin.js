@@ -20,8 +20,8 @@ async function updateCachedAnalyticsForUser(userId) {
   // 1) Connected accounts
   const { data: accounts, error: accErr } = await supabaseAdmin
     .from('phyllo_accounts')
-    .select('id, platform')
-    .eq('user_id', userId)
+    .select('phyllo_account_id, work_platform_id')
+    .eq('promptly_user_id', userId)
     .eq('status', 'connected');
 
   if (accErr || !accounts || !accounts.length) {
@@ -38,12 +38,12 @@ async function updateCachedAnalyticsForUser(userId) {
     return;
   }
 
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = accounts.map((a) => a.phyllo_account_id).filter(Boolean);
 
   // 2) Posts
   const { data: posts, error: postsErr } = await supabaseAdmin
     .from('phyllo_posts')
-    .select('id, phyllo_account_id, platform, title, url, published_at')
+    .select('id, phyllo_content_id, phyllo_account_id, platform, title, url, published_at')
     .in('phyllo_account_id', accountIds);
 
   if (postsErr) {
@@ -51,14 +51,14 @@ async function updateCachedAnalyticsForUser(userId) {
     return;
   }
 
-  const postIds = posts.map((p) => p.id);
+  const postIds = posts.map((p) => p.phyllo_content_id || p.id).filter(Boolean);
 
   // 3) Metrics (latest per post)
   const { data: metrics, error: metricsErr } = await supabaseAdmin
     .from('phyllo_post_metrics')
     .select('*')
-    .in('phyllo_post_id', postIds)
-    .order('captured_at', { ascending: false });
+    .in('phyllo_content_id', postIds)
+    .order('collected_at', { ascending: false });
 
   if (metricsErr) {
     console.error('[Analytics] metrics error', metricsErr);
@@ -67,15 +67,16 @@ async function updateCachedAnalyticsForUser(userId) {
 
   const latestMetricsByPost = {};
   for (const m of metrics || []) {
-    if (!latestMetricsByPost[m.phyllo_post_id]) {
-      latestMetricsByPost[m.phyllo_post_id] = m;
+    if (!latestMetricsByPost[m.phyllo_content_id]) {
+      latestMetricsByPost[m.phyllo_content_id] = m;
     }
   }
 
   const flatPosts = posts.map((p) => {
-    const m = latestMetricsByPost[p.id] || {};
+    const postId = p.phyllo_content_id || p.id;
+    const m = latestMetricsByPost[postId] || {};
     return {
-      id: p.id,
+      id: postId,
       platform: p.platform,
       title: p.title,
       url: p.url,
@@ -265,23 +266,25 @@ async function upsertPhylloAccount({
     .from('phyllo_accounts')
     .upsert(
       {
-        user_id: userId,
+        promptly_user_id: userId,
         phyllo_user_id: phylloUserId,
-        platform,
+        phyllo_account_id: accountId,
         account_id: accountId,
         work_platform_id: workPlatformId,
-        handle,
-        display_name: displayName,
+        username: handle,
+        profile_name: displayName,
         avatar_url: avatarUrl,
         status: 'connected',
         connected_at: new Date().toISOString(),
       },
-      { onConflict: 'user_id,account_id' }
+      { onConflict: 'phyllo_account_id' }
     );
 }
 
 async function upsertPhylloPost({
   phylloAccountId,
+  promptlyUserId,
+  phylloContentId,
   platform,
   platformPostId,
   title,
@@ -294,20 +297,22 @@ async function upsertPhylloPost({
     .from('phyllo_posts')
     .upsert(
       {
+        promptly_user_id: promptlyUserId,
         phyllo_account_id: phylloAccountId,
         platform,
-        platform_post_id: platformPostId,
+        phyllo_content_id: phylloContentId || platformPostId,
         title,
         caption,
         url,
         published_at: publishedAt,
       },
-      { onConflict: 'phyllo_account_id,platform_post_id' }
+      { onConflict: 'phyllo_content_id' }
     );
 }
 
 async function insertPhylloPostMetrics({
   phylloPostId,
+  phylloContentId,
   capturedAt,
   views,
   likes,
@@ -319,8 +324,8 @@ async function insertPhylloPostMetrics({
 }) {
   if (!supabaseAdmin) throw new Error('Supabase admin client not configured');
   return supabaseAdmin.from('phyllo_post_metrics').insert({
-    phyllo_post_id: phylloPostId,
-    captured_at: capturedAt,
+    phyllo_content_id: phylloContentId || phylloPostId,
+    collected_at: capturedAt,
     views,
     likes,
     comments,

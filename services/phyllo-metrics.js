@@ -20,11 +20,15 @@ async function phylloFetch(path, options = {}) {
   const requestId = options.requestId || null;
   const userId = options.userId || null;
   const attempt = options.attempt || 1;
+  const timeoutMs = options.timeoutMs || 12000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let resp;
   try {
     resp = await fetch(url, {
       method: options.method || 'GET',
       headers,
+      signal: controller.signal,
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
   } catch (err) {
@@ -34,8 +38,14 @@ async function phylloFetch(path, options = {}) {
       userId,
       error: err?.message || err,
     });
+    clearTimeout(timeout);
+    if (attempt === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return phylloFetch(path, { ...options, attempt: 2 });
+    }
     throw err;
   }
+  clearTimeout(timeout);
   if (!resp.ok) {
     const status = resp.status;
     const statusText = resp.statusText;
@@ -49,6 +59,7 @@ async function phylloFetch(path, options = {}) {
       body: bodyText.slice(0, 300),
     });
     if (status >= 500 && attempt === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
       return phylloFetch(path, { ...options, attempt: 2 });
     }
     throw new Error(`phyllo_${status}`);
@@ -72,14 +83,15 @@ async function getUserPostMetrics(accounts = [], options = {}) {
   let retentionCount = 0;
 
   for (const acc of accounts) {
-    if (!acc || !acc.account_id) continue;
+    const accountId = acc && (acc.account_id || acc.phyllo_account_id);
+    if (!acc || !accountId) continue;
     try {
-      const postsResp = await getPhylloPosts(acc.account_id, options);
+      const postsResp = await getPhylloPosts(accountId, options);
       const list = postsResp?.data || [];
       for (const p of list) {
         const postId = p.id;
         const base = {
-          account_id: acc.account_id,
+          account_id: accountId,
           platform: acc.platform || p.platform || acc.work_platform_id || 'unknown',
           post_id: postId,
           title: p.title || p.caption || 'Untitled',
@@ -240,8 +252,8 @@ async function syncFollowerMetrics(userId) {
     const { supabaseAdmin } = require('./supabase-admin');
     const { data: accounts, error } = await supabaseAdmin
       .from('phyllo_accounts')
-      .select('account_id, platform')
-      .eq('user_id', userId)
+      .select('phyllo_account_id, work_platform_id, username')
+      .eq('promptly_user_id', userId)
       .eq('status', 'connected');
 
     if (error || !accounts || !accounts.length) {
@@ -252,9 +264,10 @@ async function syncFollowerMetrics(userId) {
     }
 
     for (const acc of accounts) {
-      if (!acc || !acc.account_id) continue;
+      const accountId = acc.phyllo_account_id || acc.account_id;
+      if (!acc || !accountId) continue;
       try {
-        const url = `${base}/v1/accounts/${acc.account_id}/followers`;
+        const url = `${base}/v1/accounts/${accountId}/followers`;
         const resp = await fetch(url, {
           headers: {
             'Client-Id': process.env.PHYLLO_CLIENT_ID,
@@ -273,8 +286,8 @@ async function syncFollowerMetrics(userId) {
 
         list.forEach((item) => {
           followerSeries.push({
-            platform: acc.platform || 'unknown',
-            account_id: acc.account_id,
+            platform: acc.work_platform_id || 'unknown',
+            account_id: accountId,
             followers: item.followers || item.follower_count || item.count || 0,
             captured_at: item.captured_at || item.timestamp || item.date || null,
           });
@@ -299,8 +312,8 @@ async function syncDemographics(userId) {
     const { supabaseAdmin } = require('./supabase-admin');
     const { data: accounts, error } = await supabaseAdmin
       .from('phyllo_accounts')
-      .select('account_id, platform, work_platform_id')
-      .eq('user_id', userId)
+      .select('phyllo_account_id, work_platform_id')
+      .eq('promptly_user_id', userId)
       .eq('status', 'connected');
 
     if (error || !accounts || !accounts.length) {
@@ -311,9 +324,10 @@ async function syncDemographics(userId) {
     }
 
     for (const acc of accounts) {
-      if (!acc || !acc.account_id) continue;
+      const accountId = acc.phyllo_account_id || acc.account_id;
+      if (!acc || !accountId) continue;
       try {
-        const url = `${base}/v1/accounts/${acc.account_id}/audience`;
+        const url = `${base}/v1/accounts/${accountId}/audience`;
         const resp = await fetch(url, {
           headers: {
             'Client-Id': process.env.PHYLLO_CLIENT_ID,
@@ -322,13 +336,13 @@ async function syncDemographics(userId) {
           },
         });
         if (!resp.ok) {
-          console.warn('[Phyllo] demographics fetch failed', acc.account_id, resp.status);
+          console.warn('[Phyllo] demographics fetch failed', accountId, resp.status);
           continue;
         }
         const json = await resp.json();
-        demographics[acc.platform || acc.work_platform_id || 'unknown'] = json?.data || json || [];
+        demographics[acc.work_platform_id || 'unknown'] = json?.data || json || [];
       } catch (err) {
-        console.error('[Phyllo] demographics fetch error', acc.account_id, err.message);
+        console.error('[Phyllo] demographics fetch error', accountId, err.message);
       }
     }
   } catch (err) {

@@ -95,6 +95,10 @@ const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
   .filter(Boolean);
 const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
 const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
+const PHYLLO_WORK_PLATFORM_LABELS = {
+  'de55aeec-0dc8-4119-bf90-16b3d1f0c987': 'tiktok',
+  '9bb8913b-ddd9-430b-a66a-d74d846e6c66': 'instagram',
+};
 
 const ANALYTICS_CACHE_TTL_MS = 120 * 1000;
 const analyticsCache = new Map();
@@ -208,8 +212,8 @@ async function processPhylloWebhookEvent(event = {}) {
           await supabaseAdmin
             .from('phyllo_accounts')
             .update({
-              handle: account.username || account.handle || account.login,
-              display_name: account.profile_name || account.display_name,
+              username: account.username || account.handle || account.login,
+              profile_name: account.profile_name || account.display_name,
             })
             .eq('phyllo_account_id', phylloAccountId);
         } catch (err) {
@@ -614,21 +618,57 @@ function buildEmptyAnalyticsPayload({ connected = false, upstream_ok = true } = 
   };
 }
 
+function resolvePhylloPlatformLabel(account = {}) {
+  if (!account) return 'unknown';
+  if (account.platform) return String(account.platform).toLowerCase();
+  const workPlatform = account.work_platform_id || account.workPlatformId;
+  if (workPlatform && PHYLLO_WORK_PLATFORM_LABELS[workPlatform]) {
+    return PHYLLO_WORK_PLATFORM_LABELS[workPlatform];
+  }
+  return workPlatform || 'unknown';
+}
+
+function mapPhylloAccountForResponse(account = {}) {
+  if (!account) return null;
+  return {
+    id: account.phyllo_account_id || account.account_id || account.id,
+    platform: resolvePhylloPlatformLabel(account),
+    username: account.username || account.handle || null,
+    handle: account.username || account.handle || null,
+    external_account_id: account.account_id || account.phyllo_account_id || null,
+    status: account.status || null,
+    connected_at: account.connected_at || null,
+    work_platform_id: account.work_platform_id || null,
+    profile_name: account.profile_name || null,
+    avatar_url: account.avatar_url || null,
+  };
+}
+
 async function getConnectedPhylloAccounts(userId, requestId, route) {
   if (!userId || !supabaseAdmin) return { accounts: [], error: 'missing_supabase' };
   try {
     const { data, error } = await supabaseAdmin
       .from('phyllo_accounts')
       .select('*')
-      .eq('user_id', userId)
+      .eq('promptly_user_id', userId)
       .eq('status', 'connected');
     if (error) {
-      logServerError('phyllo_accounts_db_error', error, { requestId, route });
+      logServerError('phyllo_accounts_db_error', error, {
+        requestId,
+        route,
+        userId,
+        query: 'phyllo_accounts_select',
+      });
       return { accounts: [], error: 'db_error' };
     }
     return { accounts: data || [], error: null };
   } catch (err) {
-    logServerError('phyllo_accounts_db_error', err, { requestId, route });
+    logServerError('phyllo_accounts_db_error', err, {
+      requestId,
+      route,
+      userId,
+      query: 'phyllo_accounts_select',
+    });
     return { accounts: [], error: 'db_error' };
   }
 }
@@ -639,7 +679,12 @@ async function fetchPhylloAnalyticsSnapshot({ userId, requestId, route }) {
   const cached = getAnalyticsCache(cacheKey);
   if (cached) return cached;
 
-  const { accounts } = await getConnectedPhylloAccounts(userId, requestId, route);
+  const { accounts, error: accountsError } = await getConnectedPhylloAccounts(userId, requestId, route);
+  if (accountsError) {
+    const empty = buildEmptyAnalyticsPayload({ connected: false, upstream_ok: false });
+    setAnalyticsCache(cacheKey, empty);
+    return empty;
+  }
   if (!accounts.length) {
     const empty = buildEmptyAnalyticsPayload({ connected: false });
     setAnalyticsCache(cacheKey, empty);
@@ -737,11 +782,11 @@ async function authenticateRequestForRoute(req, res, requestId, route) {
     return user;
   } catch (err) {
     if (err?.statusCode === 401) {
-      sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
+      sendJson(res, 401, { ok: false, error: 'unauthorized', error_code: 'unauthorized', requestId });
       return null;
     }
     logServerError('supabase_auth_error', err, { requestId, route });
-    sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+    sendJson(res, 500, { ok: false, error: 'server_error', error_code: 'server_error', requestId });
     return null;
   }
 }
@@ -779,7 +824,12 @@ async function handleAnalyticsHeatmap(req, res) {
       route: '/api/analytics/heatmap',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'analytics_heatmap_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'analytics_heatmap_upstream_failed',
+        error_code: 'analytics_heatmap_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -832,7 +882,12 @@ async function handleAnalyticsFull(req, res) {
       route: '/api/analytics/full',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'analytics_full_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'analytics_full_upstream_failed',
+        error_code: 'analytics_full_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -860,7 +915,12 @@ async function handleAnalyticsFollowers(req, res) {
       route: '/api/analytics/followers',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'analytics_followers_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'analytics_followers_upstream_failed',
+        error_code: 'analytics_followers_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -892,7 +952,12 @@ async function handleAnalyticsDemographics(req, res) {
       route: '/api/analytics/demographics',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'analytics_demographics_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'analytics_demographics_upstream_failed',
+        error_code: 'analytics_demographics_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -931,7 +996,12 @@ async function handleAnalyticsAlerts(req, res) {
       route: '/api/analytics/alerts',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'analytics_alerts_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'analytics_alerts_upstream_failed',
+        error_code: 'analytics_alerts_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -952,12 +1022,25 @@ async function handlePhylloAccounts(req, res) {
       return sendJson(res, 200, { ok: true, connected: false, accounts: [], upstream_ok: false, requestId });
     }
 
-    const { accounts } = await getConnectedPhylloAccounts(user.id, requestId, '/api/phyllo/accounts');
+    const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
+      user.id,
+      requestId,
+      '/api/phyllo/accounts'
+    );
+    if (accountsError) {
+      return sendJson(res, 502, {
+        ok: false,
+        error: 'phyllo_accounts_db_error',
+        error_code: 'phyllo_accounts_db_error',
+        requestId,
+      });
+    }
+    const mapped = accounts.map(mapPhylloAccountForResponse).filter(Boolean);
 
     return sendJson(res, 200, {
       ok: true,
-      connected: accounts.length > 0,
-      accounts,
+      connected: mapped.length > 0,
+      accounts: mapped,
       upstream_ok: true,
       requestId,
     });
@@ -967,7 +1050,12 @@ async function handlePhylloAccounts(req, res) {
       route: '/api/phyllo/accounts',
     });
     if (!res.headersSent) {
-      sendJson(res, 502, { ok: false, error: 'phyllo_accounts_upstream_failed', requestId });
+      sendJson(res, 502, {
+        ok: false,
+        error: 'phyllo_accounts_upstream_failed',
+        error_code: 'phyllo_accounts_upstream_failed',
+        requestId,
+      });
     }
   }
 }
@@ -6057,8 +6145,12 @@ const server = http.createServer((req, res) => {
             avatarUrl: profile.avatar_url || avatarUrl,
           });
           if (error) {
-            console.error('[Phyllo] upsertPhylloAccount error', error);
-            return sendJson(res, 500, { ok: false, error: 'db_error' });
+            logServerError('phyllo_accounts_upsert_error', error, {
+              route: '/api/phyllo/account-connected',
+              userId: promptlyUserId,
+              query: 'phyllo_accounts_upsert',
+            });
+            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
           }
           return sendJson(res, 200, { ok: true });
         } catch (err) {
@@ -6107,8 +6199,12 @@ const server = http.createServer((req, res) => {
             avatarUrl,
           });
           if (error) {
-            console.error('[Phyllo] accounts/connect upsert error', error);
-            return sendJson(res, 500, { ok: false, error: 'db_error' });
+            logServerError('phyllo_accounts_upsert_error', error, {
+              route: '/api/phyllo/accounts/connect',
+              userId: user.id,
+              query: 'phyllo_accounts_upsert',
+            });
+            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
           }
           return sendJson(res, 200, { ok: true });
         } catch (err) {
@@ -6141,12 +6237,16 @@ const server = http.createServer((req, res) => {
           const { error } = await supabaseAdmin
             .from('phyllo_accounts')
             .update({ status: 'disconnected' })
-            .eq('user_id', user.id)
+            .eq('promptly_user_id', user.id)
             .eq('phyllo_user_id', phylloUserId)
-            .eq('account_id', accountId);
+            .eq('phyllo_account_id', accountId);
           if (error) {
-            console.error('[Phyllo] accounts/disconnect update error', error);
-            return sendJson(res, 500, { ok: false, error: 'db_error' });
+            logServerError('phyllo_accounts_disconnect_error', error, {
+              route: '/api/phyllo/accounts/disconnect',
+              userId: user.id,
+              query: 'phyllo_accounts_update',
+            });
+            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
           }
           return sendJson(res, 200, { ok: true });
         } catch (err) {
@@ -6182,7 +6282,7 @@ const server = http.createServer((req, res) => {
         const { data: accounts, error: accErr } = await supabaseAdmin
           .from('phyllo_accounts')
           .select('*')
-          .eq('user_id', promptlyUserId)
+          .eq('promptly_user_id', promptlyUserId)
           .eq('status', 'connected');
 
         if (accErr) {
@@ -6224,7 +6324,12 @@ const server = http.createServer((req, res) => {
       try {
         const user = await ensureAnalyticsRequestUser(req);
         if (!user || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
+          return sendJson(res, 401, {
+            ok: false,
+            error: 'unauthorized',
+            error_code: 'unauthorized',
+            requestId,
+          });
         }
 
         const missingPhyllo = getMissingPhylloEnvVars();
@@ -6234,7 +6339,12 @@ const server = http.createServer((req, res) => {
             route: '/api/phyllo/sync-posts',
             missing: missingPhyllo,
           });
-          return sendJson(res, 502, { ok: false, error: 'phyllo_env_missing', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'phyllo_env_missing',
+            error_code: 'phyllo_env_missing',
+            requestId,
+          });
         }
 
         const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
@@ -6243,16 +6353,19 @@ const server = http.createServer((req, res) => {
           '/api/phyllo/sync-posts'
         );
         if (accountsError) {
-          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'phyllo_accounts_db_error',
+            error_code: 'phyllo_accounts_db_error',
+            requestId,
+          });
         }
         if (!accounts.length) {
-          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
-        }
-        if (DEBUG_ANALYTICS) {
-          console.log('[Analytics][Debug] sync-demographics accounts', {
+          return sendJson(res, 400, {
+            ok: false,
+            error: 'no_connected_accounts',
+            error_code: 'no_connected_accounts',
             requestId,
-            userId: user.id,
-            count: accounts.length,
           });
         }
         if (DEBUG_ANALYTICS) {
@@ -6273,7 +6386,12 @@ const server = http.createServer((req, res) => {
           return ts.getTime() < refreshCutoff.getTime();
         });
         if (!eligibleAccounts.length) {
-          return sendJson(res, 200, { ok: true, syncedPosts: 0, requestId });
+          return sendJson(res, 200, {
+            ok: true,
+            synced_accounts: 0,
+            posts_written: 0,
+            requestId,
+          });
         }
 
         let totalSynced = 0;
@@ -6304,6 +6422,8 @@ const server = http.createServer((req, res) => {
             try {
               const { data: postRows, error: postErr } = await upsertPhylloPost({
                 phylloAccountId: accountId,
+                promptlyUserId: user.id,
+                phylloContentId: p.id,
                 platform: acc.platform || p.platform,
                 platformPostId: p.id,
                 title: p.title || null,
@@ -6319,9 +6439,6 @@ const server = http.createServer((req, res) => {
                 });
                 continue;
               }
-
-              const postRow = Array.isArray(postRows) ? postRows[0] : postRows;
-              if (!postRow || !postRow.id) continue;
 
               let metricsResp;
               try {
@@ -6346,7 +6463,7 @@ const server = http.createServer((req, res) => {
               const retentionPct = m.retention_pct || null;
 
               const { error: metricsErr } = await insertPhylloPostMetrics({
-                phylloPostId: postRow.id,
+                phylloContentId: p.id,
                 capturedAt: new Date().toISOString(),
                 views,
                 likes,
@@ -6380,7 +6497,7 @@ const server = http.createServer((req, res) => {
             await supabaseAdmin
               .from('phyllo_accounts')
               .update({ updated_at: new Date().toISOString() })
-              .eq('account_id', accountId);
+              .eq('phyllo_account_id', accountId);
           } catch (err) {
             console.warn('[Phyllo] failed to update refreshed timestamp', err);
           }
@@ -6404,16 +6521,33 @@ const server = http.createServer((req, res) => {
         }
 
         if (!upstreamOk) {
-          return sendJson(res, 502, { ok: false, error: 'upstream_failed', syncedPosts: totalSynced, requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'upstream_failed',
+            error_code: 'upstream_failed',
+            synced_accounts: eligibleAccounts.length,
+            posts_written: totalSynced,
+            requestId,
+          });
         }
-        return sendJson(res, 200, { ok: true, syncedPosts: totalSynced, requestId });
+        return sendJson(res, 200, {
+          ok: true,
+          synced_accounts: eligibleAccounts.length,
+          posts_written: totalSynced,
+          requestId,
+        });
       } catch (err) {
         logServerError('phyllo_sync_posts_error', err, {
           requestId,
           route: '/api/phyllo/sync-posts',
           userId: req.user?.id,
         });
-        return sendJson(res, 502, { ok: false, error: 'phyllo_sync_posts_failed', requestId });
+        return sendJson(res, 502, {
+          ok: false,
+          error: 'phyllo_sync_posts_failed',
+          error_code: 'phyllo_sync_posts_failed',
+          requestId,
+        });
       }
     })();
     return;
@@ -6429,7 +6563,7 @@ const server = http.createServer((req, res) => {
         const { data: accounts } = await supabaseAdmin
           .from('phyllo_accounts')
           .select('*')
-          .eq('user_id', userId)
+          .eq('promptly_user_id', userId)
           .eq('status', 'connected');
 
         if (!accounts || accounts.length === 0) {
@@ -6437,7 +6571,7 @@ const server = http.createServer((req, res) => {
         }
 
         const first = accounts[0];
-        const posts = await getPhylloPosts(first.account_id);
+        const posts = await getPhylloPosts(first.phyllo_account_id || first.account_id);
 
         return sendJson(res, 200, { ok: true, data: posts.data || [] });
       } catch (err) {
@@ -6596,7 +6730,7 @@ Output format:
         const user = await ensureAnalyticsRequestUser(req);
         const isPro = isUserPro(req);
         if (!user || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
+          return sendJson(res, 401, { ok: false, error: 'unauthorized', error_code: 'unauthorized', requestId });
         }
 
         const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
@@ -6605,10 +6739,20 @@ Output format:
           '/api/analytics/insights'
         );
         if (accountsError) {
-          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'phyllo_accounts_db_error',
+            error_code: 'phyllo_accounts_db_error',
+            requestId,
+          });
         }
         if (!accounts.length) {
-          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
+          return sendJson(res, 400, {
+            ok: false,
+            error: 'no_connected_accounts',
+            error_code: 'no_connected_accounts',
+            requestId,
+          });
         }
 
         const { data, error } = await supabaseAdmin
@@ -6623,7 +6767,12 @@ Output format:
             route: '/api/analytics/insights',
             userId: user.id,
           });
-          return sendJson(res, 502, { ok: false, error: 'insights_fetch_failed', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'insights_fetch_failed',
+            error_code: 'insights_fetch_failed',
+            requestId,
+          });
         }
         let insights = (data && data[0] && data[0].insights) || [];
         if (!isPro && Array.isArray(insights)) {
@@ -6635,7 +6784,12 @@ Output format:
           requestId,
           route: '/api/analytics/insights',
         });
-        return sendJson(res, 502, { ok: false, error: 'analytics_insights_failed', requestId });
+        return sendJson(res, 502, {
+          ok: false,
+          error: 'analytics_insights_failed',
+          error_code: 'analytics_insights_failed',
+          requestId,
+        });
       }
     })();
     return;
@@ -6947,7 +7101,12 @@ Output format:
             route: '/api/phyllo/sync-demographics',
             missing: missingPhyllo,
           });
-          return sendJson(res, 502, { ok: false, error: 'phyllo_env_missing', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'phyllo_env_missing',
+            error_code: 'phyllo_env_missing',
+            requestId,
+          });
         }
 
         const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
@@ -6956,10 +7115,20 @@ Output format:
           '/api/phyllo/sync-demographics'
         );
         if (accountsError) {
-          return sendJson(res, 502, { ok: false, error: 'phyllo_accounts_db_error', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'phyllo_accounts_db_error',
+            error_code: 'phyllo_accounts_db_error',
+            requestId,
+          });
         }
         if (!accounts.length) {
-          return sendJson(res, 409, { ok: false, error: 'no_connected_account', requestId });
+          return sendJson(res, 400, {
+            ok: false,
+            error: 'no_connected_accounts',
+            error_code: 'no_connected_accounts',
+            requestId,
+          });
         }
 
         let upstreamOk = true;
@@ -7013,16 +7182,31 @@ Output format:
         }
 
         if (!upstreamOk) {
-          return sendJson(res, 502, { ok: false, error: 'upstream_failed', requestId });
+          return sendJson(res, 502, {
+            ok: false,
+            error: 'upstream_failed',
+            error_code: 'upstream_failed',
+            requestId,
+          });
         }
-        return sendJson(res, 200, { ok: true, requestId });
+        return sendJson(res, 200, {
+          ok: true,
+          synced_accounts: accounts.length,
+          demographics_written: accounts.length,
+          requestId,
+        });
       } catch (err) {
         logServerError('phyllo_sync_demographics_error', err, {
           requestId,
           route: '/api/phyllo/sync-demographics',
           userId: req.user?.id,
         });
-        return sendJson(res, 502, { ok: false, error: 'phyllo_sync_demographics_failed', requestId });
+        return sendJson(res, 502, {
+          ok: false,
+          error: 'phyllo_sync_demographics_failed',
+          error_code: 'phyllo_sync_demographics_failed',
+          requestId,
+        });
       }
     })();
     return;
@@ -7840,7 +8024,7 @@ if (require.main === module) {
       try {
         const { data: rows, error } = await supabaseAdmin
           .from('phyllo_accounts')
-          .select('user_id')
+          .select('promptly_user_id')
           .eq('status', 'connected');
 
         if (error || !rows || !rows.length) {
@@ -7848,7 +8032,7 @@ if (require.main === module) {
           return;
         }
 
-        const userIds = [...new Set(rows.map((r) => r.user_id))];
+        const userIds = [...new Set(rows.map((r) => r.promptly_user_id))];
 
         for (const userId of userIds) {
           try {
