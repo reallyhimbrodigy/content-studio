@@ -2528,19 +2528,24 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        `Brand Brain Field Rules (apply to every card and field):`,
-        `GLOBAL: No emojis. No fabricated statistics; no numeric proof unless user-provided. Use one target persona, one target desire, and one target objection per post. Always include pain/friction, mechanism/why, specific next step, and a retention device. Keep language compliant (no medical guarantees; avoid "cure" or "permanent"). Return JSON only; do not rename or omit fields.`,
-        `TITLE (title): 4–7 words. Must include a benefit or curiosity gap and align with the hook claim.`,
-        `HOOK (hook): 1–2 lines max. Must use ONE framework: "you're doing X wrong"; "stop doing X"; "most people miss this"; "if you have [persona trait], do this"; "the truth about X is"; contrarian claim. Must imply payoff + tension. Avoid generic questions.`,
-        `BODY (caption): exact structure, compact lines: Problem (1 sentence). Mechanism (1 sentence). Common mistake (1 sentence). Consequence (1 sentence). Fix (3 numbered steps). Objection crusher (1 sentence). Retention device line: "Save this if..." or "Screenshot this...". Soft proof line using allowed proof types without numbers.`,
-        `CTA (cta): single action only. Must be "DM 'KEYWORD'..." or "Comment 'KEYWORD'..." or "Book a consult...". Include keyword + what they get + time expectation. Must match engagementScripts + reelScript CTA.`,
-        `STORY PROMPT (storyPrompt): one-line IG Story prompt (single question or this-or-that). Must drive segmentation/buying intent. Must not duplicate hook.`,
-        `DESIGN NOTES (designNotes): include first 1s visual + exact overlay text, 3–5 shot beats (3–6 words each), one pattern interrupt, and one retention device (countdown/open loop/"wait for #3"). No emoji mentions.`,
-        `ENGAGEMENT LOOP (engagementScripts): include pinned comment question (1 line), DM opener (1–2 lines) asking for one qualifier, and one follow-up post idea reusing the same topic.`,
-        `REEL SCRIPT (reelScript): Hook (same as hook field) -> Body (3 beats max) -> CTA (same CTA). Keep body under ~80–120 words. Include one mid-video pattern-interrupt line and one non-numeric micro-proof line ("I see this all the time when...").`,
+        `Brand Brain Field Rules (apply to every card and field).`,
+        `BUSINESS ANCHORS (REQUIRED): Treat the user as a real business operator. Every card must sell THEIR service, not generic education. Include one Offer Anchor appropriate to the niche (consultation, audit, strategy call, assessment, listing consult, treatment plan, membership, challenge signup, teardown). Include one Differentiator Anchor without unverifiable claims (local expertise, process, specialization, credentials if provided, or "commonly seen" outcomes).`,
+        `GLOBAL: No emojis. No fabricated statistics; no numeric proof unless user-provided. Use one target persona, one target desire, and one target objection per post. Always include pain/friction, mechanism/why, specific next step, and a retention device. Keep language compliant (no medical guarantees; avoid "cure" or "permanent"). Return JSON only; do not rename or omit fields. Use plain text only, no markdown.`,
+        `NICHE BINDING: Every card must include at least two niche identifiers across Title/Hook/Body/CTA. If nicheStyle includes a location, mention it in Title or Hashtags or CTA.`,
+        `TITLE (title): 4–7 words. Must include a niche term + outcome or curiosity gap and align with the hook claim. Avoid generic titles.`,
+        `HOOK (hook): 1–2 lines max. Must use ONE framework: "you're doing X wrong"; "stop doing X"; "most people miss this"; "if you have [persona trait], do this"; "the truth about X is"; contrarian claim. Must include a niche-specific noun and point toward the business action. Avoid generic questions.`,
+        `BODY (caption): exact structure, compact lines: Intent problem (1 sentence) -> Stakes/cost (1 sentence) -> Mechanism/why (1 sentence) -> Common mistake (1 sentence) -> Consequence (1 sentence) -> Fix (3 numbered steps) -> Objection crusher (1 sentence) -> Save/share trigger (1 sentence) -> Soft proof line using allowed proof types without numbers. Keep under 8 total lines.`,
+        `CTA (cta): single conversion action for the niche. Must include keyword + deliverable + time expectation. Examples only as pattern: DM 'PLAN' for a 2-minute matcher + consult slots; Comment 'VALUE' for a pricing range + next steps. Must match engagementScripts + reelScript CTA.`,
+        `STORY PROMPT (storyPrompt): one-line story prompt (single question or this-or-that) that segments buyer intent. Must not duplicate the hook.`,
+        `EXECUTION NOTES / FORMAT: keep existing format; if Reel, add a retention device in one sentence (pattern interrupt + payoff tease).`,
+        `DESIGN NOTES (designNotes): include first 1s visual (niche-specific) + exact overlay text, 3–5 shot beats tied to real props/scenes, one pattern interrupt, and one retention device. Avoid generic visuals.`,
+        `ENGAGEMENT LOOP (engagementScripts): include a pinned comment that qualifies leads (situation, timeline, budget band lightly), a DM opener that transitions to booking/next step, and a follow-up post idea reusing the same topic.`,
+        `REEL SCRIPT (reelScript): Hook (same as hook field) -> Body (3 beats max: problem -> why -> steps) -> CTA (same CTA). Keep body under ~80–120 words. Include one objection-handling line specific to niche and one non-numeric micro-proof line ("In practice, I see this when...").`,
         `SCRIPT (script): keep structure aligned with reelScript (hook/body/cta) and match CTA verbatim.`,
-        `DISTRIBUTION PLAN (distributionPlan if present): include: 1 sentence retention cue for first 2 seconds (no quoting hook), two concrete visual beats, caption path (insight + support + CTA matching CTA), three SEO keyword phrases (not hashtags), and a timing heuristic ("test two windows").`,
-        `HASHTAGS (hashtags): ALWAYS present as an array of strings (8–12 tags). Mix 3 niche service, 3 pain/problem, 2 local intent if location exists (otherwise skip local), 2 broad category. No holiday tags unless explicitly requested.`,
+        `DISTRIBUTION PLAN (distributionPlan if present): output operational plan: retention beats at 0–1s and 3–5s tied to visuals, caption path (insight sentence + proof mechanism sentence + CTA deliverable sentence), and a repurpose idea. Do not use meta-analysis templates.`,
+        `HASHTAGS (hashtags): ALWAYS present as an array of strings (8–12 tags). Mix 2 niche service tags, 2 pain/problem tags, 2 intent tags, and 2 location/market tags if location exists (otherwise skip local).`,
+        `SUGGESTED AUDIO (if present in schema): must be "Song Title - Artist" only, non-holiday, no platform prefixes.`,
+        `SCHEMA COMPLIANCE CHECK: verify every item includes all required fields including hashtags, and no extra keys.`,
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
