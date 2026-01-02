@@ -96,6 +96,9 @@ const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
 const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
 const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
 
+const ANALYTICS_CACHE_TTL_MS = 120 * 1000;
+const analyticsCache = new Map();
+
 async function ensurePhylloUserForPromptlyUser(promptlyUserId) {
   if (!promptlyUserId) throw new Error('Promptly user ID is required for Phyllo user lookup');
   const externalId = String(promptlyUserId);
@@ -494,7 +497,9 @@ function wait(ms) {
 }
 
 function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  const headers = { 'Content-Type': 'application/json' };
+  if (payload && payload.requestId) headers['x-request-id'] = payload.requestId;
+  res.writeHead(statusCode, headers);
   res.end(JSON.stringify(payload));
 }
 
@@ -575,6 +580,123 @@ function sendServerMisconfigured(res, missing, requestId) {
   sendJson(res, 500, payload);
 }
 
+function getAnalyticsCache(key) {
+  const cached = analyticsCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > ANALYTICS_CACHE_TTL_MS) {
+    analyticsCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setAnalyticsCache(key, value) {
+  analyticsCache.set(key, { timestamp: Date.now(), value });
+}
+
+function buildEmptyAnalyticsPayload({ connected = false, upstream_ok = true } = {}) {
+  return {
+    ok: true,
+    connected,
+    upstream_ok,
+    overview: null,
+    posts: [],
+    demographics: {
+      age_groups: {},
+      genders: {},
+      countries: {},
+      languages: {},
+    },
+    insights: [],
+    alerts: [],
+    last_sync: null,
+  };
+}
+
+async function getConnectedPhylloAccounts(userId, requestId, route) {
+  if (!userId || !supabaseAdmin) return { accounts: [], error: 'missing_supabase' };
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('phyllo_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'connected');
+    if (error) {
+      logServerError('phyllo_accounts_db_error', error, { requestId, route });
+      return { accounts: [], error: 'db_error' };
+    }
+    return { accounts: data || [], error: null };
+  } catch (err) {
+    logServerError('phyllo_accounts_db_error', err, { requestId, route });
+    return { accounts: [], error: 'db_error' };
+  }
+}
+
+async function fetchPhylloAnalyticsSnapshot({ userId, requestId, route }) {
+  if (!userId) return buildEmptyAnalyticsPayload({ connected: false });
+  const cacheKey = `${userId}:analytics`;
+  const cached = getAnalyticsCache(cacheKey);
+  if (cached) return cached;
+
+  const { accounts } = await getConnectedPhylloAccounts(userId, requestId, route);
+  if (!accounts.length) {
+    const empty = buildEmptyAnalyticsPayload({ connected: false });
+    setAnalyticsCache(cacheKey, empty);
+    return empty;
+  }
+  const missingPhyllo = getMissingPhylloEnvVars();
+  if (missingPhyllo.length) {
+    logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
+      requestId,
+      route,
+      missing: missingPhyllo,
+    });
+    return buildEmptyAnalyticsPayload({ connected: true, upstream_ok: false });
+  }
+  console.log('[Analytics] phyllo accounts', {
+    requestId,
+    route,
+    userId,
+    platforms: accounts.map((acc) => acc.platform || acc.work_platform_id || 'unknown'),
+    count: accounts.length,
+  });
+
+  try {
+    const metrics = await getUserPostMetrics(accounts, { requestId, userId });
+    const demographicsRaw = await getAudienceDemographics(accounts, { requestId, userId });
+    const overview = {
+      follower_growth: metrics?.summary?.followerGrowth ?? null,
+      engagement_rate: metrics?.summary?.engagementRate ?? null,
+      avg_views: metrics?.summary?.avgViews ?? null,
+      retention: metrics?.summary?.retention ?? null,
+    };
+    const demographics = Array.isArray(demographicsRaw)
+      ? { age_groups: {}, genders: {}, countries: {}, languages: {} }
+      : {
+          age_groups: demographicsRaw?.age_groups || demographicsRaw?.age || {},
+          genders: demographicsRaw?.genders || demographicsRaw?.gender || {},
+          countries: demographicsRaw?.countries || demographicsRaw?.location || {},
+          languages: demographicsRaw?.languages || demographicsRaw?.language || {},
+        };
+    const payload = {
+      ok: true,
+      connected: true,
+      upstream_ok: true,
+      overview,
+      posts: metrics?.posts || [],
+      demographics,
+      insights: [],
+      alerts: [],
+      last_sync: null,
+    };
+    setAnalyticsCache(cacheKey, payload);
+    return payload;
+  } catch (err) {
+    logServerError('phyllo_upstream_error', err, { requestId, route });
+    return buildEmptyAnalyticsPayload({ connected: true, upstream_ok: false });
+  }
+}
+
 async function authenticateRequestForRoute(req, res, requestId, route) {
   const missingEnv = getMissingSupabaseEnvVars();
   if (missingEnv.length) {
@@ -607,22 +729,13 @@ async function handleAnalyticsHeatmap(req, res) {
     const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/heatmap');
     if (!user) return;
 
-    const { data, error } = await supabaseAdmin
-      .from('cached_analytics')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (error) {
-      logServerError('analytics_heatmap_db_error', error, {
-        requestId,
-        route: '/api/analytics/heatmap',
-      });
-      return sendJson(res, 500, { ok: false, error: 'heatmap_fetch_failed' });
-    }
-
+    const snapshot = await fetchPhylloAnalyticsSnapshot({
+      userId: user.id,
+      requestId,
+      route: '/api/analytics/heatmap',
+    });
     const days = getAnalyticsWindowDays(req);
-    const posts = filterPostsByWindow(((data && data.posts) || []), days);
+    const posts = filterPostsByWindow((snapshot.posts || []), days);
     const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
 
     posts.forEach((p) => {
@@ -636,14 +749,14 @@ async function handleAnalyticsHeatmap(req, res) {
       }
     });
 
-    return sendJson(res, 200, { ok: true, heatmap });
+    return sendJson(res, 200, { ok: true, heatmap, requestId });
   } catch (err) {
     logServerError('analytics_heatmap_error', err, {
       requestId,
       route: '/api/analytics/heatmap',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'analytics_heatmap_upstream_failed', requestId });
     }
   }
 }
@@ -654,93 +767,41 @@ async function handleAnalyticsFull(req, res) {
     const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/full');
     if (!user) return;
 
-    const userId = user.id;
-    const { data: overviewRow, error: overviewErr } = await supabaseAdmin
-      .from('cached_analytics_overview')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    const snapshot = await fetchPhylloAnalyticsSnapshot({
+      userId: user.id,
+      requestId,
+      route: '/api/analytics/full',
+    });
 
-    const { data: postsRows, error: postsErr } = await supabaseAdmin
-      .from('cached_analytics_posts')
-      .select('*')
-      .eq('user_id', userId);
-
-    const { data: demoRow, error: demoErr } = await supabaseAdmin
-      .from('phyllo_demographics')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    const { data: insightsRows, error: insightsErr } = await supabaseAdmin
-      .from('analytics_ai_insights')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    const { data: syncRow } = await supabaseAdmin
-      .from('analytics_sync_status')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (overviewErr || postsErr || demoErr || insightsErr) {
-      logServerError('analytics_full_db_error', overviewErr || postsErr || demoErr || insightsErr, {
-        requestId,
-        route: '/api/analytics/full',
-      });
-      return sendJson(res, 500, { ok: false, error: 'db_error' });
-    }
-
-    const overview =
-      overviewRow && Object.keys(overviewRow).length > 0
-        ? {
-            follower_growth: overviewRow.follower_growth ?? null,
-            avg_views: overviewRow.avg_views ?? null,
-            engagement_rate: overviewRow.engagement_rate ?? null,
-            retention: overviewRow.retention ?? null,
-          }
-        : null;
-
-    const days = getAnalyticsWindowDays(req);
-    const posts = filterPostsByWindow(postsRows || [], days);
-    const demographics = demoRow
-      ? {
-          age_groups: demoRow.age_groups || {},
-          genders: demoRow.genders || {},
-          countries: demoRow.countries || {},
-          languages: demoRow.languages || {},
-        }
-      : {
-          age_groups: {},
-          genders: {},
-          countries: {},
-          languages: {},
-        };
-
-    const insights = insightsRows || [];
-
-    const hasData =
-      (overview && Object.values(overview).some((v) => v != null)) ||
-      (posts && posts.length) ||
-      (demoRow && Object.keys(demographics.age_groups || {}).length) ||
-      (insights && insights.length);
-
-    if (!hasData) {
-      return sendJson(res, 404, { ok: false, error: 'no_analytics' });
-    }
-
-    if (overview) {
-      overview.rangeLabel = `Last ${days} days`;
+    let insights = [];
+    let lastSync = null;
+    if (supabaseAdmin) {
+      const { data: insightsRows, error: insightsErr } = await supabaseAdmin
+        .from('analytics_ai_insights')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (insightsErr) {
+        logServerError('analytics_full_insights_error', insightsErr, {
+          requestId,
+          route: '/api/analytics/full',
+        });
+      } else {
+        insights = insightsRows || [];
+      }
+      const { data: syncRow } = await supabaseAdmin
+        .from('analytics_sync_status')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      lastSync = syncRow?.last_sync || null;
     }
 
     return sendJson(res, 200, {
-      ok: true,
-      overview,
-      posts,
-      demographics,
+      ...snapshot,
       insights,
-      last_sync: syncRow?.last_sync || null,
+      last_sync: lastSync,
+      requestId,
     });
   } catch (err) {
     logServerError('analytics_full_error', err, {
@@ -748,7 +809,7 @@ async function handleAnalyticsFull(req, res) {
       route: '/api/analytics/full',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'analytics_full_upstream_failed', requestId });
     }
   }
 }
@@ -759,33 +820,24 @@ async function handleAnalyticsFollowers(req, res) {
     const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/followers');
     if (!user) return;
 
-    const { data, error } = await supabaseAdmin
-      .from('cached_analytics')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (error) {
-      logServerError('analytics_followers_db_error', error, {
-        requestId,
-        route: '/api/analytics/followers',
-      });
-      return sendJson(res, 500, { ok: false, error: 'followers_fetch_failed' });
-    }
-
-    const trends = (data && data.followers) || [];
+    const snapshot = await fetchPhylloAnalyticsSnapshot({
+      userId: user.id,
+      requestId,
+      route: '/api/analytics/followers',
+    });
+    const trends = (snapshot && snapshot.followers) || [];
     const days = getAnalyticsWindowDays(req);
     const limited = filterSeriesByWindow(trends, days);
     const sorted = limited.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    return sendJson(res, 200, { ok: true, trends: sorted });
+    return sendJson(res, 200, { ok: true, trends: sorted, requestId });
   } catch (err) {
     logServerError('analytics_followers_error', err, {
       requestId,
       route: '/api/analytics/followers',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'analytics_followers_upstream_failed', requestId });
     }
   }
 }
@@ -801,24 +853,15 @@ async function handleAnalyticsDemographics(req, res) {
     );
     if (!user) return;
 
-    const { data, error } = await supabaseAdmin
-      .from('cached_analytics')
-      .select('demographics')
-      .eq('user_id', user.id)
-      .single();
-
-    if (error) {
-      logServerError('analytics_demographics_db_error', error, {
-        requestId,
-        route: '/api/analytics/demographics',
-      });
-      return sendJson(res, 500, { ok: false, error: 'demographics_fetch_failed' });
-    }
-
+    const snapshot = await fetchPhylloAnalyticsSnapshot({
+      userId: user.id,
+      requestId,
+      route: '/api/analytics/demographics',
+    });
     return sendJson(res, 200, {
       ok: true,
-      demographics:
-        (data && data.demographics) || { age: {}, gender: {}, location: {}, language: {} },
+      demographics: snapshot.demographics || { age_groups: {}, genders: {}, countries: {}, languages: {} },
+      requestId,
     });
   } catch (err) {
     logServerError('analytics_demographics_error', err, {
@@ -826,7 +869,7 @@ async function handleAnalyticsDemographics(req, res) {
       route: '/api/analytics/demographics',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'analytics_demographics_upstream_failed', requestId });
     }
   }
 }
@@ -837,6 +880,9 @@ async function handleAnalyticsAlerts(req, res) {
     const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/alerts');
     if (!user) return;
 
+    if (!supabaseAdmin) {
+      return sendJson(res, 200, { ok: true, alerts: [], requestId });
+    }
     const days = getAnalyticsWindowDays(req);
     const since = getSinceDate(days).toISOString();
     const { data, error } = await supabaseAdmin
@@ -852,17 +898,17 @@ async function handleAnalyticsAlerts(req, res) {
         requestId,
         route: '/api/analytics/alerts',
       });
-      return sendJson(res, 500, { ok: false, error: 'alerts_fetch_failed' });
+      return sendJson(res, 200, { ok: true, alerts: [], requestId });
     }
 
-    return sendJson(res, 200, { ok: true, alerts: data || [] });
+    return sendJson(res, 200, { ok: true, alerts: data || [], requestId });
   } catch (err) {
     logServerError('analytics_alerts_error', err, {
       requestId,
       route: '/api/analytics/alerts',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'analytics_alerts_upstream_failed', requestId });
     }
   }
 }
@@ -880,32 +926,25 @@ async function handlePhylloAccounts(req, res) {
         route: '/api/phyllo/accounts',
         missing: missingPhyllo,
       });
-      sendServerMisconfigured(res, missingPhyllo, requestId);
-      return;
+      return sendJson(res, 200, { ok: true, connected: false, accounts: [], upstream_ok: false, requestId });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('phyllo_accounts')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'connected');
+    const { accounts } = await getConnectedPhylloAccounts(user.id, requestId, '/api/phyllo/accounts');
 
-    if (error) {
-      logServerError('phyllo_accounts_db_error', error, {
-        requestId,
-        route: '/api/phyllo/accounts',
-      });
-      return sendJson(res, 500, { ok: false, error: 'db_error' });
-    }
-
-    return sendJson(res, 200, { ok: true, data: data || [] });
+    return sendJson(res, 200, {
+      ok: true,
+      connected: accounts.length > 0,
+      accounts,
+      upstream_ok: true,
+      requestId,
+    });
   } catch (err) {
     logServerError('phyllo_accounts_error', err, {
       requestId,
       route: '/api/phyllo/accounts',
     });
     if (!res.headersSent) {
-      sendJson(res, 500, { ok: false, error: 'server_error', requestId });
+      sendJson(res, 502, { ok: false, error: 'phyllo_accounts_upstream_failed', requestId });
     }
   }
 }

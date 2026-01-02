@@ -37,6 +37,8 @@ function setAnalyticsUnauthenticatedState() {
 }
 
 let analyticsIsPro = false;
+const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
+let hasConnectedAccounts = false;
 
 const supabaseUrlMeta = document.querySelector('meta[name="supabase-url"]');
 const supabaseAnonKeyMeta = document.querySelector('meta[name="supabase-anon-key"]');
@@ -189,12 +191,15 @@ async function fetchAnalyticsJson(url, options) {
   }
 
   if (!res.ok) {
-    console.warn('[Analytics] fetch failed', url, res.status);
+    console.warn('[Analytics] fetch failed', url, res.status, res.headers.get('x-request-id'));
     return { error: true, data: null };
   }
 
   try {
     const json = await res.json();
+    if (json && res.headers.get('x-request-id')) {
+      json.requestId = json.requestId || res.headers.get('x-request-id');
+    }
     return { data: json };
   } catch (e) {
     console.warn('[Analytics] invalid JSON for', url, e);
@@ -203,6 +208,7 @@ async function fetchAnalyticsJson(url, options) {
 }
 
 function shouldUseDemo(data) {
+  if (!DEMO_MODE) return false;
   if (!data || !data.overview) return true;
   const hasPosts = Array.isArray(data.posts) && data.posts.length > 0;
   const hasViews = data.overview.avgViewsPerPost && data.overview.avgViewsPerPost > 0;
@@ -247,6 +253,12 @@ function applyShareReportGating() {
     shareBtn.__upgradeHandler = handler;
     shareBtn.addEventListener('click', handler);
   }
+}
+
+function setAnalyticsError(message) {
+  const el = document.getElementById('analytics-overview-subtitle');
+  if (!el) return;
+  el.textContent = message || '';
 }
 
 function openUpgradeCTA() {
@@ -431,15 +443,45 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(({ data, unauthorized, error }) => {
         if (unauthorized) return;
         if (error || !data || data.ok === false) {
+          hasConnectedAccounts = false;
           renderConnectedAccounts([]);
+          updateConnectedAccountsStrip([]);
           return;
         }
-        renderConnectedAccounts(data.data || []);
+        const accounts = data.accounts || data.data || [];
+        hasConnectedAccounts = Boolean(data.connected) || accounts.length > 0;
+        renderConnectedAccounts(accounts);
+        updateConnectedAccountsStrip(accounts);
       })
       .catch((err) => {
         console.error('[Phyllo] loadConnectedAccounts error', err);
+        hasConnectedAccounts = false;
         renderConnectedAccounts([]);
+        updateConnectedAccountsStrip([]);
       });
+  }
+
+  function updateConnectedAccountsStrip(accounts = []) {
+    const strip = document.getElementById('connected-accounts');
+    if (!strip) return;
+    const list = Array.isArray(accounts) ? accounts : [];
+    const byPlatform = new Map();
+    list.forEach((acc) => {
+      const key = String(acc.platform || acc.work_platform_id || '').toLowerCase();
+      if (key) byPlatform.set(key, acc);
+    });
+    strip.querySelectorAll('.analytics-connected-card').forEach((card) => {
+      const platform = String(card.dataset.platform || '').toLowerCase();
+      const statusEl = card.querySelector('.analytics-connected-status');
+      if (!statusEl) return;
+      if (byPlatform.has(platform)) {
+        statusEl.textContent = 'Connected';
+        card.classList.add('is-connected');
+      } else {
+        statusEl.textContent = 'Not connected';
+        card.classList.remove('is-connected');
+      }
+    });
   }
 
   async function fetchInsights() {
@@ -468,12 +510,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/full');
       let analyticsData = data;
-      const useDemo = unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData);
+      const upstreamFailed = Boolean(analyticsData && analyticsData.upstream_ok === false);
+      const useDemo = DEMO_MODE && !hasConnectedAccounts &&
+        (unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData));
       if (useDemo) {
         analyticsData = DEMO_ANALYTICS;
         renderDemoBadge(true);
+        setAnalyticsError('Demo mode: showing sample analytics.');
       } else {
         renderDemoBadge(false);
+        setAnalyticsError(upstreamFailed ? 'Couldn’t load analytics right now.' : '');
+        if (!analyticsData) analyticsData = {};
       }
 
       setOverviewRangeLabel(analyticsData);
@@ -487,15 +534,18 @@ document.addEventListener('DOMContentLoaded', () => {
       renderPlatformBreakdown(analyticsData.posts || []);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
-      renderOverview({});
-      renderPosts([]);
-      renderDemographics({});
-      renderInsights([], analyticsIsPro);
-      applyProButtonStyles();
-      renderGrowthReport(null);
-      renderDemoBadge(false);
-      renderPlatformBreakdown([]);
-      setOverviewRangeLabel(null);
+      if (!DEMO_MODE) {
+        setAnalyticsError('Couldn’t load analytics right now.');
+        renderOverview({});
+        renderPosts([]);
+        renderDemographics({});
+        renderInsights([], analyticsIsPro);
+        applyProButtonStyles();
+        renderGrowthReport(null);
+        renderDemoBadge(false);
+        renderPlatformBreakdown([]);
+        setOverviewRangeLabel(null);
+      }
     }
   }
 

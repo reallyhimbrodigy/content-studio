@@ -17,28 +17,54 @@ async function phylloFetch(path, options = {}) {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
-  const resp = await fetch(url, {
-    method: options.method || 'GET',
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  const requestId = options.requestId || null;
+  const userId = options.userId || null;
+  const attempt = options.attempt || 1;
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    console.error('[Phyllo] API request failed', {
+      url,
+      requestId,
+      userId,
+      error: err?.message || err,
+    });
+    throw err;
+  }
   if (!resp.ok) {
     const status = resp.status;
     const statusText = resp.statusText;
-    console.error('[Phyllo] API request failed', path, status, statusText);
+    const bodyText = await resp.text().catch(() => '');
+    console.error('[Phyllo] API request failed', {
+      url,
+      status,
+      statusText,
+      requestId,
+      userId,
+      body: bodyText.slice(0, 300),
+    });
+    if (status >= 500 && attempt === 1) {
+      return phylloFetch(path, { ...options, attempt: 2 });
+    }
+    throw new Error(`phyllo_${status}`);
   }
   return resp.json();
 }
 
-async function getPhylloPosts(accountId) {
-  return phylloFetch(`/v1/posts?account_id=${accountId}`);
+async function getPhylloPosts(accountId, options = {}) {
+  return phylloFetch(`/v1/posts?account_id=${accountId}`, options);
 }
 
-async function getPhylloPostMetrics(postId) {
-  return phylloFetch(`/v1/posts/${postId}/metrics`);
+async function getPhylloPostMetrics(postId, options = {}) {
+  return phylloFetch(`/v1/posts/${postId}/metrics`, options);
 }
 
-async function getUserPostMetrics(accounts = []) {
+async function getUserPostMetrics(accounts = [], options = {}) {
   const posts = [];
   let totalViews = 0;
   let totalEngInteractions = 0;
@@ -48,7 +74,7 @@ async function getUserPostMetrics(accounts = []) {
   for (const acc of accounts) {
     if (!acc || !acc.account_id) continue;
     try {
-      const postsResp = await getPhylloPosts(acc.account_id);
+      const postsResp = await getPhylloPosts(acc.account_id, options);
       const list = postsResp?.data || [];
       for (const p of list) {
         const postId = p.id;
@@ -64,7 +90,7 @@ async function getUserPostMetrics(accounts = []) {
 
         let metrics = {};
         try {
-          const metricsResp = await getPhylloPostMetrics(postId);
+          const metricsResp = await getPhylloPostMetrics(postId, options);
           metrics = metricsResp?.data || {};
         } catch (err) {
           // ignore per-post metric errors
@@ -115,7 +141,7 @@ async function getUserPostMetrics(accounts = []) {
   };
 }
 
-async function getAudienceDemographics(accounts = []) {
+async function getAudienceDemographics(accounts = [], options = {}) {
   // Overloaded helper:
   // - If an array is provided, use legacy creator_id flow (sandbox)
   // - If a string is provided, treat it as phylloUserId and call production audience-demographics endpoint
@@ -124,7 +150,7 @@ async function getAudienceDemographics(accounts = []) {
   // string: new single-user helper
   if (typeof accounts === 'string') {
     try {
-      return phylloFetch(`/v1/users/${accounts}/audience-demographics`);
+      return phylloFetch(`/v1/users/${accounts}/audience-demographics`, options);
     } catch (err) {
       console.error('[Phyllo] audience demographics error', err);
       return null;
@@ -134,11 +160,11 @@ async function getAudienceDemographics(accounts = []) {
   const results = [];
   for (const acc of accounts) {
     if (!acc || !acc.creator_id) continue;
-    try {
-      const resp = await phylloFetch(`/v1/creators/${acc.creator_id}/audience`);
-      if (!resp) continue;
-      results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: resp });
-    } catch (err) {
+      try {
+        const resp = await phylloFetch(`/v1/creators/${acc.creator_id}/audience`, options);
+        if (!resp) continue;
+        results.push({ platform: acc.platform || acc.work_platform_id || 'unknown', audience: resp });
+      } catch (err) {
       // ignore per-account errors for now
     }
   }
