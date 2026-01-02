@@ -2499,37 +2499,14 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
 
 function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
-  const levers = settings.levers || {};
   const lines = [
-    'Optimize for growth and conversion on short-form social platforms without naming specific apps.',
-    'Use a strong hook, a retention beat, and a clear CTA in every post.',
-    'Avoid repeating hook patterns or angles across days.',
+    'Apply sales psychology and platform heuristics without naming specific apps.',
+    'Use a strong hook, retention beat, and clear CTA in every post.',
+    'Favor shorter, skimmable captions and avoid repeating hooks or angles.',
+    'Add engagement loops periodically (binary questions or comment keywords).',
+    'Use conversion-forward language while staying compliant and specific.',
+    'Rotate CTAs across the month to avoid repetition.',
   ];
-
-  if (settings.preset === 'direct_response') {
-    lines.push('Emphasize offer clarity, handle one objection, and use ethical urgency.');
-  } else if (settings.preset === 'authority_builder') {
-    lines.push('Lead with credibility, proof, or steps; prioritize teaching and trust.');
-  } else if (settings.preset === 'viral_hybrid') {
-    lines.push('Use curiosity gaps and pattern interrupts, then connect back to the offer.');
-  }
-
-  if (settings.risk_level <= 40) {
-    lines.push('Keep claims conservative and lean educational.');
-  } else if (settings.risk_level >= 70) {
-    lines.push('Use bolder hooks and sharper contrasts without exaggeration.');
-  }
-
-  if (levers.stronger_hooks) lines.push('Use 1–2 sentence hooks with contrast or specificity.');
-  if (levers.shorter_captions) lines.push('Keep captions concise and skimmable.');
-  if (levers.engagement_loops) lines.push('Add one engagement loop (binary question or comment keyword).');
-  if (levers.retention_beats) lines.push('Insert a mid-caption retention beat (open loop or numbered step).');
-  if (levers.cta_variety) lines.push('Rotate CTAs across the calendar to avoid repetition.');
-
-  if (settings.audience) lines.push(`Audience focus: ${settings.audience}.`);
-  if (settings.offer) lines.push(`Offer focus: ${settings.offer}.`);
-  if (settings.primary_cta) lines.push(`Primary CTA focus: ${settings.primary_cta}.`);
-
   return lines.join('\n');
 }
 
@@ -4333,44 +4310,10 @@ async function upsertBrandBrainPreference(userId, text) {
 
 const BRAND_BRAIN_DEFAULT_SETTINGS = {
   enabled: false,
-  preset: 'direct_response',
-  audience: '',
-  offer: '',
-  primary_cta: 'comment',
-  risk_level: 45,
-  levers: {
-    stronger_hooks: true,
-    shorter_captions: true,
-    engagement_loops: true,
-    retention_beats: true,
-    cta_variety: true,
-  },
 };
 
 function normalizeBrandBrainSettings(input = {}) {
-  const safe = { ...BRAND_BRAIN_DEFAULT_SETTINGS, ...(input || {}) };
-  safe.enabled = Boolean(input?.enabled);
-  const preset = String(input?.preset || '').toLowerCase();
-  safe.preset = ['direct_response', 'authority_builder', 'viral_hybrid'].includes(preset)
-    ? preset
-    : BRAND_BRAIN_DEFAULT_SETTINGS.preset;
-  safe.audience = typeof input?.audience === 'string' ? input.audience.trim() : '';
-  safe.offer = typeof input?.offer === 'string' ? input.offer.trim() : '';
-  const cta = String(input?.primary_cta || '').toLowerCase();
-  safe.primary_cta = ['comment', 'dm', 'link_in_bio', 'save_share', 'follow'].includes(cta)
-    ? cta
-    : BRAND_BRAIN_DEFAULT_SETTINGS.primary_cta;
-  const risk = Number.isFinite(Number(input?.risk_level)) ? Number(input.risk_level) : safe.risk_level;
-  safe.risk_level = Math.max(0, Math.min(100, Math.round(risk)));
-  const levers = input?.levers && typeof input.levers === 'object' ? input.levers : {};
-  safe.levers = {
-    stronger_hooks: levers.stronger_hooks !== false,
-    shorter_captions: levers.shorter_captions !== false,
-    engagement_loops: levers.engagement_loops !== false,
-    retention_beats: levers.retention_beats !== false,
-    cta_variety: levers.cta_variety !== false,
-  };
-  return safe;
+  return { enabled: Boolean(input?.enabled) };
 }
 
 async function fetchBrandBrainSettings(userId) {
@@ -4378,17 +4321,15 @@ async function fetchBrandBrainSettings(userId) {
   try {
     const { data, error } = await supabaseAdmin
       .from('brand_brain_settings')
-      .select('enabled, settings, updated_at')
+      .select('enabled')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    const merged = { ...(data.settings || {}), enabled: Boolean(data.enabled) };
-    return normalizeBrandBrainSettings(merged);
+    return normalizeBrandBrainSettings({ enabled: data.enabled });
   } catch (err) {
     const msg = String(err?.message || err);
     if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
-      console.warn('[BrandBrain] settings table missing; skipping load');
       return null;
     }
     console.error('[BrandBrain] settings fetch failed', msg);
@@ -4406,21 +4347,18 @@ async function upsertBrandBrainSettings(userId, settings) {
         {
           user_id: userId,
           enabled: payload.enabled,
-          settings: payload,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' }
       )
-      .select('enabled, settings, updated_at')
+      .select('enabled')
       .maybeSingle();
     if (error) throw error;
     if (!data) return payload;
-    const merged = { ...(data.settings || {}), enabled: Boolean(data.enabled) };
-    return normalizeBrandBrainSettings(merged);
+    return normalizeBrandBrainSettings({ enabled: data.enabled });
   } catch (err) {
     const msg = String(err?.message || err);
     if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
-      console.warn('[BrandBrain] settings table missing; skipping persist');
       return null;
     }
     console.error('[BrandBrain] settings upsert failed', msg);
@@ -4865,8 +4803,6 @@ const server = http.createServer((req, res) => {
       console.log('[BrandBrain] applying directives to calendar generation', {
         requestId: loggingContext?.requestId,
         userId,
-        preset: brandBrainSettings?.preset,
-        riskLevel: brandBrainSettings?.risk_level,
       });
     }
     const callStart = Date.now();
