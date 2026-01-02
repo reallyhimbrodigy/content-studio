@@ -6926,18 +6926,34 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
   for (let i = 0; i < merged.length; i += chunkSize) {
     const chunk = merged.slice(i, i + chunkSize);
     if (!chunk.length) continue;
-    const resp = await fetch('/api/generate-variants', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        posts: chunk,
-        nicheStyle,
-        userId: resolvedUserId,
-      }),
+    const bodyString = JSON.stringify({
+      posts: chunk,
+      nicheStyle,
+      userId: resolvedUserId,
     });
+    let resp;
+    const retryDelays = [250, 750];
+    for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+      try {
+        resp = await fetch('/api/generate-variants', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: bodyString,
+        });
+        break;
+      } catch (err) {
+        const msg = String(err?.message || err);
+        const shouldRetry = err instanceof TypeError || msg.includes('QUIC') || msg.includes('ERR_QUIC_PROTOCOL_ERROR');
+        if (!shouldRetry || attempt >= retryDelays.length) {
+          throw err;
+        }
+        console.warn('[Calendar] retrying variants request', { attempt: attempt + 1, reason: msg });
+        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+      }
+    }
     if (resp.status === 401) {
       if (!variantAuthWarningLogged) {
         variantAuthWarningLogged = true;

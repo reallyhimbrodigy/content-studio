@@ -5539,7 +5539,28 @@ const server = http.createServer((req, res) => {
     (async () => {
       try {
         await requireSupabaseUser(req);
-        return sendJson(res, 200, { variants: [] });
+        const payload = await readJsonBody(req);
+        const rawVariants = Array.isArray(payload?.variants) ? payload.variants : [];
+        const MAX_VARIANTS = 30;
+        const MAX_TEXT = 320;
+        const trimmed = rawVariants.slice(0, MAX_VARIANTS).map((entry) => {
+          if (!entry || typeof entry !== 'object') return entry;
+          const next = { ...entry };
+          const maybeTrim = (value) =>
+            typeof value === 'string' && value.length > MAX_TEXT ? value.slice(0, MAX_TEXT) : value;
+          Object.keys(next).forEach((key) => {
+            next[key] = maybeTrim(next[key]);
+          });
+          return next;
+        });
+        const responsePayload = { variants: trimmed };
+        const payloadText = JSON.stringify(responsePayload);
+        console.log('[Calendar] generate-variants response size', {
+          bytes: Buffer.byteLength(payloadText),
+          count: trimmed.length,
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(payloadText);
       } catch (err) {
         const status = err?.statusCode || 401;
         console.error('[Calendar] generate-variants error', { error: err?.message || err });
