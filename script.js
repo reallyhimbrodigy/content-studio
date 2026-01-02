@@ -338,6 +338,8 @@ let brandBrainHydrated = false;
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 let brandKitRefreshWarned = false;
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
+let brandKitConfigWarned = false;
+let brandKitServerWarned = false;
 let bootstrapInFlight = false;
 let bootstrapQueuedAttempt = null;
 const selectedDesignAssetIds = new Set();
@@ -1489,10 +1491,10 @@ async function deleteCalendarByIdIfPossible(calendarId) {
 }
 
 function maybeRefreshBrandKit() {
-  if (typeof refreshBrandKit === 'function') {
-    return refreshBrandKit();
+  if (typeof refreshBrandKitSafe === 'function') {
+    return refreshBrandKitSafe();
   }
-  return null;
+  return Promise.resolve(null);
 }
 
 function summarizeBrandKitBrief(kit) {
@@ -1550,17 +1552,23 @@ async function refreshBrandKit({ force = false } = {}) {
       console.warn('[BrandKit] refresh failed', err?.message || err);
       return { ok: false, error: err?.message || 'refresh_failed' };
     }
-    if (response.status === 410 || response.status === 404) {
+    if (response.status === 204 || response.status === 404) {
       currentBrandKit = null;
       brandKitLoaded = true;
       applyBrandKitToForm(null);
-      return { ok: true, kit: null };
+      return { ok: true, kit: null, code: 'not_configured' };
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, code: 'unauthorized', status: response.status };
     }
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
-      console.warn('[BrandKit] refresh failed', detail?.error || response.status);
       brandKitLoaded = true;
-      return { ok: false, error: detail?.error || 'refresh_failed' };
+      return {
+        ok: false,
+        error: detail?.error || 'refresh_failed',
+        status: response.status,
+      };
     }
     const data = await response.json().catch(() => ({}));
     const kit = data?.kit || data?.brandKit || data?.data?.kit || null;
@@ -1608,8 +1616,38 @@ async function refreshBrandBrain() {
   }
 }
 
-window.refreshBrandKit = refreshBrandKit;
-window.refreshBrandBrain = refreshBrandBrain;
+async function refreshBrandKitSafe() {
+  try {
+    const result = await refreshBrandKit();
+    if (result?.code === 'not_configured' && !brandKitConfigWarned) {
+      brandKitConfigWarned = true;
+      console.debug('[BrandKit] not configured; skipping.');
+    }
+    if (result?.code === 'unauthorized') {
+      return result;
+    }
+    if (result?.ok === false && result?.status >= 500 && !brandKitServerWarned) {
+      brandKitServerWarned = true;
+      console.warn('[BrandKit] refresh failed', result?.error || 'unknown_error');
+    }
+    return result || { ok: true };
+  } catch (err) {
+    if (!brandKitServerWarned) {
+      brandKitServerWarned = true;
+      console.warn('[BrandKit] refresh failed', err?.message || err);
+    }
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function refreshBrandBrainSafe() {
+  try {
+    return await refreshBrandBrain();
+  } catch (err) {
+    console.warn('[BrandBrain] refresh failed', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
 
 function mergeDesignAsset(asset, options = {}) {
   if (!asset || !asset.id) return;
@@ -4442,7 +4480,7 @@ async function bootstrapApp(attempt = 0) {
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
-    maybeRefreshBrandKit();
+    await refreshBrandKitSafe();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
@@ -4524,11 +4562,7 @@ async function bootstrapApp(attempt = 0) {
     }
 
     if (userIsPro) {
-      try {
-        await refreshBrandBrain();
-      } catch (err) {
-        console.warn('[BrandBrain] refresh on init failed', err);
-      }
+      await refreshBrandBrainSafe();
     }
     if (forceAppAfterAuth) {
       try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}

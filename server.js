@@ -8000,8 +8000,8 @@ Output format:
   }
 
   if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
-    res.writeHead(410, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Brand Design has been removed.' }));
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, code: 'brandkit_not_configured' }));
     return;
   }
 
