@@ -4138,7 +4138,28 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       `[Calendar] callOpenAI parse ${phase} failure${label}: ${message}; preview: ${previewJson(content)}`
     );
   };
-  const attemptRequest = async (extraInstructions = '') => {
+  const parseOpenAiErrorPayload = (err) => {
+    const raw = String(err?.message || '');
+    const marker = raw.indexOf(':');
+    if (marker === -1) return null;
+    const payloadText = raw.slice(marker + 1).trim();
+    try {
+      return JSON.parse(payloadText);
+    } catch {
+      return null;
+    }
+  };
+  const isSchemaErrorPayload = (payload, err) => {
+    const message = payload?.error?.message || err?.message || '';
+    const code = payload?.error?.code || '';
+    return (
+      err?.statusCode === 400 &&
+      (String(message).includes('schema') ||
+        String(message).includes('response_format') ||
+        String(code).includes('schema'))
+    );
+  };
+  const attemptRequest = async (extraInstructions = '', useSchema = true) => {
     const attemptTimestamp = Date.now();
     const attemptOpts = {
       ...opts,
@@ -4148,21 +4169,40 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       extraInstructions,
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    const responseFormat = useSchema
+      ? {
+          type: 'json_schema',
+          json_schema: {
+            name: 'calendar_batch',
+            strict: true,
+            schema,
+          },
+        }
+      : { type: 'json_object' };
     const payload = JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.5,
       max_tokens: maxTokens,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'calendar_batch',
-          strict: true,
-          schema,
-        },
-      },
+      response_format: responseFormat,
     });
-    const requestPromise = withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload));
+    const requestPromise = withOpenAiSlot(() =>
+      openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
+        const payloadJson = parseOpenAiErrorPayload(err);
+        if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
+          const schemaErr = new Error(payloadJson?.error?.message || 'OpenAI schema error');
+          schemaErr.code = 'OPENAI_SCHEMA_ERROR';
+          schemaErr.statusCode = err?.statusCode || 400;
+          schemaErr.details = {
+            error: payloadJson?.error || null,
+            response_format: { type: 'json_schema', json_schema: { name: 'calendar_batch', strict: true } },
+          };
+          schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
+          throw schemaErr;
+        }
+        throw err;
+      })
+    );
     const timeoutPromise = new Promise((_, reject) => {
       const timeoutId = setTimeout(() => {
         const timeoutErr = new Error('OpenAI request timed out');
@@ -4179,12 +4219,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return { content, latency: Date.now() - attemptTimestamp };
   };
 
-  try {
+  const runParseSequence = async (useSchema, strictParse) => {
     let lastLatency = 0;
     let parsedContent = '';
     let parseResult = null;
 
-    const firstResponse = await attemptRequest('');
+    const firstResponse = await attemptRequest('', useSchema);
     parsedContent = firstResponse.content;
     lastLatency = firstResponse.latency;
     parseResult = tryParsePosts(parsedContent, expectedChunkCount);
@@ -4202,7 +4242,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       logParseFailure('retry', parseResult?.reason || 'missing posts', parsedContent);
       const retryInstructions =
         'If the previous response failed, return ONLY JSON in the form { "posts": [ ... ] } and do not add any explanation.';
-      const retryResponse = await attemptRequest(retryInstructions);
+      const retryResponse = await attemptRequest(retryInstructions, useSchema);
       parsedContent = retryResponse.content;
       lastLatency = retryResponse.latency;
       parseResult = tryParsePosts(parsedContent, expectedChunkCount);
@@ -4223,9 +4263,37 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       };
     }
 
+    if (strictParse) {
+      const invalidErr = new Error('Invalid model JSON response');
+      invalidErr.code = 'INVALID_MODEL_JSON';
+      invalidErr.statusCode = 400;
+      invalidErr.rawContent = parsedContent;
+      throw invalidErr;
+    }
+
     const fallbackReason = parseResult ? parseResult.reason : 'unknown reason';
     console.warn(`[Calendar] callOpenAI parse fallback${label}: ${fallbackReason}`);
+    return null;
+  };
+
+  try {
+    let result = null;
+    try {
+      result = await runParseSequence(true, false);
+    } catch (err) {
+      if (err?.code === 'OPENAI_SCHEMA_ERROR') {
+        result = await runParseSequence(false, true);
+      } else {
+        throw err;
+      }
+    }
+    if (result && result.posts) {
+      return result;
+    }
   } catch (err) {
+    if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'INVALID_MODEL_JSON') {
+      throw err;
+    }
     console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
   }
 
@@ -5389,19 +5457,25 @@ const server = http.createServer((req, res) => {
           }
         }
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
+        const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
         const logInfo = { requestId, context: errorContext };
         if (isSchemaError) {
           if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
           if (err?.details) logInfo.schemaPayload = err.details;
           if (err?.rawContent) logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
         }
+        if (isInvalidJson && err?.rawContent) {
+          logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
+        }
         logServerError('calendar_regenerate_error', err, logInfo);
         if (res.headersSent) return;
-        const status = isSchemaError ? 502 : (err?.statusCode || 500);
+        const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
         const payload = {
           error: isSchemaError
             ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
-            : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
+            : isInvalidJson
+              ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
+              : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
           requestId,
         };
         if (isSchemaError) {
@@ -5413,6 +5487,9 @@ const server = http.createServer((req, res) => {
           if (Object.keys(detailPayload).length) {
             payload.error.details = detailPayload;
           }
+        }
+        if (isInvalidJson && !isProduction && err?.rawContent) {
+          payload.error.details = { rawContentPreview: String(err.rawContent).slice(0, 400) };
         }
         if (!isSchemaError && !isProduction && err?.stack) {
           payload.debugStack = err.stack;
