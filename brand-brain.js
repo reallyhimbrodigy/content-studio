@@ -25,7 +25,8 @@ export function initBrandBrainPanel({
   const closeBtn = document.getElementById('brand-brain-close');
 
   let currentSettings = { ...DEFAULT_SETTINGS };
-  let saveTimer = null;
+let saveTimer = null;
+  let hasLoggedLoad = false;
 
   const updateStatus = (settings) => {
     if (statusPill) {
@@ -93,6 +94,10 @@ export function initBrandBrainPanel({
         currentSettings = normalizeSettings(data?.settings || data?.data || {});
       }
       applySettingsToUI(currentSettings);
+      if (!hasLoggedLoad) {
+        hasLoggedLoad = true;
+        console.info(`[BrandBrain] loaded enabled=${currentSettings.enabled}`);
+      }
       const pro = await resolveIsPro();
       setLockedState(!pro);
     } catch (err) {
@@ -127,6 +132,7 @@ export function initBrandBrainPanel({
       applySettingsToUI(currentSettings);
       updateSaveIndicator('Saved');
       setTimeout(() => updateSaveIndicator(''), 1600);
+      console.info(`[BrandBrain] saved enabled=${currentSettings.enabled}`);
     } catch (err) {
       updateSaveIndicator('');
     }

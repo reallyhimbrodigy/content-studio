@@ -4327,19 +4327,17 @@ async function fetchBrandBrainSettings(userId) {
   if (!userId || !supabaseAdmin) return null;
   try {
     const { data, error } = await supabaseAdmin
-      .from('brand_brain_settings')
-      .select('enabled')
-      .eq('user_id', userId)
+      .from('profiles')
+      .select('profile_settings')
+      .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    return normalizeBrandBrainSettings({ enabled: data.enabled });
+    const settings = data?.profile_settings || {};
+    const enabled = Boolean(settings?.brand_brain_enabled);
+    return normalizeBrandBrainSettings({ enabled });
   } catch (err) {
-    const msg = String(err?.message || err);
-    if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
-      return null;
-    }
-    console.error('[BrandBrain] settings fetch failed', msg);
+    console.error('[BrandBrain] settings fetch failed', err?.message || err);
     return null;
   }
 }
@@ -4349,26 +4347,26 @@ async function upsertBrandBrainSettings(userId, settings) {
   try {
     const payload = normalizeBrandBrainSettings(settings);
     const { data, error } = await supabaseAdmin
-      .from('brand_brain_settings')
-      .upsert(
-        {
-          user_id: userId,
-          enabled: payload.enabled,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' }
-      )
-      .select('enabled')
+      .from('profiles')
+      .select('profile_settings')
+      .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
-    if (!data) return payload;
-    return normalizeBrandBrainSettings({ enabled: data.enabled });
+    const current = data?.profile_settings && typeof data.profile_settings === 'object'
+      ? data.profile_settings
+      : {};
+    const nextSettings = { ...current, brand_brain_enabled: payload.enabled };
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({ profile_settings: nextSettings, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select('profile_settings')
+      .maybeSingle();
+    if (updateError) throw updateError;
+    const enabled = Boolean(updated?.profile_settings?.brand_brain_enabled);
+    return normalizeBrandBrainSettings({ enabled });
   } catch (err) {
-    const msg = String(err?.message || err);
-    if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
-      return null;
-    }
-    console.error('[BrandBrain] settings upsert failed', msg);
+    console.error('[BrandBrain] settings upsert failed', err?.message || err);
     return null;
   }
 }
@@ -4806,12 +4804,7 @@ const server = http.createServer((req, res) => {
     const brandBrainDirective = brandBrainSettings?.enabled
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
-    if (brandBrainDirective) {
-      console.log('[BrandBrain] applying directives to calendar generation', {
-        requestId: loggingContext?.requestId,
-        userId,
-      });
-    }
+    console.log('[BrandBrain] generation mode enabled=%s', Boolean(brandBrainDirective));
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
       nicheStyle,
@@ -8021,11 +8014,8 @@ Output format:
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
-        let settings = await fetchBrandBrainSettings(user.id);
-        if (!settings) {
-          settings = await upsertBrandBrainSettings(user.id, BRAND_BRAIN_DEFAULT_SETTINGS);
-        }
-        return sendJson(res, 200, { ok: true, settings: settings || BRAND_BRAIN_DEFAULT_SETTINGS });
+        const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
+        return sendJson(res, 200, { ok: true, settings });
       } catch (err) {
         console.error('[BrandBrain] settings GET failed', err);
         return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
