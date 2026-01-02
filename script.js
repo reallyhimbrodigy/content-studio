@@ -8202,7 +8202,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
         const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
         const preview = responseText.slice(0, 300);
-        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview, msg, data });
+        console.error('[Calendar] fetchBatch bad response', {
+          batchIndex,
+          status: response.status,
+          requestId: data?.requestId || data?.error?.requestId || null,
+          error: msg,
+        });
         if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
           throw new Error('openai_schema_error');
         }

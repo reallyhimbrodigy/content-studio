@@ -2535,7 +2535,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `Handle objections inside the content (time, cost, skepticism).`,
         `CTA must be single, explicit, frictionless; match card objective.`,
         `Each field must be distinct; do not restate other fields.`,
-        `No emojis unless already required by base rules. No holiday-themed music suggestions; if audio exists, format as "Song Title - Artist" only.`,
+        `No emojis unless already required by base rules.`,
         `BRAND BRAIN MUST DIFFER: Every field must include at least one of proof, objection handling, retention device, or save-worthy framework. If any field would match a non-Brand-Brain output, rewrite it.`,
         `Never output long paragraphs; prefer tight lines/bullets.`,
         `FIELD CONTRACT (use exact field names):`,
@@ -2546,7 +2546,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `DESIGN NOTES (designNotes): specify first 1 second visual + on-screen text. Include 2–3 concrete shot beats. Include one retention device (countdown, caption promise, visual checklist, split screen).`,
         `ENGAGEMENT LOOP (engagementScripts): include one pinned comment prompt (binary choice or "which one are you?"); one short DM follow-up script; one follow-up post suggestion (carousel/testimonial/FAQ) that reuses the same hook angle.`,
         `STORY PROMPT (storyPrompt): single tight narrative prompt for story asset. Must include opening frame visual + 3 beats + CTA frame. Must not repeat the full body. Max 450 chars.`,
-        `DISTRIBUTION PLAN (distributionPlan if present): output exactly: 1 sentence viewer promise. 3 bullets retention beats with timestamps (0–1s, 2–5s, 6–10s). Caption path: 3 lines (insight, support, CTA). 5 hashtags max, non-generic, niche-specific. No meta-instructions. Keep hashtags as an array of strings in the hashtags field.`,
+        `HASHTAGS (hashtags): output 5–8 tags as an array of strings. Use 2 broad, 3 niche, and 1 intent tag. No stuffing.`,
         `CATEGORY PLAYBOOK (apply based on type/pillar/category): Educational -> Mistake -> Consequence -> Fix, authority, save/share. Promotional -> Problem -> Mechanism -> Offer -> Proof -> CTA; include who it is for. Testimonial -> Before -> After -> Process -> Proof -> CTA; numbers only if plausible. Behind-the-scenes -> what people think vs reality, process transparency, credibility. Trend -> trend hook + niche twist + value; no generic dance prompts. Community -> identity framing + debate prompt + pinned comment structure.`,
       ].join('\\n')
     : '';
@@ -3534,7 +3534,7 @@ function ensureCtaFallback(post = {}) {
   return 'Learn more';
 }
 
-const MIN_HASHTAGS = 6;
+const MIN_HASHTAGS = 0;
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
@@ -4909,7 +4909,11 @@ const server = http.createServer((req, res) => {
     const brandBrainDirective = brandBrainSettings?.enabled
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
-    console.log('[BrandBrain] generation mode enabled=%s', Boolean(brandBrainDirective));
+    console.log('[BrandBrain] generation mode', {
+      requestId: loggingContext?.requestId || 'unknown',
+      userId: userId || null,
+      enabled: Boolean(brandBrainDirective),
+    });
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
       nicheStyle,
@@ -5046,7 +5050,7 @@ const server = http.createServer((req, res) => {
         actualCount: rawPosts.length,
         missingFields: missingFieldsReport.length,
         responseLength: rawLength,
-        detailSamples: missingFieldsReport.slice(0, 3),
+        detailSamples: missingFieldsReport.slice(0, 2),
       });
       throw err;
     }
@@ -5074,6 +5078,18 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    const normalizedMissing = [];
+    posts.forEach((post, idx) => {
+      const missing = validatePostCompleteness(post);
+      if (missing.length) {
+        normalizedMissing.push({ index: idx, missing });
+      }
+    });
+    console.log('[Calendar][Server][SchemaValidation] normalized missing fields', {
+      requestId: loggingContext?.requestId || 'unknown',
+      count: normalizedMissing.length,
+      samples: normalizedMissing.slice(0, 2),
+    });
     const signatureSet = new Set(normalizedUsedSignatures);
     const duplicates = [];
     for (const post of posts) {
@@ -5357,14 +5373,17 @@ const server = http.createServer((req, res) => {
         try {
           const response = await supabaseAdmin
             .from('profiles')
-            .select('subscription_plan')
+            .select('tier')
             .eq('id', user.id)
             .single();
-          if (response?.data?.subscription_plan) {
-            req.user.plan = response.data.subscription_plan;
+          if (response?.data?.tier) {
+            const rawTier = String(response.data.tier).toLowerCase().trim();
+            const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+            req.user.tier = mappedTier;
+            req.user.plan = mappedTier;
           }
         } catch (planErr) {
-          console.warn('[Calendar] failed to resolve subscription plan', {
+          console.warn('[Calendar] failed to resolve tier', {
             requestId,
             userId: user.id,
             error: planErr?.message || planErr,
@@ -5372,7 +5391,12 @@ const server = http.createServer((req, res) => {
         }
         const isPro = isUserPro(req);
         const tStart = Date.now();
-        console.log('[Calendar][Server][Perf] regen request received', { requestId, userId: user.id, isPro });
+        console.log('[Calendar][Server][Perf] regen request received', {
+          requestId,
+          userId: user.id,
+          tier: req.user?.tier || req.user?.plan || 'free',
+          isPro,
+        });
         if (!isPro) {
           const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
           if (usage >= 3) {
