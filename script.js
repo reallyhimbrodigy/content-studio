@@ -336,6 +336,7 @@ let brandProfileLoaded = false;
 let currentBrandText = '';
 let brandBrainHydrated = false;
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
+let brandKitRefreshWarned = false;
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
 const selectedDesignAssetIds = new Set();
 let designFocusedAssetId = null;
@@ -1483,6 +1484,17 @@ async function deleteCalendarByIdIfPossible(calendarId) {
   } catch (error) {
     console.warn('[Promptly] Backend calendar delete failed (non-blocking)', error?.message || error);
   }
+}
+
+function maybeRefreshBrandKit() {
+  if (typeof refreshBrandKit === 'function') {
+    return refreshBrandKit();
+  }
+  if (!brandKitRefreshWarned) {
+    brandKitRefreshWarned = true;
+    console.warn('[BrandKit] refreshBrandKit missing; skipping refresh');
+  }
+  return null;
 }
 
 function mergeDesignAsset(asset, options = {}) {
@@ -4310,7 +4322,7 @@ async function bootstrapApp(attempt = 0) {
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
     syncProfileSettingsFromSupabase();
-    refreshBrandKit();
+    maybeRefreshBrandKit();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
