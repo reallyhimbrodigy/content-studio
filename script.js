@@ -1492,10 +1492,6 @@ function maybeRefreshBrandKit() {
   if (typeof refreshBrandKit === 'function') {
     return refreshBrandKit();
   }
-  if (!brandKitRefreshWarned) {
-    brandKitRefreshWarned = true;
-    console.warn('[BrandKit] refreshBrandKit missing; skipping refresh');
-  }
   return null;
 }
 
@@ -1579,8 +1575,41 @@ async function refreshBrandKit({ force = false } = {}) {
 }
 
 async function refreshBrandBrain() {
-  return { ok: true, skipped: true };
+  try {
+    const brandModal = document.getElementById('brand-modal');
+    const toggleInput = document.getElementById('brand-brain-enabled');
+    if (!brandModal || !toggleInput) return { ok: true, skipped: 'missing_dom' };
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      brandModal.dataset.locked = 'true';
+      return { ok: true, skipped: 'no_user' };
+    }
+    const userEmail = await getCurrentUser();
+    const userIsPro = userEmail ? await isPro(userEmail) : false;
+    brandModal.dataset.locked = userIsPro ? 'false' : 'true';
+    if (!userIsPro) return { ok: true, skipped: 'not_pro' };
+
+    const resp = await fetchWithAuth('/api/brand-brain/settings', { method: 'GET' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.ok === false) {
+      return { ok: false, error: data?.error || 'settings_fetch_failed' };
+    }
+    const settings = data?.settings || data?.data || {};
+    toggleInput.checked = Boolean(settings.enabled);
+    const statusPill = document.getElementById('brand-brain-status-pill');
+    if (statusPill) {
+      statusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
+      statusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
+    }
+    return { ok: true, settings };
+  } catch (err) {
+    console.warn('[BrandBrain] refresh failed', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
 }
+
+window.refreshBrandKit = refreshBrandKit;
+window.refreshBrandBrain = refreshBrandBrain;
 
 function mergeDesignAsset(asset, options = {}) {
   if (!asset || !asset.id) return;
