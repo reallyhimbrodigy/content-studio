@@ -2506,6 +2506,13 @@ function buildBrandBrainDirective(settings = {}) {
     'Add engagement loops periodically (binary questions or comment keywords).',
     'Use conversion-forward language while staying compliant and specific.',
     'Rotate CTAs across the month to avoid repetition.',
+    'Category overlays:',
+    '- Educational: emphasize saves/shares, step structure, clear outcome, and common-mistake framing.',
+    '- Promotional/offer: handle one objection, add risk reversal, and clarify the next step with ethical urgency.',
+    '- Story/personal: use identity + tension + lesson, then a soft conversion CTA.',
+    '- Engagement: ask a forced-choice question tied to the niche; avoid spammy comment bait.',
+    '- Testimonial/case study: include before/after, numbers or process, and a takeaway CTA.',
+    '- Trend-based: keep it niche-specific, add a twist, and include value + CTA.',
   ];
   return lines.join('\n');
 }

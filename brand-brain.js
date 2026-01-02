@@ -9,6 +9,7 @@ function normalizeSettings(raw = {}) {
 export function initBrandBrainPanel({
   fetchWithAuth,
   isPro,
+  getUserTier,
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
@@ -55,7 +56,13 @@ export function initBrandBrainPanel({
     if (typeof window.cachedUserIsPro === 'boolean') return window.cachedUserIsPro;
     const email = await getCurrentUser();
     if (!email) return false;
-    const pro = await isPro(email);
+    let pro = false;
+    if (typeof getUserTier === 'function') {
+      const tier = await getUserTier(email);
+      pro = String(tier || '').toLowerCase().trim() === 'pro';
+    } else {
+      pro = await isPro(email);
+    }
     window.cachedUserIsPro = pro;
     return pro;
   };

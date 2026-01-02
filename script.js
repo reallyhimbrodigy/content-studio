@@ -5033,6 +5033,7 @@ window.showUpgradeModal = showUpgradeModal;
 initBrandBrainPanel({
   fetchWithAuth,
   isPro,
+  getUserTier,
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
