@@ -2529,9 +2529,35 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
-  const brandBrainBlock = opts.brandBrainDirective
-    ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n`
+  const brandBrainAddendum = opts.brandBrainDirective
+    ? [
+        'Brand Brain addendum (apply to every card and field):',
+        'GLOBAL: Optimize for watch time, saves, shares, comments, and conversion intent without changing schema.',
+        'HOOK (hook): must be 1 line, <= 12 words, uses ONE of curiosity gap, contrarian claim, outcome-first promise, mistake callout, taboo truth, identity pull; include a concrete outcome/timeframe or quantifiable placeholder.',
+        'REEL SCRIPT (reelScript): Pattern interrupt -> Problem -> Micro-proof -> Steps -> Quick win -> CTA. Open loop at start, payoff at end. Short lines, frequent resets, no fluff.',
+        'CAPTION (caption): start with a caption hook that differs from hook; include benefit bullets, micro-proof, objection handling, and ONE focused CTA. Use line breaks and scannable blocks.',
+        'CTA (cta): specific and low-friction (comment keyword, save, share, follow for part 2, profile link if appropriate). Match the card objective.',
+        'ENGAGEMENT (engagementScripts + pinned comment if present): include a pinned comment that triggers replies (binary choice or comment keyword) and include 2 reply templates that deepen the thread.',
+        'HASHTAGS (hashtags): tiered mix = 2 broad, 3 mid, 3 niche, 2 ultra-niche; avoid repeats across adjacent days.',
+        'EXECUTION NOTES (designNotes): include first 1s visual, on-screen text plan, cut cadence, and explicit retention spikes.',
+        'STORY PROMPT (storyPrompt): must be a qualification/self-disclosure question tied to buyer intent.',
+        'ALGORITHM CHECKLIST: each card must include a save trigger + share trigger + clear CTA + retention beat; avoid generic advice phrasing.',
+        'CATEGORY OVERLAYS:',
+        '- Educational: teach -> demonstrate -> template -> save trigger; emphasize outcome and common mistake.',
+        '- Promotional/offer: problem agitation -> offer framing -> risk reversal -> proof -> CTA.',
+        '- Authority: contrarian insight + proof + takeaway + CTA.',
+        '- Community/engagement: identity + debate prompt + pinned comment structure.',
+        '- Testimonial/case study: before/after + numbers/process + takeaway CTA.',
+        '- Trend-based: niche-specific twist + value + CTA; no generic trends.',
+        'SELF-CHECK: if Brand Brain is enabled, every card must show explicit sales + algorithm elements; no generic versions.',
+      ].join('\n')
     : '';
+  const brandBrainBlock = opts.brandBrainDirective
+    ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
+    : '';
+  if (opts.brandBrainDirective) {
+    console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
+  }
   const usedSignatures = (Array.isArray(opts.usedSignatures) ? opts.usedSignatures : [])
     .map((sig) => normalizeCalendarSignature(sig))
     .filter(Boolean);
