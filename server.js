@@ -8011,15 +8011,20 @@ Output format:
         if (supabaseAdmin) {
           try {
             const { data, error } = await supabaseAdmin
-              .from('brand_kits')
-              .select('brand_name, brand_color, logo_url, updated_at')
+              .from('brand_brains')
+              .select('primary_color, secondary_color, accent_color, heading_font, body_font, logo_url, updated_at')
               .eq('user_id', user.id)
               .maybeSingle();
             if (error) throw error;
             if (data) {
               kit = {
-                brand_name: data.brand_name || '',
-                brand_color: data.brand_color || '',
+                brand_name: '',
+                brand_color: data.primary_color || '',
+                primary_color: data.primary_color || '',
+                secondary_color: data.secondary_color || '',
+                accent_color: data.accent_color || '',
+                heading_font: data.heading_font || '',
+                body_font: data.body_font || '',
                 logo_url: data.logo_url || '',
                 updated_at: data.updated_at || null,
               };
@@ -8027,7 +8032,7 @@ Output format:
             }
           } catch (err) {
             const msg = String(err?.message || err);
-            if (!msg.includes('brand_kits') && !msg.includes('42P01') && !msg.includes('schema cache')) {
+            if (!msg.includes('brand_brains') && !msg.includes('42P01') && !msg.includes('schema cache')) {
               console.error('[BrandKit] fetch failed', err);
               return sendJson(res, 500, { error: 'brandkit_fetch_failed' });
             }

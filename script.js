@@ -1568,13 +1568,13 @@ async function loadBrandKitFromSupabase(userId) {
     if (!userId) return null;
     if (!supabase?.from) return null;
     const { data, error } = await supabase
-      .from('brand_kits')
-      .select('brand_name, primary_color, secondary_color, font, logo_url, updated_at')
+      .from('brand_brains')
+      .select('primary_color, secondary_color, accent_color, heading_font, body_font, logo_url, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) {
       const msg = String(error?.message || error);
-      if (msg.includes('brand_kits') || msg.includes('42P01') || msg.includes('schema cache')) {
+      if (msg.includes('brand_brains') || msg.includes('42P01') || msg.includes('schema cache')) {
         if (!brandKitConfigWarned) {
           brandKitConfigWarned = true;
           console.debug('[BrandKit] table missing; skipping.');
@@ -1587,26 +1587,14 @@ async function loadBrandKitFromSupabase(userId) {
       }
       return null;
     }
-    if (!data) {
-      const { error: insertError } = await supabase
-        .from('brand_kits')
-        .insert({ user_id: userId })
-        .select('brand_name, primary_color, secondary_color, font, logo_url, updated_at')
-        .maybeSingle();
-      if (insertError) {
-        const msg = String(insertError?.message || insertError);
-        if (!brandKitServerWarned) {
-          brandKitServerWarned = true;
-          console.warn('[BrandKit] create failed', msg);
-        }
-      }
-      return null;
-    }
+    if (!data) return null;
     return {
-      brandName: data.brand_name || '',
+      brandName: '',
       primaryColor: data.primary_color || '',
       secondaryColor: data.secondary_color || '',
-      headingFont: data.font || '',
+      accentColor: data.accent_color || '',
+      headingFont: data.heading_font || '',
+      bodyFont: data.body_font || '',
       logoDataUrl: data.logo_url || '',
       updatedAt: data.updated_at || null,
     };
