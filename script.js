@@ -340,6 +340,7 @@ let brandKitRefreshWarned = false;
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
 let brandKitConfigWarned = false;
 let brandKitServerWarned = false;
+let brandKitTableLogged = false;
 let bootstrapInFlight = false;
 let bootstrapQueuedAttempt = null;
 const selectedDesignAssetIds = new Set();
@@ -1567,14 +1568,18 @@ async function loadBrandKitFromSupabase(userId) {
   try {
     if (!userId) return null;
     if (!supabase?.from) return null;
+    if (!brandKitTableLogged) {
+      brandKitTableLogged = true;
+      console.debug('[BrandKit] loading from profiles.profile_settings');
+    }
     const { data, error } = await supabase
-      .from('brand_brains')
-      .select('primary_color, secondary_color, accent_color, heading_font, body_font, logo_url, updated_at')
-      .eq('user_id', userId)
+      .from('profiles')
+      .select('profile_settings, updated_at')
+      .eq('id', userId)
       .maybeSingle();
     if (error) {
       const msg = String(error?.message || error);
-      if (msg.includes('brand_brains') || msg.includes('42P01') || msg.includes('schema cache')) {
+      if (msg.includes('profiles') || msg.includes('profile_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
         if (!brandKitConfigWarned) {
           brandKitConfigWarned = true;
           console.debug('[BrandKit] table missing; skipping.');
@@ -1588,14 +1593,22 @@ async function loadBrandKitFromSupabase(userId) {
       return null;
     }
     if (!data) return null;
+    const settings = data?.profile_settings || {};
+    const kit =
+      settings.brandKit ||
+      settings.brand_kit ||
+      settings.brandKitSettings ||
+      settings.brand_kit_settings ||
+      null;
+    if (!kit || typeof kit !== 'object') return null;
     return {
-      brandName: '',
-      primaryColor: data.primary_color || '',
-      secondaryColor: data.secondary_color || '',
-      accentColor: data.accent_color || '',
-      headingFont: data.heading_font || '',
-      bodyFont: data.body_font || '',
-      logoDataUrl: data.logo_url || '',
+      brandName: kit.brandName || kit.brand_name || '',
+      primaryColor: kit.primaryColor || kit.primary_color || '',
+      secondaryColor: kit.secondaryColor || kit.secondary_color || '',
+      accentColor: kit.accentColor || kit.accent_color || '',
+      headingFont: kit.headingFont || kit.heading_font || '',
+      bodyFont: kit.bodyFont || kit.body_font || '',
+      logoDataUrl: kit.logoDataUrl || kit.logo_url || kit.logoUrl || '',
       updatedAt: data.updated_at || null,
     };
   } catch (err) {
