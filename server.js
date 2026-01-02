@@ -2444,7 +2444,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       storyPromptPlus: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
-        minItems: 6,
         items: { type: 'string', minLength: 1 },
       },
       script: {
@@ -2489,8 +2488,6 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
     properties: {
       posts: {
         type: 'array',
-        minItems: safeCount,
-        maxItems: safeCount,
         items: buildCalendarPostSchema(minDay, maxDay),
       },
     },
@@ -4088,11 +4085,23 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0 ? Number(opts.postsPerDay) : 1;
   const expectedChunkCount = chunkDays * postsPerDay;
-    const schema = buildCalendarSchemaObject(
+  const schema = buildCalendarSchemaObject(
     expectedChunkCount,
     chunkStartDay,
     Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
   );
+  try {
+    JSON.stringify(schema);
+    if (!schema || schema.type !== 'object' || !schema.properties || !schema.required) {
+      throw new Error('Invalid schema root shape');
+    }
+  } catch (err) {
+    const schemaErr = new Error('OpenAI schema validation failed');
+    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
+    schemaErr.statusCode = 400;
+    schemaErr.details = { message: err?.message || err, schemaKeys: Object.keys(schema || {}) };
+    throw schemaErr;
+  }
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
   const extractContentText = (json) => {
     const messageContent = json?.choices?.[0]?.message?.content;
@@ -4196,6 +4205,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           schemaErr.details = {
             error: payloadJson?.error || null,
             response_format: { type: 'json_schema', json_schema: { name: 'calendar_batch', strict: true } },
+            schemaKeys: Object.keys(schema || {}),
           };
           schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
           throw schemaErr;
@@ -5463,6 +5473,17 @@ const server = http.createServer((req, res) => {
           if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
           if (err?.details) logInfo.schemaPayload = err.details;
           if (err?.rawContent) logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
+        }
+        if (isSchemaError) {
+          console.error('[Calendar][SchemaError]', {
+            requestId,
+            message: err?.message || '',
+            code: err?.code || '',
+            statusCode: err?.statusCode || '',
+            errorPayload: err?.details?.error || null,
+            responseFormat: err?.details?.response_format || null,
+            schemaKeys: err?.details?.schemaKeys || null,
+          });
         }
         if (isInvalidJson && err?.rawContent) {
           logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
