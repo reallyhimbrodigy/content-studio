@@ -338,6 +338,8 @@ let brandBrainHydrated = false;
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
 let brandKitRefreshWarned = false;
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
+let bootstrapInFlight = false;
+let bootstrapQueuedAttempt = null;
 const selectedDesignAssetIds = new Set();
 let designFocusedAssetId = null;
 let draggedDesignAssetId = null;
@@ -1495,6 +1497,89 @@ function maybeRefreshBrandKit() {
     console.warn('[BrandKit] refreshBrandKit missing; skipping refresh');
   }
   return null;
+}
+
+function summarizeBrandKitBrief(kit) {
+  if (!kit || typeof kit !== 'object') return '';
+  const lines = [];
+  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
+  if (palette.length) lines.push(`Palette: ${palette.join(', ')}`);
+  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
+  if (fonts.length) lines.push(`Typography: ${fonts.join(' / ')}`);
+  const voice = typeof kit.brandVoice === 'string' ? kit.brandVoice.trim() : '';
+  if (voice) lines.push(`Voice: ${voice}`);
+  return lines.join('\n');
+}
+
+function applyBrandKitToForm(kit) {
+  if (!kit || typeof kit !== 'object') {
+    if (brandPrimaryColorInput) brandPrimaryColorInput.value = '';
+    if (brandSecondaryColorInput) brandSecondaryColorInput.value = '';
+    if (brandAccentColorInput) brandAccentColorInput.value = '';
+    if (brandHeadingFontInput) brandHeadingFontInput.value = '';
+    if (brandBodyFontInput) brandBodyFontInput.value = '';
+    if (brandLogoPreview) brandLogoPreview.src = '';
+    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = '';
+    return;
+  }
+  if (brandPrimaryColorInput) brandPrimaryColorInput.value = kit.primaryColor || '';
+  if (brandSecondaryColorInput) brandSecondaryColorInput.value = kit.secondaryColor || '';
+  if (brandAccentColorInput) brandAccentColorInput.value = kit.accentColor || '';
+  if (brandHeadingFontInput) brandHeadingFontInput.value = kit.headingFont || '';
+  if (brandBodyFontInput) brandBodyFontInput.value = kit.bodyFont || '';
+  if (brandLogoPreview) {
+    brandLogoPreview.src = kit.logoDataUrl || kit.logoUrl || '';
+    brandLogoPreview.style.display = brandLogoPreview.src ? 'block' : '';
+  }
+  if (brandLogoPlaceholder) {
+    brandLogoPlaceholder.style.display = kit.logoDataUrl || kit.logoUrl ? 'none' : '';
+  }
+}
+
+async function refreshBrandKit({ force = false } = {}) {
+  try {
+    if (brandKitLoaded && !force) return { ok: true, kit: currentBrandKit };
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      currentBrandKit = null;
+      brandKitLoaded = false;
+      applyBrandKitToForm(null);
+      return { ok: true, kit: null };
+    }
+    let response;
+    try {
+      response = await fetchWithAuth('/api/brandkit', { method: 'GET' });
+    } catch (err) {
+      if (err?.status === 401) return { ok: false, error: 'unauthorized' };
+      console.warn('[BrandKit] refresh failed', err?.message || err);
+      return { ok: false, error: err?.message || 'refresh_failed' };
+    }
+    if (response.status === 410 || response.status === 404) {
+      currentBrandKit = null;
+      brandKitLoaded = true;
+      applyBrandKitToForm(null);
+      return { ok: true, kit: null };
+    }
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      console.warn('[BrandKit] refresh failed', detail?.error || response.status);
+      brandKitLoaded = true;
+      return { ok: false, error: detail?.error || 'refresh_failed' };
+    }
+    const data = await response.json().catch(() => ({}));
+    const kit = data?.kit || data?.brandKit || data?.data?.kit || null;
+    currentBrandKit = kit || null;
+    brandKitLoaded = true;
+    applyBrandKitToForm(currentBrandKit);
+    return { ok: true, kit: currentBrandKit };
+  } catch (err) {
+    console.warn('[BrandKit] refresh error', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function refreshBrandBrain() {
+  return { ok: true, skipped: true };
 }
 
 function mergeDesignAsset(asset, options = {}) {
@@ -4287,6 +4372,12 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
 
 // Show/hide nav based on auth state
 async function bootstrapApp(attempt = 0) {
+  if (bootstrapInFlight) {
+    bootstrapQueuedAttempt = attempt;
+    return;
+  }
+  bootstrapInFlight = true;
+  try {
   const currentUser = await getCurrentUser();
   const publicNav = document.getElementById('public-nav');
   const userMenu = document.getElementById('user-menu');
@@ -4447,6 +4538,14 @@ async function bootstrapApp(attempt = 0) {
     persistDesignAssetsToStorage();
     renderDesignAssets();
     hydrateCalendarFromStorage(true);
+  }
+  } finally {
+    bootstrapInFlight = false;
+    if (bootstrapQueuedAttempt !== null) {
+      const queuedAttempt = bootstrapQueuedAttempt;
+      bootstrapQueuedAttempt = null;
+      bootstrapApp(queuedAttempt);
+    }
   }
 }
 
