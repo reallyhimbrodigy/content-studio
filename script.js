@@ -8186,7 +8186,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
         const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
         const preview = responseText.slice(0, 300);
-        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview, msg });
+        console.error(`[Calendar] fetchBatch bad response`, { batchIndex, status: response.status, ct, preview, msg, data });
+        if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
+          throw new Error('openai_schema_error');
+        }
         throw new Error(msg);
       }
       if (firstDispatchLogged) {

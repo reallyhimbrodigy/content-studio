@@ -2546,7 +2546,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `DESIGN NOTES (designNotes): specify first 1 second visual + on-screen text. Include 2–3 concrete shot beats. Include one retention device (countdown, caption promise, visual checklist, split screen).`,
         `ENGAGEMENT LOOP (engagementScripts): include one pinned comment prompt (binary choice or "which one are you?"); one short DM follow-up script; one follow-up post suggestion (carousel/testimonial/FAQ) that reuses the same hook angle.`,
         `STORY PROMPT (storyPrompt): single tight narrative prompt for story asset. Must include opening frame visual + 3 beats + CTA frame. Must not repeat the full body. Max 450 chars.`,
-        `DISTRIBUTION PLAN (distributionPlan if present): output exactly: 1 sentence viewer promise. 3 bullets retention beats with timestamps (0–1s, 2–5s, 6–10s). Caption path: 3 lines (insight, support, CTA). 5 hashtags max, non-generic, niche-specific. No meta-instructions.`,
+        `DISTRIBUTION PLAN (distributionPlan if present): output exactly: 1 sentence viewer promise. 3 bullets retention beats with timestamps (0–1s, 2–5s, 6–10s). Caption path: 3 lines (insight, support, CTA). 5 hashtags max, non-generic, niche-specific. No meta-instructions. Keep hashtags as an array of strings in the hashtags field.`,
         `CATEGORY PLAYBOOK (apply based on type/pillar/category): Educational -> Mistake -> Consequence -> Fix, authority, save/share. Promotional -> Problem -> Mechanism -> Offer -> Proof -> CTA; include who it is for. Testimonial -> Before -> After -> Process -> Proof -> CTA; numbers only if plausible. Behind-the-scenes -> what people think vs reality, process transparency, credibility. Trend -> trend hook + niche twist + value; no generic dance prompts. Community -> identity framing + debate prompt + pinned comment structure.`,
       ].join('\\n')
     : '';
@@ -2565,7 +2565,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   return `You are a thoughtful calendar writer${cleanNiche}.
  ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. hashtags must be an array of 5–8 strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
  `;
@@ -4990,7 +4990,21 @@ const server = http.createServer((req, res) => {
     });
     const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
 
-    const rawPosts = aggregatedRawPosts;
+    const rawPosts = aggregatedRawPosts.map((post) => {
+      if (!post || typeof post !== 'object') return post;
+      if (!Array.isArray(post.hashtags)) {
+        if (typeof post.hashtags === 'string') {
+          post.hashtags = post.hashtags
+            .split(/[#,\n]+/)
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .slice(0, 12);
+        } else {
+          post.hashtags = [];
+        }
+      }
+      return post;
+    });
     if (expectedCount && rawPosts.length !== expectedCount) {
       const err = new Error('Calendar response count mismatch');
       err.code = 'OPENAI_SCHEMA_ERROR';
