@@ -259,6 +259,19 @@
   </head>
   <body>
     <div class="app-shell">
+      <nav class="landing-nav" aria-label="Primary navigation">
+        <div class="landing-nav__brand"></div>
+        <div class="landing-nav__links">
+          <a href="/calendar.html#product">Product</a>
+          <a href="/calendar.html#workflow">Workflow</a>
+          <a href="/calendar.html#pricing">Pricing</a>
+        </div>
+        <div class="landing-nav__actions">
+          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
+        </div>
+      </nav>
+
+      <div id="app-experience" style="display:none;">
       <div class="app-layout">
         <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
           <span class="sidebar-toggle__bars" aria-hidden="true"></span>
@@ -279,11 +292,22 @@
           </div>
         </aside>
         <div class="app-main">
-      <header class="hero">
-        <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
-          <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
-          
-          <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
+      <header class="hero app-hero">
+        <div class="hero-top">
+          <div class="hero-top__left">
+            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+            <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
+          </div>
+          <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
+            <label class="post-frequency" for="post-frequency-select">
+              <span class="post-frequency__label">Posts/day</span>
+              <span class="post-frequency__value" id="post-frequency-display">1x</span>
+              <select id="post-frequency-select" aria-label="Posts per day">
+                <option value="1">1x</option>
+                <option value="2">2x</option>
+                <option value="3">3x</option>
+              </select>
+            </label>
             <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
             <div class="profile-wrapper">
               <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
@@ -351,12 +375,13 @@
         </section>
       </main>
 
-      <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
-
       <footer class="footer">
         <p>Built with intention. Turn this MVP into your studio's always-on idea engine.</p>
       </footer>
         </div>
+      </div>
+      <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
       </div>
     </div>
 
@@ -606,10 +631,14 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
-    <script type="module" src="./script.js"></script>
+  <script type="application/ld+json" src="/assets/schema-website.json"></script>
+  <script type="application/ld+json" src="/assets/schema-organization.json"></script>
+  <script type="application/ld+json" src="/assets/schema-product.json"></script>
+    <script type="module" src="./script.js?t=1764000000"></script>
+  <script type="module" src="./footer.js?t=1763412925"></script>
+  <script src="/sw-register.js" defer></script>
+  <script src="/pwa-install.js" defer></script>
+  <script src="/js/landing.js" defer></script>
     <script type="module" src="./library.js?t=1763412925"></script>
-    <script type="module" src="./footer.js?t=1763412925"></script>
-    <script src="/sw-register.js" defer></script>
-    <script src="/pwa-install.js" defer></script>
   </body>
 </html>
