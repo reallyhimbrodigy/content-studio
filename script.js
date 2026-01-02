@@ -1544,48 +1544,64 @@ async function refreshBrandKit({ force = false } = {}) {
       applyBrandKitToForm(null);
       return { ok: true, kit: null };
     }
-    let response;
     try {
-      response = await fetchWithAuth('/api/brandkit', { method: 'GET' });
+      const kit = await loadBrandKitFromSupabase(userId);
+      currentBrandKit = kit || null;
+      brandKitLoaded = true;
+      applyBrandKitToForm(currentBrandKit);
+      if (!kit) {
+        return { ok: true, kit: null, code: 'not_configured' };
+      }
+      return { ok: true, kit };
     } catch (err) {
-      if (err?.status === 401) return { ok: false, error: 'unauthorized' };
       console.warn('[BrandKit] refresh failed', err?.message || err);
       return { ok: false, error: err?.message || 'refresh_failed' };
     }
-    if (response.status === 204 || response.status === 404) {
-      currentBrandKit = null;
-      brandKitLoaded = true;
-      applyBrandKitToForm(null);
-      return { ok: true, kit: null, code: 'not_configured' };
-    }
-    if (response.status === 401 || response.status === 403) {
-      return { ok: false, code: 'unauthorized', status: response.status };
-    }
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({}));
-      brandKitLoaded = true;
-      return {
-        ok: false,
-        error: detail?.error || 'refresh_failed',
-        status: response.status,
-      };
-    }
-    const data = await response.json().catch(() => ({}));
-    const rawKit = data?.brandKit || data?.kit || data?.data?.kit || null;
-    const kit = rawKit && typeof rawKit === 'object'
-      ? {
-          ...rawKit,
-          primaryColor: rawKit.primaryColor || rawKit.brand_color || rawKit.brandColor || '',
-          logoDataUrl: rawKit.logoDataUrl || rawKit.logo_url || rawKit.logoUrl || '',
-        }
-      : null;
-    currentBrandKit = kit || null;
-    brandKitLoaded = true;
-    applyBrandKitToForm(currentBrandKit);
-    return { ok: true, kit: currentBrandKit };
   } catch (err) {
     console.warn('[BrandKit] refresh error', err?.message || err);
     return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function loadBrandKitFromSupabase(userId) {
+  try {
+    if (!userId) return null;
+    if (!supabase?.from) return null;
+    const { data, error } = await supabase
+      .from('brand_kits')
+      .select('brand_name, primary_color, secondary_color, font, logo_url, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      const msg = String(error?.message || error);
+      if (msg.includes('brand_kits') || msg.includes('42P01') || msg.includes('schema cache')) {
+        if (!brandKitConfigWarned) {
+          brandKitConfigWarned = true;
+          console.debug('[BrandKit] table missing; skipping.');
+        }
+        return null;
+      }
+      if (!brandKitServerWarned) {
+        brandKitServerWarned = true;
+        console.warn('[BrandKit] load failed', msg);
+      }
+      return null;
+    }
+    if (!data) return null;
+    return {
+      brandName: data.brand_name || '',
+      primaryColor: data.primary_color || '',
+      secondaryColor: data.secondary_color || '',
+      headingFont: data.font || '',
+      logoDataUrl: data.logo_url || '',
+      updatedAt: data.updated_at || null,
+    };
+  } catch (err) {
+    if (!brandKitServerWarned) {
+      brandKitServerWarned = true;
+      console.warn('[BrandKit] load failed', err?.message || err);
+    }
+    return null;
   }
 }
 
@@ -1630,13 +1646,6 @@ async function refreshBrandKitSafe() {
       brandKitConfigWarned = true;
       console.debug('[BrandKit] not configured; skipping.');
     }
-    if (result?.code === 'unauthorized') {
-      return result;
-    }
-    if (result?.ok === false && result?.status >= 500 && !brandKitServerWarned) {
-      brandKitServerWarned = true;
-      console.warn('[BrandKit] refresh failed', result?.error || 'unknown_error');
-    }
     return result || { ok: true };
   } catch (err) {
     if (!brandKitServerWarned) {
@@ -1655,6 +1664,9 @@ async function refreshBrandBrainSafe() {
     return { ok: false, error: err?.message || 'refresh_failed' };
   }
 }
+
+window.refreshBrandKit = refreshBrandKit;
+window.refreshBrandBrain = refreshBrandBrain;
 
 function mergeDesignAsset(asset, options = {}) {
   if (!asset || !asset.id) return;
