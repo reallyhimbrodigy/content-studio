@@ -234,6 +234,11 @@ export function initBrandBrainPanel({
         body: JSON.stringify(settings),
       });
       const data = await resp.json().catch(() => ({}));
+      if (resp.status === 402 || data?.error === 'upgrade_required') {
+        if (typeof showUpgradeModal === 'function') showUpgradeModal();
+        updateSaveIndicator('');
+        return;
+      }
       if (!resp.ok || data?.ok === false) {
         throw new Error(data?.error || 'save_failed');
       }
@@ -307,6 +312,11 @@ export function initBrandBrainPanel({
   };
 
   const openPanel = async () => {
+    const pro = await resolveIsPro();
+    if (!pro) {
+      if (typeof showUpgradeModal === 'function') showUpgradeModal();
+      return;
+    }
     brandModal.style.display = 'flex';
     document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
     document.body.dataset.prevOverflow = document.body.style.overflow || '';

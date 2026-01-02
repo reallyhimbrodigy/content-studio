@@ -1062,7 +1062,10 @@ async function handlePhylloAccounts(req, res) {
 
 function isUserPro(req) {
   const plan = req?.user?.plan;
+  const tier = req?.user?.tier;
   if (req?.user?.isPro) return true;
+  const normalizedTier = tier ? String(tier).toLowerCase().trim() : '';
+  if (normalizedTier === 'pro' || normalizedTier === 'paid' || normalizedTier === 'premium') return true;
   if (plan && (plan === 'pro' || plan === 'teams')) return true;
   return false;
 }
@@ -8099,14 +8102,17 @@ Output format:
         try {
           const response = await supabaseAdmin
             .from('profiles')
-            .select('subscription_plan')
+            .select('tier')
             .eq('id', user.id)
             .single();
-          if (response?.data?.subscription_plan) {
-            req.user.plan = response.data.subscription_plan;
+          if (response?.data?.tier) {
+            const rawTier = String(response.data.tier).toLowerCase().trim();
+            const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+            req.user.tier = mappedTier;
+            req.user.plan = mappedTier;
           }
         } catch (planErr) {
-          console.warn('[BrandBrain] failed to resolve subscription plan', {
+          console.warn('[BrandBrain] failed to resolve tier', {
             userId: user.id,
             error: planErr?.message || planErr,
           });
