@@ -2494,6 +2494,42 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
   };
 }
 
+function buildBrandBrainDirective(settings = {}) {
+  if (!settings || !settings.enabled) return '';
+  const levers = settings.levers || {};
+  const lines = [
+    'Optimize for growth and conversion on short-form social platforms without naming specific apps.',
+    'Use a strong hook, a retention beat, and a clear CTA in every post.',
+    'Avoid repeating hook patterns or angles across days.',
+  ];
+
+  if (settings.preset === 'direct_response') {
+    lines.push('Emphasize offer clarity, handle one objection, and use ethical urgency.');
+  } else if (settings.preset === 'authority_builder') {
+    lines.push('Lead with credibility, proof, or steps; prioritize teaching and trust.');
+  } else if (settings.preset === 'viral_hybrid') {
+    lines.push('Use curiosity gaps and pattern interrupts, then connect back to the offer.');
+  }
+
+  if (settings.risk_level <= 40) {
+    lines.push('Keep claims conservative and lean educational.');
+  } else if (settings.risk_level >= 70) {
+    lines.push('Use bolder hooks and sharper contrasts without exaggeration.');
+  }
+
+  if (levers.stronger_hooks) lines.push('Use 1–2 sentence hooks with contrast or specificity.');
+  if (levers.shorter_captions) lines.push('Keep captions concise and skimmable.');
+  if (levers.engagement_loops) lines.push('Add one engagement loop (binary question or comment keyword).');
+  if (levers.retention_beats) lines.push('Insert a mid-caption retention beat (open loop or numbered step).');
+  if (levers.cta_variety) lines.push('Rotate CTAs across the calendar to avoid repetition.');
+
+  if (settings.audience) lines.push(`Audience focus: ${settings.audience}.`);
+  if (settings.offer) lines.push(`Offer focus: ${settings.offer}.`);
+  if (settings.primary_cta) lines.push(`Primary CTA focus: ${settings.primary_cta}.`);
+
+  return lines.join('\n');
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2506,6 +2542,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
+  const brandBrainBlock = opts.brandBrainDirective
+    ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n`
+    : '';
   const usedSignatures = (Array.isArray(opts.usedSignatures) ? opts.usedSignatures : [])
     .map((sig) => normalizeCalendarSignature(sig))
     .filter(Boolean);
@@ -2514,7 +2553,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'No prior signatures to avoid yet.';
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   return `You are a thoughtful calendar writer${cleanNiche}.
- ${brandBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
+ ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
  Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
@@ -4289,6 +4328,105 @@ async function upsertBrandBrainPreference(userId, text) {
   }
 }
 
+const BRAND_BRAIN_DEFAULT_SETTINGS = {
+  enabled: false,
+  preset: 'direct_response',
+  audience: '',
+  offer: '',
+  primary_cta: 'comment',
+  risk_level: 45,
+  levers: {
+    stronger_hooks: true,
+    shorter_captions: true,
+    engagement_loops: true,
+    retention_beats: true,
+    cta_variety: true,
+  },
+};
+
+function normalizeBrandBrainSettings(input = {}) {
+  const safe = { ...BRAND_BRAIN_DEFAULT_SETTINGS, ...(input || {}) };
+  safe.enabled = Boolean(input?.enabled);
+  const preset = String(input?.preset || '').toLowerCase();
+  safe.preset = ['direct_response', 'authority_builder', 'viral_hybrid'].includes(preset)
+    ? preset
+    : BRAND_BRAIN_DEFAULT_SETTINGS.preset;
+  safe.audience = typeof input?.audience === 'string' ? input.audience.trim() : '';
+  safe.offer = typeof input?.offer === 'string' ? input.offer.trim() : '';
+  const cta = String(input?.primary_cta || '').toLowerCase();
+  safe.primary_cta = ['comment', 'dm', 'link_in_bio', 'save_share', 'follow'].includes(cta)
+    ? cta
+    : BRAND_BRAIN_DEFAULT_SETTINGS.primary_cta;
+  const risk = Number.isFinite(Number(input?.risk_level)) ? Number(input.risk_level) : safe.risk_level;
+  safe.risk_level = Math.max(0, Math.min(100, Math.round(risk)));
+  const levers = input?.levers && typeof input.levers === 'object' ? input.levers : {};
+  safe.levers = {
+    stronger_hooks: levers.stronger_hooks !== false,
+    shorter_captions: levers.shorter_captions !== false,
+    engagement_loops: levers.engagement_loops !== false,
+    retention_beats: levers.retention_beats !== false,
+    cta_variety: levers.cta_variety !== false,
+  };
+  return safe;
+}
+
+async function fetchBrandBrainSettings(userId) {
+  if (!userId || !supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('brand_brain_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return normalizeBrandBrainSettings(data);
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
+      console.warn('[BrandBrain] settings table missing; skipping load');
+      return null;
+    }
+    console.error('[BrandBrain] settings fetch failed', msg);
+    return null;
+  }
+}
+
+async function upsertBrandBrainSettings(userId, settings) {
+  if (!userId || !supabaseAdmin) return null;
+  try {
+    const payload = normalizeBrandBrainSettings(settings);
+    const { data, error } = await supabaseAdmin
+      .from('brand_brain_settings')
+      .upsert(
+        {
+          user_id: userId,
+          enabled: payload.enabled,
+          preset: payload.preset,
+          audience: payload.audience,
+          offer: payload.offer,
+          primary_cta: payload.primary_cta,
+          risk_level: payload.risk_level,
+          levers: payload.levers,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data ? normalizeBrandBrainSettings(data) : payload;
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
+      console.warn('[BrandBrain] settings table missing; skipping persist');
+      return null;
+    }
+    console.error('[BrandBrain] settings upsert failed', msg);
+    return null;
+  }
+}
+
 // Loads a normalized snapshot of the user's Brand Brain + Brand Design settings.
 async function loadUserBrandProfile(userId) {
   if (!userId) return null;
@@ -4718,6 +4856,18 @@ const server = http.createServer((req, res) => {
     const classification = categorizeNiche(nicheStyle);
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
+    const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
+    const brandBrainDirective = brandBrainSettings?.enabled
+      ? buildBrandBrainDirective(brandBrainSettings)
+      : '';
+    if (brandBrainDirective) {
+      console.log('[BrandBrain] applying directives to calendar generation', {
+        requestId: loggingContext?.requestId,
+        userId,
+        preset: brandBrainSettings?.preset,
+        riskLevel: brandBrainSettings?.risk_level,
+      });
+    }
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
       nicheStyle,
@@ -4761,6 +4911,7 @@ const server = http.createServer((req, res) => {
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
         usedSignatures: normalizedUsedSignatures,
+        brandBrainDirective,
       });
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
@@ -5177,6 +5328,9 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
+        if (body && typeof body === 'object') {
+          body.userId = user.id;
+        }
         const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
         const sanitizedUsedSignatures = Array.from(
           new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
@@ -7848,6 +8002,73 @@ Output format:
   if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
     res.writeHead(410, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Brand Design has been removed.' }));
+    return;
+  }
+
+  if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        }
+        let settings = await fetchBrandBrainSettings(user.id);
+        if (!settings) {
+          settings = await upsertBrandBrainSettings(user.id, BRAND_BRAIN_DEFAULT_SETTINGS);
+        }
+        return sendJson(res, 200, { ok: true, settings: settings || BRAND_BRAIN_DEFAULT_SETTINGS });
+      } catch (err) {
+        console.error('[BrandBrain] settings GET failed', err);
+        return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        }
+        try {
+          const response = await supabaseAdmin
+            .from('profiles')
+            .select('subscription_plan')
+            .eq('id', user.id)
+            .single();
+          if (response?.data?.subscription_plan) {
+            req.user.plan = response.data.subscription_plan;
+          }
+        } catch (planErr) {
+          console.warn('[BrandBrain] failed to resolve subscription plan', {
+            userId: user.id,
+            error: planErr?.message || planErr,
+          });
+        }
+        const isProUser = isUserPro(req);
+        const body = await readJsonBody(req);
+        const normalized = normalizeBrandBrainSettings(body || {});
+        if (normalized.enabled && !isProUser) {
+          return sendJson(res, 402, {
+            ok: false,
+            error: 'upgrade_required',
+            feature: 'brand_brain',
+          });
+        }
+        const saved = await upsertBrandBrainSettings(user.id, {
+          ...normalized,
+          enabled: normalized.enabled && isProUser,
+        });
+        return sendJson(res, 200, { ok: true, settings: saved || normalized });
+      } catch (err) {
+        console.error('[BrandBrain] settings POST failed', err);
+        return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_save_failed' });
+      }
+    })();
     return;
   }
 

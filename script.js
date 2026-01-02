@@ -10,6 +10,7 @@ import {
   saveProfilePreferences,
   supabase
 } from './user-store.js';
+import { initBrandBrainPanel } from './brand-brain.js';
 
 // Global scroll lock helpers
 window.__modalOpenCount = 0;
@@ -4820,266 +4821,14 @@ window.showUpgradeModal = showUpgradeModal;
 
 // Library tab handler
 
-// Brand Brain modal handlers
-function openBrandModal() {
-  // Use flex to take advantage of modal-overlay centering styles
-  if (brandModal) brandModal.style.display = 'flex';
-  // Explicitly lock page scroll while Brand Brain is open
-  document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
-  document.body.dataset.prevOverflow = document.body.style.overflow || '';
-  document.documentElement.style.overflow = 'hidden';
-  document.body.style.overflow = 'hidden';
-}
-function closeBrandModal() {
-  if (brandModal) brandModal.style.display = 'none';
-  // Restore previous overflow values to re-enable scroll
-  document.documentElement.style.overflow = document.documentElement.dataset.prevOverflow || '';
-  document.body.style.overflow = document.body.dataset.prevOverflow || '';
-}
-
-function updateBrandLogoPreview(src) {
-  if (!brandLogoPreview) return;
-  if (src) {
-    brandLogoPreview.src = src;
-    brandLogoPreview.style.display = 'block';
-    brandLogoPreview.dataset.logo = src;
-    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'none';
-  } else {
-    brandLogoPreview.removeAttribute('src');
-    brandLogoPreview.style.display = 'none';
-    if (brandLogoPreview.dataset) delete brandLogoPreview.dataset.logo;
-    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'block';
-  }
-}
-
-function applyBrandKitToForm(kit) {
-  const defaults = {
-    primaryColor: '#7f5af0',
-    secondaryColor: '#2cb1bc',
-    accentColor: '#ff7ac3',
-  };
-  // Brand Design inputs removed
-  // Brand Design controls removed
-  renderDesignLivePreview();
-}
-
-function serializeBrandKitForm() {
-  return {
-    primaryColor: '',
-    secondaryColor: '',
-    accentColor: '',
-    headingFont: '',
-    bodyFont: '',
-    logoDataUrl: '',
-  };
-}
-
-function updateFontPickerSelection(targetId, value) {
-  fontPickers.forEach((picker) => {
-    if (picker.dataset.target !== targetId) return;
-    const options = Array.from(picker.querySelectorAll('.font-picker__option'));
-    let activeOption = null;
-    options.forEach((btn) => {
-      const isMatch = (btn.dataset.font || '') === (value || '');
-      btn.classList.toggle('is-active', isMatch);
-      if (isMatch) activeOption = btn;
-    });
-    const label = picker.querySelector('.font-picker__label');
-    if (label) {
-      label.className = 'font-picker__label';
-      if (activeOption) {
-        label.textContent = activeOption.textContent.trim();
-        if (activeOption.dataset.previewClass) {
-          label.classList.add(activeOption.dataset.previewClass);
-        }
-      } else {
-        label.textContent = 'Default';
-      }
-    }
-  });
-}
-
-function summarizeBrandKitBrief(kit) {
-  if (!kit) return '';
-  const parts = [];
-  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
-  if (palette.length) parts.push(`Palette ${palette.join(', ')}`);
-  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
-  if (fonts.length) parts.push(`Fonts ${fonts.join(' / ')}`);
-  if (kit.logoDataUrl) parts.push('Reserve space for logo mark.');
-  return parts.join(' | ');
-}
-
-function brandBrainLocalKey(email = activeUserEmail) {
-  const normalized = (email || 'guest').toString().trim().toLowerCase();
-  return `${BRAND_BRAIN_LOCAL_PREFIX}${normalized || 'guest'}`;
-}
-
-function loadBrandBrainLocal(email = activeUserEmail) {
-  try {
-    return localStorage.getItem(brandBrainLocalKey(email)) || '';
-  } catch {
-    return '';
-  }
-}
-
-function persistBrandBrainLocal(text, email = activeUserEmail) {
-  try {
-    const key = brandBrainLocalKey(email);
-    if (!text) localStorage.removeItem(key);
-    else localStorage.setItem(key, text);
-  } catch (_) {}
-}
-
-function brandKitLocalKey(email = activeUserEmail) {
-  const normalized = (email || 'guest').toString().trim().toLowerCase();
-  return `${BRAND_KIT_LOCAL_PREFIX}${normalized || 'guest'}`;
-}
-
-function loadBrandKitLocal(email = activeUserEmail) {
-  try {
-    const raw = localStorage.getItem(brandKitLocalKey(email));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistBrandKitLocal(kit, email = activeUserEmail) {
-  try {
-    const key = brandKitLocalKey(email);
-    if (!kit) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, JSON.stringify(kit));
-    }
-  } catch (_) {}
-}
-
-async function refreshBrandBrain(force = false) {
-  if (brandBrainHydrated && !force) return currentBrandText;
-  const userId = await getCurrentUserId();
-  if (!userId) return '';
-  const localCopy = loadBrandBrainLocal(userId);
-  let latestText = '';
-  try {
-    const resp = await fetch(`/api/brand/profile?userId=${encodeURIComponent(userId)}`, {
-      cache: 'no-store',
-      redirect: 'manual',
-    });
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      latestText = data?.text || '';
-      console.log('[BrandBrain] loaded profile from Supabase', { userId });
-    } else {
-      console.warn('Brand profile request failed with status', resp.status);
-    }
-  } catch (err) {
-    console.warn('Unable to load Brand Brain profile:', err?.message || err);
-  }
-  if (!latestText) {
-    latestText = localCopy || '';
-  }
-  currentBrandText = latestText;
-  if (brandText) brandText.value = latestText;
-  persistBrandBrainLocal(currentBrandText, userId);
-  brandProfileLoaded = true;
-  brandBrainHydrated = true;
-  return currentBrandText;
-}
-
-async function refreshBrandKit(force = false) {
-  brandKitLoaded = true;
-  currentBrandKit = null;
-  return null;
-}
-
-async function handleBrandKitSave() {
-  // Brand Design removed; no-op
-  return;
-}
-
-function handleBrandLogoUpload(event) {
-  return;
-}
-
-function clearBrandLogoPreview() {
-  // Brand Design logo controls removed
-}
-
-// Brand Design controls removed entirely
-
-if (brandBtn && brandModal) {
-  brandBtn.addEventListener('click', async () => {
-    if (!window.cachedUserIsPro) {
-      if (typeof showUpgradeModal === 'function') showUpgradeModal();
-      return;
-    }
-    await Promise.all([refreshBrandKit(), refreshBrandBrain()]);
-    openBrandModal();
-  });
-}
-if (brandCancelBtn) {
-  brandCancelBtn.addEventListener('click', () => {
-    closeBrandModal();
-  });
-}
-  if (brandSaveBtn) {
-    brandSaveBtn.addEventListener('click', async () => {
-      const userId = await getCurrentUserId();
-      if (!userId) {
-        alert('Please sign in to save Brand Brain.');
-        return;
-      }
-      const text = brandText ? brandText.value.trim() : '';
-      if (!text) {
-        if (brandStatus) brandStatus.textContent = 'Please paste some brand text.';
-        return;
-      }
-      try {
-        brandSaveBtn.disabled = true;
-        brandSaveBtn.textContent = 'Saving...';
-        const resp = await fetch('/api/brand/ingest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, text }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to save brand');
-        if (brandStatus) {
-          brandStatus.textContent = `✓ Brand Brain updated (${data.chunks} chunks). Future generations will match your voice.`;
-          brandStatus.classList.add('success');
-        }
-        currentBrandText = text;
-        persistBrandBrainLocal(text, userId);
-        brandProfileLoaded = true;
-        brandBrainHydrated = true;
-        console.log('[BrandBrain] preferences saved', { userId });
-        setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
-      } catch (e) {
-        if (brandStatus) brandStatus.textContent = `Error: ${e.message}`;
-        console.error('[BrandBrain] save failed', e);
-      } finally {
-        brandSaveBtn.disabled = false;
-        brandSaveBtn.textContent = 'Save to Brand Brain';
-      }
-    });
-}
-if (brandKitSaveBtn) {
-  brandKitSaveBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    handleBrandKitSave();
-  });
-}
-if (brandLogoInput) {
-  brandLogoInput.addEventListener('change', handleBrandLogoUpload);
-}
-if (brandLogoClearBtn) {
-  brandLogoClearBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    clearBrandLogoPreview();
-  });
-}
+// Brand Brain panel
+initBrandBrainPanel({
+  fetchWithAuth,
+  isPro,
+  getCurrentUser,
+  getCurrentUserId,
+  showUpgradeModal,
+});
 
 function handleCalendarCardExpansion(card, expanded) {
   const allCards = document.querySelectorAll('.calendar-card');
@@ -8029,7 +7778,7 @@ function ensureGlobalVariety(posts) {
   return posts;
 }
 
-// Normalize a post to guarantee all required fields exist
+// Normalize a post to ensure required fields exist
 function sanitizeSuggestedAudioText(value = '') {
   return String(value || '')
     .replace(/^(tiktok|instagram)\s*:\s*/i, '')
@@ -8371,7 +8120,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     // Sort by batch index and flatten
     let allPosts = orderedResults.flatMap((r) => r.posts);
 
-    // Normalize every post to guarantee required fields
+    // Normalize every post to ensure required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
     const preAudioCount = normalized.filter(hasSuggestedAudio).length;
     console.log(`[Calendar] audio pre render run ${thisRunId}`, { preAudioCount });
