@@ -4375,12 +4375,13 @@ async function fetchBrandBrainSettings(userId) {
   try {
     const { data, error } = await supabaseAdmin
       .from('brand_brain_settings')
-      .select('*')
+      .select('enabled, settings, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    return normalizeBrandBrainSettings(data);
+    const merged = { ...(data.settings || {}), enabled: Boolean(data.enabled) };
+    return normalizeBrandBrainSettings(merged);
   } catch (err) {
     const msg = String(err?.message || err);
     if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
@@ -4402,20 +4403,17 @@ async function upsertBrandBrainSettings(userId, settings) {
         {
           user_id: userId,
           enabled: payload.enabled,
-          preset: payload.preset,
-          audience: payload.audience,
-          offer: payload.offer,
-          primary_cta: payload.primary_cta,
-          risk_level: payload.risk_level,
-          levers: payload.levers,
+          settings: payload,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' }
       )
-      .select()
+      .select('enabled, settings, updated_at')
       .maybeSingle();
     if (error) throw error;
-    return data ? normalizeBrandBrainSettings(data) : payload;
+    if (!data) return payload;
+    const merged = { ...(data.settings || {}), enabled: Boolean(data.enabled) };
+    return normalizeBrandBrainSettings(merged);
   } catch (err) {
     const msg = String(err?.message || err);
     if (msg.includes('brand_brain_settings') || msg.includes('42P01') || msg.includes('schema cache')) {

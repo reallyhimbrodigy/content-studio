@@ -1587,7 +1587,21 @@ async function loadBrandKitFromSupabase(userId) {
       }
       return null;
     }
-    if (!data) return null;
+    if (!data) {
+      const { error: insertError } = await supabase
+        .from('brand_kits')
+        .insert({ user_id: userId })
+        .select('brand_name, primary_color, secondary_color, font, logo_url, updated_at')
+        .maybeSingle();
+      if (insertError) {
+        const msg = String(insertError?.message || insertError);
+        if (!brandKitServerWarned) {
+          brandKitServerWarned = true;
+          console.warn('[BrandKit] create failed', msg);
+        }
+      }
+      return null;
+    }
     return {
       brandName: data.brand_name || '',
       primaryColor: data.primary_color || '',
