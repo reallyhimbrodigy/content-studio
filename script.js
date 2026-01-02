@@ -1571,7 +1571,14 @@ async function refreshBrandKit({ force = false } = {}) {
       };
     }
     const data = await response.json().catch(() => ({}));
-    const kit = data?.kit || data?.brandKit || data?.data?.kit || null;
+    const rawKit = data?.brandKit || data?.kit || data?.data?.kit || null;
+    const kit = rawKit && typeof rawKit === 'object'
+      ? {
+          ...rawKit,
+          primaryColor: rawKit.primaryColor || rawKit.brand_color || rawKit.brandColor || '',
+          logoDataUrl: rawKit.logoDataUrl || rawKit.logo_url || rawKit.logoUrl || '',
+        }
+      : null;
     currentBrandKit = kit || null;
     brandKitLoaded = true;
     applyBrandKitToForm(currentBrandKit);

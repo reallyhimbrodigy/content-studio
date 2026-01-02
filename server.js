@@ -7999,9 +7999,68 @@ Output format:
     return;
   }
 
-  if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, code: 'brandkit_not_configured' }));
+  if (isBrandKitPath(normalizedPath) && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!user || !user.id) {
+          return sendJson(res, 401, { error: 'unauthorized' });
+        }
+
+        let kit = null;
+        let source = 'file';
+
+        if (supabaseAdmin) {
+          try {
+            const { data, error } = await supabaseAdmin
+              .from('brand_kits')
+              .select('brand_name, brand_color, logo_url, updated_at')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (error) throw error;
+            if (data) {
+              kit = {
+                brand_name: data.brand_name || '',
+                brand_color: data.brand_color || '',
+                logo_url: data.logo_url || '',
+                updated_at: data.updated_at || null,
+              };
+              source = 'supabase';
+            }
+          } catch (err) {
+            const msg = String(err?.message || err);
+            if (!msg.includes('brand_kits') && !msg.includes('42P01') && !msg.includes('schema cache')) {
+              console.error('[BrandKit] fetch failed', err);
+              return sendJson(res, 500, { error: 'brandkit_fetch_failed' });
+            }
+          }
+        }
+
+        if (!kit) {
+          const brand = loadBrand(user.id);
+          if (brand?.kit) {
+            kit = {
+              ...brand.kit,
+              brand_name: brand?.name || '',
+              brand_color: brand.kit.primaryColor || '',
+              logo_url: brand.kit.logoDataUrl || brand.kit.logoUrl || '',
+              updated_at: brand.kit.updatedAt || brand.updatedAt || null,
+            };
+          }
+        }
+
+        return sendJson(res, 200, { ok: true, brandKit: kit || null, source });
+      } catch (err) {
+        console.error('[BrandKit] handler error', err);
+        return sendJson(res, 500, { error: 'brandkit_fetch_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (isBrandKitPath(normalizedPath) && req.method === 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'method_not_allowed' }));
     return;
   }
 
