@@ -2628,6 +2628,30 @@ function tryParsePosts(content = '', expectedCount = null) {
   return { posts, reason: null };
 }
 
+function tryParseObjectFromContent(content = '') {
+  if (!content) return { object: null, reason: 'empty' };
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { object: parsed, reason: null };
+    }
+    return { object: null, reason: 'not_object' };
+  } catch (err) {
+    const sanitized = sanitizeJsonContent(content);
+    if (sanitized && sanitized !== content) {
+      try {
+        const parsed = JSON.parse(sanitized);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return { object: parsed, reason: null };
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return { object: null, reason: 'parse_error' };
+  }
+}
+
 function buildFallbackChunkPosts(nicheStyle, startDay, postsPerDay, totalCount) {
   const fallback = [];
   for (let idx = 0; idx < totalCount; idx += 1) {
@@ -3488,6 +3512,32 @@ function buildBrandBrainCta(nicheStyle = '', topic = '') {
   return `DM ${keyword} for the ${nicheLabel} checklist`;
 }
 
+function coerceBrandBrainPostTypes(post = {}) {
+  if (!post || typeof post !== 'object') return post;
+  const next = { ...post };
+  if (typeof next.hashtags === 'string') {
+    const tags = next.hashtags
+      .split(/[#,\s]+/)
+      .map((tag) => ensureHashtagPrefix(tag))
+      .filter(Boolean);
+    next.hashtags = tags;
+  } else if (!Array.isArray(next.hashtags)) {
+    next.hashtags = [];
+  } else {
+    next.hashtags = next.hashtags.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
+  }
+  if (next.engagementScripts && typeof next.engagementScripts !== 'object') {
+    next.engagementScripts = {};
+  }
+  if (next.script && typeof next.script !== 'object') {
+    next.script = {};
+  }
+  if (next.reelScript && typeof next.reelScript !== 'object') {
+    next.reelScript = {};
+  }
+  return next;
+}
+
 function findBrandBrainForbiddenMatch(value = '') {
   const text = toPlainString(value);
   if (!text) return null;
@@ -3500,6 +3550,10 @@ function findBrandBrainForbiddenMatch(value = '') {
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
   const reasons = [];
   const missing = validatePostCompleteness(post);
+  const bannedPhrasesHits = [];
+  const metaLanguageHits = [];
+  const minLengthFailures = [];
+  const tooGenericFlags = [];
   if (missing.length) {
     reasons.push({ code: 'MISSING_FIELD', detail: missing });
   }
@@ -3537,22 +3591,27 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     const match = findBrandBrainForbiddenMatch(value);
     if (match) {
       reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
+      bannedPhrasesHits.push({ field, match: match.source });
     }
     const raw = toPlainString(value);
     if (!raw) return;
     if (BRAND_BRAIN_LABEL_PREFIXES.some((regex) => regex.test(raw))) {
       reasons.push({ code: 'META_LANGUAGE', field, detail: 'label_prefix' });
+      metaLanguageHits.push({ field, detail: 'label_prefix' });
     }
     if (BRAND_BRAIN_META_PREFIXES.some((regex) => regex.test(raw))) {
       reasons.push({ code: 'META_LANGUAGE', field, detail: 'instruction_prefix' });
+      metaLanguageHits.push({ field, detail: 'instruction_prefix' });
     }
   });
   if (/^\s*placeholder\b/i.test(title) || /\boffice hours\b/i.test(title)) {
     reasons.push({ code: 'PLACEHOLDER_DETECTED', field: 'title', match: 'placeholder_title' });
+    bannedPhrasesHits.push({ field: 'title', match: 'placeholder_title' });
   }
   const titleWords = title.split(/\s+/).filter(Boolean);
   if (titleWords.length && titleWords.length < 4) {
     reasons.push({ code: 'TOO_SHORT', field: 'title', length: titleWords.length });
+    minLengthFailures.push({ field: 'title', length: titleWords.length, min: BRAND_BRAIN_MIN_LENGTHS.title });
   }
   const minChecks = [
     ['title', title],
@@ -3572,11 +3631,13 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     const min = BRAND_BRAIN_MIN_LENGTHS[field];
     if (min && toPlainString(value).length < min) {
       reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
+      minLengthFailures.push({ field, length: toPlainString(value).length, min });
     }
   });
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags.filter((tag) => toPlainString(tag)) : [];
   if (hashtags.length < 8 || hashtags.length > 12) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
+    minLengthFailures.push({ field: 'hashtags', length: hashtags.length, min: 8 });
   }
   const nicheTokens = extractBrandBrainTokens(nicheStyle);
   if (nicheTokens.length) {
@@ -3596,6 +3657,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     const hasToken = nicheTokens.some((token) => combined.includes(token));
     if (!hasToken) {
       reasons.push({ code: 'TOO_GENERIC', detail: 'missing_niche_tokens' });
+      tooGenericFlags.push({ detail: 'missing_niche_tokens' });
     }
   }
   const nichePhrase = toPlainString(nicheStyle).toLowerCase();
@@ -3606,21 +3668,65 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
       if (!raw) return;
       if (raw === nichePhrase) {
         reasons.push({ code: 'TOO_GENERIC', detail: 'niche_phrase_equals' });
+        tooGenericFlags.push({ detail: 'niche_phrase_equals' });
         return;
       }
       if (raw.includes(nichePhrase) && raw.length < nichePhrase.length + 18) {
         reasons.push({ code: 'TOO_GENERIC', detail: 'niche_phrase_stuffing' });
+        tooGenericFlags.push({ detail: 'niche_phrase_stuffing' });
       }
     });
   }
-  return { ok: reasons.length === 0, reasons };
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    missingFields: missing,
+    bannedPhrasesHits,
+    metaLanguageHits,
+    minLengthFailures,
+    tooGenericFlags,
+  };
 }
 
-function deriveBrandBrainRepairFields(reasons = []) {
+function deriveBrandBrainRepairFields(validation = {}) {
   const fields = new Set();
   const addField = (field) => {
     if (field) fields.add(field);
   };
+  const reasons = Array.isArray(validation.reasons) ? validation.reasons : [];
+  if (Array.isArray(validation.missingFields)) {
+    validation.missingFields.forEach((field) => addField(field));
+  }
+  if (Array.isArray(validation.bannedPhrasesHits)) {
+    validation.bannedPhrasesHits.forEach((hit) => addField(hit.field));
+  }
+  if (Array.isArray(validation.metaLanguageHits)) {
+    validation.metaLanguageHits.forEach((hit) => addField(hit.field));
+  }
+  if (Array.isArray(validation.minLengthFailures)) {
+    validation.minLengthFailures.forEach((hit) => addField(hit.field));
+  }
+  if (Array.isArray(validation.tooGenericFlags) && validation.tooGenericFlags.length) {
+    [
+      'title',
+      'hook',
+      'caption',
+      'cta',
+      'designNotes',
+      'storyPrompt',
+      'storyPromptPlus',
+      'distributionPlan',
+      'hashtags',
+      'engagementScripts.commentReply',
+      'engagementScripts.dmReply',
+      'script.hook',
+      'script.body',
+      'script.cta',
+      'reelScript.hook',
+      'reelScript.body',
+      'reelScript.cta',
+    ].forEach((field) => addField(field));
+  }
   reasons.forEach((reason) => {
     if (!reason || typeof reason !== 'object') return;
     if (reason.code === 'MISSING_FIELD' && Array.isArray(reason.detail)) {
@@ -4137,6 +4243,148 @@ const DISTRIBUTION_PLAN_ALIASES = [
   'distribution_plan_steps',
   'distributionPlanText',
 ];
+
+function buildBrandBrainRepairSchema(fields = []) {
+  const properties = {};
+  const required = [];
+  const addProp = (key, schema) => {
+    if (!properties[key]) {
+      properties[key] = schema;
+      required.push(key);
+    }
+  };
+  const ensureScriptSchema = (key, missingFields = []) => {
+    const scriptProps = {};
+    const scriptRequired = [];
+    const addScriptField = (fieldKey) => {
+      if (!scriptProps[fieldKey]) {
+        scriptProps[fieldKey] = { type: 'string', minLength: 1 };
+        scriptRequired.push(fieldKey);
+      }
+    };
+    if (!missingFields.length) {
+      ['hook', 'body', 'cta'].forEach(addScriptField);
+    } else {
+      missingFields.forEach(addScriptField);
+    }
+    addProp(key, {
+      type: 'object',
+      additionalProperties: false,
+      required: scriptRequired,
+      properties: scriptProps,
+    });
+  };
+  const fieldsSet = new Set(fields);
+  const addIfPresent = (field) => fieldsSet.has(field);
+  if (addIfPresent('title')) addProp('title', { type: 'string', minLength: 1 });
+  if (addIfPresent('hook')) addProp('hook', { type: 'string', minLength: 1 });
+  if (addIfPresent('caption')) addProp('caption', { type: 'string', minLength: 1 });
+  if (addIfPresent('cta')) addProp('cta', { type: 'string', minLength: 1 });
+  if (addIfPresent('designNotes')) addProp('designNotes', { type: 'string', minLength: 1 });
+  if (addIfPresent('storyPrompt')) addProp('storyPrompt', { type: 'string', minLength: 1 });
+  if (addIfPresent('storyPromptPlus')) addProp('storyPromptPlus', { type: 'string', minLength: 1 });
+  if (addIfPresent('distributionPlan')) addProp('distributionPlan', { type: 'string', minLength: 1 });
+  if (addIfPresent('hashtags')) {
+    addProp('hashtags', { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } });
+  }
+  const scriptMissing = ['script.hook', 'script.body', 'script.cta'].filter((field) => fieldsSet.has(field));
+  if (fieldsSet.has('script') || scriptMissing.length) {
+    ensureScriptSchema('script', scriptMissing);
+  }
+  const reelMissing = ['reelScript.hook', 'reelScript.body', 'reelScript.cta'].filter((field) => fieldsSet.has(field));
+  if (fieldsSet.has('reelScript') || reelMissing.length) {
+    ensureScriptSchema('reelScript', reelMissing);
+  }
+  const engagementMissing = ['engagementScripts.commentReply', 'engagementScripts.dmReply'].filter((field) => fieldsSet.has(field));
+  if (fieldsSet.has('engagementScripts') || engagementMissing.length) {
+    const engagementProps = {};
+    const engagementRequired = [];
+    const addEngagementField = (fieldKey) => {
+      if (!engagementProps[fieldKey]) {
+        engagementProps[fieldKey] = { type: 'string', minLength: 1 };
+        engagementRequired.push(fieldKey);
+      }
+    };
+    if (!engagementMissing.length) {
+      ['commentReply', 'dmReply'].forEach(addEngagementField);
+    } else {
+      engagementMissing.forEach((field) => addEngagementField(field.split('.').pop()));
+    }
+    addProp('engagementScripts', {
+      type: 'object',
+      additionalProperties: false,
+      required: engagementRequired,
+      properties: engagementProps,
+    });
+  }
+  if (addIfPresent('day')) addProp('day', { type: 'integer' });
+  return { type: 'object', additionalProperties: false, required, properties };
+}
+
+function buildBrandBrainRepairPayload(post = {}, fields = []) {
+  const base = { ...(post || {}) };
+  const setEmptyString = (key) => {
+    if (!isNonEmptyString(base[key])) base[key] = '';
+  };
+  const ensureNested = (key, subKey) => {
+    if (!base[key] || typeof base[key] !== 'object') base[key] = {};
+    if (!isNonEmptyString(base[key][subKey])) base[key][subKey] = '';
+  };
+  fields.forEach((field) => {
+    if (field === 'hashtags') {
+      if (!Array.isArray(base.hashtags)) base.hashtags = [];
+      return;
+    }
+    if (field === 'script') {
+      if (!base.script || typeof base.script !== 'object') base.script = {};
+      ['hook', 'body', 'cta'].forEach((key) => ensureNested('script', key));
+      return;
+    }
+    if (field.startsWith('script.')) {
+      ensureNested('script', field.split('.').pop());
+      return;
+    }
+    if (field === 'reelScript') {
+      if (!base.reelScript || typeof base.reelScript !== 'object') base.reelScript = {};
+      ['hook', 'body', 'cta'].forEach((key) => ensureNested('reelScript', key));
+      return;
+    }
+    if (field.startsWith('reelScript.')) {
+      ensureNested('reelScript', field.split('.').pop());
+      return;
+    }
+    if (field === 'engagementScripts') {
+      if (!base.engagementScripts || typeof base.engagementScripts !== 'object') base.engagementScripts = {};
+      ['commentReply', 'dmReply'].forEach((key) => ensureNested('engagementScripts', key));
+      return;
+    }
+    if (field.startsWith('engagementScripts.')) {
+      ensureNested('engagementScripts', field.split('.').pop());
+      return;
+    }
+    if (field === 'day') {
+      if (!Number.isFinite(Number(base.day))) base.day = null;
+      return;
+    }
+    setEmptyString(field);
+  });
+  return base;
+}
+
+function mergeBrandBrainRepair(post = {}, repair = {}) {
+  const next = { ...(post || {}) };
+  if (!repair || typeof repair !== 'object') return next;
+  Object.entries(repair).forEach(([key, value]) => {
+    if (key === 'script' || key === 'reelScript' || key === 'engagementScripts') {
+      const existing = next[key] && typeof next[key] === 'object' ? next[key] : {};
+      next[key] = { ...existing, ...(value && typeof value === 'object' ? value : {}) };
+    } else {
+      next[key] = value;
+    }
+  });
+  return next;
+}
+
 
 function resolveStoryPromptPlusValue(post = {}) {
   for (const key of STORY_PROMPT_PLUS_ALIASES) {
@@ -5365,16 +5613,19 @@ const server = http.createServer((req, res) => {
       throw err;
     }
     const brandBrainEnabled = Boolean(brandBrainDirective);
+    if (brandBrainEnabled) {
+      rawPosts = rawPosts.map((post) => coerceBrandBrainPostTypes(post));
+    }
     const missingFieldsReport = [];
-    rawPosts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
-      if (!missing.length) return;
-      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      missingFieldsReport.push({ index: idx, day, slot, missing });
-    });
-    if (missingFieldsReport.length) {
-      if (!brandBrainEnabled) {
+    if (!brandBrainEnabled) {
+      rawPosts.forEach((post, idx) => {
+        const missing = validatePostCompleteness(post);
+        if (!missing.length) return;
+        const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+        const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+        missingFieldsReport.push({ index: idx, day, slot, missing });
+      });
+      if (missingFieldsReport.length) {
         const err = new Error('Calendar response missing required fields');
         err.code = 'OPENAI_SCHEMA_ERROR';
         err.statusCode = 500;
@@ -5404,81 +5655,79 @@ const server = http.createServer((req, res) => {
             index: idx,
             day,
             slot,
-            reasons: validation.reasons,
-            fields: deriveBrandBrainRepairFields(validation.reasons),
+            validation,
+            fields: deriveBrandBrainRepairFields(validation),
           });
         }
       });
       if (invalidEntries.length) {
+        const issueCount = invalidEntries.length;
         console.warn('[BrandBrain][Validation] issues detected', {
           requestId: loggingContext?.requestId || 'unknown',
           count: invalidEntries.length,
           samples: invalidEntries.slice(0, 2),
         });
-        const schema = buildCalendarSchemaObject(
-          expectedCount || rawPosts.length,
-          fallbackStart,
-          fallbackStart + daysToGenerate - 1
-        );
-        const repairPayload = {
-          posts: rawPosts.map((post) => post || {}),
-        };
-        const repairSummary = invalidEntries.map((entry) => ({
-          index: entry.index,
-          day: entry.day,
-          slot: entry.slot,
-          fields: entry.fields,
-          reasons: entry.reasons,
-        }));
-        const repairPrompt = [
-          'You are a JSON repair tool.',
-          'Return ONLY valid JSON. No markdown. No commentary.',
-          'You must keep the exact number of posts and the same order.',
-          'Fix ONLY the fields listed per post; do not change other fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts.',
-          'hashtags must be an array of strings (8–12).',
-          'Do not use placeholders, generic filler, or meta-instructions.',
-          'Follow the Brand Brain rules: niche-specific, sales-forward, and retention-driven (apply a category ruleset per post without labeling it).',
-          `Fields to repair: ${JSON.stringify(repairSummary)}`,
-          `Original JSON: ${JSON.stringify(repairPayload)}`,
-        ].join('\n');
-        try {
-          const payload = JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: repairPrompt }],
-            temperature: 0.2,
-            max_tokens: Math.max(chunkMinTokens, chunkBaseTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: 'calendar_batch_repair', strict: true, schema },
-            },
-          });
-          const options = {
-            hostname: 'api.openai.com',
-            path: '/v1/chat/completions',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payload),
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-            },
-          };
-          const completion = await openAIRequest(options, payload);
-          const extract = completion?.choices?.[0]?.message?.content;
-          const text = typeof extract === 'string'
-            ? extract
-            : Array.isArray(extract)
-              ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
-              : '';
-          const parsed = tryParsePosts(text, expectedCount || rawPosts.length);
-          if (parsed.posts) {
-            rawPosts = parsed.posts;
+        const repairFailures = [];
+        for (const entry of invalidEntries) {
+          if (!entry.fields.length) {
+            repairFailures.push(entry);
+            continue;
           }
-        } catch (repairErr) {
-          console.warn('[BrandBrain][Repair] failed', {
-            requestId: loggingContext?.requestId || 'unknown',
-            error: repairErr?.message || repairErr,
-          });
+          const repairSchema = buildBrandBrainRepairSchema(entry.fields);
+          const repairPayload = buildBrandBrainRepairPayload(rawPosts[entry.index], entry.fields);
+          const repairPrompt = [
+            'You are a JSON repair tool.',
+            'Return ONLY valid JSON. No markdown. No commentary.',
+            'Output ONLY the missing fields listed. Do not modify any other fields.',
+            `Niche style: ${nicheStyle || 'the niche'}.`,
+            `Day ${entry.day}, slot ${entry.slot}.`,
+            `Missing fields: ${JSON.stringify(entry.fields)}.`,
+            `Existing post JSON: ${JSON.stringify(repairPayload)}`,
+          ].join('\n');
+          try {
+            const payload = JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [{ role: 'user', content: repairPrompt }],
+              temperature: 0.2,
+              max_tokens: Math.max(chunkMinTokens, chunkBaseTokens),
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: 'calendar_post_repair', strict: true, schema: repairSchema },
+              },
+            });
+            const options = {
+              hostname: 'api.openai.com',
+              path: '/v1/chat/completions',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+            };
+            const completion = await openAIRequest(options, payload);
+            const extract = completion?.choices?.[0]?.message?.content;
+            const text = typeof extract === 'string'
+              ? extract
+              : Array.isArray(extract)
+                ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
+                : '';
+            const parsed = tryParseObjectFromContent(text);
+            if (parsed.object) {
+              const merged = mergeBrandBrainRepair(rawPosts[entry.index], parsed.object);
+              rawPosts[entry.index] = coerceBrandBrainPostTypes(merged);
+            } else {
+              repairFailures.push(entry);
+            }
+          } catch (repairErr) {
+            console.warn('[BrandBrain][Repair] failed', {
+              requestId: loggingContext?.requestId || 'unknown',
+              day: entry.day,
+              slot: entry.slot,
+              error: repairErr?.message || repairErr,
+            });
+            repairFailures.push(entry);
+          }
         }
         invalidEntries = [];
         rawPosts.forEach((post, idx) => {
@@ -5490,27 +5739,80 @@ const server = http.createServer((req, res) => {
               index: idx,
               day,
               slot,
-              reasons: validation.reasons,
-              fields: deriveBrandBrainRepairFields(validation.reasons),
+              validation,
+              fields: deriveBrandBrainRepairFields(validation),
             });
           }
         });
         if (invalidEntries.length) {
-          const err = new Error('Brand Brain validation failed after repair');
-          err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-          err.statusCode = 500;
-          err.details = invalidEntries;
-          console.error('[BrandBrain][Validation] repair failed', {
-            requestId: loggingContext?.requestId || 'unknown',
-            failures: invalidEntries.length,
-            samples: invalidEntries.slice(0, 2),
-          });
-          throw err;
+          const regenFailures = [];
+          for (const entry of invalidEntries) {
+            const retryInstructions = [
+              'Brand Brain full regen for a single post.',
+              `Day ${entry.day}, slot ${entry.slot}.`,
+              'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
+            ].join(' ');
+            try {
+              const retryResult = await callOpenAI(nicheStyle, brandContext, {
+                days: 1,
+                startDay: entry.day,
+                postsPerDay: 1,
+                loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: entry.day },
+                maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+                reduceVerbosity: true,
+                usedSignatures: normalizedUsedSignatures,
+                brandBrainDirective,
+                extraInstructions: retryInstructions,
+              });
+              const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
+              const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
+              const validation = normalizedCandidate ? validateBrandBrainPost(normalizedCandidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
+              if (validation.ok) {
+                rawPosts[entry.index] = normalizedCandidate;
+              } else {
+                regenFailures.push({
+                  index: entry.index,
+                  day: entry.day,
+                  slot: entry.slot,
+                  validation,
+                });
+              }
+            } catch (regenErr) {
+              console.warn('[BrandBrain][Regen] failed', {
+                requestId: loggingContext?.requestId || 'unknown',
+                day: entry.day,
+                slot: entry.slot,
+                error: regenErr?.message || regenErr,
+              });
+              regenFailures.push(entry);
+            }
+          }
+          if (regenFailures.length) {
+            const err = new Error('Brand Brain validation failed after repair');
+            err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
+            err.statusCode = 500;
+            err.details = regenFailures.map((entry) => ({
+              index: entry.index,
+              day: entry.day,
+              slot: entry.slot,
+              missingFields: entry.validation?.missingFields || [],
+              bannedPhrasesHits: entry.validation?.bannedPhrasesHits || [],
+              minLengthFailures: entry.validation?.minLengthFailures || [],
+              metaLanguageHits: entry.validation?.metaLanguageHits || [],
+              tooGenericFlags: entry.validation?.tooGenericFlags || [],
+            }));
+            console.error('[BrandBrain][Validation] repair failed', {
+              requestId: loggingContext?.requestId || 'unknown',
+              failures: regenFailures.length,
+              samples: err.details.slice(0, 2),
+            });
+            throw err;
+          }
         }
-        console.log('[BrandBrain][Repair] fields repaired', {
+        console.log('[BrandBrain][Repair] completed', {
           requestId: loggingContext?.requestId || 'unknown',
-          count: repairSummary.length,
-          samples: repairSummary.slice(0, 2),
+          repairedCount: issueCount,
+          repairFailures: repairFailures.length,
         });
       }
     }
@@ -5560,16 +5862,74 @@ const server = http.createServer((req, res) => {
       samples: normalizedMissing.slice(0, 2),
     });
     if (brandBrainEnabled && normalizedMissing.length) {
-      const err = new Error('Brand Brain normalization missing required fields');
-      err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-      err.statusCode = 500;
-      err.details = normalizedMissing;
       console.warn('[BrandBrain][SchemaValidation] normalized missing required fields', {
         requestId: loggingContext?.requestId || 'unknown',
         count: normalizedMissing.length,
         samples: normalizedMissing.slice(0, 2),
       });
-      throw err;
+      const regenFailures = [];
+      for (const entry of normalizedMissing) {
+        const idx = entry.index;
+        const day = Number.isFinite(Number(posts[idx]?.day))
+          ? Number(posts[idx].day)
+          : computePostDayIndex(idx, fallbackStart, perDay);
+        const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+        const retryInstructions = [
+          'Brand Brain full regen for a single post after normalization failure.',
+          `Day ${day}, slot ${slot}.`,
+          'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
+        ].join(' ');
+        try {
+          const retryResult = await callOpenAI(nicheStyle, brandContext, {
+            days: 1,
+            startDay: day,
+            postsPerDay: 1,
+            loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: day, normalizationRetry: true },
+            maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+            reduceVerbosity: true,
+            usedSignatures: normalizedUsedSignatures,
+            brandBrainDirective,
+            extraInstructions: retryInstructions,
+          });
+          const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
+          const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
+          const validation = normalizedCandidate ? validateBrandBrainPost(normalizedCandidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
+          if (validation.ok) {
+            posts[idx] = normalizedCandidate;
+          } else {
+            regenFailures.push({
+              index: idx,
+              day,
+              slot,
+              validation,
+            });
+          }
+        } catch (regenErr) {
+          console.warn('[BrandBrain][Regen] normalization retry failed', {
+            requestId: loggingContext?.requestId || 'unknown',
+            day,
+            slot,
+            error: regenErr?.message || regenErr,
+          });
+          regenFailures.push({ index: idx, day, slot });
+        }
+      }
+      if (regenFailures.length) {
+        const err = new Error('Brand Brain normalization missing required fields');
+        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
+        err.statusCode = 500;
+        err.details = regenFailures.map((entry) => ({
+          index: entry.index,
+          day: entry.day,
+          slot: entry.slot,
+          missingFields: entry.validation?.missingFields || [],
+          bannedPhrasesHits: entry.validation?.bannedPhrasesHits || [],
+          minLengthFailures: entry.validation?.minLengthFailures || [],
+          metaLanguageHits: entry.validation?.metaLanguageHits || [],
+          tooGenericFlags: entry.validation?.tooGenericFlags || [],
+        }));
+        throw err;
+      }
     }
     const signatureSet = new Set(normalizedUsedSignatures);
     const duplicates = [];
