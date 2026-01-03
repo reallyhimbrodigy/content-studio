@@ -3531,6 +3531,27 @@ const BRAND_BRAIN_FORBIDDEN_PHRASES = [
   'here are',
   'best',
   'ultimate',
+  'call out',
+  'anchor the fix',
+  'the payoff is',
+  'without chasing',
+  'open with',
+  'end with',
+  'add one',
+  'then a quick',
+  'use tight cuts',
+  'pattern interrupt',
+  'the goal is',
+  'this will',
+  'make sure',
+  'focus on',
+  'remember to',
+  'loss aversion:',
+  'social proof:',
+  'scarcity:',
+  'commitment:',
+  'anchoring:',
+  'authority:',
 ];
 const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
   (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
@@ -3541,19 +3562,34 @@ const BRAND_BRAIN_LABEL_PREFIXES = [
 const BRAND_BRAIN_META_PREFIXES = [
   /^\s*(explain|outline|list|describe|write|return|output)\b/i,
 ];
+const BRAND_BRAIN_MECHANICS_ALLOWED_FIELDS = new Set(['designNotes', 'distributionPlan']);
+const BRAND_BRAIN_MECHANICS_PHRASES = [
+  'pattern interrupt',
+  'tight cuts',
+  'open with',
+  'end with',
+  'then a quick',
+  'add one',
+  'use tight cuts',
+];
+const BRAND_BRAIN_IMPERATIVE_REGEX = /\b(open|add|end|use|call|anchor|show|remember|focus)\b/i;
 const BRAND_BRAIN_MIN_LENGTHS = {
   title: 8,
   hook: 12,
   caption: 80,
   cta: 10,
-  storyPrompt: 20,
+  storyPrompt: 60,
   storyPromptPlus: 40,
   designNotes: 40,
   distributionPlan: 80,
-  scriptBody: 40,
-  reelScriptBody: 40,
-  engagementComment: 12,
-  engagementDm: 12,
+  scriptHook: 80,
+  scriptBody: 200,
+  scriptCta: 40,
+  reelScriptHook: 80,
+  reelScriptBody: 200,
+  reelScriptCta: 40,
+  engagementComment: 80,
+  engagementDm: 80,
 };
 const BRAND_BRAIN_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
@@ -3583,6 +3619,16 @@ function extractBrandBrainTokens(nicheStyle = '') {
     .map((token) => token.trim())
     .filter((token) => token.length >= 4 && !BRAND_BRAIN_STOPWORDS.has(token));
   return Array.from(new Set(tokens));
+}
+
+function extractCtaKeyword(cta = '') {
+  const text = toPlainString(cta || '');
+  if (!text) return '';
+  const quoted = text.match(/["']([A-Za-z0-9]{3,12})["']/);
+  if (quoted) return quoted[1].toUpperCase();
+  const caps = text.match(/\b[A-Z]{3,12}\b/);
+  if (caps) return caps[0].toUpperCase();
+  return '';
 }
 
 function buildBrandBrainHashtags(nicheStyle = '', minCount = 8, maxCount = 12) {
@@ -3670,6 +3716,11 @@ function findBrandBrainForbiddenMatch(value = '') {
   return null;
 }
 
+function isMechanicMatchAllowed(match, field) {
+  if (!match || !field || !BRAND_BRAIN_MECHANICS_ALLOWED_FIELDS.has(field)) return false;
+  return BRAND_BRAIN_MECHANICS_PHRASES.some((phrase) => match.source.includes(escapeRegexPattern(phrase)));
+}
+
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
   const reasons = [];
   const missing = validatePostCompleteness(post);
@@ -3712,7 +3763,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
   };
   Object.entries(fields).forEach(([field, value]) => {
     const match = findBrandBrainForbiddenMatch(value);
-    if (match) {
+    if (match && !isMechanicMatchAllowed(match, field)) {
       reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
       bannedPhrasesHits.push({ field, match: match.source });
     }
@@ -3749,6 +3800,10 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     ['reelScriptBody', reelScriptBody],
     ['engagementComment', engagementComment],
     ['engagementDm', engagementDm],
+    ['scriptHook', post.script?.hook],
+    ['scriptCta', post.script?.cta],
+    ['reelScriptHook', post.reelScript?.hook],
+    ['reelScriptCta', post.reelScript?.cta],
   ];
   minChecks.forEach(([field, value]) => {
     const min = BRAND_BRAIN_MIN_LENGTHS[field];
@@ -3761,6 +3816,25 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
   if (hashtags.length < 8 || hashtags.length > 12) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
     minLengthFailures.push({ field: 'hashtags', length: hashtags.length, min: 8 });
+  }
+  if (caption && BRAND_BRAIN_IMPERATIVE_REGEX.test(caption)) {
+    reasons.push({ code: 'META_LANGUAGE', field: 'caption', detail: 'imperative_language' });
+    metaLanguageHits.push({ field: 'caption', detail: 'imperative_language' });
+  }
+  if (storyPrompt && !storyPrompt.trim().endsWith('?')) {
+    reasons.push({ code: 'FORMAT', field: 'storyPrompt', detail: 'missing_question_mark' });
+    minLengthFailures.push({ field: 'storyPrompt', length: storyPrompt.length, min: BRAND_BRAIN_MIN_LENGTHS.storyPrompt });
+  }
+  const keyword = extractCtaKeyword(cta);
+  if (keyword) {
+    const commentText = toPlainString(post.engagementScripts?.commentReply);
+    const dmText = toPlainString(post.engagementScripts?.dmReply);
+    if (commentText && !commentText.toUpperCase().includes(keyword)) {
+      reasons.push({ code: 'CTA_KEYWORD_MISSING', field: 'engagementScripts.commentReply', detail: keyword });
+    }
+    if (dmText && !dmText.toUpperCase().includes(keyword)) {
+      reasons.push({ code: 'CTA_KEYWORD_MISSING', field: 'engagementScripts.dmReply', detail: keyword });
+    }
   }
   const nicheTokens = extractBrandBrainTokens(nicheStyle);
   if (nicheTokens.length) {
@@ -4387,17 +4461,26 @@ function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, ni
   const title = `${dayLabel}: ${niche} buyer signal`;
   const hook = `${dayLabel}: ${niche} leads pause when the first offer feels thin.`;
   const cta = `DM "PLAN" for the ${niche} checklist.`;
-  const caption = `${hook} Loss aversion: call out what gets lost when the signal is missed, then anchor the fix with one concrete example. The payoff is faster replies and cleaner next steps without chasing. Open with the local cue, add one proof detail, and end with the CTA that moves the lead forward.`;
-  const designNotes = `On-screen text: "${title}". Pattern interrupt in the first second, then a quick before/after, then the CTA keyword. Use tight cuts every 2-3 seconds to keep retention.`;
-  const storyPrompt = `Which ${niche} detail slows your decisions most right now?`;
-  const storyPromptPlus = `Poll: price vs timing. Question box: what detail made you pause? Slider: readiness to move this week.`;
-  const distributionPlan = `First second: open on the hook as on-screen text. Mid: show one proof cue and a quick step list. Pin a comment with the keyword and reply within 30 minutes. Follow with a short story recap the next morning.`;
+  const caption = `${hook} Loss aversion shows up when a Brickell condo buyer sees HOA plus insurance and freezes. Save this checklist: price, HOA, insurance, and flood zone status. Comment: Brickell condo or Kendall single-family? ${cta}`;
+  const designNotes = `On-screen text: "${title}". Pattern interrupt in the first second, then a quick before/after, then the CTA keyword. Tight cuts every 2-3 seconds to keep retention.`;
+  const storyPrompt = `What is your non-negotiable right now: walkability, schools, or commute time?`;
+  const storyPromptPlus = `Poll: walkability vs schools. Question box: your must-have. Slider: readiness to tour this month.`;
+  const distributionPlan = `First second: hook as on-screen text. Mid: show one proof cue and a short checklist. Pin a comment with the keyword and reply within 30 minutes. Follow with a short story recap the next morning.`;
   const hashtags = buildFallbackHashtagsForNiche(nicheStyle);
-  const script = { hook, body: caption, cta };
-  const reelScript = { hook, body: caption, cta };
+  const scriptHook = `${hook} Loss aversion shows up when monthly costs stack and a buyer delays the decision.`;
+  const scriptBody = [
+    `Loss aversion hits when a Brickell condo buyer sees HOA plus insurance and pauses.`,
+    `Here is the four-number checklist: price, HOA, insurance, flood zone.`,
+    `Save this list if you are comparing two buildings this week.`,
+    `Comment BRICKELL or KENDALL so I know which map to send.`,
+    `I will send the exact checklist with the DM keyword.`,
+    cta,
+  ].join(' ');
+  const script = { hook: scriptHook, body: scriptBody, cta };
+  const reelScript = { hook: scriptHook, body: scriptBody, cta };
   const engagementScripts = {
-    commentReply: `Appreciate the clarity. What is your timeline and main constraint?`,
-    dmReply: `Thanks for reaching out. What is your timeline, budget range, and location focus?`,
+    commentReply: `Appreciate it. Reply PLAN with your timeline, budget range, and neighborhood focus so I can tailor the checklist.`,
+    dmReply: `Thanks for the PLAN request. What is your timeline, budget range, and location focus so I can send the right checklist?`,
   };
   const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
   const suggestedAudio = normalizeSuggestedAudioValue('', fallbackAudio);
@@ -4488,9 +4571,18 @@ function buildBrandBrainRepairSchema(fields = []) {
     const scriptRequired = [];
     const addScriptField = (fieldKey) => {
       if (!scriptProps[fieldKey]) {
-        const min = fieldKey === 'body'
-          ? (key === 'reelScript' ? BRAND_BRAIN_MIN_LENGTHS.reelScriptBody : BRAND_BRAIN_MIN_LENGTHS.scriptBody)
-          : 1;
+        const min = (() => {
+          if (fieldKey === 'body') {
+            return key === 'reelScript' ? BRAND_BRAIN_MIN_LENGTHS.reelScriptBody : BRAND_BRAIN_MIN_LENGTHS.scriptBody;
+          }
+          if (fieldKey === 'hook') {
+            return key === 'reelScript' ? BRAND_BRAIN_MIN_LENGTHS.reelScriptHook : BRAND_BRAIN_MIN_LENGTHS.scriptHook;
+          }
+          if (fieldKey === 'cta') {
+            return key === 'reelScript' ? BRAND_BRAIN_MIN_LENGTHS.reelScriptCta : BRAND_BRAIN_MIN_LENGTHS.scriptCta;
+          }
+          return 1;
+        })();
         scriptProps[fieldKey] = { type: 'string', minLength: min || 1 };
         scriptRequired.push(fieldKey);
       }
@@ -5978,18 +6070,28 @@ const server = http.createServer((req, res) => {
           const repairSchema = buildBrandBrainRepairSchema(entry.fields);
           const repairPayload = buildBrandBrainRepairPayload(rawPosts[entry.index], entry.fields);
           const repairPrompt = [
-            'You are a JSON repair tool.',
-            'Return ONLY valid JSON. No markdown. No commentary.',
-            'BRANDBRAIN REPAIR RULES',
-            'You are repairing a content card that must be ready-to-post, not advice about what to post.',
-            'Do not write meta-instructions. Write the actual post content.',
-            'Required in the repaired card text (must be explicit):',
-            '1) Sales psychology: name ONE bias and use it in the copy.',
-            '2) Social algorithm: include ONE retention mechanic + ONE engagement mechanic + ONE save mechanic, written as actionable lines the creator will use.',
-            '3) Concrete specifics: include a Miami-specific cue + one proof detail (number, timeframe, constraint, neighborhood, or price band).',
-            '4) CTA: include a DM keyword that matches the promised asset.',
-            'Banned: generic coaching language, “open with…”, “call out…”, “anchor…”, “the payoff is…”, “without chasing…”.',
-            'Return the exact JSON schema only.',
+            'You are repairing a single content card JSON. The card currently contains META-INSTRUCTIONS or EMPTY SECTIONS.',
+            '',
+            'You MUST rewrite the card so it is ready-to-post and complies with ALL rules below.',
+            '',
+            'RULES',
+            'A) The main content paragraph must be spoken copy (what the creator says). No instructions. No “open with / call out / the payoff is / anchor / without chasing”.',
+            'B) Video Script MUST be filled with:',
+            '- Hook: 1–2 sentences, includes Miami-specific cue.',
+            '- Body: 6–10 short lines, includes one proof detail (number/timeframe/neighborhood/price band) and explicitly applies ONE bias (loss aversion OR social proof OR scarcity OR commitment OR anchoring) in the spoken copy.',
+            '- CTA: 1–2 sentences, includes DM keyword exactly as provided in CTA.',
+            'C) Design Notes MUST include:',
+            '- retention mechanic (tight cuts every 2–3s OR on-screen text resets OR pattern interrupt in first second)',
+            '- visual structure (before/after OR 3-step list OR map/neighborhood callout)',
+            'D) Distribution Plan MUST include:',
+            '- one engagement mechanic (pinned comment with keyword + reply within 30 min)',
+            '- one save mechanic (explicit “save this” trigger tied to a checklist/template)',
+            'E) Engagement Loop MUST include two complete messages:',
+            '- Comment reply (asks one qualifying question)',
+            '- DM reply (asks 3 intake fields: timeline, budget, location)',
+            'F) Keep schema unchanged. Output valid JSON only.',
+            '',
+            'Rewrite anything that violates rules. Do not keep any original meta-instruction sentences.',
             `Niche style: ${nicheStyle || 'the niche'}.`,
             `Day ${entry.day}, slot ${entry.slot}.`,
             `Missing fields: ${JSON.stringify(entry.fields)}.`,
