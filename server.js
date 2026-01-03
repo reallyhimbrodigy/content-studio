@@ -2442,6 +2442,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       designNotes: { type: 'string', minLength: 1 },
       storyPrompt: { type: 'string', minLength: 1 },
       storyPromptPlus: { type: 'string', minLength: 1 },
+      distributionPlan: { type: 'string' },
       hashtags: {
         type: 'array',
         items: { type: 'string', minLength: 1 },
@@ -2529,27 +2530,26 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         `Brand Brain enabled: output must be final publishable copy tailored to the user's niche and offer.`,
+        `Forbidden outputs: "placeholder", "quick hook", "explain the idea", "ask for feedback", "neutral background", "let me know what you think", "talk briefly", "screenshot this so you remember", "office hours".`,
+        `Never output meta-instructions or templates. No headings, labels, or instructional verbs (Explain/List/Outline). Output must read like finished content.`,
         `Every card sells the user's service with a concrete next step (consult, audit, assessment, listing/buyer consult, treatment plan, membership, strategy call, teardown).`,
         `Every card contains one differentiator without unverifiable claims (local expertise, process, specialization, credentials if provided, or commonly observed outcomes).`,
         `No emojis. No fabricated statistics or precise claims unless user-provided. No guarantees or medical promises.`,
         `Use one target persona, one target desire, and one target objection per post. Include pain/friction, mechanism/why, specific next step, and a retention device.`,
         `Use concrete nouns, local cues, and intent language. Avoid generic influencer filler.`,
-        `If nicheStyle contains a location, reference it in Title or Hashtags or CTA.`,
-        `No headings, labels, or instructional verbs (Explain/List/Outline). Output must read like a finished post.`,
-        `title: 4–7 words, niche keyword + outcome angle, aligned to the hook claim, never generic.`,
-        `hook: 1–2 lines, pattern interrupt tied to niche stakes and curiosity gap, includes a niche-specific noun, points toward the business action, avoids soft questions.`,
-        `caption: tight sentences only; integrate pain/goal, mechanism, mistake, consequence, a 3-step fix, objection defuser, soft bridge to CTA, and a save/share trigger without exposing internal labels.`,
-        `cta: one clear conversion action aligned to niche and offer; includes deliverable and friction reducer (keyword + what they get + time expectation). Must match engagementScripts and reelScript CTA.`,
-        `storyPrompt: one direct qualifying question (timeline, budget range, area, concern). Do not duplicate the hook.`,
-        `format: keep existing format; if Reel, add one retention instruction and one trust/authority instruction using niche-safe visuals.`,
-        `designNotes: first 1s visual is niche-specific; 2–3 concrete visual beats with niche props/scenes; one on-screen text line that mirrors the hook claim without quoting it verbatim.`,
-        `engagementScripts: pinned comment that qualifies leads, comment reply template, DM opener that moves toward booking/lead magnet, and a next-post idea that advances the funnel.`,
-        `reelScript: hook (same claim, tightened), three short beats, CTA (same CTA). Include one niche-specific objection defuser and one non-numeric authority line. No internal labels.`,
-        `script: aligned with reelScript (hook/body/cta) and CTA verbatim.`,
-        `distributionPlan: operational and niche-specific; two retention beats with timestamps tied to visuals, caption path (insight + mechanism + CTA deliverable), one repurpose idea. No meta-analysis phrasing.`,
+        `If nicheStyle contains a location, reference it in title, hashtags, or CTA.`,
+        `Title: 4–7 words; specific promise/angle tied to the niche; no generic titles or "Office Hours" unless explicitly about office hours and still tied to lead-gen.`,
+        `Hook: 1–2 lines; pattern interrupt; explicit niche pain/goal; curiosity gap; no soft questions unless contrarian.`,
+        `Caption: include pain, mechanism, mistake, consequence, fix steps (3), proof type (market stat/case outcome/what I see with clients), and objection handling; keep it tight and readable.`,
+        `CTA: single clear conversion action with DM keyword and deliverable (what they get + time expectation). No vague CTAs.`,
+        `StoryPrompt: a reply/DM-driving prompt that is not a copy of the caption; tied to niche qualifiers (timeline, budget, area, concern).`,
+        `DesignNotes: 3–5 concrete visual beats + on-screen text + retention device (e.g., "wait for #3", "save this", "map overlay", "before/after"), all niche-specific.`,
+        `EngagementScripts: include one comment reply and one DM opener that qualify the lead; make the questions niche-specific.`,
+        `ReelScript: hook/body/CTA aligned; body uses a micro-structure (numbered steps / myth-bust / before-after / checklist).`,
+        `DistributionPlan: actionable and specific (first 1s, pinned comment, caption sequence, follow-up post idea).`,
         `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
         `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
-        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts. No empty strings. No nulls. No extra keys.`,
+        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts, distributionPlan. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2565,9 +2565,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
     : 'No prior signatures to avoid yet.';
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
+  const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
  ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. hashtags must be an array of 5–8 strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
  `;
@@ -3392,6 +3393,152 @@ function normalizeScriptObject(source = {}) {
 
 const PLACEHOLDER_PROMPT_REGEX = /^(?:tbd|n\/a|null|undefined|none|story prompt here)$/i;
 const DISTRIBUTION_PLACEHOLDER_REGEX = /^(?:tbd|n\/a|null|undefined|none|distribution plan here)$/i;
+const BRAND_BRAIN_FORBIDDEN_PHRASES = [
+  'placeholder',
+  'quick hook',
+  'explain the idea',
+  'ask for feedback',
+  'neutral background',
+  'let me know what you think',
+  'talk briefly',
+  'screenshot this so you remember',
+  'office hours',
+];
+const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
+  (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
+);
+const BRAND_BRAIN_MIN_LENGTHS = {
+  hook: 12,
+  caption: 80,
+  cta: 10,
+  storyPrompt: 12,
+  storyPromptPlus: 18,
+  designNotes: 40,
+  distributionPlan: 40,
+  scriptBody: 40,
+  reelScriptBody: 40,
+  engagementComment: 12,
+  engagementDm: 12,
+};
+const BRAND_BRAIN_STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
+  'in', 'on', 'at', 'by', 'your', 'you', 'our', 'my', 'their', 'this', 'that',
+  'these', 'those', 'about', 'into', 'over', 'under', 'near', 'per', 'via',
+]);
+
+function extractNicheTokens(nicheStyle = '') {
+  const raw = toPlainString(nicheStyle).toLowerCase();
+  if (!raw) return [];
+  const tokens = raw
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4 && !BRAND_BRAIN_STOPWORDS.has(token));
+  return Array.from(new Set(tokens));
+}
+
+function findBrandBrainForbiddenMatch(value = '') {
+  const text = toPlainString(value);
+  if (!text) return null;
+  for (const regex of BRAND_BRAIN_FORBIDDEN_REGEXES) {
+    if (regex.test(text)) return regex;
+  }
+  return null;
+}
+
+function validateBrandBrainPost(post = {}, nicheStyle = '') {
+  const reasons = [];
+  const missing = validatePostCompleteness(post);
+  if (missing.length) {
+    reasons.push({ code: 'MISSING_FIELD', detail: missing });
+  }
+  const title = toPlainString(post.title);
+  const hook = toPlainString(post.hook);
+  const caption = toPlainString(post.caption);
+  const cta = toPlainString(post.cta);
+  const storyPrompt = toPlainString(post.storyPrompt);
+  const storyPromptPlus = resolveStoryPromptPlusValue(post) || toPlainString(post.storyPromptPlus || post.storyPromptExpanded);
+  const designNotes = toPlainString(post.designNotes);
+  const distributionPlan = resolveDistributionPlanValue(post);
+  const scriptBody = toPlainString(post.script?.body);
+  const reelScriptBody = toPlainString(post.reelScript?.body || post.script?.body);
+  const engagementComment = toPlainString(post.engagementScripts?.commentReply);
+  const engagementDm = toPlainString(post.engagementScripts?.dmReply);
+  const fields = {
+    title,
+    hook,
+    caption,
+    cta,
+    storyPrompt,
+    storyPromptPlus,
+    designNotes,
+    distributionPlan,
+    scriptBody,
+    reelScriptBody,
+    engagementComment,
+    engagementDm,
+    scriptHook: post.script?.hook,
+    scriptCta: post.script?.cta,
+    reelScriptHook: post.reelScript?.hook,
+    reelScriptCta: post.reelScript?.cta,
+  };
+  Object.entries(fields).forEach(([field, value]) => {
+    const match = findBrandBrainForbiddenMatch(value);
+    if (match) {
+      reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
+    }
+  });
+  if (/^\s*placeholder\b/i.test(title) || /\boffice hours\b/i.test(title)) {
+    reasons.push({ code: 'PLACEHOLDER_DETECTED', field: 'title', match: 'placeholder_title' });
+  }
+  const titleWords = title.split(/\s+/).filter(Boolean);
+  if (titleWords.length && titleWords.length < 4) {
+    reasons.push({ code: 'TOO_SHORT', field: 'title', length: titleWords.length });
+  }
+  const minChecks = [
+    ['hook', hook],
+    ['caption', caption],
+    ['cta', cta],
+    ['storyPrompt', storyPrompt],
+    ['storyPromptPlus', storyPromptPlus],
+    ['designNotes', designNotes],
+    ['distributionPlan', distributionPlan],
+    ['scriptBody', scriptBody],
+    ['reelScriptBody', reelScriptBody],
+    ['engagementComment', engagementComment],
+    ['engagementDm', engagementDm],
+  ];
+  minChecks.forEach(([field, value]) => {
+    const min = BRAND_BRAIN_MIN_LENGTHS[field];
+    if (min && toPlainString(value).length < min) {
+      reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
+    }
+  });
+  const hashtags = Array.isArray(post.hashtags) ? post.hashtags.filter((tag) => toPlainString(tag)) : [];
+  if (hashtags.length < 8 || hashtags.length > 12) {
+    reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
+  }
+  const nicheTokens = extractNicheTokens(nicheStyle);
+  if (nicheTokens.length) {
+    const combined = [
+      title,
+      hook,
+      caption,
+      cta,
+      designNotes,
+      storyPrompt,
+      storyPromptPlus,
+      distributionPlan,
+      ...hashtags,
+    ]
+      .map((val) => toPlainString(val).toLowerCase())
+      .join(' ');
+    const hasToken = nicheTokens.some((token) => combined.includes(token));
+    if (!hasToken) {
+      reasons.push({ code: 'TOO_GENERIC', detail: 'missing_niche_tokens' });
+    }
+  }
+  return { ok: reasons.length === 0, reasons };
+}
 
 const STORY_PROMPT_ALIASES = [
   'storyPrompt',
@@ -4908,13 +5055,15 @@ const server = http.createServer((req, res) => {
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
     const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
-    const brandBrainDirective = brandBrainSettings?.enabled
+    const isProUser = Boolean(payload?.isPro);
+    const brandBrainDirective = isProUser && brandBrainSettings?.enabled
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
       userId: userId || null,
       enabled: Boolean(brandBrainDirective),
+      isPro: isProUser,
     });
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
@@ -5055,6 +5204,87 @@ const server = http.createServer((req, res) => {
         detailSamples: missingFieldsReport.slice(0, 2),
       });
       throw err;
+    }
+    const brandBrainEnabled = Boolean(brandBrainDirective);
+    if (brandBrainEnabled) {
+      const invalidEntries = [];
+      rawPosts.forEach((post, idx) => {
+        const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+        const validation = validateBrandBrainPost(post, nicheStyle);
+        if (!validation.ok) {
+          invalidEntries.push({ index: idx, day, reasons: validation.reasons });
+        }
+      });
+      if (invalidEntries.length) {
+        invalidEntries.forEach((entry) => {
+          console.warn('[BrandBrain][Validation] rejected post', {
+            requestId: loggingContext?.requestId || 'unknown',
+            day: entry.day,
+            index: entry.index,
+            reasons: entry.reasons,
+          });
+        });
+        const retryLimit = 2;
+        const retryFailures = [];
+        for (const entry of invalidEntries) {
+          let replaced = false;
+          const slot = perDay > 1 ? ((entry.index % perDay) + 1) : 1;
+          for (let attempt = 1; attempt <= retryLimit; attempt += 1) {
+            console.warn('[BrandBrain][Retry] attempt', {
+              requestId: loggingContext?.requestId || 'unknown',
+              day: entry.day,
+              slot,
+              attempt,
+            });
+            const retryInstructions = [
+              'Brand Brain retry: previous output failed validation due to placeholders or generic filler.',
+              'Return fully specific niche content. Do not use any forbidden phrases or template scaffolding.',
+              `This is slot ${slot} for day ${entry.day}.`,
+              'Return valid JSON only with all required fields and hashtags as an array (8–12 tags).',
+            ].join(' ');
+            const retryResult = await callOpenAI(nicheStyle, brandContext, {
+              days: 1,
+              startDay: entry.day,
+              postsPerDay: 1,
+              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: entry.day, retryAttempt: attempt },
+              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+              reduceVerbosity: true,
+              usedSignatures: normalizedUsedSignatures,
+              brandBrainDirective,
+              extraInstructions: retryInstructions,
+            });
+            const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
+            const validation = candidate ? validateBrandBrainPost(candidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
+            if (validation.ok) {
+              rawPosts[entry.index] = candidate;
+              replaced = true;
+              break;
+            }
+            console.warn('[BrandBrain][Retry] candidate rejected', {
+              requestId: loggingContext?.requestId || 'unknown',
+              day: entry.day,
+              slot,
+              attempt,
+              reasons: validation.reasons,
+            });
+          }
+          if (!replaced) {
+            retryFailures.push(entry);
+          }
+        }
+        if (retryFailures.length) {
+          const err = new Error('Brand Brain validation failed after retries');
+          err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
+          err.statusCode = 500;
+          err.details = retryFailures;
+          console.error('[BrandBrain][Validation] retries exhausted', {
+            requestId: loggingContext?.requestId || 'unknown',
+            failures: retryFailures.length,
+            samples: retryFailures.slice(0, 2),
+          });
+          throw err;
+        }
+      }
     }
     console.log('[Calendar][Server][SchemaValidation]', {
       requestId: loggingContext?.requestId,
@@ -5435,6 +5665,7 @@ const server = http.createServer((req, res) => {
           postsPerDay: requestedPostsPerDay,
           usedSignatures: sanitizedUsedSignatures,
           context: regenContext,
+          isPro,
         });
         const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
         console.log('[Calendar] regen audio counts', {
@@ -5483,6 +5714,7 @@ const server = http.createServer((req, res) => {
               ...(sanitizedBody || {}),
               usedSignatures: sanitizedUsedSignatures,
               context: sanitizedContext,
+              isPro,
             });
             if (!isPro) {
               await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
@@ -5607,6 +5839,7 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body || '{}');
         const posts = await generateCalendarPosts({
           ...payload,
+          isPro: false,
           context: {
             requestId,
             batchIndex: payload?.batchIndex,
@@ -6133,6 +6366,7 @@ const server = http.createServer((req, res) => {
       try {
         const user = await requireSupabaseUser(req);
         req.user = user;
+        const isPro = isUserPro(req);
         const body = await readJsonBody(req);
         const { nicheStyle, day, post, userId } = body || {};
         if (!nicheStyle || typeof day === 'undefined' || day === null) {
@@ -6165,6 +6399,7 @@ const server = http.createServer((req, res) => {
               startDay: dayNumber,
               postsPerDay,
               context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
+              isPro,
             });
           } catch (genErr) {
             throw genErr;
