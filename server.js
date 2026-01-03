@@ -2577,7 +2577,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `Every card contains one differentiator without unverifiable claims (local expertise, process, specialization, credentials if provided, or commonly observed outcomes).`,
         `No emojis. No fabricated statistics or precise claims unless user-provided. No guarantees or medical promises.`,
         `Use one target persona, one target desire, and one target objection per post. Include pain/friction, mechanism/why, specific next step, and a retention device.`,
-        `Each post must center one dominant mechanism with an open loop and payoff, and the CTA must match the funnel stage.`,
+        `Each post must embed exactly one sales psychology lever (scarcity, social proof, authority, reciprocity, loss aversion, contrast, anchoring, commitment, risk reversal) and one social algorithm tactic (3-second hook, retention loop, pattern interrupt, caption skim structure, save/share trigger, series framing, remix prompt, open-loop teaser, visual pacing). Execute them concretely in caption/designNotes; do not name the tactic.`,
         `Use concrete nouns, local cues, and intent language. Avoid generic influencer filler.`,
         `If nicheStyle contains a location, reference it in title, hashtags, or CTA.`,
         `Title: 4–7 words; specific promise/angle tied to the niche; no generic titles or "Office Hours" unless explicitly about office hours and still tied to lead-gen.`,
@@ -2754,6 +2754,20 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStar
     if (!audioString) stats.missingAudio += 1;
   });
   return stats;
+}
+
+function ensureSuggestedAudioOnPosts(posts = [], fallbackEntry = null) {
+  if (!Array.isArray(posts)) return posts;
+  const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+  let missingCount = 0;
+  posts.forEach((post) => {
+    if (!post || typeof post !== 'object') return;
+    if (!isValidSuggestedAudio(post.suggestedAudio)) {
+      missingCount += 1;
+      post.suggestedAudio = normalizeSuggestedAudioValue(post.suggestedAudio, fallback);
+    }
+  });
+  return { posts, missingCount };
 }
 
 function sanitizePostForPrompt(post = {}) {
@@ -3480,6 +3494,11 @@ const BRAND_BRAIN_FORBIDDEN_PHRASES = [
   'lorem',
   'insert',
   'tbd',
+  'tips',
+  'value',
+  'here are',
+  'best',
+  'ultimate',
 ];
 const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
   (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
@@ -4327,8 +4346,8 @@ function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, ni
   const title = `${dayLabel}: ${niche} buyer signal`;
   const hook = `${dayLabel}: ${niche} leads pause when the first offer feels thin.`;
   const cta = `DM "PLAN" for the ${niche} checklist.`;
-  const caption = `${hook} Use one clear value anchor, show a quick example, and state the next step with a single outcome. The payoff is faster replies and cleaner next steps without chasing. Start with the local signal, then prove it with one specific cue, then close with the action.`;
-  const designNotes = `On-screen text: "${title}". Show a real scene, then a quick before/after, then the CTA keyword. Use a tight cut every 2-3 seconds to hold attention.`;
+  const caption = `${hook} Loss aversion: call out what gets lost when the signal is missed, then anchor the fix with one concrete example. The payoff is faster replies and cleaner next steps without chasing. Open with the local cue, add one proof detail, and end with the CTA that moves the lead forward.`;
+  const designNotes = `On-screen text: "${title}". Pattern interrupt in the first second, then a quick before/after, then the CTA keyword. Use tight cuts every 2-3 seconds to keep retention.`;
   const storyPrompt = `Which ${niche} detail slows your decisions most right now?`;
   const storyPromptPlus = `Poll: price vs timing. Question box: what detail made you pause? Slider: readiness to move this week.`;
   const distributionPlan = `First second: open on the hook as on-screen text. Mid: show one proof cue and a quick step list. Pin a comment with the keyword and reply within 30 minutes. Follow with a short story recap the next morning.`;
@@ -4339,6 +4358,8 @@ function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, ni
     commentReply: `Appreciate the clarity. What is your timeline and main constraint?`,
     dmReply: `Thanks for reaching out. What is your timeline, budget range, and location focus?`,
   };
+  const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+  const suggestedAudio = normalizeSuggestedAudioValue('', fallbackAudio);
   return {
     day,
     title,
@@ -4353,6 +4374,7 @@ function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, ni
     script,
     reelScript,
     engagementScripts,
+    suggestedAudio,
   };
 }
 
@@ -6622,6 +6644,13 @@ const server = http.createServer((req, res) => {
         }
         const finalActualCount = resolvedPosts.length;
         const finalPartial = expectedCount ? finalActualCount < expectedCount : false;
+        const audioFix = ensureSuggestedAudioOnPosts(resolvedPosts);
+        if (audioFix.missingCount) {
+          console.log('[Calendar] audio_autofill_applied', {
+            requestId,
+            missingAudioCount: audioFix.missingCount,
+          });
+        }
         const responsePayload = {
           calendarId: targetCalendarId,
           posts: resolvedPosts,
@@ -6707,6 +6736,13 @@ const server = http.createServer((req, res) => {
               resolvedPosts = filled;
             }
             const actualCount = resolvedPosts.length;
+            const audioFix = ensureSuggestedAudioOnPosts(resolvedPosts);
+            if (audioFix.missingCount) {
+              console.log('[Calendar] audio_autofill_applied', {
+                requestId,
+                missingAudioCount: audioFix.missingCount,
+              });
+            }
             const responsePayload = {
               calendarId: sanitizedBody?.calendarId ?? null,
               posts: resolvedPosts,
@@ -6798,6 +6834,9 @@ const server = http.createServer((req, res) => {
         }
         if (!isSchemaError && !isProduction && err?.stack) {
           payload.debugStack = err.stack;
+        }
+        if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
+          payload.errors = regenContext.partialErrors;
         }
         if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
           payload.errors = regenContext.partialErrors;
