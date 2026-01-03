@@ -2128,9 +2128,10 @@ async function withOpenAiSlot(fn) {
   }
 }
 
-function openAIRequest(options, payload) {
+function openAIRequest(options, payload, requestOptions = {}) {
+  const { signal, timeoutMs } = requestOptions || {};
   return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
+    const req = https.request({ ...options, signal }, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {
@@ -2148,6 +2149,26 @@ function openAIRequest(options, payload) {
         }
       });
     });
+    if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+      req.setTimeout(timeoutMs, () => {
+        const err = new Error('OpenAI request timed out');
+        err.code = 'OPENAI_TIMEOUT';
+        req.destroy(err);
+      });
+    }
+    if (signal) {
+      if (signal.aborted) {
+        const err = new Error('OpenAI request aborted');
+        err.code = 'OPENAI_ABORTED';
+        req.destroy(err);
+      } else {
+        signal.addEventListener('abort', () => {
+          const err = new Error('OpenAI request aborted');
+          err.code = 'OPENAI_ABORTED';
+          req.destroy(err);
+        }, { once: true });
+      }
+    }
     req.on('error', reject);
     if (payload) req.write(payload);
     req.end();
@@ -4217,6 +4238,15 @@ function computePostCountTarget(days, postsPerDay) {
   return null;
 }
 
+function timeLeftMs(deadlineAt) {
+  if (!deadlineAt) return Infinity;
+  return Math.max(0, deadlineAt - Date.now());
+}
+
+function isPastDeadline(deadlineAt) {
+  return Boolean(deadlineAt && Date.now() >= deadlineAt);
+}
+
 function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
   const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
@@ -4852,7 +4882,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       response_format: responseFormat,
     });
     const requestPromise = withOpenAiSlot(() =>
-      openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
+      openAIRequest(buildRequestOptions(payload), payload, {
+        signal: opts.signal,
+        timeoutMs: opts.requestTimeoutMs,
+      }).catch((err) => {
         const payloadJson = parseOpenAiErrorPayload(err);
         if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
           const schemaErr = new Error(payloadJson?.error?.message || 'OpenAI schema error');
@@ -4874,7 +4907,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         const timeoutErr = new Error('OpenAI request timed out');
         timeoutErr.code = 'OPENAI_TIMEOUT';
         reject(timeoutErr);
-      }, OPENAI_GENERATION_TIMEOUT_MS);
+      }, opts.requestTimeoutMs || OPENAI_GENERATION_TIMEOUT_MS);
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
@@ -5544,6 +5577,9 @@ const server = http.createServer((req, res) => {
     const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
     const loggingContext = context || {};
     if (userId) loggingContext.userId = userId;
+    const deadlineAt = payload.deadlineAt || null;
+    const abortSignal = payload.abortSignal || null;
+    const maxRepairPosts = 2;
     const tStart = Date.now();
     console.log('[Calendar][Server][Perf] generateCalendarPosts start', {
       nicheStyle,
@@ -5613,6 +5649,10 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
+      const left = timeLeftMs(deadlineAt);
+      const requestTimeoutMs = Number.isFinite(left)
+        ? Math.max(5000, Math.min(45000, left - 5000))
+        : OPENAI_GENERATION_TIMEOUT_MS;
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
         startDay: chunkStartDay,
@@ -5622,6 +5662,8 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         usedSignatures: normalizedUsedSignatures,
         brandBrainDirective,
+        requestTimeoutMs,
+        signal: abortSignal,
       });
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
@@ -5631,21 +5673,46 @@ const server = http.createServer((req, res) => {
     }
 
     while (remainingDays > 0) {
-      const chunkDays = Math.min(remainingDays, chunkLimit);
+      const left = timeLeftMs(deadlineAt);
+      if (left < 15000) {
+        loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+          code: 'DEADLINE_REACHED',
+          detail: 'Stopped before next chunk due to deadline.',
+        }]);
+        break;
+      }
+      let chunkDays = Math.min(remainingDays, chunkLimit);
+      if (Number.isFinite(left)) {
+        if (left < 70000) {
+          chunkDays = Math.min(chunkDays, 1);
+        } else {
+          chunkDays = Math.min(chunkDays, 2);
+        }
+      }
       const chunkStartDay = fallbackStart + processedDays;
       const chunkIndex = chunkMetrics.length;
-      const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex);
-      aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
-      chunkMetrics.push({
-        chunkIndex,
-        startDay: chunkStartDay,
-        days: chunkDays,
-        rawLength: chunkResult.rawLength,
-        duration: chunkResult.latency,
-        timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-      });
-      remainingDays -= chunkDays;
-      processedDays += chunkDays;
+      try {
+        const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex);
+        aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
+        chunkMetrics.push({
+          chunkIndex,
+          startDay: chunkStartDay,
+          days: chunkDays,
+          rawLength: chunkResult.rawLength,
+          duration: chunkResult.latency,
+          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+        });
+        remainingDays -= chunkDays;
+        processedDays += chunkDays;
+      } catch (err) {
+        loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+          code: 'OPENAI_CHUNK_FAILED',
+          detail: err?.message || 'openai_chunk_failed',
+          chunkIndex,
+          startDay: chunkStartDay,
+        }]);
+        break;
+      }
     }
     console.log('[Calendar][Server][Chunks]', {
       requestId: logContext.requestId,
@@ -5674,10 +5741,7 @@ const server = http.createServer((req, res) => {
       return post;
     });
     if (expectedCount && rawPosts.length !== expectedCount) {
-      const err = new Error('Calendar response count mismatch');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 500;
-      err.details = {
+      const details = {
         expectedCount,
         actualCount: rawPosts.length,
       };
@@ -5686,11 +5750,22 @@ const server = http.createServer((req, res) => {
         startDay,
         days,
         postsPerDay,
-        ...err.details,
+        ...details,
         responseLength: rawLength,
       });
-      err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-      throw err;
+      if (deadlineAt) {
+        loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+          code: 'COUNT_MISMATCH',
+          details,
+        }]);
+      } else {
+        const err = new Error('Calendar response count mismatch');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.statusCode = 500;
+        err.details = details;
+        err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
+        throw err;
+      }
     }
     const brandBrainEnabled = Boolean(brandBrainDirective);
     if (brandBrainEnabled) {
@@ -5748,7 +5823,29 @@ const server = http.createServer((req, res) => {
           samples: invalidEntries.slice(0, 2),
         });
         const repairFailures = [];
-        for (const entry of invalidEntries) {
+        const repairCandidates = invalidEntries.slice(0, maxRepairPosts);
+        if (repairCandidates.length < invalidEntries.length) {
+          loggingContext.partialErrors = (loggingContext.partialErrors || []).concat(invalidEntries.slice(maxRepairPosts).map((entry) => ({
+            code: 'BRANDBRAIN_REPAIR_SKIPPED',
+            index: entry.index,
+            day: entry.day,
+            slot: entry.slot,
+            details: entry.validation,
+          })));
+        }
+        for (const entry of repairCandidates) {
+          const left = timeLeftMs(deadlineAt);
+          if (left < 25000) {
+            repairFailures.push(entry);
+            loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+              code: 'BRANDBRAIN_REPAIR_SKIPPED',
+              index: entry.index,
+              day: entry.day,
+              slot: entry.slot,
+              details: entry.validation,
+            }]);
+            continue;
+          }
           if (!entry.fields.length) {
             repairFailures.push(entry);
             continue;
@@ -5785,7 +5882,10 @@ const server = http.createServer((req, res) => {
                 Authorization: `Bearer ${OPENAI_API_KEY}`,
               },
             };
-            const completion = await openAIRequest(options, payload);
+            const requestTimeoutMs = Number.isFinite(left)
+              ? Math.max(5000, Math.min(45000, left - 5000))
+              : OPENAI_GENERATION_TIMEOUT_MS;
+            const completion = await openAIRequest(options, payload, { signal: abortSignal, timeoutMs: requestTimeoutMs });
             const extract = completion?.choices?.[0]?.message?.content;
             const text = typeof extract === 'string'
               ? extract
@@ -5827,6 +5927,18 @@ const server = http.createServer((req, res) => {
         if (invalidEntries.length) {
           const regenFailures = [];
           for (const entry of invalidEntries) {
+            const left = timeLeftMs(deadlineAt);
+            if (left < 15000) {
+              regenFailures.push(entry);
+              loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+                code: 'BRANDBRAIN_REGEN_SKIPPED',
+                index: entry.index,
+                day: entry.day,
+                slot: entry.slot,
+                details: entry.validation,
+              }]);
+              continue;
+            }
             const retryInstructions = [
               'Brand Brain full regen for a single post.',
               `Day ${entry.day}, slot ${entry.slot}.`,
@@ -5843,6 +5955,10 @@ const server = http.createServer((req, res) => {
                 usedSignatures: normalizedUsedSignatures,
                 brandBrainDirective,
                 extraInstructions: retryInstructions,
+                requestTimeoutMs: Number.isFinite(left)
+                  ? Math.max(5000, Math.min(45000, left - 5000))
+                  : OPENAI_GENERATION_TIMEOUT_MS,
+                signal: abortSignal,
               });
               const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
               const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
@@ -5957,6 +6073,17 @@ const server = http.createServer((req, res) => {
           ? Number(posts[idx].day)
           : computePostDayIndex(idx, fallbackStart, perDay);
         const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+        const left = timeLeftMs(deadlineAt);
+        if (left < 15000) {
+          regenFailures.push({ index: idx, day, slot });
+          loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
+            code: 'BRANDBRAIN_REGEN_SKIPPED',
+            index: idx,
+            day,
+            slot,
+          }]);
+          continue;
+        }
         const retryInstructions = [
           'Brand Brain full regen for a single post after normalization failure.',
           `Day ${day}, slot ${slot}.`,
@@ -5973,6 +6100,10 @@ const server = http.createServer((req, res) => {
             usedSignatures: normalizedUsedSignatures,
             brandBrainDirective,
             extraInstructions: retryInstructions,
+            requestTimeoutMs: Number.isFinite(left)
+              ? Math.max(5000, Math.min(45000, left - 5000))
+              : OPENAI_GENERATION_TIMEOUT_MS,
+            signal: abortSignal,
           });
           const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
           const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
@@ -6300,6 +6431,11 @@ const server = http.createServer((req, res) => {
       let body = null;
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
+      const DEADLINE_MS = 105000;
+      const startedAt = Date.now();
+      const deadlineAt = startedAt + DEADLINE_MS;
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), Math.max(0, DEADLINE_MS - 2000));
       try {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
@@ -6368,6 +6504,8 @@ const server = http.createServer((req, res) => {
           usedSignatures: sanitizedUsedSignatures,
           context: regenContext,
           isPro,
+          deadlineAt,
+          abortSignal: controller.signal,
         });
         const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
         console.log('[Calendar] regen audio counts', {
@@ -6385,9 +6523,20 @@ const server = http.createServer((req, res) => {
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const partialErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
+        const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 0;
+        const actualCount = Array.isArray(posts) ? posts.length : 0;
+        const partial = expectedCount ? actualCount < expectedCount : false;
         if (!Array.isArray(posts) || !posts.length) {
           if (partialErrors.length) {
-            const responsePayload = { calendarId: targetCalendarId, posts: [], requestId, errors: partialErrors };
+            const responsePayload = {
+              calendarId: targetCalendarId,
+              posts: [],
+              requestId,
+              expectedCount,
+              actualCount,
+              partial: true,
+              errors: partialErrors,
+            };
             if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
             return sendJson(res, 200, responsePayload);
           }
@@ -6396,7 +6545,14 @@ const server = http.createServer((req, res) => {
             requestId,
           });
         }
-        const responsePayload = { calendarId: targetCalendarId, posts, requestId };
+        const responsePayload = {
+          calendarId: targetCalendarId,
+          posts,
+          requestId,
+          expectedCount,
+          actualCount,
+          partial,
+        };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
         if (partialErrors.length) responsePayload.errors = partialErrors;
         return sendJson(res, 200, responsePayload);
@@ -6424,6 +6580,8 @@ const server = http.createServer((req, res) => {
               usedSignatures: sanitizedUsedSignatures,
               context: sanitizedContext,
               isPro,
+              deadlineAt,
+              abortSignal: controller.signal,
             });
             if (!isPro) {
               await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
@@ -6436,7 +6594,17 @@ const server = http.createServer((req, res) => {
             if (!Array.isArray(posts) || !posts.length) {
               const partialErrors = Array.isArray(sanitizedContext.partialErrors) ? sanitizedContext.partialErrors : [];
               if (partialErrors.length) {
-                const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts: [], requestId, errors: partialErrors };
+                const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
+                const actualCount = Array.isArray(posts) ? posts.length : 0;
+                const responsePayload = {
+                  calendarId: sanitizedBody?.calendarId ?? null,
+                  posts: [],
+                  requestId,
+                  expectedCount,
+                  actualCount,
+                  partial: true,
+                  errors: partialErrors,
+                };
                 if (warnings.length) responsePayload.warnings = warnings;
                 return sendJson(res, 200, responsePayload);
               }
@@ -6445,7 +6613,16 @@ const server = http.createServer((req, res) => {
                 requestId,
               });
             }
-            const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts, requestId };
+            const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
+            const actualCount = Array.isArray(posts) ? posts.length : 0;
+            const responsePayload = {
+              calendarId: sanitizedBody?.calendarId ?? null,
+              posts,
+              requestId,
+              expectedCount,
+              actualCount,
+              partial: expectedCount ? actualCount < expectedCount : false,
+            };
             if (warnings.length) responsePayload.warnings = warnings;
             if (Array.isArray(sanitizedContext.partialErrors) && sanitizedContext.partialErrors.length) {
               responsePayload.errors = sanitizedContext.partialErrors;
@@ -6486,7 +6663,7 @@ const server = http.createServer((req, res) => {
             ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
             : isInvalidJson
               ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
-              : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
+              : { message: err?.message || 'unknown_error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
           requestId,
         };
         if (isSchemaError) {
@@ -6505,7 +6682,12 @@ const server = http.createServer((req, res) => {
         if (!isSchemaError && !isProduction && err?.stack) {
           payload.debugStack = err.stack;
         }
+        if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
+          payload.errors = regenContext.partialErrors;
+        }
         return sendJson(res, status, payload);
+      } finally {
+        clearTimeout(abortTimer);
       }
     })();
     return;
