@@ -5980,7 +5980,18 @@ const server = http.createServer((req, res) => {
           const repairPrompt = [
             'You are a JSON repair tool.',
             'Return ONLY valid JSON. No markdown. No commentary.',
-            'Output ONLY the missing fields listed. Do not modify any other fields.',
+            'REPAIR INSTRUCTIONS (BRANDBRAIN)',
+            'Fix ONLY the flagged fields while preserving the post’s intent.',
+            'Hard rules:',
+            '- Do NOT introduce generic coaching filler or templates.',
+            '- Do NOT use any banned phrases from the banned list.',
+            '- Ensure repaired content still includes:',
+            '  1) specific local scenario,',
+            '  2) one concrete proof detail (number/constraint/timeline),',
+            '  3) a SAVE trigger (checklist/criteria/steps),',
+            '  4) a COMMENT trigger (binary choice or constraint question),',
+            '  5) CTA keyword consistent with promised asset.',
+            'Return output in the exact same JSON shape; do not add fields.',
             `Niche style: ${nicheStyle || 'the niche'}.`,
             `Day ${entry.day}, slot ${entry.slot}.`,
             `Missing fields: ${JSON.stringify(entry.fields)}.`,
@@ -6513,6 +6524,7 @@ const server = http.createServer((req, res) => {
               ok: false,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
+              requestId,
             });
           }
         }
@@ -6554,12 +6566,13 @@ const server = http.createServer((req, res) => {
       let requestedPostsPerDay = 1;
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
-      const DEADLINE_MS = 105000;
+      const DEADLINE_MS = 55000;
       const startedAt = Date.now();
       const deadlineAt = startedAt + DEADLINE_MS;
       const controller = new AbortController();
       const abortTimer = setTimeout(() => controller.abort(), Math.max(0, DEADLINE_MS - 2000));
       try {
+        console.log('[Calendar][Regen] entry', { requestId });
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
         req.user = user;
@@ -6638,6 +6651,7 @@ const server = http.createServer((req, res) => {
           const responsePayload = {
             calendarId: targetCalendarId,
             posts: fallbackPosts.slice(0, expectedCount),
+            ok: true,
             requestId,
             expectedCount,
             actualCount: Math.min(expectedCount, fallbackPosts.length),
@@ -6729,6 +6743,7 @@ const server = http.createServer((req, res) => {
         const responsePayload = {
           calendarId: targetCalendarId,
           posts: resolvedPosts,
+          ok: true,
           requestId,
           expectedCount,
           actualCount: finalActualCount,
@@ -6826,6 +6841,7 @@ const server = http.createServer((req, res) => {
             const responsePayload = {
               calendarId: sanitizedBody?.calendarId ?? null,
               posts: resolvedPosts,
+              ok: true,
               requestId,
               expectedCount,
               actualCount,
@@ -6884,6 +6900,7 @@ const server = http.createServer((req, res) => {
           const responsePayload = {
             calendarId: body?.calendarId ?? null,
             posts: fallbackPosts.slice(0, expectedCount),
+            ok: true,
             requestId,
             expectedCount,
             actualCount: Math.min(expectedCount, fallbackPosts.length),
