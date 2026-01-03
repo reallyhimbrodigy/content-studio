@@ -4266,6 +4266,15 @@ function isPastDeadline(deadlineAt) {
   return Boolean(deadlineAt && Date.now() >= deadlineAt);
 }
 
+function serializeErr(err) {
+  if (!err) return { message: 'Unknown error' };
+  if (typeof err === 'string') return { message: err };
+  const message = err.message || (typeof err.toString === 'function' ? err.toString() : 'Unknown error');
+  const code = err.code || err.name || 'UNKNOWN_ERROR';
+  const stack = err.stack;
+  return { message, code, stack };
+}
+
 function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
   const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
@@ -6422,6 +6431,7 @@ const server = http.createServer((req, res) => {
               ok: false,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
+              requestId,
             });
           }
         }
@@ -6559,9 +6569,15 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
-        if (body && typeof body === 'object') {
-          body.userId = user.id;
+        if (!body || typeof body !== 'object') {
+          return sendJson(res, 400, {
+            ok: false,
+            requestId,
+            error: 'Missing JSON body',
+            code: 'MISSING_BODY',
+          });
         }
+        body.userId = user.id;
         const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
         const sanitizedUsedSignatures = Array.from(
           new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
@@ -6579,6 +6595,33 @@ const server = http.createServer((req, res) => {
           Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
             ? Number(body.postsPerDay)
             : 1;
+        if (timeLeftMs(deadlineAt) < 15000) {
+          const fallbackPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
+          });
+          const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || fallbackPosts.length;
+          const responsePayload = {
+            calendarId: targetCalendarId,
+            posts: fallbackPosts.slice(0, expectedCount),
+            requestId,
+            expectedCount,
+            actualCount: Math.min(expectedCount, fallbackPosts.length),
+            partial: true,
+            errors: [{
+              code: 'DEADLINE_GUARD',
+              message: 'Returned fallback posts before deadline.',
+            }],
+          };
+          console.log('[Calendar] regenerate respond', {
+            requestId,
+            status: 200,
+            postCount: responsePayload.posts.length,
+          });
+          return sendJson(res, 200, responsePayload);
+        }
         const posts = await generateCalendarPosts({
           ...(body || {}),
           postsPerDay: requestedPostsPerDay,
@@ -6663,6 +6706,11 @@ const server = http.createServer((req, res) => {
         const finalErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
         if (finalWarnings.length) responsePayload.warnings = finalWarnings;
         if (finalErrors.length) responsePayload.errors = finalErrors;
+        console.log('[Calendar] regenerate respond', {
+          requestId,
+          status: 200,
+          postCount: responsePayload.posts.length,
+        });
         return sendJson(res, 200, responsePayload);
       } catch (err) {
         const errorContext = {
@@ -6755,6 +6803,11 @@ const server = http.createServer((req, res) => {
             if (Array.isArray(sanitizedContext.partialErrors) && sanitizedContext.partialErrors.length) {
               responsePayload.errors = sanitizedContext.partialErrors;
             }
+            console.log('[Calendar] regenerate respond', {
+              requestId,
+              status: 200,
+              postCount: responsePayload.posts.length,
+            });
             return sendJson(res, 200, responsePayload);
           } catch (retryErr) {
             logServerError('calendar_regenerate_error', retryErr, { requestId, context: errorContext });
@@ -6808,16 +6861,24 @@ const server = http.createServer((req, res) => {
               message: err?.message || 'unknown_error',
             }],
           };
+          console.log('[Calendar] regenerate respond', {
+            requestId,
+            status: 200,
+            postCount: responsePayload.posts.length,
+          });
           return sendJson(res, 200, responsePayload);
         }
         const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
+        const safe = serializeErr(err);
         const payload = {
+          ok: false,
+          requestId,
           error: isSchemaError
             ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
             : isInvalidJson
               ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
-              : { message: err?.message || 'unknown_error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
-          requestId,
+              : { message: safe.message || 'unknown_error', code: safe.code || 'CALENDAR_REGENERATE_FAILED' },
+          code: safe.code || 'CALENDAR_REGENERATE_FAILED',
         };
         if (isSchemaError) {
           if (!isProduction && err?.rawContent) {
@@ -6832,15 +6893,17 @@ const server = http.createServer((req, res) => {
         if (isInvalidJson && !isProduction && err?.rawContent) {
           payload.error.details = { rawContentPreview: String(err.rawContent).slice(0, 400) };
         }
-        if (!isSchemaError && !isProduction && err?.stack) {
-          payload.debugStack = err.stack;
+        if (!isSchemaError && !isProduction && safe.stack) {
+          payload.debugStack = safe.stack;
         }
         if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
           payload.errors = regenContext.partialErrors;
         }
-        if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
-          payload.errors = regenContext.partialErrors;
-        }
+        console.log('[Calendar] regenerate respond', {
+          requestId,
+          status,
+          postCount: 0,
+        });
         return sendJson(res, status, payload);
       } finally {
         clearTimeout(abortTimer);
