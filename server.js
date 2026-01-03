@@ -2569,24 +2569,21 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const requiredFieldsList = REQUIRED_POST_FIELDS.join(', ');
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        'BRAND BRAIN MODE (ONLY WHEN ENABLED)',
-        'You are generating READY-TO-POST social content cards that combine:',
-        '(a) ONE sales psychology mechanism (choose exactly one from: loss aversion, social proof, scarcity, reciprocity, authority, commitment/consistency, anchoring)',
-        'AND',
-        '(b) ONE social platform distribution mechanic (choose exactly one from: pattern interrupt in first second, open loop, curiosity gap, fast cut pacing, “save/share” utility framing, comment-to-DM keyword funnel, objections-first hook)',
+        'BRAND BRAIN MODE',
+        'Return JSON that matches the provided schema. Do not output anything outside JSON.',
         '',
-        'HARD OUTPUT RULES (no banned word lists, just rules):',
-        '- The “Educational/Body” text must read like creator copy a viewer would hear/see. It must NOT contain planning language or instructions to yourself.',
-        '- Video Script must be fully filled with Hook, Body, CTA (no blanks).',
-        '- Hook: 1–2 sentences; include a Miami/local cue tied to the niche.',
-        '- Body: 6–10 short lines; include one concrete proof detail (neighborhood, price band, timeline, or number).',
-        '- CTA: must include the DM keyword exactly as provided.',
-        '- Distribution Plan must be concrete and short (3–5 bullets) and include a comment keyword + a “save this” reason.',
-        '- Engagement Loop must include:',
-        '  * a comment reply with one qualifying question',
-        '  * a DM reply that asks timeline + budget range + location focus',
+        'Write content that is ready-to-post and uses:',
+        '- exactly 1 persuasion mechanism (pick one): loss aversion, social proof, scarcity, reciprocity, authority, commitment, anchoring',
+        '- exactly 1 platform mechanic (pick one): pattern interrupt, open loop, curiosity gap, save utility, comment-to-DM keyword, objections-first',
         '',
-        'IMPORTANT: If you are tempted to write “open with / call out / anchor / the payoff is / end with”, instead write the actual words the creator would say on camera.',
+        'Field requirements (fill existing schema fields only):',
+        '- title: specific, not "Day X: {niche} ..."',
+        '- hook: 1-2 sentences a creator would say verbatim (no "open with / call out / anchor / payoff" phrasing)',
+        '- body: short spoken lines with 1 concrete local proof detail (neighborhood OR price band OR timeline OR number)',
+        '- cta: include the DM keyword exactly',
+        '- storyPrompt: a single question ending with "?"',
+        '- distributionPlan: newline bullets; include "pin a comment" + "reply fast" + "ask for saves"',
+        '- engagementLoop: include one qualifying question in the comment reply; DM reply asks timeline + budget + location focus',
       ].join('\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -4783,6 +4780,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       result = await runParseSequence(true, false);
     } catch (err) {
       if (err?.code === 'OPENAI_SCHEMA_ERROR') {
+        if (!allowFallbacks) {
+          throw err;
+        }
         result = await runParseSequence(false, true);
       } else {
         throw err;
@@ -5564,69 +5564,66 @@ const server = http.createServer((req, res) => {
         responseLength: rawLength,
       });
       if (brandBrainEnabled) {
-        const missingDays = [];
-        const dayCounts = new Map();
-        rawPosts.forEach((post) => {
-          const dayValue = Number(post?.day);
-          if (Number.isFinite(dayValue)) {
-            dayCounts.set(dayValue, (dayCounts.get(dayValue) || 0) + 1);
-          }
-        });
-        const rangeStart = fallbackStart;
-        const rangeEnd = rangeStart + daysToGenerate - 1;
-        for (let day = rangeStart; day <= rangeEnd; day += 1) {
-          const existing = dayCounts.get(day) || 0;
-          const missingSlots = Math.max(0, perDay - existing);
-          for (let slot = 0; slot < missingSlots; slot += 1) {
-            missingDays.push(day);
-          }
-        }
-        if (!missingDays.length) {
-          const err = new Error('Calendar response count mismatch');
-          err.code = 'OPENAI_SCHEMA_ERROR';
-          err.statusCode = 500;
-          err.details = details;
-          err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-          throw err;
-        }
-        const regenerated = [];
-        for (const missingDay of missingDays) {
-          const left = timeLeftMs(deadlineAt);
-          if (left < 15000) {
-            const err = new Error('Calendar response count mismatch');
-            err.code = 'OPENAI_SCHEMA_ERROR';
-            err.statusCode = 500;
-            err.details = details;
-            err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-            throw err;
-          }
-          const retryResult = await callOpenAI(nicheStyle, brandContext, {
-            days: 1,
-            startDay: missingDay,
-            postsPerDay: 1,
-            loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: missingDay },
-            maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
-            reduceVerbosity: true,
-            usedSignatures: normalizedUsedSignatures,
-            brandBrainDirective,
-            allowFallbacks: false,
-            requestTimeoutMs: Number.isFinite(left)
-              ? Math.max(5000, Math.min(120000, left - 5000))
-              : 120000,
-            signal: abortSignal,
+        let pass = 0;
+        while (rawPosts.length !== expectedCount && pass < 2) {
+          const missingDays = [];
+          const dayCounts = new Map();
+          rawPosts.forEach((post) => {
+            const dayValue = Number(post?.day);
+            if (Number.isFinite(dayValue)) {
+              dayCounts.set(dayValue, (dayCounts.get(dayValue) || 0) + 1);
+            }
           });
-          if (Array.isArray(retryResult.posts) && retryResult.posts.length) {
-            regenerated.push(retryResult.posts[0]);
-          } else {
-            const err = new Error('Calendar response count mismatch');
-            err.code = 'OPENAI_SCHEMA_ERROR';
-            err.statusCode = 500;
-            err.details = details;
-            err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-            throw err;
+          const rangeStart = fallbackStart;
+          const rangeEnd = rangeStart + daysToGenerate - 1;
+          for (let day = rangeStart; day <= rangeEnd; day += 1) {
+            const existing = dayCounts.get(day) || 0;
+            const missingSlots = Math.max(0, perDay - existing);
+            for (let slot = 0; slot < missingSlots; slot += 1) {
+              missingDays.push(day);
+            }
           }
+          if (!missingDays.length) break;
+          const regenerated = [];
+          for (const missingDay of missingDays) {
+            const left = timeLeftMs(deadlineAt);
+            if (left < 15000) {
+              const err = new Error('Calendar response count mismatch');
+              err.code = 'OPENAI_SCHEMA_ERROR';
+              err.statusCode = 500;
+              err.details = details;
+              err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
+              throw err;
+            }
+            const retryResult = await callOpenAI(nicheStyle, brandContext, {
+              days: 1,
+              startDay: missingDay,
+              postsPerDay: 1,
+              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: missingDay },
+              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+              reduceVerbosity: true,
+              usedSignatures: normalizedUsedSignatures,
+              brandBrainDirective,
+              allowFallbacks: false,
+              requestTimeoutMs: Number.isFinite(left)
+                ? Math.max(5000, Math.min(120000, left - 5000))
+                : 120000,
+              signal: abortSignal,
+            });
+            if (Array.isArray(retryResult.posts) && retryResult.posts.length) {
+              regenerated.push(retryResult.posts[0]);
+            } else {
+              const err = new Error('Calendar response count mismatch');
+              err.code = 'OPENAI_SCHEMA_ERROR';
+              err.statusCode = 500;
+              err.details = details;
+              err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
+              throw err;
+            }
+          }
+          rawPosts = rawPosts.concat(regenerated);
+          pass += 1;
         }
-        rawPosts = rawPosts.concat(regenerated);
         if (rawPosts.length !== expectedCount) {
           const err = new Error('Calendar response count mismatch');
           err.code = 'OPENAI_SCHEMA_ERROR';
@@ -5819,70 +5816,78 @@ const server = http.createServer((req, res) => {
         count: normalizedMissing.length,
         samples: normalizedMissing.slice(0, 2),
       });
-      const regenFailures = [];
-      for (const entry of normalizedMissing) {
-        const idx = entry.index;
-        const day = Number.isFinite(Number(posts[idx]?.day))
-          ? Number(posts[idx].day)
-          : computePostDayIndex(idx, fallbackStart, perDay);
-        const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-        const left = timeLeftMs(deadlineAt);
-        if (left < 15000) {
-          regenFailures.push({ index: idx, day, slot });
-          continue;
-        }
-        const retryInstructions = [
-          'Brand Brain full regen for a single post after normalization failure.',
-          `Day ${day}, slot ${slot}.`,
-          'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
-        ].join(' ');
-        try {
-          const retryResult = await callOpenAI(nicheStyle, brandContext, {
-            days: 1,
-            startDay: day,
-            postsPerDay: 1,
-            loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: day, normalizationRetry: true },
-            maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
-            reduceVerbosity: true,
-            usedSignatures: normalizedUsedSignatures,
-            brandBrainDirective,
-            extraInstructions: retryInstructions,
-            allowFallbacks: false,
-            requestTimeoutMs: Number.isFinite(left)
-              ? Math.max(5000, Math.min(120000, left - 5000))
-              : 120000,
-            signal: abortSignal,
-          });
-          const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
-          const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
-          const validation = normalizedCandidate ? validateBrandBrainPost(normalizedCandidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
-          if (validation.ok) {
-            posts[idx] = normalizedCandidate;
-          } else {
-            regenFailures.push({
-              index: idx,
+      let remaining = normalizedMissing.slice();
+      let pass = 0;
+      while (remaining.length && pass < 2) {
+        const regenFailures = [];
+        for (const entry of remaining) {
+          const idx = entry.index;
+          const day = Number.isFinite(Number(posts[idx]?.day))
+            ? Number(posts[idx].day)
+            : computePostDayIndex(idx, fallbackStart, perDay);
+          const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+          const left = timeLeftMs(deadlineAt);
+          if (left < 15000) {
+            regenFailures.push({ index: idx, day, slot });
+            continue;
+          }
+          const retryInstructions = [
+            'Brand Brain full regen for a single post after normalization failure.',
+            `Day ${day}, slot ${slot}.`,
+            'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
+          ].join(' ');
+          try {
+            const retryResult = await callOpenAI(nicheStyle, brandContext, {
+              days: 1,
+              startDay: day,
+              postsPerDay: 1,
+              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: day, normalizationRetry: true },
+              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+              reduceVerbosity: true,
+              usedSignatures: normalizedUsedSignatures,
+              brandBrainDirective,
+              extraInstructions: retryInstructions,
+              allowFallbacks: false,
+              requestTimeoutMs: Number.isFinite(left)
+                ? Math.max(5000, Math.min(120000, left - 5000))
+                : 120000,
+              signal: abortSignal,
+            });
+            const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
+            const normalizedCandidate = candidate ? coerceBrandBrainPostTypes(candidate) : null;
+            const validation = normalizedCandidate ? validateBrandBrainPost(normalizedCandidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
+            if (validation.ok) {
+              posts[idx] = normalizedCandidate;
+            } else {
+              regenFailures.push({
+                index: idx,
+                day,
+                slot,
+                validation,
+              });
+            }
+          } catch (regenErr) {
+            console.warn('[BrandBrain][Regen] normalization retry failed', {
+              requestId: loggingContext?.requestId || 'unknown',
               day,
               slot,
-              validation,
+              error: regenErr?.message || regenErr,
             });
+            regenFailures.push({ index: idx, day, slot });
           }
-        } catch (regenErr) {
-          console.warn('[BrandBrain][Regen] normalization retry failed', {
-            requestId: loggingContext?.requestId || 'unknown',
-            day,
-            slot,
-            error: regenErr?.message || regenErr,
-          });
-          regenFailures.push({ index: idx, day, slot });
         }
+        remaining = regenFailures.map((entry) => ({ index: entry.index }));
+        pass += 1;
       }
-      if (regenFailures.length) {
-        const details = regenFailures.map((entry) => ({
-          index: entry.index,
-          day: entry.day,
-          slot: entry.slot,
-          missingFields: entry.validation?.missingFields || [],
-        }));
+      if (remaining.length) {
+        const details = remaining.map((entry) => {
+          const idx = entry.index;
+          const day = Number.isFinite(Number(posts[idx]?.day))
+            ? Number(posts[idx].day)
+            : computePostDayIndex(idx, fallbackStart, perDay);
+          const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+          return { index: idx, day, slot };
+        });
         const err = new Error('Brand Brain normalization failed after regeneration');
         err.code = 'BRANDBRAIN_NORMALIZATION_FAILED';
         err.statusCode = 500;
