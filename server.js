@@ -2550,7 +2550,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `DistributionPlan: actionable and specific (first 1s, pinned comment, caption sequence, follow-up post idea). Must be non-empty.`,
         `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
         `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
-        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
+        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -3427,6 +3427,20 @@ const BRAND_BRAIN_STOPWORDS = new Set([
   'these', 'those', 'about', 'into', 'over', 'under', 'near', 'per', 'via',
 ]);
 
+function truncateWords(text = '', maxWords = 6) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  return words.slice(0, maxWords).join(' ');
+}
+
+function titleCase(text = '') {
+  return String(text || '')
+    .split(/\s+/)
+    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+    .join(' ')
+    .trim();
+}
+
 function extractBrandBrainTokens(nicheStyle = '') {
   const raw = toPlainString(nicheStyle).toLowerCase();
   if (!raw) return [];
@@ -3435,6 +3449,85 @@ function extractBrandBrainTokens(nicheStyle = '') {
     .map((token) => token.trim())
     .filter((token) => token.length >= 4 && !BRAND_BRAIN_STOPWORDS.has(token));
   return Array.from(new Set(tokens));
+}
+
+function buildBrandBrainHashtags(nicheStyle = '', minCount = 8, maxCount = 12) {
+  const tokens = extractBrandBrainTokens(nicheStyle);
+  const tags = [];
+  tokens.forEach((token) => {
+    if (token && !tags.includes(token)) tags.push(token);
+  });
+  const extras = ['leads', 'growth', 'booked', 'strategy', 'results', 'pipeline', 'conversion', 'clients'];
+  extras.forEach((token) => {
+    if (tags.length < maxCount && !tags.includes(token)) tags.push(token);
+  });
+  if (!tags.length) tags.push('growth', 'strategy');
+  return tags.slice(0, maxCount).map((token) => `#${token}`);
+}
+
+function buildBrandBrainCta(nicheStyle = '', topic = '') {
+  const nicheLabel = toPlainString(nicheStyle || '').trim() || 'your niche';
+  const keyword = topic ? truncateWords(topic, 1).toUpperCase() : 'PLAN';
+  return `DM ${keyword} for the ${nicheLabel} checklist`;
+}
+
+function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
+  const next = { ...(post || {}) };
+  const nicheLabel = toPlainString(nicheStyle || '').trim() || 'your niche';
+  const topic = toPlainString(next.idea || next.title || next.hook || next.caption || '').trim();
+  if (!isNonEmptyString(next.title)) {
+    const candidate = topic ? truncateWords(topic, 6) : `${nicheLabel} lead play`;
+    next.title = titleCase(candidate);
+  }
+  if (!isNonEmptyString(next.hook)) {
+    const base = next.title || topic || nicheLabel;
+    next.hook = `Stop losing ${nicheLabel} leads before they book ${base}.`;
+  }
+  if (!isNonEmptyString(next.cta)) {
+    next.cta = buildBrandBrainCta(nicheStyle, topic);
+  }
+  if (!isNonEmptyString(next.caption)) {
+    const opener = next.hook;
+    const detail = topic ? `Focus on ${topic}.` : `Focus on the key decision blocker.`;
+    next.caption = `${opener} ${detail} Use a 3-step fix: clarify the outcome, show proof, and offer the next step. ${next.cta}.`;
+  }
+  if (!Array.isArray(next.hashtags) || !next.hashtags.length) {
+    next.hashtags = buildBrandBrainHashtags(nicheStyle);
+  }
+  if (!isNonEmptyString(next.designNotes)) {
+    next.designNotes = `On-screen text: ${next.title}. Show a niche-specific scene, then a proof moment, then the CTA keyword.`;
+  }
+  if (!isNonEmptyString(next.storyPrompt)) {
+    next.storyPrompt = `What's your biggest ${nicheLabel} obstacle right now?`;
+  }
+  if (!isNonEmptyString(next.storyPromptPlus)) {
+    next.storyPromptPlus = `Poll: biggest blocker. Question box: your goal. Slider: readiness to act.`;
+  }
+  if (!isNonEmptyString(next.distributionPlan)) {
+    next.distributionPlan = `Post in the morning, pin a comment with the DM keyword, reply to early comments within 30 minutes, and follow up with a story recap + CTA.`;
+  }
+  if (!next.engagementScripts || typeof next.engagementScripts !== 'object') {
+    next.engagementScripts = {};
+  }
+  if (!isNonEmptyString(next.engagementScripts.commentReply)) {
+    next.engagementScripts.commentReply = `Thanks! What's your timeline and biggest ${nicheLabel} priority?`;
+  }
+  if (!isNonEmptyString(next.engagementScripts.dmReply)) {
+    next.engagementScripts.dmReply = `Happy to send the checklist—what's your timeline and budget range?`;
+  }
+  if (!next.script || typeof next.script !== 'object') {
+    next.script = {};
+  }
+  if (!isNonEmptyString(next.script.hook)) next.script.hook = next.hook;
+  if (!isNonEmptyString(next.script.body)) next.script.body = next.caption;
+  if (!isNonEmptyString(next.script.cta)) next.script.cta = next.cta;
+  if (!next.reelScript || typeof next.reelScript !== 'object') {
+    next.reelScript = {};
+  }
+  if (!isNonEmptyString(next.reelScript.hook)) next.reelScript.hook = next.script.hook;
+  if (!isNonEmptyString(next.reelScript.body)) next.reelScript.body = next.script.body;
+  if (!isNonEmptyString(next.reelScript.cta)) next.reelScript.cta = next.script.cta;
+  return next;
 }
 
 function findBrandBrainForbiddenMatch(value = '') {
@@ -5213,6 +5306,10 @@ const server = http.createServer((req, res) => {
       err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
       throw err;
     }
+    const brandBrainEnabled = Boolean(brandBrainDirective);
+    if (brandBrainEnabled) {
+      rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
+    }
     const missingFieldsReport = [];
     rawPosts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
@@ -5221,7 +5318,6 @@ const server = http.createServer((req, res) => {
       const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
       missingFieldsReport.push({ index: idx, day, slot, missing });
     });
-    const brandBrainEnabled = Boolean(brandBrainDirective);
     if (missingFieldsReport.length) {
       if (brandBrainEnabled) {
         const schema = buildCalendarSchemaObject(
@@ -5298,7 +5394,7 @@ const server = http.createServer((req, res) => {
         if (missingFieldsReport.length) {
           const err = new Error('Brand Brain schema repair failed');
           err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
-          err.statusCode = 400;
+          err.statusCode = 500;
           err.details = missingFieldsReport;
           console.warn('[BrandBrain][SchemaValidation] missing required fields after repair', {
             requestId: loggingContext?.requestId,
@@ -5401,7 +5497,7 @@ const server = http.createServer((req, res) => {
         if (retryFailures.length) {
           const err = new Error('Brand Brain validation failed after retries');
           err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-          err.statusCode = 400;
+          err.statusCode = 500;
           err.details = retryFailures;
           console.error('[BrandBrain][Validation] retries exhausted', {
             requestId: loggingContext?.requestId || 'unknown',
@@ -5460,7 +5556,7 @@ const server = http.createServer((req, res) => {
     if (brandBrainEnabled && normalizedMissing.length) {
       const err = new Error('Brand Brain normalization missing required fields');
       err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-      err.statusCode = 400;
+      err.statusCode = 500;
       err.details = normalizedMissing;
       console.warn('[BrandBrain][SchemaValidation] normalized missing required fields', {
         requestId: loggingContext?.requestId || 'unknown',
@@ -5947,7 +6043,24 @@ const server = http.createServer((req, res) => {
       try {
         await requireSupabaseUser(req);
         const payload = await readJsonBody(req);
-        const rawVariants = Array.isArray(payload?.variants) ? payload.variants : [];
+        let rawVariants = Array.isArray(payload?.variants) ? payload.variants : [];
+        if ((!rawVariants || !rawVariants.length) && Array.isArray(payload?.posts)) {
+          rawVariants = payload.posts
+            .map((post) => {
+              if (!post || typeof post !== 'object') return null;
+              const caption = toPlainString(post.caption || post.hook || post.title || '');
+              if (!caption) return null;
+              return {
+                day: post.day,
+                variants: {
+                  igCaption: caption,
+                  tiktokCaption: caption,
+                  linkedinCaption: caption,
+                },
+              };
+            })
+            .filter(Boolean);
+        }
         const MAX_VARIANTS = 30;
         const MAX_TEXT = 320;
         const trimmed = rawVariants.slice(0, MAX_VARIANTS).map((entry) => {
@@ -6037,6 +6150,41 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/debug/design-assets' && req.method === 'GET') {
     if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleDebugDesignAssets(req, res);
+    return;
+  }
+
+  if (parsed.pathname === '/api/debug/brand-brain-test' && req.method === 'POST') {
+    if (process.env.DEBUG_BRAND_BRAIN_TEST !== '1') {
+      return sendJson(res, 404, { error: 'not_found' });
+    }
+    (async () => {
+      const requestId = generateRequestId('bb-test');
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return sendJson(res, 403, { error: 'pro_required', requestId });
+        }
+        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
+        if (!brandBrainSettings?.enabled) {
+          return sendJson(res, 400, { error: 'brand_brain_disabled', requestId });
+        }
+        const posts = await generateCalendarPosts({
+          nicheStyle: 'real estate agent in miami',
+          userId: user.id,
+          days: 5,
+          startDay: 1,
+          postsPerDay: 1,
+          isPro,
+          context: { requestId, batchIndex: 0, startDay: 1 },
+        });
+        return sendJson(res, 200, { ok: true, requestId, posts });
+      } catch (err) {
+        logServerError('brand_brain_test_error', err, { requestId });
+        return respondWithServerError(res, err, { requestId });
+      }
+    })();
     return;
   }
 
