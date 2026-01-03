@@ -3573,6 +3573,7 @@ const BRAND_BRAIN_MECHANICS_PHRASES = [
   'use tight cuts',
 ];
 const BRAND_BRAIN_IMPERATIVE_REGEX = /\b(open|add|end|use|call|anchor|show|remember|focus)\b/i;
+const BRAND_BRAIN_SENTENCE_START_IMPERATIVE_REGEX = /^(open|add|end|use|call|anchor|show|remember|focus)\b/i;
 const BRAND_BRAIN_MIN_LENGTHS = {
   title: 8,
   hook: 12,
@@ -3581,15 +3582,15 @@ const BRAND_BRAIN_MIN_LENGTHS = {
   storyPrompt: 60,
   storyPromptPlus: 40,
   designNotes: 40,
-  distributionPlan: 80,
+  distributionPlan: 140,
   scriptHook: 80,
-  scriptBody: 200,
-  scriptCta: 40,
+  scriptBody: 220,
+  scriptCta: 50,
   reelScriptHook: 80,
-  reelScriptBody: 200,
-  reelScriptCta: 40,
+  reelScriptBody: 220,
+  reelScriptCta: 50,
   engagementComment: 80,
-  engagementDm: 80,
+  engagementDm: 120,
 };
 const BRAND_BRAIN_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
@@ -3817,6 +3818,30 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
     minLengthFailures.push({ field: 'hashtags', length: hashtags.length, min: 8 });
   }
+  if (caption) {
+    const sentences = caption
+      .split(/[.!?]\s+/)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+    sentences.forEach((sentence) => {
+      if (BRAND_BRAIN_SENTENCE_START_IMPERATIVE_REGEX.test(sentence)) {
+        reasons.push({ code: 'META_LANGUAGE', field: 'caption', detail: 'imperative_sentence' });
+        metaLanguageHits.push({ field: 'caption', detail: 'imperative_sentence' });
+      }
+    });
+    if (BRAND_BRAIN_MECHANICS_PHRASES.some((phrase) => caption.toLowerCase().includes(phrase))) {
+      reasons.push({ code: 'META_LANGUAGE', field: 'caption', detail: 'mechanics_in_caption' });
+      metaLanguageHits.push({ field: 'caption', detail: 'mechanics_in_caption' });
+    }
+  }
+  if (scriptBody && BRAND_BRAIN_MECHANICS_PHRASES.some((phrase) => scriptBody.toLowerCase().includes(phrase))) {
+    reasons.push({ code: 'META_LANGUAGE', field: 'script.body', detail: 'mechanics_in_script' });
+    metaLanguageHits.push({ field: 'script.body', detail: 'mechanics_in_script' });
+  }
+  if (reelScriptBody && BRAND_BRAIN_MECHANICS_PHRASES.some((phrase) => reelScriptBody.toLowerCase().includes(phrase))) {
+    reasons.push({ code: 'META_LANGUAGE', field: 'reelScript.body', detail: 'mechanics_in_reel_script' });
+    metaLanguageHits.push({ field: 'reelScript.body', detail: 'mechanics_in_reel_script' });
+  }
   if (caption && BRAND_BRAIN_IMPERATIVE_REGEX.test(caption)) {
     reasons.push({ code: 'META_LANGUAGE', field: 'caption', detail: 'imperative_language' });
     metaLanguageHits.push({ field: 'caption', detail: 'imperative_language' });
@@ -3835,6 +3860,24 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     if (dmText && !dmText.toUpperCase().includes(keyword)) {
       reasons.push({ code: 'CTA_KEYWORD_MISSING', field: 'engagementScripts.dmReply', detail: keyword });
     }
+  }
+  const distributionText = distributionPlan.toLowerCase();
+  if (!distributionText.includes('pin') || !distributionText.includes('reply') || !distributionText.includes('save')) {
+    reasons.push({ code: 'DISTRIBUTION_PLAN_INCOMPLETE', field: 'distributionPlan', detail: 'missing_pin_reply_save' });
+  }
+  const commentText = toPlainString(post.engagementScripts?.commentReply);
+  if (!commentText || !commentText.includes('?')) {
+    reasons.push({ code: 'ENGAGEMENT_LOOP_INCOMPLETE', field: 'engagementScripts.commentReply', detail: 'missing_question' });
+  }
+  if (!commentText || commentText.length < BRAND_BRAIN_MIN_LENGTHS.engagementComment) {
+    reasons.push({ code: 'TOO_SHORT', field: 'engagementScripts.commentReply', length: commentText.length });
+  }
+  const dmText = toPlainString(post.engagementScripts?.dmReply);
+  if (!dmText || !/(timeline|budget|location)/i.test(dmText)) {
+    reasons.push({ code: 'ENGAGEMENT_LOOP_INCOMPLETE', field: 'engagementScripts.dmReply', detail: 'missing_qualifiers' });
+  }
+  if (!dmText || dmText.length < BRAND_BRAIN_MIN_LENGTHS.engagementDm) {
+    reasons.push({ code: 'TOO_SHORT', field: 'engagementScripts.dmReply', length: dmText.length });
   }
   const nicheTokens = extractBrandBrainTokens(nicheStyle);
   if (nicheTokens.length) {
@@ -4463,23 +4506,24 @@ function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, ni
   const cta = `DM "PLAN" for the ${niche} checklist.`;
   const caption = `${hook} Loss aversion shows up when a Brickell condo buyer sees HOA plus insurance and freezes. Save this checklist: price, HOA, insurance, and flood zone status. Comment: Brickell condo or Kendall single-family? ${cta}`;
   const designNotes = `On-screen text: "${title}". Pattern interrupt in the first second, then a quick before/after, then the CTA keyword. Tight cuts every 2-3 seconds to keep retention.`;
-  const storyPrompt = `What is your non-negotiable right now: walkability, schools, or commute time?`;
+  const storyPrompt = `What is your non-negotiable right now in Miami: walkability, schools, or commute time?`;
   const storyPromptPlus = `Poll: walkability vs schools. Question box: your must-have. Slider: readiness to tour this month.`;
-  const distributionPlan = `First second: hook as on-screen text. Mid: show one proof cue and a short checklist. Pin a comment with the keyword and reply within 30 minutes. Follow with a short story recap the next morning.`;
+  const distributionPlan = `First second: hook as on-screen text. Mid: show one proof cue and a short checklist. Pin a comment with the keyword and reply within 30 minutes. Save this checklist for later. Follow with a short story recap the next morning.`;
   const hashtags = buildFallbackHashtagsForNiche(nicheStyle);
-  const scriptHook = `${hook} Loss aversion shows up when monthly costs stack and a buyer delays the decision.`;
+  const scriptHook = `${hook} Loss aversion shows up when monthly costs stack and a Brickell buyer delays the decision even after touring.`;
   const scriptBody = [
     `Loss aversion hits when a Brickell condo buyer sees HOA plus insurance and pauses.`,
     `Here is the four-number checklist: price, HOA, insurance, flood zone.`,
     `Save this list if you are comparing two buildings this week.`,
+    `Proof detail: two similar condos can differ by $900/month after HOA and insurance.`,
     `Comment BRICKELL or KENDALL so I know which map to send.`,
     `I will send the exact checklist with the DM keyword.`,
-    cta,
   ].join(' ');
-  const script = { hook: scriptHook, body: scriptBody, cta };
-  const reelScript = { hook: scriptHook, body: scriptBody, cta };
+  const scriptCta = `DM "PLAN" and tell me your timeline, budget range, and neighborhood focus so I can send the checklist.`;
+  const script = { hook: scriptHook, body: scriptBody, cta: scriptCta };
+  const reelScript = { hook: scriptHook, body: scriptBody, cta: scriptCta };
   const engagementScripts = {
-    commentReply: `Appreciate it. Reply PLAN with your timeline, budget range, and neighborhood focus so I can tailor the checklist.`,
+    commentReply: `Appreciate it. Reply PLAN with your timeline, budget range, and the neighborhood you want most so I can tailor this.`,
     dmReply: `Thanks for the PLAN request. What is your timeline, budget range, and location focus so I can send the right checklist?`,
   };
   const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
@@ -6495,6 +6539,28 @@ const server = http.createServer((req, res) => {
       rawLength,
       context: loggingContext,
     });
+    if (brandBrainEnabled) {
+      const expectedTotal = expectedCount || posts.length;
+      if (posts.length < expectedTotal) {
+        const filled = [];
+        for (let idx = 0; idx < expectedTotal; idx += 1) {
+          const existing = posts[idx];
+          if (existing && typeof existing === 'object') {
+            filled.push(existing);
+          } else {
+            filled.push(buildRegenFallbackPostForIndex(idx, fallbackStart, perDay, nicheStyle));
+          }
+        }
+        posts = filled;
+      } else if (posts.length > expectedTotal) {
+        posts = posts.slice(0, expectedTotal);
+      }
+      posts = posts.map((post, idx) => {
+        const validation = validateBrandBrainPost(post, nicheStyle);
+        if (validation.ok) return post;
+        return buildRegenFallbackPostForIndex(idx, fallbackStart, perDay, nicheStyle);
+      });
+    }
     console.log('[Calendar] audio summary', {
       requestId: loggingContext?.requestId,
       totalPosts: audioStats.total,
