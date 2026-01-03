@@ -2569,21 +2569,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const requiredFieldsList = REQUIRED_POST_FIELDS.join(', ');
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        'BRAND BRAIN MODE',
-        'Return JSON that matches the provided schema. Do not output anything outside JSON.',
+        'BRAND BRAIN (JSON ONLY)',
+        'Return ONLY valid JSON that matches the provided schema. No prose, no markdown.',
         '',
-        'Write content that is ready-to-post and uses:',
-        '- exactly 1 persuasion mechanism (pick one): loss aversion, social proof, scarcity, reciprocity, authority, commitment, anchoring',
-        '- exactly 1 platform mechanic (pick one): pattern interrupt, open loop, curiosity gap, save utility, comment-to-DM keyword, objections-first',
+        'Fill the existing fields with content that uses:',
+        '- 1 persuasion mechanism (choose one): loss aversion, social proof, scarcity, reciprocity, authority, commitment, anchoring',
+        '- 1 platform mechanic (choose one): pattern interrupt, open loop, curiosity gap, save utility, comment-to-DM keyword, objections-first',
         '',
-        'Field requirements (fill existing schema fields only):',
-        '- title: specific, not "Day X: {niche} ..."',
-        '- hook: 1-2 sentences a creator would say verbatim (no "open with / call out / anchor / payoff" phrasing)',
-        '- body: short spoken lines with 1 concrete local proof detail (neighborhood OR price band OR timeline OR number)',
-        '- cta: include the DM keyword exactly',
-        '- storyPrompt: a single question ending with "?"',
-        '- distributionPlan: newline bullets; include "pin a comment" + "reply fast" + "ask for saves"',
-        '- engagementLoop: include one qualifying question in the comment reply; DM reply asks timeline + budget + location focus',
+        'Write like a creator speaking to camera. Avoid instructional/meta phrasing ("open with", "call out", "anchor", "the payoff").',
+        'Title must be specific and NOT start with "Day X:" or repeat the niche verbatim.',
+        'Story prompt must be a single question ending with "?".',
+        'CTA must include the DM keyword exactly as provided.',
       ].join('\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -4554,6 +4550,8 @@ function getPresetGuidelines(nicheStyle = '') {
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
   const allowFallbacks = opts.allowFallbacks !== false;
+  const reducePromptOnFailure = opts.reducePromptOnFailure !== false;
+  const minimalBrandBrainDirective = 'Brand Brain enabled.';
   const maxTokenCap = opts.reduceVerbosity ? 1400 : 1600;
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
@@ -4653,7 +4651,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         String(code).includes('schema'))
     );
   };
-  const attemptRequest = async (extraInstructions = '', useSchema = true) => {
+  const attemptRequest = async (extraInstructions = '', useSchema = true, directiveOverride = null) => {
     const attemptTimestamp = Date.now();
     const attemptOpts = {
       ...opts,
@@ -4662,6 +4660,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       postsPerDay,
       extraInstructions,
     };
+    if (directiveOverride !== null) {
+      attemptOpts.brandBrainDirective = directiveOverride;
+    }
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
     const responseFormat = useSchema
       ? {
@@ -4717,12 +4718,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return { content, latency: Date.now() - attemptTimestamp };
   };
 
-  const runParseSequence = async (useSchema, strictParse) => {
+  const runParseSequence = async (useSchema, strictParse, directiveOverride = null) => {
     let lastLatency = 0;
     let parsedContent = '';
     let parseResult = null;
 
-    const firstResponse = await attemptRequest('', useSchema);
+    const firstResponse = await attemptRequest('', useSchema, directiveOverride);
     parsedContent = firstResponse.content;
     lastLatency = firstResponse.latency;
     parseResult = tryParsePosts(parsedContent, expectedChunkCount);
@@ -4740,7 +4741,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       logParseFailure('retry', parseResult?.reason || 'missing posts', parsedContent);
       const retryInstructions =
         'If the previous response failed, return ONLY JSON in the form { "posts": [ ... ] } and do not add any explanation.';
-      const retryResponse = await attemptRequest(retryInstructions, useSchema);
+      const retryResponse = await attemptRequest(retryInstructions, useSchema, directiveOverride);
       parsedContent = retryResponse.content;
       lastLatency = retryResponse.latency;
       parseResult = tryParsePosts(parsedContent, expectedChunkCount);
@@ -4787,6 +4788,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       } else {
         throw err;
       }
+    }
+    if (!result && opts.brandBrainDirective && reducePromptOnFailure) {
+      result = await runParseSequence(true, true, minimalBrandBrainDirective);
     }
     if (result && result.posts) {
       return result;
@@ -5416,6 +5420,8 @@ const server = http.createServer((req, res) => {
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
+    let brandBrainInvalidCount = 0;
+    let brandBrainRegenCount = 0;
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
       userId: userId || null,
@@ -5535,6 +5541,7 @@ const server = http.createServer((req, res) => {
     });
     const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
 
+    const initialCount = aggregatedRawPosts.length;
     let rawPosts = aggregatedRawPosts.map((post) => {
       if (!post || typeof post !== 'object') return post;
       if (!Array.isArray(post.hashtags)) {
@@ -5588,49 +5595,53 @@ const server = http.createServer((req, res) => {
           for (const missingDay of missingDays) {
             const left = timeLeftMs(deadlineAt);
             if (left < 15000) {
-              const err = new Error('Calendar response count mismatch');
-              err.code = 'OPENAI_SCHEMA_ERROR';
-              err.statusCode = 500;
-              err.details = details;
-              err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-              throw err;
+              loggingContext.warnings = (loggingContext.warnings || []).concat([{
+                code: 'BRANDBRAIN_COUNT_REGEN_SKIPPED',
+                day: missingDay,
+              }]);
+              continue;
             }
-            const retryResult = await callOpenAI(nicheStyle, brandContext, {
-              days: 1,
-              startDay: missingDay,
-              postsPerDay: 1,
-              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: missingDay },
-              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
-              reduceVerbosity: true,
-              usedSignatures: normalizedUsedSignatures,
-              brandBrainDirective,
-              allowFallbacks: false,
-              requestTimeoutMs: Number.isFinite(left)
-                ? Math.max(5000, Math.min(120000, left - 5000))
-                : 120000,
-              signal: abortSignal,
-            });
-            if (Array.isArray(retryResult.posts) && retryResult.posts.length) {
-              regenerated.push(retryResult.posts[0]);
-            } else {
-              const err = new Error('Calendar response count mismatch');
-              err.code = 'OPENAI_SCHEMA_ERROR';
-              err.statusCode = 500;
-              err.details = details;
-              err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-              throw err;
+            try {
+              brandBrainRegenCount += 1;
+              const retryResult = await callOpenAI(nicheStyle, brandContext, {
+                days: 1,
+                startDay: missingDay,
+                postsPerDay: 1,
+                loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: missingDay },
+                maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
+                reduceVerbosity: true,
+                usedSignatures: normalizedUsedSignatures,
+                brandBrainDirective,
+                allowFallbacks: false,
+                requestTimeoutMs: Number.isFinite(left)
+                  ? Math.max(5000, Math.min(120000, left - 5000))
+                  : 120000,
+                signal: abortSignal,
+              });
+              if (Array.isArray(retryResult.posts) && retryResult.posts.length) {
+                regenerated.push(retryResult.posts[0]);
+              } else {
+                loggingContext.warnings = (loggingContext.warnings || []).concat([{
+                  code: 'BRANDBRAIN_COUNT_REGEN_EMPTY',
+                  day: missingDay,
+                }]);
+              }
+            } catch (regenErr) {
+              loggingContext.warnings = (loggingContext.warnings || []).concat([{
+                code: 'BRANDBRAIN_COUNT_REGEN_FAILED',
+                day: missingDay,
+                message: regenErr?.message || String(regenErr),
+              }]);
             }
           }
           rawPosts = rawPosts.concat(regenerated);
           pass += 1;
         }
         if (rawPosts.length !== expectedCount) {
-          const err = new Error('Calendar response count mismatch');
-          err.code = 'OPENAI_SCHEMA_ERROR';
-          err.statusCode = 500;
-          err.details = details;
-          err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-          throw err;
+          loggingContext.warnings = (loggingContext.warnings || []).concat([{
+            code: 'BRANDBRAIN_COUNT_MISMATCH',
+            details,
+          }]);
         }
       } else if (deadlineAt) {
         loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
@@ -5677,9 +5688,9 @@ const server = http.createServer((req, res) => {
         throw err;
       }
     }
-    if (brandBrainEnabled) {
-      const invalidEntries = [];
-      rawPosts.forEach((post, idx) => {
+      if (brandBrainEnabled) {
+        const invalidEntries = [];
+        rawPosts.forEach((post, idx) => {
         const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
         const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
         const validation = validateBrandBrainPost(post, nicheStyle);
@@ -5691,13 +5702,14 @@ const server = http.createServer((req, res) => {
             validation,
           });
         }
-      });
-      if (invalidEntries.length) {
-        console.warn('[BrandBrain][Validation] issues detected', {
-          requestId: loggingContext?.requestId || 'unknown',
-          count: invalidEntries.length,
-          samples: invalidEntries.slice(0, 2),
         });
+        if (invalidEntries.length) {
+          brandBrainInvalidCount = invalidEntries.length;
+          console.warn('[BrandBrain][Validation] issues detected', {
+            requestId: loggingContext?.requestId || 'unknown',
+            count: invalidEntries.length,
+            samples: invalidEntries.slice(0, 2),
+          });
         const regenFailures = [];
         for (const entry of invalidEntries) {
           const left = timeLeftMs(deadlineAt);
@@ -5711,6 +5723,7 @@ const server = http.createServer((req, res) => {
             'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
           ].join(' ');
           try {
+            brandBrainRegenCount += 1;
             const retryResult = await callOpenAI(nicheStyle, brandContext, {
               days: 1,
               startDay: entry.day,
@@ -5757,11 +5770,10 @@ const server = http.createServer((req, res) => {
             slot: entry.slot,
             missingFields: entry.validation?.missingFields || [],
           }));
-          const err = new Error('Brand Brain validation failed after regeneration');
-          err.code = 'BRANDBRAIN_VALIDATION_FAILED';
-          err.statusCode = 500;
-          err.details = details;
-          throw err;
+          loggingContext.warnings = (loggingContext.warnings || []).concat([{
+            code: 'BRANDBRAIN_VALIDATION_INCOMPLETE',
+            details,
+          }]);
         }
       }
     }
@@ -5837,6 +5849,7 @@ const server = http.createServer((req, res) => {
             'Return fully specific niche content with all required fields. No placeholders or meta instructions.',
           ].join(' ');
           try {
+            brandBrainRegenCount += 1;
             const retryResult = await callOpenAI(nicheStyle, brandContext, {
               days: 1,
               startDay: day,
@@ -5888,11 +5901,10 @@ const server = http.createServer((req, res) => {
           const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
           return { index: idx, day, slot };
         });
-        const err = new Error('Brand Brain normalization failed after regeneration');
-        err.code = 'BRANDBRAIN_NORMALIZATION_FAILED';
-        err.statusCode = 500;
-        err.details = details;
-        throw err;
+        loggingContext.warnings = (loggingContext.warnings || []).concat([{
+          code: 'BRANDBRAIN_NORMALIZATION_INCOMPLETE',
+          details,
+        }]);
       }
     }
     const signatureSet = new Set(normalizedUsedSignatures);
@@ -6005,6 +6017,17 @@ const server = http.createServer((req, res) => {
       rawLength,
       context: loggingContext,
     });
+    if (brandBrainEnabled) {
+      console.log('[BrandBrain][Summary]', {
+        requestId: loggingContext?.requestId || 'unknown',
+        expectedCount: expectedCount || posts.length,
+        initialCount,
+        invalidCount: brandBrainInvalidCount,
+        regenCount: brandBrainRegenCount,
+        finalCount: posts.length,
+        warningsCount: Array.isArray(loggingContext.warnings) ? loggingContext.warnings.length : 0,
+      });
+    }
     console.log('[Calendar] audio summary', {
       requestId: loggingContext?.requestId,
       totalPosts: audioStats.total,
@@ -6262,10 +6285,17 @@ const server = http.createServer((req, res) => {
             : 1;
         if (timeLeftMs(deadlineAt) < 15000) {
           if (brandBrainEnabled) {
-            return sendJson(res, 500, {
-              ok: false,
+            return sendJson(res, 200, {
+              ok: true,
               requestId,
-              error: { message: 'Deadline reached before BrandBrain generation', code: 'DEADLINE_REACHED' },
+              posts: [],
+              expectedCount: computePostCountTarget(body?.days, requestedPostsPerDay) || 0,
+              actualCount: 0,
+              partial: true,
+              warnings: [{
+                code: 'DEADLINE_REACHED',
+                message: 'Deadline reached before BrandBrain generation.',
+              }],
             });
           }
           const fallbackPosts = buildFallbackPosts({
@@ -6325,30 +6355,30 @@ const server = http.createServer((req, res) => {
         const partial = expectedCount ? actualCount < expectedCount : false;
         let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
         if (brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
-          return sendJson(res, 500, {
-            ok: false,
-            requestId,
-            error: { message: 'BrandBrain regeneration incomplete', code: 'BRANDBRAIN_INCOMPLETE' },
-          });
+          regenContext.warnings = (regenContext.warnings || []).concat([{
+            code: 'BRANDBRAIN_INCOMPLETE',
+            expectedCount,
+            actualCount: resolvedPosts.length,
+          }]);
         }
         if (!resolvedPosts.length) {
           if (brandBrainEnabled) {
-            return sendJson(res, 500, {
-              ok: false,
-              requestId,
-              error: { message: 'BrandBrain regeneration returned no posts', code: 'BRANDBRAIN_EMPTY' },
+            regenContext.warnings = (regenContext.warnings || []).concat([{
+              code: 'BRANDBRAIN_EMPTY',
+              message: 'BrandBrain regeneration returned no posts.',
+            }]);
+          } else {
+            resolvedPosts = buildFallbackPosts({
+              startDay: body?.startDay || 1,
+              days: body?.days || 1,
+              postsPerDay: requestedPostsPerDay,
+              nicheStyle: body?.nicheStyle || '',
             });
+            regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
+              code: 'OPENAI_TIMEOUT_OR_EMPTY',
+              message: 'Generated fallback posts after empty result.',
+            }]);
           }
-          resolvedPosts = buildFallbackPosts({
-            startDay: body?.startDay || 1,
-            days: body?.days || 1,
-            postsPerDay: requestedPostsPerDay,
-            nicheStyle: body?.nicheStyle || '',
-          });
-          regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
-            code: 'OPENAI_TIMEOUT_OR_EMPTY',
-            message: 'Generated fallback posts after empty result.',
-          }]);
         } else if (!brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
           const fallbackPosts = buildFallbackPosts({
             startDay: body?.startDay || 1,
@@ -6438,30 +6468,30 @@ const server = http.createServer((req, res) => {
             const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
             let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
             if (brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
-              return sendJson(res, 500, {
-                ok: false,
-                requestId,
-                error: { message: 'BrandBrain regeneration incomplete', code: 'BRANDBRAIN_INCOMPLETE' },
-              });
+              sanitizedContext.warnings = (sanitizedContext.warnings || []).concat([{
+                code: 'BRANDBRAIN_INCOMPLETE',
+                expectedCount,
+                actualCount: resolvedPosts.length,
+              }]);
             }
             if (!resolvedPosts.length) {
               if (brandBrainEnabled) {
-                return sendJson(res, 500, {
-                  ok: false,
-                  requestId,
-                  error: { message: 'BrandBrain regeneration returned no posts', code: 'BRANDBRAIN_EMPTY' },
+                sanitizedContext.warnings = (sanitizedContext.warnings || []).concat([{
+                  code: 'BRANDBRAIN_EMPTY',
+                  message: 'BrandBrain regeneration returned no posts.',
+                }]);
+              } else {
+                resolvedPosts = buildFallbackPosts({
+                  startDay: sanitizedBody?.startDay || 1,
+                  days: sanitizedBody?.days || 1,
+                  postsPerDay: requestedPostsPerDay,
+                  nicheStyle: sanitizedBody?.nicheStyle || '',
                 });
+                sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
+                  code: 'OPENAI_TIMEOUT_OR_EMPTY',
+                  message: 'Generated fallback posts after empty result.',
+                }]);
               }
-              resolvedPosts = buildFallbackPosts({
-                startDay: sanitizedBody?.startDay || 1,
-                days: sanitizedBody?.days || 1,
-                postsPerDay: requestedPostsPerDay,
-                nicheStyle: sanitizedBody?.nicheStyle || '',
-              });
-              sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
-                code: 'OPENAI_TIMEOUT_OR_EMPTY',
-                message: 'Generated fallback posts after empty result.',
-              }]);
             } else if (!brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
               const fallbackPosts = buildFallbackPosts({
                 startDay: sanitizedBody?.startDay || 1,
@@ -6574,13 +6604,18 @@ const server = http.createServer((req, res) => {
         }
         const safe = serializeErr(err);
         if (brandBrainEnabled) {
-          return sendJson(res, fatalStatus, {
-            ok: false,
+          const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 0;
+          return sendJson(res, 200, {
+            ok: true,
             requestId,
-            error: {
-              message: safe.message || 'BrandBrain regenerate failed',
+            posts: [],
+            expectedCount,
+            actualCount: 0,
+            partial: true,
+            warnings: [{
               code: safe.code || 'BRANDBRAIN_FAILURE',
-            },
+              message: safe.message || 'BrandBrain regenerate failed',
+            }],
           });
         }
         const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 1;
