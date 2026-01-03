@@ -2428,7 +2428,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['day', 'title', 'hook', 'caption', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts'],
+    required: ['day', 'title', 'hook', 'caption', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan'],
     properties: {
       day: {
         type: 'integer',
@@ -2442,7 +2442,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       designNotes: { type: 'string', minLength: 1 },
       storyPrompt: { type: 'string', minLength: 1 },
       storyPromptPlus: { type: 'string', minLength: 1 },
-      distributionPlan: { type: 'string' },
+      distributionPlan: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
         items: { type: 'string', minLength: 1 },
@@ -2547,7 +2547,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `DesignNotes: 3–5 concrete visual beats + on-screen text + retention device (e.g., "wait for #3", "save this", "map overlay", "before/after"), all niche-specific.`,
         `EngagementScripts: include one comment reply and one DM opener that qualify the lead; make the questions niche-specific.`,
         `ReelScript: hook/body/CTA aligned; body uses a micro-structure (numbered steps / myth-bust / before-after / checklist).`,
-        `DistributionPlan: actionable and specific (first 1s, pinned comment, caption sequence, follow-up post idea).`,
+        `DistributionPlan: actionable and specific (first 1s, pinned comment, caption sequence, follow-up post idea). Must be non-empty.`,
         `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
         `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
         `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
@@ -2569,7 +2569,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
  ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
  `;
@@ -2585,7 +2585,7 @@ function normalizeCalendarSignature(value = '') {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function sanitizeJsonContent(content = '') {
@@ -3427,7 +3427,7 @@ const BRAND_BRAIN_STOPWORDS = new Set([
   'these', 'those', 'about', 'into', 'over', 'under', 'near', 'per', 'via',
 ]);
 
-function extractNicheTokens(nicheStyle = '') {
+function extractBrandBrainTokens(nicheStyle = '') {
   const raw = toPlainString(nicheStyle).toLowerCase();
   if (!raw) return [];
   const tokens = raw
@@ -3518,7 +3518,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
   if (hashtags.length < 8 || hashtags.length > 12) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
   }
-  const nicheTokens = extractNicheTokens(nicheStyle);
+  const nicheTokens = extractBrandBrainTokens(nicheStyle);
   if (nicheTokens.length) {
     const combined = [
       title,
@@ -3703,6 +3703,7 @@ function validatePostCompleteness(post = {}) {
   checkString(post.cta, 'cta');
   checkString(post.storyPrompt, 'storyPrompt');
   checkString(post.designNotes, 'designNotes');
+  checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
@@ -3962,7 +3963,12 @@ function buildFallbackPost(nicheStyle = '', day = 1) {
       hook_options: ['Hook 1', 'Hook 2', 'Hook 3'],
       pinned_comment: `Tell me what you think.`,
     },
-    distributionPlan: '',
+    distributionPlan: buildDistributionPlanFallback({
+      idea,
+      title: idea,
+      caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
+      cta: 'Let me know what you think.',
+    }),
   };
 }
 
@@ -4013,12 +4019,11 @@ function resolveDistributionPlanValue(post = {}) {
 function buildDistributionPlanFallback(post = {}) {
   const idea = toPlainString(post.idea || post.title || 'this idea');
   const topic = toPlainString(post.topic || post.caption || 'the topic');
-  const cta = toPlainString(post.cta || 'Share what you think.');
-  const ctaClause = cta.endsWith('?') ? cta : `${cta}.`;
+  const cta = toPlainString(post.cta || 'Learn more');
   const plan = [
-    `Explain how the hook and ${idea} lead into the CTA clause, naming the key action or insight each step highlights without quoting the hook.`,
-    `List two concrete visual beats tied to ${topic}, mentioning specific moments, motions, or props that reinforce the story.`,
-    `Outline a caption path: one sentence stating the insight, one sentence with a supporting detail, and the CTA clause that closes the idea.`,
+    `0–2s: open on ${idea} with on-screen text.`,
+    `3–8s: show ${topic} with a concrete visual beat tied to the niche.`,
+    `Close: restate the takeaway and end with "${cta}".`,
   ];
   return plan.join(' ');
 }
@@ -5238,7 +5243,7 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts.',
+          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts.',
           'hashtags must be an array of strings (8–12).',
           'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
@@ -6511,6 +6516,8 @@ const server = http.createServer((req, res) => {
         const user = await requireSupabaseUser(req);
         req.user = user;
         const isPro = isUserPro(req);
+        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
+        const brandBrainEnabled = isPro && Boolean(brandBrainSettings?.enabled);
         const body = await readJsonBody(req);
         const { nicheStyle, day, post, userId } = body || {};
         if (!nicheStyle || typeof day === 'undefined' || day === null) {
