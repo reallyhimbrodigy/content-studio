@@ -4302,6 +4302,69 @@ function buildFallbackPost(nicheStyle = '', day = 1) {
   };
 }
 
+function buildFallbackHashtagsForNiche(nicheStyle = '') {
+  const tokens = extractBrandBrainTokens(nicheStyle);
+  const tags = [];
+  tokens.forEach((token) => {
+    const tag = ensureHashtagPrefix(token);
+    if (tag && !tags.includes(tag)) tags.push(tag);
+  });
+  const extras = ['#leads', '#conversion', '#strategy', '#growth', '#pipeline', '#clients', '#local', '#results'];
+  extras.forEach((tag) => {
+    if (tags.length < 12 && !tags.includes(tag)) tags.push(tag);
+  });
+  while (tags.length < 8) {
+    tags.push(`#plan${tags.length + 1}`);
+  }
+  return tags.slice(0, 12);
+}
+
+function buildRegenFallbackPostForIndex(index, startDay = 1, postsPerDay = 1, nicheStyle = '') {
+  const day = computePostDayIndex(index, startDay, postsPerDay);
+  const slot = (index % postsPerDay) + 1;
+  const niche = toPlainString(nicheStyle || 'your niche').trim() || 'your niche';
+  const dayLabel = postsPerDay > 1 ? `Day ${day}-${slot}` : `Day ${day}`;
+  const title = `${dayLabel}: ${niche} buyer signal`;
+  const hook = `${dayLabel}: ${niche} leads pause when the first offer feels thin.`;
+  const cta = `DM "PLAN" for the ${niche} checklist.`;
+  const caption = `${hook} Use one clear value anchor, show a quick example, and state the next step with a single outcome. The payoff is faster replies and cleaner next steps without chasing. Start with the local signal, then prove it with one specific cue, then close with the action.`;
+  const designNotes = `On-screen text: "${title}". Show a real scene, then a quick before/after, then the CTA keyword. Use a tight cut every 2-3 seconds to hold attention.`;
+  const storyPrompt = `Which ${niche} detail slows your decisions most right now?`;
+  const storyPromptPlus = `Poll: price vs timing. Question box: what detail made you pause? Slider: readiness to move this week.`;
+  const distributionPlan = `First second: open on the hook as on-screen text. Mid: show one proof cue and a quick step list. Pin a comment with the keyword and reply within 30 minutes. Follow with a short story recap the next morning.`;
+  const hashtags = buildFallbackHashtagsForNiche(nicheStyle);
+  const script = { hook, body: caption, cta };
+  const reelScript = { hook, body: caption, cta };
+  const engagementScripts = {
+    commentReply: `Appreciate the clarity. What is your timeline and main constraint?`,
+    dmReply: `Thanks for reaching out. What is your timeline, budget range, and location focus?`,
+  };
+  return {
+    day,
+    title,
+    hook,
+    caption,
+    cta,
+    designNotes,
+    storyPrompt,
+    storyPromptPlus,
+    distributionPlan,
+    hashtags,
+    script,
+    reelScript,
+    engagementScripts,
+  };
+}
+
+function buildFallbackPosts({ startDay = 1, days = 1, postsPerDay = 1, nicheStyle = '' } = {}) {
+  const total = computePostCountTarget(days, postsPerDay) || Math.max(1, Number(days) || 1) * Math.max(1, Number(postsPerDay) || 1);
+  const posts = [];
+  for (let idx = 0; idx < total; idx += 1) {
+    posts.push(buildRegenFallbackPostForIndex(idx, startDay, postsPerDay, nicheStyle));
+  }
+  return posts;
+}
+
 const STORY_PROMPT_PLUS_ALIASES = [
   'storyPromptPlus',
   'storyPromptPlusInstructions',
@@ -4996,13 +5059,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
   }
 
-  if (opts.brandBrainDirective) {
-    const err = new Error('Brand Brain fallback blocked');
-    err.code = 'BRAND_BRAIN_FALLBACK_BLOCKED';
-    err.statusCode = 400;
-    throw err;
-  }
-  const fallbackPosts = buildFallbackChunkPosts(nicheStyle, chunkStartDay, postsPerDay, expectedChunkCount);
+  const fallbackPosts = buildFallbackPosts({
+    startDay: chunkStartDay,
+    days: chunkDays,
+    postsPerDay,
+    nicheStyle,
+  });
   console.warn(
     `[Calendar] callOpenAI returning fallback posts${label}: expected ${expectedChunkCount}, returning ${fallbackPosts.length}`
   );
@@ -5999,13 +6061,11 @@ const server = http.createServer((req, res) => {
               failures: regenFailures.length,
               samples: details.slice(0, 2),
             });
-            const validPosts = [];
-            rawPosts.forEach((post) => {
-              const validation = validateBrandBrainPost(post, nicheStyle);
-              if (validation.ok) validPosts.push(post);
-            });
             loggingContext.partialErrors = details;
-            rawPosts = validPosts;
+            regenFailures.forEach((entry) => {
+              const fallback = buildRegenFallbackPostForIndex(entry.index, fallbackStart, perDay, nicheStyle);
+              rawPosts[entry.index] = fallback;
+            });
           }
         }
         console.log('[BrandBrain][Repair] completed', {
@@ -6144,13 +6204,11 @@ const server = http.createServer((req, res) => {
           failures: details.length,
           samples: details.slice(0, 2),
         });
-        const validPosts = [];
-        posts.forEach((post) => {
-          const validation = validateBrandBrainPost(post, nicheStyle);
-          if (validation.ok) validPosts.push(post);
-        });
         loggingContext.partialErrors = details;
-        posts = validPosts;
+        regenFailures.forEach((entry) => {
+          const fallback = buildRegenFallbackPostForIndex(entry.index, fallbackStart, perDay, nicheStyle);
+          posts[entry.index] = fallback;
+        });
       }
     }
     const signatureSet = new Set(normalizedUsedSignatures);
@@ -6429,6 +6487,7 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/calendar/regenerate' && req.method === 'POST') {
     (async () => {
       let body = null;
+      let requestedPostsPerDay = 1;
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
       const DEADLINE_MS = 105000;
@@ -6494,7 +6553,7 @@ const server = http.createServer((req, res) => {
         });
         regenContext.batchIndex = body?.batchIndex;
         regenContext.startDay = body?.startDay;
-        const requestedPostsPerDay =
+        requestedPostsPerDay =
           Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
             ? Number(body.postsPerDay)
             : 1;
@@ -6526,35 +6585,55 @@ const server = http.createServer((req, res) => {
         const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 0;
         const actualCount = Array.isArray(posts) ? posts.length : 0;
         const partial = expectedCount ? actualCount < expectedCount : false;
-        if (!Array.isArray(posts) || !posts.length) {
-          if (partialErrors.length) {
-            const responsePayload = {
-              calendarId: targetCalendarId,
-              posts: [],
-              requestId,
-              expectedCount,
-              actualCount,
-              partial: true,
-              errors: partialErrors,
-            };
-            if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
-            return sendJson(res, 200, responsePayload);
-          }
-          return sendJson(res, 500, {
-            error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
-            requestId,
+        let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
+        if (!resolvedPosts.length) {
+          resolvedPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
           });
+          regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
+            code: 'OPENAI_TIMEOUT_OR_EMPTY',
+            message: 'Generated fallback posts after empty result.',
+          }]);
+        } else if (expectedCount && resolvedPosts.length < expectedCount) {
+          const fallbackPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
+          });
+          const filled = [];
+          for (let idx = 0; idx < expectedCount; idx += 1) {
+            const existing = resolvedPosts[idx];
+            if (existing && typeof existing === 'object') {
+              filled.push(existing);
+            } else {
+              filled.push(fallbackPosts[idx]);
+              regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
+                code: 'FALLBACK_FILLED',
+                index: idx,
+                day: computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay),
+              }]);
+            }
+          }
+          resolvedPosts = filled;
         }
+        const finalActualCount = resolvedPosts.length;
+        const finalPartial = expectedCount ? finalActualCount < expectedCount : false;
         const responsePayload = {
           calendarId: targetCalendarId,
-          posts,
+          posts: resolvedPosts,
           requestId,
           expectedCount,
-          actualCount,
-          partial,
+          actualCount: finalActualCount,
+          partial: finalPartial,
         };
-        if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
-        if (partialErrors.length) responsePayload.errors = partialErrors;
+        const finalWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
+        const finalErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
+        if (finalWarnings.length) responsePayload.warnings = finalWarnings;
+        if (finalErrors.length) responsePayload.errors = finalErrors;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
         const errorContext = {
@@ -6591,33 +6670,46 @@ const server = http.createServer((req, res) => {
               ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
               ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
             ].filter(Boolean);
-            if (!Array.isArray(posts) || !posts.length) {
-              const partialErrors = Array.isArray(sanitizedContext.partialErrors) ? sanitizedContext.partialErrors : [];
-              if (partialErrors.length) {
-                const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
-                const actualCount = Array.isArray(posts) ? posts.length : 0;
-                const responsePayload = {
-                  calendarId: sanitizedBody?.calendarId ?? null,
-                  posts: [],
-                  requestId,
-                  expectedCount,
-                  actualCount,
-                  partial: true,
-                  errors: partialErrors,
-                };
-                if (warnings.length) responsePayload.warnings = warnings;
-                return sendJson(res, 200, responsePayload);
-              }
-              return sendJson(res, 500, {
-                error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
-                requestId,
-              });
-            }
             const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
-            const actualCount = Array.isArray(posts) ? posts.length : 0;
+            let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
+            if (!resolvedPosts.length) {
+              resolvedPosts = buildFallbackPosts({
+                startDay: sanitizedBody?.startDay || 1,
+                days: sanitizedBody?.days || 1,
+                postsPerDay: requestedPostsPerDay,
+                nicheStyle: sanitizedBody?.nicheStyle || '',
+              });
+              sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
+                code: 'OPENAI_TIMEOUT_OR_EMPTY',
+                message: 'Generated fallback posts after empty result.',
+              }]);
+            } else if (expectedCount && resolvedPosts.length < expectedCount) {
+              const fallbackPosts = buildFallbackPosts({
+                startDay: sanitizedBody?.startDay || 1,
+                days: sanitizedBody?.days || 1,
+                postsPerDay: requestedPostsPerDay,
+                nicheStyle: sanitizedBody?.nicheStyle || '',
+              });
+              const filled = [];
+              for (let idx = 0; idx < expectedCount; idx += 1) {
+                const existing = resolvedPosts[idx];
+                if (existing && typeof existing === 'object') {
+                  filled.push(existing);
+                } else {
+                  filled.push(fallbackPosts[idx]);
+                  sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
+                    code: 'FALLBACK_FILLED',
+                    index: idx,
+                    day: computePostDayIndex(idx, sanitizedBody?.startDay || 1, requestedPostsPerDay),
+                  }]);
+                }
+              }
+              resolvedPosts = filled;
+            }
+            const actualCount = resolvedPosts.length;
             const responsePayload = {
               calendarId: sanitizedBody?.calendarId ?? null,
-              posts,
+              posts: resolvedPosts,
               requestId,
               expectedCount,
               actualCount,
@@ -6657,6 +6749,31 @@ const server = http.createServer((req, res) => {
         }
         logServerError('calendar_regenerate_error', err, logInfo);
         if (res.headersSent) return;
+        const fallbackEligible = Boolean(body?.nicheStyle);
+        const fatalStatus = err?.statusCode || 500;
+        const isServerFailure = fatalStatus >= 500;
+        if (fallbackEligible && isServerFailure) {
+          const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 1;
+          const fallbackPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
+          });
+          const responsePayload = {
+            calendarId: body?.calendarId ?? null,
+            posts: fallbackPosts.slice(0, expectedCount),
+            requestId,
+            expectedCount,
+            actualCount: Math.min(expectedCount, fallbackPosts.length),
+            partial: true,
+            errors: [{
+              code: err?.code || 'OPENAI_FAILURE',
+              message: err?.message || 'unknown_error',
+            }],
+          };
+          return sendJson(res, 200, responsePayload);
+        }
         const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
         const payload = {
           error: isSchemaError
