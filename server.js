@@ -2580,8 +2580,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         '  (B) a social algorithm execution plan embedded in the fields (hook + retention + save/comment triggers).',
         'If you cannot do both, regenerate internally until you can.',
         '',
-        'SALES PSYCHOLOGY REQUIREMENTS (IMPLEMENT, DON’T NAME-DROP)',
-        'Pick exactly ONE lever per post and implement it through the example (do NOT label it as “loss aversion”, “scarcity”, etc. in the copy):',
+        'SALES PSYCHOLOGY REQUIREMENTS (IMPLEMENT AND NAME)',
+        'Pick exactly ONE lever per post and name it in the copy (loss aversion / social proof / scarcity / commitment / anchoring / authority):',
         'Allowed levers: loss aversion, social proof, scarcity/urgency, authority, commitment/consistency, reciprocity, contrast framing, uncertainty reduction.',
         'Implementation rules:',
         '- Use a specific local scenario (neighborhood/property type/buyer or seller persona).',
@@ -5980,18 +5980,16 @@ const server = http.createServer((req, res) => {
           const repairPrompt = [
             'You are a JSON repair tool.',
             'Return ONLY valid JSON. No markdown. No commentary.',
-            'REPAIR INSTRUCTIONS (BRANDBRAIN)',
-            'Fix ONLY the flagged fields while preserving the post’s intent.',
-            'Hard rules:',
-            '- Do NOT introduce generic coaching filler or templates.',
-            '- Do NOT use any banned phrases from the banned list.',
-            '- Ensure repaired content still includes:',
-            '  1) specific local scenario,',
-            '  2) one concrete proof detail (number/constraint/timeline),',
-            '  3) a SAVE trigger (checklist/criteria/steps),',
-            '  4) a COMMENT trigger (binary choice or constraint question),',
-            '  5) CTA keyword consistent with promised asset.',
-            'Return output in the exact same JSON shape; do not add fields.',
+            'BRANDBRAIN REPAIR RULES',
+            'You are repairing a content card that must be ready-to-post, not advice about what to post.',
+            'Do not write meta-instructions. Write the actual post content.',
+            'Required in the repaired card text (must be explicit):',
+            '1) Sales psychology: name ONE bias and use it in the copy.',
+            '2) Social algorithm: include ONE retention mechanic + ONE engagement mechanic + ONE save mechanic, written as actionable lines the creator will use.',
+            '3) Concrete specifics: include a Miami-specific cue + one proof detail (number, timeframe, constraint, neighborhood, or price band).',
+            '4) CTA: include a DM keyword that matches the promised asset.',
+            'Banned: generic coaching language, “open with…”, “call out…”, “anchor…”, “the payoff is…”, “without chasing…”.',
+            'Return the exact JSON schema only.',
             `Niche style: ${nicheStyle || 'the niche'}.`,
             `Day ${entry.day}, slot ${entry.slot}.`,
             `Missing fields: ${JSON.stringify(entry.fields)}.`,
@@ -6566,7 +6564,7 @@ const server = http.createServer((req, res) => {
       let requestedPostsPerDay = 1;
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
-      const DEADLINE_MS = 55000;
+      const DEADLINE_MS = 45000;
       const startedAt = Date.now();
       const deadlineAt = startedAt + DEADLINE_MS;
       const controller = new AbortController();
@@ -6917,43 +6915,42 @@ const server = http.createServer((req, res) => {
           });
           return sendJson(res, 200, responsePayload);
         }
-        const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
         const safe = serializeErr(err);
-        const payload = {
-          ok: false,
+        const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 1;
+        let fallbackPosts = [];
+        try {
+          fallbackPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
+          }).slice(0, expectedCount);
+        } catch (fallbackErr) {
+          fallbackPosts = [
+            buildRegenFallbackPostForIndex(0, body?.startDay || 1, requestedPostsPerDay, body?.nicheStyle || ''),
+          ];
+        }
+        const responsePayload = {
+          ok: true,
           requestId,
-          error: isSchemaError
-            ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
-            : isInvalidJson
-              ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
-              : { message: safe.message || 'unknown_error', code: safe.code || 'CALENDAR_REGENERATE_FAILED' },
-          code: safe.code || 'CALENDAR_REGENERATE_FAILED',
+          posts: fallbackPosts,
+          expectedCount,
+          actualCount: fallbackPosts.length,
+          partial: true,
+          warnings: [{
+            code: safe.code || 'REGEN_ERROR',
+            message: safe.message || 'Regenerate failed',
+          }],
         };
-        if (isSchemaError) {
-          if (!isProduction && err?.rawContent) {
-            payload.error.debug = err.rawContent;
-          }
-          const detailPayload = { ...(err?.details || {}) };
-          if (err?.schemaSnippet) detailPayload.schemaSnippet = err.schemaSnippet;
-          if (Object.keys(detailPayload).length) {
-            payload.error.details = detailPayload;
-          }
-        }
-        if (isInvalidJson && !isProduction && err?.rawContent) {
-          payload.error.details = { rawContentPreview: String(err.rawContent).slice(0, 400) };
-        }
-        if (!isSchemaError && !isProduction && safe.stack) {
-          payload.debugStack = safe.stack;
-        }
         if (Array.isArray(regenContext.partialErrors) && regenContext.partialErrors.length) {
-          payload.errors = regenContext.partialErrors;
+          responsePayload.errors = regenContext.partialErrors;
         }
         console.log('[Calendar] regenerate respond', {
           requestId,
-          status,
-          postCount: 0,
+          status: 200,
+          postCount: responsePayload.posts.length,
         });
-        return sendJson(res, status, payload);
+        return sendJson(res, 200, responsePayload);
       } finally {
         clearTimeout(abortTimer);
       }
