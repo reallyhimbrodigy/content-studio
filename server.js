@@ -2531,12 +2531,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? [
         `Brand Brain enabled: output must be final publishable copy tailored to the user's niche and offer.`,
         `Return ONLY valid JSON with a top-level object: { "posts": [ ... ] }.`,
-        `Forbidden outputs: "placeholder", "quick hook", "explain the idea", "ask for feedback", "neutral background", "let me know what you think", "talk briefly", "screenshot this so you remember", "office hours".`,
-        `Never output meta-instructions or templates. No headings, labels, or instructional verbs (Explain/List/Outline). Output must read like finished content.`,
+        `Forbidden outputs: "placeholder", "quick hook", "explain the idea", "explain how", "ask for feedback", "neutral background", "let me know what you think", "talk briefly", "screenshot this so you remember", "office hours", "lorem", "tbd", "insert".`,
+        `Never output meta-instructions or templates. No headings, labels (Hook:/CTA:/Caption:/Story Prompt:), or instructional verbs (Explain/List/Outline). Output must read like finished content.`,
         `Every card sells the user's service with a concrete next step (consult, audit, assessment, listing/buyer consult, treatment plan, membership, strategy call, teardown).`,
         `Every card contains one differentiator without unverifiable claims (local expertise, process, specialization, credentials if provided, or commonly observed outcomes).`,
         `No emojis. No fabricated statistics or precise claims unless user-provided. No guarantees or medical promises.`,
         `Use one target persona, one target desire, and one target objection per post. Include pain/friction, mechanism/why, specific next step, and a retention device.`,
+        `Each post must center one dominant mechanism with an open loop and payoff, and the CTA must match the funnel stage.`,
         `Use concrete nouns, local cues, and intent language. Avoid generic influencer filler.`,
         `If nicheStyle contains a location, reference it in title, hashtags, or CTA.`,
         `Title: 4–7 words; specific promise/angle tied to the niche; no generic titles or "Office Hours" unless explicitly about office hours and still tied to lead-gen.`,
@@ -2548,6 +2549,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `EngagementScripts: include one comment reply and one DM opener that qualify the lead; make the questions niche-specific.`,
         `ReelScript: hook/body/CTA aligned; body uses a micro-structure (numbered steps / myth-bust / before-after / checklist).`,
         `DistributionPlan: actionable and specific (first 1s, pinned comment, caption sequence, follow-up post idea). Must be non-empty.`,
+        `For each post, silently choose ONE category and follow its rules (do not label the category):`,
+        `Educational: hook uses local/niche specificity + tension; body uses one mechanism + 2–4 steps + open loop + payoff; proof is situational (no fake stats); CTA is local and action-based; StoryPrompt is a constrained qualifier; DistributionPlan includes on-screen text cue + pin comment + follow-up asset.`,
+        `Lifestyle: hook is identity-based in the niche; body shows behind-the-scenes that builds trust; CTA is soft conversion (DM for checklist, tour list, appointment slot); StoryPrompt is short and reactive to the moment.`,
+        `Promotional/Offer: hook frames the offer as pain relief; body explains what/for who/why now + one objection; CTA is direct booking/DM keyword with believable scarcity.`,
+        `Social Proof/Testimonial: hook states outcome + context; body is before/after with constraints; CTA qualifies leads (DM keyword to see if it fits).`,
         `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
         `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
         `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
@@ -3398,24 +3404,35 @@ const BRAND_BRAIN_FORBIDDEN_PHRASES = [
   'placeholder',
   'quick hook',
   'explain the idea',
+  'explain how',
   'ask for feedback',
   'neutral background',
   'let me know what you think',
   'talk briefly',
   'screenshot this so you remember',
   'office hours',
+  'lorem',
+  'insert',
+  'tbd',
 ];
 const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
   (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
 );
+const BRAND_BRAIN_LABEL_PREFIXES = [
+  /^\s*(hook|caption|cta|story\s*prompt|story\s*prompt\s*plus|design\s*notes|distribution\s*plan)\s*:/i,
+];
+const BRAND_BRAIN_META_PREFIXES = [
+  /^\s*(explain|outline|list|describe|write|return|output)\b/i,
+];
 const BRAND_BRAIN_MIN_LENGTHS = {
+  title: 8,
   hook: 12,
   caption: 80,
   cta: 10,
-  storyPrompt: 12,
-  storyPromptPlus: 18,
+  storyPrompt: 20,
+  storyPromptPlus: 40,
   designNotes: 40,
-  distributionPlan: 40,
+  distributionPlan: 80,
   scriptBody: 40,
   reelScriptBody: 40,
   engagementComment: 12,
@@ -3471,68 +3488,6 @@ function buildBrandBrainCta(nicheStyle = '', topic = '') {
   return `DM ${keyword} for the ${nicheLabel} checklist`;
 }
 
-function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
-  const next = { ...(post || {}) };
-  const nicheLabel = toPlainString(nicheStyle || '').trim() || 'your niche';
-  const topic = toPlainString(next.idea || next.title || next.hook || next.caption || '').trim();
-  if (!isNonEmptyString(next.title)) {
-    const candidate = topic ? truncateWords(topic, 6) : `${nicheLabel} lead play`;
-    next.title = titleCase(candidate);
-  }
-  if (!isNonEmptyString(next.hook)) {
-    const base = next.title || topic || nicheLabel;
-    next.hook = `Most ${nicheLabel} leads drop before ${base} converts.`;
-  }
-  if (!isNonEmptyString(next.cta)) {
-    next.cta = buildBrandBrainCta(nicheStyle, topic);
-  }
-  if (!isNonEmptyString(next.caption)) {
-    const opener = next.hook;
-    const detail = topic
-      ? `Here’s the shift ${nicheLabel} clients respond to when ${topic}.`
-      : `Here’s the shift ${nicheLabel} clients respond to when deciding.`;
-    next.caption = `${opener} ${detail} ${next.cta}.`;
-  }
-  if (!Array.isArray(next.hashtags) || !next.hashtags.length) {
-    next.hashtags = buildBrandBrainHashtags(nicheStyle);
-  }
-  if (!isNonEmptyString(next.designNotes)) {
-    next.designNotes = `On-screen text: ${next.title}. Show a niche-specific scene, then a proof moment, then the CTA keyword.`;
-  }
-  if (!isNonEmptyString(next.storyPrompt)) {
-    next.storyPrompt = `What's your biggest ${nicheLabel} obstacle right now?`;
-  }
-  if (!isNonEmptyString(next.storyPromptPlus)) {
-    next.storyPromptPlus = `Poll: biggest blocker. Question box: your goal. Slider: readiness to act.`;
-  }
-  if (!isNonEmptyString(next.distributionPlan)) {
-    const visual = topic ? `Show ${topic} on screen.` : `Show a niche-specific moment on screen.`;
-    next.distributionPlan = `Open with the hook in the first second. ${visual} Pin a comment with the DM keyword and reply to early comments within 30 minutes. Close with the CTA.`;
-  }
-  if (!next.engagementScripts || typeof next.engagementScripts !== 'object') {
-    next.engagementScripts = {};
-  }
-  if (!isNonEmptyString(next.engagementScripts.commentReply)) {
-    next.engagementScripts.commentReply = `Thanks! What's your timeline and biggest ${nicheLabel} priority?`;
-  }
-  if (!isNonEmptyString(next.engagementScripts.dmReply)) {
-    next.engagementScripts.dmReply = `Happy to send the checklist—what's your timeline and budget range?`;
-  }
-  if (!next.script || typeof next.script !== 'object') {
-    next.script = {};
-  }
-  if (!isNonEmptyString(next.script.hook)) next.script.hook = next.hook;
-  if (!isNonEmptyString(next.script.body)) next.script.body = next.caption;
-  if (!isNonEmptyString(next.script.cta)) next.script.cta = next.cta;
-  if (!next.reelScript || typeof next.reelScript !== 'object') {
-    next.reelScript = {};
-  }
-  if (!isNonEmptyString(next.reelScript.hook)) next.reelScript.hook = next.script.hook;
-  if (!isNonEmptyString(next.reelScript.body)) next.reelScript.body = next.script.body;
-  if (!isNonEmptyString(next.reelScript.cta)) next.reelScript.cta = next.script.cta;
-  return next;
-}
-
 function findBrandBrainForbiddenMatch(value = '') {
   const text = toPlainString(value);
   if (!text) return null;
@@ -3583,6 +3538,14 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     if (match) {
       reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
     }
+    const raw = toPlainString(value);
+    if (!raw) return;
+    if (BRAND_BRAIN_LABEL_PREFIXES.some((regex) => regex.test(raw))) {
+      reasons.push({ code: 'META_LANGUAGE', field, detail: 'label_prefix' });
+    }
+    if (BRAND_BRAIN_META_PREFIXES.some((regex) => regex.test(raw))) {
+      reasons.push({ code: 'META_LANGUAGE', field, detail: 'instruction_prefix' });
+    }
   });
   if (/^\s*placeholder\b/i.test(title) || /\boffice hours\b/i.test(title)) {
     reasons.push({ code: 'PLACEHOLDER_DETECTED', field: 'title', match: 'placeholder_title' });
@@ -3592,6 +3555,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     reasons.push({ code: 'TOO_SHORT', field: 'title', length: titleWords.length });
   }
   const minChecks = [
+    ['title', title],
     ['hook', hook],
     ['caption', caption],
     ['cta', cta],
@@ -3634,7 +3598,88 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
       reasons.push({ code: 'TOO_GENERIC', detail: 'missing_niche_tokens' });
     }
   }
+  const nichePhrase = toPlainString(nicheStyle).toLowerCase();
+  if (nichePhrase && nichePhrase.length >= 6) {
+    const fieldsToCheck = [title, hook, caption, cta, designNotes, storyPrompt, storyPromptPlus, distributionPlan];
+    fieldsToCheck.forEach((value) => {
+      const raw = toPlainString(value).toLowerCase();
+      if (!raw) return;
+      if (raw === nichePhrase) {
+        reasons.push({ code: 'TOO_GENERIC', detail: 'niche_phrase_equals' });
+        return;
+      }
+      if (raw.includes(nichePhrase) && raw.length < nichePhrase.length + 18) {
+        reasons.push({ code: 'TOO_GENERIC', detail: 'niche_phrase_stuffing' });
+      }
+    });
+  }
   return { ok: reasons.length === 0, reasons };
+}
+
+function deriveBrandBrainRepairFields(reasons = []) {
+  const fields = new Set();
+  const addField = (field) => {
+    if (field) fields.add(field);
+  };
+  reasons.forEach((reason) => {
+    if (!reason || typeof reason !== 'object') return;
+    if (reason.code === 'MISSING_FIELD' && Array.isArray(reason.detail)) {
+      reason.detail.forEach((field) => addField(field));
+      return;
+    }
+    if (reason.code === 'HASHTAG_COUNT') {
+      addField('hashtags');
+      return;
+    }
+    if (reason.code === 'TOO_GENERIC') {
+      [
+        'title',
+        'hook',
+        'caption',
+        'cta',
+        'designNotes',
+        'storyPrompt',
+        'storyPromptPlus',
+        'distributionPlan',
+        'hashtags',
+        'engagementScripts.commentReply',
+        'engagementScripts.dmReply',
+        'script.hook',
+        'script.body',
+        'script.cta',
+        'reelScript.hook',
+        'reelScript.body',
+        'reelScript.cta',
+      ].forEach((field) => addField(field));
+      return;
+    }
+    const rawField = reason.field;
+    if (!rawField) return;
+    const mapped = (() => {
+      switch (rawField) {
+        case 'scriptBody':
+          return 'script.body';
+        case 'scriptHook':
+          return 'script.hook';
+        case 'scriptCta':
+          return 'script.cta';
+        case 'reelScriptBody':
+          return 'reelScript.body';
+        case 'reelScriptHook':
+          return 'reelScript.hook';
+        case 'reelScriptCta':
+          return 'reelScript.cta';
+        case 'engagementComment':
+          return 'engagementScripts.commentReply';
+        case 'engagementDm':
+          return 'engagementScripts.dmReply';
+        default:
+          return rawField;
+      }
+    })();
+    addField(mapped);
+  });
+  return Array.from(fields);
 }
 
 const STORY_PROMPT_ALIASES = [
@@ -3780,7 +3825,7 @@ function ensureCtaFallback(post = {}) {
   return 'Learn more';
 }
 
-const MIN_HASHTAGS = 0;
+const MIN_HASHTAGS = 1;
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
@@ -3798,6 +3843,7 @@ function validatePostCompleteness(post = {}) {
   checkString(post.caption, 'caption');
   checkString(post.cta, 'cta');
   checkString(post.storyPrompt, 'storyPrompt');
+  checkString(post.storyPromptPlus, 'storyPromptPlus');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
@@ -4163,10 +4209,12 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
   const platform = toPlainString(post.format || post.platform || 'Reel');
-  const fallbackHashtags = buildFallbackHashtagList(nicheStyle, platform);
-  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, 8);
-  const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
-  const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
+  const fallbackHashtags = allowFallbacks ? buildFallbackHashtagList(nicheStyle, platform) : [];
+  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, allowFallbacks ? 8 : 0);
+  const repurposeFallback = allowFallbacks ? ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'] : [];
+  const analyticsFallback = allowFallbacks ? ['Reach', 'Saves'] : [];
+  const repurpose = ensureStringArray(post.repurpose || [], repurposeFallback, allowFallbacks ? 2 : 0);
+  const analytics = ensureStringArray(post.analytics || [], analyticsFallback, allowFallbacks ? 2 : 0);
   const scriptSource = post.script || post.videoScript || post.reelScript || {};
   const script = normalizeScriptObject(scriptSource);
   const videoScript = { ...script };
@@ -4186,9 +4234,10 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   if (!distributionPlan && allowFallbacks) {
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
   }
+  const ideaValue = toPlainString(post.idea || post.title || (allowFallbacks ? 'Engaging post idea' : ''));
   const normalized = {
     day: typeof post.day === 'number' ? post.day : fallbackDay,
-    idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
+    idea: ideaValue,
     title: toPlainString(post.title || post.idea || ''),
     type: toPlainString(post.type || 'educational'),
     hook: toPlainString(post.hook || script.hook || ''),
@@ -4375,6 +4424,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     schemaErr.details = { message: err?.message || err, schemaKeys: Object.keys(schema || {}) };
     throw schemaErr;
   }
+  console.log('[Calendar][Schema] calendar_batch', {
+    requestId: loggingContext?.requestId || 'unknown',
+    expectedCount: expectedChunkCount,
+    properties: Object.keys(schema.properties || {}),
+    requiredCount: Array.isArray(schema.required) ? schema.required.length : 0,
+  });
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
   const extractContentText = (json) => {
     const messageContent = json?.choices?.[0]?.message?.content;
@@ -5310,9 +5365,6 @@ const server = http.createServer((req, res) => {
       throw err;
     }
     const brandBrainEnabled = Boolean(brandBrainDirective);
-    if (brandBrainEnabled) {
-      rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-    }
     const missingFieldsReport = [];
     rawPosts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
@@ -5322,7 +5374,47 @@ const server = http.createServer((req, res) => {
       missingFieldsReport.push({ index: idx, day, slot, missing });
     });
     if (missingFieldsReport.length) {
-      if (brandBrainEnabled) {
+      if (!brandBrainEnabled) {
+        const err = new Error('Calendar response missing required fields');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.statusCode = 500;
+        err.details = missingFieldsReport;
+        console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
+          requestId: loggingContext?.requestId,
+          startDay,
+          days,
+          postsPerDay,
+          expectedCount,
+          actualCount: rawPosts.length,
+          missingFields: missingFieldsReport.length,
+          responseLength: rawLength,
+          detailSamples: missingFieldsReport.slice(0, 2),
+        });
+        throw err;
+      }
+    }
+    if (brandBrainEnabled) {
+      let invalidEntries = [];
+      rawPosts.forEach((post, idx) => {
+        const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+        const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+        const validation = validateBrandBrainPost(post, nicheStyle);
+        if (!validation.ok) {
+          invalidEntries.push({
+            index: idx,
+            day,
+            slot,
+            reasons: validation.reasons,
+            fields: deriveBrandBrainRepairFields(validation.reasons),
+          });
+        }
+      });
+      if (invalidEntries.length) {
+        console.warn('[BrandBrain][Validation] issues detected', {
+          requestId: loggingContext?.requestId || 'unknown',
+          count: invalidEntries.length,
+          samples: invalidEntries.slice(0, 2),
+        });
         const schema = buildCalendarSchemaObject(
           expectedCount || rawPosts.length,
           fallbackStart,
@@ -5331,21 +5423,23 @@ const server = http.createServer((req, res) => {
         const repairPayload = {
           posts: rawPosts.map((post) => post || {}),
         };
-        const missingSummary = missingFieldsReport.map((entry) => ({
+        const repairSummary = invalidEntries.map((entry) => ({
           index: entry.index,
           day: entry.day,
           slot: entry.slot,
-          missing: entry.missing,
+          fields: entry.fields,
+          reasons: entry.reasons,
         }));
         const repairPrompt = [
           'You are a JSON repair tool.',
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
-          'Fill ONLY the missing fields listed per post; do not change existing fields.',
+          'Fix ONLY the fields listed per post; do not change other fields.',
           'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts.',
           'hashtags must be an array of strings (8–12).',
-          'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
-          `Missing fields report: ${JSON.stringify(missingSummary)}`,
+          'Do not use placeholders, generic filler, or meta-instructions.',
+          'Follow the Brand Brain rules: niche-specific, sales-forward, and retention-driven (apply a category ruleset per post without labeling it).',
+          `Fields to repair: ${JSON.stringify(repairSummary)}`,
           `Original JSON: ${JSON.stringify(repairPayload)}`,
         ].join('\n');
         try {
@@ -5379,14 +5473,6 @@ const server = http.createServer((req, res) => {
           const parsed = tryParsePosts(text, expectedCount || rawPosts.length);
           if (parsed.posts) {
             rawPosts = parsed.posts;
-            missingFieldsReport.length = 0;
-            rawPosts.forEach((post, idx) => {
-              const missing = validatePostCompleteness(post);
-              if (!missing.length) return;
-              const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-              const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-              missingFieldsReport.push({ index: idx, day, slot, missing });
-            });
           }
         } catch (repairErr) {
           console.warn('[BrandBrain][Repair] failed', {
@@ -5394,134 +5480,38 @@ const server = http.createServer((req, res) => {
             error: repairErr?.message || repairErr,
           });
         }
-        if (missingFieldsReport.length) {
-          console.warn('[BrandBrain][SchemaValidation] missing required fields after repair', {
-            requestId: loggingContext?.requestId,
-            startDay,
-            days,
-            postsPerDay,
-            expectedCount,
-            actualCount: rawPosts.length,
-            missingFields: missingFieldsReport.length,
-            responseLength: rawLength,
-            detailSamples: missingFieldsReport.slice(0, 2),
-          });
-          rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-          const stillMissing = [];
-          rawPosts.forEach((post, idx) => {
-            const missing = validatePostCompleteness(post);
-            if (!missing.length) return;
-            const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-            const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-            stillMissing.push({ index: idx, day, slot, missing });
-          });
-          const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-          if (missingDay) {
-            const err = new Error('Brand Brain schema repair failed');
-            err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
-            err.statusCode = 500;
-            err.details = stillMissing;
-            throw err;
-          }
-          missingFieldsReport.length = 0;
-        }
-      } else {
-        const err = new Error('Calendar response missing required fields');
-        err.code = 'OPENAI_SCHEMA_ERROR';
-        err.statusCode = 500;
-        err.details = missingFieldsReport;
-        console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
-          requestId: loggingContext?.requestId,
-          startDay,
-          days,
-          postsPerDay,
-          expectedCount,
-          actualCount: rawPosts.length,
-          missingFields: missingFieldsReport.length,
-          responseLength: rawLength,
-          detailSamples: missingFieldsReport.slice(0, 2),
-        });
-        throw err;
-      }
-    }
-    if (brandBrainEnabled) {
-      const invalidEntries = [];
-      rawPosts.forEach((post, idx) => {
-        const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-        const validation = validateBrandBrainPost(post, nicheStyle);
-        if (!validation.ok) {
-          invalidEntries.push({ index: idx, day, reasons: validation.reasons });
-        }
-      });
-      if (invalidEntries.length) {
-        invalidEntries.forEach((entry) => {
-          console.warn('[BrandBrain][Validation] rejected post', {
-            requestId: loggingContext?.requestId || 'unknown',
-            day: entry.day,
-            index: entry.index,
-            reasons: entry.reasons,
-          });
-        });
-        const retryLimit = 2;
-        const retryFailures = [];
-        for (const entry of invalidEntries) {
-          let replaced = false;
-          const slot = perDay > 1 ? ((entry.index % perDay) + 1) : 1;
-          for (let attempt = 1; attempt <= retryLimit; attempt += 1) {
-            console.warn('[BrandBrain][Retry] attempt', {
-              requestId: loggingContext?.requestId || 'unknown',
-              day: entry.day,
+        invalidEntries = [];
+        rawPosts.forEach((post, idx) => {
+          const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+          const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+          const validation = validateBrandBrainPost(post, nicheStyle);
+          if (!validation.ok) {
+            invalidEntries.push({
+              index: idx,
+              day,
               slot,
-              attempt,
-            });
-            const retryInstructions = [
-              'Brand Brain retry: previous output failed validation due to placeholders or generic filler.',
-              'Return fully specific niche content. Do not use any forbidden phrases or template scaffolding.',
-              `This is slot ${slot} for day ${entry.day}.`,
-              'Return valid JSON only with all required fields and hashtags as an array (8–12 tags).',
-            ].join(' ');
-            const retryResult = await callOpenAI(nicheStyle, brandContext, {
-              days: 1,
-              startDay: entry.day,
-              postsPerDay: 1,
-              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: entry.day, retryAttempt: attempt },
-              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
-              reduceVerbosity: true,
-              usedSignatures: normalizedUsedSignatures,
-              brandBrainDirective,
-              extraInstructions: retryInstructions,
-            });
-            const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
-            const validation = candidate ? validateBrandBrainPost(candidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
-            if (validation.ok) {
-              rawPosts[entry.index] = candidate;
-              replaced = true;
-              break;
-            }
-            console.warn('[BrandBrain][Retry] candidate rejected', {
-              requestId: loggingContext?.requestId || 'unknown',
-              day: entry.day,
-              slot,
-              attempt,
               reasons: validation.reasons,
+              fields: deriveBrandBrainRepairFields(validation.reasons),
             });
           }
-          if (!replaced) {
-            retryFailures.push(entry);
-          }
-        }
-        if (retryFailures.length) {
-          const err = new Error('Brand Brain validation failed after retries');
+        });
+        if (invalidEntries.length) {
+          const err = new Error('Brand Brain validation failed after repair');
           err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
           err.statusCode = 500;
-          err.details = retryFailures;
-          console.error('[BrandBrain][Validation] retries exhausted', {
+          err.details = invalidEntries;
+          console.error('[BrandBrain][Validation] repair failed', {
             requestId: loggingContext?.requestId || 'unknown',
-            failures: retryFailures.length,
-            samples: retryFailures.slice(0, 2),
+            failures: invalidEntries.length,
+            samples: invalidEntries.slice(0, 2),
           });
           throw err;
         }
+        console.log('[BrandBrain][Repair] fields repaired', {
+          requestId: loggingContext?.requestId || 'unknown',
+          count: repairSummary.length,
+          samples: repairSummary.slice(0, 2),
+        });
       }
     }
     console.log('[Calendar][Server][SchemaValidation]', {
@@ -5570,27 +5560,16 @@ const server = http.createServer((req, res) => {
       samples: normalizedMissing.slice(0, 2),
     });
     if (brandBrainEnabled && normalizedMissing.length) {
-      posts = posts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-      const stillMissing = [];
-      posts.forEach((post, idx) => {
-        const missing = validatePostCompleteness(post);
-        if (missing.length) {
-          stillMissing.push({ index: idx, missing });
-        }
-      });
-      const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-      console.warn('[BrandBrain][SchemaValidation] normalized missing fields after fill', {
+      const err = new Error('Brand Brain normalization missing required fields');
+      err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
+      err.statusCode = 500;
+      err.details = normalizedMissing;
+      console.warn('[BrandBrain][SchemaValidation] normalized missing required fields', {
         requestId: loggingContext?.requestId || 'unknown',
-        count: stillMissing.length,
-        samples: stillMissing.slice(0, 2),
+        count: normalizedMissing.length,
+        samples: normalizedMissing.slice(0, 2),
       });
-      if (missingDay) {
-        const err = new Error('Brand Brain normalization missing required fields');
-        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-        err.statusCode = 500;
-        err.details = stillMissing;
-        throw err;
-      }
+      throw err;
     }
     const signatureSet = new Set(normalizedUsedSignatures);
     const duplicates = [];
