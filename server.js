@@ -3481,15 +3481,17 @@ function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
   }
   if (!isNonEmptyString(next.hook)) {
     const base = next.title || topic || nicheLabel;
-    next.hook = `Stop losing ${nicheLabel} leads before they book ${base}.`;
+    next.hook = `Most ${nicheLabel} leads drop before ${base} converts.`;
   }
   if (!isNonEmptyString(next.cta)) {
     next.cta = buildBrandBrainCta(nicheStyle, topic);
   }
   if (!isNonEmptyString(next.caption)) {
     const opener = next.hook;
-    const detail = topic ? `Focus on ${topic}.` : `Focus on the key decision blocker.`;
-    next.caption = `${opener} ${detail} Use a 3-step fix: clarify the outcome, show proof, and offer the next step. ${next.cta}.`;
+    const detail = topic
+      ? `Here’s the shift ${nicheLabel} clients respond to when ${topic}.`
+      : `Here’s the shift ${nicheLabel} clients respond to when deciding.`;
+    next.caption = `${opener} ${detail} ${next.cta}.`;
   }
   if (!Array.isArray(next.hashtags) || !next.hashtags.length) {
     next.hashtags = buildBrandBrainHashtags(nicheStyle);
@@ -3504,7 +3506,8 @@ function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
     next.storyPromptPlus = `Poll: biggest blocker. Question box: your goal. Slider: readiness to act.`;
   }
   if (!isNonEmptyString(next.distributionPlan)) {
-    next.distributionPlan = `Post in the morning, pin a comment with the DM keyword, reply to early comments within 30 minutes, and follow up with a story recap + CTA.`;
+    const visual = topic ? `Show ${topic} on screen.` : `Show a niche-specific moment on screen.`;
+    next.distributionPlan = `Open with the hook in the first second. ${visual} Pin a comment with the DM keyword and reply to early comments within 30 minutes. Close with the CTA.`;
   }
   if (!next.engagementScripts || typeof next.engagementScripts !== 'object') {
     next.engagementScripts = {};
@@ -5392,10 +5395,6 @@ const server = http.createServer((req, res) => {
           });
         }
         if (missingFieldsReport.length) {
-          const err = new Error('Brand Brain schema repair failed');
-          err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
-          err.statusCode = 500;
-          err.details = missingFieldsReport;
           console.warn('[BrandBrain][SchemaValidation] missing required fields after repair', {
             requestId: loggingContext?.requestId,
             startDay,
@@ -5407,7 +5406,24 @@ const server = http.createServer((req, res) => {
             responseLength: rawLength,
             detailSamples: missingFieldsReport.slice(0, 2),
           });
-          throw err;
+          rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
+          const stillMissing = [];
+          rawPosts.forEach((post, idx) => {
+            const missing = validatePostCompleteness(post);
+            if (!missing.length) return;
+            const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+            const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
+            stillMissing.push({ index: idx, day, slot, missing });
+          });
+          const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
+          if (missingDay) {
+            const err = new Error('Brand Brain schema repair failed');
+            err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
+            err.statusCode = 500;
+            err.details = stillMissing;
+            throw err;
+          }
+          missingFieldsReport.length = 0;
         }
       } else {
         const err = new Error('Calendar response missing required fields');
@@ -5554,16 +5570,27 @@ const server = http.createServer((req, res) => {
       samples: normalizedMissing.slice(0, 2),
     });
     if (brandBrainEnabled && normalizedMissing.length) {
-      const err = new Error('Brand Brain normalization missing required fields');
-      err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-      err.statusCode = 500;
-      err.details = normalizedMissing;
-      console.warn('[BrandBrain][SchemaValidation] normalized missing required fields', {
-        requestId: loggingContext?.requestId || 'unknown',
-        count: normalizedMissing.length,
-        samples: normalizedMissing.slice(0, 2),
+      posts = posts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
+      const stillMissing = [];
+      posts.forEach((post, idx) => {
+        const missing = validatePostCompleteness(post);
+        if (missing.length) {
+          stillMissing.push({ index: idx, missing });
+        }
       });
-      throw err;
+      const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
+      console.warn('[BrandBrain][SchemaValidation] normalized missing fields after fill', {
+        requestId: loggingContext?.requestId || 'unknown',
+        count: stillMissing.length,
+        samples: stillMissing.slice(0, 2),
+      });
+      if (missingDay) {
+        const err = new Error('Brand Brain normalization missing required fields');
+        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
+        err.statusCode = 500;
+        err.details = stillMissing;
+        throw err;
+      }
     }
     const signatureSet = new Set(normalizedUsedSignatures);
     const duplicates = [];
@@ -6150,41 +6177,6 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/debug/design-assets' && req.method === 'GET') {
     if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     handleDebugDesignAssets(req, res);
-    return;
-  }
-
-  if (parsed.pathname === '/api/debug/brand-brain-test' && req.method === 'POST') {
-    if (process.env.DEBUG_BRAND_BRAIN_TEST !== '1') {
-      return sendJson(res, 404, { error: 'not_found' });
-    }
-    (async () => {
-      const requestId = generateRequestId('bb-test');
-      try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
-        const isPro = isUserPro(req);
-        if (!isPro) {
-          return sendJson(res, 403, { error: 'pro_required', requestId });
-        }
-        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
-        if (!brandBrainSettings?.enabled) {
-          return sendJson(res, 400, { error: 'brand_brain_disabled', requestId });
-        }
-        const posts = await generateCalendarPosts({
-          nicheStyle: 'real estate agent in miami',
-          userId: user.id,
-          days: 5,
-          startDay: 1,
-          postsPerDay: 1,
-          isPro,
-          context: { requestId, batchIndex: 0, startDay: 1 },
-        });
-        return sendJson(res, 200, { ok: true, requestId, posts });
-      } catch (err) {
-        logServerError('brand_brain_test_error', err, { requestId });
-        return respondWithServerError(res, err, { requestId });
-      }
-    })();
     return;
   }
 
