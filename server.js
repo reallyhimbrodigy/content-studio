@@ -2422,13 +2422,31 @@ function extractStrategyKeyword(text = '') {
   return tokens.length ? tokens[0] : 'this topic';
 }
 
+const REQUIRED_POST_FIELDS = [
+  'day',
+  'title',
+  'hook',
+  'caption',
+  'cta',
+  'designNotes',
+  'storyPrompt',
+  'storyPromptPlus',
+  'distributionPlan',
+  'hashtags',
+  'script',
+  'reelScript',
+  'engagementScripts',
+];
+const REQUIRED_SCRIPT_FIELDS = ['hook', 'body', 'cta'];
+const REQUIRED_ENGAGEMENT_FIELDS = ['commentReply', 'dmReply'];
+
 function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['day', 'title', 'hook', 'caption', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan'],
+    required: REQUIRED_POST_FIELDS.slice(),
     properties: {
       day: {
         type: 'integer',
@@ -2450,7 +2468,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       script: {
         type: 'object',
         additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
+        required: REQUIRED_SCRIPT_FIELDS.slice(),
         properties: {
           hook: { type: 'string', minLength: 1 },
           body: { type: 'string', minLength: 1 },
@@ -2460,7 +2478,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       reelScript: {
         type: 'object',
         additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
+        required: REQUIRED_SCRIPT_FIELDS.slice(),
         properties: {
           hook: { type: 'string', minLength: 1 },
           body: { type: 'string', minLength: 1 },
@@ -2470,7 +2488,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       engagementScripts: {
         type: 'object',
         additionalProperties: false,
-        required: ['commentReply', 'dmReply'],
+        required: REQUIRED_ENGAGEMENT_FIELDS.slice(),
         properties: {
           commentReply: { type: 'string', minLength: 1 },
           dmReply: { type: 'string', minLength: 1 },
@@ -2527,6 +2545,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
+  const requiredFieldsList = REQUIRED_POST_FIELDS.join(', ');
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         `Brand Brain enabled: output must be final publishable copy tailored to the user's niche and offer.`,
@@ -2556,7 +2575,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         `Social Proof/Testimonial: hook states outcome + context; body is before/after with constraints; CTA qualifies leads (DM keyword to see if it fits).`,
         `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
         `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
-        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
+        `Return valid JSON only. Every post object must include all required keys: ${requiredFieldsList}. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2575,7 +2594,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
  ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ Each object must include ${requiredFieldsList} with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
  `;
@@ -2591,7 +2610,8 @@ function normalizeCalendarSignature(value = '') {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  const requiredList = REQUIRED_POST_FIELDS.join(', ');
+  return `Calendar schema: ${expectedCount} posts with ${requiredList}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function sanitizeJsonContent(content = '') {
@@ -3429,6 +3449,7 @@ const BRAND_BRAIN_FORBIDDEN_PHRASES = [
   'quick hook',
   'explain the idea',
   'explain how',
+  'list two',
   'ask for feedback',
   'neutral background',
   'let me know what you think',
@@ -3515,6 +3536,22 @@ function buildBrandBrainCta(nicheStyle = '', topic = '') {
 function coerceBrandBrainPostTypes(post = {}) {
   if (!post || typeof post !== 'object') return post;
   const next = { ...post };
+  const storyPromptValue = resolveStoryPromptValue(next);
+  const storyPromptPlusValue = resolveStoryPromptPlusValue(next);
+  const distributionPlanValue = resolveDistributionPlanValue(next);
+  if (!isNonEmptyString(next.storyPrompt) && storyPromptValue) next.storyPrompt = storyPromptValue;
+  if (!isNonEmptyString(next.storyPromptPlus) && storyPromptPlusValue) next.storyPromptPlus = storyPromptPlusValue;
+  if (!isNonEmptyString(next.distributionPlan) && distributionPlanValue) next.distributionPlan = distributionPlanValue;
+  if (!next.script && next.videoScript) next.script = next.videoScript;
+  if (!next.reelScript && next.reel_script) next.reelScript = next.reel_script;
+  if (!next.reelScript && next.script) next.reelScript = next.script;
+  if (!next.engagementScripts) {
+    const commentReply = toPlainString(next.engagementScript || next.engagement_comment || '');
+    const dmReply = toPlainString(next.engagementDm || next.engagement_dm || '');
+    if (commentReply || dmReply) {
+      next.engagementScripts = { commentReply, dmReply };
+    }
+  }
   if (typeof next.hashtags === 'string') {
     const tags = next.hashtags
       .split(/[#,\s]+/)
@@ -3526,15 +3563,29 @@ function coerceBrandBrainPostTypes(post = {}) {
   } else {
     next.hashtags = next.hashtags.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
   }
-  if (next.engagementScripts && typeof next.engagementScripts !== 'object') {
-    next.engagementScripts = {};
-  }
-  if (next.script && typeof next.script !== 'object') {
-    next.script = {};
-  }
-  if (next.reelScript && typeof next.reelScript !== 'object') {
-    next.reelScript = {};
-  }
+  if (!next.script || typeof next.script !== 'object') next.script = {};
+  if (!next.reelScript || typeof next.reelScript !== 'object') next.reelScript = {};
+  if (!next.engagementScripts || typeof next.engagementScripts !== 'object') next.engagementScripts = {};
+  REQUIRED_SCRIPT_FIELDS.forEach((field) => {
+    if (!isNonEmptyString(next.script[field])) next.script[field] = '';
+    if (!isNonEmptyString(next.reelScript[field])) next.reelScript[field] = '';
+  });
+  REQUIRED_ENGAGEMENT_FIELDS.forEach((field) => {
+    if (!isNonEmptyString(next.engagementScripts[field])) next.engagementScripts[field] = '';
+  });
+  [
+    'title',
+    'hook',
+    'caption',
+    'cta',
+    'designNotes',
+    'storyPrompt',
+    'storyPromptPlus',
+    'distributionPlan',
+  ].forEach((field) => {
+    if (!isNonEmptyString(next[field])) next[field] = '';
+  });
+  if (!Number.isFinite(Number(next.day))) next.day = next.day ?? null;
   return next;
 }
 
@@ -3944,15 +3995,15 @@ function validatePostCompleteness(post = {}) {
       missing.push(key);
     }
   };
+  if (!Number.isFinite(Number(post.day))) missing.push('day');
   checkString(post.title, 'title');
   checkString(post.hook, 'hook');
   checkString(post.caption, 'caption');
   checkString(post.cta, 'cta');
+  checkString(post.designNotes, 'designNotes');
   checkString(post.storyPrompt, 'storyPrompt');
   checkString(post.storyPromptPlus, 'storyPromptPlus');
-  checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
-  if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
   const validHashtags = hashtags
@@ -3961,7 +4012,7 @@ function validatePostCompleteness(post = {}) {
   if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
 
   const scriptCandidate = post.script || post.videoScript;
-  if (!scriptCandidate) {
+  if (!scriptCandidate || typeof scriptCandidate !== 'object') {
     missing.push('script');
   } else {
     checkString(scriptCandidate.hook, 'script.hook');
@@ -3970,7 +4021,7 @@ function validatePostCompleteness(post = {}) {
   }
 
   const reelCandidate = post.reelScript || post.reel_script || post.script || post.videoScript;
-  if (!reelCandidate) {
+  if (!reelCandidate || typeof reelCandidate !== 'object') {
     missing.push('reelScript');
   } else {
     checkString(reelCandidate.hook, 'reelScript.hook');
@@ -3979,14 +4030,15 @@ function validatePostCompleteness(post = {}) {
   }
 
   const engagement = post.engagementScripts;
-  if (!engagement) {
+  if (!engagement || typeof engagement !== 'object') {
     missing.push('engagementScripts');
   } else {
     checkString(engagement.commentReply, 'engagementScripts.commentReply');
     checkString(engagement.dmReply, 'engagementScripts.dmReply');
   }
 
-  return missing;
+  const requiredSet = new Set(REQUIRED_POST_FIELDS);
+  return missing.filter((field) => requiredSet.has(field.split('.')[0]));
 }
 
 function stripSuggestedAudioLinks(value = '') {
@@ -4247,6 +4299,28 @@ const DISTRIBUTION_PLAN_ALIASES = [
 function buildBrandBrainRepairSchema(fields = []) {
   const properties = {};
   const required = [];
+  const minFor = (field) => {
+    switch (field) {
+      case 'title':
+        return BRAND_BRAIN_MIN_LENGTHS.title;
+      case 'hook':
+        return BRAND_BRAIN_MIN_LENGTHS.hook;
+      case 'caption':
+        return BRAND_BRAIN_MIN_LENGTHS.caption;
+      case 'cta':
+        return BRAND_BRAIN_MIN_LENGTHS.cta;
+      case 'designNotes':
+        return BRAND_BRAIN_MIN_LENGTHS.designNotes;
+      case 'storyPrompt':
+        return BRAND_BRAIN_MIN_LENGTHS.storyPrompt;
+      case 'storyPromptPlus':
+        return BRAND_BRAIN_MIN_LENGTHS.storyPromptPlus;
+      case 'distributionPlan':
+        return BRAND_BRAIN_MIN_LENGTHS.distributionPlan;
+      default:
+        return 1;
+    }
+  };
   const addProp = (key, schema) => {
     if (!properties[key]) {
       properties[key] = schema;
@@ -4258,7 +4332,10 @@ function buildBrandBrainRepairSchema(fields = []) {
     const scriptRequired = [];
     const addScriptField = (fieldKey) => {
       if (!scriptProps[fieldKey]) {
-        scriptProps[fieldKey] = { type: 'string', minLength: 1 };
+        const min = fieldKey === 'body'
+          ? (key === 'reelScript' ? BRAND_BRAIN_MIN_LENGTHS.reelScriptBody : BRAND_BRAIN_MIN_LENGTHS.scriptBody)
+          : 1;
+        scriptProps[fieldKey] = { type: 'string', minLength: min || 1 };
         scriptRequired.push(fieldKey);
       }
     };
@@ -4276,16 +4353,16 @@ function buildBrandBrainRepairSchema(fields = []) {
   };
   const fieldsSet = new Set(fields);
   const addIfPresent = (field) => fieldsSet.has(field);
-  if (addIfPresent('title')) addProp('title', { type: 'string', minLength: 1 });
-  if (addIfPresent('hook')) addProp('hook', { type: 'string', minLength: 1 });
-  if (addIfPresent('caption')) addProp('caption', { type: 'string', minLength: 1 });
-  if (addIfPresent('cta')) addProp('cta', { type: 'string', minLength: 1 });
-  if (addIfPresent('designNotes')) addProp('designNotes', { type: 'string', minLength: 1 });
-  if (addIfPresent('storyPrompt')) addProp('storyPrompt', { type: 'string', minLength: 1 });
-  if (addIfPresent('storyPromptPlus')) addProp('storyPromptPlus', { type: 'string', minLength: 1 });
-  if (addIfPresent('distributionPlan')) addProp('distributionPlan', { type: 'string', minLength: 1 });
+  if (addIfPresent('title')) addProp('title', { type: 'string', minLength: minFor('title') });
+  if (addIfPresent('hook')) addProp('hook', { type: 'string', minLength: minFor('hook') });
+  if (addIfPresent('caption')) addProp('caption', { type: 'string', minLength: minFor('caption') });
+  if (addIfPresent('cta')) addProp('cta', { type: 'string', minLength: minFor('cta') });
+  if (addIfPresent('designNotes')) addProp('designNotes', { type: 'string', minLength: minFor('designNotes') });
+  if (addIfPresent('storyPrompt')) addProp('storyPrompt', { type: 'string', minLength: minFor('storyPrompt') });
+  if (addIfPresent('storyPromptPlus')) addProp('storyPromptPlus', { type: 'string', minLength: minFor('storyPromptPlus') });
+  if (addIfPresent('distributionPlan')) addProp('distributionPlan', { type: 'string', minLength: minFor('distributionPlan') });
   if (addIfPresent('hashtags')) {
-    addProp('hashtags', { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } });
+    addProp('hashtags', { type: 'array', minItems: 8, items: { type: 'string', minLength: 1 } });
   }
   const scriptMissing = ['script.hook', 'script.body', 'script.cta'].filter((field) => fieldsSet.has(field));
   if (fieldsSet.has('script') || scriptMissing.length) {
@@ -4301,7 +4378,10 @@ function buildBrandBrainRepairSchema(fields = []) {
     const engagementRequired = [];
     const addEngagementField = (fieldKey) => {
       if (!engagementProps[fieldKey]) {
-        engagementProps[fieldKey] = { type: 'string', minLength: 1 };
+        const min = fieldKey === 'commentReply'
+          ? BRAND_BRAIN_MIN_LENGTHS.engagementComment
+          : BRAND_BRAIN_MIN_LENGTHS.engagementDm;
+        engagementProps[fieldKey] = { type: 'string', minLength: min || 1 };
         engagementRequired.push(fieldKey);
       }
     };
@@ -5788,10 +5868,7 @@ const server = http.createServer((req, res) => {
             }
           }
           if (regenFailures.length) {
-            const err = new Error('Brand Brain validation failed after repair');
-            err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-            err.statusCode = 500;
-            err.details = regenFailures.map((entry) => ({
+            const details = regenFailures.map((entry) => ({
               index: entry.index,
               day: entry.day,
               slot: entry.slot,
@@ -5804,9 +5881,15 @@ const server = http.createServer((req, res) => {
             console.error('[BrandBrain][Validation] repair failed', {
               requestId: loggingContext?.requestId || 'unknown',
               failures: regenFailures.length,
-              samples: err.details.slice(0, 2),
+              samples: details.slice(0, 2),
             });
-            throw err;
+            const validPosts = [];
+            rawPosts.forEach((post) => {
+              const validation = validateBrandBrainPost(post, nicheStyle);
+              if (validation.ok) validPosts.push(post);
+            });
+            loggingContext.partialErrors = details;
+            rawPosts = validPosts;
           }
         }
         console.log('[BrandBrain][Repair] completed', {
@@ -5915,10 +5998,7 @@ const server = http.createServer((req, res) => {
         }
       }
       if (regenFailures.length) {
-        const err = new Error('Brand Brain normalization missing required fields');
-        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-        err.statusCode = 500;
-        err.details = regenFailures.map((entry) => ({
+        const details = regenFailures.map((entry) => ({
           index: entry.index,
           day: entry.day,
           slot: entry.slot,
@@ -5928,7 +6008,18 @@ const server = http.createServer((req, res) => {
           metaLanguageHits: entry.validation?.metaLanguageHits || [],
           tooGenericFlags: entry.validation?.tooGenericFlags || [],
         }));
-        throw err;
+        console.error('[BrandBrain][Normalization] regen failures', {
+          requestId: loggingContext?.requestId || 'unknown',
+          failures: details.length,
+          samples: details.slice(0, 2),
+        });
+        const validPosts = [];
+        posts.forEach((post) => {
+          const validation = validateBrandBrainPost(post, nicheStyle);
+          if (validation.ok) validPosts.push(post);
+        });
+        loggingContext.partialErrors = details;
+        posts = validPosts;
       }
     }
     const signatureSet = new Set(normalizedUsedSignatures);
@@ -6293,7 +6384,13 @@ const server = http.createServer((req, res) => {
           postCount: Array.isArray(posts) ? posts.length : 0,
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
+        const partialErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
         if (!Array.isArray(posts) || !posts.length) {
+          if (partialErrors.length) {
+            const responsePayload = { calendarId: targetCalendarId, posts: [], requestId, errors: partialErrors };
+            if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
+            return sendJson(res, 200, responsePayload);
+          }
           return sendJson(res, 500, {
             error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
             requestId,
@@ -6301,6 +6398,7 @@ const server = http.createServer((req, res) => {
         }
         const responsePayload = { calendarId: targetCalendarId, posts, requestId };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
+        if (partialErrors.length) responsePayload.errors = partialErrors;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
         const errorContext = {
@@ -6336,6 +6434,12 @@ const server = http.createServer((req, res) => {
               ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
             ].filter(Boolean);
             if (!Array.isArray(posts) || !posts.length) {
+              const partialErrors = Array.isArray(sanitizedContext.partialErrors) ? sanitizedContext.partialErrors : [];
+              if (partialErrors.length) {
+                const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts: [], requestId, errors: partialErrors };
+                if (warnings.length) responsePayload.warnings = warnings;
+                return sendJson(res, 200, responsePayload);
+              }
               return sendJson(res, 500, {
                 error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
                 requestId,
@@ -6343,6 +6447,9 @@ const server = http.createServer((req, res) => {
             }
             const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts, requestId };
             if (warnings.length) responsePayload.warnings = warnings;
+            if (Array.isArray(sanitizedContext.partialErrors) && sanitizedContext.partialErrors.length) {
+              responsePayload.errors = sanitizedContext.partialErrors;
+            }
             return sendJson(res, 200, responsePayload);
           } catch (retryErr) {
             logServerError('calendar_regenerate_error', retryErr, { requestId, context: errorContext });
