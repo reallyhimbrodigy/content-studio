@@ -2650,12 +2650,15 @@ function parseCalendarPostsFromContent(content = '') {
   }
 }
 
-function tryParsePosts(content = '', expectedCount = null) {
+function tryParsePosts(content = '', expectedCount = null, allowCountMismatch = false) {
   const posts = parseCalendarPostsFromContent(content);
   if (!Array.isArray(posts)) {
     return { posts: null, reason: 'missing_posts', parsed: null };
   }
   if (expectedCount !== null && posts.length !== expectedCount) {
+    if (allowCountMismatch) {
+      return { posts, reason: 'count_mismatch', parsed: posts };
+    }
     return { posts: null, reason: 'count_mismatch', parsed: posts };
   }
   return { posts, reason: null };
@@ -4735,14 +4738,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const firstResponse = await attemptRequest('', useSchema, directiveOverride);
     parsedContent = firstResponse.content;
     lastLatency = firstResponse.latency;
-    parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+    parseResult = tryParsePosts(parsedContent, expectedChunkCount, !allowFallbacks);
 
     if (!parseResult.posts) {
       logParseFailure('initial', parseResult?.reason || 'missing posts', parsedContent);
       const sanitized = sanitizeJsonContent(parsedContent);
       if (sanitized && sanitized !== parsedContent) {
         parsedContent = sanitized;
-        parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+        parseResult = tryParsePosts(parsedContent, expectedChunkCount, !allowFallbacks);
       }
     }
 
@@ -4753,12 +4756,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       const retryResponse = await attemptRequest(retryInstructions, useSchema, directiveOverride);
       parsedContent = retryResponse.content;
       lastLatency = retryResponse.latency;
-      parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+      parseResult = tryParsePosts(parsedContent, expectedChunkCount, !allowFallbacks);
       if (!parseResult.posts) {
         const sanitizedRetry = sanitizeJsonContent(parsedContent);
         if (sanitizedRetry && sanitizedRetry !== parsedContent) {
           parsedContent = sanitizedRetry;
-          parseResult = tryParsePosts(parsedContent, expectedChunkCount);
+          parseResult = tryParsePosts(parsedContent, expectedChunkCount, !allowFallbacks);
         }
       }
     }
