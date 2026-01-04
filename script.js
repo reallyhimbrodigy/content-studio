@@ -627,6 +627,21 @@ function normalizeContentCard(card) {
   const hookOptions = normalizedStrategy.hook_options;
   const targetSavesText = formatStrategyTarget(normalizedStrategy.target_saves_pct);
   const targetCommentsText = formatStrategyTarget(normalizedStrategy.target_comments_pct);
+  const scriptCandidate =
+    base.videoScript ||
+    base.reelScript ||
+    base.video_script ||
+    base.reel_script ||
+    base.script ||
+    null;
+  const normalizedVideoScript =
+    scriptCandidate && typeof scriptCandidate === 'object'
+      ? {
+          hook: scriptCandidate.hook || scriptCandidate.Hook || '',
+          body: scriptCandidate.body || scriptCandidate.Body || '',
+          cta: scriptCandidate.cta || scriptCandidate.CTA || '',
+        }
+      : scriptCandidate;
   return {
     ...base,
     strategy: normalizedStrategy,
@@ -637,6 +652,7 @@ function normalizeContentCard(card) {
     hookOptions,
     targetSaves: targetSavesText,
     targetComments: targetCommentsText,
+    videoScript: normalizedVideoScript || base.videoScript,
   };
 }
 
@@ -5121,9 +5137,15 @@ const createCard = (post) => {
       engagementScripts,
       engagementScript,
       promoSlot,
-      videoScript,
       weeklyPromo,
     } = entry;
+    const videoScript =
+      entry.videoScript ||
+      entry.reelScript ||
+      entry.video_script ||
+      entry.reel_script ||
+      entry.script ||
+      null;
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
     // No inline audio overrides; display server-provided post.audio only.
 
@@ -6563,11 +6585,12 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
     // Ensure every post has a videoScript object
     let missingCount = 0;
     let posts = Array.isArray(cal.posts) ? cal.posts.map(post => {
-      if (!post.videoScript || typeof post.videoScript !== 'object') {
+      const candidate = post.videoScript || post.reelScript || post.video_script || post.reel_script || post.script || null;
+      if (!candidate || typeof candidate !== 'object') {
         missingCount++;
         return { ...post, videoScript: { hook: '', body: '', cta: '' } };
       }
-      return post;
+      return { ...post, videoScript: candidate };
     }) : [];
     if (missingCount > 0) {
       console.warn(`⚠️ Fixed ${missingCount} posts missing videoScript (from library/load). All posts now have a Reel Script.`);
