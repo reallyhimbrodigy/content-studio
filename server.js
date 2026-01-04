@@ -2458,6 +2458,7 @@ const REQUIRED_POST_FIELDS = [
   'reelScript',
   'engagementScripts',
 ];
+const BRAND_BRAIN_REQUIRED_FIELDS = REQUIRED_POST_FIELDS.slice();
 const REQUIRED_SCRIPT_FIELDS = ['hook', 'body', 'cta'];
 const REQUIRED_ENGAGEMENT_FIELDS = ['commentReply', 'dmReply'];
 
@@ -2572,27 +2573,22 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'BRAND BRAIN (JSON ONLY)',
         'Return ONLY valid JSON that matches the provided schema. Do not add fields. Do not add commentary.',
         'Every required field must be present and non-empty for every post.',
-        'Every post must be semantically distinct: vary premise, tension, scenario, objection, proof type, and action.',
+        'All posts in the batch must be semantically distinct; do not reuse the same topic, framing, hook pattern, CTA keyword, or story prompt.',
         'No "Day X" framing. No meta/instructional language.',
         '',
         'Per-card strategic spine (implicit, never named):',
         '- Choose exactly one persuasion driver: loss aversion, social proof, authority, scarcity, urgency, reciprocity, commitment/consistency, identity signaling, status/aspiration, contrast/anchoring, objection preemption, risk reversal, narrative transportation, curiosity.',
         '- Choose exactly one algorithm lever: 1-3s retention, completion, rewatch trigger, saves utility, shares, comment depth/velocity, profile taps/follows, pattern interrupt, novelty, pacing/cuts/captions, comment-to-DM, community signaling, topic consistency.',
         '',
-        'Field-level requirements (use existing fields only):',
-        '- Title: specific belief/situation angle; unique across posts.',
-        '- Hook: punchy, high-stakes, specific; no soft rhetorical questions; unique across posts.',
-        '- Body/Caption: concrete local detail + one implicit objection neutralizer; no generic hype.',
-        '- CTA: earned from the post; unique keyword; aligns to the algorithm lever (DM or comment) and varies across posts.',
-        '- Story Prompt: always present; asks for a specific lived experience to drive comment depth.',
-        '- Execution Notes: behavior-shaping notes (pacing, cuts, caption style, hold frames), not generic.',
-        '- Design Notes: pattern-interrupt visuals that support the hook tension.',
-        '- Engagement Loop: realistic comment reply + DM continuation that advances toward action.',
-        '- Reel Script: tight beats with a rewatch trigger (list/reveal/reversal); not a paraphrase of the caption.',
-        '- Distribution Plan: concrete platform-native actions (pin comment, story poll tied to story prompt, repost mechanics).',
-        '- Hashtags: relevant, non-stuffed; vary clusters across posts; avoid repeated full sets.',
-        '',
-        'Quality bar: creator-native, specific, non-generic, no niche stuffing, no meta language.',
+        'Section prompts (use existing fields only):',
+        '- Title: 6–12 words; situational tension in the user’s niche; no clichés; must be unique vs other titles.',
+        '- Hook: 8–14 words; high-stakes pattern interrupt; no “Did you know/What if”; implies one persuasion lever without naming it; unique structure vs other hooks.',
+        '- CTA: one sentence; comment→DM or DM-first; unique keyword per post; no generic “learn more/DM me.”',
+        '- Story Prompt: always present; one-line sticker prompt; asks for a specific lived experience/constraint; answerable in under 5 seconds; not “favorites.”',
+        '- Design Notes: 2–3 concrete visual beats + 1 pacing instruction; must reinforce hook stakes; no generic aesthetics.',
+        '- Engagement Loop: exactly 2 templates: (1) pinned comment reply that deepens thread; (2) DM opener that gives a small reciprocity asset + asks one qualifying question.',
+        '- Reel Script: Hook line = Hook field; Body = 4 beats (false belief → reality → consequence → micro-fix) with one niche-relevant concrete detail (no fabricated stats); CTA line = CTA field; no meta language.',
+        '- Distribution Plan: pin comment using CTA keyword; Story follow-up mirroring Story Prompt; save-utility mechanic (checklist/carousel recap); one timing note.',
       ].join('\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -3593,7 +3589,7 @@ function coerceBrandBrainPostTypes(post = {}) {
 
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
   const reasons = [];
-  const missing = validatePostCompleteness(post);
+  const missing = validatePostCompleteness(post, BRAND_BRAIN_REQUIRED_FIELDS);
   if (missing.length) {
     reasons.push({ code: 'MISSING_FIELD', detail: missing });
   }
@@ -3758,7 +3754,7 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
 }
 
-function validatePostCompleteness(post = {}) {
+function validatePostCompleteness(post = {}, requiredFields = REQUIRED_POST_FIELDS) {
   const missing = [];
   const checkString = (value, key) => {
     if (!isNonEmptyString(value) && !missing.includes(key)) {
@@ -3807,7 +3803,7 @@ function validatePostCompleteness(post = {}) {
     checkString(engagement.dmReply, 'engagementScripts.dmReply');
   }
 
-  const requiredSet = new Set(REQUIRED_POST_FIELDS);
+  const requiredSet = new Set(requiredFields);
   return missing.filter((field) => requiredSet.has(field.split('.')[0]));
 }
 
