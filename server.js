@@ -5214,7 +5214,7 @@ const server = http.createServer((req, res) => {
       Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : null;
     const perDay = safePostsPerDay || 1;
     const targetCount = computePostCountTarget(days, postsPerDay);
-    const expectedCount = Number.isFinite(Number(targetCount)) ? targetCount : null;
+    let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
@@ -5264,6 +5264,7 @@ const server = http.createServer((req, res) => {
       remainingDays -= chunkDays;
       processedDays += chunkDays;
     }
+    expectedCount = processedDays ? (processedDays * perDay) : null;
     console.log('[Calendar][Server][Chunks]', {
       requestId: logContext.requestId,
       startDay,
