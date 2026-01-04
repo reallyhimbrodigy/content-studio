@@ -4564,6 +4564,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const allowFallbacks = opts.allowFallbacks !== false;
   const reducePromptOnFailure = opts.reducePromptOnFailure !== false;
   const minimalBrandBrainDirective = 'Brand Brain enabled.';
+  let lastError = null;
   const maxTokenCap = opts.reduceVerbosity ? 1400 : 1600;
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
@@ -4792,6 +4793,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     try {
       result = await runParseSequence(true, false);
     } catch (err) {
+      lastError = err;
       if (err?.code === 'OPENAI_SCHEMA_ERROR') {
         if (!allowFallbacks) {
           throw err;
@@ -4808,6 +4810,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       return result;
     }
   } catch (err) {
+    lastError = err;
     if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'INVALID_MODEL_JSON') {
       throw err;
     }
@@ -4815,6 +4818,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   }
 
   if (!allowFallbacks) {
+    if (lastError?.code === 'OPENAI_TIMEOUT') {
+      throw lastError;
+    }
     const err = new Error('OpenAI response missing required posts');
     err.code = 'OPENAI_EMPTY_RESPONSE';
     err.statusCode = 502;
@@ -5480,7 +5486,7 @@ const server = http.createServer((req, res) => {
       const requestTimeoutMs = Number.isFinite(left)
         ? Math.max(5000, Math.min(timeoutCap, left - 5000))
         : (brandBrainEnabled ? 120000 : OPENAI_GENERATION_TIMEOUT_MS);
-      const result = await callOpenAI(nicheStyle, brandContext, {
+      const runAttempt = async () => callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
         startDay: chunkStartDay,
         postsPerDay: perDay,
@@ -5493,6 +5499,21 @@ const server = http.createServer((req, res) => {
         requestTimeoutMs,
         signal: abortSignal,
       });
+      let result;
+      try {
+        result = await runAttempt();
+      } catch (err) {
+        if (err?.code === 'OPENAI_TIMEOUT') {
+          console.warn('[Calendar] chunk retry after timeout', {
+            requestId: loggingContext?.requestId || 'unknown',
+            chunkIndex,
+            startDay: chunkStartDay,
+          });
+          result = await runAttempt();
+        } else {
+          throw err;
+        }
+      }
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
         rawLength: String(result.rawContent || '').length,

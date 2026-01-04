@@ -8323,11 +8323,17 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     // Fire all batches in parallel for maximum speed (~30 seconds)
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const t0 = performance.now();
-    const settled = await Promise.allSettled(
-      batchIndexes.map((batchIndex) =>
-        fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
-      )
-    );
+    const settled = [];
+    const concurrencyLimit = 3;
+    for (let i = 0; i < batchIndexes.length; i += concurrencyLimit) {
+      const slice = batchIndexes.slice(i, i + concurrencyLimit);
+      const sliceResults = await Promise.allSettled(
+        slice.map((batchIndex) =>
+          fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
+        )
+      );
+      settled.push(...sliceResults);
+    }
     const rejectionEntries = settled.filter((entry) => entry.status === 'rejected');
     if (rejectionEntries.length) {
       rejectionEntries.forEach((entry) => console.error('[Calendar] batch rejected', entry.reason));
