@@ -5253,13 +5253,17 @@ const server = http.createServer((req, res) => {
     const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : null;
     const safePostsPerDay =
       Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : null;
-    const perDay = safePostsPerDay || 1;
-    const targetCount = computePostCountTarget(days, postsPerDay);
+    const requestedPostsPerDay = safePostsPerDay || 1;
+    const forceSinglePostPerDayForModel = !brandBrainEnabled && requestedPostsPerDay > 1;
+    const modelPostsPerDay = forceSinglePostPerDayForModel ? 1 : requestedPostsPerDay;
+    const perDay = modelPostsPerDay;
+    const targetCount = computePostCountTarget(days, modelPostsPerDay);
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
+    const blockFallbacks = forceSinglePostPerDayForModel;
     const maxPostsPerChunk = 2;
     const incomingSignatures = Array.isArray(payload.usedSignatures) ? payload.usedSignatures : [];
     const normalizedUsedSignatures = Array.from(new Set(incomingSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean)));
@@ -5294,7 +5298,7 @@ const server = http.createServer((req, res) => {
     async function fetchChunkWithRetry(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const runAttempt = async () => {
         const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay);
-        if (usePostChunks && (chunkResult.fallback || !chunkResult.posts.length || chunkResult.rawLength === 0)) {
+        if ((usePostChunks || blockFallbacks) && (chunkResult.fallback || !chunkResult.posts.length || chunkResult.rawLength === 0)) {
           const err = new Error('CALENDAR_OPENAI_EMPTY');
           err.code = 'CALENDAR_OPENAI_EMPTY';
           throw err;
@@ -5671,7 +5675,7 @@ const server = http.createServer((req, res) => {
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
     const normalizedPosts = [];
-    const allowFallbacks = !brandBrainEnabled;
+    const allowFallbacks = !brandBrainEnabled && !blockFallbacks;
     for (let idx = 0; idx < rawPosts.length; idx += 1) {
       const normalized = normalizePostWithOverrideFallback(
         rawPosts[idx],
@@ -5852,6 +5856,24 @@ const server = http.createServer((req, res) => {
         }));
         throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
       }
+    }
+    if (forceSinglePostPerDayForModel && requestedPostsPerDay > 1) {
+      const expanded = [];
+      posts.forEach((post) => {
+        for (let slotIndex = 0; slotIndex < requestedPostsPerDay; slotIndex += 1) {
+          if (!post || typeof post !== 'object') {
+            expanded.push(post);
+            continue;
+          }
+          const clone = { ...post };
+          if (Object.prototype.hasOwnProperty.call(clone, 'slot')) clone.slot = slotIndex + 1;
+          if (Object.prototype.hasOwnProperty.call(clone, 'slotIndex')) clone.slotIndex = slotIndex;
+          if (Object.prototype.hasOwnProperty.call(clone, 'postIndex')) clone.postIndex = slotIndex;
+          if (Object.prototype.hasOwnProperty.call(clone, 'perDayIndex')) clone.perDayIndex = slotIndex;
+          expanded.push(clone);
+        }
+      });
+      posts = expanded;
     }
     console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
       elapsedMs: Date.now() - tStart,
