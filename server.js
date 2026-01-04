@@ -5585,7 +5585,7 @@ const server = http.createServer((req, res) => {
       });
       if (brandBrainEnabled) {
         let pass = 0;
-        while (rawPosts.length !== expectedCount && pass < 2) {
+        while (rawPosts.length !== expectedCount && pass < 1) {
           const missingDays = [];
           const dayCounts = new Map();
           rawPosts.forEach((post) => {
@@ -5843,7 +5843,7 @@ const server = http.createServer((req, res) => {
       });
       let remaining = normalizedMissing.slice();
       let pass = 0;
-      while (remaining.length && pass < 2) {
+      while (remaining.length && pass < 1) {
         const regenFailures = [];
         for (const entry of remaining) {
           const idx = entry.index;
@@ -6256,6 +6256,7 @@ const server = http.createServer((req, res) => {
           if (usage >= 3) {
             return sendJson(res, 402, {
               ok: false,
+              requestId,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
             });
