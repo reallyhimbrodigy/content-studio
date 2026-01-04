@@ -2112,7 +2112,6 @@ const OPENAI_MAX_ATTEMPTS = (() => {
 })();
 const openAiQueue = [];
 let openAiActiveRequests = 0;
-const calendarRegenInFlight = new Map();
 async function withOpenAiSlot(fn) {
   if (openAiActiveRequests >= OPENAI_MAX_CONCURRENCY) {
     await new Promise((resolve) => {
@@ -4621,6 +4620,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     err.statusCode = 400;
     throw err;
   }
+  if (postsPerDay > 1) {
+    const err = new Error('CALENDAR_OPENAI_EMPTY');
+    err.code = 'CALENDAR_OPENAI_EMPTY';
+    err.statusCode = 500;
+    throw err;
+  }
   const fallbackPosts = buildFallbackChunkPosts(nicheStyle, chunkStartDay, postsPerDay, expectedChunkCount);
   console.warn(
     `[Calendar] callOpenAI returning fallback posts${label}: expected ${expectedChunkCount}, returning ${fallbackPosts.length}`
@@ -6038,15 +6043,6 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
-        const existingRegen = calendarRegenInFlight.get(user.id);
-        if (existingRegen) {
-          return sendJson(res, 429, {
-            ok: false,
-            error: { message: 'REGENERATE_IN_PROGRESS' },
-            requestId,
-          });
-        }
-        calendarRegenInFlight.set(user.id, requestId);
         const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
         const sanitizedUsedSignatures = Array.from(
           new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
@@ -6192,10 +6188,6 @@ const server = http.createServer((req, res) => {
           payload.debugStack = err.stack;
         }
         return sendJson(res, status, payload);
-      } finally {
-        if (req?.user?.id && calendarRegenInFlight.get(req.user.id) === requestId) {
-          calendarRegenInFlight.delete(req.user.id);
-        }
       }
     })();
     return;
