@@ -6366,7 +6366,9 @@ const server = http.createServer((req, res) => {
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const partialErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
-        const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 0;
+        const expectedCount = brandBrainEnabled
+          ? requestedPostsPerDay
+          : (computePostCountTarget(body?.days, requestedPostsPerDay) || 0);
         const actualCount = Array.isArray(posts) ? posts.length : 0;
         const partial = expectedCount ? actualCount < expectedCount : false;
         let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
@@ -6481,7 +6483,9 @@ const server = http.createServer((req, res) => {
               ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
               ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
             ].filter(Boolean);
-            const expectedCount = computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0;
+            const expectedCount = brandBrainEnabled
+              ? requestedPostsPerDay
+              : (computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0);
             let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
             if (brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
               sanitizedContext.warnings = (sanitizedContext.warnings || []).concat([{
