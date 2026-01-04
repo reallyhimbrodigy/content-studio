@@ -3543,8 +3543,10 @@ function coerceBrandBrainPostTypes(post = {}) {
   if (!isNonEmptyString(next.storyPrompt) && storyPromptValue) next.storyPrompt = storyPromptValue;
   if (!isNonEmptyString(next.storyPromptPlus) && storyPromptPlusValue) next.storyPromptPlus = storyPromptPlusValue;
   if (!isNonEmptyString(next.distributionPlan) && distributionPlanValue) next.distributionPlan = distributionPlanValue;
+  if (!next.videoScript && next.video_script) next.videoScript = next.video_script;
   if (!next.script && next.videoScript) next.script = next.videoScript;
   if (!next.reelScript && next.reel_script) next.reelScript = next.reel_script;
+  if (!next.script && next.reelScript) next.script = next.reelScript;
   if (!next.reelScript && next.script) next.reelScript = next.script;
   if (!next.engagementScripts) {
     const commentReply = toPlainString(next.engagementScript || next.engagement_comment || '');
@@ -5864,7 +5866,10 @@ const server = http.createServer((req, res) => {
     console.log('[Calendar][Server][SchemaValidation] normalized missing fields', {
       requestId: loggingContext?.requestId || 'unknown',
       count: normalizedMissing.length,
-      samples: normalizedMissing.slice(0, 2),
+      samples: normalizedMissing.slice(0, 3).map((entry) => ({
+        index: entry.index,
+        missing: entry.missing,
+      })),
     });
     if (brandBrainEnabled && normalizedMissing.length) {
       console.warn('[BrandBrain][SchemaValidation] normalized missing required fields', {
