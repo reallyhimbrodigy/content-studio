@@ -5533,6 +5533,14 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       } catch (err) {
+        chunkMetrics.push({
+          chunkIndex,
+          startDay: chunkStartDay,
+          days: chunkDays,
+          rawLength: 0,
+          duration: 0,
+          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+        });
         loggingContext.partialErrors = (loggingContext.partialErrors || []).concat([{
           code: 'OPENAI_CHUNK_FAILED',
           detail: err?.message || 'openai_chunk_failed',
@@ -6287,9 +6295,10 @@ const server = http.createServer((req, res) => {
           new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
         );
         const targetCalendarId = body?.calendarId ?? null;
+        const regenDays = 1;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
-          days: body?.days,
+          days: regenDays,
           startDay: body?.startDay,
           postsPerDay: body?.postsPerDay,
         });
@@ -6305,7 +6314,7 @@ const server = http.createServer((req, res) => {
               ok: true,
               requestId,
               posts: [],
-              expectedCount: computePostCountTarget(body?.days, requestedPostsPerDay) || 0,
+              expectedCount: computePostCountTarget(regenDays, requestedPostsPerDay) || 0,
               actualCount: 0,
               partial: true,
               warnings: [{
@@ -6343,6 +6352,7 @@ const server = http.createServer((req, res) => {
         }
         const posts = await generateCalendarPosts({
           ...(body || {}),
+          days: regenDays,
           postsPerDay: requestedPostsPerDay,
           usedSignatures: sanitizedUsedSignatures,
           context: regenContext,
@@ -6368,7 +6378,7 @@ const server = http.createServer((req, res) => {
         const partialErrors = Array.isArray(regenContext.partialErrors) ? regenContext.partialErrors : [];
         const expectedCount = brandBrainEnabled
           ? requestedPostsPerDay
-          : (computePostCountTarget(body?.days, requestedPostsPerDay) || 0);
+          : (computePostCountTarget(regenDays, requestedPostsPerDay) || 0);
         const actualCount = Array.isArray(posts) ? posts.length : 0;
         const partial = expectedCount ? actualCount < expectedCount : false;
         let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
@@ -6485,7 +6495,7 @@ const server = http.createServer((req, res) => {
             ].filter(Boolean);
             const expectedCount = brandBrainEnabled
               ? requestedPostsPerDay
-              : (computePostCountTarget(sanitizedBody?.days, requestedPostsPerDay) || 0);
+              : (computePostCountTarget(regenDays, requestedPostsPerDay) || 0);
             let resolvedPosts = Array.isArray(posts) ? posts.slice() : [];
             if (brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
               sanitizedContext.warnings = (sanitizedContext.warnings || []).concat([{
