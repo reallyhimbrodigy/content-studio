@@ -2566,12 +2566,46 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
     : 'No prior signatures to avoid yet.';
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
+  const nonBrandBrainMultiPostBlock =
+    !opts.brandBrainDirective && postsPerDaySetting > 1
+      ? [
+          'MULTIPLE POSTS PER DAY (CRITICAL):',
+          '- You must create multiple distinct posts for the same calendar day.',
+          `- postsPerDay = ${postsPerDaySetting}. For each day D, output exactly ${postsPerDaySetting} separate post objects with "day": D.`,
+          '- When postsPerDay > 1, repeated "day" values are required and expected.',
+          '- Treat each same-day post as a different angle and subtopic; no duplicates.',
+          '',
+        ].join('\\n')
+      : '';
+  const nonBrandBrainQualityBlock =
+    !opts.brandBrainDirective && postsPerDaySetting > 1
+      ? [
+          '',
+          'QUALITY & UNIQUENESS REQUIREMENTS:',
+          '- No filler, no vague “tips”, no generic motivational lines, no placeholders, no repeated templates.',
+          '- Each post must contain a concrete, niche-specific point and a distinct angle from every other post.',
+          '- If generating multiple posts for the same day, each one must target a different subtopic/audience intent (e.g., buyers vs sellers vs investors; financing vs neighborhoods vs pricing strategy), with no overlap.',
+        ].join('\\n')
+      : '';
+  const nonBrandBrainAbsoluteBlock =
+    !opts.brandBrainDirective && postsPerDaySetting > 1
+      ? [
+          '',
+          'ABSOLUTE OUTPUT REQUIREMENTS (DO NOT VIOLATE):',
+          '- Output JSON only. No markdown. No commentary.',
+          '- Return exactly: {"posts":[...]}.',
+          '- "posts" must be a flat array of post objects (do not group by day).',
+          `- posts.length MUST equal days * postsPerDay (= ${days} * ${postsPerDaySetting} = ${totalPostsRequired}).`,
+          `- For each day D in [${startDay} .. ${startDay + days - 1}], include EXACTLY ${postsPerDaySetting} objects with "day": D.`,
+          '- Do not output fewer posts. Do not output extra posts.',
+        ].join('\\n')
+      : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
- ${brandBlock}${brandBrainBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
+ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
  Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
- Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}
+ Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
  `;
 }
 
