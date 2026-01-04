@@ -2565,6 +2565,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const usedBlock = usedSignatures.length
     ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
     : 'No prior signatures to avoid yet.';
+  const avoidSignatures = (Array.isArray(opts.avoidSignatures) ? opts.avoidSignatures : [])
+    .map((sig) => normalizeCalendarSignature(sig))
+    .filter(Boolean)
+    .slice(0, 20);
+  const avoidBlock = avoidSignatures.length
+    ? `Hard constraint: do NOT reuse or closely paraphrase any of these signatures/ideas; regenerate the full set and return the same JSON schema. Avoid: ${avoidSignatures.join(', ')}.`
+    : '';
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   const nonBrandBrainMultiPostBlock =
     !opts.brandBrainDirective && postsPerDaySetting > 1
@@ -2605,7 +2612,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
  ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
  Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
- Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
+ Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
  `;
 }
 
@@ -5267,6 +5274,10 @@ const server = http.createServer((req, res) => {
     const maxPostsPerChunk = 2;
     const incomingSignatures = Array.isArray(payload.usedSignatures) ? payload.usedSignatures : [];
     const normalizedUsedSignatures = Array.from(new Set(incomingSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean)));
+    const incomingAvoidSignatures = Array.isArray(payload.avoidSignatures) ? payload.avoidSignatures : [];
+    const normalizedAvoidSignatures = Array.from(
+      new Set(incomingAvoidSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
+    ).slice(0, 20);
     const chunkMetrics = [];
     let aggregatedRawPosts = [];
     let remainingDays = daysToGenerate;
@@ -5285,6 +5296,7 @@ const server = http.createServer((req, res) => {
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
         usedSignatures: normalizedUsedSignatures,
+        avoidSignatures: normalizedAvoidSignatures,
         brandBrainDirective,
       });
       return {
@@ -5665,7 +5677,7 @@ const server = http.createServer((req, res) => {
       actualCount: rawPosts.length,
       missingFieldsBefore: missingFieldsReport.length,
       missingFieldsAfter: 0,
-      retryUsed: false,
+      retryUsed: attempt > 1,
       responseLength: rawLength,
     });
     if (!rawPosts.length) {
@@ -5742,6 +5754,31 @@ const server = http.createServer((req, res) => {
         days,
         duplicates,
       });
+      if (requestedPostsPerDay > 1 && attempt === 1) {
+        const avoidSignatures = Array.from(
+          new Set(duplicates.map((entry) => entry.signature).filter(Boolean))
+        ).slice(0, 20);
+        if (avoidSignatures.length) {
+          console.warn('[Calendar] duplicate signatures detected; retrying', {
+            requestId: loggingContext?.requestId,
+            startDay,
+            days,
+            attempt: attempt + 1,
+            avoidCount: avoidSignatures.length,
+          });
+          return generateCalendarPosts(
+            {
+              ...(payload || {}),
+              postsPerDay: requestedPostsPerDay,
+              usedSignatures: normalizedUsedSignatures,
+              avoidSignatures,
+              context: { ...loggingContext },
+              isPro: isProUser,
+            },
+            attempt + 1
+          );
+        }
+      }
     }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
