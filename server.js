@@ -2112,6 +2112,7 @@ const OPENAI_MAX_ATTEMPTS = (() => {
 })();
 const openAiQueue = [];
 let openAiActiveRequests = 0;
+const calendarRegenInFlight = new Map();
 async function withOpenAiSlot(fn) {
   if (openAiActiveRequests >= OPENAI_MAX_CONCURRENCY) {
     await new Promise((resolve) => {
@@ -5223,6 +5224,7 @@ const server = http.createServer((req, res) => {
     const brandBrainDirective = isProUser && brandBrainSettings?.enabled
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
+    const brandBrainEnabled = Boolean(brandBrainDirective);
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
       userId: userId || null,
@@ -5252,6 +5254,8 @@ const server = http.createServer((req, res) => {
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const usePostChunks = !brandBrainEnabled && perDay > 1;
+    const maxPostsPerChunk = 2;
     const incomingSignatures = Array.isArray(payload.usedSignatures) ? payload.usedSignatures : [];
     const normalizedUsedSignatures = Array.from(new Set(incomingSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean)));
     const chunkMetrics = [];
@@ -5261,13 +5265,13 @@ const server = http.createServer((req, res) => {
     const chunkBaseTokens = 1600;
     const chunkMinTokens = 1000;
 
-    async function fetchChunk(chunkDays, chunkStartDay, chunkIndex) {
+    async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
         startDay: chunkStartDay,
-        postsPerDay: perDay,
+        postsPerDay: chunkPostsPerDay,
         loggingContext: chunkContext,
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
@@ -5278,27 +5282,112 @@ const server = http.createServer((req, res) => {
         posts: Array.isArray(result.posts) ? result.posts : [],
         rawLength: String(result.rawContent || '').length,
         latency: result.latency || 0,
+        fallback: Boolean(result.fallback),
       };
     }
 
-    while (remainingDays > 0) {
-      const chunkDays = Math.min(remainingDays, chunkLimit);
-      const chunkStartDay = fallbackStart + processedDays;
-      const chunkIndex = chunkMetrics.length;
-      const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex);
-      aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
-      chunkMetrics.push({
-        chunkIndex,
-        startDay: chunkStartDay,
-        days: chunkDays,
-        rawLength: chunkResult.rawLength,
-        duration: chunkResult.latency,
-        timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-      });
-      remainingDays -= chunkDays;
-      processedDays += chunkDays;
+    async function fetchChunkWithRetry(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
+      const runAttempt = async () => {
+        const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay);
+        if (usePostChunks && (chunkResult.fallback || !chunkResult.posts.length || chunkResult.rawLength === 0)) {
+          const err = new Error('CALENDAR_OPENAI_EMPTY');
+          err.code = 'CALENDAR_OPENAI_EMPTY';
+          throw err;
+        }
+        return chunkResult;
+      };
+      try {
+        return await runAttempt();
+      } catch (err) {
+        try {
+          return await runAttempt();
+        } catch (retryErr) {
+          if (chunkPostsPerDay > 1) {
+            const combined = { posts: [], rawLength: 0, latency: 0, fallback: false };
+            for (let i = 0; i < chunkPostsPerDay; i += 1) {
+              const singleIndex = `${chunkIndex}.${i + 1}`;
+              const single = await fetchChunk(1, chunkStartDay, singleIndex, 1);
+              if (single.fallback || !single.posts.length || single.rawLength === 0) {
+                const finalErr = new Error('CALENDAR_OPENAI_EMPTY');
+                finalErr.code = 'CALENDAR_OPENAI_EMPTY';
+                throw finalErr;
+              }
+              combined.posts = combined.posts.concat(single.posts);
+              combined.rawLength += single.rawLength;
+              combined.latency += single.latency;
+              chunkMetrics.push({
+                chunkIndex: singleIndex,
+                startDay: chunkStartDay,
+                days: 1,
+                posts: 1,
+                rawLength: single.rawLength,
+                duration: single.latency,
+                timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+              });
+            }
+            return combined;
+          }
+          throw retryErr;
+        }
+      }
     }
-    expectedCount = processedDays ? (processedDays * perDay) : null;
+
+    if (usePostChunks) {
+      const chunkPlan = [];
+      for (let dayOffset = 0; dayOffset < daysToGenerate; dayOffset += 1) {
+        const day = fallbackStart + dayOffset;
+        let remaining = perDay;
+        while (remaining > 0) {
+          const chunkPostsPerDay = Math.min(remaining, maxPostsPerChunk);
+          chunkPlan.push({
+            chunkDays: 1,
+            chunkStartDay: day,
+            chunkPostsPerDay,
+          });
+          remaining -= chunkPostsPerDay;
+        }
+      }
+      for (let i = 0; i < chunkPlan.length; i += 1) {
+        const plan = chunkPlan[i];
+        const chunkResult = await fetchChunkWithRetry(
+          plan.chunkDays,
+          plan.chunkStartDay,
+          chunkMetrics.length,
+          plan.chunkPostsPerDay
+        );
+        aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
+        chunkMetrics.push({
+          chunkIndex: chunkMetrics.length,
+          startDay: plan.chunkStartDay,
+          days: plan.chunkDays,
+          posts: plan.chunkPostsPerDay,
+          rawLength: chunkResult.rawLength,
+          duration: chunkResult.latency,
+          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+        });
+      }
+      expectedCount = targetCount;
+    } else {
+      while (remainingDays > 0) {
+        const chunkDays = Math.min(remainingDays, chunkLimit);
+        const chunkStartDay = fallbackStart + processedDays;
+        const chunkIndex = chunkMetrics.length;
+        const chunkResult = await fetchChunkWithRetry(chunkDays, chunkStartDay, chunkIndex, perDay);
+        aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
+        chunkMetrics.push({
+          chunkIndex,
+          startDay: chunkStartDay,
+          days: chunkDays,
+          posts: perDay * chunkDays,
+          rawLength: chunkResult.rawLength,
+          duration: chunkResult.latency,
+          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+        });
+        remainingDays -= chunkDays;
+        processedDays += chunkDays;
+      }
+      expectedCount = processedDays ? (processedDays * perDay) : null;
+    }
     console.log('[Calendar][Server][Chunks]', {
       requestId: logContext.requestId,
       startDay,
@@ -5344,7 +5433,6 @@ const server = http.createServer((req, res) => {
       err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
       throw err;
     }
-    const brandBrainEnabled = Boolean(brandBrainDirective);
     if (brandBrainEnabled) {
       rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
     }
@@ -5950,6 +6038,15 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
+        const existingRegen = calendarRegenInFlight.get(user.id);
+        if (existingRegen) {
+          return sendJson(res, 429, {
+            ok: false,
+            error: { message: 'REGENERATE_IN_PROGRESS' },
+            requestId,
+          });
+        }
+        calendarRegenInFlight.set(user.id, requestId);
         const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
         const sanitizedUsedSignatures = Array.from(
           new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
@@ -6095,6 +6192,10 @@ const server = http.createServer((req, res) => {
           payload.debugStack = err.stack;
         }
         return sendJson(res, status, payload);
+      } finally {
+        if (req?.user?.id && calendarRegenInFlight.get(req.user.id) === requestId) {
+          calendarRegenInFlight.delete(req.user.id);
+        }
       }
     })();
     return;
