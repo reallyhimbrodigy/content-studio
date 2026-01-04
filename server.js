@@ -5569,9 +5569,12 @@ const server = http.createServer((req, res) => {
       }
       return post;
     });
-    if (expectedCount && rawPosts.length !== expectedCount) {
+    const expectedCountForValidation = brandBrainEnabled
+      ? (processedDays * perDay || rawPosts.length)
+      : expectedCount;
+    if (expectedCountForValidation && rawPosts.length !== expectedCountForValidation) {
       const details = {
-        expectedCount,
+        expectedCount: expectedCountForValidation,
         actualCount: rawPosts.length,
       };
       console.warn('[Calendar][Server][SchemaValidation] count mismatch', {
@@ -6376,22 +6379,22 @@ const server = http.createServer((req, res) => {
         }
         if (!resolvedPosts.length) {
           if (brandBrainEnabled) {
-            regenContext.warnings = (regenContext.warnings || []).concat([{
-              code: 'BRANDBRAIN_EMPTY',
-              message: 'BrandBrain regeneration returned no posts.',
-            }]);
-          } else {
-            resolvedPosts = buildFallbackPosts({
-              startDay: body?.startDay || 1,
-              days: body?.days || 1,
-              postsPerDay: requestedPostsPerDay,
-              nicheStyle: body?.nicheStyle || '',
+            return sendJson(res, 500, {
+              ok: false,
+              requestId,
+              error: 'regenerate_failed',
             });
-            regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
-              code: 'OPENAI_TIMEOUT_OR_EMPTY',
-              message: 'Generated fallback posts after empty result.',
-            }]);
           }
+          resolvedPosts = buildFallbackPosts({
+            startDay: body?.startDay || 1,
+            days: body?.days || 1,
+            postsPerDay: requestedPostsPerDay,
+            nicheStyle: body?.nicheStyle || '',
+          });
+          regenContext.partialErrors = (regenContext.partialErrors || []).concat([{
+            code: 'OPENAI_TIMEOUT_OR_EMPTY',
+            message: 'Generated fallback posts after empty result.',
+          }]);
         } else if (!brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
           const fallbackPosts = buildFallbackPosts({
             startDay: body?.startDay || 1,
@@ -6489,22 +6492,22 @@ const server = http.createServer((req, res) => {
             }
             if (!resolvedPosts.length) {
               if (brandBrainEnabled) {
-                sanitizedContext.warnings = (sanitizedContext.warnings || []).concat([{
-                  code: 'BRANDBRAIN_EMPTY',
-                  message: 'BrandBrain regeneration returned no posts.',
-                }]);
-              } else {
-                resolvedPosts = buildFallbackPosts({
-                  startDay: sanitizedBody?.startDay || 1,
-                  days: sanitizedBody?.days || 1,
-                  postsPerDay: requestedPostsPerDay,
-                  nicheStyle: sanitizedBody?.nicheStyle || '',
+                return sendJson(res, 500, {
+                  ok: false,
+                  requestId,
+                  error: 'regenerate_failed',
                 });
-                sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
-                  code: 'OPENAI_TIMEOUT_OR_EMPTY',
-                  message: 'Generated fallback posts after empty result.',
-                }]);
               }
+              resolvedPosts = buildFallbackPosts({
+                startDay: sanitizedBody?.startDay || 1,
+                days: sanitizedBody?.days || 1,
+                postsPerDay: requestedPostsPerDay,
+                nicheStyle: sanitizedBody?.nicheStyle || '',
+              });
+              sanitizedContext.partialErrors = (sanitizedContext.partialErrors || []).concat([{
+                code: 'OPENAI_TIMEOUT_OR_EMPTY',
+                message: 'Generated fallback posts after empty result.',
+              }]);
             } else if (!brandBrainEnabled && expectedCount && resolvedPosts.length < expectedCount) {
               const fallbackPosts = buildFallbackPosts({
                 startDay: sanitizedBody?.startDay || 1,
@@ -6617,18 +6620,10 @@ const server = http.createServer((req, res) => {
         }
         const safe = serializeErr(err);
         if (brandBrainEnabled) {
-          const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 0;
-          return sendJson(res, 200, {
-            ok: true,
+          return sendJson(res, fatalStatus, {
+            ok: false,
             requestId,
-            posts: [],
-            expectedCount,
-            actualCount: 0,
-            partial: true,
-            warnings: [{
-              code: safe.code || 'BRANDBRAIN_FAILURE',
-              message: safe.message || 'BrandBrain regenerate failed',
-            }],
+            error: safe.message || 'BrandBrain regenerate failed',
           });
         }
         const expectedCount = computePostCountTarget(body?.days, requestedPostsPerDay) || 1;
