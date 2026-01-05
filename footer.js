@@ -6,8 +6,7 @@ const FOOTER_LINK_SECTIONS = [
     title: 'Platform',
     links: [
       { label: 'Home', href: '/' },
-      { label: 'Content Library', href: '/library.html' },
-      { label: 'Analytics', href: '/analytics.html' }
+      { label: 'Content Library', href: '/library.html' }
     ]
   },
   {
