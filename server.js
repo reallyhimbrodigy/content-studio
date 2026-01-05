@@ -2518,10 +2518,7 @@ function buildBrandBrainDirective(settings = {}) {
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
-  const postsPerDaySetting =
-    Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0
-      ? Number(opts.postsPerDay)
-      : 1;
+  const postsPerDaySetting = 1;
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -4397,7 +4394,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const maxTokens = Math.min(requestedTokens, maxTokenCap);
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
-  const postsPerDay = Number.isFinite(Number(opts.postsPerDay)) && Number(opts.postsPerDay) > 0 ? Number(opts.postsPerDay) : 1;
+  const postsPerDay = 1;
   const expectedChunkCount = chunkDays * postsPerDay;
   const schema = buildCalendarSchemaObject(
     expectedChunkCount,
@@ -5258,11 +5255,9 @@ const server = http.createServer((req, res) => {
       postsPerDay,
     };
     const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : null;
-    const safePostsPerDay =
-      Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : null;
-    const requestedPostsPerDay = safePostsPerDay || 1;
-    const forceSinglePostPerDayForModel = !brandBrainEnabled && requestedPostsPerDay > 1;
-    const modelPostsPerDay = forceSinglePostPerDayForModel ? 1 : requestedPostsPerDay;
+    const requestedPostsPerDay = 1;
+    const forceSinglePostPerDayForModel = false;
+    const modelPostsPerDay = requestedPostsPerDay;
     const perDay = modelPostsPerDay;
     const targetCount = computePostCountTarget(days, modelPostsPerDay);
     let expectedCount = null;
@@ -6115,10 +6110,7 @@ const server = http.createServer((req, res) => {
         });
         regenContext.batchIndex = body?.batchIndex;
         regenContext.startDay = body?.startDay;
-        const requestedPostsPerDay =
-          Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
-            ? Number(body.postsPerDay)
-            : 1;
+        const requestedPostsPerDay = 1;
         const posts = await generateCalendarPosts({
           ...(body || {}),
           postsPerDay: requestedPostsPerDay,
@@ -6171,6 +6163,7 @@ const server = http.createServer((req, res) => {
           try {
             const posts = await generateCalendarPosts({
               ...(sanitizedBody || {}),
+              postsPerDay: 1,
               usedSignatures: sanitizedUsedSignatures,
               context: sanitizedContext,
               isPro,
@@ -6315,6 +6308,7 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body || '{}');
         const posts = await generateCalendarPosts({
           ...payload,
+          postsPerDay: 1,
           isPro: false,
           context: {
             requestId,
@@ -6855,10 +6849,7 @@ const server = http.createServer((req, res) => {
         }
         const dayNumber = Number(day);
         const resolvedUserId = user?.id || userId || null;
-        const postsPerDay =
-          Number.isFinite(Number(body?.postsPerDay)) && Number(body?.postsPerDay) > 0
-            ? Number(body.postsPerDay)
-            : 1;
+        const postsPerDay = 1;
         const logContext = { requestId, userId: resolvedUserId, nicheStyle, day: dayNumber, postsPerDay };
         console.log('[Calendar][Server] regen-day request', logContext);
         const maxAttempts = 2;
