@@ -38,10 +38,6 @@ const {
 } = require('./services/phyllo-metrics');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
-  STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
-  validateStoryPromptKeywordOverride,
-} = require('./server/lib/storyPromptOverrideValidator');
-const {
   getNonHolidayHot100,
   getEvergreenFallbackList,
   isHolidayTrack,
@@ -2756,7 +2752,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 10) Keep outputs concise to avoid truncation.
 11) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences max that read like a free-form creator note tied to the niche/topic, vary phrasing across posts, allow either no question or a single question mark, never include "!?", and ban canned CTA templates such as "Tag a friend", "DM us", or "Comment below". storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
@@ -3009,7 +3005,6 @@ const FALLBACK_KEYWORD_MAP = [
   { match: /business|coach|consult|consulting|agency|strategy/, keywords: ['CLIENTS', 'SYSTEM'] },
   { match: /creator|influencer|lifestyle|content|story/, keywords: ['ROUTINE', 'VIBES'] },
 ];
-const STORY_PROMPT_KEYWORD_OVERRIDES = {};
 
 function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
   const letters = (String(value || '').toUpperCase().match(/[A-Z]+/g) || []).join('');
@@ -3037,26 +3032,6 @@ function deriveNicheKeyword(nicheStyle = '') {
   return sanitized || 'TIPS';
 }
 
-function stripOverridesFromPost(post = {}) {
-  if (!post || typeof post !== 'object') return post;
-  const sanitized = { ...(post || {}) };
-  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
-  });
-  return sanitized;
-}
-
-function stripStoryPromptOverrideFields(payload = {}) {
-  const clean = { ...(payload || {}) };
-  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(clean, key)) delete clean[key];
-  });
-  if (Array.isArray(clean.posts)) {
-    clean.posts = clean.posts.map(stripOverridesFromPost);
-  }
-  return clean;
-}
-
 function deriveSalesMode(post = {}, classification = 'creator', nicheStyle = '') {
   const text = [post.businessType, post.industry, post.nicheCategory, classification, nicheStyle]
     .filter(Boolean)
@@ -3076,87 +3051,8 @@ function deriveNonDirectDeliverable(nicheStyle = '') {
   }
   return NON_DIRECT_DELIVERABLES.default;
 }
-
-const STORY_PROMPT_BANNED_TERMS = {
-  fitness: ['facial','peel','skincare','glow level','dermaplane','serum','moisturizer'],
-  beauty: ['deadlift','bench press','macros','basketball','dribbling'],
-  basketball: ['facial','peel','macros','protein shake'],
-  cooking: ['facial','peel','dribbling','bench press'],
-};
-const STORY_PROMPT_PLUS_FORBIDDEN = ['facial','peel','glow','botox','filler','serum','cleanser','moisturizer','acne','skincare','med spa','medspa','aesthetics','cosmetic','dermatology'];
-const STORY_PROMPT_PLUS_LOGGED = new Set();
-const STORY_PROMPT_DENYLIST = ['facial', 'peel', 'glow', 'skincare', 'botox', 'filler', 'med spa', 'lash', 'brow', 'aesthetic', 'dermal'];
-const STORY_PROMPT_ANCHOR_STOPWORDS = new Set(['a','an','the','and','for','with','of','to','in','on','at','by','your','our','my','this','that','these','those']);
-
-function deriveStoryPromptNicheKey(nicheStyle = '') {
-  const normalized = String(nicheStyle || '').toLowerCase();
-  for (const key of Object.keys(STORY_PROMPT_BANNED_TERMS)) {
-    if (normalized.includes(key)) return key;
-  }
-  return 'generic';
-}
-
-function sanitizeNicheLabel(nicheStyle = '') {
-  const plain = String(nicheStyle || '').trim();
-  return plain || 'your niche';
-}
-
-function extractNicheTokens(nicheStyle = '', hashtags = []) {
-  const tokens = new Set();
-  const source = String(nicheStyle || '').toLowerCase();
-  (source.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
-  (Array.isArray(hashtags) ? hashtags : []).forEach((tag) => {
-    const clean = String(tag || '').toLowerCase().replace(/^#/, '');
-    (clean.match(/[a-z]{3,}/g) || []).forEach((token) => tokens.add(token));
-  });
-  return tokens;
-}
-
-function isOverrideTokenSafe(token = '') {
-  const normalized = String(token || '').trim();
-  return /^[A-Z]{3,12}$/.test(normalized.toUpperCase());
-}
-
-function getSafeOverrideTokens(nicheKey = '') {
-  const overrides = (STORY_PROMPT_KEYWORD_OVERRIDES && typeof STORY_PROMPT_KEYWORD_OVERRIDES === 'object')
-    ? STORY_PROMPT_KEYWORD_OVERRIDES
-    : {};
-  const tokens = Array.isArray(overrides[nicheKey]) ? overrides[nicheKey] : [];
-  return tokens.filter(isOverrideTokenSafe);
-}
-
-function deriveStoryPromptAnchor(nicheStyle = '') {
-  const label = String(nicheStyle || '').toLowerCase().trim();
-  if (!label) return 'niche';
-  const words = label.split(/[^a-z]+/).filter((word) => word && !STORY_PROMPT_ANCHOR_STOPWORDS.has(word));
-  if (!words.length) return 'niche';
-  return words.slice(0, 2).join(' ');
-}
-
-function deriveStoryPromptOptionPair(nicheStyle = '') {
-  const lower = String(nicheStyle || '').toLowerCase();
-  if (/(restaurant|food|burger|pizza|cafe|diner)/.test(lower)) return ['Classic', 'Spicy'];
-  if (/(fitness|gym|training|coach)/.test(lower)) return ['Strength', 'Cardio'];
-  return ['Option A', 'Option B'];
-}
-
 function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
-  const trimmed = String(text || '').trim();
-  const anchor = deriveStoryPromptAnchor(nicheStyle);
-  const lower = trimmed.toLowerCase();
-  const tokens = extractNicheTokens(nicheStyle);
-  const anchorMatch = anchor ? lower.includes(anchor.toLowerCase()) : false;
-  const isSkincareNiche = /(skincare|skin care|medspa|med spa|aesthetic|cosmetic|dermatology)/i.test(nicheStyle);
-  const hasForbidden = STORY_PROMPT_PLUS_FORBIDDEN.concat(STORY_PROMPT_DENYLIST).some((term) => lower.includes(term));
-  const needsFallback = !trimmed || (!anchorMatch && anchor !== 'niche') || (hasForbidden && !isSkincareNiche);
-  if (!needsFallback) return trimmed;
-  const fallback = '';
-  const key = `${post.userId || 'anon'}|${nicheStyle}`;
-  if (!STORY_PROMPT_PLUS_LOGGED.has(key)) {
-    console.warn('[Calendar] StoryPromptPlusFallbackRegen', { userId: post.userId || null, niche: nicheStyle, original: trimmed || '[empty]' });
-    STORY_PROMPT_PLUS_LOGGED.add(key);
-  }
-  return fallback;
+  return String(text || '').trim();
 }
 
 function buildStoryPromptPlusNicheFallback(nicheStyle = '') {
@@ -3164,50 +3060,16 @@ function buildStoryPromptPlusNicheFallback(nicheStyle = '') {
 }
 
 function validateNicheLock(card = {}, nicheStyle = '') {
-  if (!card || typeof card !== 'object') return true;
-  const lowerNiche = String(nicheStyle || '').toLowerCase();
-  const allow = /(skin|skincare|spa|med spa|cosmetic|aesthetic|derm)/.test(lowerNiche);
-  if (allow) return true;
-  const fieldsToCheck = [
-    card.storyPrompt,
-    card.storyPromptExpanded,
-    card.caption,
-    card.body,
-    card.pinnedComment,
-    card.engagementScripts?.commentReply,
-    card.engagementScripts?.dmReply,
-  ];
-  const combined = fieldsToCheck.filter(Boolean).join(' ').toLowerCase();
-  return !STORY_PROMPT_DENYLIST.some((term) => combined.includes(term));
+  return true;
 }
 
 if (process.env.NODE_ENV !== 'production') {
   const dev_niche = 'fast food burger joint';
-  const dev_story = sanitizeStoryPromptPlus(dev_niche, 'What’s your favorite combo right now? Add a poll and slider.');
-  if (/facial|peel|glow/.test(dev_story.toLowerCase())) {
-    console.warn('[Calendar][Dev] StoryPromptPlus sanitize failed to strip banned terms');
-  }
-  if (!/fast|food/.test(dev_story.toLowerCase())) {
-    console.warn('[Calendar][Dev] StoryPromptPlus missing niche anchor', dev_story);
-  }
+  sanitizeStoryPromptPlus(dev_niche, 'What’s your favorite combo right now? Add a poll and slider.');
 }
 
 function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashtags = []) {
   const trimmed = String(storyPrompt || '').trim();
-  if (!trimmed) return '';
-  const lower = trimmed.toLowerCase();
-  const tokens = extractNicheTokens(nicheStyle, hashtags);
-  const hasNicheToken = tokens.size && [...tokens].some((token) => lower.includes(token));
-  const nicheKey = deriveStoryPromptNicheKey(nicheStyle);
-  const bannedTerms = STORY_PROMPT_BANNED_TERMS[nicheKey] || [];
-  const hasBanned = bannedTerms.some((term) => lower.includes(term));
-  const overrideTokens = getSafeOverrideTokens(nicheKey);
-  if (hasBanned && !overrideTokens.some((term) => tokens.has(term))) {
-    return '';
-  }
-  if (tokens.size && !hasNicheToken) {
-    return '';
-  }
   return trimmed;
 }
 
@@ -3692,17 +3554,10 @@ function resolveStoryPromptValue(post = {}) {
 function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
   const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
   const hook = toPlainString(post.hook || '');
-  const niche = toPlainString(nicheStyle || '');
   const parts = [hook, topic]
     .map((part) => toPlainString(part))
     .map((part) => part.trim())
     .filter(Boolean);
-  if (niche) {
-    const normalizedNiche = niche.trim();
-    if (normalizedNiche && !parts.some((part) => part.toLowerCase().includes(normalizedNiche.toLowerCase()))) {
-      parts.push(normalizedNiche);
-    }
-  }
   return parts.join('. ');
 }
 
@@ -3713,7 +3568,7 @@ function ensureStoryPromptFallback(post = {}, nicheStyle = '') {
   if (fallback) return fallback;
   const idea = toPlainString(post.idea || post.title || 'talk through this insight');
   if (idea) return `${idea}.`;
-  return `Share an idea about ${nicheStyle || 'your niche'}.`;
+  return 'Share one specific idea worth discussing.';
 }
 
 function ensureStoryPromptPlusFallback(post = {}, nicheStyle = '') {
@@ -3723,7 +3578,7 @@ function ensureStoryPromptPlusFallback(post = {}, nicheStyle = '') {
   if (fallback) return fallback;
   const idea = toPlainString(post.idea || post.title || 'add more context');
   if (idea) return `Add context to ${idea} and ask what viewers think?`;
-  return `Add more detail about ${nicheStyle || 'the topic'}?`;
+  return 'Add one more detail and end with a focused question.';
 }
 
 function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
@@ -3755,14 +3610,6 @@ function escapeRegexPattern(value = '') {
 
 function sanitizeStoryPromptFromNiche(text = '', nicheStyle = '') {
   const raw = String(text || '').trim();
-  if (!raw) return raw;
-  const niche = String(nicheStyle || '').trim();
-  if (!niche) return raw;
-  const escaped = escapeRegexPattern(niche);
-  const trailing = new RegExp(`[\\s\\-—|:.]*${escaped}[\\s\\-—|:.]*$`, 'i');
-  if (trailing.test(raw)) {
-    return raw.replace(trailing, '').trim().replace(/\s+$/, '');
-  }
   return raw;
 }
 
@@ -4153,14 +4000,13 @@ function buildDistributionPlanFallback(post = {}) {
 function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
   const format = toPlainString(post.format || 'Reel') || 'Reel';
   const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
-  const niche = toPlainString(nicheStyle || 'this niche');
   const hook = toPlainString(post.hook || '');
   const angle = toPlainString(post.angle || '');
   const detail = hook || angle || topic;
   const cta = toPlainString(post.cta || 'What would you try next?');
   const question = cta.endsWith('?') ? cta : `${cta}?`;
   const base = toPlainString(post.storyPrompt || detail);
-  return `Shape a ${format} story for ${niche} about ${base}: describe the turning point, what changed, and ask ${question}`;
+  return `Shape a ${format} story about ${base}: describe the turning point, what changed, and ask ${question}`;
 }
 
 function extractSuggestedAudioFromPost(post = {}) {
@@ -4250,98 +4096,13 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   return normalized;
 }
 
-const STORY_PROMPT_OVERRIDE_KEYS = [
-  'storyPromptKeywordOverride',
-  'storyPromptKeyword',
-  'storyPromptOverride',
-];
-const STORY_PROMPT_KEYWORD_OVERRIDE_WARNING = 'STORY_PROMPT_KEYWORD_OVERRIDE_SKIPPED';
-
 if (!isProduction) {
   runRegenNormalizationSelfTest();
 }
 
-function getStoryPromptOverrideValue(post = {}) {
-  for (const key of STORY_PROMPT_OVERRIDE_KEYS) {
-    const candidate = post?.[key];
-    if (candidate === null || candidate === undefined) continue;
-    if (Array.isArray(candidate)) {
-      if (candidate.some((item) => String(item || '').trim())) return candidate;
-      continue;
-    }
-    if (String(candidate).trim()) return candidate;
-  }
-  return null;
-}
-
-function removeStoryPromptOverrideFields(post = {}) {
-  const sanitized = { ...(post || {}) };
-  STORY_PROMPT_OVERRIDE_KEYS.forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
-  });
-  return sanitized;
-}
-
-function computeOverrideDay(post = {}, idx = 0, startDay = 1) {
-  if (typeof post?.day === 'number') return post.day;
-  if (Number.isFinite(startDay)) {
-    return Number(startDay) + idx;
-  }
-  return idx + 1;
-}
-
-function pushOverrideWarning(loggingContext = {}, day = null) {
-  if (!Array.isArray(loggingContext.warnings)) return;
-  loggingContext.warnings.push({
-    code: STORY_PROMPT_KEYWORD_OVERRIDE_WARNING,
-    requestId: loggingContext.requestId || 'unknown',
-    day,
-  });
-}
-
 function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', loggingContext = {}, options = {}) {
   const allowFallbacks = options?.allowFallbacks !== false;
-  const rawOverride = getStoryPromptOverrideValue(post);
-  const overrideDay = computeOverrideDay(post, idx, startDay);
-  if (rawOverride) {
-    const validated = validateStoryPromptKeywordOverride(rawOverride, loggingContext);
-    if (!validated) {
-      pushOverrideWarning(loggingContext, overrideDay);
-      return normalizePost(removeStoryPromptOverrideFields(post), idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
-    }
-  }
-    try {
-      return normalizePost(post, idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
-    } catch (err) {
-      const isOverrideError = String(err?.message || '').includes(STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED);
-      if (!isOverrideError) throw err;
-      const contextMeta = {
-        requestId: loggingContext?.requestId || 'unknown',
-        userId: loggingContext?.userId || null,
-        niche: nicheStyle,
-        day: overrideDay,
-      };
-      console.warn('[Calendar] Story prompt override invalid, continuing without it', {
-        ...contextMeta,
-        message: err.message,
-      });
-      const sanitized = removeStoryPromptOverrideFields(post);
-      try {
-        return normalizePost(sanitized, idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
-      } catch (fallbackErr) {
-        if (!allowFallbacks) {
-          throw fallbackErr;
-        }
-        const fallbackDay = computePostDayIndex(idx, startDay);
-        console.warn('[Calendar] Story prompt override fallback failed, using fallback post', {
-          ...contextMeta,
-          message: fallbackErr.message,
-        });
-        pushOverrideWarning(loggingContext, overrideDay);
-        const fallbackPost = buildFallbackPost(nicheStyle, fallbackDay);
-        return fallbackPost;
-      }
-    }
+  return normalizePost(post, idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
 }
 
 const buildDistributionPlanText = (post = {}) => toPlainString(post.distributionPlan || '');
@@ -6146,47 +5907,6 @@ const server = http.createServer((req, res) => {
           startDay: body?.startDay,
           nicheStyle: body?.nicheStyle,
         };
-        const errorMessage = String(err?.message || '');
-        const overrideError = errorMessage.includes('STORY_PROMPT_KEYWORD_OVERRIDE') || errorMessage.includes('VALIDATE_FAILED');
-        if (overrideError) {
-          console.warn('[Calendar][Server] regen override invalid, retrying without override', { requestId, context: errorContext });
-          const sanitizedBody = stripStoryPromptOverrideFields(body);
-          const sanitizedContext = {
-            requestId,
-            batchIndex: sanitizedBody?.batchIndex,
-            startDay: sanitizedBody?.startDay,
-            warnings: [],
-          };
-          try {
-            const posts = await generateCalendarPosts({
-              ...(sanitizedBody || {}),
-              postsPerDay: 1,
-              usedSignatures: sanitizedUsedSignatures,
-              context: sanitizedContext,
-              isPro,
-            });
-            if (!isPro) {
-              await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
-            }
-            console.log('[Calendar][Server][Perf] regen override retry success', { requestId, context: errorContext });
-            const warnings = [
-              ...(Array.isArray(regenContext.warnings) ? regenContext.warnings : []),
-              ...(Array.isArray(sanitizedContext.warnings) ? sanitizedContext.warnings : []),
-            ].filter(Boolean);
-            if (!Array.isArray(posts) || !posts.length) {
-              return sendJson(res, 500, {
-                error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
-                requestId,
-              });
-            }
-            const responsePayload = { calendarId: sanitizedBody?.calendarId ?? null, posts, requestId };
-            if (warnings.length) responsePayload.warnings = warnings;
-            return sendJson(res, 200, responsePayload);
-          } catch (retryErr) {
-            logServerError('calendar_regenerate_error', retryErr, { requestId, context: errorContext });
-            throw retryErr;
-          }
-        }
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
         const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
         const logInfo = { requestId, context: errorContext };
