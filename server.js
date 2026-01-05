@@ -36,17 +36,6 @@ const {
   syncFollowerMetrics,
   syncDemographics,
 } = require('./services/phyllo-metrics');
-const {
-  createPhylloUser,
-  createSdkToken,
-  fetchAccountContents,
-  fetchAccountEngagement,
-  getPhylloUserByExternalId,
-  getPhylloAccountDetails,
-  parsePhylloProducts,
-  getWorkPlatformIds,
-  ensurePhylloWebhook,
-} = require('./services/phyllo');
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   STORY_PROMPT_KEYWORD_OVERRIDE_VALIDATE_FAILED,
@@ -4038,10 +4027,6 @@ function runRegenNormalizationSelfTest() {
   }
 }
 
-if (!isProduction) {
-  runRegenNormalizationSelfTest();
-}
-
 function computePostCountTarget(days, postsPerDay) {
   const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
   const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
@@ -4268,6 +4253,10 @@ const STORY_PROMPT_OVERRIDE_KEYS = [
   'storyPromptOverride',
 ];
 const STORY_PROMPT_KEYWORD_OVERRIDE_WARNING = 'STORY_PROMPT_KEYWORD_OVERRIDE_SKIPPED';
+
+if (!isProduction) {
+  runRegenNormalizationSelfTest();
+}
 
 function getStoryPromptOverrideValue(post = {}) {
   for (const key of STORY_PROMPT_OVERRIDE_KEYS) {
@@ -5059,6 +5048,11 @@ const server = http.createServer((req, res) => {
   if (!ENABLE_DESIGN_LAB && parsed.pathname === '/design.html') {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not found');
+  }
+
+  if (parsed.pathname && (parsed.pathname.startsWith('/api/phyllo') || parsed.pathname.startsWith('/internal/phyllo'))) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'not_found' }));
   }
 
   if (parsed.pathname === '/api/user/subscription' && req.method === 'GET') {
