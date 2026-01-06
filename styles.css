@@ -8645,7 +8645,7 @@ body:has(#account-modal.modal-overlay) .app-main {
   #calendar-grid,
   .calendar-grid,
   #library-calendars-grid {
-    grid-template-columns: repeat(2, minmax(160px, 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(165px, 1fr)) !important;
     gap: 12px !important;
     padding: 0 12px;
   }
@@ -8653,14 +8653,76 @@ body:has(#account-modal.modal-overlay) .app-main {
   .calendar-card,
   .library-card,
   .content-card {
-    min-width: 140px;
-    padding: 1rem;
+    min-width: 150px;
+    padding: 0.95rem;
+    gap: 0.65rem;
   }
 
   .calendar-card,
   .calendar-card * {
-    overflow-wrap: break-word;
+    overflow-wrap: normal;
     word-break: normal;
+    hyphens: auto;
+  }
+
+  .calendar-card__day {
+    font-size: 2.2rem;
+  }
+
+  .calendar-card__title {
+    font-size: clamp(0.95rem, 2.6vw, 1.05rem);
+    line-height: 1.35;
+  }
+
+  .calendar-card__caption {
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .calendar-card__hashtags {
+    font-size: 0.82rem;
+  }
+
+  .calendar-card__type,
+  .calendar-card__format {
+    font-size: 0.7rem;
+    padding: 0.15em 0.6em;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+
+  .app-hero {
+    padding: 1rem 1rem 1.25rem;
+  }
+
+  .app-hero .hero-top__left {
+    gap: 0.5rem;
+  }
+
+  .hero-pill,
+  .hero-pill--subtle {
+    padding: 0.25rem 0.7rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+  }
+
+  .brand-brain-btn {
+    padding: 0.35rem 0.85rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    min-height: 2.1rem;
+  }
+
+  .profile-trigger {
+    width: 36px;
+    height: 36px;
+  }
+
+  .profile-wrapper .user-tier-badge {
+    top: -8px;
+    right: -6px;
+    font-size: 0.52rem;
+    padding: 0.18rem 0.55rem;
   }
 
   .profile-menu {
