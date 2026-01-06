@@ -8594,3 +8594,63 @@ body:has(#account-modal.modal-overlay) .app-main {
   filter: none !important;
   overflow: visible !important;
 }
+
+@media (max-width: 768px) {
+  .app-layout {
+    display: block !important;
+    width: 100%;
+  }
+
+  .app-main {
+    margin-left: 0 !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.sidebar-open .app-main,
+  body.sidebar-open .app-layout {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .calendar__grid,
+  #calendar-grid,
+  .calendar-grid,
+  #library-calendars-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    padding: 0 12px;
+  }
+
+  .calendar-card,
+  .library-card,
+  .content-card {
+    min-width: 140px;
+    padding: 1rem;
+  }
+
+  .calendar-card,
+  .calendar-card * {
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  .profile-menu {
+    width: min(320px, calc(100vw - 24px)) !important;
+    min-width: 220px;
+    max-width: calc(100vw - 24px);
+    left: auto !important;
+    right: 12px !important;
+    transform: none !important;
+  }
+
+  .profile-dropdown {
+    width: 100%;
+  }
+
+  .profile-menu,
+  .profile-menu * {
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+}
