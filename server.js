@@ -2413,7 +2413,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['day', 'title', 'hook', 'caption', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan'],
+    required: ['day', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan'],
     properties: {
       day: {
         type: 'integer',
@@ -2423,6 +2423,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       title: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
+      pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       storyPrompt: { type: 'string', minLength: 1 },
@@ -2598,7 +2599,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
  ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Each object must include day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
+ Pillars: include "pillar" for every post using exactly one of these values: Education, Social Proof, Promotion, Lifestyle. Distribute pillars evenly across the batch; follow this cycle by day number: 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, then repeat.
+ Each object must include day, title, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
  StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
  Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
  `;
@@ -2614,7 +2616,7 @@ function normalizeCalendarSignature(value = '') {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function sanitizeJsonContent(content = '') {
@@ -3642,6 +3644,54 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
   };
 }
 
+const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
+
+function normalizeCalendarPillar(value = '') {
+  const text = toPlainString(value || '');
+  if (!text) return '';
+  const exact = CALENDAR_PILLARS.find((pillar) => pillar.toLowerCase() === text.toLowerCase());
+  if (exact) return exact;
+  const lowered = text.toLowerCase();
+  if (lowered.includes('social') && lowered.includes('proof')) return 'Social Proof';
+  if (lowered.includes('promo') || lowered.includes('offer')) return 'Promotion';
+  if (lowered.includes('life')) return 'Lifestyle';
+  if (lowered.includes('educ')) return 'Education';
+  return '';
+}
+
+function getCalendarPillarForDay(day) {
+  const numericDay = Number.isFinite(Number(day)) ? Number(day) : 1;
+  const index = Math.max(0, numericDay - 1) % CALENDAR_PILLARS.length;
+  return CALENDAR_PILLARS[index];
+}
+
+function isPillarDistributionBalanced(posts = []) {
+  const counts = CALENDAR_PILLARS.reduce((acc, pillar) => {
+    acc[pillar] = 0;
+    return acc;
+  }, {});
+  posts.forEach((post) => {
+    const normalized = normalizeCalendarPillar(post?.pillar);
+    if (normalized) counts[normalized] += 1;
+  });
+  const values = CALENDAR_PILLARS.map((pillar) => counts[pillar]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const hasAll = values.every((value) => value > 0);
+  return hasAll && max - min <= 1;
+}
+
+function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1) {
+  return posts.map((post, idx) => {
+    if (!post || typeof post !== 'object') return post;
+    const day = Number.isFinite(Number(post.day))
+      ? Number(post.day)
+      : computePostDayIndex(idx, startDay, postsPerDay);
+    const pillar = getCalendarPillarForDay(day);
+    return { ...post, pillar };
+  });
+}
+
 function ensureCtaFallback(post = {}) {
   const normalizedCta =
     sanitizeCtaText(post.cta) ||
@@ -4061,8 +4111,10 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   if (!distributionPlan && allowFallbacks) {
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
   }
+  const resolvedDay = typeof post.day === 'number' ? post.day : fallbackDay;
+  const resolvedPillar = normalizeCalendarPillar(post.pillar) || getCalendarPillarForDay(resolvedDay);
   const normalized = {
-    day: typeof post.day === 'number' ? post.day : fallbackDay,
+    day: resolvedDay,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
     title: toPlainString(post.title || post.idea || ''),
     type: toPlainString(post.type || 'educational'),
@@ -4072,7 +4124,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     format: 'Reel',
     formatIntent: toPlainString(post.formatIntent || ''),
     cta: toPlainString(post.cta || ''),
-    pillar: toPlainString(post.pillar || 'Education'),
+    pillar: resolvedPillar,
     storyPrompt,
     storyPromptPlus,
     designNotes: toPlainString(post.designNotes || ''),
@@ -5535,6 +5587,15 @@ const server = http.createServer((req, res) => {
           );
         }
       }
+    }
+    if (!isPillarDistributionBalanced(posts)) {
+      posts = applyPillarSchedule(posts, startDay, perDay);
+      console.log('[Calendar] pillar schedule enforced', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        postsPerDay: perDay,
+      });
     }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
