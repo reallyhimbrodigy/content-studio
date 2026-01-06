@@ -8599,6 +8599,7 @@ body:has(#account-modal.modal-overlay) .app-main {
   .app-layout {
     display: block !important;
     width: 100%;
+    grid-template-columns: 1fr !important;
   }
 
   .app-main {
@@ -8613,11 +8614,38 @@ body:has(#account-modal.modal-overlay) .app-main {
     width: 100% !important;
   }
 
+  .app-sidebar {
+    z-index: 1010 !important;
+    pointer-events: auto !important;
+  }
+
+  .sidebar-backdrop {
+    z-index: 1000 !important;
+  }
+
+  .app-hero .hero-top {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .app-hero .user-menu {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .app-hero .profile-wrapper {
+    flex: 0 0 auto;
+  }
+
   .calendar__grid,
   #calendar-grid,
   .calendar-grid,
   #library-calendars-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(160px, 1fr)) !important;
     gap: 12px !important;
     padding: 0 12px;
   }
@@ -8636,6 +8664,8 @@ body:has(#account-modal.modal-overlay) .app-main {
   }
 
   .profile-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
     width: min(320px, calc(100vw - 24px)) !important;
     min-width: 220px;
     max-width: calc(100vw - 24px);
