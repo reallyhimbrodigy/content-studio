@@ -8623,10 +8623,15 @@ body:has(#account-modal.modal-overlay) .app-main {
     z-index: 1000 !important;
   }
 
+  .sidebar-toggle {
+    z-index: 1200;
+  }
+
   .app-hero .hero-top {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    gap: 0.75rem;
   }
 
   .app-hero .user-menu {
@@ -8634,18 +8639,53 @@ body:has(#account-modal.modal-overlay) .app-main {
     flex-direction: row;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.5rem;
+    gap: 0.4rem;
+    min-width: 0;
   }
 
   .app-hero .profile-wrapper {
     flex: 0 0 auto;
   }
 
+  .app-hero .logo {
+    width: auto;
+    max-width: 220px;
+  }
+
+  .app-hero .hero-pill,
+  .app-hero .hero-pill--subtle {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    padding: 0.2rem 0.55rem;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-brain-btn,
+  #brand-brain-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    min-height: 2rem;
+    max-width: 160px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+  }
+
+  .profile-trigger {
+    width: 36px;
+    height: 36px;
+  }
+
   .calendar__grid,
   #calendar-grid,
   .calendar-grid,
   #library-calendars-grid {
-    grid-template-columns: repeat(2, minmax(165px, 1fr)) !important;
+    grid-template-columns: 1fr !important;
     gap: 12px !important;
     padding: 0 12px;
   }
@@ -8653,7 +8693,7 @@ body:has(#account-modal.modal-overlay) .app-main {
   .calendar-card,
   .library-card,
   .content-card {
-    min-width: 150px;
+    min-width: 0;
     padding: 0.95rem;
     gap: 0.65rem;
   }
@@ -8663,6 +8703,7 @@ body:has(#account-modal.modal-overlay) .app-main {
     overflow-wrap: normal;
     word-break: normal;
     hyphens: auto;
+    min-width: 0;
   }
 
   .calendar-card__day {
@@ -8670,7 +8711,7 @@ body:has(#account-modal.modal-overlay) .app-main {
   }
 
   .calendar-card__title {
-    font-size: clamp(0.95rem, 2.6vw, 1.05rem);
+    font-size: clamp(0.98rem, 3.2vw, 1.12rem);
     line-height: 1.35;
   }
 
@@ -8689,6 +8730,8 @@ body:has(#account-modal.modal-overlay) .app-main {
     padding: 0.15em 0.6em;
     white-space: nowrap;
     max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .app-hero {
@@ -8697,25 +8740,6 @@ body:has(#account-modal.modal-overlay) .app-main {
 
   .app-hero .hero-top__left {
     gap: 0.5rem;
-  }
-
-  .hero-pill,
-  .hero-pill--subtle {
-    padding: 0.25rem 0.7rem;
-    font-size: 0.7rem;
-    letter-spacing: 0.12em;
-  }
-
-  .brand-brain-btn {
-    padding: 0.35rem 0.85rem;
-    font-size: 0.7rem;
-    letter-spacing: 0.1em;
-    min-height: 2.1rem;
-  }
-
-  .profile-trigger {
-    width: 36px;
-    height: 36px;
   }
 
   .profile-wrapper .user-tier-badge {
@@ -8727,17 +8751,20 @@ body:has(#account-modal.modal-overlay) .app-main {
 
   .profile-menu {
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
     width: min(320px, calc(100vw - 24px)) !important;
-    min-width: 220px;
+    min-width: 240px;
     max-width: calc(100vw - 24px);
     left: auto !important;
     right: 12px !important;
     transform: none !important;
+    overflow: visible;
   }
 
   .profile-dropdown {
     width: 100%;
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   .profile-menu,
