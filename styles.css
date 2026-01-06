@@ -5031,7 +5031,9 @@ body.prefers-reduced-motion *::after {
 .calendar-card__detail-row .detail-text {
   color: var(--text-primary);
   line-height: 1.6;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
   font-size: 0.92rem;
 }
 
@@ -5083,6 +5085,9 @@ body.prefers-reduced-motion *::after {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 .calendar-card__entry-badge {
@@ -8204,16 +8209,19 @@ html, body {
 .landing-preview-card .calendar-card__caption,
 .landing-preview-card .calendar-card__hook-line,
 .landing-preview-card .calendar-card__pinned-comment-primary {
-  display: -webkit-box;
-  line-clamp: 3;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: block;
+  line-clamp: unset;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: initial;
+  overflow: visible;
 }
 
-.landing-preview-card button,
+.landing-preview-card button {
+  display: inline-flex;
+}
+
 .landing-preview-card details {
-  display: none;
+  display: block;
 }
 
 .landing-preview-card strong {
