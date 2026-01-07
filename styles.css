@@ -8497,7 +8497,7 @@ body.view-landing .product-section + .landing-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-body.view-landing .product-section + .workflow-section {
+body.view-landing .product-section + .landing-workflow {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -8663,15 +8663,13 @@ body.view-landing .product-section + .workflow-section {
   }
 }
 
-body.view-landing .workflow-section {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 88px 24px;
+body.view-landing .landing-workflow {
+  padding: 88px 0;
   display: block;
   position: relative;
 }
 
-body.view-landing .workflow-section + .landing-section {
+body.view-landing .landing-workflow + .landing-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -8867,18 +8865,25 @@ body.view-landing .workflow-section + .landing-section {
   }
 }
 
-/* Workflow steps layout fixes */
-.landing-workflow .wf-layout {
+/* ===== Workflow layout fix: steps span full width ===== */
+.landing-workflow .wf-container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.landing-workflow .wf-head {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
   gap: 28px;
   align-items: start;
 }
 
-.landing-workflow .wf-steps-wrap {
+.landing-workflow .wf-steps-row {
+  margin-top: 22px;
   width: 100%;
-  max-width: 1200px;
-  margin-top: 24px;
 }
 
 .landing-workflow .wf-steps {
@@ -8892,24 +8897,18 @@ body.view-landing .workflow-section + .landing-section {
 
 .landing-workflow .wf-step {
   min-width: 0;
-  max-width: none;
-  width: 100%;
-  overflow: hidden;
   padding: 18px 18px 20px;
   border-radius: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  overflow: hidden;
+  position: static;
   box-sizing: border-box;
 }
 
 .landing-workflow .wf-step-title {
-  font-weight: 700;
   line-height: 1.15;
-  letter-spacing: -0.01em;
   white-space: normal;
-  overflow-wrap: normal;
   word-break: normal;
+  overflow-wrap: normal;
   hyphens: none;
 }
 
@@ -8920,12 +8919,13 @@ body.view-landing .workflow-section + .landing-section {
   word-break: break-word;
 }
 
+.landing-workflow .wf-step,
 .landing-workflow .wf-step * {
   position: static;
 }
 
 @media (max-width: 1100px) {
-  .landing-workflow .wf-layout {
+  .landing-workflow .wf-head {
     grid-template-columns: 1fr;
   }
 
