@@ -2095,6 +2095,10 @@ const OPENAI_MAX_ATTEMPTS = (() => {
   const configured = Number(process.env.OPENAI_MAX_ATTEMPTS);
   return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
 })();
+const REGEN_MAX_CONCURRENT = (() => {
+  const configured = Number(process.env.REGEN_MAX_CONCURRENT);
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 3;
+})();
 const openAiQueue = [];
 let openAiActiveRequests = 0;
 async function withOpenAiSlot(fn) {
@@ -2111,6 +2115,51 @@ async function withOpenAiSlot(fn) {
     const next = openAiQueue.shift();
     if (next) next();
   }
+}
+
+const regenQueue = [];
+let regenInFlight = 0;
+async function acquireRegenSlot(requestId) {
+  if (regenInFlight >= REGEN_MAX_CONCURRENT) {
+    console.log('[Calendar][Regen] queued', { requestId, inFlight: regenInFlight });
+    await new Promise((resolve) => regenQueue.push(resolve));
+  }
+  regenInFlight += 1;
+}
+function releaseRegenSlot() {
+  regenInFlight = Math.max(0, regenInFlight - 1);
+  const next = regenQueue.shift();
+  if (next) next();
+}
+
+async function mapLimit(items, limit, worker) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const results = new Array(items.length);
+  let index = 0;
+  let active = 0;
+  return new Promise((resolve, reject) => {
+    const runNext = () => {
+      if (index >= items.length && active === 0) {
+        resolve(results);
+        return;
+      }
+      while (active < limit && index < items.length) {
+        const currentIndex = index;
+        const item = items[currentIndex];
+        index += 1;
+        active += 1;
+        Promise.resolve()
+          .then(() => worker(item, currentIndex))
+          .then((result) => {
+            results[currentIndex] = result;
+            active -= 1;
+            runNext();
+          })
+          .catch((err) => reject(err));
+      }
+    };
+    runNext();
+  });
 }
 
 function openAIRequest(options, payload) {
@@ -5462,15 +5511,17 @@ const server = http.createServer((req, res) => {
           remaining -= chunkPostsPerDay;
         }
       }
-      const chunkPromises = chunkPlan.map((plan) =>
-        fetchChunkWithRetry(
-          plan.chunkDays,
-          plan.chunkStartDay,
-          plan.chunkIndex,
-          plan.chunkPostsPerDay
-        )
+      const chunkResults = await mapLimit(
+        chunkPlan,
+        2,
+        (plan) =>
+          fetchChunkWithRetry(
+            plan.chunkDays,
+            plan.chunkStartDay,
+            plan.chunkIndex,
+            plan.chunkPostsPerDay
+          )
       );
-      const chunkResults = await Promise.all(chunkPromises);
       for (let i = 0; i < chunkPlan.length; i += 1) {
         const plan = chunkPlan[i];
         const chunkResult = chunkResults[i];
@@ -5501,10 +5552,11 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       }
-      const chunkPromises = chunkPlan.map((plan) =>
-        fetchChunkWithRetry(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
+      const chunkResults = await mapLimit(
+        chunkPlan,
+        2,
+        (plan) => fetchChunkWithRetry(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
       );
-      const chunkResults = await Promise.all(chunkPromises);
       for (let i = 0; i < chunkPlan.length; i += 1) {
         const plan = chunkPlan[i];
         const chunkResult = chunkResults[i];
@@ -6237,13 +6289,19 @@ const server = http.createServer((req, res) => {
         regenContext.batchIndex = body?.batchIndex;
         regenContext.startDay = body?.startDay;
         const requestedPostsPerDay = 1;
-        const posts = await generateCalendarPosts({
-          ...(body || {}),
-          postsPerDay: requestedPostsPerDay,
-          usedSignatures: sanitizedUsedSignatures,
-          context: regenContext,
-          isPro,
-        });
+        let posts;
+        await acquireRegenSlot(requestId);
+        try {
+          posts = await generateCalendarPosts({
+            ...(body || {}),
+            postsPerDay: requestedPostsPerDay,
+            usedSignatures: sanitizedUsedSignatures,
+            context: regenContext,
+            isPro,
+          });
+        } finally {
+          releaseRegenSlot();
+        }
         const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
         console.log('[Calendar] regen audio counts', {
           requestId,
