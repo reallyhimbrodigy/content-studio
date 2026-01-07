@@ -150,11 +150,6 @@ let saveTimer = null;
   };
 
   const openPanel = async () => {
-    const pro = await resolveIsPro();
-    if (!pro) {
-      if (typeof showUpgradeModal === 'function') showUpgradeModal();
-      return;
-    }
     brandModal.style.display = 'flex';
     document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
     document.body.dataset.prevOverflow = document.body.style.overflow || '';
