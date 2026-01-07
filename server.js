@@ -2162,6 +2162,21 @@ async function mapLimit(items, limit, worker) {
   });
 }
 
+async function mapWithConcurrency(items, limit, fn) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const results = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const idx = i++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function openAIRequest(options, payload) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
@@ -4449,6 +4464,40 @@ function getPresetGuidelines(nicheStyle = '') {
   return null;
 }
 
+function extractFirstJsonObject(text = '') {
+  if (!text) return null;
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === '\\') {
+        escape = true;
+        continue;
+      }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '{') depth += 1;
+    if (c === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
   const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
@@ -4610,15 +4659,23 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
 
   try {
     const firstResponse = await attemptRequest('', true);
+    const rawText = firstResponse.content || '';
+    const extracted = extractFirstJsonObject(rawText);
+    const jsonText = extracted || rawText.trim();
     let parsed = null;
     try {
-      parsed = firstResponse.content ? JSON.parse(firstResponse.content) : null;
+      parsed = jsonText ? JSON.parse(jsonText) : null;
     } catch (err) {
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.rawContent = firstResponse.content;
-      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      parseErr.rawContent = rawText;
+      console.warn('[Calendar][Parse] failed', {
+        requestId: loggingContext?.requestId || 'unknown',
+        expectedCount: expectedChunkCount,
+        rawLength: rawText.length,
+        extracted: Boolean(extracted),
+      });
       throw parseErr;
     }
     const posts = parsed && Array.isArray(parsed.posts) ? parsed.posts : null;
@@ -4638,16 +4695,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       const parseErr = new Error('missing_posts');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.rawContent = firstResponse.content;
-      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      parseErr.rawContent = rawText;
       throw parseErr;
     }
     if (posts.length !== expectedChunkCount) {
       const parseErr = new Error(`missing_posts_length_mismatch expected=${expectedChunkCount} actual=${posts.length}`);
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.rawContent = firstResponse.content;
-      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      parseErr.rawContent = rawText;
       throw parseErr;
     }
     const expectedStart = chunkStartDay;
@@ -4656,13 +4711,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.rawContent = firstResponse.content;
-      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      parseErr.rawContent = rawText;
       throw parseErr;
     }
     return {
       posts,
-      rawContent: firstResponse.content,
+      rawContent: rawText,
       latency: firstResponse.latency,
     };
   } catch (err) {
@@ -5307,17 +5361,7 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const totalPostsTarget = daysToGenerate * perDay;
-    const useSingleChunk = totalPostsTarget <= 10;
-    if (useSingleChunk) {
-      console.log('[Calendar][Chunks] single chunk enforced', {
-        requestId: loggingContext?.requestId || 'unknown',
-        startDay,
-        days: daysToGenerate,
-        postsPerDay: perDay,
-      });
-    }
-    const chunkLimit = useSingleChunk ? daysToGenerate : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const chunkLimit = perDay === 1 ? 2 : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
     const blockFallbacks = forceSinglePostPerDayForModel;
     const maxPostsPerChunk = 2;
@@ -5386,9 +5430,9 @@ const server = http.createServer((req, res) => {
           remaining -= chunkPostsPerDay;
         }
       }
-      const chunkResults = await mapLimit(
+      const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        2,
+        3,
         (plan) =>
           fetchChunk(
             plan.chunkDays,
@@ -5427,9 +5471,9 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       }
-      const chunkResults = await mapLimit(
+      const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        2,
+        3,
         (plan) => fetchChunk(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
       );
       for (let i = 0; i < chunkPlan.length; i += 1) {
