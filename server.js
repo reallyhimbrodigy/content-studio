@@ -2847,11 +2847,6 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   try {
     parsed = content ? JSON.parse(content) : null;
   } catch (err) {
-    console.warn('[Calendar][Plan] JSON parse failed; falling back', {
-      requestId: loggingContext?.requestId,
-      error: err?.message || err,
-      preview: String(content || '').slice(0, 200),
-    });
     return null;
   }
   if (!parsed || !Array.isArray(parsed.plan)) {
