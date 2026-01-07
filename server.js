@@ -2706,25 +2706,30 @@ function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabl
 }
 
 function normalizeCalendarPlanEntries(plan = [], totalDays = 30) {
-  if (!Array.isArray(plan) || plan.length < totalDays) return null;
+  if (!Array.isArray(plan) || plan.length !== totalDays) return null;
   const normalized = [];
   const topicSignatures = new Set();
   const duplicateTopics = [];
   for (let i = 0; i < totalDays; i += 1) {
     const raw = plan[i];
-    const dayIndex = i + 1;
-    const pillar = normalizeCalendarPillar(raw?.pillar) || getCalendarPillarForDay(dayIndex);
-    const topic = toPlainString(raw?.topic || raw?.title || raw?.seed || '').trim();
-    const angle = toPlainString(raw?.angle || raw?.intent || '').trim();
-    const hookIntent = toPlainString(raw?.hook_intent || raw?.hookIntent || '').trim();
+    const dayIndex = Number(raw?.day);
+    if (!Number.isFinite(dayIndex) || dayIndex !== i + 1) return null;
+    const pillar = normalizeCalendarPillar(raw?.pillar);
+    if (!pillar) return null;
+    const topic = toPlainString(raw?.topic || '').trim();
+    const angle = toPlainString(raw?.angle || '').trim();
     if (!topic || !angle) return null;
+    const trimWords = (value) => value.split(/\s+/).slice(0, 10).join(' ').trim();
+    const trimmedTopic = trimWords(topic);
+    const trimmedAngle = trimWords(angle);
+    if (!trimmedTopic || !trimmedAngle) return null;
     const signature = normalizeCalendarSignature(topic);
     if (signature && topicSignatures.has(signature)) {
       duplicateTopics.push({ dayIndex, signature });
     } else if (signature) {
       topicSignatures.add(signature);
     }
-    normalized.push({ dayIndex, pillar, topic, angle, hook_intent: hookIntent });
+    normalized.push({ dayIndex, pillar, topic: trimmedTopic, angle: trimmedAngle });
   }
   if (duplicateTopics.length) {
     console.warn('[Calendar][Plan] duplicate topics detected; proceeding', {
@@ -2740,8 +2745,7 @@ function buildPlanBlock(planItems = []) {
   const lines = [
     'PLAN ITEMS FOR THIS BATCH:',
     ...planItems.map((item) => {
-      const hookNote = item.hook_intent ? ` | Hook intent: ${item.hook_intent}` : '';
-      return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle}${hookNote}`;
+      return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle}`;
     }),
     'Use these exact plan items; do not create new topics or pillars.',
     'Title must closely match the topic seed (light polish ok).',
@@ -2765,13 +2769,12 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['dayIndex', 'pillar', 'topic', 'angle', 'hook_intent'],
+          required: ['day', 'pillar', 'topic', 'angle'],
           properties: {
-            dayIndex: { type: 'integer', minimum: 1, maximum: totalDays },
+            day: { type: 'integer', minimum: 1, maximum: totalDays },
             pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
             topic: { type: 'string', minLength: 3 },
             angle: { type: 'string', minLength: 3 },
-            hook_intent: { type: 'string', minLength: 2 },
           },
         },
       },
@@ -2780,9 +2783,10 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   const prompt = [
     `You are a content calendar planner${cleanNiche}.`,
     brandBlock.trim(),
-    `Return ONLY valid JSON: {"plan":[...]}.`,
-    `Create exactly ${totalDays} plan items for days 1..${totalDays}.`,
-    'Each item must include: dayIndex, pillar, topic (short seed), angle (short intent), hook_intent (short).',
+    `Return ONLY valid minified JSON matching the schema. No markdown. No commentary.`,
+    `Create exactly ${totalDays} plan items for days 1..${totalDays}, in order.`,
+    'Each item must include: day, pillar, topic (short seed), angle (short intent).',
+    'Keep topic and angle <= 10 words each.',
     'All topics must be distinct across the full plan.',
     'Distribute pillars roughly evenly across the four values.',
     'Keep topics specific to the niche; no hashtags; no full hooks or captions.',
@@ -2791,7 +2795,7 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.3,
-    max_tokens: 900,
+    max_tokens: 700,
     response_format: {
       type: 'json_schema',
       json_schema: { name: 'calendar_plan', strict: true, schema },
@@ -2838,11 +2842,22 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   });
   const json = await Promise.race([requestPromise, timeoutPromise]);
   const content = extractContentText(json);
-  const parsed = content ? JSON.parse(content) : null;
+  const sanitized = sanitizeJsonContent(content || '');
+  let parsed = null;
+  try {
+    parsed = sanitized ? JSON.parse(sanitized) : null;
+  } catch (err) {
+    console.warn('[Calendar][Plan] JSON parse failed; falling back', {
+      requestId: loggingContext?.requestId,
+      error: err?.message || err,
+      preview: String(sanitized || content || '').slice(0, 200),
+    });
+    return null;
+  }
   if (!parsed || !Array.isArray(parsed.plan)) {
     console.warn('[Calendar][Plan] invalid plan payload', {
       requestId: loggingContext?.requestId,
-      preview: String(content || '').slice(0, 200),
+      preview: String(sanitized || '').slice(0, 200),
     });
     return null;
   }
