@@ -2535,31 +2535,28 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        `Brand Brain enabled: output must be final publishable copy tailored to the user's niche and offer.`,
-        `Return ONLY valid JSON with a top-level object: { "posts": [ ... ] }.`,
-        `Forbidden outputs: "placeholder", "quick hook", "explain the idea", "ask for feedback", "neutral background", "let me know what you think", "talk briefly", "screenshot this so you remember", "office hours".`,
-        `Never output meta-instructions or templates. No headings, labels, or instructional verbs (Explain/List/Outline). Output must read like finished content.`,
-        `Every card sells the user's service with a concrete next step (consult, audit, assessment, listing/buyer consult, treatment plan, membership, strategy call, teardown).`,
-        `Every card contains one differentiator without unverifiable claims (local expertise, process, specialization, credentials if provided, or commonly observed outcomes).`,
-        `No emojis. No fabricated statistics or precise claims unless user-provided. No guarantees or medical promises.`,
-        `Use one target persona, one target desire, and one target objection per post. Include pain/friction, mechanism/why, specific next step, and a retention device.`,
-        `Each post must use EXACTLY ONE primary psychological lever (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal).`,
-        `Each post must use EXACTLY ONE primary algorithm signal (comments, saves, shares, watch time/rewatch). The DistributionPlan must name the chosen signal and why.`,
-        `Use concrete nouns, local cues, and intent language. Avoid generic influencer filler.`,
-        `If nicheStyle contains a location, reference it in title, hashtags, or CTA.`,
-        `Title: 4–7 words; imply consequence/mistake/hidden insight/status; specific to the niche and that day’s topic (no generic titles or "Office Hours").`,
-        `Hook: 1–2 lines; 0–3s retention hook (pattern interrupt/contrarian/mistake/loss-framed); explicit niche pain/goal; no vague one-liners.`,
-        `Caption (body): short beats for retention; include ONE concrete mechanism (why it happens/what causes it/what to do); leave an open loop that invites comments/DMs (do not fully resolve); avoid long paragraphs.`,
-        `CTA: two-step — primary growth CTA is comment-based access/personalization; secondary conversion CTA is DM-based for a personalized strategy. Do not force a keyword list; choose a natural, topic-specific comment prompt.`,
-        `StoryPrompt: decision-based or tradeoff-based; force a binary choice that reveals intent. No open-ended "what do you think".`,
-        `DesignNotes: 3–5 concrete visual beats + on-screen text beat plan + pattern changes every 2–3s + at least one pause-and-read overlay moment, all topic-specific.`,
-        `EngagementScripts: provide a comment reply template that asks a follow-up question (escalates commitment), a DM reply template that qualifies and moves toward the CTA, and include a reply-to-comment follow-up post idea in the text. No hard-coded phrases; be context-specific.`,
-        `ReelScript: include Hook line, short Body beats, mid re-hook line (~5–7s), CTA line; loopable ending that re-opens the hook/tension to encourage replay.`,
-        `DistributionPlan: actionable and specific (target posting window, early engagement action, follow-up trigger). Must name the primary algorithm signal (comments/saves/shares/watch time/rewatch) and state why it is targeted.`,
-        `hashtags: always present as an array of strings (8–12 tags). Include 2–3 location tags if location exists, 2–3 niche service tags, and 2 intent tags. No irrelevant or holiday tags.`,
-        `If suggested audio exists in the schema, output "Song Title - Artist" only, non-holiday, no platform prefixes.`,
-        `Return valid JSON only. Every post object must include all required keys: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts. No empty strings. No nulls. No extra keys. Never omit hashtags.`,
-        `Quality gates: never output a one-word title/body; never repeat the title as the body; never leave any field empty.`,
+        'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
+        'Output JSON only: { "posts": [ ... ] }.',
+        'Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
+        'Every card sells the service with a concrete next step; include one differentiator without unverifiable claims.',
+        'No emojis, no fabricated stats, no guarantees/medical promises.',
+        'One persona + desire + objection per post; include pain, mechanism, next step, retention device.',
+        'Exactly one persuasion lever (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal).',
+        'Exactly one algorithm signal (comments, saves, shares, watch time/rewatch); DistributionPlan must name it and why.',
+        'Concrete nouns, local cues, intent language; if niche has a location, reference it in title/hashtags/CTA.',
+        'Title 4–7 words; specific to the day/topic; no generic titles or "Office Hours".',
+        'Hook 1–2 lines; 0–3s retention hook; explicit niche pain/goal; no vague one-liners.',
+        'Caption: short beats; include one concrete mechanism; leave an open loop; avoid long paragraphs.',
+        'CTA: two-step — comment-based access/personalization + DM-based conversion; no forced keywords.',
+        'StoryPrompt: decision/tradeoff; force a binary choice; no open-ended "what do you think".',
+        'DesignNotes: 3–5 visual beats + on-screen text plan + pattern changes every 2–3s + pause-and-read overlay.',
+        'EngagementScripts: comment reply with follow-up question; DM reply that qualifies; include a reply-to-comment follow-up post idea.',
+        'ReelScript: Hook, short Body beats, mid re-hook (~5–7s), CTA, loopable ending.',
+        'DistributionPlan: actionable window, early engagement action, follow-up trigger; must name the algorithm signal.',
+        'hashtags: array of 8–12 tags; 2–3 location tags (if applicable), 2–3 niche service tags, 2 intent tags; no irrelevant/holiday tags.',
+        'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
+        'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
+        'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2618,12 +2615,15 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
- ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return STRICT valid JSON only (no markdown, no commentary). Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes and keep strings concise.
- Pillars: include "pillar" for every post using exactly one of these values: Education, Social Proof, Promotion, Lifestyle. Distribute pillars evenly across the batch; follow this cycle by day number: 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, then repeat.
- Each object must include day, title, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, and engagementScripts with non-empty values. hashtags must be an array of ${hashtagRange} strings (not a single string). script and reelScript must each contain hook, body, and cta; engagementScripts must include commentReply and dmReply.
- StoryPrompt must be a short creator prompt/question and must never append the niche label at the end.
- Uniqueness: treat each day number as a unique slot and base the topic/title/hook on that day so no two days share the same angle or opening phrase. Imagine a 30-day topic pool and pick a distinct subset for this batch, avoiding repeated sentence templates. ${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
- `;
+${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+Rules:
+- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
+- Each post includes day, title, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
+- StoryPrompt is a short creator prompt/question; never append the niche label.
+- Uniqueness: each day is a unique topic/angle; no repeated templates or opening phrasing.
+${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
+`;
 }
 
 function normalizeCalendarSignature(value = '') {
@@ -2692,7 +2692,7 @@ function stableHash(value = '') {
   return Math.abs(hash);
 }
 
-function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabled, brandContext }) {
+function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabled, brandContext, platform }) {
   const normalizedNiche = String(nicheStyle || '').trim().toLowerCase();
   const brandHash = brandContext ? stableHash(brandContext) : 0;
   const parts = [
@@ -2700,6 +2700,7 @@ function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabl
     normalizedNiche,
     Number(postsPerDay) || 1,
     brandBrainEnabled ? 'bb1' : 'bb0',
+    String(platform || '').trim().toLowerCase(),
     brandHash,
   ];
   return parts.join('|');
@@ -2794,8 +2795,8 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-    max_tokens: 700,
+    temperature: 0.0,
+    max_tokens: 500,
     response_format: {
       type: 'json_schema',
       json_schema: { name: 'calendar_plan', strict: true, schema },
@@ -2842,22 +2843,21 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   });
   const json = await Promise.race([requestPromise, timeoutPromise]);
   const content = extractContentText(json);
-  const sanitized = sanitizeJsonContent(content || '');
   let parsed = null;
   try {
-    parsed = sanitized ? JSON.parse(sanitized) : null;
+    parsed = content ? JSON.parse(content) : null;
   } catch (err) {
     console.warn('[Calendar][Plan] JSON parse failed; falling back', {
       requestId: loggingContext?.requestId,
       error: err?.message || err,
-      preview: String(sanitized || content || '').slice(0, 200),
+      preview: String(content || '').slice(0, 200),
     });
     return null;
   }
   if (!parsed || !Array.isArray(parsed.plan)) {
     console.warn('[Calendar][Plan] invalid plan payload', {
       requestId: loggingContext?.requestId,
-      preview: String(sanitized || '').slice(0, 200),
+      preview: String(content || '').slice(0, 200),
     });
     return null;
   }
@@ -2868,6 +2868,10 @@ async function getOrCreateCalendarPlan({ key, nicheStyle, brandContext, totalDay
   const cached = getCalendarPlanCache(key);
   if (cached) return cached;
   if (calendarPlanInflight.has(key)) {
+    console.log('[Calendar][Plan] inflight reuse', {
+      requestId: loggingContext?.requestId,
+      planKey: key,
+    });
     return calendarPlanInflight.get(key);
   }
   const planPromise = (async () => {
@@ -4515,6 +4519,15 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       extraInstructions,
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    if (loggingContext?.requestId) {
+      console.log('[Calendar][Prompt]', {
+        requestId: loggingContext.requestId,
+        chunkStartDay,
+        chunkDays,
+        promptChars: prompt.length,
+        planUsed: Boolean(opts.planUsed),
+      });
+    }
     const responseFormat = useSchema
       ? {
           type: 'json_schema',
@@ -5278,6 +5291,7 @@ const server = http.createServer((req, res) => {
       Number.isFinite(Number(startDay)) &&
       context &&
       Object.prototype.hasOwnProperty.call(context, 'batchIndex');
+    let planReason = '';
     const planKey = shouldAttemptPlan
       ? buildCalendarPlanKey({
           userId,
@@ -5285,8 +5299,13 @@ const server = http.createServer((req, res) => {
           postsPerDay: postsPerDay || 1,
           brandBrainEnabled,
           brandContext,
+          platform: payload?.platform,
         })
       : null;
+    if (!shouldAttemptPlan) {
+      planReason = 'plan_not_requested';
+    }
+    const planStart = Date.now();
     const calendarPlan = planKey
       ? await getOrCreateCalendarPlan({
           key: planKey,
@@ -5301,7 +5320,15 @@ const server = http.createServer((req, res) => {
         requestId: loggingContext?.requestId || 'unknown',
         planKey,
       });
+      planReason = 'plan_null';
     }
+    const planMs = Date.now() - planStart;
+    console.log('[Calendar][Plan] plan status', {
+      requestId: loggingContext?.requestId || 'unknown',
+      planUsed: Boolean(calendarPlan),
+      planMs,
+      planReason: calendarPlan ? '' : planReason,
+    });
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
       nicheStyle,
@@ -5368,6 +5395,7 @@ const server = http.createServer((req, res) => {
         avoidSignatures: normalizedAvoidSignatures,
         brandBrainDirective,
         extraInstructions: planBlock || '',
+        planUsed: Boolean(planItems),
       });
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
