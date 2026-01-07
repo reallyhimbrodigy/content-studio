@@ -8701,27 +8701,30 @@ body.view-landing .workflow-section + .landing-section {
 }
 
 .workflow-subhead {
-  margin: 0;
+  margin: 0 0 0.5rem;
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.6;
   max-width: 60ch;
 }
 
 .workflow-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 0.5rem;
 }
 
 .step-row {
   display: flex;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.step-row:last-child {
-  border-bottom: none;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  max-width: 260px;
+  width: 100%;
+  justify-self: center;
 }
 
 .step-badge {
@@ -8751,7 +8754,9 @@ body.view-landing .workflow-section + .landing-section {
 
 .step-desc {
   color: rgba(255, 255, 255, 0.78);
-  line-height: 1.5;
+  line-height: 1.55;
+  font-size: 0.92rem;
+  max-width: 28ch;
 }
 
 .workflow-preferences-card {
@@ -8760,6 +8765,8 @@ body.view-landing .workflow-section + .landing-section {
   border-radius: 18px;
   padding: 1.5rem;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+  align-self: start;
+  margin-top: 2.25rem;
 }
 
 .workflow-preferences-title {
@@ -8782,7 +8789,7 @@ body.view-landing .workflow-section + .landing-section {
 }
 
 .workflow-preferences-list li + li {
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
 }
 
 .workflow-preferences-list li::before {
@@ -8829,6 +8836,20 @@ body.view-landing .workflow-section + .landing-section {
 
 @media (max-width: 900px) {
   .workflow-top {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .step-row {
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .workflow-steps {
     grid-template-columns: 1fr;
   }
 }
