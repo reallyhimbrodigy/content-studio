@@ -8102,7 +8102,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
     })();
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
-    const batchSize = 5;
+    const batchSize = 10;
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
     const totalBatches = Math.ceil(totalPosts / batchSize);
@@ -8320,29 +8320,27 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       return { batchIndex, posts: batchPosts, calendarId };
     };
     
-    // Fire all batches in parallel for maximum speed (~30 seconds)
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
+    const maxConcurrent = 3;
+    const results = new Array(totalBatches);
+    let nextBatchIndex = 0;
     const t0 = performance.now();
-    const settled = await Promise.allSettled(
-      batchIndexes.map((batchIndex) =>
-        fetchBatch(batchIndex).then((result) => ({ batchIndex, result }))
-      )
-    );
-    const rejectionEntries = settled.filter((entry) => entry.status === 'rejected');
-    if (rejectionEntries.length) {
-      rejectionEntries.forEach((entry) => console.error('[Calendar] batch rejected', entry.reason));
-      const firstRejection = rejectionEntries[0].reason;
-      const rejectionError = firstRejection instanceof Error
-        ? firstRejection
-        : new Error(firstRejection ? String(firstRejection) : 'Batch generation failed');
-      throw rejectionError;
-    }
+    const worker = async () => {
+      while (nextBatchIndex < totalBatches) {
+        const batchIndex = nextBatchIndex;
+        nextBatchIndex += 1;
+        const result = await fetchBatch(batchIndex);
+        results[batchIndex] = { batchIndex, result };
+      }
+    };
+    const workerCount = Math.min(maxConcurrent, totalBatches);
+    const workers = Array.from({ length: workerCount }, () => worker());
+    await Promise.all(workers);
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
-    const results = settled
-      .filter((entry) => entry.status === 'fulfilled' && entry.value)
-      .map((entry) => entry.value);
-
-    const orderedResults = results.sort((a, b) => a.batchIndex - b.batchIndex).map((entry) => entry.result);
+    const orderedResults = results
+      .filter(Boolean)
+      .sort((a, b) => a.batchIndex - b.batchIndex)
+      .map((entry) => entry.result);
     
     orderedResults.forEach((result) => {
       if (!generatedCalendarId && result?.calendarId) {

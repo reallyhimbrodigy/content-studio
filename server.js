@@ -2912,10 +2912,6 @@ async function getOrCreateCalendarPlan({ key, nicheStyle, brandContext, totalDay
   const cached = getCalendarPlanCache(key);
   if (cached) return cached;
   if (calendarPlanInflight.has(key)) {
-    console.log('[Calendar][Plan] inflight reuse', {
-      requestId: loggingContext?.requestId,
-      planKey: key,
-    });
     return calendarPlanInflight.get(key);
   }
   const planPromise = (async () => {
@@ -4175,11 +4171,6 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
     fallbackAudio
   );
   let missing = validatePostCompleteness(normalized);
-  if (missing.length && allowFallbacks) {
-    const fallback = buildFallbackPost(nicheStyle, dayNumber);
-    fillMissingFieldsFromFallback(normalized, fallback, missing, nicheStyle);
-    missing = validatePostCompleteness(normalized);
-  }
   return { post: normalized, missingFields: missing, appliedFixes: applied };
 }
 
@@ -4526,12 +4517,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const snippet = String(value);
     return snippet.length <= 500 ? snippet : `${snippet.slice(0, 500)}...`;
   };
-  const logParseFailure = (phase, reason, content) => {
-    const message = reason ? String(reason).substring(0, 120) : 'parse failure';
-    console.warn(
-      `[Calendar] callOpenAI parse ${phase} failure${label}: ${message}; preview: ${previewJson(content)}`
-    );
-  };
   const parseOpenAiErrorPayload = (err) => {
     const raw = String(err?.message || '');
     const marker = raw.indexOf(':');
@@ -4623,106 +4608,29 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return { content, latency: Date.now() - attemptTimestamp };
   };
 
-  const runParseSequence = async (useSchema, strictParse) => {
-    let lastLatency = 0;
-    let parsedContent = '';
-    let parseResult = null;
-
-    const firstResponse = await attemptRequest('', useSchema);
-    parsedContent = firstResponse.content;
-    lastLatency = firstResponse.latency;
-    parseResult = tryParsePosts(parsedContent, expectedChunkCount);
-
-    if (!parseResult.posts) {
-      logParseFailure('initial', parseResult?.reason || 'missing posts', parsedContent);
-      const sanitized = sanitizeJsonContent(parsedContent);
-      if (sanitized && sanitized !== parsedContent) {
-        parsedContent = sanitized;
-        parseResult = tryParsePosts(parsedContent, expectedChunkCount);
-      }
-    }
-
-    if (!parseResult.posts) {
-      logParseFailure('retry', parseResult?.reason || 'missing posts', parsedContent);
-      const retryInstructions =
-        'If the previous response failed, return ONLY JSON in the form { "posts": [ ... ] } and do not add any explanation.';
-      const retryResponse = await attemptRequest(retryInstructions, useSchema);
-      parsedContent = retryResponse.content;
-      lastLatency = retryResponse.latency;
-      parseResult = tryParsePosts(parsedContent, expectedChunkCount);
-      if (!parseResult.posts) {
-        const sanitizedRetry = sanitizeJsonContent(parsedContent);
-        if (sanitizedRetry && sanitizedRetry !== parsedContent) {
-          parsedContent = sanitizedRetry;
-          parseResult = tryParsePosts(parsedContent, expectedChunkCount);
-        }
-      }
-    }
-
+  try {
+    const firstResponse = await attemptRequest('', true);
+    const parseResult = tryParsePosts(firstResponse.content, expectedChunkCount);
     if (parseResult && parseResult.posts) {
       return {
         posts: parseResult.posts,
-        rawContent: parsedContent,
-        latency: lastLatency,
+        rawContent: firstResponse.content,
+        latency: firstResponse.latency,
       };
     }
-
-    if (strictParse) {
-      const invalidErr = new Error('Invalid model JSON response');
-      invalidErr.code = 'INVALID_MODEL_JSON';
-      invalidErr.statusCode = 400;
-      invalidErr.rawContent = parsedContent;
-      throw invalidErr;
-    }
-
-    const fallbackReason = parseResult ? parseResult.reason : 'unknown reason';
-    console.warn(`[Calendar] callOpenAI parse fallback${label}: ${fallbackReason}`);
-    return null;
-  };
-
-  try {
-    let result = null;
-    try {
-      result = await runParseSequence(true, false);
-    } catch (err) {
-      if (err?.code === 'OPENAI_SCHEMA_ERROR') {
-        result = await runParseSequence(false, true);
-      } else {
-        throw err;
-      }
-    }
-    if (result && result.posts) {
-      return result;
-    }
+    const parseErr = new Error(parseResult?.reason || 'missing_posts');
+    parseErr.code = 'PARSE_FAILED';
+    parseErr.statusCode = 422;
+    parseErr.rawContent = firstResponse.content;
+    console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+    throw parseErr;
   } catch (err) {
-    if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'INVALID_MODEL_JSON') {
+    if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
       throw err;
     }
     console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
-  }
-
-  if (opts.brandBrainDirective) {
-    const err = new Error('Brand Brain fallback blocked');
-    err.code = 'BRAND_BRAIN_FALLBACK_BLOCKED';
-    err.statusCode = 400;
     throw err;
   }
-  if (postsPerDay > 1) {
-    const err = new Error('CALENDAR_OPENAI_EMPTY');
-    err.code = 'CALENDAR_OPENAI_EMPTY';
-    err.statusCode = 500;
-    throw err;
-  }
-  const fallbackPosts = buildFallbackChunkPosts(nicheStyle, chunkStartDay, postsPerDay, expectedChunkCount);
-  console.warn(
-    `[Calendar] callOpenAI returning fallback posts${label}: expected ${expectedChunkCount}, returning ${fallbackPosts.length}`
-  );
-  return {
-    posts: fallbackPosts,
-    rawContent: '',
-    latency: Date.now() - attemptStart,
-    fallback: true,
-  };
 }
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
@@ -5328,50 +5236,12 @@ const server = http.createServer((req, res) => {
       enabled: Boolean(brandBrainDirective),
       isPro: isProUser,
     });
-    const totalPlanDays = Math.max(1, Math.min(30, Number(payload?.totalDays || 30)));
-    const shouldAttemptPlan =
-      Number.isFinite(Number(days)) &&
-      Number(days) >= 3 &&
-      Number.isFinite(Number(startDay)) &&
-      context &&
-      Object.prototype.hasOwnProperty.call(context, 'batchIndex');
-    let planReason = '';
-    const planKey = shouldAttemptPlan
-      ? buildCalendarPlanKey({
-          userId,
-          nicheStyle,
-          postsPerDay: postsPerDay || 1,
-          brandBrainEnabled,
-          brandContext,
-          platform: payload?.platform,
-        })
-      : null;
-    if (!shouldAttemptPlan) {
-      planReason = 'plan_not_requested';
-    }
-    const planStart = Date.now();
-    const calendarPlan = planKey
-      ? await getOrCreateCalendarPlan({
-          key: planKey,
-          nicheStyle,
-          brandContext,
-          totalDays: totalPlanDays,
-          loggingContext,
-        })
-      : null;
-    if (planKey && !calendarPlan) {
-      console.warn('[Calendar][Plan] fallback to inline topics', {
-        requestId: loggingContext?.requestId || 'unknown',
-        planKey,
-      });
-      planReason = 'plan_null';
-    }
-    const planMs = Date.now() - planStart;
+    const calendarPlan = null;
     console.log('[Calendar][Plan] plan status', {
       requestId: loggingContext?.requestId || 'unknown',
-      planUsed: Boolean(calendarPlan),
-      planMs,
-      planReason: calendarPlan ? '' : planReason,
+      planUsed: false,
+      planMs: 0,
+      planReason: 'plan_skipped',
     });
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
@@ -5396,7 +5266,17 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const chunkLimit = Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const totalPostsTarget = daysToGenerate * perDay;
+    const useSingleChunk = totalPostsTarget <= 10;
+    if (useSingleChunk) {
+      console.log('[Calendar][Chunks] single chunk enforced', {
+        requestId: loggingContext?.requestId || 'unknown',
+        startDay,
+        days: daysToGenerate,
+        postsPerDay: perDay,
+      });
+    }
+    const chunkLimit = useSingleChunk ? daysToGenerate : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
     const blockFallbacks = forceSinglePostPerDayForModel;
     const maxPostsPerChunk = 2;
@@ -5449,52 +5329,6 @@ const server = http.createServer((req, res) => {
       };
     }
 
-    async function fetchChunkWithRetry(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
-      const runAttempt = async () => {
-        const chunkResult = await fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay);
-        if ((usePostChunks || blockFallbacks) && (chunkResult.fallback || !chunkResult.posts.length || chunkResult.rawLength === 0)) {
-          const err = new Error('CALENDAR_OPENAI_EMPTY');
-          err.code = 'CALENDAR_OPENAI_EMPTY';
-          throw err;
-        }
-        return chunkResult;
-      };
-      try {
-        return await runAttempt();
-      } catch (err) {
-        try {
-          return await runAttempt();
-        } catch (retryErr) {
-          if (chunkPostsPerDay > 1) {
-            const combined = { posts: [], rawLength: 0, latency: 0, fallback: false };
-            for (let i = 0; i < chunkPostsPerDay; i += 1) {
-              const singleIndex = `${chunkIndex}.${i + 1}`;
-              const single = await fetchChunk(1, chunkStartDay, singleIndex, 1);
-              if (single.fallback || !single.posts.length || single.rawLength === 0) {
-                const finalErr = new Error('CALENDAR_OPENAI_EMPTY');
-                finalErr.code = 'CALENDAR_OPENAI_EMPTY';
-                throw finalErr;
-              }
-              combined.posts = combined.posts.concat(single.posts);
-              combined.rawLength += single.rawLength;
-              combined.latency += single.latency;
-              chunkMetrics.push({
-                chunkIndex: singleIndex,
-                startDay: chunkStartDay,
-                days: 1,
-                posts: 1,
-                rawLength: single.rawLength,
-                duration: single.latency,
-                timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-              });
-            }
-            return combined;
-          }
-          throw retryErr;
-        }
-      }
-    }
-
     if (usePostChunks) {
       const chunkPlan = [];
       for (let dayOffset = 0; dayOffset < daysToGenerate; dayOffset += 1) {
@@ -5515,7 +5349,7 @@ const server = http.createServer((req, res) => {
         chunkPlan,
         2,
         (plan) =>
-          fetchChunkWithRetry(
+          fetchChunk(
             plan.chunkDays,
             plan.chunkStartDay,
             plan.chunkIndex,
@@ -5555,7 +5389,7 @@ const server = http.createServer((req, res) => {
       const chunkResults = await mapLimit(
         chunkPlan,
         2,
-        (plan) => fetchChunkWithRetry(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
+        (plan) => fetchChunk(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
       );
       for (let i = 0; i < chunkPlan.length; i += 1) {
         const plan = chunkPlan[i];
@@ -5770,66 +5604,16 @@ const server = http.createServer((req, res) => {
             reasons: entry.reasons,
           });
         });
-        const retryLimit = 2;
-        const retryFailures = [];
-        for (const entry of invalidEntries) {
-          let replaced = false;
-          const slot = perDay > 1 ? ((entry.index % perDay) + 1) : 1;
-          for (let attempt = 1; attempt <= retryLimit; attempt += 1) {
-            console.warn('[BrandBrain][Retry] attempt', {
-              requestId: loggingContext?.requestId || 'unknown',
-              day: entry.day,
-              slot,
-              attempt,
-            });
-            const retryInstructions = [
-              'Brand Brain retry: previous output failed validation due to placeholders or generic filler.',
-              'Return fully specific niche content. Do not use any forbidden phrases or template scaffolding.',
-              `This is slot ${slot} for day ${entry.day}.`,
-              'Return valid JSON only with all required fields and hashtags as an array (8–12 tags).',
-            ].join(' ');
-            const retryResult = await callOpenAI(nicheStyle, brandContext, {
-              days: 1,
-              startDay: entry.day,
-              postsPerDay: 1,
-              loggingContext: { ...loggingContext, brandBrainRetry: true, retryDay: entry.day, retryAttempt: attempt },
-              maxTokens: Math.max(chunkMinTokens, chunkBaseTokens),
-              reduceVerbosity: true,
-              usedSignatures: normalizedUsedSignatures,
-              brandBrainDirective,
-              extraInstructions: retryInstructions,
-            });
-            const candidate = Array.isArray(retryResult.posts) ? retryResult.posts[0] : null;
-            const validation = candidate ? validateBrandBrainPost(candidate, nicheStyle) : { ok: false, reasons: [{ code: 'MISSING_FIELD', detail: ['posts'] }] };
-            if (validation.ok) {
-              rawPosts[entry.index] = candidate;
-              replaced = true;
-              break;
-            }
-            console.warn('[BrandBrain][Retry] candidate rejected', {
-              requestId: loggingContext?.requestId || 'unknown',
-              day: entry.day,
-              slot,
-              attempt,
-              reasons: validation.reasons,
-            });
-          }
-          if (!replaced) {
-            retryFailures.push(entry);
-          }
-        }
-        if (retryFailures.length) {
-          const err = new Error('Brand Brain validation failed after retries');
-          err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-          err.statusCode = 500;
-          err.details = retryFailures;
-          console.error('[BrandBrain][Validation] retries exhausted', {
-            requestId: loggingContext?.requestId || 'unknown',
-            failures: retryFailures.length,
-            samples: retryFailures.slice(0, 2),
-          });
-          throw err;
-        }
+        const err = new Error('Brand Brain validation failed');
+        err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
+        err.statusCode = 500;
+        err.details = invalidEntries;
+        console.error('[BrandBrain][Validation] rejected posts', {
+          requestId: loggingContext?.requestId || 'unknown',
+          failures: invalidEntries.length,
+          samples: invalidEntries.slice(0, 2),
+        });
+        throw err;
       }
     }
     console.log('[Calendar][Server][SchemaValidation]', {
@@ -5851,7 +5635,7 @@ const server = http.createServer((req, res) => {
     const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
     const validationStart = Date.now();
     const normalizedPosts = [];
-    const allowFallbacks = !brandBrainEnabled && !blockFallbacks;
+    const allowFallbacks = false;
     for (let idx = 0; idx < rawPosts.length; idx += 1) {
       const normalized = normalizePostWithOverrideFallback(
         rawPosts[idx],
@@ -5918,31 +5702,6 @@ const server = http.createServer((req, res) => {
         days,
         duplicates,
       });
-      if (requestedPostsPerDay > 1 && attempt === 1) {
-        const avoidSignatures = Array.from(
-          new Set(duplicates.map((entry) => entry.signature).filter(Boolean))
-        ).slice(0, 20);
-        if (avoidSignatures.length) {
-          console.warn('[Calendar] duplicate signatures detected; retrying', {
-            requestId: loggingContext?.requestId,
-            startDay,
-            days,
-            attempt: attempt + 1,
-            avoidCount: avoidSignatures.length,
-          });
-          return generateCalendarPosts(
-            {
-              ...(payload || {}),
-              postsPerDay: requestedPostsPerDay,
-              usedSignatures: normalizedUsedSignatures,
-              avoidSignatures,
-              context: { ...loggingContext },
-              isPro: isProUser,
-            },
-            attempt + 1
-          );
-        }
-      }
     }
     if (!calendarPlan && !isPillarDistributionBalanced(posts)) {
       posts = applyPillarSchedule(posts, startDay, perDay);
@@ -7019,7 +6778,7 @@ const server = http.createServer((req, res) => {
           const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
           if (!candidate) throw new Error('Calendar generator returned no posts');
           const normalizedResult = ensureRegenRequiredFields(candidate, nicheStyle, dayNumber, {
-            allowFallbacks: !brandBrainEnabled,
+            allowFallbacks: false,
           });
           normalized = normalizedResult.post;
           missingFields = normalizedResult.missingFields || [];
