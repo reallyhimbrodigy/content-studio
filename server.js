@@ -5457,21 +5457,26 @@ const server = http.createServer((req, res) => {
             chunkDays: 1,
             chunkStartDay: day,
             chunkPostsPerDay,
+            chunkIndex: chunkPlan.length,
           });
           remaining -= chunkPostsPerDay;
         }
       }
-      for (let i = 0; i < chunkPlan.length; i += 1) {
-        const plan = chunkPlan[i];
-        const chunkResult = await fetchChunkWithRetry(
+      const chunkPromises = chunkPlan.map((plan) =>
+        fetchChunkWithRetry(
           plan.chunkDays,
           plan.chunkStartDay,
-          chunkMetrics.length,
+          plan.chunkIndex,
           plan.chunkPostsPerDay
-        );
+        )
+      );
+      const chunkResults = await Promise.all(chunkPromises);
+      for (let i = 0; i < chunkPlan.length; i += 1) {
+        const plan = chunkPlan[i];
+        const chunkResult = chunkResults[i];
         aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
         chunkMetrics.push({
-          chunkIndex: chunkMetrics.length,
+          chunkIndex: plan.chunkIndex,
           startDay: plan.chunkStartDay,
           days: plan.chunkDays,
           posts: plan.chunkPostsPerDay,
@@ -5482,23 +5487,37 @@ const server = http.createServer((req, res) => {
       }
       expectedCount = targetCount;
     } else {
+      const chunkPlan = [];
       while (remainingDays > 0) {
         const chunkDays = Math.min(remainingDays, chunkLimit);
         const chunkStartDay = fallbackStart + processedDays;
-        const chunkIndex = chunkMetrics.length;
-        const chunkResult = await fetchChunkWithRetry(chunkDays, chunkStartDay, chunkIndex, perDay);
+        const chunkIndex = chunkPlan.length;
+        chunkPlan.push({
+          chunkDays,
+          chunkStartDay,
+          chunkPostsPerDay: perDay,
+          chunkIndex,
+        });
+        remainingDays -= chunkDays;
+        processedDays += chunkDays;
+      }
+      const chunkPromises = chunkPlan.map((plan) =>
+        fetchChunkWithRetry(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
+      );
+      const chunkResults = await Promise.all(chunkPromises);
+      for (let i = 0; i < chunkPlan.length; i += 1) {
+        const plan = chunkPlan[i];
+        const chunkResult = chunkResults[i];
         aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
         chunkMetrics.push({
-          chunkIndex,
-          startDay: chunkStartDay,
-          days: chunkDays,
-          posts: perDay * chunkDays,
+          chunkIndex: plan.chunkIndex,
+          startDay: plan.chunkStartDay,
+          days: plan.chunkDays,
+          posts: perDay * plan.chunkDays,
           rawLength: chunkResult.rawLength,
           duration: chunkResult.latency,
           timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
         });
-        remainingDays -= chunkDays;
-        processedDays += chunkDays;
       }
       expectedCount = processedDays ? (processedDays * perDay) : null;
     }
