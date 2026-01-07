@@ -2504,6 +2504,26 @@ function buildBrandBrainDirective(settings = {}) {
   return lines.join('\n');
 }
 
+const CALENDAR_PLAN_TTL_MS = 10 * 60 * 1000;
+const calendarPlanCache = new Map();
+const calendarPlanInflight = new Map();
+
+function getCalendarPlanCache(key) {
+  if (!key) return null;
+  const entry = calendarPlanCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > CALENDAR_PLAN_TTL_MS) {
+    calendarPlanCache.delete(key);
+    return null;
+  }
+  return entry.plan || null;
+}
+
+function setCalendarPlanCache(key, plan) {
+  if (!key || !plan) return;
+  calendarPlanCache.set(key, { plan, createdAt: Date.now() });
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2670,6 +2690,189 @@ function stableHash(value = '') {
     hash |= 0;
   }
   return Math.abs(hash);
+}
+
+function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabled, brandContext }) {
+  const normalizedNiche = String(nicheStyle || '').trim().toLowerCase();
+  const brandHash = brandContext ? stableHash(brandContext) : 0;
+  const parts = [
+    userId || 'anon',
+    normalizedNiche,
+    Number(postsPerDay) || 1,
+    brandBrainEnabled ? 'bb1' : 'bb0',
+    brandHash,
+  ];
+  return parts.join('|');
+}
+
+function normalizeCalendarPlanEntries(plan = [], totalDays = 30) {
+  if (!Array.isArray(plan) || plan.length < totalDays) return null;
+  const normalized = [];
+  const topicSignatures = new Set();
+  const duplicateTopics = [];
+  for (let i = 0; i < totalDays; i += 1) {
+    const raw = plan[i];
+    const dayIndex = i + 1;
+    const pillar = normalizeCalendarPillar(raw?.pillar) || getCalendarPillarForDay(dayIndex);
+    const topic = toPlainString(raw?.topic || raw?.title || raw?.seed || '').trim();
+    const angle = toPlainString(raw?.angle || raw?.intent || '').trim();
+    const hookIntent = toPlainString(raw?.hook_intent || raw?.hookIntent || '').trim();
+    if (!topic || !angle) return null;
+    const signature = normalizeCalendarSignature(topic);
+    if (signature && topicSignatures.has(signature)) {
+      duplicateTopics.push({ dayIndex, signature });
+    } else if (signature) {
+      topicSignatures.add(signature);
+    }
+    normalized.push({ dayIndex, pillar, topic, angle, hook_intent: hookIntent });
+  }
+  if (duplicateTopics.length) {
+    console.warn('[Calendar][Plan] duplicate topics detected; proceeding', {
+      count: duplicateTopics.length,
+      samples: duplicateTopics.slice(0, 3),
+    });
+  }
+  return normalized;
+}
+
+function buildPlanBlock(planItems = []) {
+  if (!Array.isArray(planItems) || !planItems.length) return '';
+  const lines = [
+    'PLAN ITEMS FOR THIS BATCH:',
+    ...planItems.map((item) => {
+      const hookNote = item.hook_intent ? ` | Hook intent: ${item.hook_intent}` : '';
+      return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle}${hookNote}`;
+    }),
+    'Use these exact plan items; do not create new topics or pillars.',
+    'Title must closely match the topic seed (light polish ok).',
+    'Pillar must match exactly for each item; ignore any pillar rotation rule when plan items are provided.',
+  ];
+  return lines.join('\n');
+}
+
+async function createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext }) {
+  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['plan'],
+    properties: {
+      plan: {
+        type: 'array',
+        minItems: totalDays,
+        maxItems: totalDays,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['dayIndex', 'pillar', 'topic', 'angle', 'hook_intent'],
+          properties: {
+            dayIndex: { type: 'integer', minimum: 1, maximum: totalDays },
+            pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
+            topic: { type: 'string', minLength: 3 },
+            angle: { type: 'string', minLength: 3 },
+            hook_intent: { type: 'string', minLength: 2 },
+          },
+        },
+      },
+    },
+  };
+  const prompt = [
+    `You are a content calendar planner${cleanNiche}.`,
+    brandBlock.trim(),
+    `Return ONLY valid JSON: {"plan":[...]}.`,
+    `Create exactly ${totalDays} plan items for days 1..${totalDays}.`,
+    'Each item must include: dayIndex, pillar, topic (short seed), angle (short intent), hook_intent (short).',
+    'All topics must be distinct across the full plan.',
+    'Distribute pillars roughly evenly across the four values.',
+    'Keep topics specific to the niche; no hashtags; no full hooks or captions.',
+  ].filter(Boolean).join('\n');
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens: 900,
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'calendar_plan', strict: true, schema },
+    },
+  });
+  const options = {
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+  };
+  const extractContentText = (json) => {
+    const messageContent = json?.choices?.[0]?.message?.content;
+    if (!messageContent) return '';
+    if (typeof messageContent === 'string') return messageContent;
+    if (Array.isArray(messageContent)) {
+      return messageContent
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.value === 'string') return item.value;
+          if (typeof item?.content === 'string') return item.content;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+    }
+    if (typeof messageContent?.text === 'string') return messageContent.text;
+    if (typeof messageContent?.value === 'string') return messageContent.value;
+    return '';
+  };
+  const requestPromise = withOpenAiSlot(() => openAIRequest(options, payload));
+  const timeoutPromise = new Promise((_, reject) => {
+    const timeoutId = setTimeout(() => {
+      const timeoutErr = new Error('OpenAI plan request timed out');
+      timeoutErr.code = 'OPENAI_TIMEOUT';
+      reject(timeoutErr);
+    }, OPENAI_GENERATION_TIMEOUT_MS);
+    requestPromise.finally(() => clearTimeout(timeoutId));
+  });
+  const json = await Promise.race([requestPromise, timeoutPromise]);
+  const content = extractContentText(json);
+  const parsed = content ? JSON.parse(content) : null;
+  if (!parsed || !Array.isArray(parsed.plan)) {
+    console.warn('[Calendar][Plan] invalid plan payload', {
+      requestId: loggingContext?.requestId,
+      preview: String(content || '').slice(0, 200),
+    });
+    return null;
+  }
+  return normalizeCalendarPlanEntries(parsed.plan, totalDays);
+}
+
+async function getOrCreateCalendarPlan({ key, nicheStyle, brandContext, totalDays, loggingContext }) {
+  const cached = getCalendarPlanCache(key);
+  if (cached) return cached;
+  if (calendarPlanInflight.has(key)) {
+    return calendarPlanInflight.get(key);
+  }
+  const planPromise = (async () => {
+    try {
+      const plan = await createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext });
+      if (plan) {
+        setCalendarPlanCache(key, plan);
+        return plan;
+      }
+    } catch (err) {
+      console.warn('[Calendar][Plan] planning failed; falling back', {
+        requestId: loggingContext?.requestId,
+        error: err?.message || err,
+      });
+    }
+    return null;
+  })();
+  calendarPlanInflight.set(key, planPromise);
+  planPromise.finally(() => calendarPlanInflight.delete(key));
+  return planPromise;
 }
 
 function selectBillboardEntry(list = [], indexSeed = 0) {
@@ -5053,6 +5256,37 @@ const server = http.createServer((req, res) => {
       enabled: Boolean(brandBrainDirective),
       isPro: isProUser,
     });
+    const totalPlanDays = Math.max(1, Math.min(30, Number(payload?.totalDays || 30)));
+    const shouldAttemptPlan =
+      Number.isFinite(Number(days)) &&
+      Number(days) >= 3 &&
+      Number.isFinite(Number(startDay)) &&
+      context &&
+      Object.prototype.hasOwnProperty.call(context, 'batchIndex');
+    const planKey = shouldAttemptPlan
+      ? buildCalendarPlanKey({
+          userId,
+          nicheStyle,
+          postsPerDay: postsPerDay || 1,
+          brandBrainEnabled,
+          brandContext,
+        })
+      : null;
+    const calendarPlan = planKey
+      ? await getOrCreateCalendarPlan({
+          key: planKey,
+          nicheStyle,
+          brandContext,
+          totalDays: totalPlanDays,
+          loggingContext,
+        })
+      : null;
+    if (planKey && !calendarPlan) {
+      console.warn('[Calendar][Plan] fallback to inline topics', {
+        requestId: loggingContext?.requestId || 'unknown',
+        planKey,
+      });
+    }
     const callStart = Date.now();
     console.log('[Calendar][Server][Perf] callOpenAI start', {
       nicheStyle,
@@ -5093,9 +5327,21 @@ const server = http.createServer((req, res) => {
     const chunkBaseTokens = 1600;
     const chunkMinTokens = 1000;
 
+    const getPlanItemsForRange = (rangeStart, rangeDays) => {
+      if (!calendarPlan) return null;
+      const start = Number(rangeStart);
+      const end = start + Number(rangeDays) - 1;
+      const items = calendarPlan
+        .filter((item) => item.dayIndex >= start && item.dayIndex <= end)
+        .sort((a, b) => a.dayIndex - b.dayIndex);
+      return items.length ? items : null;
+    };
+
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
+      const planItems = getPlanItemsForRange(chunkStartDay, chunkDays);
+      const planBlock = buildPlanBlock(planItems);
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
         startDay: chunkStartDay,
@@ -5106,6 +5352,7 @@ const server = http.createServer((req, res) => {
         usedSignatures: normalizedUsedSignatures,
         avoidSignatures: normalizedAvoidSignatures,
         brandBrainDirective,
+        extraInstructions: planBlock || '',
       });
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
@@ -5588,7 +5835,7 @@ const server = http.createServer((req, res) => {
         }
       }
     }
-    if (!isPillarDistributionBalanced(posts)) {
+    if (!calendarPlan && !isPillarDistributionBalanced(posts)) {
       posts = applyPillarSchedule(posts, startDay, perDay);
       console.log('[Calendar] pillar schedule enforced', {
         requestId: loggingContext?.requestId,
