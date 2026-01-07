@@ -8251,6 +8251,38 @@ html, body {
   margin-top: 10px;
 }
 
+.index-sample-card details {
+  display: block;
+}
+
+.index-sample-card details > summary {
+  color: #2cb1bc;
+  pointer-events: none;
+}
+
+.index-sample-card .calendar-card__caption {
+  color: #2cb1bc !important;
+  font-size: 1.1rem !important;
+  line-height: 1.7 !important;
+}
+
+.index-sample-card .calendar-card__hooks-label,
+.index-sample-card .calendar-card__cta-action strong,
+.index-sample-card .calendar-card__execution-notes-title,
+.index-sample-card .calendar-card__execution-notes-title .calendar-card__format,
+.index-sample-card .calendar-card__execution-note strong,
+.index-sample-card .detail-row__top strong,
+.index-sample-card .calendar-card__video-script strong {
+  color: #2cb1bc !important;
+}
+
+.index-sample-card .index-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .landing-card-preview-wrapper {
   max-width: 520px;
   margin: 0 auto;
