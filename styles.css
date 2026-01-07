@@ -8710,7 +8710,8 @@ body.view-landing .workflow-section + .landing-section {
 .workflow-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(260px, 1fr));
-  gap: 1.5rem;
+  gap: 24px;
+  row-gap: 32px;
   margin-top: 0.5rem;
   width: 100%;
   max-width: 1200px;
@@ -8729,7 +8730,11 @@ body.view-landing .workflow-section + .landing-section {
   min-width: 260px;
   max-width: 320px;
   width: 100%;
+  box-sizing: border-box;
   justify-self: center;
+  position: static;
+  margin: 0;
+  transform: none;
 }
 
 .step-badge {
@@ -8761,6 +8766,8 @@ body.view-landing .workflow-section + .landing-section {
   color: rgba(255, 255, 255, 0.78);
   line-height: 1.6;
   font-size: 0.9rem;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .workflow-preferences-card {
@@ -8856,7 +8863,7 @@ body.view-landing .workflow-section + .landing-section {
 
 @media (max-width: 767px) {
   .workflow-steps {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .step-row {
