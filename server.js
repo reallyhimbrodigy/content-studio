@@ -4451,7 +4451,7 @@ function getPresetGuidelines(nicheStyle = '') {
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-  const maxTokenCap = opts.reduceVerbosity ? 1400 : 1600;
+  const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
       ? Number(opts.maxTokens)
@@ -4610,20 +4610,61 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
 
   try {
     const firstResponse = await attemptRequest('', true);
-    const parseResult = tryParsePosts(firstResponse.content, expectedChunkCount);
-    if (parseResult && parseResult.posts) {
-      return {
-        posts: parseResult.posts,
-        rawContent: firstResponse.content,
-        latency: firstResponse.latency,
-      };
+    let parsed = null;
+    try {
+      parsed = firstResponse.content ? JSON.parse(firstResponse.content) : null;
+    } catch (err) {
+      const parseErr = new Error('missing_posts_parse_failed');
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.rawContent = firstResponse.content;
+      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      throw parseErr;
     }
-    const parseErr = new Error(parseResult?.reason || 'missing_posts');
-    parseErr.code = 'PARSE_FAILED';
-    parseErr.statusCode = 422;
-    parseErr.rawContent = firstResponse.content;
-    console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
-    throw parseErr;
+    const posts = parsed && Array.isArray(parsed.posts) ? parsed.posts : null;
+    const dayValues = posts ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day)) : [];
+    const minDay = dayValues.length ? Math.min(...dayValues) : null;
+    const maxDay = dayValues.length ? Math.max(...dayValues) : null;
+    console.log('[Calendar][Parse]', {
+      requestId: loggingContext?.requestId || 'unknown',
+      parsedType: parsed ? typeof parsed : 'null',
+      postsArray: Array.isArray(posts),
+      postCount: posts ? posts.length : 0,
+      expectedCount: expectedChunkCount,
+      minDay,
+      maxDay,
+    });
+    if (!posts) {
+      const parseErr = new Error('missing_posts');
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.rawContent = firstResponse.content;
+      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      throw parseErr;
+    }
+    if (posts.length !== expectedChunkCount) {
+      const parseErr = new Error(`missing_posts_length_mismatch expected=${expectedChunkCount} actual=${posts.length}`);
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.rawContent = firstResponse.content;
+      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      throw parseErr;
+    }
+    const expectedStart = chunkStartDay;
+    const expectedEnd = chunkStartDay + chunkDays - 1;
+    if (minDay !== expectedStart || maxDay !== expectedEnd) {
+      const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.rawContent = firstResponse.content;
+      console.warn(`[Calendar] callOpenAI parse failed${label}: ${parseErr.message}; preview: ${previewJson(parseErr.rawContent)}`);
+      throw parseErr;
+    }
+    return {
+      posts,
+      rawContent: firstResponse.content,
+      latency: firstResponse.latency,
+    };
   } catch (err) {
     if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
       throw err;
