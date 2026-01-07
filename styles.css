@@ -8940,6 +8940,182 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
+/* Mobile landing overrides */
+@media (max-width: 768px) {
+  body.landing-page {
+    overflow-x: hidden;
+  }
+
+  body.landing-page * {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+
+  body.landing-page .landing-nav {
+    gap: 0.75rem;
+    align-items: center;
+    text-align: center;
+  }
+
+  body.landing-page .landing-nav__links {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  body.landing-page .landing-hero {
+    padding: 40px 0 24px;
+  }
+
+  body.landing-page .landing-hero__grid,
+  body.landing-page .landing-hero__intro {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.landing-page .landing-hero__intro h1 {
+    font-size: clamp(2rem, 7vw, 2.6rem);
+    line-height: 1.15;
+  }
+
+  body.landing-page .hero-tagline,
+  body.landing-page .product-subhead,
+  body.landing-page .workflow-subhead {
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  body.landing-page .landing-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+
+  body.landing-page .landing-hero__actions a {
+    width: 100%;
+    text-align: center;
+    min-height: 44px;
+  }
+
+  body.landing-page .landing-badges,
+  body.landing-page .hero-proof,
+  body.landing-page .landing-logos__row {
+    justify-content: center;
+  }
+
+  body.landing-page .hero-proof {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  body.landing-page .landing-logos__row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  body.landing-page .landing-preview-cards,
+  body.landing-page .landing-preview-card {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  body.landing-page .landing-preview-card {
+    padding: 1.25rem;
+  }
+
+  body.landing-page .landing-preview-card .calendar-card {
+    padding: 1.25rem;
+  }
+
+  body.landing-page .calendar-card__actions {
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  body.landing-page .calendar-card__actions a {
+    flex: 1 1 140px;
+    text-align: center;
+  }
+
+  body.landing-page .landing-section,
+  body.landing-page .product-section,
+  body.landing-page .landing-workflow,
+  body.landing-page #pricing {
+    padding: 64px 16px;
+  }
+
+  body.landing-page .product-top,
+  body.landing-page .product-why {
+    grid-template-columns: 1fr;
+  }
+
+  body.landing-page .product-cta-bar,
+  body.landing-page .workflow-cta-bar {
+    padding: 1.25rem;
+  }
+
+  body.landing-page .landing-workflow .wf-container {
+    max-width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  body.landing-page .landing-workflow .wf-head {
+    grid-template-columns: 1fr;
+  }
+
+  body.landing-page .landing-workflow .wf-steps {
+    grid-template-columns: 1fr;
+  }
+
+  body.landing-page .landing-workflow .wf-step {
+    width: 100%;
+  }
+
+  body.landing-page .step-badge {
+    margin-bottom: 0.25rem;
+  }
+
+  body.landing-page .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.landing-page .footer__inner {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  body.landing-page .footer__meta {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  body.landing-page .landing-hero__intro h1 {
+    font-size: clamp(1.9rem, 8vw, 2.3rem);
+  }
+
+  body.landing-page .landing-section h2,
+  body.landing-page .product-headline,
+  body.landing-page .workflow-headline {
+    font-size: clamp(1.6rem, 6vw, 2rem);
+  }
+
+  body.landing-page .landing-section p {
+    font-size: 0.9rem;
+  }
+
+  body.landing-page .landing-preview-card {
+    padding: 1rem;
+  }
+
+  body.landing-page .landing-preview-card .calendar-card {
+    padding: 1rem;
+  }
+}
+
 body.view-landing .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
