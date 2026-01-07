@@ -54,10 +54,10 @@
                   <p class="hero-tagline">
                     Promptly turns a single idea into a 30-day content calendar — complete with daily posts, scripts, and growth insights — so you stay consistent and actually grow.
                   </p>
-                  <div class="landing-hero__actions">
-                    <a href="auth.html?mode=signup" class="primary primary-large">Generate My Content Calendar</a>
-                    <a href="auth.html?mode=login" class="ghost primary-large">Log In</a>
-                  </div>
+              <div class="landing-hero__actions">
+                  <a href="https://usepromptly.app/auth.html?mode=signup" class="primary primary-large">Generate My Content Calendar</a>
+                  <a href="auth.html?mode=login" class="ghost primary-large">Log In</a>
+              </div>
                   <div class="landing-badges">
                     <span class="landing-badge">30-day posting plan in seconds</span>
                     <span class="landing-badge">Platform-specific posts</span>
@@ -224,9 +224,9 @@
                           <span class="detail-text">Ordinary - Alex Warren</span>
                         </div>
                         <div class="calendar-card__actions">
-                          <button type="button" class="calendar-card__action ghost">Copy Full</button>
-                          <button type="button" class="calendar-card__action pro-gradient-btn index-download-btn">Download</button>
-                          <button type="button" class="calendar-card__action pro-gradient-btn">Regenerate</button>
+                          <a class="calendar-card__action ghost" href="https://usepromptly.app/auth.html?mode=signup">Copy Full</a>
+                          <a class="calendar-card__action pro-gradient-btn index-download-btn" href="https://usepromptly.app/auth.html?mode=signup">Download</a>
+                          <a class="calendar-card__action pro-gradient-btn" href="https://usepromptly.app/auth.html?mode=signup">Regenerate</a>
                           <div class="calendar-card__regen-error" role="alert" hidden></div>
                         </div>
                       </div>
@@ -373,34 +373,71 @@
       </div>
     </section>
 
-    <section id="workflow" class="landing-section">
-      <div class="landing-section__inner">
-        <div class="landing-section__header">
-          <span class="landing-eyebrow">WORKFLOW</span>
-          <h2>Set your preferences and let us work our magic.</h2>
-          <p>Let us take care of the struggle, from niche to export.</p>
+    <section id="workflow" class="workflow-section">
+      <div class="section-inner workflow-inner">
+        <div class="workflow-top">
+          <div class="workflow-copy">
+            <div class="section-kicker">WORKFLOW</div>
+            <h2 class="workflow-headline">Set preferences once. Get a month of ready-to-post content.</h2>
+            <p class="workflow-subhead">
+              Promptly turns your niche and brand constraints into a 30-day calendar with platform-ready scripts,
+              hooks, captions, and CTAs—built to drive engagement and conversion.
+            </p>
+
+            <div class="workflow-steps">
+              <div class="step-row">
+                <div class="step-badge">1</div>
+                <div class="step-body">
+                  <div class="step-title">Set your niche</div>
+                  <div class="step-desc">Define your business and audience so topics stay specific and relevant.</div>
+                </div>
+              </div>
+
+              <div class="step-row">
+                <div class="step-badge">2</div>
+                <div class="step-body">
+                  <div class="step-title">Set your Brand Brain</div>
+                  <div class="step-desc">Add tone, positioning, and conversion constraints that shape every post.</div>
+                </div>
+              </div>
+
+              <div class="step-row">
+                <div class="step-badge">3</div>
+                <div class="step-body">
+                  <div class="step-title">Generate a 30-day calendar</div>
+                  <div class="step-desc">Get 30 days of posts with hooks, captions, CTAs, and scripts in minutes.</div>
+                </div>
+              </div>
+
+              <div class="step-row">
+                <div class="step-badge">4</div>
+                <div class="step-body">
+                  <div class="step-title">Export & execute</div>
+                  <div class="step-desc">Save to your library, download, and post with confidence.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="workflow-preferences-card">
+            <div class="workflow-preferences-title">What you set</div>
+            <ul class="workflow-preferences-list">
+              <li>Niche + target audience</li>
+              <li>Platform focus (IG / TikTok / etc.)</li>
+              <li>Tone + voice</li>
+              <li>Goals (leads, bookings, sales)</li>
+              <li>Brand Brain (psychology + conversion rules)</li>
+            </ul>
+
+            <div class="workflow-preferences-note">
+              Then Promptly generates: topics, pillars, hooks, captions, CTAs, scripts, and execution notes.
+            </div>
+          </div>
         </div>
-        <div class="workflow-steps">
-          <article class="workflow-step">
-            <div class="workflow-step__number">1</div>
-            <h3>Set your niche</h3>
-            <p>Define your niche, service, or product to generate a calendar that converts.</p>
-          </article>
-          <article class="workflow-step">
-            <div class="workflow-step__number">2</div>
-            <h3>Set your Brand Brain</h3>
-            <p>Capture your brand’s voice, target audience, and constraints that should steer every post.</p>
-          </article>
-          <article class="workflow-step">
-            <div class="workflow-step__number">3</div>
-            <h3>Generate 30-day calendar</h3>
-            <p>Generate 30 days of content tailored to your voice in seconds.</p>
-          </article>
-          <article class="workflow-step">
-            <div class="workflow-step__number">4</div>
-            <h3>Export & execute</h3>
-            <p>Save to library, download directly to your device, and post away!</p>
-          </article>
+
+        <div class="workflow-cta-bar">
+          <a class="btn primary workflow-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
+          <div class="workflow-cta-sub">Start free. Create your first month in minutes.</div>
         </div>
       </div>
     </section>
