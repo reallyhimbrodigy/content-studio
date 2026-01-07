@@ -73,7 +73,7 @@ function ensureFooter() {
     <div class="footer__inner">
       <div class="footer__brand">
         <p class="footer__eyebrow">Promptly</p>
-        <p class="footer__tagline">Content studio that keeps campaigns organized, aligned, and moving fast.</p>
+        <p class="footer__tagline">Content studio that does the heavy lifting for you, so you can focus on growing.</p>
       </div>
       <nav class="footer__links" aria-label="Footer">
         ${sectionsMarkup}
