@@ -8867,6 +8867,79 @@ body.view-landing .workflow-section + .landing-section {
   }
 }
 
+/* Workflow steps layout fixes */
+.landing-workflow .wf-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.landing-workflow .wf-steps-wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin-top: 24px;
+}
+
+.landing-workflow .wf-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  width: 100%;
+  align-items: stretch;
+  flex: none !important;
+}
+
+.landing-workflow .wf-step {
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+  overflow: hidden;
+  padding: 18px 18px 20px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.landing-workflow .wf-step-title {
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.landing-workflow .wf-step-desc {
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.landing-workflow .wf-step * {
+  position: static;
+}
+
+@media (max-width: 1100px) {
+  .landing-workflow .wf-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-workflow .wf-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .landing-workflow .wf-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 body.view-landing .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
