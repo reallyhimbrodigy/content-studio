@@ -2791,6 +2791,14 @@ body {
   justify-content: center; /* center hero container itself while keeping text alignment rules elsewhere untouched */
 }
 
+.landing-hero__wrap {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+}
+
 .landing-hero-content--center {
   margin-left: auto;
   margin-right: auto;
