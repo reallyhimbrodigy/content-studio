@@ -9307,6 +9307,162 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
+@media (max-width: 600px){
+  html, body{ overflow-x:hidden; }
+  .landing-page{ font-size: 13px; }
+  .landing-page *{ box-sizing:border-box; }
+
+  /* tighter global gutters */
+  .landing-page section{ padding-left: 14px !important; padding-right: 14px !important; }
+  .landing-page .section-inner,
+  .landing-page .container,
+  .landing-page .wf-container,
+  .landing-page .product-inner,
+  .landing-page .workflow-inner{
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 auto !important;
+  }
+
+  /* headings smaller */
+  .landing-page h1{ font-size: 26px !important; line-height: 1.06 !important; margin-bottom: 8px !important; }
+  .landing-page h2{ font-size: 20px !important; line-height: 1.14 !important; margin-bottom: 8px !important; }
+  .landing-page p, .landing-page li{ font-size: 12.5px !important; line-height: 1.45 !important; }
+
+  /* buttons smaller + not chunky */
+  .landing-page .btn,
+  .landing-page a.btn,
+  .landing-page button{
+    font-size: 12.5px !important;
+    padding: 9px 10px !important;
+    min-height: 38px !important;
+    border-radius: 12px !important;
+  }
+
+  /* any landing button rows should stack and not overflow */
+  .landing-page .btn-row,
+  .landing-page .cta-row,
+  .landing-page .product-cta-bar,
+  .landing-page .workflow-cta-bar{
+    display:grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+  .landing-page .btn-row .btn,
+  .landing-page .cta-row .btn,
+  .landing-page .product-cta,
+  .landing-page .workflow-cta{
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* ====== SAMPLE CONTENT CARD: make significantly smaller ====== */
+  /* Target any likely wrappers used on index */
+  .landing-page .sample-card,
+  .landing-page .index-sample-card,
+  .landing-page .content-card,
+  .landing-page .demo-card{
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+  }
+
+  /* Card shell tighter */
+  .landing-page .sample-card,
+  .landing-page .index-sample-card,
+  .landing-page .demo-card{
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  /* If the actual card uses a nested container, tighten that too */
+  .landing-page .content-card{
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  /* Card typography smaller */
+  .landing-page .content-card .title,
+  .landing-page .content-card h3{
+    font-size: 14px !important;
+    line-height: 1.18 !important;
+  }
+  .landing-page .content-card .caption,
+  .landing-page .content-card .body,
+  .landing-page .content-card p{
+    font-size: 12.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Section labels inside card (Hook, CTA, etc.) smaller */
+  .landing-page .content-card .label,
+  .landing-page .content-card .section-title,
+  .landing-page .content-card .category,
+  .landing-page .content-card .field-title{
+    font-size: 11.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Pills/hashtags smaller */
+  .landing-page .pill,
+  .landing-page .tag,
+  .landing-page .hashtag{
+    font-size: 11px !important;
+    padding: 5px 9px !important;
+    border-radius: 999px !important;
+  }
+
+  /* Card action buttons (Download / Copy Full / Regenerate) should be compact */
+  .landing-page .content-card .actions,
+  .landing-page .sample-card .actions,
+  .landing-page .demo-card .actions{
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .landing-page .content-card .actions .btn,
+  .landing-page .sample-card .actions .btn,
+  .landing-page .demo-card .actions .btn{
+    padding: 8px 10px !important;
+    min-height: 34px !important;
+    font-size: 12px !important;
+  }
+
+  /* Prevent any transforms/scales causing oversize */
+  .landing-page .sample-card *,
+  .landing-page .index-sample-card *,
+  .landing-page .demo-card *,
+  .landing-page .content-card *{
+    transform: none !important;
+  }
+
+  /* Product/workflow/pricing collapse tighter */
+  .landing-page .product-top,
+  .landing-page .product-why,
+  .landing-page .wf-head,
+  .landing-page .wf-steps,
+  .landing-page .pricing-grid,
+  .landing-page .pricing-row,
+  .landing-page .pricing-cards{
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Generic cards tighten */
+  .landing-page .card,
+  .landing-page .glass,
+  .landing-page .panel,
+  .landing-page .deliverable-card,
+  .landing-page .why-card,
+  .landing-page .workflow-preferences-card,
+  .landing-page .wf-step{
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+}
+
 body.view-landing .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
