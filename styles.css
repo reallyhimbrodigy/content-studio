@@ -2847,6 +2847,15 @@ body {
   margin-inline: auto; /* center the hero grid block within the viewport */
 }
 
+.hero-copy {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
 .landing-hero__intro {
   margin-inline: auto;
 }
