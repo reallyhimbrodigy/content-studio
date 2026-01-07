@@ -9116,6 +9116,197 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
+/* ========================================================
+   Landing page mobile sizing pass (index.html only)
+   ======================================================== */
+@media (max-width: 600px){
+  .landing-page, .landing-page *{ box-sizing: border-box; }
+  html, body{ overflow-x: hidden; }
+  .landing-page{ font-size: 14px; }
+
+  /* Global section spacing */
+  .landing-page section{
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  .landing-page .section-inner,
+  .landing-page .container,
+  .landing-page .wf-container,
+  .landing-page .product-inner,
+  .landing-page .workflow-inner{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+
+  /* Headings — make smaller across entire landing */
+  .landing-page h1{
+    font-size: 30px !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.02em !important;
+    margin-bottom: 10px !important;
+  }
+  .landing-page h2{
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+    letter-spacing: -0.01em !important;
+    margin-bottom: 10px !important;
+  }
+  .landing-page h3{
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+    margin-bottom: 8px !important;
+  }
+  .landing-page p,
+  .landing-page li{
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Kicker / pill labels */
+  .landing-page .section-kicker,
+  .landing-page .kicker,
+  .landing-page .pill,
+  .landing-page .tag{
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+    border-radius: 999px !important;
+  }
+
+  /* Buttons — smaller, stack, full width */
+  .landing-page .btn,
+  .landing-page button,
+  .landing-page a.btn{
+    font-size: 13px !important;
+    padding: 10px 12px !important;
+    min-height: 40px !important;
+    border-radius: 12px !important;
+    width: 100%;
+    max-width: 100% !important;
+    text-align: center !important;
+  }
+  .landing-page .btn-row,
+  .landing-page .cta-row,
+  .landing-page .product-cta-bar,
+  .landing-page .workflow-cta-bar{
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    justify-items: stretch !important;
+    align-items: stretch !important;
+  }
+  .landing-page .product-cta-sub,
+  .landing-page .workflow-cta-sub{
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    text-align: center !important;
+  }
+
+  /* Cards everywhere — reduce padding + ensure fit */
+  .landing-page .card,
+  .landing-page .glass,
+  .landing-page .panel,
+  .landing-page .deliverable-card,
+  .landing-page .why-card,
+  .landing-page .workflow-preferences-card,
+  .landing-page .wf-step{
+    padding: 14px !important;
+    border-radius: 16px !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* Hero area — tighten and center */
+  .landing-page .hero,
+  .landing-page .hero-inner,
+  .landing-page .hero-content,
+  .landing-page .hero-copy{
+    text-align: center !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+  }
+  .landing-page .hero .chips,
+  .landing-page .hero .pills,
+  .landing-page .product-pills{
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: center !important;
+  }
+
+  /* Sample content card area — force single column, smaller text */
+  .landing-page .index-sample-card,
+  .landing-page .sample-card{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+  .landing-page .content-card,
+  .landing-page .sample-card .content-card,
+  .landing-page .index-sample-card .content-card{
+    transform: none !important;
+  }
+  .landing-page .content-card h3,
+  .landing-page .content-card .title{
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+  }
+  .landing-page .content-card .caption,
+  .landing-page .content-card .body,
+  .landing-page .content-card p{
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Product section — collapse to 1 column */
+  .landing-page .product-top,
+  .landing-page .product-why{
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Workflow section — collapse + fix steps readability */
+  .landing-page .wf-head{
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+  .landing-page .wf-steps{
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .landing-page .wf-step-title{
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+  .landing-page .wf-step-desc{
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Pricing — stack */
+  .landing-page .pricing-grid,
+  .landing-page .pricing-cards,
+  .landing-page .pricing-row{
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Footer — tighten */
+  .landing-page footer{
+    padding: 28px 16px !important;
+  }
+  .landing-page footer p,
+  .landing-page footer a{
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+}
+
 body.view-landing .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
