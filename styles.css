@@ -2783,14 +2783,16 @@ body {
 }
 
 .landing-hero {
-  gap: clamp(2rem, 4vw, 3.5rem);
-  max-width: 1360px;
-  width: min(1100px, calc(100% - 48px));
-  margin-left: auto;
-  margin-right: auto;
-  padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px);
+  width: 100%;
   display: flex;
-  justify-content: center; /* center hero container itself while keeping text alignment rules elsewhere untouched */
+  justify-content: center;
+}
+
+.hero-inner {
+  width: min(980px, calc(100% - 48px));
+  margin: 0 auto;
+  text-align: center;
+  padding: 72px 0 40px;
 }
 
 .landing-hero__wrap {
@@ -5538,6 +5540,11 @@ body.prefers-reduced-motion *::after {
   
   .hero-tagline {
     font-size: 1rem;
+  }
+
+  .hero-inner {
+    width: calc(100% - 32px);
+    padding: 56px 0 32px;
   }
 
   /* Header - stack vertically on mobile */
