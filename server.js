@@ -2598,6 +2598,8 @@ function buildBrandBrainDirective(settings = {}) {
 const CALENDAR_PLAN_TTL_MS = 10 * 60 * 1000;
 const calendarPlanCache = new Map();
 const calendarPlanInflight = new Map();
+const calendarBlueprintCache = new Map();
+const calendarBlueprintInflight = new Map();
 
 function getCalendarPlanCache(key) {
   if (!key) return null;
@@ -2613,6 +2615,22 @@ function getCalendarPlanCache(key) {
 function setCalendarPlanCache(key, plan) {
   if (!key || !plan) return;
   calendarPlanCache.set(key, { plan, createdAt: Date.now() });
+}
+
+function getCalendarBlueprintCache(key) {
+  if (!key) return null;
+  const entry = calendarBlueprintCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > CALENDAR_PLAN_TTL_MS) {
+    calendarBlueprintCache.delete(key);
+    return null;
+  }
+  return entry.blueprint || null;
+}
+
+function setCalendarBlueprintCache(key, blueprint) {
+  if (!key || !blueprint) return;
+  calendarBlueprintCache.set(key, { blueprint, createdAt: Date.now() });
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -2901,29 +2919,25 @@ function normalizeCalendarPlanEntries(plan = [], totalDays = 30) {
   return normalized;
 }
 
-function buildPlanBlock(planItems = [], { startDay = 1, chunkStartDay = 1, chunkDays = 1 } = {}) {
-  if (!Array.isArray(planItems) || !planItems.length) return '';
-  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : Number(startDay) || 1;
+function buildPlanBlock(blueprintItems = [], { chunkStartDay = 1, chunkDays = 1 } = {}) {
+  if (!Array.isArray(blueprintItems) || !blueprintItems.length) return '';
+  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
   const dayCount = Number.isFinite(Number(chunkDays)) ? Number(chunkDays) : 1;
   const dayEnd = dayStart + dayCount - 1;
-  const fullPlanLines = planItems.map((item) => {
-    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
-    return `Slot ${item.dayIndex} | Day ${actualDay} | angleId: ${item.angleId} | frameType: ${item.frameType} | angleSummary: ${item.angleSummary}`;
+  const fullPlanLines = blueprintItems.map((item) => {
+    return `Slot ${item.slot} | Day ${item.day} | title: ${item.title} | angleSummary: ${item.angleSummary} | format: ${item.format} | category: ${item.category}`;
   });
-  const assigned = planItems.filter((item) => {
-    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
-    return actualDay >= dayStart && actualDay <= dayEnd;
-  });
+  const assigned = blueprintItems.filter((item) => item.day >= dayStart && item.day <= dayEnd);
   const assignedLines = assigned.map((item) => {
-    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
-    return `Day ${actualDay} | angleId: ${item.angleId} | frameType: ${item.frameType} | angleSummary: ${item.angleSummary}`;
+    return `Day ${item.day} | title: ${item.title} | angleSummary: ${item.angleSummary} | format: ${item.format} | category: ${item.category}`;
   });
   const lines = [
     'CALENDAR PLAN (read-only):',
     ...fullPlanLines,
     'YOUR ASSIGNMENT:',
     ...assignedLines,
-    'Generate exactly one post per assigned day using ONLY its angleSummary + frameType.',
+    'Generate exactly one post per assigned day using ONLY its assigned title + angleSummary.',
+    'The title must match the assigned title exactly.',
     'Do not reuse or overlap any other plan item.',
     'If your title/topic overlaps another plan item, rewrite until it matches only your assignment.',
   ];
@@ -3080,6 +3094,211 @@ async function getOrCreateCalendarPlan({ key, nicheStyle, brandContext, totalDay
   calendarPlanInflight.set(key, planPromise);
   planPromise.finally(() => calendarPlanInflight.delete(key));
   return planPromise;
+}
+
+function normalizeCalendarBlueprintEntries(blueprint = [], totalPosts = 0, startDay = 1, postsPerDay = 1) {
+  if (!Array.isArray(blueprint) || blueprint.length !== totalPosts) return null;
+  const normalized = [];
+  const titleSignatures = new Set();
+  const angleSignatures = new Set();
+  const firstFourWordKeys = new Set();
+  const duplicateTitles = [];
+  const duplicateAngles = [];
+  const duplicateStarts = [];
+  const formatOptions = new Set(['Reel', 'Story', 'Carousel', 'Static']);
+  const categoryOptions = new Set(['Education', 'Social Proof', 'Promotion', 'Lifestyle']);
+  for (let i = 0; i < totalPosts; i += 1) {
+    const raw = blueprint[i];
+    const slot = Number(raw?.slot);
+    const day = Number(raw?.day);
+    const postIndex = Number(raw?.postIndex);
+    if (!Number.isFinite(slot) || slot !== i + 1) return null;
+    if (!Number.isFinite(day) || day < startDay || day > (startDay + Math.max(1, Math.ceil(totalPosts / postsPerDay)) - 1)) return null;
+    if (!Number.isFinite(postIndex) || postIndex < 0 || postIndex >= postsPerDay) return null;
+    const angleSummary = toPlainString(raw?.angleSummary || '').trim();
+    const title = toPlainString(raw?.title || '').trim();
+    const format = toPlainString(raw?.format || '').trim();
+    const category = toPlainString(raw?.category || '').trim();
+    if (!angleSummary || !title || !formatOptions.has(format) || !categoryOptions.has(category)) return null;
+    const normalizedTitle = title.toLowerCase().replace(/\s+/g, ' ').trim();
+    const titleSignature = normalizeCalendarSignature(normalizedTitle);
+    const angleSignature = normalizeCalendarSignature(angleSummary);
+    const firstFourWords = normalizedTitle.split(/\s+/).slice(0, 4).join(' ');
+    if (titleSignature && titleSignatures.has(titleSignature)) {
+      duplicateTitles.push({ slot, signature: titleSignature });
+    } else if (titleSignature) {
+      titleSignatures.add(titleSignature);
+    }
+    if (angleSignature && angleSignatures.has(angleSignature)) {
+      duplicateAngles.push({ slot, signature: angleSignature });
+    } else if (angleSignature) {
+      angleSignatures.add(angleSignature);
+    }
+    if (firstFourWords && firstFourWordKeys.has(firstFourWords)) {
+      duplicateStarts.push({ slot, firstFourWords });
+    } else if (firstFourWords) {
+      firstFourWordKeys.add(firstFourWords);
+    }
+    normalized.push({ slot, day, postIndex, angleSummary, title, format, category });
+  }
+  if (duplicateTitles.length || duplicateAngles.length || duplicateStarts.length) {
+    return {
+      invalid: true,
+      duplicateTitles,
+      duplicateAngles,
+      duplicateStarts,
+    };
+  }
+  return normalized;
+}
+
+async function createCalendarBlueprint({
+  nicheStyle,
+  brandContext,
+  totalPosts,
+  startDay,
+  postsPerDay,
+  loggingContext,
+  brandBrainDirective,
+}) {
+  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['blueprint'],
+    properties: {
+      blueprint: {
+        type: 'array',
+        minItems: totalPosts,
+        maxItems: totalPosts,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['slot', 'day', 'postIndex', 'angleSummary', 'title', 'format', 'category'],
+          properties: {
+            slot: { type: 'integer', minimum: 1, maximum: totalPosts },
+            day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Math.ceil(totalPosts / postsPerDay)) - 1 },
+            postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, postsPerDay - 1) },
+            angleSummary: { type: 'string', minLength: 8 },
+            title: { type: 'string', minLength: 6 },
+            format: { type: 'string', enum: ['Reel', 'Story', 'Carousel', 'Static'] },
+            category: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
+          },
+        },
+      },
+    },
+  };
+  const prompt = [
+    `You are a content calendar planner${cleanNiche}.`,
+    brandBlock.trim(),
+    requestId.trim(),
+    brandBrainDirective ? 'Apply Brand Brain guidance when choosing angles/titles.' : '',
+    'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
+    `Create exactly ${totalPosts} blueprint items for the calendar, in order.`,
+    'Each item must include: slot, day, postIndex, angleSummary (10–16 words), title, format, category.',
+    'Every angleSummary must be distinct in core concept.',
+    'Every title must be unique and must not be a minor rephrase of another title.',
+    'No two titles may share the same first 4 words.',
+    'Internally self-check and rewrite until the list is unique; do not mention this self-check.',
+    'Do not use example topics, do not use hardcoded lists, generate fresh from the niche.',
+  ].filter(Boolean).join('\n');
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.0,
+    max_tokens: 900,
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'calendar_blueprint', strict: true, schema },
+    },
+  });
+  const options = {
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+  };
+  const extractContentText = (json) => {
+    const messageContent = json?.choices?.[0]?.message?.content;
+    if (!messageContent) return '';
+    if (typeof messageContent === 'string') return messageContent;
+    if (Array.isArray(messageContent)) {
+      return messageContent
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.value === 'string') return item.value;
+          if (typeof item?.content === 'string') return item.content;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+    }
+    if (typeof messageContent?.text === 'string') return messageContent.text;
+    if (typeof messageContent?.value === 'string') return messageContent.value;
+    return '';
+  };
+  const requestPromise = withOpenAiSlot(() => openAIRequest(options, payload));
+  const timeoutPromise = new Promise((_, reject) => {
+    const timeoutId = setTimeout(() => {
+      const timeoutErr = new Error('OpenAI blueprint request timed out');
+      timeoutErr.code = 'OPENAI_TIMEOUT';
+      reject(timeoutErr);
+    }, OPENAI_GENERATION_TIMEOUT_MS);
+    requestPromise.finally(() => clearTimeout(timeoutId));
+  });
+  const json = await Promise.race([requestPromise, timeoutPromise]);
+  const content = extractContentText(json);
+  let parsed = null;
+  try {
+    parsed = content ? JSON.parse(content) : null;
+  } catch (err) {
+    return null;
+  }
+  if (!parsed || !Array.isArray(parsed.blueprint)) return null;
+  return normalizeCalendarBlueprintEntries(parsed.blueprint, totalPosts, startDay, postsPerDay);
+}
+
+async function getOrCreateCalendarBlueprint({
+  key,
+  nicheStyle,
+  brandContext,
+  totalPosts,
+  startDay,
+  postsPerDay,
+  loggingContext,
+  brandBrainDirective,
+}) {
+  const cached = getCalendarBlueprintCache(key);
+  if (cached) return cached;
+  if (calendarBlueprintInflight.has(key)) {
+    return calendarBlueprintInflight.get(key);
+  }
+  const blueprintPromise = (async () => {
+    const blueprint = await createCalendarBlueprint({
+      nicheStyle,
+      brandContext,
+      totalPosts,
+      startDay,
+      postsPerDay,
+      loggingContext,
+      brandBrainDirective,
+    });
+    if (Array.isArray(blueprint) && !blueprint.invalid) {
+      setCalendarBlueprintCache(key, blueprint);
+      return blueprint;
+    }
+    return blueprint;
+  })();
+  calendarBlueprintInflight.set(key, blueprintPromise);
+  blueprintPromise.finally(() => calendarBlueprintInflight.delete(key));
+  return blueprintPromise;
 }
 
 function selectBillboardEntry(list = [], indexSeed = 0) {
@@ -5485,11 +5704,11 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const planStart = Date.now();
-    let calendarPlan = null;
-    let planReason = 'plan_skipped';
+    const blueprintStart = Date.now();
+    let calendarBlueprint = null;
+    let blueprintReason = 'blueprint_skipped';
     if (targetCount && targetCount > 1) {
-      const planKey = buildCalendarPlanKey({
+      const baseKey = buildCalendarPlanKey({
         userId,
         nicheStyle,
         postsPerDay: perDay,
@@ -5497,20 +5716,37 @@ const server = http.createServer((req, res) => {
         brandContext,
         platform: payload?.platform,
       });
-      calendarPlan = await getOrCreateCalendarPlan({
-        key: planKey,
+      const blueprintKey = `${baseKey}|days:${daysToGenerate}|start:${fallbackStart}`;
+      calendarBlueprint = await getOrCreateCalendarBlueprint({
+        key: blueprintKey,
         nicheStyle,
         brandContext,
-        totalDays: daysToGenerate,
+        totalPosts: targetCount,
+        startDay: fallbackStart,
+        postsPerDay: perDay,
         loggingContext,
+        brandBrainDirective,
       });
-      planReason = calendarPlan ? 'ok' : 'plan_null';
+      blueprintReason = calendarBlueprint ? 'ok' : 'blueprint_null';
     }
-    console.log('[Calendar][Plan] plan status', {
+    if (!calendarBlueprint || calendarBlueprint.invalid) {
+      const err = new Error('Blueprint validation failed');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 422;
+      err.details = calendarBlueprint && calendarBlueprint.invalid
+        ? {
+          duplicateTitles: calendarBlueprint.duplicateTitles || [],
+          duplicateAngles: calendarBlueprint.duplicateAngles || [],
+          duplicateStarts: calendarBlueprint.duplicateStarts || [],
+        }
+        : { reason: blueprintReason };
+      throw err;
+    }
+    console.log('[Calendar][Blueprint] status', {
       requestId: loggingContext?.requestId || 'unknown',
-      planUsed: Boolean(calendarPlan && calendarPlan.length),
-      planMs: Date.now() - planStart,
-      planReason,
+      blueprintUsed: Boolean(calendarBlueprint && calendarBlueprint.length),
+      blueprintMs: Date.now() - blueprintStart,
+      blueprintReason,
     });
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
@@ -5533,10 +5769,9 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planItems = Array.isArray(calendarPlan) ? calendarPlan : [];
+      const planItems = Array.isArray(calendarBlueprint) ? calendarBlueprint : [];
       const planBlock = planItems.length
         ? buildPlanBlock(planItems, {
-          startDay: fallbackStart,
           chunkStartDay,
           chunkDays,
         })
@@ -5969,7 +6204,7 @@ const server = http.createServer((req, res) => {
         duplicates,
       });
     }
-    if (!calendarPlan && !isPillarDistributionBalanced(posts)) {
+    if (!calendarBlueprint && !isPillarDistributionBalanced(posts)) {
       posts = applyPillarSchedule(posts, startDay, perDay);
       console.log('[Calendar] pillar schedule enforced', {
         requestId: loggingContext?.requestId,
