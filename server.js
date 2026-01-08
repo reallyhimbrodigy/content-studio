@@ -2653,6 +2653,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
         'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
         'Brand Brain enhancements must not reduce calendar-wide diversity; uniqueness contract has priority.',
+        'Brand Brain enhancements must be applied while staying within YOUR ASSIGNMENT and must not drift into other plan angles.',
         'CALENDAR-WIDE UNIQUENESS CONTRACT',
         '- Before writing the posts, internally create a “diversity plan” of N distinct angles (N = number of posts requested).',
         '- Each angle must be distinct by at least TWO of: (a) audience segment, (b) intent type, (c) content format style, (d) lifecycle stage, (e) context/situation, (f) mechanism/tool/process, (g) contrarian vs conventional.',
@@ -2853,48 +2854,78 @@ function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabl
 function normalizeCalendarPlanEntries(plan = [], totalDays = 30) {
   if (!Array.isArray(plan) || plan.length !== totalDays) return null;
   const normalized = [];
-  const topicSignatures = new Set();
-  const duplicateTopics = [];
+  const angleSignatures = new Set();
+  const duplicateAngles = [];
+  const frameTypes = new Set([
+    'myth_bust',
+    'checklist',
+    'case_example',
+    'contrarian_take',
+    'process_breakdown',
+    'quick_win',
+    'risk_warning',
+    'comparison',
+    'story',
+    'faq',
+    'mistake_fix',
+    'metric_focus',
+    'tool_focus',
+    'mindset',
+    'objection_handling',
+  ]);
   for (let i = 0; i < totalDays; i += 1) {
     const raw = plan[i];
     const dayIndex = Number(raw?.day);
     if (!Number.isFinite(dayIndex) || dayIndex !== i + 1) return null;
-    const pillar = normalizeCalendarPillar(raw?.pillar);
-    if (!pillar) return null;
-    const topic = toPlainString(raw?.topic || '').trim();
-    const angle = toPlainString(raw?.angle || '').trim();
-    if (!topic || !angle) return null;
-    const trimWords = (value) => value.split(/\s+/).slice(0, 10).join(' ').trim();
-    const trimmedTopic = trimWords(topic);
-    const trimmedAngle = trimWords(angle);
-    if (!trimmedTopic || !trimmedAngle) return null;
-    const signature = normalizeCalendarSignature(topic);
-    if (signature && topicSignatures.has(signature)) {
-      duplicateTopics.push({ dayIndex, signature });
+    const angleId = toPlainString(raw?.angleId || '').trim();
+    const angleSummary = toPlainString(raw?.angleSummary || '').trim();
+    const frameType = toPlainString(raw?.frameType || '').trim();
+    if (!angleId || !angleSummary || !frameTypes.has(frameType)) return null;
+    const trimWords = (value) => value.split(/\s+/).slice(0, 14).join(' ').trim();
+    const trimmedSummary = trimWords(angleSummary);
+    if (!trimmedSummary) return null;
+    const signature = normalizeCalendarSignature(trimmedSummary);
+    if (signature && angleSignatures.has(signature)) {
+      duplicateAngles.push({ dayIndex, signature });
     } else if (signature) {
-      topicSignatures.add(signature);
+      angleSignatures.add(signature);
     }
-    normalized.push({ dayIndex, pillar, topic: trimmedTopic, angle: trimmedAngle });
+    normalized.push({ dayIndex, angleId, angleSummary: trimmedSummary, frameType });
   }
-  if (duplicateTopics.length) {
-    console.warn('[Calendar][Plan] duplicate topics detected; proceeding', {
-      count: duplicateTopics.length,
-      samples: duplicateTopics.slice(0, 3),
+  if (duplicateAngles.length) {
+    console.warn('[Calendar][Plan] duplicate angles detected; proceeding', {
+      count: duplicateAngles.length,
+      samples: duplicateAngles.slice(0, 3),
     });
   }
   return normalized;
 }
 
-function buildPlanBlock(planItems = []) {
+function buildPlanBlock(planItems = [], { startDay = 1, chunkStartDay = 1, chunkDays = 1 } = {}) {
   if (!Array.isArray(planItems) || !planItems.length) return '';
+  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : Number(startDay) || 1;
+  const dayCount = Number.isFinite(Number(chunkDays)) ? Number(chunkDays) : 1;
+  const dayEnd = dayStart + dayCount - 1;
+  const fullPlanLines = planItems.map((item) => {
+    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
+    return `Slot ${item.dayIndex} | Day ${actualDay} | angleId: ${item.angleId} | frameType: ${item.frameType} | angleSummary: ${item.angleSummary}`;
+  });
+  const assigned = planItems.filter((item) => {
+    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
+    return actualDay >= dayStart && actualDay <= dayEnd;
+  });
+  const assignedLines = assigned.map((item) => {
+    const actualDay = (Number(startDay) || 1) + (Number(item.dayIndex) - 1);
+    return `Day ${actualDay} | angleId: ${item.angleId} | frameType: ${item.frameType} | angleSummary: ${item.angleSummary}`;
+  });
   const lines = [
-    'PLAN ITEMS FOR THIS BATCH:',
-    ...planItems.map((item) => {
-      return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle}`;
-    }),
-    'Use these exact plan items; do not create new topics or pillars.',
-    'Title must closely match the topic seed (light polish ok).',
-    'Pillar must match exactly for each item; ignore any pillar rotation rule when plan items are provided.',
+    'CALENDAR PLAN (read-only):',
+    ...fullPlanLines,
+    'YOUR ASSIGNMENT:',
+    ...assignedLines,
+    'Generate exactly one post per assigned day using ONLY its angleSummary + frameType.',
+    'Do not reuse or overlap any other plan item.',
+    'If your title/topic overlaps another plan item, rewrite until it matches only your assignment.',
   ];
   return lines.join('\n');
 }
@@ -2903,6 +2934,7 @@ function buildPlanBlock(planItems = []) {
 async function createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
   const schema = {
     type: 'object',
     additionalProperties: false,
@@ -2915,12 +2947,31 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['day', 'pillar', 'topic', 'angle'],
+          required: ['day', 'angleId', 'angleSummary', 'frameType'],
           properties: {
             day: { type: 'integer', minimum: 1, maximum: totalDays },
-            pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
-            topic: { type: 'string', minLength: 3 },
-            angle: { type: 'string', minLength: 3 },
+            angleId: { type: 'string', minLength: 2 },
+            angleSummary: { type: 'string', minLength: 8 },
+            frameType: {
+              type: 'string',
+              enum: [
+                'myth_bust',
+                'checklist',
+                'case_example',
+                'contrarian_take',
+                'process_breakdown',
+                'quick_win',
+                'risk_warning',
+                'comparison',
+                'story',
+                'faq',
+                'mistake_fix',
+                'metric_focus',
+                'tool_focus',
+                'mindset',
+                'objection_handling',
+              ],
+            },
           },
         },
       },
@@ -2929,13 +2980,14 @@ async function createCalendarPlan({ nicheStyle, brandContext, totalDays, logging
   const prompt = [
     `You are a content calendar planner${cleanNiche}.`,
     brandBlock.trim(),
+    requestId.trim(),
     `Return ONLY valid minified JSON matching the schema. No markdown. No commentary.`,
     `Create exactly ${totalDays} plan items for days 1..${totalDays}, in order.`,
-    'Each item must include: day, pillar, topic (short seed), angle (short intent).',
-    'Keep topic and angle <= 10 words each.',
-    'All topics must be distinct across the full plan.',
-    'Distribute pillars roughly evenly across the four values.',
-    'Keep topics specific to the niche; no hashtags; no full hooks or captions.',
+    'Each item must include: day, angleId, angleSummary (8–14 words), frameType.',
+    'angleId should be short and unique (e.g., A1, A2).',
+    'All angleSummary values must be distinct across the full plan.',
+    'No frameType may appear more than twice across the full plan.',
+    'Keep angleSummary specific to the niche; no hashtags; no full hooks or captions.',
   ].filter(Boolean).join('\n');
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
@@ -5417,13 +5469,6 @@ const server = http.createServer((req, res) => {
       enabled: Boolean(brandBrainDirective),
       isPro: isProUser,
     });
-    const calendarPlan = null;
-    console.log('[Calendar][Plan] plan status', {
-      requestId: loggingContext?.requestId || 'unknown',
-      planUsed: false,
-      planMs: 0,
-      planReason: 'plan_skipped',
-    });
     const callStart = Date.now();
     const logContext = {
       requestId: loggingContext?.requestId || 'unknown',
@@ -5440,6 +5485,33 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
+    const planStart = Date.now();
+    let calendarPlan = null;
+    let planReason = 'plan_skipped';
+    if (targetCount && targetCount > 1) {
+      const planKey = buildCalendarPlanKey({
+        userId,
+        nicheStyle,
+        postsPerDay: perDay,
+        brandBrainEnabled,
+        brandContext,
+        platform: payload?.platform,
+      });
+      calendarPlan = await getOrCreateCalendarPlan({
+        key: planKey,
+        nicheStyle,
+        brandContext,
+        totalDays: daysToGenerate,
+        loggingContext,
+      });
+      planReason = calendarPlan ? 'ok' : 'plan_null';
+    }
+    console.log('[Calendar][Plan] plan status', {
+      requestId: loggingContext?.requestId || 'unknown',
+      planUsed: Boolean(calendarPlan && calendarPlan.length),
+      planMs: Date.now() - planStart,
+      planReason,
+    });
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
@@ -5458,13 +5530,17 @@ const server = http.createServer((req, res) => {
     const chunkBaseTokens = 1600;
     const chunkMinTokens = 1000;
 
-    const getPlanItemsForRange = () => null;
-
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planItems = [];
-      const planBlock = '';
+      const planItems = Array.isArray(calendarPlan) ? calendarPlan : [];
+      const planBlock = planItems.length
+        ? buildPlanBlock(planItems, {
+          startDay: fallbackStart,
+          chunkStartDay,
+          chunkDays,
+        })
+        : '';
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -5484,7 +5560,7 @@ const server = http.createServer((req, res) => {
         avoidSignatures: normalizedAvoidSignatures,
         brandBrainDirective,
         extraInstructions: planBlock || '',
-        planUsed: Boolean(planItems),
+        planUsed: Boolean(planItems && planItems.length),
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
