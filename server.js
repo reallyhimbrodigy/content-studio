@@ -2626,6 +2626,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
+        'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
+        '- Title must be a full descriptive content idea (not a keyword).',
+        '- Title must be at least 6 words.',
+        '- Never output titles like "CAN", "KEY", or 1–3 character strings.',
+        '- All required fields must be present and non-empty.',
         'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
         'Output JSON only: { "posts": [ ... ] }.',
         'Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
