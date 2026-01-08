@@ -2579,9 +2579,7 @@ function buildBrandBrainDirective(settings = {}) {
     'Choose EXACTLY ONE persuasion lever per post (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal) and make it explicit in the writing.',
     'Choose EXACTLY ONE primary algorithm signal per post (comments, saves, shares, watch time/rewatch) and make DistributionPlan state the signal and why it was chosen.',
     'Use a strong 0–3s hook, a mid re-hook at ~5–7s, and a loopable ending that re-opens the hook.',
-    'Favor shorter, skimmable captions with specificity bias (numbers, locations, scenarios) and avoid repeating hooks or angles.',
     'Use conversion-forward language while staying compliant and specific; avoid vague claims.',
-    'Rotate CTAs across the month to avoid repetition.',
     'Category overlays:',
     '- Educational: teach a specific mechanism, use common-mistake framing, and bias toward saves/shares.',
     '- Inspirational: motivate with identity/status tension and a concrete next step, not vague platitudes.',
@@ -2593,44 +2591,6 @@ function buildBrandBrainDirective(settings = {}) {
     '- Trend-based: keep it niche-specific, add a twist, and include value + CTA.',
   ];
   return lines.join('\n');
-}
-
-const CALENDAR_PLAN_TTL_MS = 10 * 60 * 1000;
-const calendarPlanCache = new Map();
-const calendarPlanInflight = new Map();
-const calendarBlueprintCache = new Map();
-const calendarBlueprintInflight = new Map();
-
-function getCalendarPlanCache(key) {
-  if (!key) return null;
-  const entry = calendarPlanCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.createdAt > CALENDAR_PLAN_TTL_MS) {
-    calendarPlanCache.delete(key);
-    return null;
-  }
-  return entry.plan || null;
-}
-
-function setCalendarPlanCache(key, plan) {
-  if (!key || !plan) return;
-  calendarPlanCache.set(key, { plan, createdAt: Date.now() });
-}
-
-function getCalendarBlueprintCache(key) {
-  if (!key) return null;
-  const entry = calendarBlueprintCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.createdAt > CALENDAR_PLAN_TTL_MS) {
-    calendarBlueprintCache.delete(key);
-    return null;
-  }
-  return entry.blueprint || null;
-}
-
-function setCalendarBlueprintCache(key, blueprint) {
-  if (!key || !blueprint) return;
-  calendarBlueprintCache.set(key, { blueprint, createdAt: Date.now() });
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -2645,23 +2605,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
-        '- Title must be a full descriptive content idea (not a keyword).',
+        '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
-        '- Never output titles like "CAN", "KEY", or 1–3 character strings.',
-        'TITLE STRUCTURAL DIVERSITY REQUIREMENT',
-        '- Titles must vary in grammatical structure across the calendar.',
-        '- Do not default to a single rhetorical role (e.g. explanation, definition, navigation).',
-        '- Across the full list, titles should naturally include a mix of:',
-        '  - statements',
-        '  - implications',
-        '  - outcomes',
-        '  - questions',
-        '  - contrasts',
-        '  - scenarios',
-        '  - consequences',
-        '- Choose the structure that best fits the idea, not a single repeated pattern.',
-        '- Review the full list of titles before output and rewrite any that share the same grammatical opening.',
-        'You must not output the calendar until the title list shows clear structural variety when skimmed.',
         '- All required fields must be present and non-empty.',
         'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
         'Output JSON only: { "posts": [ ... ] }.',
@@ -2671,7 +2616,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'One persona + desire + objection per post; include pain, mechanism, next step, retention device.',
         'Exactly one persuasion lever (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal).',
         'Exactly one algorithm signal (comments, saves, shares, watch time/rewatch); DistributionPlan must name it and why.',
-        'Concrete nouns, local cues, intent language; if niche has a location, reference it in title/hashtags/CTA.',
         'Hook 1–2 lines; 0–3s retention hook; explicit niche pain/goal; no vague one-liners.',
         'Caption: short beats; include one concrete mechanism; leave an open loop; avoid long paragraphs.',
         'CTA: two-step — comment-based access/personalization + DM-based conversion; no forced keywords.',
@@ -2683,31 +2627,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'hashtags: array of 8–12 tags; 2–3 location tags (if applicable), 2–3 niche service tags, 2 intent tags; no irrelevant/holiday tags.',
         'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
         'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
-        'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
-        'Brand Brain enhancements must be applied while staying within YOUR ASSIGNMENT and must not drift into other plan angles.',
-        'Brand Brain enhancements must be applied without violating the CALENDAR UNIQUENESS AUDIT.',
-        'Brand Brain persuasion and algorithm optimization must be applied without reducing title structural diversity.',
-        'CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)',
-        'You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:',
-        '',
-        'A) Exact-duplicate rule:',
-        '- No two titles may be identical after trimming spaces and lowercasing.',
-        '',
-        'B) Near-duplicate rule:',
-        '- No two titles may share the same first 6 words.',
-        '- No two titles may share the same first 18 characters (after lowercasing).',
-        '',
-        'C) Opening-token diversity rule:',
-        '- The first word of every title must be unique across the calendar.',
-        '',
-        'D) Concept uniqueness rule:',
-        '- No two titles may describe the same core topic/idea. If two could be swapped without changing meaning, rewrite one to a clearly different angle.',
-        '',
-        'E) Final list skim test:',
-        '- When the titles are read as a list, they must not look patterned. If they do, rewrite the patterned items.',
-        '',
-        'You must not output until the audit passes.',
-        'Do not mention this audit in the output. Only output the JSON posts.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2716,28 +2635,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   if (opts.brandBrainDirective) {
     console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
   }
-  const usedSignatures = (Array.isArray(opts.usedSignatures) ? opts.usedSignatures : [])
-    .map((sig) => normalizeCalendarSignature(sig))
-    .filter(Boolean);
-  const usedBlock = usedSignatures.length
-    ? `Avoid matching these signatures: ${usedSignatures.join(', ')}.`
-    : 'No prior signatures to avoid yet.';
-  const avoidSignatures = (Array.isArray(opts.avoidSignatures) ? opts.avoidSignatures : [])
-    .map((sig) => normalizeCalendarSignature(sig))
-    .filter(Boolean)
-    .slice(0, 20);
-  const avoidBlock = avoidSignatures.length
-    ? `Hard constraint: do NOT reuse or closely paraphrase any of these signatures/ideas; regenerate the full set and return the same JSON schema. Avoid: ${avoidSignatures.join(', ')}.`
-    : '';
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   const nonBrandBrainMultiPostBlock =
     !opts.brandBrainDirective && postsPerDaySetting > 1
       ? [
           'MULTIPLE POSTS PER DAY (CRITICAL):',
-          '- You must create multiple distinct posts for the same calendar day.',
+          '- You must create multiple posts for the same calendar day.',
           `- postsPerDay = ${postsPerDaySetting}. For each day D, output exactly ${postsPerDaySetting} separate post objects with "day": D.`,
           '- When postsPerDay > 1, repeated "day" values are required and expected.',
-          '- Treat each same-day post as a different angle and subtopic; no duplicates.',
           '',
         ].join('\\n')
       : '';
@@ -2745,10 +2650,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     !opts.brandBrainDirective && postsPerDaySetting > 1
       ? [
           '',
-          'QUALITY & UNIQUENESS REQUIREMENTS:',
-          '- No filler, no vague “tips”, no generic motivational lines, no placeholders, no repeated templates.',
-          '- Each post must contain a concrete, niche-specific point and a distinct angle from every other post.',
-          '- If generating multiple posts for the same day, each one must target a different subtopic/audience intent (e.g., buyers vs sellers vs investors; financing vs neighborhoods vs pricing strategy), with no overlap.',
+          'QUALITY REQUIREMENTS:',
+          '- No filler, no vague “tips”, no generic motivational lines, no placeholders.',
         ].join('\\n')
       : '';
   const nonBrandBrainAbsoluteBlock =
@@ -2768,65 +2671,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   return `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
-- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
+- pillar must be one of: Education, Social Proof, Promotion, Lifestyle.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- Title must be present, human-readable, and non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
-TITLE STRUCTURAL DIVERSITY REQUIREMENT
-- Titles must vary in grammatical structure across the calendar.
-- Do not default to a single rhetorical role (e.g. explanation, definition, navigation).
-- Across the full list, titles should naturally include a mix of:
-  - statements
-  - implications
-  - outcomes
-  - questions
-  - contrasts
-  - scenarios
-  - consequences
-- Choose the structure that best fits the idea, not a single repeated pattern.
-- Review the full list of titles before output and rewrite any that share the same grammatical opening.
-You must not output the calendar until the title list shows clear structural variety when skimmed.
-CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)
-You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:
-
-A) Exact-duplicate rule:
-- No two titles may be identical after trimming spaces and lowercasing.
-
-B) Near-duplicate rule:
-- No two titles may share the same first 6 words.
-- No two titles may share the same first 18 characters (after lowercasing).
-
-C) Opening-token diversity rule:
-- The first word of every title must be unique across the calendar.
-
-D) Concept uniqueness rule:
-- No two titles may describe the same core topic/idea. If two could be swapped without changing meaning, rewrite one to a clearly different angle.
-
-E) Final list skim test:
-- When the titles are read as a list, they must not look patterned. If they do, rewrite the patterned items.
-
-You must not output until the audit passes.
-Do not mention this audit in the output. Only output the JSON posts.
-
-HARD CONSTRAINTS:
-1) You MUST output exactly ${totalPostsRequired} posts.
-2) Every post MUST include topic_signature and angle.
-3) angle MUST be chosen from this list and MUST NOT repeat across posts:
-["beginner explainer","common mistake","myth vs reality","step-by-step process","checklist","do vs don’t","framework/mental model","case study/story","tools/resources","advanced nuance"].
-4) topic_signature rules: 3–6 words, lowercase, no punctuation, describes the core topic (not the angle), MUST be unique across all posts.
-5) Semantic uniqueness: no two posts may cover the same core topic even with different wording. Titles must be materially distinct and must not reuse the same head concept.
-6) Before returning JSON, perform a final internal uniqueness check across all posts (topic_signature + title + hook/caption core claim). If any overlap, replace the later post with a new distinct topic while keeping the same niche and quality.
-${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
+${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
-}
-
-function normalizeCalendarSignature(value = '') {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .slice(0, 120);
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -2874,462 +2725,6 @@ function buildFallbackChunkPosts(nicheStyle, startDay, postsPerDay, totalCount) 
     fallback.push(buildFallbackPost(nicheStyle, day));
   }
   return fallback;
-}
-
-function stableHash(value = '') {
-  let hash = 0;
-  const text = String(value || '');
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash << 5) - hash + text.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function buildCalendarPlanKey({ userId, nicheStyle, postsPerDay, brandBrainEnabled, brandContext, platform }) {
-  const normalizedNiche = String(nicheStyle || '').trim().toLowerCase();
-  const brandHash = brandContext ? stableHash(brandContext) : 0;
-  const parts = [
-    userId || 'anon',
-    normalizedNiche,
-    Number(postsPerDay) || 1,
-    brandBrainEnabled ? 'bb1' : 'bb0',
-    String(platform || '').trim().toLowerCase(),
-    brandHash,
-  ];
-  return parts.join('|');
-}
-
-function normalizeCalendarPlanEntries(plan = [], totalDays = 30) {
-  if (!Array.isArray(plan) || plan.length !== totalDays) return null;
-  const normalized = [];
-  const angleSignatures = new Set();
-  const duplicateAngles = [];
-  const frameTypes = new Set([
-    'myth_bust',
-    'checklist',
-    'case_example',
-    'contrarian_take',
-    'process_breakdown',
-    'quick_win',
-    'risk_warning',
-    'comparison',
-    'story',
-    'faq',
-    'mistake_fix',
-    'metric_focus',
-    'tool_focus',
-    'mindset',
-    'objection_handling',
-  ]);
-  for (let i = 0; i < totalDays; i += 1) {
-    const raw = plan[i];
-    const dayIndex = Number(raw?.day);
-    if (!Number.isFinite(dayIndex) || dayIndex !== i + 1) return null;
-    const angleId = toPlainString(raw?.angleId || '').trim();
-    const angleSummary = toPlainString(raw?.angleSummary || '').trim();
-    const frameType = toPlainString(raw?.frameType || '').trim();
-    if (!angleId || !angleSummary || !frameTypes.has(frameType)) return null;
-    const trimWords = (value) => value.split(/\s+/).slice(0, 14).join(' ').trim();
-    const trimmedSummary = trimWords(angleSummary);
-    if (!trimmedSummary) return null;
-    const signature = normalizeCalendarSignature(trimmedSummary);
-    if (signature && angleSignatures.has(signature)) {
-      duplicateAngles.push({ dayIndex, signature });
-    } else if (signature) {
-      angleSignatures.add(signature);
-    }
-    normalized.push({ dayIndex, angleId, angleSummary: trimmedSummary, frameType });
-  }
-  if (duplicateAngles.length) {
-    console.warn('[Calendar][Plan] duplicate angles detected; proceeding', {
-      count: duplicateAngles.length,
-      samples: duplicateAngles.slice(0, 3),
-    });
-  }
-  return normalized;
-}
-
-function buildPlanBlock(blueprintItems = [], { chunkStartDay = 1, chunkDays = 1 } = {}) {
-  if (!Array.isArray(blueprintItems) || !blueprintItems.length) return '';
-  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
-  const dayCount = Number.isFinite(Number(chunkDays)) ? Number(chunkDays) : 1;
-  const dayEnd = dayStart + dayCount - 1;
-  const fullPlanLines = blueprintItems.map((item) => {
-    return `Slot ${item.slot} | Day ${item.day} | title: ${item.title} | angleSummary: ${item.angleSummary} | format: ${item.format} | category: ${item.category}`;
-  });
-  const assigned = blueprintItems.filter((item) => item.day >= dayStart && item.day <= dayEnd);
-  const assignedLines = assigned.map((item) => {
-    return `Day ${item.day} | title: ${item.title} | angleSummary: ${item.angleSummary} | format: ${item.format} | category: ${item.category}`;
-  });
-  const lines = [
-    'CALENDAR PLAN (read-only):',
-    ...fullPlanLines,
-    'YOUR ASSIGNMENT:',
-    ...assignedLines,
-    'Generate exactly one post per assigned day using ONLY its assigned title + angleSummary.',
-    'The title must match the assigned title exactly.',
-    'Do not reuse or overlap any other plan item.',
-    'If your title/topic overlaps another plan item, rewrite until it matches only your assignment.',
-  ];
-  return lines.join('\n');
-}
-
-
-async function createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext }) {
-  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
-  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    required: ['plan'],
-    properties: {
-      plan: {
-        type: 'array',
-        minItems: totalDays,
-        maxItems: totalDays,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['day', 'angleId', 'angleSummary', 'frameType'],
-          properties: {
-            day: { type: 'integer', minimum: 1, maximum: totalDays },
-            angleId: { type: 'string', minLength: 2 },
-            angleSummary: { type: 'string', minLength: 8 },
-            frameType: {
-              type: 'string',
-              enum: [
-                'myth_bust',
-                'checklist',
-                'case_example',
-                'contrarian_take',
-                'process_breakdown',
-                'quick_win',
-                'risk_warning',
-                'comparison',
-                'story',
-                'faq',
-                'mistake_fix',
-                'metric_focus',
-                'tool_focus',
-                'mindset',
-                'objection_handling',
-              ],
-            },
-          },
-        },
-      },
-    },
-  };
-  const prompt = [
-    `You are a content calendar planner${cleanNiche}.`,
-    brandBlock.trim(),
-    requestId.trim(),
-    `Return ONLY valid minified JSON matching the schema. No markdown. No commentary.`,
-    `Create exactly ${totalDays} plan items for days 1..${totalDays}, in order.`,
-    'Each item must include: day, angleId, angleSummary (8–14 words), frameType.',
-    'angleId should be short and unique (e.g., A1, A2).',
-    'All angleSummary values must be distinct across the full plan.',
-    'No frameType may appear more than twice across the full plan.',
-    'Keep angleSummary specific to the niche; no hashtags; no full hooks or captions.',
-  ].filter(Boolean).join('\n');
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.0,
-    max_tokens: 500,
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'calendar_plan', strict: true, schema },
-    },
-  });
-  const options = {
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
-  const extractContentText = (json) => {
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
-  const requestPromise = withOpenAiSlot(() => openAIRequest(options, payload));
-  const timeoutPromise = new Promise((_, reject) => {
-    const timeoutId = setTimeout(() => {
-      const timeoutErr = new Error('OpenAI plan request timed out');
-      timeoutErr.code = 'OPENAI_TIMEOUT';
-      reject(timeoutErr);
-    }, OPENAI_GENERATION_TIMEOUT_MS);
-    requestPromise.finally(() => clearTimeout(timeoutId));
-  });
-  const json = await Promise.race([requestPromise, timeoutPromise]);
-  const content = extractContentText(json);
-  let parsed = null;
-  try {
-    parsed = content ? JSON.parse(content) : null;
-  } catch (err) {
-    return null;
-  }
-  if (!parsed || !Array.isArray(parsed.plan)) {
-    console.warn('[Calendar][Plan] invalid plan payload', {
-      requestId: loggingContext?.requestId,
-      preview: String(content || '').slice(0, 200),
-    });
-    return null;
-  }
-  return normalizeCalendarPlanEntries(parsed.plan, totalDays);
-}
-
-async function getOrCreateCalendarPlan({ key, nicheStyle, brandContext, totalDays, loggingContext }) {
-  const cached = getCalendarPlanCache(key);
-  if (cached) return cached;
-  if (calendarPlanInflight.has(key)) {
-    return calendarPlanInflight.get(key);
-  }
-  const planPromise = (async () => {
-    try {
-      const plan = await createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext });
-      if (plan) {
-        setCalendarPlanCache(key, plan);
-        return plan;
-      }
-    } catch (err) {
-      console.warn('[Calendar][Plan] planning failed; falling back', {
-        requestId: loggingContext?.requestId,
-        error: err?.message || err,
-      });
-    }
-    return null;
-  })();
-  calendarPlanInflight.set(key, planPromise);
-  planPromise.finally(() => calendarPlanInflight.delete(key));
-  return planPromise;
-}
-
-function normalizeCalendarBlueprintEntries(blueprint = [], totalPosts = 0, startDay = 1, postsPerDay = 1) {
-  if (!Array.isArray(blueprint) || blueprint.length !== totalPosts) return null;
-  const normalized = [];
-  const titleSignatures = new Set();
-  const angleSignatures = new Set();
-  const firstFourWordKeys = new Set();
-  const duplicateTitles = [];
-  const duplicateAngles = [];
-  const duplicateStarts = [];
-  const formatOptions = new Set(['Reel', 'Story', 'Carousel', 'Static']);
-  const categoryOptions = new Set(['Education', 'Social Proof', 'Promotion', 'Lifestyle']);
-  for (let i = 0; i < totalPosts; i += 1) {
-    const raw = blueprint[i];
-    const slot = Number(raw?.slot);
-    const day = Number(raw?.day);
-    const postIndex = Number(raw?.postIndex);
-    if (!Number.isFinite(slot) || slot !== i + 1) return null;
-    if (!Number.isFinite(day) || day < startDay || day > (startDay + Math.max(1, Math.ceil(totalPosts / postsPerDay)) - 1)) return null;
-    if (!Number.isFinite(postIndex) || postIndex < 0 || postIndex >= postsPerDay) return null;
-    const angleSummary = toPlainString(raw?.angleSummary || '').trim();
-    const title = toPlainString(raw?.title || '').trim();
-    const format = toPlainString(raw?.format || '').trim();
-    const category = toPlainString(raw?.category || '').trim();
-    if (!angleSummary || !title || !formatOptions.has(format) || !categoryOptions.has(category)) return null;
-    const normalizedTitle = title.toLowerCase().replace(/\s+/g, ' ').trim();
-    const titleSignature = normalizeCalendarSignature(normalizedTitle);
-    const angleSignature = normalizeCalendarSignature(angleSummary);
-    const firstFourWords = normalizedTitle.split(/\s+/).slice(0, 4).join(' ');
-    if (titleSignature && titleSignatures.has(titleSignature)) {
-      duplicateTitles.push({ slot, signature: titleSignature });
-    } else if (titleSignature) {
-      titleSignatures.add(titleSignature);
-    }
-    if (angleSignature && angleSignatures.has(angleSignature)) {
-      duplicateAngles.push({ slot, signature: angleSignature });
-    } else if (angleSignature) {
-      angleSignatures.add(angleSignature);
-    }
-    if (firstFourWords && firstFourWordKeys.has(firstFourWords)) {
-      duplicateStarts.push({ slot, firstFourWords });
-    } else if (firstFourWords) {
-      firstFourWordKeys.add(firstFourWords);
-    }
-    normalized.push({ slot, day, postIndex, angleSummary, title, format, category });
-  }
-  if (duplicateTitles.length || duplicateAngles.length || duplicateStarts.length) {
-    return {
-      invalid: true,
-      duplicateTitles,
-      duplicateAngles,
-      duplicateStarts,
-    };
-  }
-  return normalized;
-}
-
-async function createCalendarBlueprint({
-  nicheStyle,
-  brandContext,
-  totalPosts,
-  startDay,
-  postsPerDay,
-  loggingContext,
-  brandBrainDirective,
-}) {
-  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
-  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    required: ['blueprint'],
-    properties: {
-      blueprint: {
-        type: 'array',
-        minItems: totalPosts,
-        maxItems: totalPosts,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['slot', 'day', 'postIndex', 'angleSummary', 'title', 'format', 'category'],
-          properties: {
-            slot: { type: 'integer', minimum: 1, maximum: totalPosts },
-            day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Math.ceil(totalPosts / postsPerDay)) - 1 },
-            postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, postsPerDay - 1) },
-            angleSummary: { type: 'string', minLength: 8 },
-            title: { type: 'string', minLength: 6 },
-            format: { type: 'string', enum: ['Reel', 'Story', 'Carousel', 'Static'] },
-            category: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
-          },
-        },
-      },
-    },
-  };
-  const prompt = [
-    `You are a content calendar planner${cleanNiche}.`,
-    brandBlock.trim(),
-    requestId.trim(),
-    brandBrainDirective ? 'Apply Brand Brain guidance when choosing angles/titles.' : '',
-    'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
-    `Create exactly ${totalPosts} blueprint items for the calendar, in order.`,
-    'Each item must include: slot, day, postIndex, angleSummary (10–16 words), title, format, category.',
-    'Every angleSummary must be distinct in core concept.',
-    'Every title must be unique and must not be a minor rephrase of another title.',
-    'No two titles may share the same first 4 words.',
-    'Internally self-check and rewrite until the list is unique; do not mention this self-check.',
-    'Do not use example topics, do not use hardcoded lists, generate fresh from the niche.',
-  ].filter(Boolean).join('\n');
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.0,
-    max_tokens: 900,
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'calendar_blueprint', strict: true, schema },
-    },
-  });
-  const options = {
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
-  const extractContentText = (json) => {
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
-  const requestPromise = withOpenAiSlot(() => openAIRequest(options, payload));
-  const timeoutPromise = new Promise((_, reject) => {
-    const timeoutId = setTimeout(() => {
-      const timeoutErr = new Error('OpenAI blueprint request timed out');
-      timeoutErr.code = 'OPENAI_TIMEOUT';
-      reject(timeoutErr);
-    }, OPENAI_GENERATION_TIMEOUT_MS);
-    requestPromise.finally(() => clearTimeout(timeoutId));
-  });
-  const json = await Promise.race([requestPromise, timeoutPromise]);
-  const content = extractContentText(json);
-  let parsed = null;
-  try {
-    parsed = content ? JSON.parse(content) : null;
-  } catch (err) {
-    return null;
-  }
-  if (!parsed || !Array.isArray(parsed.blueprint)) return null;
-  return normalizeCalendarBlueprintEntries(parsed.blueprint, totalPosts, startDay, postsPerDay);
-}
-
-async function getOrCreateCalendarBlueprint({
-  key,
-  nicheStyle,
-  brandContext,
-  totalPosts,
-  startDay,
-  postsPerDay,
-  loggingContext,
-  brandBrainDirective,
-}) {
-  const cached = getCalendarBlueprintCache(key);
-  if (cached) return cached;
-  if (calendarBlueprintInflight.has(key)) {
-    return calendarBlueprintInflight.get(key);
-  }
-  const blueprintPromise = (async () => {
-    const blueprint = await createCalendarBlueprint({
-      nicheStyle,
-      brandContext,
-      totalPosts,
-      startDay,
-      postsPerDay,
-      loggingContext,
-      brandBrainDirective,
-    });
-    if (Array.isArray(blueprint) && !blueprint.invalid) {
-      setCalendarBlueprintCache(key, blueprint);
-      return blueprint;
-    }
-    return blueprint;
-  })();
-  calendarBlueprintInflight.set(key, blueprintPromise);
-  blueprintPromise.finally(() => calendarBlueprintInflight.delete(key));
-  return blueprintPromise;
 }
 
 function selectBillboardEntry(list = [], indexSeed = 0) {
@@ -4323,33 +3718,6 @@ function getCalendarPillarForDay(day) {
   const numericDay = Number.isFinite(Number(day)) ? Number(day) : 1;
   const index = Math.max(0, numericDay - 1) % CALENDAR_PILLARS.length;
   return CALENDAR_PILLARS[index];
-}
-
-function isPillarDistributionBalanced(posts = []) {
-  const counts = CALENDAR_PILLARS.reduce((acc, pillar) => {
-    acc[pillar] = 0;
-    return acc;
-  }, {});
-  posts.forEach((post) => {
-    const normalized = normalizeCalendarPillar(post?.pillar);
-    if (normalized) counts[normalized] += 1;
-  });
-  const values = CALENDAR_PILLARS.map((pillar) => counts[pillar]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const hasAll = values.every((value) => value > 0);
-  return hasAll && max - min <= 1;
-}
-
-function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1) {
-  return posts.map((post, idx) => {
-    if (!post || typeof post !== 'object') return post;
-    const day = Number.isFinite(Number(post.day))
-      ? Number(post.day)
-      : computePostDayIndex(idx, startDay, postsPerDay);
-    const pillar = getCalendarPillarForDay(day);
-    return { ...post, pillar };
-  });
 }
 
 function ensureCtaFallback(post = {}) {
@@ -5735,61 +5103,11 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const blueprintStart = Date.now();
-    let calendarBlueprint = null;
-    let blueprintReason = 'blueprint_skipped';
-    if (targetCount && targetCount > 1) {
-      const baseKey = buildCalendarPlanKey({
-        userId,
-        nicheStyle,
-        postsPerDay: perDay,
-        brandBrainEnabled,
-        brandContext,
-        platform: payload?.platform,
-      });
-      const blueprintKey = `${baseKey}|days:${daysToGenerate}|start:${fallbackStart}`;
-      calendarBlueprint = await getOrCreateCalendarBlueprint({
-        key: blueprintKey,
-        nicheStyle,
-        brandContext,
-        totalPosts: targetCount,
-        startDay: fallbackStart,
-        postsPerDay: perDay,
-        loggingContext,
-        brandBrainDirective,
-      });
-      blueprintReason = calendarBlueprint ? 'ok' : 'blueprint_null';
-    }
-    if (!calendarBlueprint || calendarBlueprint.invalid) {
-      const err = new Error('Blueprint validation failed');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 422;
-      err.details = calendarBlueprint && calendarBlueprint.invalid
-        ? {
-          duplicateTitles: calendarBlueprint.duplicateTitles || [],
-          duplicateAngles: calendarBlueprint.duplicateAngles || [],
-          duplicateStarts: calendarBlueprint.duplicateStarts || [],
-        }
-        : { reason: blueprintReason };
-      throw err;
-    }
-    console.log('[Calendar][Blueprint] status', {
-      requestId: loggingContext?.requestId || 'unknown',
-      blueprintUsed: Boolean(calendarBlueprint && calendarBlueprint.length),
-      blueprintMs: Date.now() - blueprintStart,
-      blueprintReason,
-    });
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
     const blockFallbacks = forceSinglePostPerDayForModel;
     const maxPostsPerChunk = 2;
-    const incomingSignatures = Array.isArray(payload.usedSignatures) ? payload.usedSignatures : [];
-    const normalizedUsedSignatures = Array.from(new Set(incomingSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean)));
-    const incomingAvoidSignatures = Array.isArray(payload.avoidSignatures) ? payload.avoidSignatures : [];
-    const normalizedAvoidSignatures = Array.from(
-      new Set(incomingAvoidSignatures.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
-    ).slice(0, 20);
     const chunkMetrics = [];
     let aggregatedRawPosts = [];
     let remainingDays = daysToGenerate;
@@ -5800,13 +5118,6 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planItems = Array.isArray(calendarBlueprint) ? calendarBlueprint : [];
-      const planBlock = planItems.length
-        ? buildPlanBlock(planItems, {
-          chunkStartDay,
-          chunkDays,
-        })
-        : '';
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -5822,11 +5133,7 @@ const server = http.createServer((req, res) => {
         loggingContext: chunkContext,
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
-        usedSignatures: normalizedUsedSignatures,
-        avoidSignatures: normalizedAvoidSignatures,
         brandBrainDirective,
-        extraInstructions: planBlock || '',
-        planUsed: Boolean(planItems && planItems.length),
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
@@ -6216,34 +5523,6 @@ const server = http.createServer((req, res) => {
         throw err;
       }
     }
-    const signatureSet = new Set(normalizedUsedSignatures);
-    const duplicates = [];
-    for (const post of posts) {
-      const signature = normalizeCalendarSignature(post.title);
-      if (!signature) continue;
-      if (signatureSet.has(signature)) {
-        duplicates.push({ day: post.day, signature });
-      } else {
-        signatureSet.add(signature);
-      }
-    }
-    if (duplicates.length) {
-      console.warn('[Calendar] duplicate signatures detected; continuing', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        duplicates,
-      });
-    }
-    if (!calendarBlueprint && !isPillarDistributionBalanced(posts)) {
-      posts = applyPillarSchedule(posts, startDay, perDay);
-      console.log('[Calendar] pillar schedule enforced', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay: perDay,
-      });
-    }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
     });
@@ -6574,10 +5853,6 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
-        const usedSignaturesInput = Array.isArray(body?.usedSignatures) ? body.usedSignatures : [];
-        const sanitizedUsedSignatures = Array.from(
-          new Set(usedSignaturesInput.map((sig) => normalizeCalendarSignature(sig)).filter(Boolean))
-        );
         const targetCalendarId = body?.calendarId ?? null;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
@@ -6594,7 +5869,6 @@ const server = http.createServer((req, res) => {
           posts = await generateCalendarPosts({
             ...(body || {}),
             postsPerDay: requestedPostsPerDay,
-            usedSignatures: sanitizedUsedSignatures,
             context: regenContext,
             isPro,
           });
