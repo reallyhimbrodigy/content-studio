@@ -2635,7 +2635,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'Exactly one persuasion lever (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal).',
         'Exactly one algorithm signal (comments, saves, shares, watch time/rewatch); DistributionPlan must name it and why.',
         'Concrete nouns, local cues, intent language; if niche has a location, reference it in title/hashtags/CTA.',
-        'Title 4–7 words; specific to the day/topic; no generic titles or "Office Hours".',
         'Hook 1–2 lines; 0–3s retention hook; explicit niche pain/goal; no vague one-liners.',
         'Caption: short beats; include one concrete mechanism; leave an open loop; avoid long paragraphs.',
         'CTA: two-step — comment-based access/personalization + DM-based conversion; no forced keywords.',
@@ -2713,6 +2712,12 @@ Rules:
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 - Uniqueness: each day is a unique topic/angle; no repeated templates or opening phrasing.
+
+UNIQUE TOPICS/TITLES RULES:
+- All titles must be unique and represent different topics (rephrases count as duplicates).
+- Do not reuse the same first 2 words across any titles in this response.
+- Do not start more than one title with the same first word.
+- Each post must cover a different subtopic category within the niche.
 
 HARD CONSTRAINTS:
 1) You MUST output exactly ${totalPostsRequired} posts.
