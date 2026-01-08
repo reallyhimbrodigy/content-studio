@@ -5000,10 +5000,22 @@ body.prefers-reduced-motion *::after {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+  width: 100%;
 }
 
 .caption-copy-btn {
   flex-shrink: 0;
+}
+
+.calendar-card__caption {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.calendar-card__caption-row .caption-copy-btn,
+.calendar-card__caption-row .detail-copy-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .calendar-card__hashtags {
@@ -9779,6 +9791,30 @@ body:has(#account-modal.modal-overlay) .app-main {
     box-shadow: none;
   }
 
+  .page-calendar .profile-menu {
+    left: auto;
+    right: 0;
+    transform: none;
+    max-width: calc(100vw - 24px);
+    min-width: 220px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .page-calendar .profile-menu * {
+    box-sizing: border-box;
+  }
+
+  .page-calendar .profile-dropdown {
+    width: 100%;
+  }
+
+  .page-calendar .profile-dropdown button,
+  .page-calendar .profile-dropdown a {
+    display: block;
+    width: 100%;
+  }
+
   .calendar__grid,
   #calendar-grid,
   .calendar-grid,
@@ -9819,9 +9855,12 @@ body:has(#account-modal.modal-overlay) .app-main {
     margin: 0.45rem 0 0.25rem;
     flex: 1 1 auto;
     text-align: left;
+    writing-mode: horizontal-tb;
+    white-space: normal;
     overflow-wrap: break-word;
     word-break: normal;
-    hyphens: none;
+    hyphens: auto;
+    letter-spacing: normal;
     width: 100%;
     min-width: 0;
   }
