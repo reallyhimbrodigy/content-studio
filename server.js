@@ -2487,10 +2487,22 @@ function extractStrategyKeyword(text = '') {
 function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
+  const angleOptions = [
+    'beginner explainer',
+    'common mistake',
+    'myth vs reality',
+    'step-by-step process',
+    'checklist',
+    "do vs don’t",
+    'framework/mental model',
+    'case study/story',
+    'tools/resources',
+    'advanced nuance',
+  ];
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['day', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan'],
+    required: ['day', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
     properties: {
       day: {
         type: 'integer',
@@ -2501,6 +2513,8 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
+      topic_signature: { type: 'string', minLength: 3 },
+      angle: { type: 'string', enum: angleOptions },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       storyPrompt: { type: 'string', minLength: 1 },
@@ -2695,10 +2709,19 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
-- Each post includes day, title, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 - Uniqueness: each day is a unique topic/angle; no repeated templates or opening phrasing.
+
+HARD CONSTRAINTS:
+1) You MUST output exactly ${totalPostsRequired} posts.
+2) Every post MUST include topic_signature and angle.
+3) angle MUST be chosen from this list and MUST NOT repeat across posts:
+["beginner explainer","common mistake","myth vs reality","step-by-step process","checklist","do vs don’t","framework/mental model","case study/story","tools/resources","advanced nuance"].
+4) topic_signature rules: 3–6 words, lowercase, no punctuation, describes the core topic (not the angle), MUST be unique across all posts.
+5) Semantic uniqueness: no two posts may cover the same core topic even with different wording. Titles must be materially distinct and must not reuse the same head concept.
+6) Before returning JSON, perform a final internal uniqueness check across all posts (topic_signature + title + hook/caption core claim). If any overlap, replace the later post with a new distinct topic while keeping the same niche and quality.
 ${extraInstructions}${usedBlock}${avoidBlock ? `\n${avoidBlock}` : ''}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
 }
@@ -2832,76 +2855,6 @@ function buildPlanBlock(planItems = []) {
   return lines.join('\n');
 }
 
-function normalizeTopicKey(value = '') {
-  const raw = String(value || '').toLowerCase();
-  const stopwords = new Set([
-    'the','a','an','and','or','to','for','of','in','on','with','by','at','from','your','you',
-    'understanding','what','is','are','why','how','guide','tips','tip','mistakes','mistake','avoid',
-    'common','things','ways','best','top','step','steps','today','explained','basics','intro',
-  ]);
-  return raw
-    .replace(/[^a-z0-9\s]+/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token && !stopwords.has(token))
-    .slice(0, 6)
-    .join(' ')
-    .trim();
-}
-
-function getLegalTopicBank() {
-  return [
-    'comparative negligence rules','statute of limitations timing','insurance policy limits',
-    'liability vs damages explained','pain and suffering factors','medical records requests',
-    'gap in treatment impact','soft tissue injury proof','pre-existing conditions defense',
-    'property damage valuation','loss of wages documentation','future medical costs planning',
-    'diminished value claims','police report accuracy issues','witness statements strategy',
-    'surveillance footage preservation','uninsured motorist coverage','underinsured motorist claims',
-    'liens and subrogation basics','medpay vs health insurance','demand letter essentials',
-    'settlement release pitfalls','negotiation timeline expectations','case valuation myths',
-    'trial vs settlement tradeoffs','credibility and consistency','social media pitfalls',
-    'recorded statement risks','independent medical exams','expert witness roles',
-    'accident reconstruction value','causation and proximate cause','duty of care elements',
-    'breach and negligence proof','wrongful death basics','wrongful death damages',
-    'spoliation of evidence','seatbelt defense issues','minor claims process',
-    'commercial vehicle liability','rideshare accident coverage','premises liability notice',
-    'slip and fall elements','dog bite liability rules','product liability overview',
-    'defective product evidence','retaliation myths','bad faith insurance claims',
-    'punitive damages limits','comparative fault allocation','release language traps',
-    'medical billing errors','gap in care myths','pain journal value',
-    'future care plans','policy exclusions risks','stacking coverage rules',
-    'multiple claimant apportionment','settlement payment timing','mediation preparation',
-  ];
-}
-
-function buildTopicPlan({ nicheStyle, startDay, days, postsPerDay, userId }) {
-  const plan = [];
-  const totalPosts = Math.max(1, Number(days) || 1) * Math.max(1, Number(postsPerDay) || 1);
-  const topicKeys = new Set();
-  const anglePool = [
-    'myth vs reality','checklist','mistake to avoid','step-by-step','quick diagnosis',
-    'case study angle','before vs after','risk prevention','cost/benefit','timeline expectation',
-  ];
-  const isLegal = /lawyer|attorney|personal injury|injury lawyer|pi attorney/i.test(String(nicheStyle || ''));
-  const topicBank = isLegal ? getLegalTopicBank() : [];
-  let bankIndex = 0;
-  for (let i = 0; i < totalPosts; i += 1) {
-    const day = Number(startDay) + Math.floor(i / Math.max(1, Number(postsPerDay) || 1));
-    const slot = i % Math.max(1, Number(postsPerDay) || 1);
-    const pillar = getCalendarPillarForDay(day);
-    const angle = anglePool[i % anglePool.length];
-    let topic = topicBank[bankIndex % topicBank.length] || `${String(nicheStyle || 'Topic').trim()} insight ${i + 1}`;
-    bankIndex += 1;
-    let topicKey = normalizeTopicKey(topic);
-    if (topicKey && topicKeys.has(topicKey)) {
-      topic = `${topic} (${day})`;
-      topicKey = normalizeTopicKey(topic);
-    }
-    if (topicKey) topicKeys.add(topicKey);
-    const daySeed = stableHash(`${userId || 'anon'}|${nicheStyle || ''}|${day}|${slot}`).toString(36).slice(0, 6);
-    plan.push({ dayIndex: day, slot, pillar, topic, angle, daySeed });
-  }
-  return plan;
-}
 
 async function createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -4088,6 +4041,8 @@ function validatePostCompleteness(post = {}) {
   checkString(post.hook, 'hook');
   checkString(post.caption, 'caption');
   checkString(post.cta, 'cta');
+  checkString(post.topic_signature, 'topic_signature');
+  checkString(post.angle, 'angle');
   checkString(post.storyPrompt, 'storyPrompt');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
@@ -5418,20 +5373,12 @@ const server = http.createServer((req, res) => {
       enabled: Boolean(brandBrainDirective),
       isPro: isProUser,
     });
-    const planStart = Date.now();
-    const calendarPlan = buildTopicPlan({
-      nicheStyle,
-      startDay: Number.isFinite(Number(startDay)) ? Number(startDay) : 1,
-      days: Number.isFinite(Number(days)) ? Number(days) : 1,
-      postsPerDay: postsPerDay || 1,
-      userId,
-    });
-    if (!loggingContext.usedTopicKeys) loggingContext.usedTopicKeys = new Set();
+    const calendarPlan = null;
     console.log('[Calendar][Plan] plan status', {
       requestId: loggingContext?.requestId || 'unknown',
-      planUsed: true,
-      planMs: Date.now() - planStart,
-      planReason: 'topic_plan',
+      planUsed: false,
+      planMs: 0,
+      planReason: 'plan_skipped',
     });
     const callStart = Date.now();
     const logContext = {
@@ -5467,46 +5414,12 @@ const server = http.createServer((req, res) => {
     const chunkBaseTokens = 1600;
     const chunkMinTokens = 1000;
 
-    const getPlanItemsForRange = (rangeStart, rangeDays) => {
-      if (!calendarPlan) return null;
-      const start = Number(rangeStart);
-      const end = start + Number(rangeDays) - 1;
-      const items = calendarPlan
-        .filter((item) => item.dayIndex >= start && item.dayIndex <= end)
-        .sort((a, b) => a.dayIndex - b.dayIndex);
-      return items.length ? items : null;
-    };
-
-    const buildTopicPlanBlock = (planItems = [], usedKeys = []) => {
-      if (!Array.isArray(planItems) || !planItems.length) return '';
-      const lines = [
-        'TOPIC PLAN (DO NOT DEVIATE):',
-        ...planItems.map((item) => {
-          return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle} | Seed: ${item.daySeed}`;
-        }),
-        'You must produce exactly 1 post per listed day (or postsPerDay per day).',
-        'Each post must match its assigned topic + angle. Titles must be distinct and reflect the assigned topic.',
-        'Do not reuse any topic or near-duplicate it.',
-      ];
-      if (usedKeys.length) {
-        lines.push(`ALREADY USED: ${usedKeys.join(', ')}`);
-      }
-      return lines.join('\n');
-    };
+    const getPlanItemsForRange = () => null;
 
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planItems = getPlanItemsForRange(chunkStartDay, chunkDays);
-      const priorItems = calendarPlan
-        ? calendarPlan.filter((item) => item.dayIndex < chunkStartDay)
-        : [];
-      const usedFromPlan = priorItems.map((item) => normalizeTopicKey(item.topic)).filter(Boolean);
-      const usedFromContext = loggingContext?.usedTopicKeys
-        ? Array.from(loggingContext.usedTopicKeys)
-        : [];
-      const usedKeys = Array.from(new Set([...usedFromPlan, ...usedFromContext])).filter(Boolean);
-      const planBlock = buildTopicPlanBlock(planItems, usedKeys);
+      const planBlock = '';
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -5881,12 +5794,6 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
-    if (loggingContext?.usedTopicKeys) {
-      posts.forEach((post) => {
-        const key = normalizeTopicKey(post?.title || '');
-        if (key) loggingContext.usedTopicKeys.add(key);
-      });
-    }
     const normalizedMissing = [];
     posts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
