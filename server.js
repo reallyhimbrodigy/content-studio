@@ -2652,14 +2652,26 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
         'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
         'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
-        'TITLE VARIETY RULES:',
-        '- Titles must be meaningfully different in structure across the calendar.',
-        '- Do NOT reuse the same opening 1–3 words across posts.',
-        '- Do NOT use the same title stem more than once (examples: "Understanding", "How to", "Tips", "Guide", "What is", "Mistakes", "Secrets").',
-        '- Titles must still be descriptive and human-readable.',
-        'TOPIC UNIQUENESS RULE:',
-        '- Each post must have a distinct core angle; if two titles would look similar when skimmed, rewrite one.',
-        '- Avoid repeating the same core concept across days.',
+        'Brand Brain enhancements must not reduce calendar-wide diversity; uniqueness contract has priority.',
+        'CALENDAR-WIDE UNIQUENESS CONTRACT',
+        '- Before writing the posts, internally create a “diversity plan” of N distinct angles (N = number of posts requested).',
+        '- Each angle must be distinct by at least TWO of: (a) audience segment, (b) intent type, (c) content format style, (d) lifecycle stage, (e) context/situation, (f) mechanism/tool/process, (g) contrarian vs conventional.',
+        '- Assign exactly one post to each angle.',
+        '- Enforce pairwise dissimilarity across ALL posts:',
+        '  - For every pair of posts, ensure titles are clearly different in BOTH:',
+        '    (1) concept (what it’s about), AND',
+        '    (2) rhetorical frame (how it’s presented).',
+        '  - If two titles share the same rhetorical frame, rewrite one.',
+        '- Structural uniqueness rule (NO banned words, no templates):',
+        '  - Do not reuse the same “title opening pattern” across posts.',
+        '  - Treat “opening pattern” as the first 6–10 characters / first 2–3 words / and the grammatical form (e.g., gerund, question, imperative, listicle).',
+        '  - If any two titles would look patterned when skimmed as a list, rewrite until the list looks varied.',
+        '- Output must still comply with schema:',
+        '  - Titles must be descriptive and human-readable (keep existing minimum-length requirement so Brand Brain validation passes).',
+        'FINAL LIST REVIEW',
+        '- Internally review the full set of titles as a single list.',
+        '- If any two titles feel like the same structure or could be swapped without noticing, rewrite until each is distinct.',
+        '- Do not mention this review in the output.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2724,14 +2736,27 @@ Rules:
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
-TITLE VARIETY RULES:
-- Titles must be meaningfully different in structure across the calendar.
-- Do NOT reuse the same opening 1–3 words across posts.
-- Do NOT use the same title stem more than once (examples: "Understanding", "How to", "Tips", "Guide", "What is", "Mistakes", "Secrets").
-- Titles must still be descriptive and human-readable.
-TOPIC UNIQUENESS RULE:
-- Each post must have a distinct core angle; if two titles would look similar when skimmed, rewrite one.
-- Avoid repeating the same core concept across days.
+CALENDAR-WIDE UNIQUENESS CONTRACT
+- Before writing the posts, internally create a “diversity plan” of N distinct angles (N = number of posts requested).
+- Each angle must be distinct by at least TWO of:
+  (a) audience segment, (b) intent type, (c) content format style, (d) lifecycle stage, (e) context/situation, (f) mechanism/tool/process, (g) contrarian vs conventional.
+- Assign exactly one post to each angle.
+- Enforce pairwise dissimilarity across ALL posts:
+  - For every pair of posts, ensure titles are clearly different in BOTH:
+    (1) concept (what it’s about), AND
+    (2) rhetorical frame (how it’s presented).
+  - If two titles share the same rhetorical frame, rewrite one.
+- Structural uniqueness rule (NO banned words, no templates):
+  - Do not reuse the same “title opening pattern” across posts.
+  - Treat “opening pattern” as the first 6–10 characters / first 2–3 words / and the grammatical form (e.g., gerund, question, imperative, listicle).
+  - If any two titles would look patterned when skimmed as a list, rewrite until the list looks varied.
+- Output must still comply with schema:
+  - Titles must be descriptive and human-readable (keep existing minimum-length requirement so Brand Brain validation passes).
+
+FINAL LIST REVIEW
+- Internally review the full set of titles as a single list.
+- If any two titles feel like the same structure or could be swapped without noticing, rewrite until each is distinct.
+- Do not mention this review in the output.
 
 HARD CONSTRAINTS:
 1) You MUST output exactly ${totalPostsRequired} posts.
