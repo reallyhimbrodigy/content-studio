@@ -2652,6 +2652,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
         'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
         'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
+        'TITLE VARIETY RULES:',
+        '- Titles must be meaningfully different in structure across the calendar.',
+        '- Do NOT reuse the same opening 1–3 words across posts.',
+        '- Do NOT use the same title stem more than once (examples: "Understanding", "How to", "Tips", "Guide", "What is", "Mistakes", "Secrets").',
+        '- Titles must still be descriptive and human-readable.',
+        'TOPIC UNIQUENESS RULE:',
+        '- Each post must have a distinct core angle; if two titles would look similar when skimmed, rewrite one.',
+        '- Avoid repeating the same core concept across days.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2716,13 +2724,14 @@ Rules:
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
-- Uniqueness: each day is a unique topic/angle; no repeated templates or opening phrasing.
-
-UNIQUE TOPICS/TITLES RULES:
-- All titles must be unique and represent different topics (rephrases count as duplicates).
-- Do not reuse the same first 2 words across any titles in this response.
-- Do not start more than one title with the same first word.
-- Each post must cover a different subtopic category within the niche.
+TITLE VARIETY RULES:
+- Titles must be meaningfully different in structure across the calendar.
+- Do NOT reuse the same opening 1–3 words across posts.
+- Do NOT use the same title stem more than once (examples: "Understanding", "How to", "Tips", "Guide", "What is", "Mistakes", "Secrets").
+- Titles must still be descriptive and human-readable.
+TOPIC UNIQUENESS RULE:
+- Each post must have a distinct core angle; if two titles would look similar when skimmed, rewrite one.
+- Avoid repeating the same core concept across days.
 
 HARD CONSTRAINTS:
 1) You MUST output exactly ${totalPostsRequired} posts.
