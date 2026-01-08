@@ -2670,27 +2670,29 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
         'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
         'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
-        'Brand Brain enhancements must not reduce calendar-wide diversity; uniqueness contract has priority.',
         'Brand Brain enhancements must be applied while staying within YOUR ASSIGNMENT and must not drift into other plan angles.',
-        'CALENDAR-WIDE UNIQUENESS CONTRACT',
-        '- Before writing the posts, internally create a “diversity plan” of N distinct angles (N = number of posts requested).',
-        '- Each angle must be distinct by at least TWO of: (a) audience segment, (b) intent type, (c) content format style, (d) lifecycle stage, (e) context/situation, (f) mechanism/tool/process, (g) contrarian vs conventional.',
-        '- Assign exactly one post to each angle.',
-        '- Enforce pairwise dissimilarity across ALL posts:',
-        '  - For every pair of posts, ensure titles are clearly different in BOTH:',
-        '    (1) concept (what it’s about), AND',
-        '    (2) rhetorical frame (how it’s presented).',
-        '  - If two titles share the same rhetorical frame, rewrite one.',
-        '- Structural uniqueness rule (NO banned words, no templates):',
-        '  - Do not reuse the same “title opening pattern” across posts.',
-        '  - Treat “opening pattern” as the first 6–10 characters / first 2–3 words / and the grammatical form (e.g., gerund, question, imperative, listicle).',
-        '  - If any two titles would look patterned when skimmed as a list, rewrite until the list looks varied.',
-        '- Output must still comply with schema:',
-        '  - Titles must be descriptive and human-readable (keep existing minimum-length requirement so Brand Brain validation passes).',
-        'FINAL LIST REVIEW',
-        '- Internally review the full set of titles as a single list.',
-        '- If any two titles feel like the same structure or could be swapped without noticing, rewrite until each is distinct.',
-        '- Do not mention this review in the output.',
+        'Brand Brain enhancements must be applied without violating the CALENDAR UNIQUENESS AUDIT.',
+        'CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)',
+        'You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:',
+        '',
+        'A) Exact-duplicate rule:',
+        '- No two titles may be identical after trimming spaces and lowercasing.',
+        '',
+        'B) Near-duplicate rule:',
+        '- No two titles may share the same first 6 words.',
+        '- No two titles may share the same first 18 characters (after lowercasing).',
+        '',
+        'C) Opening-token diversity rule:',
+        '- The first word of every title must be unique across the calendar.',
+        '',
+        'D) Concept uniqueness rule:',
+        '- No two titles may describe the same core topic/idea. If two could be swapped without changing meaning, rewrite one to a clearly different angle.',
+        '',
+        'E) Final list skim test:',
+        '- When the titles are read as a list, they must not look patterned. If they do, rewrite the patterned items.',
+        '',
+        'You must not output until the audit passes.',
+        'Do not mention this audit in the output. Only output the JSON posts.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -2755,27 +2757,27 @@ Rules:
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
-CALENDAR-WIDE UNIQUENESS CONTRACT
-- Before writing the posts, internally create a “diversity plan” of N distinct angles (N = number of posts requested).
-- Each angle must be distinct by at least TWO of:
-  (a) audience segment, (b) intent type, (c) content format style, (d) lifecycle stage, (e) context/situation, (f) mechanism/tool/process, (g) contrarian vs conventional.
-- Assign exactly one post to each angle.
-- Enforce pairwise dissimilarity across ALL posts:
-  - For every pair of posts, ensure titles are clearly different in BOTH:
-    (1) concept (what it’s about), AND
-    (2) rhetorical frame (how it’s presented).
-  - If two titles share the same rhetorical frame, rewrite one.
-- Structural uniqueness rule (NO banned words, no templates):
-  - Do not reuse the same “title opening pattern” across posts.
-  - Treat “opening pattern” as the first 6–10 characters / first 2–3 words / and the grammatical form (e.g., gerund, question, imperative, listicle).
-  - If any two titles would look patterned when skimmed as a list, rewrite until the list looks varied.
-- Output must still comply with schema:
-  - Titles must be descriptive and human-readable (keep existing minimum-length requirement so Brand Brain validation passes).
+CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)
+You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:
 
-FINAL LIST REVIEW
-- Internally review the full set of titles as a single list.
-- If any two titles feel like the same structure or could be swapped without noticing, rewrite until each is distinct.
-- Do not mention this review in the output.
+A) Exact-duplicate rule:
+- No two titles may be identical after trimming spaces and lowercasing.
+
+B) Near-duplicate rule:
+- No two titles may share the same first 6 words.
+- No two titles may share the same first 18 characters (after lowercasing).
+
+C) Opening-token diversity rule:
+- The first word of every title must be unique across the calendar.
+
+D) Concept uniqueness rule:
+- No two titles may describe the same core topic/idea. If two could be swapped without changing meaning, rewrite one to a clearly different angle.
+
+E) Final list skim test:
+- When the titles are read as a list, they must not look patterned. If they do, rewrite the patterned items.
+
+You must not output until the audit passes.
+Do not mention this audit in the output. Only output the JSON posts.
 
 HARD CONSTRAINTS:
 1) You MUST output exactly ${totalPostsRequired} posts.
