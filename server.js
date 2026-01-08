@@ -5459,7 +5459,11 @@ const server = http.createServer((req, res) => {
           remaining -= chunkPostsPerDay;
         }
       }
-      const chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      const chunkCount = chunkPlan.length;
+      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
+        chunkConcurrency = 6;
+      }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -5483,6 +5487,7 @@ const server = http.createServer((req, res) => {
           rawLength: chunkResult.rawLength,
           duration: chunkResult.latency,
           timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+          chunkConcurrency,
         });
       }
       expectedCount = targetCount;
@@ -5501,7 +5506,11 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       }
-      const chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      const chunkCount = chunkPlan.length;
+      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
+        chunkConcurrency = 6;
+      }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -5519,6 +5528,7 @@ const server = http.createServer((req, res) => {
           rawLength: chunkResult.rawLength,
           duration: chunkResult.latency,
           timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
+          chunkConcurrency,
         });
       }
       expectedCount = processedDays ? (processedDays * perDay) : null;
@@ -5529,6 +5539,7 @@ const server = http.createServer((req, res) => {
       startDay,
       days,
       postsPerDay,
+      chunkConcurrency: chunkMetrics.length ? (chunkMetrics[0].chunkConcurrency || null) : null,
       chunkCount: chunkMetrics.length,
       timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
       chunkDetails: chunkMetrics,
