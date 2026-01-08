@@ -2081,7 +2081,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 
 const OPENAI_MAX_CONCURRENCY = (() => {
   const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 4;
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 8;
 })();
 const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
@@ -5354,7 +5354,8 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const chunkLimit = perDay === 1 ? 2 : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
+    const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
+    const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
     const blockFallbacks = forceSinglePostPerDayForModel;
     const maxPostsPerChunk = 2;
@@ -5406,6 +5407,15 @@ const server = http.createServer((req, res) => {
         extraInstructions: planBlock || '',
         planUsed: Boolean(planItems),
       });
+      console.log('[Calendar][Server][Perf] callOpenAI end', {
+        requestId: chunkContext?.requestId || 'unknown',
+        chunkIndex,
+        startDay: chunkStartDay,
+        days: chunkDays,
+        openMs: result.latency || 0,
+        rawLength: String(result.rawContent || '').length,
+        postCount: Array.isArray(result.posts) ? result.posts.length : 0,
+      });
       return {
         posts: Array.isArray(result.posts) ? result.posts : [],
         rawLength: String(result.rawContent || '').length,
@@ -5430,9 +5440,10 @@ const server = http.createServer((req, res) => {
           remaining -= chunkPostsPerDay;
         }
       }
+      const chunkConcurrency = daysToGenerate >= 10 ? 8 : 4;
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        4,
+        chunkConcurrency,
         (plan) =>
           fetchChunk(
             plan.chunkDays,
@@ -5471,9 +5482,10 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       }
+      const chunkConcurrency = daysToGenerate >= 10 ? 8 : 4;
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        4,
+        chunkConcurrency,
         (plan) => fetchChunk(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
       );
       for (let i = 0; i < chunkPlan.length; i += 1) {
