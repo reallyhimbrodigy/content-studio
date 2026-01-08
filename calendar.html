@@ -774,6 +774,57 @@
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
+  <style>
+    @media (max-width: 768px) {
+      .page-calendar #profile-menu {
+        left: auto;
+        right: 0;
+        transform: none;
+        padding: 12px 16px;
+        width: min(92vw, 320px);
+        max-width: calc(100vw - 24px);
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .page-calendar #profile-menu * {
+        box-sizing: border-box;
+      }
+
+      .page-calendar #profile-dropdown {
+        width: 100%;
+      }
+
+      .page-calendar #profile-dropdown button,
+      .page-calendar #profile-dropdown a {
+        display: block;
+        width: 100%;
+      }
+
+      .page-calendar .calendar-card__caption {
+        width: 100%;
+        min-width: 0;
+        writing-mode: horizontal-tb;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+        letter-spacing: normal;
+        line-height: 1.5;
+      }
+
+      .page-calendar .calendar-card__caption-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+      }
+
+      .page-calendar .caption-copy-btn,
+      .page-calendar .detail-copy-btn {
+        margin-left: auto;
+        flex: 0 0 auto;
+      }
+    }
+  </style>
     <script type="module" src="./script.js?t=1764000000"></script>
   <script type="module" src="./footer.js?t=1763412925"></script>
   <script src="/sw-register.js" defer></script>
