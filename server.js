@@ -2081,7 +2081,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 
 const OPENAI_MAX_CONCURRENCY = (() => {
   const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 8;
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 10;
 })();
 const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
@@ -2119,6 +2119,8 @@ async function withOpenAiSlot(fn) {
 
 const regenQueue = [];
 let regenInFlight = 0;
+const HOT100_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const hot100Cache = new Map();
 async function acquireRegenSlot(requestId) {
   if (regenInFlight >= REGEN_MAX_CONCURRENT) {
     console.log('[Calendar][Regen] queued', { requestId, inFlight: regenInFlight });
@@ -2175,6 +2177,17 @@ async function mapWithConcurrency(items, limit, fn) {
   });
   await Promise.all(workers);
   return results;
+}
+
+async function getCachedHot100(options = {}) {
+  const key = 'nonholiday_hot100';
+  const cached = hot100Cache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < HOT100_CACHE_TTL_MS) {
+    return cached.value;
+  }
+  const fresh = await getNonHolidayHot100(options);
+  hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
+  return fresh;
 }
 
 function openAIRequest(options, payload) {
@@ -4500,7 +4513,7 @@ function extractFirstJsonObject(text = '') {
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-  const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
+    const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
       ? Number(opts.maxTokens)
@@ -4659,6 +4672,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
 
   try {
     const firstResponse = await attemptRequest('', true);
+    const parseStart = Date.now();
     const rawText = firstResponse.content || '';
     const extracted = extractFirstJsonObject(rawText);
     const jsonText = extracted || rawText.trim();
@@ -4678,6 +4692,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       });
       throw parseErr;
     }
+    const parseMs = Date.now() - parseStart;
     const posts = parsed && Array.isArray(parsed.posts) ? parsed.posts : null;
     const dayValues = posts ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day)) : [];
     const minDay = dayValues.length ? Math.min(...dayValues) : null;
@@ -4718,6 +4733,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       posts,
       rawContent: rawText,
       latency: firstResponse.latency,
+      parseMs,
     };
   } catch (err) {
     if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
@@ -5393,6 +5409,7 @@ const server = http.createServer((req, res) => {
         startDay: chunkStartDay,
         days: chunkDays,
         postsPerDay: chunkPostsPerDay,
+        expectedPosts: chunkDays * chunkPostsPerDay,
       });
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
@@ -5413,6 +5430,7 @@ const server = http.createServer((req, res) => {
         startDay: chunkStartDay,
         days: chunkDays,
         openMs: result.latency || 0,
+        parseMs: result.parseMs || 0,
         rawLength: String(result.rawContent || '').length,
         postCount: Array.isArray(result.posts) ? result.posts.length : 0,
       });
@@ -5424,6 +5442,7 @@ const server = http.createServer((req, res) => {
       };
     }
 
+    const openAiWallStart = Date.now();
     if (usePostChunks) {
       const chunkPlan = [];
       for (let dayOffset = 0; dayOffset < daysToGenerate; dayOffset += 1) {
@@ -5440,7 +5459,7 @@ const server = http.createServer((req, res) => {
           remaining -= chunkPostsPerDay;
         }
       }
-      const chunkConcurrency = daysToGenerate >= 10 ? 8 : 4;
+      const chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -5482,7 +5501,7 @@ const server = http.createServer((req, res) => {
         remainingDays -= chunkDays;
         processedDays += chunkDays;
       }
-      const chunkConcurrency = daysToGenerate >= 10 ? 8 : 4;
+      const chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -5504,6 +5523,7 @@ const server = http.createServer((req, res) => {
       }
       expectedCount = processedDays ? (processedDays * perDay) : null;
     }
+    const openAiWallEnd = Date.now();
     console.log('[Calendar][Server][Chunks]', {
       requestId: logContext.requestId,
       startDay,
@@ -5859,7 +5879,7 @@ const server = http.createServer((req, res) => {
       chartDateUsed,
       source: audioSource,
       filteredOut,
-    } = await getNonHolidayHot100({
+    } = await getCachedHot100({
       requestId: loggingContext?.requestId,
       minCount: 20,
     });
@@ -5892,6 +5912,10 @@ const server = http.createServer((req, res) => {
       }))
       .filter((entry) => entry.audio);
     const postProcessingMs = Date.now() - validationStart;
+    const openAiTotalMs = chunkMetrics.reduce((sum, chunk) => sum + (chunk.duration || 0), 0);
+    const openAiWallMs = openAiWallEnd - openAiWallStart;
+    const preMs = openAiWallStart - tStart;
+    const postMs = Date.now() - openAiWallEnd;
     console.log('[Calendar][Server][Perf] callOpenAI timings', {
       openMs: openDuration,
       latencyMs: openAiLatency,
@@ -5899,6 +5923,10 @@ const server = http.createServer((req, res) => {
       postCount: posts.length,
       rawLength,
       context: loggingContext,
+      preMs,
+      openaiTotalMs: openAiTotalMs,
+      openaiWallMs: openAiWallMs,
+      postMs,
     });
     console.log('[Calendar] audio summary', {
       requestId: loggingContext?.requestId,
