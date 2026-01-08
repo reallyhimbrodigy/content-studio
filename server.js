@@ -2081,7 +2081,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 
 const OPENAI_MAX_CONCURRENCY = (() => {
   const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 2;
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 4;
 })();
 const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
@@ -5339,13 +5339,6 @@ const server = http.createServer((req, res) => {
       planReason: 'plan_skipped',
     });
     const callStart = Date.now();
-    console.log('[Calendar][Server][Perf] callOpenAI start', {
-      nicheStyle,
-      days,
-      startDay,
-      postsPerDay,
-      context: loggingContext,
-    });
     const logContext = {
       requestId: loggingContext?.requestId || 'unknown',
       days,
@@ -5393,6 +5386,13 @@ const server = http.createServer((req, res) => {
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
       const planItems = getPlanItemsForRange(chunkStartDay, chunkDays);
       const planBlock = buildPlanBlock(planItems);
+      console.log('[Calendar][Server][Perf] callOpenAI start', {
+        requestId: chunkContext?.requestId || 'unknown',
+        chunkIndex,
+        startDay: chunkStartDay,
+        days: chunkDays,
+        postsPerDay: chunkPostsPerDay,
+      });
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: chunkDays,
         startDay: chunkStartDay,
@@ -5432,7 +5432,7 @@ const server = http.createServer((req, res) => {
       }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        3,
+        4,
         (plan) =>
           fetchChunk(
             plan.chunkDays,
@@ -5473,7 +5473,7 @@ const server = http.createServer((req, res) => {
       }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
-        3,
+        4,
         (plan) => fetchChunk(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
       );
       for (let i = 0; i < chunkPlan.length; i += 1) {
