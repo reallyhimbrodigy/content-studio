@@ -2581,7 +2581,7 @@ function buildBrandBrainDirective(settings = {}) {
     'Use a strong 0–3s hook, a mid re-hook at ~5–7s, and a loopable ending that re-opens the hook.',
     'Use conversion-forward language while staying compliant and specific; avoid vague claims.',
     'Category overlays:',
-    '- Educational: teach a specific mechanism, use common-mistake framing, and bias toward saves/shares.',
+    '- Educational: focus on a specific mechanism, use common-mistake framing, and bias toward saves/shares.',
     '- Inspirational: motivate with identity/status tension and a concrete next step, not vague platitudes.',
     '- Promotional/offer: handle one objection, add risk reversal, and clarify the next step with ethical urgency.',
     '- Entertaining: use pattern interrupts or contrarian twists while still delivering a niche-specific takeaway.',
@@ -2607,6 +2607,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
         '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
+        'TITLE QUALITY BAR',
+        '- Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.',
         '- All required fields must be present and non-empty.',
         'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
         'Output JSON only: { "posts": [ ... ] }.',
@@ -2674,6 +2676,8 @@ Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - Title must be present, human-readable, and non-empty.
+TITLE QUALITY BAR
+- Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
