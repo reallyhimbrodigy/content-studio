@@ -2648,6 +2648,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         '- Title must be a full descriptive content idea (not a keyword).',
         '- Title must be at least 6 words.',
         '- Never output titles like "CAN", "KEY", or 1–3 character strings.',
+        'TITLE STRUCTURAL DIVERSITY REQUIREMENT',
+        '- Titles must vary in grammatical structure across the calendar.',
+        '- Do not default to a single rhetorical role (e.g. explanation, definition, navigation).',
+        '- Across the full list, titles should naturally include a mix of:',
+        '  - statements',
+        '  - implications',
+        '  - outcomes',
+        '  - questions',
+        '  - contrasts',
+        '  - scenarios',
+        '  - consequences',
+        '- Choose the structure that best fits the idea, not a single repeated pattern.',
+        '- Review the full list of titles before output and rewrite any that share the same grammatical opening.',
+        'You must not output the calendar until the title list shows clear structural variety when skimmed.',
         '- All required fields must be present and non-empty.',
         'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
         'Output JSON only: { "posts": [ ... ] }.',
@@ -2672,6 +2686,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'Quality gates: no one-word title/body; never repeat title as body; no empty fields.',
         'Brand Brain enhancements must be applied while staying within YOUR ASSIGNMENT and must not drift into other plan angles.',
         'Brand Brain enhancements must be applied without violating the CALENDAR UNIQUENESS AUDIT.',
+        'Brand Brain persuasion and algorithm optimization must be applied without reducing title structural diversity.',
         'CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)',
         'You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:',
         '',
@@ -2757,6 +2772,20 @@ Rules:
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
+TITLE STRUCTURAL DIVERSITY REQUIREMENT
+- Titles must vary in grammatical structure across the calendar.
+- Do not default to a single rhetorical role (e.g. explanation, definition, navigation).
+- Across the full list, titles should naturally include a mix of:
+  - statements
+  - implications
+  - outcomes
+  - questions
+  - contrasts
+  - scenarios
+  - consequences
+- Choose the structure that best fits the idea, not a single repeated pattern.
+- Review the full list of titles before output and rewrite any that share the same grammatical opening.
+You must not output the calendar until the title list shows clear structural variety when skimmed.
 CALENDAR UNIQUENESS AUDIT (MUST PASS BEFORE FINAL OUTPUT)
 You are generating a list of titles for N posts. Before outputting JSON, internally run this audit and rewrite until all checks pass:
 
