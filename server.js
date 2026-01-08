@@ -2832,6 +2832,77 @@ function buildPlanBlock(planItems = []) {
   return lines.join('\n');
 }
 
+function normalizeTopicKey(value = '') {
+  const raw = String(value || '').toLowerCase();
+  const stopwords = new Set([
+    'the','a','an','and','or','to','for','of','in','on','with','by','at','from','your','you',
+    'understanding','what','is','are','why','how','guide','tips','tip','mistakes','mistake','avoid',
+    'common','things','ways','best','top','step','steps','today','explained','basics','intro',
+  ]);
+  return raw
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token && !stopwords.has(token))
+    .slice(0, 6)
+    .join(' ')
+    .trim();
+}
+
+function getLegalTopicBank() {
+  return [
+    'comparative negligence rules','statute of limitations timing','insurance policy limits',
+    'liability vs damages explained','pain and suffering factors','medical records requests',
+    'gap in treatment impact','soft tissue injury proof','pre-existing conditions defense',
+    'property damage valuation','loss of wages documentation','future medical costs planning',
+    'diminished value claims','police report accuracy issues','witness statements strategy',
+    'surveillance footage preservation','uninsured motorist coverage','underinsured motorist claims',
+    'liens and subrogation basics','medpay vs health insurance','demand letter essentials',
+    'settlement release pitfalls','negotiation timeline expectations','case valuation myths',
+    'trial vs settlement tradeoffs','credibility and consistency','social media pitfalls',
+    'recorded statement risks','independent medical exams','expert witness roles',
+    'accident reconstruction value','causation and proximate cause','duty of care elements',
+    'breach and negligence proof','wrongful death basics','wrongful death damages',
+    'spoliation of evidence','seatbelt defense issues','minor claims process',
+    'commercial vehicle liability','rideshare accident coverage','premises liability notice',
+    'slip and fall elements','dog bite liability rules','product liability overview',
+    'defective product evidence','retaliation myths','bad faith insurance claims',
+    'punitive damages limits','comparative fault allocation','release language traps',
+    'medical billing errors','gap in care myths','pain journal value',
+    'future care plans','policy exclusions risks','stacking coverage rules',
+    'multiple claimant apportionment','settlement payment timing','mediation preparation',
+  ];
+}
+
+function buildTopicPlan({ nicheStyle, startDay, days, postsPerDay, userId }) {
+  const plan = [];
+  const totalPosts = Math.max(1, Number(days) || 1) * Math.max(1, Number(postsPerDay) || 1);
+  const topicKeys = new Set();
+  const anglePool = [
+    'myth vs reality','checklist','mistake to avoid','step-by-step','quick diagnosis',
+    'case study angle','before vs after','risk prevention','cost/benefit','timeline expectation',
+  ];
+  const isLegal = /lawyer|attorney|personal injury|injury lawyer|pi attorney/i.test(String(nicheStyle || ''));
+  const topicBank = isLegal ? getLegalTopicBank() : [];
+  let bankIndex = 0;
+  for (let i = 0; i < totalPosts; i += 1) {
+    const day = Number(startDay) + Math.floor(i / Math.max(1, Number(postsPerDay) || 1));
+    const slot = i % Math.max(1, Number(postsPerDay) || 1);
+    const pillar = getCalendarPillarForDay(day);
+    const angle = anglePool[i % anglePool.length];
+    let topic = topicBank[bankIndex % topicBank.length] || `${String(nicheStyle || 'Topic').trim()} insight ${i + 1}`;
+    bankIndex += 1;
+    let topicKey = normalizeTopicKey(topic);
+    if (topicKey && topicKeys.has(topicKey)) {
+      topic = `${topic} (${day})`;
+      topicKey = normalizeTopicKey(topic);
+    }
+    if (topicKey) topicKeys.add(topicKey);
+    const daySeed = stableHash(`${userId || 'anon'}|${nicheStyle || ''}|${day}|${slot}`).toString(36).slice(0, 6);
+    plan.push({ dayIndex: day, slot, pillar, topic, angle, daySeed });
+  }
+  return plan;
+}
+
 async function createCalendarPlan({ nicheStyle, brandContext, totalDays, loggingContext }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
@@ -5347,12 +5418,20 @@ const server = http.createServer((req, res) => {
       enabled: Boolean(brandBrainDirective),
       isPro: isProUser,
     });
-    const calendarPlan = null;
+    const planStart = Date.now();
+    const calendarPlan = buildTopicPlan({
+      nicheStyle,
+      startDay: Number.isFinite(Number(startDay)) ? Number(startDay) : 1,
+      days: Number.isFinite(Number(days)) ? Number(days) : 1,
+      postsPerDay: postsPerDay || 1,
+      userId,
+    });
+    if (!loggingContext.usedTopicKeys) loggingContext.usedTopicKeys = new Set();
     console.log('[Calendar][Plan] plan status', {
       requestId: loggingContext?.requestId || 'unknown',
-      planUsed: false,
-      planMs: 0,
-      planReason: 'plan_skipped',
+      planUsed: true,
+      planMs: Date.now() - planStart,
+      planReason: 'topic_plan',
     });
     const callStart = Date.now();
     const logContext = {
@@ -5398,11 +5477,36 @@ const server = http.createServer((req, res) => {
       return items.length ? items : null;
     };
 
+    const buildTopicPlanBlock = (planItems = [], usedKeys = []) => {
+      if (!Array.isArray(planItems) || !planItems.length) return '';
+      const lines = [
+        'TOPIC PLAN (DO NOT DEVIATE):',
+        ...planItems.map((item) => {
+          return `Day ${item.dayIndex} | Pillar: ${item.pillar} | Topic: ${item.topic} | Angle: ${item.angle} | Seed: ${item.daySeed}`;
+        }),
+        'You must produce exactly 1 post per listed day (or postsPerDay per day).',
+        'Each post must match its assigned topic + angle. Titles must be distinct and reflect the assigned topic.',
+        'Do not reuse any topic or near-duplicate it.',
+      ];
+      if (usedKeys.length) {
+        lines.push(`ALREADY USED: ${usedKeys.join(', ')}`);
+      }
+      return lines.join('\n');
+    };
+
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
       const planItems = getPlanItemsForRange(chunkStartDay, chunkDays);
-      const planBlock = buildPlanBlock(planItems);
+      const priorItems = calendarPlan
+        ? calendarPlan.filter((item) => item.dayIndex < chunkStartDay)
+        : [];
+      const usedFromPlan = priorItems.map((item) => normalizeTopicKey(item.topic)).filter(Boolean);
+      const usedFromContext = loggingContext?.usedTopicKeys
+        ? Array.from(loggingContext.usedTopicKeys)
+        : [];
+      const usedKeys = Array.from(new Set([...usedFromPlan, ...usedFromContext])).filter(Boolean);
+      const planBlock = buildTopicPlanBlock(planItems, usedKeys);
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -5777,6 +5881,12 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    if (loggingContext?.usedTopicKeys) {
+      posts.forEach((post) => {
+        const key = normalizeTopicKey(post?.title || '');
+        if (key) loggingContext.usedTopicKeys.add(key);
+      });
+    }
     const normalizedMissing = [];
     posts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
