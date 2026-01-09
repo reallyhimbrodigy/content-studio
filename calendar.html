@@ -1055,6 +1055,9 @@
 
       const obs = new MutationObserver(syncLock);
       obs.observe(root, { attributes: true, attributeFilter: ['style', 'class', 'aria-hidden'] });
+      if (window.matchMedia('(max-width: 640px)').matches && isVisible(root)) {
+        root.style.display = 'none';
+      }
       syncLock();
 
       if (closeBtn) {

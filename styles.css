@@ -5880,6 +5880,10 @@ body.prefers-reduced-motion *::after {
   z-index: 10000;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .modal-overlay .modal {
   width: min(560px, 90vw);
   background: var(--surface);
@@ -5897,34 +5901,27 @@ body.prefers-reduced-motion *::after {
 }
 
 #account-modal .modal {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: min(760px, calc(100vw - 32px));
+  position: relative;
+  width: min(720px, 92vw);
   max-width: 92vw;
   height: auto;
   max-height: calc(100vh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  padding: 32px;
-  gap: 24px;
+  padding: 28px;
+  gap: 20px;
   border-radius: 18px;
   background: var(--surface);
   box-sizing: border-box;
-  overflow: visible;
-  z-index: 11000;
+  overflow: hidden;
 }
 
-.account-settings-modal,
-.profile-accessibility-modal,
-.modal-content.account-settings,
-.modal-content.profile-accessibility {
-  width: min(960px, 92vw) !important;
-  max-width: 92vw !important;
-  height: auto !important;
-  max-height: 88vh !important;
-  padding: 28px 28px 22px !important;
-  border-radius: 18px !important;
+.account-settings-modal .modal,
+.profile-accessibility-modal .modal {
+  width: min(900px, 92vw);
+  max-width: 92vw;
+  height: auto;
+  max-height: 88vh;
+  padding: 28px 28px 22px;
+  border-radius: 18px;
 }
 
 .account-settings-modal *,
@@ -5966,16 +5963,16 @@ body.prefers-reduced-motion *::after {
   position: relative;
   margin: 0;
   transform: none;
-  width: min(900px, 92vw);
+  width: min(720px, 92vw);
   max-width: 92vw;
   height: auto;
-  max-height: none;
-  overflow: visible;
-  padding: 32px 36px;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  padding: 28px 28px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  border-radius: 20px;
+  gap: 20px;
+  border-radius: 18px;
   box-sizing: border-box;
 }
 
