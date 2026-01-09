@@ -2688,6 +2688,63 @@ function buildCalendarSchemaBlock(expectedCount) {
   return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
+const TITLE_SIGNATURE_STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'is', 'it', 'its',
+  'of', 'on', 'or', 'our', 'that', 'the', 'their', 'these', 'this', 'those', 'to', 'with', 'you', 'your',
+]);
+
+function normalizeTitleText(value = '') {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTitleSignature(value = '') {
+  const tokens = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => !TITLE_SIGNATURE_STOPWORDS.has(token));
+  return tokens.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function getTitleFirstWords(value = '', count = 4) {
+  return normalizeTitleText(value).split(/\s+/).slice(0, count).join(' ').trim();
+}
+
+function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1) {
+  const slots = [];
+  const perDay = Math.max(1, Number(postsPerDay) || 1);
+  for (let i = 0; i < totalPosts; i += 1) {
+    const day = startDay + Math.floor(i / perDay);
+    const postIndex = i % perDay;
+    slots.push({
+      slot: i + 1,
+      day,
+      postIndex,
+      pillar: getCalendarPillarForDay(day),
+    });
+  }
+  return slots;
+}
+
+function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } = {}) {
+  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
+  const dayEnd = dayStart + Math.max(1, Number(chunkDays) || 1) - 1;
+  const assigned = Array.isArray(topics)
+    ? topics.filter((item) => item.day >= dayStart && item.day <= dayEnd)
+    : [];
+  if (!assigned.length) return '';
+  const lines = [
+    'ASSIGNED TOPIC PLAN (read-only):',
+    ...assigned.map((item) =>
+      `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
+    ),
+    'Use the provided title exactly. Write the post to match the assigned angle and pillar. Do not invent a different topic or title.',
+    'This post MUST be in the assigned pillar.',
+  ];
+  return lines.join('\n');
+}
+
 function sanitizeJsonContent(content = '') {
   if (typeof content !== 'string') return '';
   const firstBrace = content.indexOf('{');
@@ -4282,6 +4339,168 @@ function extractFirstJsonObject(text = '') {
   return null;
 }
 
+async function generateTopicPlan({
+  nicheStyle,
+  brandContext,
+  totalPosts,
+  startDay,
+  postsPerDay,
+  days,
+  loggingContext,
+  brandBrainDirective,
+}) {
+  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
+  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay);
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['topics'],
+    properties: {
+      topics: {
+        type: 'array',
+        minItems: totalPosts,
+        maxItems: totalPosts,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['slot', 'day', 'postIndex', 'title', 'angle', 'pillar'],
+          properties: {
+            slot: { type: 'integer', minimum: 1, maximum: totalPosts },
+            day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Number(days) || 1) - 1 },
+            postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, Number(postsPerDay) - 1) },
+            title: { type: 'string', minLength: 4 },
+            angle: { type: 'string', minLength: 8 },
+            pillar: { type: 'string', enum: CALENDAR_PILLARS },
+          },
+        },
+      },
+    },
+  };
+  const slotLines = assignedSlots.map(
+    (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex} | pillar: ${slot.pillar}`
+  );
+  const prompt = [
+    `You are a content calendar topic planner${cleanNiche}.`,
+    brandBlock.trim(),
+    requestId.trim(),
+    brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
+    'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
+    `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
+    'Each item must include: slot, day, postIndex, title, angle, pillar.',
+    'Angle must be 8–18 words.',
+    'Use the assigned pillar for each slot exactly as provided.',
+    'Make titles original editorial headlines; do not reuse phrasing across titles.',
+    'Assigned slots:',
+    ...slotLines,
+  ].filter(Boolean).join('\n');
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.2,
+    max_tokens: 900,
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'calendar_topic_plan', strict: true, schema },
+    },
+  });
+  const options = {
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+  };
+  const extractContentText = (json) => {
+    const messageContent = json?.choices?.[0]?.message?.content;
+    if (!messageContent) return '';
+    if (typeof messageContent === 'string') return messageContent;
+    if (Array.isArray(messageContent)) {
+      return messageContent
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.value === 'string') return item.value;
+          if (typeof item?.content === 'string') return item.content;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+    }
+    if (typeof messageContent?.text === 'string') return messageContent.text;
+    if (typeof messageContent?.value === 'string') return messageContent.value;
+    return '';
+  };
+  const json = await openAIRequest(options, payload);
+  const content = extractContentText(json);
+  let parsed = null;
+  try {
+    parsed = content ? JSON.parse(content) : null;
+  } catch {
+    parsed = null;
+  }
+  const topics = Array.isArray(parsed?.topics) ? parsed.topics : null;
+  if (!topics) {
+    const err = new Error('Topic plan parse failed');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 422;
+    err.details = { reason: 'missing_topics' };
+    throw err;
+  }
+  if (topics.length !== totalPosts) {
+    const err = new Error('Topic plan count mismatch');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 422;
+    err.details = { expectedCount: totalPosts, actualCount: topics.length };
+    throw err;
+  }
+  const titleSet = new Set();
+  const signatureSet = new Set();
+  const firstWordSet = new Set();
+  for (const topic of topics) {
+    const title = String(topic?.title || '').trim();
+    if (!title) {
+      const err = new Error('Topic plan missing title');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 422;
+      err.details = { reason: 'empty_title' };
+      throw err;
+    }
+    const normalizedTitle = normalizeTitleText(title);
+    const signature = normalizeTitleSignature(title);
+    const firstWords = getTitleFirstWords(title, 4);
+    if (titleSet.has(normalizedTitle)) {
+      const err = new Error('Topic plan duplicate title');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 422;
+      err.details = { reason: 'duplicate_title', value: normalizedTitle };
+      throw err;
+    }
+    if (signature && signatureSet.has(signature)) {
+      const err = new Error('Topic plan duplicate signature');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 422;
+      err.details = { reason: 'duplicate_signature', value: signature };
+      throw err;
+    }
+    if (firstWords && firstWordSet.has(firstWords)) {
+      const err = new Error('Topic plan duplicate opening');
+      err.code = 'OPENAI_SCHEMA_ERROR';
+      err.statusCode = 422;
+      err.details = { reason: 'duplicate_first_words', value: firstWords };
+      throw err;
+    }
+    titleSet.add(normalizedTitle);
+    if (signature) signatureSet.add(signature);
+    if (firstWords) firstWordSet.add(firstWords);
+  }
+  return topics;
+}
+
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
     const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
@@ -5134,6 +5353,17 @@ const server = http.createServer((req, res) => {
     let expectedCount = null;
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
+    const totalPosts = targetCount || (daysToGenerate * perDay);
+    const topicPlan = await generateTopicPlan({
+      nicheStyle,
+      brandContext,
+      totalPosts,
+      startDay: fallbackStart,
+      postsPerDay: perDay,
+      days: daysToGenerate,
+      loggingContext,
+      brandBrainDirective,
+    });
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
@@ -5149,6 +5379,10 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
+      const planBlock = buildTopicPlanBlock(topicPlan, {
+        chunkStartDay,
+        chunkDays,
+      });
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -5164,6 +5398,7 @@ const server = http.createServer((req, res) => {
         loggingContext: chunkContext,
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
+        extraInstructions: planBlock || '',
         brandBrainDirective,
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
