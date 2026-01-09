@@ -5183,7 +5183,7 @@ const createCard = (post) => {
 
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';
-    ideaEl.textContent = idea || title || '';
+    ideaEl.textContent = title || '';
 
     const typeEl = document.createElement('span');
     typeEl.className = 'calendar-card__type';
@@ -7244,7 +7244,7 @@ function escapeHtml(s){
 // Build a professional-looking standalone HTML for a single post
 function buildPostHTML(post){
   const day = post.day || '';
-  const title = post.idea || post.title || '';
+  const title = post.title || '';
   const pillar = post.pillar || '';
   const type = post.type || '';
   const format = post.format || '';

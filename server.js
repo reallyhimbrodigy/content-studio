@@ -4477,7 +4477,7 @@ async function generateTopicPlan({
   const firstTokenSet = new Set();
   const pillarSet = new Set();
   const failValidation = (details) => {
-    const err = new Error('Topic plan validation failed');
+    const err = new Error('TopicPlanValidationFailed');
     err.code = 'OPENAI_SCHEMA_ERROR';
     err.statusCode = 422;
     err.details = details || {};
@@ -5770,6 +5770,40 @@ const server = http.createServer((req, res) => {
       if (normalized) normalizedPosts.push(normalized);
     }
     let posts = normalizedPosts;
+    if (Array.isArray(topicPlan) && topicPlan.length) {
+      const planByKey = new Map();
+      topicPlan.forEach((item) => {
+        const planDay = Number(item?.day);
+        const planIndex = Number(item?.postIndex);
+        if (!Number.isFinite(planDay) || !Number.isFinite(planIndex)) return;
+        planByKey.set(`${planDay}|${planIndex}`, item);
+      });
+      const dayCounts = new Map();
+      posts.forEach((post, idx) => {
+        const dayValue = Number.isFinite(Number(post?.day))
+          ? Number(post.day)
+          : computePostDayIndex(idx, startDay, perDay);
+        const count = dayCounts.get(dayValue) || 0;
+        dayCounts.set(dayValue, count + 1);
+        const planItem = planByKey.get(`${dayValue}|${count}`);
+        if (!planItem || !planItem.title) {
+          const err = new Error('TitlePlanMismatch');
+          err.code = 'OPENAI_SCHEMA_ERROR';
+          err.statusCode = 422;
+          err.details = { reason: 'missing_plan_title', day: dayValue, postIndex: count };
+          throw err;
+        }
+        const planTitle = String(planItem.title).trim();
+        post.title = planTitle;
+        if (normalizeTitleText(post.title) !== normalizeTitleText(planTitle)) {
+          const err = new Error('TitlePlanMismatch');
+          err.code = 'OPENAI_SCHEMA_ERROR';
+          err.statusCode = 422;
+          err.details = { reason: 'title_mismatch', day: dayValue, postIndex: count };
+          throw err;
+        }
+      });
+    }
     const normalizedMissing = [];
     posts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
