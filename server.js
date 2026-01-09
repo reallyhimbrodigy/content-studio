@@ -2753,8 +2753,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } =
     ...assigned.map((item) =>
       `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
     ),
-    'Use the provided title exactly. Write the post to match the assigned angle and pillar. Do not invent a different topic or title.',
-    'This post MUST be in the assigned pillar.',
+    'Use the provided title exactly.',
   ];
   return lines.join('\n');
 }
@@ -4404,6 +4403,7 @@ async function generateTopicPlan({
     'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle, pillar.',
+    'Titles are final and must be used verbatim in the calendar posts.',
     'Angle must be 8–18 words.',
     'Use the assigned pillar for each slot exactly as provided.',
     'Assigned slots:',
@@ -4474,7 +4474,7 @@ async function generateTopicPlan({
   }
   const titleSet = new Set();
   const signatureSet = new Set();
-  const firstWordSet = new Set();
+  const firstTokenSet = new Set();
   const pillarSet = new Set();
   const failValidation = (details) => {
     const err = new Error('Topic plan validation failed');
@@ -4490,7 +4490,7 @@ async function generateTopicPlan({
     }
     const normalizedTitle = normalizeTitleText(title);
     const signature = normalizeTitleSignature(title);
-    const firstWords = getTitleFirstWords(title, 4);
+    const firstToken = normalizeTitleText(title).split(/\s+/)[0] || '';
     const pillar = String(topic?.pillar || '').trim();
     if (titleSet.has(normalizedTitle)) {
       failValidation({ reason: 'duplicate_title', value: normalizedTitle });
@@ -4498,12 +4498,12 @@ async function generateTopicPlan({
     if (signature && signatureSet.has(signature)) {
       failValidation({ reason: 'duplicate_signature', value: signature });
     }
-    if (firstWords && firstWordSet.has(firstWords)) {
-      failValidation({ reason: 'duplicate_first_words', value: firstWords });
+    if (firstToken && firstTokenSet.has(firstToken)) {
+      failValidation({ reason: 'duplicate_first_token', value: firstToken });
     }
     titleSet.add(normalizedTitle);
     if (signature) signatureSet.add(signature);
-    if (firstWords) firstWordSet.add(firstWords);
+    if (firstToken) firstTokenSet.add(firstToken);
     if (pillar) pillarSet.add(pillar);
   }
   const uniquePillars = pillarSet.size;
