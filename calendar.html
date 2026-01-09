@@ -868,10 +868,8 @@
       }
 
       [data-account-modal-body] {
-        max-height: calc(100vh - 24px - 84px) !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        -webkit-overflow-scrolling: touch !important;
+        max-height: none !important;
+        overflow: visible !important;
       }
 
       [data-account-close] {
@@ -894,23 +892,23 @@
       }
 
       [data-account-modal] h3 {
-        font-size: 21px !important;
+        font-size: 20px !important;
         line-height: 1.2 !important;
-        margin: 0 0 6px 0 !important;
+        margin: 0 0 5px 0 !important;
       }
 
       [data-account-modal] .modal-sub {
         font-size: 13px !important;
-        line-height: 1.35 !important;
-        margin: 0 0 12px 0 !important;
+        line-height: 1.3 !important;
+        margin: 0 0 8px 0 !important;
       }
 
       [data-account-tabs] {
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
-        gap: 10px !important;
+        gap: 8px !important;
         width: 100% !important;
-        margin: 10px 0 12px 0 !important;
+        margin: 6px 0 8px 0 !important;
       }
 
       [data-account-tab] {
@@ -933,7 +931,7 @@
       }
 
       [data-account-modal] .settings-group {
-        margin: 10px 0 !important;
+        margin: 6px 0 !important;
       }
 
       [data-account-modal] label,
@@ -948,20 +946,20 @@
         max-width: 100% !important;
         font-size: 16px !important;
         line-height: 1.2 !important;
-        padding: 10px 12px !important;
+        padding: 8px 10px !important;
         border-radius: 10px !important;
       }
 
       [data-account-modal] button {
         font-size: 14px !important;
-        padding: 10px 12px !important;
-        min-height: 40px !important;
+        padding: 8px 10px !important;
+        min-height: 34px !important;
       }
 
       [data-interface-prefs] {
         width: 100% !important;
         max-width: 100% !important;
-        margin: 12px 0 0 0 !important;
+        margin: 8px 0 0 0 !important;
         padding: 0 !important;
         border: 1px solid rgba(255,255,255,0.10) !important;
         border-radius: 12px !important;
@@ -970,28 +968,28 @@
       [data-interface-prefs] [data-pref-row] {
         display: flex !important;
         align-items: center !important;
-        gap: 10px !important;
+        gap: 8px !important;
         width: 100% !important;
-        padding: 10px 12px !important;
+        padding: 8px 10px !important;
       }
 
       [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
         flex: 0 0 auto !important;
-        width: 20px !important;
-        height: 20px !important;
+        width: 18px !important;
+        height: 18px !important;
       }
 
       [data-account-modal] .settings-actions__buttons {
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
-        gap: 10px !important;
+        gap: 8px !important;
         width: 100% !important;
       }
 
       [data-account-modal] .settings-actions__buttons button {
         width: 100% !important;
         min-width: 0 !important;
-        padding: 10px 12px !important;
+        padding: 8px 10px !important;
         border-radius: 999px !important;
       }
 
@@ -1032,42 +1030,16 @@
   <script src="/sw-register.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script src="/js/landing.js" defer></script>
-  <script id="account-modal-mobile-js-v3">
+  <script id="account-modal-mobile-guard">
     (function () {
       const root = document.querySelector('[data-account-modal-root]');
-      const panel = document.querySelector('[data-account-modal-panel]');
-      const closeBtn = document.querySelector('[data-account-modal-close]');
-      if (!root || !panel) return;
-
-      function isVisible(el){
-        const cs = getComputedStyle(el);
-        return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
-      }
-
-      function syncLock(){
-        const open = isVisible(root);
-        document.body.classList.toggle('modal-open', open);
-        if (open) {
-          panel.scrollLeft = 0;
-          panel.scrollTop = Math.max(panel.scrollTop, 0);
-        }
-      }
-
-      const obs = new MutationObserver(syncLock);
-      obs.observe(root, { attributes: true, attributeFilter: ['style', 'class', 'aria-hidden'] });
-      if (window.matchMedia('(max-width: 640px)').matches && isVisible(root)) {
+      if (!root) return;
+      if (!window.matchMedia('(max-width: 640px)').matches) return;
+      const cs = getComputedStyle(root);
+      const open = cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+      if (open) {
         root.style.display = 'none';
-      }
-      syncLock();
-
-      if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (typeof window.closeAccountModal === 'function') window.closeAccountModal();
-          else root.style.display = 'none';
-          syncLock();
-        }, { passive: false });
+        document.body.classList.remove('modal-open');
       }
     })();
   </script>
