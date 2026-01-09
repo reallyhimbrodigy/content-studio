@@ -28,83 +28,6 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
-    <style id="account-modal-mobile-fix-v3">
-      html.modal-open, body.modal-open { overflow: hidden !important; }
-
-      @media (max-width: 640px) {
-        /* Overlay centered */
-        [data-account-modal-root]{
-          position: fixed !important;
-          inset: 0 !important;
-          z-index: 9999 !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          padding: 14px !important;
-          pointer-events: auto !important;
-        }
-
-        /* Panel sized to viewport */
-        [data-account-modal-panel]{
-          position: relative !important;
-          width: min(760px, calc(100vw - 28px)) !important;
-          max-height: calc(100dvh - 28px) !important;
-          overflow: auto !important;
-          overflow-x: hidden !important;
-          -webkit-overflow-scrolling: touch !important;
-          box-sizing: border-box !important;
-          transform: none !important;
-          left: auto !important;
-          right: auto !important;
-          top: auto !important;
-          bottom: auto !important;
-        }
-
-        /* X always top-right inside panel */
-        [data-account-modal-close]{
-          position: absolute !important;
-          top: 12px !important;
-          right: 12px !important;
-          left: auto !important;
-          transform: none !important;
-          z-index: 10000 !important;
-          width: 40px !important;
-          height: 40px !important;
-          display: grid !important;
-          place-items: center !important;
-          pointer-events: auto !important;
-        }
-
-        /* Neutralize left shift on inner wrappers */
-        [data-account-modal-panel] > *{
-          position: relative !important;
-          left: 0 !important;
-          right: 0 !important;
-          transform: none !important;
-          margin-left: 0 !important;
-          margin-right: 0 !important;
-          max-width: 100% !important;
-        }
-        [data-account-modal-panel] > * > *{
-          position: relative !important;
-          left: 0 !important;
-          right: 0 !important;
-          transform: none !important;
-          margin-left: 0 !important;
-          margin-right: 0 !important;
-          max-width: 100% !important;
-        }
-
-        /* Ensure form controls never exceed panel width */
-        [data-account-modal-panel] * { box-sizing: border-box !important; min-width: 0 !important; }
-        [data-account-modal-panel] input,
-        [data-account-modal-panel] button,
-        [data-account-modal-panel] select,
-        [data-account-modal-panel] textarea{
-          max-width: 100% !important;
-        }
-      }
-    </style>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
@@ -572,14 +495,14 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-modal>
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel>
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close>
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
             &times;
           </button>
         </div>
@@ -588,7 +511,7 @@
             <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
             <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
           </div>
-          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
             <div class="settings-group">
               <label>Email</label>
               <div class="settings-field-readonly mobile-email-row" data-email-row>
@@ -620,7 +543,7 @@
               </div>
             </div>
           </div>
-            <div class="settings-panel mobile-account-content" data-settings-panel="profile">
+            <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
               <form id="account-settings-form" class="settings-form">
               <div class="settings-group">
                 <label for="account-display-name">Display name</label>
@@ -636,16 +559,16 @@
               </div>
               <fieldset class="settings-group">
                 <legend class="settings-group__label">Interface preferences</legend>
-                <div class="settings-accessibility">
-                  <label class="settings-toggle">
+                <div class="settings-accessibility" data-interface-prefs>
+                  <label class="settings-toggle" data-pref-row>
                     <input type="checkbox" id="prefers-high-contrast" />
                     <span>High contrast surfaces</span>
                   </label>
-                  <label class="settings-toggle">
+                  <label class="settings-toggle" data-pref-row>
                     <input type="checkbox" id="prefers-large-type" />
                     <span>Larger typography</span>
                   </label>
-                  <label class="settings-toggle">
+                  <label class="settings-toggle" data-pref-row>
                     <input type="checkbox" id="prefers-reduced-motion" />
                     <span>Reduce motion &amp; animations</span>
                   </label>
@@ -918,126 +841,216 @@
       }
     }
   </style>
-  <style id="mobile-text-unstack-fix-v1">
+  <style id="mobile-account-modal-layout-v3">
+    /* Prevent background scroll when modal is open */
+    body.modal-open {
+      overflow: hidden !important;
+      touch-action: none !important;
+    }
+
+    /* MOBILE ONLY */
     @media (max-width: 640px) {
-      /* Global safety: nothing in calendar.html should render vertical text on mobile */
-      #calendarPage, body, .page, .app, main {
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
+      /* Overlay must fill viewport */
+      [data-account-overlay] {
+        position: fixed !important;
+        inset: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 16px !important;
+        overflow: hidden !important;
+        z-index: 9999 !important;
       }
 
-      /* ---- Fix content card caption letter-stacking ---- */
-      [data-content-caption],
-      .content-card .caption,
-      .contentCard .caption,
-      .content-card-caption,
-      .calendar-card-caption,
-      .post-caption,
-      .card-caption,
-      .page-calendar .calendar-card__caption {
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
+      /* Modal container: centered, no weird scaling, internal scroll */
+      [data-account-modal] {
+        position: relative !important;
+        width: 100% !important;
+        max-width: 520px !important;
+        max-height: calc(100dvh - 32px) !important;
+        margin: 0 auto !important;
+        transform: none !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        overflow: hidden !important;
+        border-radius: 18px !important;
+      }
+
+      /* Create a scrollable body area inside the modal */
+      [data-account-modal] .modal-body,
+      [data-account-modal] [data-account-panel] {
+        max-height: none !important;
+      }
+
+      /* If your modal already has a content wrapper, use it; otherwise target modal itself */
+      [data-account-modal] .modal-content,
+      [data-account-modal] .content,
+      [data-account-modal] {
+        box-sizing: border-box !important;
+      }
+
+      /* Header spacing like desktop, but slightly tighter */
+      [data-account-modal] h1,
+      [data-account-modal] h2,
+      [data-account-modal] .title {
+        font-size: 26px !important;
+        line-height: 1.15 !important;
+        margin: 0 0 8px 0 !important;
+      }
+
+      [data-account-modal] .subtitle,
+      [data-account-modal] .description,
+      [data-account-modal] p {
+        font-size: 14px !important;
+        line-height: 1.35 !important;
+        margin: 0 0 14px 0 !important;
         white-space: normal !important;
         word-break: normal !important;
         overflow-wrap: break-word !important;
-        hyphens: auto !important;
-        line-break: auto !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
       }
 
-      .content-card, .contentCard, .calendar-card, .post-card, .card {
-        min-width: 0 !important;
-      }
-
-      /* ---- Fix Account/Profile tab label letter-stacking ---- */
-      [data-account-tabs],
-      .account-tabs,
-      .settings-tabs,
-      .modal-tabs {
-        display: flex !important;
-        gap: 12px !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-      }
-
-      [data-account-tab],
-      .account-tabs button,
-      .settings-tabs button,
-      .modal-tabs button {
-        flex: 1 1 0% !important;
-        min-width: 0 !important;
-        max-width: 100% !important;
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
-        white-space: normal !important;
-        word-break: normal !important;
-        overflow-wrap: anywhere !important;
-        line-height: 1.15 !important;
-        text-align: center !important;
-      }
-
-      /* Hard reset any accidental vertical/stacking rules inside the modal */
-      [data-account-modal-panel] *,
-      .account-modal * {
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
-        letter-spacing: normal !important;
-      }
-    }
-  </style>
-  <style id="mobile-account-email-fix-v2">
-    @media (max-width: 640px) {
-      /* Scope to the account modal only */
-      [data-account-modal] [data-email-row] {
-        display: flex !important;
+      /* Close button pinned top-right inside modal */
+      [data-account-close] {
+        position: absolute !important;
+        top: 14px !important;
+        right: 14px !important;
+        left: auto !important;
+        display: inline-flex !important;
         align-items: center !important;
+        justify-content: center !important;
+        width: 44px !important;
+        height: 44px !important;
+        z-index: 5 !important;
+        margin: 0 !important;
+        transform: none !important;
+      }
+
+      /* Give header room so text doesn't slide under X */
+      [data-account-modal] .header,
+      [data-account-modal] .modal-header {
+        position: relative !important;
+        padding-right: 64px !important;
+      }
+
+      /* Tabs: two equal pills, no overlap */
+      [data-account-tabs] {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
         gap: 10px !important;
         width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
+        margin: 14px 0 16px 0 !important;
       }
 
-      /* Email text must be horizontal + single line */
-      [data-account-modal] [data-email-value] {
-        flex: 1 1 auto !important;
+      [data-account-tab] {
+        width: 100% !important;
         min-width: 0 !important;
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
+        padding: 12px 10px !important;
+        font-size: 14px !important;
+        line-height: 1.1 !important;
+        text-align: center !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        word-break: normal !important;
-        overflow-wrap: normal !important;
-        hyphens: none !important;
+        border-radius: 14px !important;
+      }
+
+      /* Panels: full width, centered, consistent inner padding */
+      [data-account-panel] {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+      }
+
+      /* Inputs/selects/buttons should match desktop look but size down */
+      [data-account-modal] input,
+      [data-account-modal] select,
+      [data-account-modal] textarea {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        font-size: 16px !important;
         line-height: 1.2 !important;
+        padding: 12px 14px !important;
+        box-sizing: border-box !important;
       }
 
-      /* Copy button stays right, never stretches across the row */
-      [data-account-modal] [data-email-copy] {
-        flex: 0 0 auto !important;
-        white-space: nowrap !important;
-        align-self: center !important;
-      }
-
-      /* Neutralize per-letter wrapping rules inside the modal */
+      /* Fix per-letter stacking everywhere inside modal */
       [data-account-modal] * {
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
+        letter-spacing: normal !important;
+        word-spacing: normal !important;
         word-break: normal !important;
+        overflow-wrap: normal !important;
+        hyphens: none !important;
       }
 
-      /* Allow normal paragraph wrapping elsewhere */
-      [data-account-modal] p,
-      [data-account-modal] .muted,
-      [data-account-modal] .helper,
-      [data-account-modal] .description {
+      /* Interface preferences section: full width and aligned */
+      [data-interface-prefs] {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 14px 0 0 0 !important;
+        padding: 0 !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 14px !important;
+      }
+
+      [data-interface-prefs] [data-pref-row] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        width: 100% !important;
+        padding: 12px 12px !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Checkbox + label alignment */
+      [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
+        flex: 0 0 auto !important;
+        width: 22px !important;
+        height: 22px !important;
+      }
+
+      [data-interface-prefs] [data-pref-row] .label,
+      [data-interface-prefs] [data-pref-row] span,
+      [data-interface-prefs] [data-pref-row] div {
+        min-width: 0 !important;
         white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: unset !important;
         overflow-wrap: break-word !important;
+        font-size: 14px !important;
+        line-height: 1.25 !important;
+      }
+
+      /* Footer buttons: no overlap, consistent spacing */
+      [data-account-modal] .modal-footer,
+      [data-account-modal] .actions,
+      [data-account-modal] .button-row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 12px !important;
+        width: 100% !important;
+        padding-top: 14px !important;
+      }
+
+      [data-account-modal] .modal-footer button,
+      [data-account-modal] .actions button,
+      [data-account-modal] .button-row button {
+        width: 100% !important;
+        min-width: 0 !important;
+        padding: 12px 14px !important;
+        border-radius: 999px !important;
+        font-size: 15px !important;
+      }
+
+      /* Ensure modal inner area scrolls if content exceeds height */
+      [data-account-modal] .modal-scroll,
+      [data-account-modal] .scroll,
+      [data-account-modal] .body,
+      [data-account-modal] {
+        overflow: auto !important;
+        -webkit-overflow-scrolling: touch !important;
       }
     }
   </style>
@@ -1060,7 +1073,6 @@
 
       function syncLock(){
         const open = isVisible(root);
-        document.documentElement.classList.toggle('modal-open', open);
         document.body.classList.toggle('modal-open', open);
         if (open) {
           panel.scrollLeft = 0;
