@@ -2673,7 +2673,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   return `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
-- pillar must be one of: Education, Social Proof, Promotion, Lifestyle.
+- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - Title must be present, human-readable, and non-empty.
 TITLE QUALITY BAR
@@ -3722,6 +3722,33 @@ function getCalendarPillarForDay(day) {
   const numericDay = Number.isFinite(Number(day)) ? Number(day) : 1;
   const index = Math.max(0, numericDay - 1) % CALENDAR_PILLARS.length;
   return CALENDAR_PILLARS[index];
+}
+
+function isPillarDistributionBalanced(posts = []) {
+  const counts = CALENDAR_PILLARS.reduce((acc, pillar) => {
+    acc[pillar] = 0;
+    return acc;
+  }, {});
+  posts.forEach((post) => {
+    const normalized = normalizeCalendarPillar(post?.pillar);
+    if (normalized) counts[normalized] += 1;
+  });
+  const values = CALENDAR_PILLARS.map((pillar) => counts[pillar]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const hasAll = values.every((value) => value > 0);
+  return hasAll && max - min <= 1;
+}
+
+function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1) {
+  return posts.map((post, idx) => {
+    if (!post || typeof post !== 'object') return post;
+    const day = Number.isFinite(Number(post.day))
+      ? Number(post.day)
+      : computePostDayIndex(idx, startDay, postsPerDay);
+    const pillar = getCalendarPillarForDay(day);
+    return { ...post, pillar };
+  });
 }
 
 function ensureCtaFallback(post = {}) {
@@ -5526,6 +5553,15 @@ const server = http.createServer((req, res) => {
         err.details = stillMissing;
         throw err;
       }
+    }
+    if (!isPillarDistributionBalanced(posts)) {
+      posts = applyPillarSchedule(posts, startDay, perDay);
+      console.log('[Calendar] pillar schedule enforced', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        postsPerDay: perDay,
+      });
     }
     posts.forEach((post) => {
       post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
