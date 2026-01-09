@@ -2689,22 +2689,36 @@ function buildCalendarSchemaBlock(expectedCount) {
 }
 
 const TITLE_SIGNATURE_STOPWORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'is', 'it', 'its',
-  'of', 'on', 'or', 'our', 'that', 'the', 'their', 'these', 'this', 'those', 'to', 'with', 'you', 'your',
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'to',
+  'of',
+  'in',
+  'on',
+  'for',
+  'with',
+  'how',
+  'understanding',
+  'navigating',
 ]);
 
 function normalizeTitleText(value = '') {
-  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeTitleSignature(value = '') {
-  const tokens = String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+  const tokens = normalizeTitleText(value)
     .split(/\s+/)
     .filter(Boolean)
     .filter((token) => !TITLE_SIGNATURE_STOPWORDS.has(token));
-  return tokens.join(' ').replace(/\s+/g, ' ').trim();
+  return tokens.join(' ').trim();
 }
 
 function getTitleFirstWords(value = '', count = 4) {
@@ -2718,7 +2732,7 @@ function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1) {
     const day = startDay + Math.floor(i / perDay);
     const postIndex = i % perDay;
     slots.push({
-      slot: i + 1,
+      slot: i,
       day,
       postIndex,
       pillar: getCalendarPillarForDay(day),
@@ -4346,12 +4360,13 @@ async function generateTopicPlan({
   startDay,
   postsPerDay,
   days,
-  loggingContext,
+  brandBrainEnabled,
+  requestId,
   brandBrainDirective,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
-  const requestId = loggingContext?.requestId ? `RequestId: ${loggingContext.requestId}\n` : '';
+  const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
   const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay);
   const schema = {
     type: 'object',
@@ -4367,7 +4382,7 @@ async function generateTopicPlan({
           additionalProperties: false,
           required: ['slot', 'day', 'postIndex', 'title', 'angle', 'pillar'],
           properties: {
-            slot: { type: 'integer', minimum: 1, maximum: totalPosts },
+            slot: { type: 'integer', minimum: 0, maximum: Math.max(0, totalPosts - 1) },
             day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Number(days) || 1) - 1 },
             postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, Number(postsPerDay) - 1) },
             title: { type: 'string', minLength: 4 },
@@ -4384,14 +4399,13 @@ async function generateTopicPlan({
   const prompt = [
     `You are a content calendar topic planner${cleanNiche}.`,
     brandBlock.trim(),
-    requestId.trim(),
-    brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
+    requestLabel.trim(),
+    brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
     'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle, pillar.',
     'Angle must be 8–18 words.',
     'Use the assigned pillar for each slot exactly as provided.',
-    'Make titles original editorial headlines; do not reuse phrasing across titles.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
@@ -4461,42 +4475,43 @@ async function generateTopicPlan({
   const titleSet = new Set();
   const signatureSet = new Set();
   const firstWordSet = new Set();
+  const pillarSet = new Set();
+  const failValidation = (details) => {
+    const err = new Error('Topic plan validation failed');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 422;
+    err.details = details || {};
+    throw err;
+  };
   for (const topic of topics) {
     const title = String(topic?.title || '').trim();
     if (!title) {
-      const err = new Error('Topic plan missing title');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 422;
-      err.details = { reason: 'empty_title' };
-      throw err;
+      failValidation({ reason: 'empty_title' });
     }
     const normalizedTitle = normalizeTitleText(title);
     const signature = normalizeTitleSignature(title);
     const firstWords = getTitleFirstWords(title, 4);
+    const pillar = String(topic?.pillar || '').trim();
     if (titleSet.has(normalizedTitle)) {
-      const err = new Error('Topic plan duplicate title');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 422;
-      err.details = { reason: 'duplicate_title', value: normalizedTitle };
-      throw err;
+      failValidation({ reason: 'duplicate_title', value: normalizedTitle });
     }
     if (signature && signatureSet.has(signature)) {
-      const err = new Error('Topic plan duplicate signature');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 422;
-      err.details = { reason: 'duplicate_signature', value: signature };
-      throw err;
+      failValidation({ reason: 'duplicate_signature', value: signature });
     }
     if (firstWords && firstWordSet.has(firstWords)) {
-      const err = new Error('Topic plan duplicate opening');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 422;
-      err.details = { reason: 'duplicate_first_words', value: firstWords };
-      throw err;
+      failValidation({ reason: 'duplicate_first_words', value: firstWords });
     }
     titleSet.add(normalizedTitle);
     if (signature) signatureSet.add(signature);
     if (firstWords) firstWordSet.add(firstWords);
+    if (pillar) pillarSet.add(pillar);
+  }
+  const uniquePillars = pillarSet.size;
+  if (totalPosts > 1 && uniquePillars === 1) {
+    failValidation({ reason: 'pillar_collapsed' });
+  }
+  if (totalPosts >= CALENDAR_PILLARS.length && uniquePillars < CALENDAR_PILLARS.length) {
+    failValidation({ reason: 'pillar_missing' });
   }
   return topics;
 }
@@ -5361,7 +5376,8 @@ const server = http.createServer((req, res) => {
       startDay: fallbackStart,
       postsPerDay: perDay,
       days: daysToGenerate,
-      loggingContext,
+      brandBrainEnabled,
+      requestId: loggingContext?.requestId || null,
       brandBrainDirective,
     });
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
