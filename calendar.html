@@ -584,9 +584,9 @@
           </button>
         </div>
         <div class="account-settings-body" data-account-modal-body>
-          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs>
-            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
-            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
+            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
+            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
           </div>
           <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
             <div class="settings-group">
@@ -915,6 +915,76 @@
       .page-calendar .detail-copy-btn {
         margin-left: auto;
         flex: 0 0 auto;
+      }
+    }
+  </style>
+  <style id="mobile-text-unstack-fix-v1">
+    @media (max-width: 640px) {
+      /* Global safety: nothing in calendar.html should render vertical text on mobile */
+      #calendarPage, body, .page, .app, main {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+      }
+
+      /* ---- Fix content card caption letter-stacking ---- */
+      [data-content-caption],
+      .content-card .caption,
+      .contentCard .caption,
+      .content-card-caption,
+      .calendar-card-caption,
+      .post-caption,
+      .card-caption,
+      .page-calendar .calendar-card__caption {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+        hyphens: auto !important;
+        line-break: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      .content-card, .contentCard, .calendar-card, .post-card, .card {
+        min-width: 0 !important;
+      }
+
+      /* ---- Fix Account/Profile tab label letter-stacking ---- */
+      [data-account-tabs],
+      .account-tabs,
+      .settings-tabs,
+      .modal-tabs {
+        display: flex !important;
+        gap: 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      [data-account-tab],
+      .account-tabs button,
+      .settings-tabs button,
+      .modal-tabs button {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: anywhere !important;
+        line-height: 1.15 !important;
+        text-align: center !important;
+      }
+
+      /* Hard reset any accidental vertical/stacking rules inside the modal */
+      [data-account-modal-panel] *,
+      .account-modal * {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        letter-spacing: normal !important;
       }
     }
   </style>
