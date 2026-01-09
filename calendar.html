@@ -817,240 +817,202 @@
         padding-left: 12px !important;
       }
 
-      .page-calendar .calendar-card__caption {
-        width: 100%;
-        min-width: 0;
-        writing-mode: horizontal-tb;
-        white-space: normal;
-        word-break: normal;
-        overflow-wrap: break-word;
-        letter-spacing: normal;
-        line-height: 1.5;
-      }
-
-      .page-calendar .calendar-card__caption-row {
-        display: flex;
-        align-items: center;
-        width: 100%;
-      }
-
-      .page-calendar .caption-copy-btn,
-      .page-calendar .detail-copy-btn {
-        margin-left: auto;
-        flex: 0 0 auto;
-      }
     }
   </style>
-  <style id="mobile-account-modal-layout-v3">
-    /* Prevent background scroll when modal is open */
-    body.modal-open {
-      overflow: hidden !important;
-      touch-action: none !important;
-    }
-
-    /* MOBILE ONLY */
+  <style id="mobile-account-modal-layout-v4">
     @media (max-width: 640px) {
-      /* Overlay must fill viewport */
+      body.modal-open {
+        overflow: hidden !important;
+        touch-action: none !important;
+      }
       [data-account-overlay] {
         position: fixed !important;
         inset: 0 !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        padding: 16px !important;
+        padding: 12px !important;
         overflow: hidden !important;
         z-index: 9999 !important;
       }
 
-      /* Modal container: centered, no weird scaling, internal scroll */
       [data-account-modal] {
         position: relative !important;
         width: 100% !important;
-        max-width: 520px !important;
-        max-height: calc(100dvh - 32px) !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: calc(100vh - 24px) !important;
         margin: 0 auto !important;
+        padding: 16px !important;
         transform: none !important;
         left: auto !important;
         right: auto !important;
         top: auto !important;
-        overflow: hidden !important;
+        overflow: auto !important;
+        overflow-x: hidden !important;
         border-radius: 18px !important;
-      }
-
-      /* Create a scrollable body area inside the modal */
-      [data-account-modal] .modal-body,
-      [data-account-modal] [data-account-panel] {
-        max-height: none !important;
-      }
-
-      /* If your modal already has a content wrapper, use it; otherwise target modal itself */
-      [data-account-modal] .modal-content,
-      [data-account-modal] .content,
-      [data-account-modal] {
         box-sizing: border-box !important;
       }
 
-      /* Header spacing like desktop, but slightly tighter */
-      [data-account-modal] h1,
-      [data-account-modal] h2,
-      [data-account-modal] .title {
-        font-size: 26px !important;
-        line-height: 1.15 !important;
-        margin: 0 0 8px 0 !important;
-      }
-
-      [data-account-modal] .subtitle,
-      [data-account-modal] .description,
-      [data-account-modal] p {
-        font-size: 14px !important;
-        line-height: 1.35 !important;
-        margin: 0 0 14px 0 !important;
-        white-space: normal !important;
+      [data-account-modal] * {
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
         word-break: normal !important;
         overflow-wrap: break-word !important;
+        hyphens: none !important;
       }
 
-      /* Close button pinned top-right inside modal */
       [data-account-close] {
         position: absolute !important;
-        top: 14px !important;
-        right: 14px !important;
+        top: 12px !important;
+        right: 12px !important;
         left: auto !important;
+        z-index: 10 !important;
+        width: 40px !important;
+        height: 40px !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        width: 44px !important;
-        height: 44px !important;
-        z-index: 5 !important;
         margin: 0 !important;
         transform: none !important;
       }
 
-      /* Give header room so text doesn't slide under X */
-      [data-account-modal] .header,
-      [data-account-modal] .modal-header {
-        position: relative !important;
-        padding-right: 64px !important;
+      [data-account-modal] .settings-modal__head {
+        padding-right: 52px !important;
       }
 
-      /* Tabs: two equal pills, no overlap */
+      [data-account-modal] h3 {
+        font-size: 22px !important;
+        line-height: 1.2 !important;
+        margin: 0 0 6px 0 !important;
+      }
+
+      [data-account-modal] .modal-sub {
+        font-size: 14px !important;
+        line-height: 1.35 !important;
+        margin: 0 0 12px 0 !important;
+      }
+
       [data-account-tabs] {
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
         gap: 10px !important;
         width: 100% !important;
-        margin: 14px 0 16px 0 !important;
+        margin: 10px 0 12px 0 !important;
       }
 
       [data-account-tab] {
         width: 100% !important;
         min-width: 0 !important;
-        padding: 12px 10px !important;
+        padding: 10px 10px !important;
         font-size: 14px !important;
         line-height: 1.1 !important;
         text-align: center !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
-        border-radius: 14px !important;
+        border-radius: 12px !important;
       }
 
-      /* Panels: full width, centered, consistent inner padding */
       [data-account-panel] {
         width: 100% !important;
         max-width: 100% !important;
-        margin: 0 auto !important;
-        padding: 0 !important;
+        margin: 0 !important;
       }
 
-      /* Inputs/selects/buttons should match desktop look but size down */
+      [data-account-modal] .settings-group {
+        margin: 10px 0 !important;
+      }
+
+      [data-account-modal] label,
+      [data-account-modal] .field-hint {
+        font-size: 13px !important;
+      }
+
       [data-account-modal] input,
       [data-account-modal] select,
       [data-account-modal] textarea {
         width: 100% !important;
         max-width: 100% !important;
-        min-width: 0 !important;
         font-size: 16px !important;
         line-height: 1.2 !important;
-        padding: 12px 14px !important;
-        box-sizing: border-box !important;
+        padding: 10px 12px !important;
+        border-radius: 10px !important;
       }
 
-      /* Fix per-letter stacking everywhere inside modal */
-      [data-account-modal] * {
-        writing-mode: horizontal-tb !important;
-        text-orientation: mixed !important;
-        letter-spacing: normal !important;
-        word-spacing: normal !important;
-        word-break: normal !important;
-        overflow-wrap: normal !important;
-        hyphens: none !important;
+      [data-account-modal] button {
+        font-size: 14px !important;
+        padding: 10px 12px !important;
+        min-height: 40px !important;
       }
 
-      /* Interface preferences section: full width and aligned */
       [data-interface-prefs] {
         width: 100% !important;
         max-width: 100% !important;
-        margin: 14px 0 0 0 !important;
+        margin: 12px 0 0 0 !important;
         padding: 0 !important;
         border: 1px solid rgba(255,255,255,0.10) !important;
-        border-radius: 14px !important;
+        border-radius: 12px !important;
       }
 
       [data-interface-prefs] [data-pref-row] {
         display: flex !important;
         align-items: center !important;
-        gap: 12px !important;
+        gap: 10px !important;
         width: 100% !important;
-        padding: 12px 12px !important;
-        box-sizing: border-box !important;
+        padding: 10px 12px !important;
       }
 
-      /* Checkbox + label alignment */
       [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
         flex: 0 0 auto !important;
-        width: 22px !important;
-        height: 22px !important;
+        width: 20px !important;
+        height: 20px !important;
       }
 
-      [data-interface-prefs] [data-pref-row] .label,
-      [data-interface-prefs] [data-pref-row] span,
-      [data-interface-prefs] [data-pref-row] div {
-        min-width: 0 !important;
-        white-space: normal !important;
-        overflow-wrap: break-word !important;
-        font-size: 14px !important;
-        line-height: 1.25 !important;
-      }
-
-      /* Footer buttons: no overlap, consistent spacing */
-      [data-account-modal] .modal-footer,
-      [data-account-modal] .actions,
-      [data-account-modal] .button-row {
+      [data-account-modal] .settings-actions__buttons {
         display: grid !important;
         grid-template-columns: 1fr 1fr !important;
-        gap: 12px !important;
+        gap: 10px !important;
         width: 100% !important;
-        padding-top: 14px !important;
       }
 
-      [data-account-modal] .modal-footer button,
-      [data-account-modal] .actions button,
-      [data-account-modal] .button-row button {
+      [data-account-modal] .settings-actions__buttons button {
         width: 100% !important;
         min-width: 0 !important;
-        padding: 12px 14px !important;
+        padding: 10px 12px !important;
         border-radius: 999px !important;
-        font-size: 15px !important;
       }
 
-      /* Ensure modal inner area scrolls if content exceeds height */
-      [data-account-modal] .modal-scroll,
-      [data-account-modal] .scroll,
-      [data-account-modal] .body,
-      [data-account-modal] {
-        overflow: auto !important;
-        -webkit-overflow-scrolling: touch !important;
+      [data-account-modal] [data-email-row] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        width: 100% !important;
+      }
+
+      [data-account-modal] [data-email-value] {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+      [data-account-modal] [data-email-copy] {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+      }
+
+      .page-calendar .calendar-card__caption {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
       }
     }
   </style>
