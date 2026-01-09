@@ -572,7 +572,7 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root>
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-modal>
       <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel>
         <div class="settings-modal__head">
           <div>
@@ -591,9 +591,9 @@
           <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
             <div class="settings-group">
               <label>Email</label>
-              <div class="settings-field-readonly mobile-email-row">
-                <span id="account-email-display">you@example.com</span>
-                <button type="button" id="account-email-copy" class="ghost">Copy</button>
+              <div class="settings-field-readonly mobile-email-row" data-email-row>
+                <span id="account-email-display" data-email-value>you@example.com</span>
+                <button type="button" id="account-email-copy" class="ghost" data-email-copy>Copy</button>
               </div>
             </div>
             <div class="settings-group">
@@ -985,6 +985,59 @@
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
         letter-spacing: normal !important;
+      }
+    }
+  </style>
+  <style id="mobile-account-email-fix-v2">
+    @media (max-width: 640px) {
+      /* Scope to the account modal only */
+      [data-account-modal] [data-email-row] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      /* Email text must be horizontal + single line */
+      [data-account-modal] [data-email-value] {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        hyphens: none !important;
+        line-height: 1.2 !important;
+      }
+
+      /* Copy button stays right, never stretches across the row */
+      [data-account-modal] [data-email-copy] {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+        align-self: center !important;
+      }
+
+      /* Neutralize per-letter wrapping rules inside the modal */
+      [data-account-modal] * {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        word-break: normal !important;
+      }
+
+      /* Allow normal paragraph wrapping elsewhere */
+      [data-account-modal] p,
+      [data-account-modal] .muted,
+      [data-account-modal] .helper,
+      [data-account-modal] .description {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        overflow-wrap: break-word !important;
       }
     }
   </style>
