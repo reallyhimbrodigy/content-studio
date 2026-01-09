@@ -837,9 +837,10 @@
         left: 50% !important;
         top: 50% !important;
         transform: translate(-50%, -50%) !important;
-        width: calc(100vw - 24px) !important;
-        max-width: calc(100vw - 24px) !important;
-        max-height: calc(100vh - 24px) !important;
+        width: 94vw !important;
+        max-width: 94vw !important;
+        height: 90vh !important;
+        max-height: 90vh !important;
         margin: 0 !important;
         padding: 14px !important;
         overflow: hidden !important;
@@ -853,7 +854,7 @@
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
         word-break: normal !important;
-        overflow-wrap: break-word !important;
+        overflow-wrap: normal !important;
         hyphens: none !important;
         line-height: 1.2 !important;
       }
@@ -940,6 +941,10 @@
         font-size: 12.5px !important;
       }
 
+      [data-account-modal] label {
+        display: block !important;
+      }
+
       [data-account-modal] input,
       [data-account-modal] select,
       [data-account-modal] textarea {
@@ -1012,6 +1017,12 @@
       [data-account-modal] [data-email-copy] {
         flex: 0 0 auto !important;
         white-space: nowrap !important;
+      }
+
+      [data-account-modal] .settings-field-readonly span {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
       }
 
       .page-calendar .calendar-card__caption {
