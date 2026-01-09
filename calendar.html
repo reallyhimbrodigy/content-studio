@@ -828,27 +828,21 @@
       [data-account-overlay] {
         position: fixed !important;
         inset: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 12px !important;
         overflow: hidden !important;
         z-index: 9999 !important;
       }
 
       [data-account-modal] {
-        position: relative !important;
-        width: 100% !important;
+        position: fixed !important;
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: calc(100vw - 24px) !important;
         max-width: calc(100vw - 24px) !important;
         max-height: calc(100vh - 24px) !important;
-        margin: 0 auto !important;
-        padding: 16px !important;
-        transform: none !important;
-        left: auto !important;
-        right: auto !important;
-        top: auto !important;
-        overflow: auto !important;
-        overflow-x: hidden !important;
+        margin: 0 !important;
+        padding: 14px !important;
+        overflow: hidden !important;
         border-radius: 18px !important;
         box-sizing: border-box !important;
       }
@@ -863,19 +857,36 @@
         hyphens: none !important;
       }
 
+      [data-account-modal-body],
+      [data-account-panel] {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        left: auto !important;
+        right: auto !important;
+        transform: none !important;
+      }
+
+      [data-account-modal-body] {
+        max-height: calc(100vh - 24px - 84px) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+
       [data-account-close] {
         position: absolute !important;
         top: 12px !important;
         right: 12px !important;
         left: auto !important;
-        z-index: 10 !important;
+        z-index: 50 !important;
         width: 40px !important;
         height: 40px !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
         margin: 0 !important;
-        transform: none !important;
+        pointer-events: auto !important;
       }
 
       [data-account-modal] .settings-modal__head {
@@ -883,13 +894,13 @@
       }
 
       [data-account-modal] h3 {
-        font-size: 22px !important;
+        font-size: 21px !important;
         line-height: 1.2 !important;
         margin: 0 0 6px 0 !important;
       }
 
       [data-account-modal] .modal-sub {
-        font-size: 14px !important;
+        font-size: 13px !important;
         line-height: 1.35 !important;
         margin: 0 0 12px 0 !important;
       }
@@ -905,7 +916,7 @@
       [data-account-tab] {
         width: 100% !important;
         min-width: 0 !important;
-        padding: 10px 10px !important;
+        padding: 8px 10px !important;
         font-size: 14px !important;
         line-height: 1.1 !important;
         text-align: center !important;
