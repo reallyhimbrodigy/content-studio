@@ -1006,15 +1006,15 @@
         }
       }
     </style>
-    <style>
-      @media (max-width: 640px) {
-        body.modal-open {
-          overflow: hidden !important;
-          height: 100% !important;
-          touch-action: none !important;
-        }
+    <style id="mobile-account-modal-fix">
+      /* Lock background when modal is open */
+      html.modal-open,
+      body.modal-open { overflow: hidden !important; touch-action: none !important; }
 
-        .account-settings-modal {
+      /* MOBILE ONLY */
+      @media (max-width: 640px) {
+        /* Backdrop / root: fill screen, center panel */
+        [data-account-modal-root]{
           position: fixed !important;
           inset: 0 !important;
           display: flex !important;
@@ -1024,110 +1024,144 @@
           z-index: 9999 !important;
         }
 
-        .account-settings-modal .account-settings-panel {
+        /* Panel: full-width inside padding, scroll internally */
+        [data-account-modal-panel]{
           position: relative !important;
           width: 100% !important;
           max-width: 520px !important;
-          max-height: 86vh !important;
-          margin: 0 !important;
-          overflow: hidden !important;
+          max-height: calc(100dvh - 28px) !important;
+          overflow: auto !important;
+          -webkit-overflow-scrolling: touch !important;
+
+          /* Kill desktop positioning math that causes overlap */
+          left: auto !important;
+          right: auto !important;
+          top: auto !important;
+          bottom: auto !important;
+          transform: none !important;
+
+          padding: 18px !important;
           box-sizing: border-box !important;
-          border-radius: 18px !important;
         }
 
-        .account-settings-modal .account-settings-close {
+        /* Ensure every section uses normal document flow on mobile */
+        [data-account-modal-panel] *{
+          box-sizing: border-box !important;
+        }
+
+        /* Close button: hard top-right, always clickable */
+        [data-account-modal-close]{
           position: absolute !important;
           top: 12px !important;
           right: 12px !important;
           left: auto !important;
           bottom: auto !important;
-          margin: 0 !important;
           transform: none !important;
           z-index: 10000 !important;
+
           width: 40px !important;
           height: 40px !important;
           display: grid !important;
           place-items: center !important;
-          pointer-events: auto !important;
-        }
-        .account-settings-modal .account-settings-close > * { pointer-events: none; }
-
-        .account-settings-modal .account-settings-body {
-          overflow-y: auto !important;
-          overflow-x: hidden !important;
-          -webkit-overflow-scrolling: touch !important;
-          max-height: 86vh !important;
-          padding: 18px !important;
-          padding-top: 64px !important;
-          box-sizing: border-box !important;
         }
 
-        .account-settings-modal .account-settings-body * {
-          max-width: 100% !important;
-          box-sizing: border-box !important;
+        /* Header text sizing (avoid giant typography) */
+        [data-account-modal-panel] h1,
+        [data-account-modal-panel] .modal-title,
+        [data-account-modal-panel] .account-title {
+          font-size: 24px !important;
+          line-height: 1.2 !important;
+          margin-right: 52px !important; /* keep clear of X */
+        }
+        [data-account-modal-panel] p,
+        [data-account-modal-panel] .modal-subtitle,
+        [data-account-modal-panel] .account-subtitle {
+          font-size: 14px !important;
+          line-height: 1.35 !important;
         }
 
-        .account-settings-modal .account-settings-body h1,
-        .account-settings-modal .account-settings-body .modal-title,
-        .account-settings-modal .account-settings-body #account-modal-title {
-          font-size: 22px !important;
-          line-height: 1.15 !important;
-          margin: 0 0 10px !important;
-        }
-
-        .account-settings-modal .account-settings-body [role="tablist"] {
-          display: grid !important;
-          grid-template-columns: 1fr 1fr !important;
+        /* Tabs row: two equal buttons, no overlap */
+        [data-account-modal-tabs]{
+          display: flex !important;
           gap: 10px !important;
           width: 100% !important;
-          margin: 14px 0 16px !important;
+          margin-top: 14px !important;
+          margin-bottom: 14px !important;
+
+          /* Kill any absolute positioning that causes stacking */
+          position: static !important;
+          left: auto !important;
+          right: auto !important;
+          top: auto !important;
+          transform: none !important;
         }
-        .account-settings-modal .account-settings-body [role="tab"] {
+        [data-account-modal-tabs] > *{
+          flex: 1 1 0 !important;
+          min-width: 0 !important;
+        }
+        [data-account-modal-tabs] button,
+        [data-account-modal-tabs] .tab,
+        [data-account-modal-tabs] .account-tab{
           width: 100% !important;
-          min-height: 44px !important;
-          padding: 10px 12px !important;
+          padding: 12px 12px !important;
+          font-size: 14px !important;
+          line-height: 1.1 !important;
           border-radius: 14px !important;
           white-space: normal !important;
         }
 
-        .account-settings-modal .account-settings-body form,
-        .account-settings-modal .account-settings-body .settings-form,
-        .account-settings-modal .account-settings-body .settings-group {
-          display: flex !important;
-          flex-direction: column !important;
-          gap: 12px !important;
+        /* Inputs + buttons inside modal: full width, sane sizes; prevent iOS zoom */
+        [data-account-modal-panel] input,
+        [data-account-modal-panel] select,
+        [data-account-modal-panel] textarea{
           width: 100% !important;
+          max-width: 100% !important;
+          font-size: 16px !important; /* iOS no-zoom */
+          line-height: 1.25 !important;
         }
 
-        .account-settings-modal .account-settings-body input,
-        .account-settings-modal .account-settings-body select,
-        .account-settings-modal .account-settings-body textarea {
+        /* Prevent weird left cut-off: force padding and no negative margins */
+        [data-account-modal-panel] .form-row,
+        [data-account-modal-panel] .field,
+        [data-account-modal-panel] .input-row,
+        [data-account-modal-panel] .account-row{
           width: 100% !important;
-          font-size: 15px !important;
-          min-height: 44px !important;
-          padding: 10px 12px !important;
+          max-width: 100% !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
         }
 
-        .account-settings-modal .account-settings-body .settings-field-readonly {
-          display: flex !important;
-          flex-direction: column !important;
-          gap: 10px !important;
-          width: 100% !important;
-        }
-
-        .account-settings-modal .account-settings-body .settings-actions,
-        .account-settings-modal .account-settings-body .settings-actions__buttons {
-          display: flex !important;
-          flex-direction: column !important;
-          gap: 10px !important;
+        /* Action buttons: pinned to bottom of panel, not overlaying content */
+        [data-account-modal-actions]{
+          position: sticky !important;
+          bottom: 0 !important;
           margin-top: 16px !important;
+          padding-top: 12px !important;
+          padding-bottom: 2px !important;
+          display: flex !important;
+          gap: 10px !important;
           width: 100% !important;
+          z-index: 5 !important;
+
+          /* visually separate from scrolled content */
+          backdrop-filter: blur(10px) !important;
         }
-        .account-settings-modal .account-settings-body .settings-actions__buttons button {
+        [data-account-modal-actions] > *{
+          flex: 1 1 0 !important;
+          min-width: 0 !important;
+        }
+        [data-account-modal-actions] button{
           width: 100% !important;
-          min-height: 44px !important;
           padding: 12px 14px !important;
-          border-radius: 14px !important;
+          font-size: 15px !important;
+          border-radius: 999px !important;
+        }
+
+        /* Remove any forced huge spacing blocks that push content off-screen */
+        [data-account-modal-panel] .spacer,
+        [data-account-modal-panel] .divider-spacer{
+          height: auto !important;
+          min-height: 0 !important;
         }
       }
     </style>
@@ -1598,19 +1632,19 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings">
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close>
             &times;
           </button>
         </div>
-        <div class="account-settings-body">
-          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist">
+        <div class="account-settings-body" data-account-modal-body>
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs>
             <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
             <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
           </div>
@@ -1679,7 +1713,7 @@
               </fieldset>
             </form>
           </div>
-          <div class="settings-actions">
+          <div class="settings-actions" data-account-modal-actions>
             <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
             <div class="settings-actions__buttons">
               <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
@@ -1949,6 +1983,50 @@
   <script src="/sw-register.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script src="/js/landing.js" defer></script>
+  <script>
+    (function(){
+      const root = document.querySelector('[data-account-modal-root]');
+      const panel = document.querySelector('[data-account-modal-panel]');
+      const closeBtn = document.querySelector('[data-account-modal-close]');
+      if (!root || !panel) return;
+
+      const lockScroll = (on) => {
+        document.documentElement.classList.toggle('modal-open', !!on);
+        document.body.classList.toggle('modal-open', !!on);
+      };
+
+      const isOpen = () => {
+        const cs = window.getComputedStyle(root);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+      };
+
+      const closeModal = () => {
+        root.style.display = 'none';
+        root.setAttribute('aria-hidden', 'true');
+        lockScroll(false);
+      };
+
+      window.addEventListener('DOMContentLoaded', () => {
+        closeModal();
+      });
+
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          closeModal();
+        }, { passive: false });
+      }
+
+      root.addEventListener('click', function(e){
+        if (e.target === root) closeModal();
+      });
+
+      const obs = new MutationObserver(() => lockScroll(isOpen()));
+      obs.observe(root, { attributes: true, attributeFilter: ['style','class','aria-hidden'] });
+      lockScroll(isOpen());
+    })();
+  </script>
 <div id="generate-asset-modal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1" style="display:none">
       <div class="modal__backdrop"></div>
       <div class="modal__dialog">
