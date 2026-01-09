@@ -28,14 +28,11 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
-    <style id="mobile-account-modal-container-v2">
-      /* Prevent background scroll while modal is open */
-      html.modal-open,
-      body.modal-open { overflow: hidden !important; }
+    <style id="account-modal-mobile-fix-v3">
+      html.modal-open, body.modal-open { overflow: hidden !important; }
 
-      /* Mobile container-only fix (do NOT change internal layout) */
       @media (max-width: 640px) {
-        /* Fullscreen overlay */
+        /* Overlay centered */
         [data-account-modal-root]{
           position: fixed !important;
           inset: 0 !important;
@@ -47,28 +44,28 @@
           pointer-events: auto !important;
         }
 
-        /* Modal panel: responsive size only */
+        /* Panel sized to viewport */
         [data-account-modal-panel]{
           position: relative !important;
-          width: min(720px, calc(100vw - 28px)) !important;
+          width: min(760px, calc(100vw - 28px)) !important;
           max-height: calc(100dvh - 28px) !important;
           overflow: auto !important;
+          overflow-x: hidden !important;
           -webkit-overflow-scrolling: touch !important;
+          box-sizing: border-box !important;
           transform: none !important;
           left: auto !important;
           right: auto !important;
           top: auto !important;
           bottom: auto !important;
-          box-sizing: border-box !important;
         }
 
-        /* Close button: fixed to top-right inside panel */
+        /* X always top-right inside panel */
         [data-account-modal-close]{
           position: absolute !important;
           top: 12px !important;
           right: 12px !important;
           left: auto !important;
-          bottom: auto !important;
           transform: none !important;
           z-index: 10000 !important;
           width: 40px !important;
@@ -78,13 +75,34 @@
           pointer-events: auto !important;
         }
 
-        /* Ensure internal rows can shrink instead of overflowing */
-        [data-account-modal-panel] * { box-sizing: border-box !important; }
+        /* Neutralize left shift on inner wrappers */
+        [data-account-modal-panel] > *{
+          position: relative !important;
+          left: 0 !important;
+          right: 0 !important;
+          transform: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          max-width: 100% !important;
+        }
+        [data-account-modal-panel] > * > *{
+          position: relative !important;
+          left: 0 !important;
+          right: 0 !important;
+          transform: none !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          max-width: 100% !important;
+        }
+
+        /* Ensure form controls never exceed panel width */
+        [data-account-modal-panel] * { box-sizing: border-box !important; min-width: 0 !important; }
         [data-account-modal-panel] input,
         [data-account-modal-panel] button,
         [data-account-modal-panel] select,
-        [data-account-modal-panel] textarea { max-width: 100% !important; }
-        [data-account-modal-panel] * { min-width: 0 !important; }
+        [data-account-modal-panel] textarea{
+          max-width: 100% !important;
+        }
       }
     </style>
   </head>
@@ -905,25 +923,31 @@
   <script src="/sw-register.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script src="/js/landing.js" defer></script>
-  <script id="mobile-account-modal-scrolllock-v2">
+  <script id="account-modal-mobile-js-v3">
     (function () {
       const root = document.querySelector('[data-account-modal-root]');
+      const panel = document.querySelector('[data-account-modal-panel]');
       const closeBtn = document.querySelector('[data-account-modal-close]');
-      if (!root) return;
+      if (!root || !panel) return;
 
-      function rootVisible() {
-        const cs = getComputedStyle(root);
+      function isVisible(el){
+        const cs = getComputedStyle(el);
         return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
       }
 
-      function setLocked(on) {
-        document.documentElement.classList.toggle('modal-open', !!on);
-        document.body.classList.toggle('modal-open', !!on);
+      function syncLock(){
+        const open = isVisible(root);
+        document.documentElement.classList.toggle('modal-open', open);
+        document.body.classList.toggle('modal-open', open);
+        if (open) {
+          panel.scrollLeft = 0;
+          panel.scrollTop = Math.max(panel.scrollTop, 0);
+        }
       }
 
-      const obs = new MutationObserver(() => setLocked(rootVisible()));
+      const obs = new MutationObserver(syncLock);
       obs.observe(root, { attributes: true, attributeFilter: ['style', 'class', 'aria-hidden'] });
-      setLocked(rootVisible());
+      syncLock();
 
       if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
@@ -931,7 +955,7 @@
           e.stopPropagation();
           if (typeof window.closeAccountModal === 'function') window.closeAccountModal();
           else root.style.display = 'none';
-          setLocked(false);
+          syncLock();
         }, { passive: false });
       }
     })();
