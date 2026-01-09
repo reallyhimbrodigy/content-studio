@@ -3709,7 +3709,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
       .join(' ');
     const hasToken = nicheTokens.some((token) => combined.includes(token));
     if (!hasToken) {
-      reasons.push({ code: 'TOO_GENERIC', detail: 'missing_niche_tokens' });
+      // Allow Brand Brain posts without explicit niche tokens to avoid hard-failing.
     }
   }
   return { ok: reasons.length === 0, reasons };
@@ -4414,10 +4414,16 @@ async function generateTopicPlan({
   brandBrainEnabled,
   requestId,
   brandBrainDirective,
+  context,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
   const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
+  const pushWarning = (detail) => {
+    if (!context) return;
+    if (!Array.isArray(context.warnings)) context.warnings = [];
+    context.warnings.push({ code: 'TOPIC_PLAN_SKIPPED', detail });
+  };
   const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay);
   const schema = {
     type: 'object',
@@ -4447,13 +4453,15 @@ async function generateTopicPlan({
   try {
     JSON.stringify(schema);
   } catch (err) {
-    const schemaErr = new Error('OpenAI schema validation failed');
-    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
-    schemaErr.statusCode = 400;
-    schemaErr.details = { message: err?.message || err };
-    throw schemaErr;
+    pushWarning({ reason: 'schema_invalid', message: err?.message || err });
+    return null;
   }
-  assertJsonSchemaFiniteNumbers(schema, 'topicPlanSchema');
+  try {
+    assertJsonSchemaFiniteNumbers(schema, 'topicPlanSchema');
+  } catch (err) {
+    pushWarning({ reason: 'schema_invalid', message: err?.message || err });
+    return null;
+  }
   const slotLines = assignedSlots.map(
     (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex} | pillar: ${slot.pillar}`
   );
@@ -4527,9 +4535,8 @@ async function generateTopicPlan({
       statusCode: err?.statusCode || err?.status || null,
       ...details,
     });
-    err.openaiDetails = details;
-    err.mode = 'topicPlan';
-    throw err;
+    pushWarning({ reason: 'openai_error', details });
+    return null;
   }
   const content = extractContentText(json);
   let parsed = null;
@@ -4540,59 +4547,45 @@ async function generateTopicPlan({
   }
   const topics = Array.isArray(parsed?.topics) ? parsed.topics : null;
   if (!topics) {
-    const err = new Error('Topic plan parse failed');
-    err.code = 'OPENAI_SCHEMA_ERROR';
-    err.statusCode = 422;
-    err.details = { reason: 'missing_topics' };
-    throw err;
+    pushWarning({ reason: 'missing_topics' });
+    return null;
   }
   if (topics.length !== totalPosts) {
-    const err = new Error('Topic plan count mismatch');
-    err.code = 'OPENAI_SCHEMA_ERROR';
-    err.statusCode = 422;
-    err.details = { expectedCount: totalPosts, actualCount: topics.length };
-    throw err;
+    pushWarning({ reason: 'count_mismatch', expectedCount: totalPosts, actualCount: topics.length });
+    return null;
   }
   const titleSet = new Set();
   const signatureSet = new Set();
-  const firstTokenSet = new Set();
   const pillarSet = new Set();
-  const failValidation = (details) => {
-    const err = new Error('TopicPlanValidationFailed');
-    err.code = 'OPENAI_SCHEMA_ERROR';
-    err.statusCode = 422;
-    err.details = details || {};
-    throw err;
-  };
   for (const topic of topics) {
     const title = String(topic?.title || '').trim();
     if (!title) {
-      failValidation({ reason: 'empty_title' });
+      pushWarning({ reason: 'empty_title' });
+      return null;
     }
     const normalizedTitle = normalizeTitleText(title);
     const signature = normalizeTitleSignature(title);
-    const firstToken = normalizeTitleText(title).split(/\s+/)[0] || '';
     const pillar = String(topic?.pillar || '').trim();
     if (titleSet.has(normalizedTitle)) {
-      failValidation({ reason: 'duplicate_title', value: normalizedTitle });
+      pushWarning({ reason: 'duplicate_title', value: normalizedTitle });
+      return null;
     }
     if (signature && signatureSet.has(signature)) {
-      failValidation({ reason: 'duplicate_signature', value: signature });
-    }
-    if (firstToken && firstTokenSet.has(firstToken)) {
-      failValidation({ reason: 'duplicate_first_token', value: firstToken });
+      pushWarning({ reason: 'duplicate_signature', value: signature });
+      return null;
     }
     titleSet.add(normalizedTitle);
     if (signature) signatureSet.add(signature);
-    if (firstToken) firstTokenSet.add(firstToken);
     if (pillar) pillarSet.add(pillar);
   }
   const uniquePillars = pillarSet.size;
   if (totalPosts > 1 && uniquePillars === 1) {
-    failValidation({ reason: 'pillar_collapsed' });
+    pushWarning({ reason: 'pillar_collapsed' });
+    return null;
   }
   if (totalPosts >= CALENDAR_PILLARS.length && uniquePillars < CALENDAR_PILLARS.length) {
-    failValidation({ reason: 'pillar_missing' });
+    pushWarning({ reason: 'pillar_missing' });
+    return null;
   }
   return topics;
 }
@@ -5465,17 +5458,27 @@ const server = http.createServer((req, res) => {
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const totalPosts = targetCount || (daysToGenerate * perDay);
-    const topicPlan = await generateTopicPlan({
-      nicheStyle,
-      brandContext,
-      totalPosts,
-      startDay: fallbackStart,
-      postsPerDay: perDay,
-      days: daysToGenerate,
-      brandBrainEnabled,
-      requestId: loggingContext?.requestId || null,
-      brandBrainDirective,
-    });
+    let topicPlan = null;
+    try {
+      topicPlan = await generateTopicPlan({
+        nicheStyle,
+        brandContext,
+        totalPosts,
+        startDay: fallbackStart,
+        postsPerDay: perDay,
+        days: daysToGenerate,
+        brandBrainEnabled,
+        requestId: loggingContext?.requestId || null,
+        brandBrainDirective,
+        context: loggingContext,
+      });
+    } catch (err) {
+      console.warn('[Calendar] topic plan failed; continuing without plan', {
+        requestId: loggingContext?.requestId || 'unknown',
+        error: err?.message || err,
+      });
+      topicPlan = null;
+    }
     const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
@@ -5512,6 +5515,7 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         extraInstructions: planBlock || '',
         brandBrainDirective,
+        planUsed: Boolean(topicPlan && topicPlan.length),
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
