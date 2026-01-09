@@ -586,6 +586,103 @@
     </style>
     <style>
       @media (max-width: 640px) {
+        #account-modal .settings-modal {
+          position: relative;
+          width: calc(100vw - 24px);
+          max-width: 520px;
+          margin: 12px auto;
+          max-height: calc(100vh - 24px);
+          overflow: hidden;
+        }
+
+        #account-modal .settings-panel {
+          overflow-y: auto;
+          overflow-x: hidden;
+          max-height: calc(100vh - 24px);
+          padding: 14px 14px 16px;
+        }
+
+        #account-modal #account-close-btn {
+          position: absolute !important;
+          top: 10px !important;
+          right: 10px !important;
+          left: auto !important;
+          bottom: auto !important;
+          transform: none !important;
+          z-index: 20;
+          width: 38px;
+          height: 38px;
+          display: grid;
+          place-items: center;
+        }
+
+        #account-modal .settings-modal__head {
+          padding-right: 52px;
+        }
+
+        #account-modal #account-modal-title {
+          font-size: 22px;
+          line-height: 1.15;
+          margin: 0 0 6px;
+        }
+
+        #account-modal .modal-sub {
+          font-size: 14px;
+          line-height: 1.25;
+          margin: 0 0 12px;
+        }
+
+        #account-modal .settings-tabs {
+          gap: 10px;
+          margin: 10px 0 12px;
+        }
+
+        #account-modal .settings-tab {
+          padding: 10px 12px;
+          font-size: 14px;
+          border-radius: 14px;
+        }
+
+        #account-modal .settings-group {
+          margin: 10px 0;
+        }
+
+        #account-modal label {
+          font-size: 13px;
+        }
+
+        #account-modal .field-hint {
+          font-size: 12px;
+        }
+
+        #account-modal input,
+        #account-modal select,
+        #account-modal textarea {
+          font-size: 14px;
+          padding: 10px 12px;
+          min-height: 40px;
+        }
+
+        #account-modal button {
+          font-size: 14px;
+          padding: 10px 12px;
+          min-height: 40px;
+        }
+
+        #account-modal .settings-accessibility {
+          padding: 10px 10px;
+          margin-top: 10px;
+        }
+
+        #account-modal .settings-toggle,
+        #account-modal .settings-accessibility label {
+          font-size: 13px;
+        }
+
+        #account-modal .settings-actions {
+          gap: 10px;
+          margin-top: 12px;
+        }
         #account-modal { overflow: hidden; }
         #account-modal .settings-modal { overflow-x: hidden; }
         #account-modal .settings-panel {
