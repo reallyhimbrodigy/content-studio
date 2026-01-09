@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Promptly</title>
   <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
   <link rel="canonical" href="https://usepromptly.app/" />
@@ -254,6 +254,135 @@
           display: inline-flex !important;
           align-items: center !important;
           justify-content: center !important;
+        }
+      }
+    </style>
+    <style>
+      /* ===== Mobile fixes for Account settings modal (calendar.html only) ===== */
+      @media (max-width: 600px) {
+        html, body {
+          overflow-x: hidden !important;
+          -webkit-text-size-adjust: 100%;
+        }
+
+        #account-modal {
+          padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom) 14px !important;
+          box-sizing: border-box;
+        }
+
+        #account-modal .settings-modal {
+          width: 100% !important;
+          max-width: 560px;
+          max-width: 100%;
+          margin: 0 auto !important;
+          left: 0 !important;
+          right: 0 !important;
+          transform: none !important;
+          box-sizing: border-box;
+          border-radius: 18px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        #account-modal .settings-modal[style],
+        #account-modal .settings-modal {
+          inset: auto !important;
+        }
+
+        #account-modal .settings-modal__head {
+          position: relative;
+          gap: 10px;
+        }
+
+        #account-modal #account-close-btn {
+          position: absolute !important;
+          top: calc(12px + env(safe-area-inset-top)) !important;
+          right: calc(12px + env(safe-area-inset-right)) !important;
+          left: auto !important;
+          margin: 0 !important;
+        }
+
+        #account-modal .settings-tabs {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 10px !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          box-sizing: border-box;
+        }
+
+        #account-modal .settings-tab {
+          width: 100% !important;
+          min-width: 0 !important;
+          white-space: normal !important;
+          line-height: 1.15;
+          padding: 12px 10px !important;
+          border-radius: 14px !important;
+        }
+
+        #account-modal .settings-panel,
+        #account-modal .settings-form,
+        #account-modal .settings-group {
+          width: 100% !important;
+          max-width: 100% !important;
+          box-sizing: border-box;
+        }
+
+        #account-modal .settings-panel {
+          max-height: calc(100vh - 220px) !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          padding-right: 2px;
+        }
+
+        #account-modal input,
+        #account-modal select,
+        #account-modal textarea {
+          width: 100% !important;
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
+        #account-modal .settings-field-readonly,
+        #account-modal .settings-accessibility {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: stretch !important;
+          gap: 10px !important;
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+
+        #account-modal #account-email-copy,
+        #account-modal #account-password-manage {
+          width: 100% !important;
+          align-self: stretch !important;
+        }
+
+        #account-modal .settings-actions {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+          width: 100% !important;
+        }
+
+        #account-modal .settings-actions__buttons {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+          width: 100% !important;
+        }
+
+        #account-modal .settings-actions__buttons button {
+          width: 100% !important;
+        }
+
+        #account-modal,
+        #account-modal * {
+          max-width: 100% !important;
+          box-sizing: border-box;
         }
       }
     </style>
