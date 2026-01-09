@@ -1006,6 +1006,131 @@
         }
       }
     </style>
+    <style>
+      @media (max-width: 640px) {
+        body.modal-open {
+          overflow: hidden !important;
+          height: 100% !important;
+          touch-action: none !important;
+        }
+
+        .account-settings-modal {
+          position: fixed !important;
+          inset: 0 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 14px !important;
+          z-index: 9999 !important;
+        }
+
+        .account-settings-modal .account-settings-panel {
+          position: relative !important;
+          width: 100% !important;
+          max-width: 520px !important;
+          max-height: 86vh !important;
+          margin: 0 !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
+          border-radius: 18px !important;
+        }
+
+        .account-settings-modal .account-settings-close {
+          position: absolute !important;
+          top: 12px !important;
+          right: 12px !important;
+          left: auto !important;
+          bottom: auto !important;
+          margin: 0 !important;
+          transform: none !important;
+          z-index: 10000 !important;
+          width: 40px !important;
+          height: 40px !important;
+          display: grid !important;
+          place-items: center !important;
+          pointer-events: auto !important;
+        }
+        .account-settings-modal .account-settings-close > * { pointer-events: none; }
+
+        .account-settings-modal .account-settings-body {
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          -webkit-overflow-scrolling: touch !important;
+          max-height: 86vh !important;
+          padding: 18px !important;
+          padding-top: 64px !important;
+          box-sizing: border-box !important;
+        }
+
+        .account-settings-modal .account-settings-body * {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
+        .account-settings-modal .account-settings-body h1,
+        .account-settings-modal .account-settings-body .modal-title,
+        .account-settings-modal .account-settings-body #account-modal-title {
+          font-size: 22px !important;
+          line-height: 1.15 !important;
+          margin: 0 0 10px !important;
+        }
+
+        .account-settings-modal .account-settings-body [role="tablist"] {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 10px !important;
+          width: 100% !important;
+          margin: 14px 0 16px !important;
+        }
+        .account-settings-modal .account-settings-body [role="tab"] {
+          width: 100% !important;
+          min-height: 44px !important;
+          padding: 10px 12px !important;
+          border-radius: 14px !important;
+          white-space: normal !important;
+        }
+
+        .account-settings-modal .account-settings-body form,
+        .account-settings-modal .account-settings-body .settings-form,
+        .account-settings-modal .account-settings-body .settings-group {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 12px !important;
+          width: 100% !important;
+        }
+
+        .account-settings-modal .account-settings-body input,
+        .account-settings-modal .account-settings-body select,
+        .account-settings-modal .account-settings-body textarea {
+          width: 100% !important;
+          font-size: 15px !important;
+          min-height: 44px !important;
+          padding: 10px 12px !important;
+        }
+
+        .account-settings-modal .account-settings-body .settings-field-readonly {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+          width: 100% !important;
+        }
+
+        .account-settings-modal .account-settings-body .settings-actions,
+        .account-settings-modal .account-settings-body .settings-actions__buttons {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 10px !important;
+          margin-top: 16px !important;
+          width: 100% !important;
+        }
+        .account-settings-modal .account-settings-body .settings-actions__buttons button {
+          width: 100% !important;
+          min-height: 44px !important;
+          padding: 12px 14px !important;
+          border-radius: 14px !important;
+        }
+      }
+    </style>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
@@ -1473,91 +1598,93 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay" style="display:none" aria-modal="true" role="dialog">
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only" id="account-close-btn" aria-label="Close profile settings">
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings">
             &times;
           </button>
         </div>
-        <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist">
-          <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
-          <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
-        </div>
-        <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
-          <div class="settings-group">
-            <label>Email</label>
-            <div class="settings-field-readonly mobile-email-row">
-              <span id="account-email-display">you@example.com</span>
-              <button type="button" id="account-email-copy" class="ghost">Copy</button>
-            </div>
+        <div class="account-settings-body">
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist">
+            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
+            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
           </div>
-          <div class="settings-group">
-            <label>Password</label>
-            <div class="settings-field-readonly">
-              <span aria-label="Password is hidden">••••••••</span>
-              <button type="button" id="account-password-manage" class="ghost">Update password</button>
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
+            <div class="settings-group">
+              <label>Email</label>
+              <div class="settings-field-readonly mobile-email-row">
+                <span id="account-email-display">you@example.com</span>
+                <button type="button" id="account-email-copy" class="ghost">Copy</button>
+              </div>
             </div>
-            <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
-          </div>
-          <div class="settings-group">
-            <label>Subscription</label>
-            <div class="settings-field-readonly">
-              <div class="settings-field-readonly__details">
-                <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
-                <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+            <div class="settings-group">
+              <label>Password</label>
+              <div class="settings-field-readonly">
+                <span aria-label="Password is hidden">••••••••</span>
+                <button type="button" id="account-password-manage" class="ghost">Update password</button>
+              </div>
+              <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+            </div>
+            <div class="settings-group">
+              <label>Subscription</label>
+              <div class="settings-field-readonly">
+                <div class="settings-field-readonly__details">
+                  <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
+                  <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Last login</label>
+              <div class="settings-field-readonly">
+                <span id="account-last-login">Not available</span>
               </div>
             </div>
           </div>
-          <div class="settings-group">
-            <label>Last login</label>
-            <div class="settings-field-readonly">
-              <span id="account-last-login">Not available</span>
-            </div>
-          </div>
-        </div>
-          <div class="settings-panel mobile-account-content" data-settings-panel="profile">
-            <form id="account-settings-form" class="settings-form">
-            <div class="settings-group">
-              <label for="account-display-name">Display name</label>
-              <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
-            </div>
-            <div class="settings-group">
-              <label for="account-pronouns">Pronouns (optional)</label>
-              <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
-            </div>
-            <div class="settings-group">
-              <label for="account-role">Role or team</label>
-              <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
-            </div>
-            <fieldset class="settings-group">
-              <legend class="settings-group__label">Interface preferences</legend>
-              <div class="settings-accessibility">
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-high-contrast" />
-                  <span>High contrast surfaces</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-large-type" />
-                  <span>Larger typography</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-reduced-motion" />
-                  <span>Reduce motion &amp; animations</span>
-                </label>
+            <div class="settings-panel mobile-account-content" data-settings-panel="profile">
+              <form id="account-settings-form" class="settings-form">
+              <div class="settings-group">
+                <label for="account-display-name">Display name</label>
+                <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
               </div>
-            </fieldset>
-          </form>
-        </div>
-        <div class="settings-actions">
-          <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
-          <div class="settings-actions__buttons">
-            <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
-            <button type="submit" form="account-settings-form" class="primary">Save preferences</button>
+              <div class="settings-group">
+                <label for="account-pronouns">Pronouns (optional)</label>
+                <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
+              </div>
+              <div class="settings-group">
+                <label for="account-role">Role or team</label>
+                <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
+              </div>
+              <fieldset class="settings-group">
+                <legend class="settings-group__label">Interface preferences</legend>
+                <div class="settings-accessibility">
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="prefers-high-contrast" />
+                    <span>High contrast surfaces</span>
+                  </label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="prefers-large-type" />
+                    <span>Larger typography</span>
+                  </label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="prefers-reduced-motion" />
+                    <span>Reduce motion &amp; animations</span>
+                  </label>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+          <div class="settings-actions">
+            <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
+            <div class="settings-actions__buttons">
+              <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
+              <button type="submit" form="account-settings-form" class="primary">Save preferences</button>
+            </div>
           </div>
         </div>
       </div>
