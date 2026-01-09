@@ -1002,7 +1002,7 @@
       [data-account-modal] [data-email-row] {
         display: flex !important;
         align-items: center !important;
-        gap: 10px !important;
+        gap: 8px !important;
         width: 100% !important;
       }
 
@@ -1019,10 +1019,24 @@
         white-space: nowrap !important;
       }
 
-      [data-account-modal] .settings-field-readonly span {
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        width: 100% !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
       }
 
       .page-calendar .calendar-card__caption {
