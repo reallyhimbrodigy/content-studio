@@ -2688,6 +2688,58 @@ function buildCalendarSchemaBlock(expectedCount) {
   return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch (err) {
+    return '"[unserializable]"';
+  }
+}
+
+function extractOpenAiErrorDetails(err) {
+  const rawMessage = String(err?.message || '');
+  let payload = null;
+  const marker = rawMessage.indexOf(':');
+  if (marker !== -1) {
+    const payloadText = rawMessage.slice(marker + 1).trim();
+    try {
+      payload = JSON.parse(payloadText);
+    } catch {}
+  }
+  const openaiError = payload?.error || err?.error || null;
+  return {
+    openaiType: openaiError?.type || null,
+    openaiMessage: openaiError?.message || err?.message || null,
+    openaiParam: openaiError?.param || null,
+    openaiBody: payload || err?.body || err?.response || null,
+  };
+}
+
+function assertJsonSchemaFiniteNumbers(schema, label = 'schema') {
+  const issues = [];
+  const walk = (value, path) => {
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      issues.push(path);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, idx) => walk(item, `${path}[${idx}]`));
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.entries(value).forEach(([key, child]) => walk(child, `${path}.${key}`));
+    }
+  };
+  walk(schema, label);
+  if (issues.length) {
+    const err = new Error('Invalid JSON schema');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 400;
+    err.details = { reason: 'non_finite_number', paths: issues };
+    throw err;
+  }
+}
+
 const TITLE_SIGNATURE_STOPWORDS = new Set([
   'a',
   'an',
@@ -4392,6 +4444,16 @@ async function generateTopicPlan({
       },
     },
   };
+  try {
+    JSON.stringify(schema);
+  } catch (err) {
+    const schemaErr = new Error('OpenAI schema validation failed');
+    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
+    schemaErr.statusCode = 400;
+    schemaErr.details = { message: err?.message || err };
+    throw schemaErr;
+  }
+  assertJsonSchemaFiniteNumbers(schema, 'topicPlanSchema');
   const slotLines = assignedSlots.map(
     (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex} | pillar: ${slot.pillar}`
   );
@@ -4449,7 +4511,26 @@ async function generateTopicPlan({
     if (typeof messageContent?.value === 'string') return messageContent.value;
     return '';
   };
-  const json = await openAIRequest(options, payload);
+  let json = null;
+  try {
+    json = await openAIRequest(options, payload);
+  } catch (err) {
+    const details = extractOpenAiErrorDetails(err);
+    console.error('[OpenAI][TopicPlan] request failed', {
+      requestId: requestId || null,
+      mode: 'topicPlan',
+      model: 'gpt-4o-mini',
+          responseFormat: safeStringify({
+            type: 'json_schema',
+            json_schema: { name: 'calendar_topic_plan', strict: true },
+          }),
+      statusCode: err?.statusCode || err?.status || null,
+      ...details,
+    });
+    err.openaiDetails = details;
+    err.mode = 'topicPlan';
+    throw err;
+  }
   const content = extractContentText(json);
   let parsed = null;
   try {
@@ -4538,6 +4619,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     if (!schema || schema.type !== 'object' || !schema.properties || !schema.required) {
       throw new Error('Invalid schema root shape');
     }
+    assertJsonSchemaFiniteNumbers(schema, 'calendarChunkSchema');
   } catch (err) {
     const schemaErr = new Error('OpenAI schema validation failed');
     schemaErr.code = 'OPENAI_SCHEMA_ERROR';
@@ -4644,6 +4726,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const requestPromise = withOpenAiSlot(() =>
       openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
         const payloadJson = parseOpenAiErrorPayload(err);
+        const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
+        const details = extractOpenAiErrorDetails(err);
+        console.error('[OpenAI][CalendarChunk] request failed', {
+          requestId: loggingContext?.requestId || null,
+          mode,
+          model: 'gpt-4o-mini',
+          responseFormat: safeStringify(responseFormat),
+          statusCode: err?.statusCode || err?.status || null,
+          ...details,
+        });
         if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
           const schemaErr = new Error(payloadJson?.error?.message || 'OpenAI schema error');
           schemaErr.code = 'OPENAI_SCHEMA_ERROR';
@@ -4654,8 +4746,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
             schemaKeys: Object.keys(schema || {}),
           };
           schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
+          schemaErr.openaiDetails = details;
+          schemaErr.mode = mode;
           throw schemaErr;
         }
+        err.openaiDetails = details;
+        err.mode = mode;
         throw err;
       })
     );
@@ -6248,6 +6344,8 @@ const server = http.createServer((req, res) => {
             errorPayload: err?.details?.error || null,
             responseFormat: err?.details?.response_format || null,
             schemaKeys: err?.details?.schemaKeys || null,
+            openaiDetails: err?.openaiDetails || null,
+            mode: err?.mode || null,
           });
         }
         if (isInvalidJson && err?.rawContent) {
@@ -6256,13 +6354,22 @@ const server = http.createServer((req, res) => {
         logServerError('calendar_regenerate_error', err, logInfo);
         if (res.headersSent) return;
         const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
+        const openaiDetails = err?.openaiDetails || {};
         const payload = {
           error: isSchemaError
             ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
             : isInvalidJson
               ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
               : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
+          details: isSchemaError
+            ? {
+              openaiType: openaiDetails.openaiType || null,
+              openaiMessage: openaiDetails.openaiMessage || null,
+              openaiParam: openaiDetails.openaiParam || null,
+            }
+            : undefined,
           requestId,
+          mode: err?.mode || null,
         };
         if (isSchemaError) {
           if (!isProduction && err?.rawContent) {
