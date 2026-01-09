@@ -584,6 +584,62 @@
         }
       }
     </style>
+    <style>
+      @media (max-width: 640px) {
+        #account-modal { overflow: hidden; }
+        #account-modal .settings-modal { overflow-x: hidden; }
+        #account-modal .settings-panel {
+          overflow-x: hidden;
+          padding-left: 14px;
+          padding-right: 14px;
+        }
+
+        #account-modal .settings-panel * {
+          max-width: 100%;
+        }
+
+        #account-modal .settings-panel,
+        #account-modal .settings-form,
+        #account-modal .settings-group,
+        #account-modal .settings-accessibility,
+        #account-modal .settings-toggle {
+          box-sizing: border-box;
+        }
+
+        #account-modal .settings-panel,
+        #account-modal .settings-form,
+        #account-modal .settings-group,
+        #account-modal .settings-accessibility,
+        #account-modal .settings-toggle {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+          margin-left: 0 !important;
+          left: auto !important;
+          transform: none !important;
+          translate: none !important;
+        }
+
+        #account-modal .settings-panel [style*="100vw"],
+        #account-modal .settings-panel .full-bleed,
+        #account-modal .settings-panel .container,
+        #account-modal .settings-panel .wrapper {
+          width: 100% !important;
+        }
+
+        #account-modal input,
+        #account-modal select,
+        #account-modal textarea {
+          width: 100%;
+          min-width: 0;
+        }
+
+        #account-modal .settings-accessibility {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+      }
+    </style>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
