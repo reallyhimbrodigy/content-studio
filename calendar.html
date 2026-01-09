@@ -876,6 +876,136 @@
         }
       }
     </style>
+    <style>
+      @media (max-width: 640px) {
+        html:has(#account-modal[style*="display: flex"]),
+        body:has(#account-modal[style*="display: flex"]),
+        html.modal-open,
+        body.modal-open {
+          height: 100%;
+          overflow: hidden !important;
+          touch-action: none !important;
+        }
+
+        body.modal-open #account-modal .settings-modal,
+        #account-modal[style*="display: flex"] .settings-modal {
+          position: fixed !important;
+          left: 12px !important;
+          right: 12px !important;
+          top: 12px !important;
+          bottom: 12px !important;
+          margin: 0 !important;
+          width: auto !important;
+          max-width: none !important;
+          max-height: none !important;
+          overflow: hidden !important;
+          border-radius: 18px;
+          box-sizing: border-box;
+        }
+
+        body.modal-open #account-modal #account-close-btn,
+        #account-modal[style*="display: flex"] #account-close-btn {
+          position: absolute !important;
+          top: 10px !important;
+          right: 10px !important;
+          left: auto !important;
+          bottom: auto !important;
+          transform: none !important;
+          align-self: flex-start !important;
+          z-index: 9999 !important;
+          width: 40px !important;
+          height: 40px !important;
+          display: grid !important;
+          place-items: center !important;
+          pointer-events: auto !important;
+        }
+
+        body.modal-open #account-modal .settings-modal__head,
+        #account-modal[style*="display: flex"] .settings-modal__head {
+          padding-right: 60px !important;
+        }
+
+        body.modal-open #account-modal .settings-panel,
+        #account-modal[style*="display: flex"] .settings-panel {
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          padding: 56px 16px 16px !important;
+          box-sizing: border-box;
+        }
+
+        body.modal-open #account-modal #account-modal-title,
+        #account-modal[style*="display: flex"] #account-modal-title {
+          font-size: 20px !important;
+          line-height: 1.15 !important;
+          margin: 0 0 10px !important;
+        }
+
+        body.modal-open #account-modal .modal-sub,
+        #account-modal[style*="display: flex"] .modal-sub {
+          font-size: 14px !important;
+          line-height: 1.25 !important;
+          margin: 0 0 12px !important;
+        }
+
+        body.modal-open #account-modal .settings-tab,
+        #account-modal[style*="display: flex"] .settings-tab {
+          font-size: 14px !important;
+          padding: 10px 12px !important;
+        }
+
+        body.modal-open #account-modal label,
+        #account-modal[style*="display: flex"] label {
+          font-size: 13px !important;
+        }
+
+        body.modal-open #account-modal .field-hint,
+        #account-modal[style*="display: flex"] .field-hint {
+          font-size: 12px !important;
+        }
+
+        body.modal-open #account-modal input,
+        body.modal-open #account-modal select,
+        body.modal-open #account-modal textarea,
+        #account-modal[style*="display: flex"] input,
+        #account-modal[style*="display: flex"] select,
+        #account-modal[style*="display: flex"] textarea {
+          font-size: 15px !important;
+          padding: 10px 12px !important;
+          min-height: 42px !important;
+        }
+
+        body.modal-open #account-modal button,
+        #account-modal[style*="display: flex"] button {
+          font-size: 15px !important;
+          padding: 10px 12px !important;
+          min-height: 42px !important;
+        }
+
+        body.modal-open #account-modal .settings-accessibility,
+        #account-modal[style*="display: flex"] .settings-accessibility {
+          padding: 12px !important;
+          margin-top: 12px !important;
+        }
+
+        body.modal-open #account-modal .settings-actions,
+        #account-modal[style*="display: flex"] .settings-actions {
+          gap: 10px !important;
+          margin-top: 12px !important;
+        }
+
+        body.modal-open #account-modal .settings-modal *,
+        #account-modal[style*="display: flex"] .settings-modal * {
+          max-width: 100% !important;
+        }
+      }
+    </style>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
