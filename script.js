@@ -9470,3 +9470,98 @@ document.addEventListener('click', (event) => {
   }
 });
 }
+
+const isLibraryPage =
+  document.body.classList.contains('page-library') || /library\.html/i.test(window.location.pathname || '');
+
+if (isLibraryPage) {
+  const libraryAccountModal = document.getElementById('account-modal');
+  const libraryAccountCloseBtn = document.getElementById('account-close-btn');
+  const librarySettingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+  const librarySettingsPanels = document.querySelectorAll('[data-settings-panel]');
+  const libraryProfileMenu = document.getElementById('profile-menu');
+  const libraryProfileTrigger = document.getElementById('profile-trigger');
+  const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+  const closeLibraryProfileMenu = () => {
+    if (libraryProfileMenu) libraryProfileMenu.style.display = 'none';
+    if (libraryProfileTrigger) libraryProfileTrigger.setAttribute('aria-expanded', 'false');
+  };
+
+  const setLibraryAccountTab = (tab = 'account') => {
+    librarySettingsTabButtons.forEach((btn) => {
+      const isActive = (btn.dataset.settingsTab || 'account') === tab;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+      if (isActive) {
+        btn.removeAttribute('tabindex');
+      } else {
+        btn.setAttribute('tabindex', '-1');
+      }
+    });
+    librarySettingsPanels.forEach((panel) => {
+      const isActive = (panel.dataset.settingsPanel || 'account') === tab;
+      panel.classList.toggle('active-panel', isActive);
+    });
+  };
+
+  const openLibraryAccountModal = (tab = 'account') => {
+    if (!libraryAccountModal) return;
+    setLibraryAccountTab(tab);
+    libraryAccountModal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+  };
+
+  if (libraryAccountCloseBtn) {
+    libraryAccountCloseBtn.addEventListener('click', () => {
+      if (!libraryAccountModal) return;
+      libraryAccountModal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    });
+  }
+
+  let libraryPointerHandled = false;
+  const handleLibraryProfileAction = (event) => {
+    if (!isLibraryMobile()) return;
+    const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeLibraryProfileMenu();
+    if (target.id === 'account-overview-btn') {
+      openLibraryAccountModal('account');
+      return;
+    }
+    if (target.id === 'profile-settings-btn') {
+      openLibraryAccountModal('profile');
+      return;
+    }
+    if (target.id === 'password-settings-btn') {
+      window.location.href = 'reset-password.html';
+    }
+  };
+
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      if (!isLibraryMobile()) return;
+      const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
+      if (!target) return;
+      libraryPointerHandled = true;
+      handleLibraryProfileAction(event);
+    },
+    true
+  );
+
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (libraryPointerHandled) {
+        libraryPointerHandled = false;
+        return;
+      }
+      handleLibraryProfileAction(event);
+    },
+    true
+  );
+}
