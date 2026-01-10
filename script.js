@@ -9810,6 +9810,17 @@ if (isLibraryPage()) {
     });
   }
 
+  if (libraryAccountModal) {
+    libraryAccountModal.addEventListener(
+      'touchmove',
+      (event) => {
+        if (libraryAccountModal.style.display !== 'flex') return;
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+  }
+
   document.addEventListener(
     'click',
     (event) => {
