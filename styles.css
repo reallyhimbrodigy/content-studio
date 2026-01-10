@@ -9223,7 +9223,7 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   body.page-library.modal-open {
     overflow: hidden !important;
     touch-action: none !important;
@@ -9232,24 +9232,31 @@ body.view-landing .landing-workflow + .landing-section {
   body.page-library #account-modal.modal-overlay {
     position: fixed !important;
     inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     overflow: hidden !important;
     z-index: 9999 !important;
   }
 
   body.page-library #account-modal .settings-modal {
-    position: fixed !important;
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    width: 94vw !important;
-    max-width: 94vw !important;
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: 92vw !important;
+    max-width: 720px !important;
     height: 90vh !important;
     max-height: 90vh !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 14px !important;
     overflow: hidden !important;
     border-radius: 18px !important;
     box-sizing: border-box !important;
+    overflow-x: hidden !important;
   }
 
   body.page-library #account-modal .settings-modal * {
@@ -9395,6 +9402,10 @@ body.view-landing .landing-workflow + .landing-section {
     flex: 0 0 auto !important;
     white-space: nowrap !important;
     align-self: flex-start !important;
+  }
+
+  body.page-library.modal-open .sidebar-backdrop {
+    pointer-events: none !important;
   }
 }
 
