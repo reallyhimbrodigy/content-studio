@@ -1080,8 +1080,10 @@
   <style id="mobile-card-caption-fix">
     @media (max-width: 640px) {
       .page-calendar .calendar-card__caption-row {
-        display: flex !important;
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
         align-items: flex-start !important;
+        gap: 0.5rem !important;
         width: 100% !important;
         min-width: 0 !important;
       }
@@ -1101,7 +1103,6 @@
 
       .page-calendar .calendar-card__caption-row .caption-copy-btn,
       .page-calendar .calendar-card__caption-row .detail-copy-btn {
-        margin-left: auto !important;
         flex: 0 0 auto !important;
         justify-self: end !important;
       }
