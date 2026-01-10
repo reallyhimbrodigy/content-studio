@@ -1077,6 +1077,35 @@
       }
     }
   </style>
+  <style id="mobile-card-caption-fix">
+    @media (max-width: 640px) {
+      .page-calendar .calendar-card__caption-row {
+        display: flex !important;
+        align-items: center !important;
+        width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      .page-calendar .calendar-card__caption {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+      }
+
+      .page-calendar .caption-copy-btn,
+      .page-calendar .detail-copy-btn {
+        margin-left: auto !important;
+        flex: 0 0 auto !important;
+        justify-self: end !important;
+      }
+    }
+  </style>
   <script type="module" src="./script.js?t=1764000000"></script>
   <script type="module" src="./footer.js?t=1763412925"></script>
   <script src="/sw-register.js" defer></script>
