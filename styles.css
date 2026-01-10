@@ -9223,7 +9223,7 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   body.page-library.modal-open {
     overflow: hidden !important;
     touch-action: none !important;
@@ -9231,21 +9231,25 @@ body.view-landing .landing-workflow + .landing-section {
   body.page-library [data-account-overlay] {
     position: fixed !important;
     inset: 0 !important;
-    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0.75rem !important;
+    overflow: visible !important;
     z-index: 9999 !important;
   }
 
   body.page-library [data-account-modal] {
-    position: fixed !important;
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    width: 94vw !important;
-    max-width: 94vw !important;
-    height: 90vh !important;
-    max-height: 90vh !important;
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    width: calc(100vw - 32px) !important;
+    max-width: 540px !important;
+    height: auto !important;
+    max-height: calc(100vh - 48px) !important;
     margin: 0 !important;
-    padding: 14px !important;
+    padding: 20px !important;
     overflow: hidden !important;
     border-radius: 18px !important;
     box-sizing: border-box !important;
