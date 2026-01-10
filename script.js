@@ -9769,7 +9769,6 @@ if (isLibraryPage) {
 
   let libraryPointerHandled = false;
   const handleLibraryProfileAction = (event) => {
-    if (!isLibraryMobile()) return;
     const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
     if (!target) return;
     event.preventDefault();
@@ -9791,7 +9790,6 @@ if (isLibraryPage) {
   document.addEventListener(
     'pointerdown',
     (event) => {
-      if (!isLibraryMobile()) return;
       const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
       if (!target) return;
       libraryPointerHandled = true;
