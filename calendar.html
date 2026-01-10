@@ -1126,8 +1126,12 @@
 
       .page-calendar .calendar-card__caption-row .caption-copy-btn,
       .page-calendar .calendar-card__caption-row .detail-copy-btn,
-      .page-calendar .calendar-card__detail-row .detail-copy-btn {
+      .page-calendar .calendar-card__detail-row .detail-copy-btn,
+      .page-calendar .calendar-card__caption-row [aria-label^="Copy"],
+      .page-calendar .calendar-card__detail-row .detail-row__top [aria-label^="Copy"] {
         margin-left: auto !important;
+        justify-self: end !important;
+        flex: 0 0 auto !important;
       }
     }
   </style>
