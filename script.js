@@ -62,6 +62,7 @@ const grid = document.getElementById("calendar-grid");
   const accountCloseBtn = document.getElementById('account-close-btn');
   const accountCancelBtn = document.getElementById('account-cancel-btn');
   const accountForm = document.getElementById('account-settings-form');
+  const accountSaveBtn = accountForm?.querySelector('button[type="submit"]');
   const accountDisplayNameInput = document.getElementById('account-display-name');
   const accountPronounsInput = document.getElementById('account-pronouns');
   const accountRoleInput = document.getElementById('account-role');
@@ -3149,21 +3150,43 @@ async function getAccountAuthUser() {
   }
 }
 
-async function hydrateAccountSettingsFromSupabase({ updateEmail = true } = {}) {
+function setAccountModalLoadingState() {
+  if (accountEmailDisplay) accountEmailDisplay.textContent = 'Loading…';
+  if (accountLastLoginEl) accountLastLoginEl.textContent = 'Loading…';
+  if (accountSaveBtn) accountSaveBtn.disabled = true;
+}
+
+function setAccountModalLoggedOutState() {
+  activeUserEmail = '';
+  updateAccountOverviewEmail('');
+  updateAccountPlanInfo('none');
+  updateAccountLastLogin('');
+  if (accountSaveBtn) accountSaveBtn.disabled = false;
+}
+
+async function loadAccountModalData() {
+  setAccountModalLoadingState();
   const user = await getAccountAuthUser();
-  if (!user) return null;
-  const email = user.email || user.user_metadata?.email || '';
-  if (updateEmail && email) {
-    activeUserEmail = email;
-    updateAccountOverviewEmail(email);
-    if (userEmailEl) userEmailEl.textContent = email;
+  if (!user) {
+    setAccountModalLoggedOutState();
+    return null;
   }
+  const email = user.email || user.user_metadata?.email || '';
+  activeUserEmail = email;
+  if (accountEmailDisplay) {
+    accountEmailDisplay.textContent = email || 'Email unavailable';
+  }
+  if (userEmailEl && email) userEmailEl.textContent = email;
+  if (accountLastLoginEl && accountLastLoginEl.textContent === 'Loading…') {
+    accountLastLoginEl.textContent = '';
+  }
+  hydrateAccountForm();
   try {
     const { data, error } = await supabase
       .from('profiles')
       .select('profile_settings')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
     if (error) throw error;
     const settings = data?.profile_settings;
     if (settings && typeof settings === 'object') {
@@ -3173,6 +3196,7 @@ async function hydrateAccountSettingsFromSupabase({ updateEmail = true } = {}) {
   } catch (error) {
     console.warn('Unable to sync profile settings from Supabase', error);
   }
+  if (accountSaveBtn) accountSaveBtn.disabled = false;
   return user;
 }
 
@@ -3224,7 +3248,13 @@ if (settingsTabButtons.length) {
 
 function updateAccountOverviewEmail(email) {
   if (accountEmailDisplay) {
-    accountEmailDisplay.textContent = email || 'Not signed in';
+    if (email) {
+      accountEmailDisplay.textContent = email;
+    } else if (activeUserEmail) {
+      accountEmailDisplay.textContent = 'Email unavailable';
+    } else {
+      accountEmailDisplay.textContent = 'Not signed in';
+    }
   }
 }
 
@@ -3273,7 +3303,7 @@ async function loadCalendarExportUsage() {
 function updateAccountLastLogin(timestamp) {
   if (!accountLastLoginEl) return;
   if (!timestamp) {
-    accountLastLoginEl.textContent = 'Not available';
+    accountLastLoginEl.textContent = activeUserEmail ? '' : 'Not available';
     return;
   }
   try {
@@ -3299,7 +3329,6 @@ function hydrateAccountForm() {
 
 function openAccountModal(initialTab = 'account') {
   if (!accountModal) return;
-  hydrateAccountForm();
   if (accountFeedback) {
     accountFeedback.textContent = '';
     accountFeedback.classList.remove('success');
@@ -3307,7 +3336,7 @@ function openAccountModal(initialTab = 'account') {
   setAccountSettingsTab(initialTab);
   accountModal.style.display = 'flex';
   document.body.classList.add('modal-open');
-  hydrateAccountSettingsFromSupabase();
+  loadAccountModalData();
 }
 
 function closeAccountModal() {
@@ -4957,6 +4986,7 @@ if (accountForm) {
         const savedRemote = data?.profile_settings || profileSettings;
         updateProfileSettings(savedRemote, { replace: true, targetEmail: authEmail || activeUserEmail });
         syncedToSupabase = true;
+        await loadAccountModalData();
         shouldCloseModal = true;
       } catch (error) {
         console.warn('Unable to sync profile settings to Supabase', error);
@@ -9541,6 +9571,18 @@ if (isLibraryPage) {
   const librarySettingsPanels = document.querySelectorAll('[data-settings-panel]');
   const libraryProfileMenu = document.getElementById('profile-menu');
   const libraryProfileTrigger = document.getElementById('profile-trigger');
+  const libraryAccountForm = document.getElementById('account-settings-form');
+  const libraryAccountSaveBtn = libraryAccountForm?.querySelector('button[type="submit"]');
+  const libraryAccountEmailDisplay = document.getElementById('account-email-display');
+  const libraryAccountLastLoginEl = document.getElementById('account-last-login');
+  const libraryAccountDisplayNameInput = document.getElementById('account-display-name');
+  const libraryAccountPronounsInput = document.getElementById('account-pronouns');
+  const libraryAccountRoleInput = document.getElementById('account-role');
+  const libraryPrefersHighContrastInput = document.getElementById('prefers-high-contrast');
+  const libraryPrefersLargeTypeInput = document.getElementById('prefers-large-type');
+  const libraryPrefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
+  const libraryAccountFeedback = document.getElementById('account-feedback');
+  const libraryUserEmailEl = document.getElementById('user-email');
   const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
 
   if (libraryAccountModal) {
@@ -9571,6 +9613,75 @@ if (isLibraryPage) {
     });
   };
 
+  const setLibraryModalLoadingState = () => {
+    if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Loading…';
+    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Loading…';
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = true;
+  };
+
+  const setLibraryModalLoggedOutState = () => {
+    if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Not signed in';
+    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Not available';
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = false;
+  };
+
+  const applyLibraryPrefs = (settings = {}) => {
+    if (libraryAccountDisplayNameInput && typeof settings.displayName === 'string') {
+      libraryAccountDisplayNameInput.value = settings.displayName;
+    }
+    if (libraryAccountPronounsInput && typeof settings.pronouns === 'string') {
+      libraryAccountPronounsInput.value = settings.pronouns;
+    }
+    if (libraryAccountRoleInput && typeof settings.role === 'string') {
+      libraryAccountRoleInput.value = settings.role;
+    }
+    if (libraryPrefersHighContrastInput && 'highContrast' in settings) {
+      libraryPrefersHighContrastInput.checked = !!settings.highContrast;
+    }
+    if (libraryPrefersLargeTypeInput && 'largeType' in settings) {
+      libraryPrefersLargeTypeInput.checked = !!settings.largeType;
+    }
+    if (libraryPrefersReducedMotionInput && 'reducedMotion' in settings) {
+      libraryPrefersReducedMotionInput.checked = !!settings.reducedMotion;
+    }
+  };
+
+  const loadLibraryAccountModalData = async () => {
+    setLibraryModalLoadingState();
+    if (!supabase?.auth?.getUser) {
+      setLibraryModalLoggedOutState();
+      return;
+    }
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      setLibraryModalLoggedOutState();
+      return;
+    }
+    const email = user.email || user.user_metadata?.email || '';
+    if (libraryAccountEmailDisplay) {
+      libraryAccountEmailDisplay.textContent = email || 'Email unavailable';
+    }
+    if (libraryUserEmailEl && email) libraryUserEmailEl.textContent = email;
+    if (libraryAccountLastLoginEl && libraryAccountLastLoginEl.textContent === 'Loading…') {
+      libraryAccountLastLoginEl.textContent = '';
+    }
+    try {
+      const { data, error: prefsError } = await supabase
+        .from('profiles')
+        .select('profile_settings')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (prefsError) throw prefsError;
+      const settings = data?.profile_settings;
+      if (settings && typeof settings === 'object') {
+        applyLibraryPrefs(settings);
+      }
+    } catch (prefsError) {
+      console.warn('Unable to sync profile settings from Supabase', prefsError);
+    }
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = false;
+  };
+
   const openLibraryAccountModal = (tab = 'account') => {
     if (!libraryAccountModal) return;
     if (libraryAccountModal.parentElement !== document.body) {
@@ -9580,6 +9691,7 @@ if (isLibraryPage) {
     libraryAccountModal.style.display = 'flex';
     libraryAccountModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
+    loadLibraryAccountModalData();
   };
 
   if (libraryAccountCloseBtn) {
@@ -9588,6 +9700,60 @@ if (isLibraryPage) {
       libraryAccountModal.style.display = 'none';
       libraryAccountModal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('modal-open');
+    });
+  }
+
+  if (libraryAccountForm && !libraryAccountForm.dataset.bound) {
+    libraryAccountForm.dataset.bound = '1';
+    libraryAccountForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!supabase?.auth?.getUser) return;
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setLibraryModalLoggedOutState();
+        return;
+      }
+      if (libraryAccountFeedback) {
+        libraryAccountFeedback.textContent = 'Saving preferences...';
+        libraryAccountFeedback.classList.remove('error');
+        libraryAccountFeedback.classList.remove('success');
+      }
+      const payload = {
+        displayName: libraryAccountDisplayNameInput?.value.trim() || '',
+        pronouns: libraryAccountPronounsInput?.value.trim() || '',
+        role: libraryAccountRoleInput?.value.trim() || '',
+        highContrast: !!libraryPrefersHighContrastInput?.checked,
+        largeType: !!libraryPrefersLargeTypeInput?.checked,
+        reducedMotion: !!libraryPrefersReducedMotionInput?.checked
+      };
+      try {
+        const { data, error: saveError } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: user.id,
+              profile_settings: payload,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+          )
+          .select('profile_settings')
+          .single();
+        if (saveError) throw saveError;
+        const saved = data?.profile_settings || payload;
+        applyLibraryPrefs(saved);
+        if (libraryAccountFeedback) {
+          libraryAccountFeedback.textContent = 'Preferences saved.';
+          libraryAccountFeedback.classList.add('success');
+        }
+        await loadLibraryAccountModalData();
+      } catch (saveError) {
+        console.warn('Unable to sync profile settings to Supabase', saveError);
+        if (libraryAccountFeedback) {
+          libraryAccountFeedback.textContent = 'Saved locally, but syncing failed. Try again soon.';
+          libraryAccountFeedback.classList.add('error');
+        }
+      }
     });
   }
 
