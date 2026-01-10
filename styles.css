@@ -9157,6 +9157,46 @@ body.view-landing .landing-workflow + .landing-section {
     top: auto;
     transform: none;
   }
+
+  body.page-library .hero-pill--subtle {
+    display: none;
+  }
+
+  body.page-library #profile-menu {
+    left: auto !important;
+    right: 12px !important;
+    top: 60px !important;
+    transform: none !important;
+    margin: 0 !important;
+    width: min(92vw, 320px) !important;
+    max-width: calc(100vw - 24px) !important;
+    box-sizing: border-box !important;
+    z-index: 9999 !important;
+  }
+
+  body.page-library #profile-dropdown {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    left: auto !important;
+    transform: none !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  body.page-library #profile-dropdown button,
+  body.page-library #profile-dropdown a {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: left !important;
+    padding-left: 12px !important;
+  }
 }
 
 @media (max-width: 480px) {
