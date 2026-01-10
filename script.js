@@ -3137,6 +3137,45 @@ function applyProfileSettings() {
   document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
 }
 
+async function getAccountAuthUser() {
+  if (!supabase?.auth?.getUser) return null;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user || null;
+  } catch (error) {
+    console.warn('Unable to resolve auth user for account settings', error);
+    return null;
+  }
+}
+
+async function hydrateAccountSettingsFromSupabase({ updateEmail = true } = {}) {
+  const user = await getAccountAuthUser();
+  if (!user) return null;
+  const email = user.email || user.user_metadata?.email || '';
+  if (updateEmail && email) {
+    activeUserEmail = email;
+    updateAccountOverviewEmail(email);
+    if (userEmailEl) userEmailEl.textContent = email;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('profile_settings')
+      .eq('id', user.id)
+      .single();
+    if (error) throw error;
+    const settings = data?.profile_settings;
+    if (settings && typeof settings === 'object') {
+      updateProfileSettings(settings, { replace: true, targetEmail: email || activeUserEmail });
+      hydrateAccountForm();
+    }
+  } catch (error) {
+    console.warn('Unable to sync profile settings from Supabase', error);
+  }
+  return user;
+}
+
 async function syncProfileSettingsFromSupabase() {
   if (!activeUserEmail) return;
   if (profileSettingsSyncPromise) return profileSettingsSyncPromise;
@@ -3268,6 +3307,7 @@ function openAccountModal(initialTab = 'account') {
   setAccountSettingsTab(initialTab);
   accountModal.style.display = 'flex';
   document.body.classList.add('modal-open');
+  hydrateAccountSettingsFromSupabase();
 }
 
 function closeAccountModal() {
@@ -4872,6 +4912,13 @@ if (postFrequencySelect) {
 if (accountForm) {
   accountForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const authUser = await getAccountAuthUser();
+    const authEmail = authUser?.email || authUser?.user_metadata?.email || '';
+    if (authEmail) {
+      activeUserEmail = authEmail;
+      updateAccountOverviewEmail(authEmail);
+      if (userEmailEl) userEmailEl.textContent = authEmail;
+    }
     if (accountFeedback) {
       accountFeedback.textContent = activeUserEmail ? 'Saving preferences...' : 'Preferences saved locally.';
       accountFeedback.classList.remove('error');
@@ -4886,16 +4933,29 @@ if (accountForm) {
       largeType: !!prefersLargeTypeInput?.checked,
       reducedMotion: !!prefersReducedMotionInput?.checked
     };
-    const persistResult = updateProfileSettings(payload, { targetEmail: activeUserEmail });
+    const persistResult = updateProfileSettings(payload, { targetEmail: authEmail || activeUserEmail });
 
     let syncedToSupabase = false;
-    let shouldCloseModal = !activeUserEmail;
+    let shouldCloseModal = !authEmail;
     let localSaveNote = persistResult?.volatile ? ' Settings will reset when you close this tab.' : '';
 
-    if (activeUserEmail) {
+    if (authUser?.id) {
       try {
-        const savedRemote = await saveProfilePreferences(profileSettings);
-        updateProfileSettings(savedRemote, { replace: true, targetEmail: activeUserEmail });
+        const { data, error } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: authUser.id,
+              profile_settings: profileSettings,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+          )
+          .select('profile_settings')
+          .single();
+        if (error) throw error;
+        const savedRemote = data?.profile_settings || profileSettings;
+        updateProfileSettings(savedRemote, { replace: true, targetEmail: authEmail || activeUserEmail });
         syncedToSupabase = true;
         shouldCloseModal = true;
       } catch (error) {
