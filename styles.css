@@ -9223,43 +9223,35 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   body.page-library.modal-open {
     overflow: hidden !important;
     touch-action: none !important;
   }
-
-  body.page-library #account-modal.modal-overlay {
+  body.page-library [data-account-overlay] {
     position: fixed !important;
     inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
     overflow: hidden !important;
     z-index: 9999 !important;
   }
 
-  body.page-library #account-modal .settings-modal {
-    position: relative !important;
-    left: auto !important;
-    right: auto !important;
-    top: auto !important;
-    transform: none !important;
-    width: 92vw !important;
-    max-width: 720px !important;
+  body.page-library [data-account-modal] {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 94vw !important;
+    max-width: 94vw !important;
     height: 90vh !important;
     max-height: 90vh !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 14px !important;
     overflow: hidden !important;
     border-radius: 18px !important;
     box-sizing: border-box !important;
-    overflow-x: hidden !important;
   }
 
-  body.page-library #account-modal .settings-modal * {
+  body.page-library [data-account-modal] * {
     box-sizing: border-box !important;
     min-width: 0 !important;
     writing-mode: horizontal-tb !important;
@@ -9270,11 +9262,22 @@ body.view-landing .landing-workflow + .landing-section {
     line-height: 1.2 !important;
   }
 
-  body.page-library #account-modal .settings-modal__head {
-    padding-right: 52px !important;
+  body.page-library [data-account-modal-body],
+  body.page-library [data-account-panel] {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
   }
 
-  body.page-library #account-modal #account-close-btn {
+  body.page-library [data-account-modal-body] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.page-library [data-account-close] {
     position: absolute !important;
     top: 12px !important;
     right: 12px !important;
@@ -9289,19 +9292,23 @@ body.view-landing .landing-workflow + .landing-section {
     pointer-events: auto !important;
   }
 
-  body.page-library #account-modal h3 {
+  body.page-library [data-account-modal] .settings-modal__head {
+    padding-right: 52px !important;
+  }
+
+  body.page-library [data-account-modal] h3 {
     font-size: 19px !important;
     line-height: 1.2 !important;
     margin: 0 0 4px 0 !important;
   }
 
-  body.page-library #account-modal .modal-sub {
+  body.page-library [data-account-modal] .modal-sub {
     font-size: 12.5px !important;
     line-height: 1.25 !important;
     margin: 0 0 6px 0 !important;
   }
 
-  body.page-library #account-modal .settings-tabs {
+  body.page-library [data-account-tabs] {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 6px !important;
@@ -9309,7 +9316,7 @@ body.view-landing .landing-workflow + .landing-section {
     margin: 6px 0 6px 0 !important;
   }
 
-  body.page-library #account-modal .settings-tab {
+  body.page-library [data-account-tab] {
     width: 100% !important;
     min-width: 0 !important;
     padding: 6px 8px !important;
@@ -9322,28 +9329,28 @@ body.view-landing .landing-workflow + .landing-section {
     border-radius: 10px !important;
   }
 
-  body.page-library #account-modal .settings-panel {
+  body.page-library [data-account-panel] {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
   }
 
-  body.page-library #account-modal .settings-group {
+  body.page-library [data-account-modal] .settings-group {
     margin: 5px 0 !important;
   }
 
-  body.page-library #account-modal label,
-  body.page-library #account-modal .field-hint {
+  body.page-library [data-account-modal] label,
+  body.page-library [data-account-modal] .field-hint {
     font-size: 12.5px !important;
   }
 
-  body.page-library #account-modal label {
+  body.page-library [data-account-modal] label {
     display: block !important;
   }
 
-  body.page-library #account-modal input,
-  body.page-library #account-modal select,
-  body.page-library #account-modal textarea {
+  body.page-library [data-account-modal] input,
+  body.page-library [data-account-modal] select,
+  body.page-library [data-account-modal] textarea {
     width: 100% !important;
     max-width: 100% !important;
     font-size: 16px !important;
@@ -9352,13 +9359,70 @@ body.view-landing .landing-workflow + .landing-section {
     border-radius: 8px !important;
   }
 
-  body.page-library #account-modal button {
+  body.page-library [data-account-modal] button {
     font-size: 13px !important;
     padding: 6px 8px !important;
     min-height: 32px !important;
   }
 
-  body.page-library #account-modal .settings-field-readonly {
+  body.page-library [data-interface-prefs] {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 6px 0 0 0 !important;
+    padding: 0 !important;
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    border-radius: 10px !important;
+  }
+
+  body.page-library [data-interface-prefs] [data-pref-row] {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    padding: 6px 8px !important;
+  }
+
+  body.page-library [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
+    flex: 0 0 auto !important;
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  body.page-library [data-account-modal] .settings-actions__buttons {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  body.page-library [data-account-modal] .settings-actions__buttons button {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 6px 8px !important;
+    border-radius: 999px !important;
+  }
+
+  body.page-library [data-account-modal] [data-email-row] {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  body.page-library [data-account-modal] [data-email-value] {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  body.page-library [data-account-modal] [data-email-copy] {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
+
+  body.page-library [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly {
     display: flex !important;
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -9368,7 +9432,7 @@ body.view-landing .landing-workflow + .landing-section {
     min-width: 0 !important;
   }
 
-  body.page-library #account-modal .settings-field-readonly span {
+  body.page-library [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
     flex: 0 0 auto !important;
     min-width: 0 !important;
     min-height: 1em !important;
@@ -9382,8 +9446,8 @@ body.view-landing .landing-workflow + .landing-section {
     z-index: 1 !important;
   }
 
-  body.page-library #account-modal #account-email-display,
-  body.page-library #account-modal [aria-label="Password is hidden"] {
+  body.page-library [data-account-modal] [data-account-panel][data-settings-panel="account"] #account-email-display,
+  body.page-library [data-account-modal] [data-account-panel][data-settings-panel="account"] [aria-label="Password is hidden"] {
     display: block !important;
     font-size: 14px !important;
     line-height: 1.2 !important;
@@ -9398,14 +9462,10 @@ body.view-landing .landing-workflow + .landing-section {
     z-index: 2 !important;
   }
 
-  body.page-library #account-modal .settings-field-readonly button {
+  body.page-library [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
     flex: 0 0 auto !important;
     white-space: nowrap !important;
     align-self: flex-start !important;
-  }
-
-  body.page-library.modal-open .sidebar-backdrop {
-    pointer-events: none !important;
   }
 }
 

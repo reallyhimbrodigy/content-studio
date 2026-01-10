@@ -9483,6 +9483,12 @@ if (isLibraryPage) {
   const libraryProfileTrigger = document.getElementById('profile-trigger');
   const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
 
+  if (libraryAccountModal) {
+    libraryAccountModal.style.display = 'none';
+    libraryAccountModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+  }
+
   const closeLibraryProfileMenu = () => {
     if (libraryProfileMenu) libraryProfileMenu.style.display = 'none';
     if (libraryProfileTrigger) libraryProfileTrigger.setAttribute('aria-expanded', 'false');
@@ -9512,6 +9518,7 @@ if (isLibraryPage) {
     }
     setLibraryAccountTab(tab);
     libraryAccountModal.style.display = 'flex';
+    libraryAccountModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
   };
 
@@ -9519,8 +9526,19 @@ if (isLibraryPage) {
     libraryAccountCloseBtn.addEventListener('click', () => {
       if (!libraryAccountModal) return;
       libraryAccountModal.style.display = 'none';
+      libraryAccountModal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('modal-open');
     });
+  }
+
+  if (librarySettingsTabButtons.length) {
+    librarySettingsTabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.settingsTab || 'account';
+        setLibraryAccountTab(tab);
+      });
+    });
+    setLibraryAccountTab('account');
   }
 
   let libraryPointerHandled = false;
