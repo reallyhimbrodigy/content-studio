@@ -5273,7 +5273,7 @@ const createCard = (post) => {
     if (tagArr.length) {
       const displayTags = tagArr.slice(0, 5).map((h) => (h.startsWith('#') ? h : `#${h}`));
       const remaining = tagArr.length - displayTags.length;
-      hashtagsEl.textContent = remaining > 0 ? `${displayTags.join(' ')} +${remaining} more` : displayTags.join(' ');
+      hashtagsEl.textContent = displayTags.join(' ');
     }
 
     const createDetailRow = (label, value, className, options = {}) => {
