@@ -730,48 +730,6 @@
       </div>
     </div>
 
-    <!-- Upgrade Modal -->
-    <div id="upgrade-modal" class="modal" style="display: none;">
-      <div class="modal-content upgrade-modal">
-        <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
-        <div class="upgrade-header">
-          <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h2>Upgrade to Promptly Pro</h2>
-          <p class="upgrade-subtitle">Unlock unlimited workflows, downloads, Brand Brain, and real analytics</p>
-        </div>
-        
-        <div class="pricing-cards">
-            <div class="pricing-card">
-              <div class="pricing-tier">Starter</div>
-              <div class="pricing-price">FREE<span></span></div>
-              <ul class="pricing-features">
-                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-                <li><span class="check">✓</span> Limited Saves and Exports</li>
-              </ul>
-            </div>
-          
-            <div class="pricing-card pricing-card-pro">
-              <div class="pricing-badge">Most Popular</div>
-              <div class="pricing-tier">Pro</div>
-              <div class="pricing-price">$19.99<span>/month</span></div>
-              <ul class="pricing-features">
-                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-                <li><span class="check">✓</span> Brand Brain unlocked</li>
-                <li><span class="check">✓</span> Regenerate a single post</li>
-                <li><span class="check">✓</span> Unlimited Saves and Exports</li>
-              </ul>
-            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
-              Upgrade to Pro
-            </button>
-          </div>
-        </div>
-        
-        <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
-      </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
@@ -1159,6 +1117,47 @@
       }
     })();
   </script>
+  <!-- Upgrade Modal -->
+  <div id="upgrade-modal" class="modal" style="display: none;">
+    <div class="modal-content upgrade-modal">
+      <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
+      <div class="upgrade-header">
+        <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h2>Upgrade to Promptly Pro</h2>
+        <p class="upgrade-subtitle">Unlock unlimited workflows, downloads, Brand Brain, and real analytics</p>
+      </div>
+
+      <div class="pricing-cards">
+          <div class="pricing-card">
+            <div class="pricing-tier">Starter</div>
+            <div class="pricing-price">FREE<span></span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Limited Saves and Exports</li>
+            </ul>
+          </div>
+
+          <div class="pricing-card pricing-card-pro">
+            <div class="pricing-badge">Most Popular</div>
+            <div class="pricing-tier">Pro</div>
+            <div class="pricing-price">$19.99<span>/month</span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Brand Brain unlocked</li>
+              <li><span class="check">✓</span> Regenerate a single post</li>
+              <li><span class="check">✓</span> Unlimited Saves and Exports</li>
+            </ul>
+          <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
+            Upgrade to Pro
+          </button>
+        </div>
+      </div>
+
+      <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
+    </div>
+  </div>
 <div id="generate-asset-modal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1" style="display:none">
       <div class="modal__backdrop"></div>
       <div class="modal__dialog">
