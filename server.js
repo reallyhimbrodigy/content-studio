@@ -2484,21 +2484,22 @@ function extractStrategyKeyword(text = '') {
   return tokens.length ? tokens[0] : 'this topic';
 }
 
+const CALENDAR_ANGLE_OPTIONS = [
+  'beginner explainer',
+  'common mistake',
+  'myth vs reality',
+  'step-by-step process',
+  'checklist',
+  "do vs don’t",
+  'framework/mental model',
+  'case study/story',
+  'tools/resources',
+  'advanced nuance',
+];
+
 function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
-  const angleOptions = [
-    'beginner explainer',
-    'common mistake',
-    'myth vs reality',
-    'step-by-step process',
-    'checklist',
-    "do vs don’t",
-    'framework/mental model',
-    'case study/story',
-    'tools/resources',
-    'advanced nuance',
-  ];
   return {
     type: 'object',
     additionalProperties: false,
@@ -2514,7 +2515,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       caption: { type: 'string', minLength: 1 },
       pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
       topic_signature: { type: 'string', minLength: 3 },
-      angle: { type: 'string', enum: angleOptions },
+      angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       storyPrompt: { type: 'string', minLength: 1 },
@@ -3892,6 +3893,31 @@ function ensureCtaFallback(post = {}) {
 }
 
 const MIN_HASHTAGS = 0;
+// Contract: required fields for regenerated posts (mirrors validatePostCompleteness).
+const REQUIRED_POST_FIELDS = [
+  'title',
+  'hook',
+  'caption',
+  'cta',
+  'topic_signature',
+  'angle',
+  'storyPrompt',
+  'designNotes',
+  'distributionPlan',
+  'day',
+  'hashtags',
+  'script',
+  'script.hook',
+  'script.body',
+  'script.cta',
+  'reelScript',
+  'reelScript.hook',
+  'reelScript.body',
+  'reelScript.cta',
+  'engagementScripts',
+  'engagementScripts.commentReply',
+  'engagementScripts.dmReply',
+];
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && Boolean(value.trim());
@@ -4078,6 +4104,24 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
   if (allowFallbacks) {
     normalized.engagementScripts = ensureEngagementScriptsFallback(normalized, nicheStyle);
   }
+  if (!isNonEmptyString(normalized.topic_signature)) {
+    const signature = toPlainString(rawPost.topic_signature || rawPost.topicSignature || '');
+    if (signature) {
+      normalized.topic_signature = signature;
+    } else if (allowFallbacks) {
+      normalized.topic_signature = normalizeTitleSignature(normalized.title || normalized.idea || '');
+    }
+    applied.push('topic_signature');
+  }
+  if (!isNonEmptyString(normalized.angle)) {
+    const angle = toPlainString(rawPost.angle || rawPost.strategy?.angle || '');
+    if (angle) {
+      normalized.angle = angle;
+    } else if (allowFallbacks) {
+      normalized.angle = CALENDAR_ANGLE_OPTIONS[0] || 'beginner explainer';
+    }
+    applied.push('angle');
+  }
   const scriptBase = {
     hook: normalized.script?.hook || normalized.hook,
     body: normalized.script?.body || normalized.caption || normalized.idea,
@@ -4095,6 +4139,13 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
   return { post: normalized, missingFields: missing, appliedFixes: applied };
 }
 
+function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
+  const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
+  const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
+  const missing = validatePostCompleteness(result.post);
+  return { post: result.post, missingFields: missing, appliedFixes: result.appliedFixes || [] };
+}
+
 function runRegenNormalizationSelfTest() {
   if (isProduction) return;
   const sample = 'Calm Down — Rema (link: https://tiktok.com)';
@@ -4105,6 +4156,10 @@ function runRegenNormalizationSelfTest() {
   const repaired = ensureRegenRequiredFields({ day: 1, idea: 'Test idea' }, 'Test niche', 1);
   if (repaired.missingFields.length) {
     console.warn('[Calendar][Test] regen normalization missing fields', repaired.missingFields);
+  }
+  const unexpected = repaired.missingFields.filter((field) => !REQUIRED_POST_FIELDS.includes(field));
+  if (unexpected.length) {
+    console.warn('[Calendar][Test] regen normalization unexpected required fields', unexpected);
   }
 }
 
@@ -4298,6 +4353,8 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     type: toPlainString(post.type || 'educational'),
     hook: toPlainString(post.hook || script.hook || ''),
     caption: toPlainString(post.caption || ''),
+    topic_signature: toPlainString(post.topic_signature || post.topicSignature || ''),
+    angle: toPlainString(post.angle || post.strategy?.angle || ''),
     hashtags,
     format: 'Reel',
     formatIntent: toPlainString(post.formatIntent || ''),
@@ -6321,7 +6378,31 @@ const server = http.createServer((req, res) => {
             requestId,
           });
         }
-        const responsePayload = { calendarId: targetCalendarId, posts, requestId };
+        const missingFieldsReport = [];
+        const ensuredPosts = posts.map((post, idx) => {
+          const dayValue = Number.isFinite(Number(post?.day))
+            ? Number(post.day)
+            : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
+          const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
+          if (ensured.missingFields.length) {
+            missingFieldsReport.push({ index: idx, day: dayValue, missing: ensured.missingFields });
+          }
+          return ensured.post;
+        });
+        if (missingFieldsReport.length) {
+          console.warn('[Calendar] regen missing required fields after guarantee', {
+            requestId,
+            missingFields: missingFieldsReport.length,
+            samples: missingFieldsReport.slice(0, 2),
+          });
+          return sendJson(res, 422, {
+            error: 'REGEN_INVALID_OUTPUT',
+            message: 'Regeneration did not return required fields.',
+            requestId,
+            missingFields: missingFieldsReport,
+          });
+        }
+        const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
@@ -7027,9 +7108,10 @@ const server = http.createServer((req, res) => {
           }
           const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
           if (!candidate) throw new Error('Calendar generator returned no posts');
-          const normalizedResult = ensureRegenRequiredFields(candidate, nicheStyle, dayNumber, {
-            allowFallbacks: false,
-          });
+          // Divergence note: regen-day revalidated output more strictly than full generation,
+          // which could drop required fields like topic_signature/angle. Apply the same
+          // normalization pipeline and backfill only missing required fields.
+          const normalizedResult = guaranteeRequiredFields(candidate, nicheStyle, dayNumber);
           normalized = normalizedResult.post;
           missingFields = normalizedResult.missingFields || [];
           appliedFixes = normalizedResult.appliedFixes || [];
