@@ -1021,21 +1021,21 @@
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly {
         display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 6px !important;
         width: 100% !important;
         overflow: visible !important;
         min-width: 0 !important;
       }
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
-        flex: 1 1 auto !important;
-        flex-basis: 0 !important;
+        flex: 0 0 auto !important;
         min-width: 0 !important;
         min-height: 1em !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
         opacity: 1 !important;
         visibility: visible !important;
         color: inherit !important;
@@ -1045,16 +1045,16 @@
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] #account-email-display,
       [data-account-modal] [data-account-panel][data-settings-panel="account"] [aria-label="Password is hidden"] {
-        display: inline-block !important;
+        display: block !important;
         font-size: 14px !important;
         line-height: 1.2 !important;
         font-weight: 500 !important;
         color: var(--text-primary, #f5f6f8) !important;
         opacity: 1 !important;
         visibility: visible !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
         position: relative !important;
         z-index: 2 !important;
       }
@@ -1062,6 +1062,7 @@
       [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
         flex: 0 0 auto !important;
         white-space: nowrap !important;
+        align-self: flex-start !important;
       }
 
       .page-calendar .calendar-card__caption {
