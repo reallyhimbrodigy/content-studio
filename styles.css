@@ -6627,6 +6627,14 @@ body.modal-open {
   justify-content: center;
   z-index: 2000;
   padding: 1rem;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+}
+
+.modal-content.upgrade-modal {
+  position: relative;
+  margin: 0;
 }
 
 .modal-content {
