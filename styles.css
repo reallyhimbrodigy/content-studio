@@ -9117,6 +9117,46 @@ body.view-landing .landing-workflow + .landing-section {
     align-items: center;
     gap: 0.5rem;
   }
+
+  #sample-content-card .calendar-card__caption-row,
+  #sample-content-card .calendar-card__detail-row .detail-row__top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #sample-content-card .calendar-card__caption {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: none;
+    writing-mode: horizontal-tb;
+  }
+
+  #sample-content-card .detail-text,
+  #sample-content-card .calendar-card__detail-row .detail-row__top strong {
+    min-width: 0;
+  }
+
+  #sample-content-card .calendar-card__caption-row .detail-copy-btn,
+  #sample-content-card .calendar-card__detail-row .detail-row__top .detail-copy-btn {
+    margin-left: auto;
+    flex: 0 0 auto;
+    justify-self: end;
+    align-self: flex-start;
+    position: static;
+    left: auto;
+    right: auto;
+    top: auto;
+    transform: none;
+  }
 }
 
 @media (max-width: 480px) {
