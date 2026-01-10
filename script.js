@@ -9583,6 +9583,8 @@ if (isLibraryPage) {
   const libraryPrefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
   const libraryAccountFeedback = document.getElementById('account-feedback');
   const libraryUserEmailEl = document.getElementById('user-email');
+  const libraryAccountPlanStatusEl = document.getElementById('account-plan-status');
+  const libraryAccountPlanLimitsEl = document.getElementById('account-plan-limits');
   const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
 
   if (libraryAccountModal) {
@@ -9646,6 +9648,39 @@ if (isLibraryPage) {
     }
   };
 
+  const updateLibraryPlanInfo = (isProUser) => {
+    if (!libraryAccountPlanStatusEl && !libraryAccountPlanLimitsEl) return;
+    if (isProUser) {
+      if (libraryAccountPlanStatusEl) libraryAccountPlanStatusEl.textContent = 'Promptly Pro';
+      if (libraryAccountPlanLimitsEl) {
+        libraryAccountPlanLimitsEl.textContent = '';
+        libraryAccountPlanLimitsEl.style.display = 'none';
+      }
+      return;
+    }
+    if (libraryAccountPlanStatusEl) libraryAccountPlanStatusEl.textContent = 'Free plan';
+    if (libraryAccountPlanLimitsEl) {
+      libraryAccountPlanLimitsEl.textContent = '';
+      libraryAccountPlanLimitsEl.style.display = 'none';
+    }
+  };
+
+  const updateLibraryLastLogin = (timestamp) => {
+    if (!libraryAccountLastLoginEl) return;
+    if (!timestamp) {
+      libraryAccountLastLoginEl.textContent = '';
+      return;
+    }
+    try {
+      const date = new Date(timestamp);
+      libraryAccountLastLoginEl.textContent = isNaN(date.getTime())
+        ? ''
+        : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      libraryAccountLastLoginEl.textContent = '';
+    }
+  };
+
   const loadLibraryAccountModalData = async () => {
     setLibraryModalLoadingState();
     if (!supabase?.auth?.getUser) {
@@ -9664,6 +9699,21 @@ if (isLibraryPage) {
     if (libraryUserEmailEl && email) libraryUserEmailEl.textContent = email;
     if (libraryAccountLastLoginEl && libraryAccountLastLoginEl.textContent === 'Loading…') {
       libraryAccountLastLoginEl.textContent = '';
+    }
+    try {
+      const proStatus = await isPro(email);
+      updateLibraryPlanInfo(!!proStatus);
+      const userDetails = await getCurrentUserDetails();
+      updateLibraryLastLogin(
+        userDetails?.last_sign_in_at ||
+          userDetails?.updated_at ||
+          userDetails?.created_at ||
+          ''
+      );
+    } catch (planError) {
+      console.warn('Unable to resolve plan details for library modal', planError);
+      updateLibraryPlanInfo(false);
+      updateLibraryLastLogin('');
     }
     try {
       const { data, error: prefsError } = await supabase
