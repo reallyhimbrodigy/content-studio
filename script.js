@@ -9610,15 +9610,48 @@ if (isLibraryPage()) {
     document.body.classList.remove('no-scroll');
   };
 
-  document.addEventListener('DOMContentLoaded', () => {
+  const sanitizeLibraryModalUrl = () => {
+    if (window.location.hash && /account|settings|profile|accessibility|security/i.test(window.location.hash)) {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+    try {
+      const url = new URL(window.location.href);
+      const keys = ['modal', 'tab', 'view', 'panel', 'settings', 'account', 'profile', 'accessibility', 'security'];
+      let changed = false;
+      keys.forEach((key) => {
+        if (url.searchParams.has(key)) {
+          url.searchParams.delete(key);
+          changed = true;
+        }
+      });
+      if (changed) {
+        const query = url.searchParams.toString();
+        history.replaceState(null, document.title, url.pathname + (query ? `?${query}` : '') + url.hash);
+      }
+    } catch (_err) {}
+  };
+
+  const runLibraryMobileSanitizer = () => {
     if (!isLibraryPage()) return;
     if (!window.matchMedia('(max-width: 768px)').matches) return;
     forceCloseAccountSettingsModal();
     clearLibraryModalOpenState();
-    if (window.location.hash && /account|settings|profile|accessibility/i.test(window.location.hash)) {
-      history.replaceState(null, document.title, window.location.pathname + window.location.search);
-    }
-  });
+    sanitizeLibraryModalUrl();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runLibraryMobileSanitizer, { once: true });
+  } else {
+    runLibraryMobileSanitizer();
+  }
+
+  window.addEventListener(
+    'pageshow',
+    () => {
+      runLibraryMobileSanitizer();
+    },
+    true
+  );
 
   const closeLibraryProfileMenu = () => {
     if (libraryProfileMenu) libraryProfileMenu.style.display = 'none';
