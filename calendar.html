@@ -1024,10 +1024,12 @@
         align-items: center !important;
         gap: 8px !important;
         width: 100% !important;
+        overflow: visible !important;
       }
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
         flex: 1 1 auto !important;
+        flex-basis: 0 !important;
         min-width: 0 !important;
         min-height: 1em !important;
         white-space: nowrap !important;
@@ -1036,6 +1038,8 @@
         opacity: 1 !important;
         visibility: visible !important;
         color: inherit !important;
+        position: relative !important;
+        z-index: 1 !important;
       }
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] #account-email-display,
@@ -1043,9 +1047,15 @@
         display: block !important;
         font-size: 14px !important;
         line-height: 1.2 !important;
+        font-weight: 500 !important;
         color: var(--text-primary) !important;
         opacity: 1 !important;
         visibility: visible !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        position: relative !important;
+        z-index: 1 !important;
       }
 
       [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
