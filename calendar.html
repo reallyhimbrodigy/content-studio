@@ -1108,8 +1108,9 @@
       }
 
       .page-calendar .calendar-card__detail-row .detail-row__top {
-        display: flex !important;
-        align-items: flex-start !important;
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
+        align-items: center !important;
         width: 100% !important;
         min-width: 0 !important;
       }
@@ -1132,6 +1133,11 @@
         margin-left: auto !important;
         justify-self: end !important;
         flex: 0 0 auto !important;
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        transform: none !important;
       }
     }
   </style>
