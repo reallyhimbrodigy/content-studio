@@ -5823,6 +5823,16 @@ body.prefers-reduced-motion *::after {
   padding: 1rem;
 }
 
+#upgrade-modal.modal {
+  width: 100vw;
+  height: 100vh;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+}
+
 .modal textarea {
   font-size: 1rem;
 }
