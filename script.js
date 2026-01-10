@@ -9561,10 +9561,13 @@ document.addEventListener('click', (event) => {
 });
 }
 
-const isLibraryPage =
-  document.body.classList.contains('page-library') || /library\.html/i.test(window.location.pathname || '');
+const isLibraryPage = () =>
+  document.body?.classList.contains('page-library') ||
+  document.body?.dataset?.page === 'library' ||
+  location.pathname.endsWith('/library.html') ||
+  location.pathname.includes('library.html');
 
-if (isLibraryPage) {
+if (isLibraryPage()) {
   const libraryAccountModal = document.getElementById('account-modal');
   const libraryAccountCloseBtn = document.getElementById('account-close-btn');
   const librarySettingsTabButtons = document.querySelectorAll('[data-settings-tab]');
@@ -9594,12 +9597,38 @@ if (isLibraryPage) {
     document.body.classList.remove('modal-open');
   };
 
-  if (libraryAccountModal) {
+  const clearLibraryModalState = () => {
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach((key) => {
+        if (/account|settings|modal/i.test(key)) localStorage.removeItem(key);
+      });
+    } catch (_err) {}
+    try {
+      const keys = Object.keys(sessionStorage);
+      keys.forEach((key) => {
+        if (/account|settings|modal/i.test(key)) sessionStorage.removeItem(key);
+      });
+    } catch (_err) {}
+  };
+
+  const forceCloseAccountSettingsModal = () => {
     closeLibraryAccountModal();
-    if (window.location.hash && /account|profile|settings/i.test(window.location.hash)) {
+    if (libraryAccountModal) {
+      libraryAccountModal.classList.remove('open', 'active', 'show');
+    }
+    document.body.classList.remove('no-scroll');
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!isLibraryPage()) return;
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    forceCloseAccountSettingsModal();
+    clearLibraryModalState();
+    if (window.location.hash && /account|settings|profile|accessibility/i.test(window.location.hash)) {
       history.replaceState(null, document.title, window.location.pathname + window.location.search);
     }
-  }
+  });
 
   const closeLibraryProfileMenu = () => {
     if (libraryProfileMenu) libraryProfileMenu.style.display = 'none';
@@ -9758,14 +9787,19 @@ if (isLibraryPage) {
     });
   }
 
-  document.addEventListener('click', (event) => {
-    const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
-    if (!closeBtn) return;
-    if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
-    event.preventDefault();
-    event.stopPropagation();
-    closeLibraryAccountModal();
-  });
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (!isLibraryPage()) return;
+      const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
+      if (!closeBtn) return;
+      if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
+      event.preventDefault();
+      event.stopPropagation();
+      forceCloseAccountSettingsModal();
+    },
+    true
+  );
 
   if (libraryAccountForm && !libraryAccountForm.dataset.bound) {
     libraryAccountForm.dataset.bound = '1';

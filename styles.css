@@ -9471,6 +9471,34 @@ body.view-landing .landing-workflow + .landing-section {
     white-space: nowrap !important;
     align-self: flex-start !important;
   }
+
+  body.page-library #account-modal .account-settings-close,
+  body.page-library #account-modal [data-account-close],
+  body.page-library #account-modal button[aria-label="Close profile settings"] {
+    position: absolute !important;
+    top: 16px !important;
+    right: 16px !important;
+    z-index: 100000 !important;
+    pointer-events: auto !important;
+  }
+
+  body.page-library #account-modal {
+    pointer-events: auto !important;
+  }
+
+  body.page-library [data-account-modal] {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  body.page-library [data-account-modal-body] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+
+  body.page-library [data-account-modal] .settings-actions {
+    flex: 0 0 auto !important;
+  }
 }
 
 @media (max-width: 640px) {
