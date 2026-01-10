@@ -4139,6 +4139,23 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
   return { post: normalized, missingFields: missing, appliedFixes: applied };
 }
 
+function ensureRegenDaySignatureAngle(post = {}, dayNumber = 1) {
+  const next = { ...post };
+  if (!isNonEmptyString(next.topic_signature)) {
+    const signature = normalizeTitleSignature(next.title || next.idea || '');
+    next.topic_signature = signature || `day-${String(dayNumber).padStart(2, '0')}`;
+  }
+  if (!isNonEmptyString(next.angle)) {
+    const pillar = toPlainString(next.pillar || '').toLowerCase();
+    const format = toPlainString(next.format || next.type || '').toLowerCase();
+    const hook = toPlainString(next.hook || '');
+    const hookSnippet = hook.split(/[.!?]/)[0].trim();
+    const combined = [pillar, format].filter(Boolean).join(' ').trim();
+    next.angle = hookSnippet || combined || 'general angle';
+  }
+  return next;
+}
+
 function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
   const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
   const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
@@ -7108,13 +7125,16 @@ const server = http.createServer((req, res) => {
           }
           const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
           if (!candidate) throw new Error('Calendar generator returned no posts');
-          // Divergence note: regen-day revalidated output more strictly than full generation,
-          // which could drop required fields like topic_signature/angle. Apply the same
-          // normalization pipeline and backfill only missing required fields.
-          const normalizedResult = guaranteeRequiredFields(candidate, nicheStyle, dayNumber);
-          normalized = normalizedResult.post;
-          missingFields = normalizedResult.missingFields || [];
-          appliedFixes = normalizedResult.appliedFixes || [];
+          const normalizedResult = ensureRegenRequiredFields(candidate, nicheStyle, dayNumber, {
+            allowFallbacks: false,
+          });
+          const hadSignature = isNonEmptyString(normalizedResult.post?.topic_signature);
+          const hadAngle = isNonEmptyString(normalizedResult.post?.angle);
+          normalized = ensureRegenDaySignatureAngle(normalizedResult.post, dayNumber);
+          appliedFixes = (normalizedResult.appliedFixes || []).slice();
+          if (!hadSignature) appliedFixes.push('topic_signature');
+          if (!hadAngle) appliedFixes.push('angle');
+          missingFields = validatePostCompleteness(normalized);
           if (!missingFields.length) break;
           console.warn('[Calendar] regen-day missing fields after normalization', {
             requestId,
