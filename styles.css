@@ -9247,7 +9247,7 @@ body.view-landing .landing-workflow + .landing-section {
     width: calc(100vw - 32px) !important;
     max-width: 540px !important;
     height: auto !important;
-    max-height: calc(100vh - 48px) !important;
+    max-height: calc(100vh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
     margin: 0 !important;
     padding: 20px !important;
     overflow: hidden !important;

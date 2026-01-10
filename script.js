@@ -9587,10 +9587,18 @@ if (isLibraryPage) {
   const libraryAccountPlanLimitsEl = document.getElementById('account-plan-limits');
   const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
 
-  if (libraryAccountModal) {
+  const closeLibraryAccountModal = () => {
+    if (!libraryAccountModal) return;
     libraryAccountModal.style.display = 'none';
     libraryAccountModal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('modal-open');
+  };
+
+  if (libraryAccountModal) {
+    closeLibraryAccountModal();
+    if (window.location.hash && /account|profile|settings/i.test(window.location.hash)) {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
   }
 
   const closeLibraryProfileMenu = () => {
@@ -9746,12 +9754,18 @@ if (isLibraryPage) {
 
   if (libraryAccountCloseBtn) {
     libraryAccountCloseBtn.addEventListener('click', () => {
-      if (!libraryAccountModal) return;
-      libraryAccountModal.style.display = 'none';
-      libraryAccountModal.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('modal-open');
+      closeLibraryAccountModal();
     });
   }
+
+  document.addEventListener('click', (event) => {
+    const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
+    if (!closeBtn) return;
+    if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeLibraryAccountModal();
+  });
 
   if (libraryAccountForm && !libraryAccountForm.dataset.bound) {
     libraryAccountForm.dataset.bound = '1';
