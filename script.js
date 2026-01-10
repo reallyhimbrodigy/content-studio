@@ -9561,11 +9561,14 @@ document.addEventListener('click', (event) => {
 });
 }
 
-const isLibraryPage = () =>
-  document.body?.classList.contains('page-library') ||
-  document.body?.dataset?.page === 'library' ||
-  location.pathname.endsWith('/library.html') ||
-  location.pathname.includes('library.html');
+function isLibraryPage() {
+  return (
+    document.body?.classList.contains('page-library') ||
+    document.body?.dataset?.page === 'library' ||
+    location.pathname.endsWith('/library.html') ||
+    location.pathname.includes('library.html')
+  );
+}
 
 if (isLibraryPage()) {
   const libraryAccountModal = document.getElementById('account-modal');
@@ -9597,20 +9600,7 @@ if (isLibraryPage()) {
     document.body.classList.remove('modal-open');
   };
 
-  const clearLibraryModalState = () => {
-    try {
-      const keys = Object.keys(localStorage);
-      keys.forEach((key) => {
-        if (/account|settings|modal/i.test(key)) localStorage.removeItem(key);
-      });
-    } catch (_err) {}
-    try {
-      const keys = Object.keys(sessionStorage);
-      keys.forEach((key) => {
-        if (/account|settings|modal/i.test(key)) sessionStorage.removeItem(key);
-      });
-    } catch (_err) {}
-  };
+  const clearLibraryModalOpenState = () => {};
 
   const forceCloseAccountSettingsModal = () => {
     closeLibraryAccountModal();
@@ -9624,7 +9614,7 @@ if (isLibraryPage()) {
     if (!isLibraryPage()) return;
     if (!window.matchMedia('(max-width: 768px)').matches) return;
     forceCloseAccountSettingsModal();
-    clearLibraryModalState();
+    clearLibraryModalOpenState();
     if (window.location.hash && /account|settings|profile|accessibility/i.test(window.location.hash)) {
       history.replaceState(null, document.title, window.location.pathname + window.location.search);
     }
