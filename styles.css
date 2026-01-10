@@ -9223,6 +9223,181 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
+@media (max-width: 640px) {
+  body.page-library.modal-open {
+    overflow: hidden !important;
+    touch-action: none !important;
+  }
+
+  body.page-library #account-modal.modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    overflow: hidden !important;
+    z-index: 9999 !important;
+  }
+
+  body.page-library #account-modal .settings-modal {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 94vw !important;
+    max-width: 94vw !important;
+    height: 90vh !important;
+    max-height: 90vh !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+    border-radius: 18px !important;
+    box-sizing: border-box !important;
+  }
+
+  body.page-library #account-modal .settings-modal * {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+    line-height: 1.2 !important;
+  }
+
+  body.page-library #account-modal .settings-modal__head {
+    padding-right: 52px !important;
+  }
+
+  body.page-library #account-modal #account-close-btn {
+    position: absolute !important;
+    top: 12px !important;
+    right: 12px !important;
+    left: auto !important;
+    z-index: 50 !important;
+    width: 40px !important;
+    height: 40px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    pointer-events: auto !important;
+  }
+
+  body.page-library #account-modal h3 {
+    font-size: 19px !important;
+    line-height: 1.2 !important;
+    margin: 0 0 4px 0 !important;
+  }
+
+  body.page-library #account-modal .modal-sub {
+    font-size: 12.5px !important;
+    line-height: 1.25 !important;
+    margin: 0 0 6px 0 !important;
+  }
+
+  body.page-library #account-modal .settings-tabs {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+    width: 100% !important;
+    margin: 6px 0 6px 0 !important;
+  }
+
+  body.page-library #account-modal .settings-tab {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 6px 8px !important;
+    font-size: 13px !important;
+    line-height: 1.1 !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    border-radius: 10px !important;
+  }
+
+  body.page-library #account-modal .settings-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  body.page-library #account-modal .settings-group {
+    margin: 5px 0 !important;
+  }
+
+  body.page-library #account-modal label,
+  body.page-library #account-modal .field-hint {
+    font-size: 12.5px !important;
+  }
+
+  body.page-library #account-modal label {
+    display: block !important;
+  }
+
+  body.page-library #account-modal input,
+  body.page-library #account-modal select,
+  body.page-library #account-modal textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 16px !important;
+    line-height: 1.2 !important;
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+  }
+
+  body.page-library #account-modal button {
+    font-size: 13px !important;
+    padding: 6px 8px !important;
+    min-height: 32px !important;
+  }
+
+  body.page-library #account-modal .settings-field-readonly {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    width: 100% !important;
+    overflow: visible !important;
+    min-width: 0 !important;
+  }
+
+  body.page-library #account-modal .settings-field-readonly span {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    min-height: 1em !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    color: inherit !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  body.page-library #account-modal #account-email-display,
+  body.page-library #account-modal [aria-label="Password is hidden"] {
+    display: block !important;
+    font-size: 14px !important;
+    line-height: 1.2 !important;
+    font-weight: 500 !important;
+    color: var(--text-primary, #f5f6f8) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    position: relative !important;
+    z-index: 2 !important;
+  }
+
+  body.page-library #account-modal .settings-field-readonly button {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    align-self: flex-start !important;
+  }
+}
+
 /* ========================================================
    Landing page mobile sizing pass (index.html only)
    ======================================================== */

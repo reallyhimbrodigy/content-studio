@@ -9507,6 +9507,9 @@ if (isLibraryPage) {
 
   const openLibraryAccountModal = (tab = 'account') => {
     if (!libraryAccountModal) return;
+    if (libraryAccountModal.parentElement !== document.body) {
+      document.body.appendChild(libraryAccountModal);
+    }
     setLibraryAccountTab(tab);
     libraryAccountModal.style.display = 'flex';
     document.body.classList.add('modal-open');
