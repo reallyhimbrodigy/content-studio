@@ -9473,6 +9473,15 @@ body.view-landing .landing-workflow + .landing-section {
   }
 }
 
+@media (max-width: 640px) {
+  body.page-library [data-account-modal] {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    padding: 18px 16px !important;
+    border-radius: 16px !important;
+  }
+}
+
 /* ========================================================
    Landing page mobile sizing pass (index.html only)
    ======================================================== */
