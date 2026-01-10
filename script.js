@@ -5786,9 +5786,7 @@ const createCard = (post) => {
         createDetailRow('Suggested audio', audioRowText, 'calendar-card__audio suggested-audio')
       );
     }
-    if (entry.storyPromptExpanded) {
-      hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
-    }
+    // Story prompt+ intentionally omitted from calendar UI.
 
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -7378,9 +7376,7 @@ function buildPostHTML(post){
         detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
       }
     }
-  if (post.storyPromptExpanded) {
-    detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
-  }
+  // Story prompt+ intentionally omitted from calendar UI.
   if (post.followUpIdea) {
     detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
   }
