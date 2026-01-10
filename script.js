@@ -4977,7 +4977,34 @@ syncUpgradeModalFeatures();
 // Sign out handler is attached after auth check when user-menu is shown
 
 // Upgrade modal handlers
+const upgradeModalMount = {
+  parent: null,
+  next: null,
+};
+
+function mountUpgradeModalToBody() {
+  if (!upgradeModal) return;
+  if (!upgradeModalMount.parent) {
+    upgradeModalMount.parent = upgradeModal.parentNode;
+    upgradeModalMount.next = upgradeModal.nextSibling;
+  }
+  if (upgradeModal.parentNode !== document.body) {
+    document.body.appendChild(upgradeModal);
+  }
+}
+
+function restoreUpgradeModalMount() {
+  if (!upgradeModal || !upgradeModalMount.parent) return;
+  if (upgradeModal.parentNode === upgradeModalMount.parent) return;
+  if (upgradeModalMount.next && upgradeModalMount.next.parentNode === upgradeModalMount.parent) {
+    upgradeModalMount.parent.insertBefore(upgradeModal, upgradeModalMount.next);
+  } else {
+    upgradeModalMount.parent.appendChild(upgradeModal);
+  }
+}
+
 function showUpgradeModal() {
+  mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
 }
@@ -4985,6 +5012,7 @@ function showUpgradeModal() {
 function hideUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'none';
   if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll();
+  restoreUpgradeModalMount();
 }
 
 if (upgradeClose) {
