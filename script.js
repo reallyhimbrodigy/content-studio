@@ -9927,6 +9927,7 @@ if (isLibraryPage()) {
           libraryAccountFeedback.textContent = 'Preferences saved.';
           libraryAccountFeedback.classList.add('success');
         }
+        closeLibraryAccountModal();
         await loadLibraryAccountModalData();
       } catch (saveError) {
         console.warn('Unable to sync profile settings to Supabase', saveError);
