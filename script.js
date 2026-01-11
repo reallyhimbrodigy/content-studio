@@ -9571,8 +9571,10 @@ function isLibraryPage() {
 }
 
 if (isLibraryPage()) {
+  const isLibraryMobile = window.matchMedia('(max-width: 768px)').matches;
   const libraryAccountModal = document.getElementById('account-modal');
-  const libraryAccountCloseBtn = document.getElementById('account-close-btn');
+  const libraryAccountCloseBtn =
+    document.getElementById('accountSettingsClose') || document.getElementById('account-close-btn');
   const librarySettingsTabButtons = document.querySelectorAll('[data-settings-tab]');
   const librarySettingsPanels = document.querySelectorAll('[data-settings-panel]');
   const libraryProfileMenu = document.getElementById('profile-menu');
@@ -9600,7 +9602,23 @@ if (isLibraryPage()) {
     document.body.classList.remove('modal-open');
   };
 
-  const clearLibraryModalOpenState = () => {};
+  const clearLibraryModalOpenState = () => {
+    const keys = [
+      'openAccountSettings',
+      'accountSettingsOpen',
+      'settingsModalOpen',
+      'activeSettingsTab',
+      'openAccountSettingsOnLoad'
+    ];
+    keys.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (_err) {}
+      try {
+        sessionStorage.removeItem(key);
+      } catch (_err) {}
+    });
+  };
 
   const forceCloseAccountSettingsModal = () => {
     closeLibraryAccountModal();
@@ -9805,8 +9823,22 @@ if (isLibraryPage()) {
   };
 
   if (libraryAccountCloseBtn) {
-    libraryAccountCloseBtn.addEventListener('click', () => {
-      closeLibraryAccountModal();
+    libraryAccountCloseBtn.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeLibraryAccountModal();
+      },
+      { passive: false }
+    );
+  }
+
+  if (libraryAccountModal) {
+    libraryAccountModal.addEventListener('click', (event) => {
+      if (event.target === libraryAccountModal) {
+        closeLibraryAccountModal();
+      }
     });
   }
 
@@ -9859,20 +9891,7 @@ if (isLibraryPage()) {
         reducedMotion: !!libraryPrefersReducedMotionInput?.checked
       };
       try {
-        const { data, error: saveError } = await supabase
-          .from('profiles')
-          .upsert(
-            {
-              id: user.id,
-              profile_settings: payload,
-              updated_at: new Date().toISOString()
-            },
-            { onConflict: 'id' }
-          )
-          .select('profile_settings')
-          .single();
-        if (saveError) throw saveError;
-        const saved = data?.profile_settings || payload;
+        const saved = await saveProfilePreferences(payload);
         applyLibraryPrefs(saved);
         if (libraryAccountFeedback) {
           libraryAccountFeedback.textContent = 'Preferences saved.';

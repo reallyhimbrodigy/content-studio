@@ -298,7 +298,13 @@
           }
         } catch (_) {}
         try {
-          const keys = [];
+          const keys = [
+            'openAccountSettings',
+            'accountSettingsOpen',
+            'settingsModalOpen',
+            'activeSettingsTab',
+            'openAccountSettingsOnLoad'
+          ];
           keys.forEach((key) => {
             localStorage.removeItem(key);
             sessionStorage.removeItem(key);
@@ -431,7 +437,7 @@
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>&times;</button>
+          <button class="ghost icon-only account-settings-close" id="accountSettingsClose" aria-label="Close profile settings" data-account-modal-close data-account-close>&times;</button>
         </div>
         <div class="account-settings-body" data-account-modal-body>
           <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
