@@ -9571,7 +9571,6 @@ function isLibraryPage() {
 }
 
 if (isLibraryPage()) {
-  const isLibraryMobile = window.matchMedia('(max-width: 768px)').matches;
   const libraryAccountModal = document.getElementById('account-modal');
   const libraryAccountCloseBtn =
     document.getElementById('accountSettingsClose') || document.getElementById('account-close-btn');
