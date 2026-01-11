@@ -2626,6 +2626,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'DesignNotes: 3–5 visual beats + on-screen text plan + pattern changes every 2–3s + pause-and-read overlay.',
         'EngagementScripts: comment reply with follow-up question; DM reply that qualifies; include a reply-to-comment follow-up post idea.',
         'ReelScript: Hook, short Body beats, mid re-hook (~5–7s), CTA, loopable ending.',
+        'Captions and Reel Scripts must sound like a creator talking, not a brand; avoid corporate/marketing or curiosity-bait phrasing, and write plainly, specific to the niche, in natural language.',
         'DistributionPlan: actionable window, early engagement action, follow-up trigger; must name the algorithm signal.',
         'hashtags: array of 8–12 tags; 2–3 location tags (if applicable), 2–3 niche service tags, 2 intent tags; no irrelevant/holiday tags.',
         'If suggested audio exists: "Song Title - Artist" only, non-holiday, no platform prefixes.',
@@ -2934,10 +2935,11 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
 5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
 6) Response Guidance: output two items tied to the niche and post concept: (1) a sample reply to a viewer comment (1–2 sentences) that feels specific, helpful, and speaks to the idea without slipping into promotional language; (2) a follow-up prompt (1 sentence) that nudges the viewer to keep the conversation going on the same topic. Avoid boilerplate “DM me” pushes or scripted closings; keep both items informative and grounded in the niche. Output only those two items.
 7) Reel Script: write 3–6 short lines that form a niche-specific mini script rooted in this post’s concept. Each line should feel concrete (no generic “introduce, explain, close” scaffolds); vary the structure line-to-line and let the closing line naturally lead into the CTA. Avoid reusing the same phrasing from other cards. Output only the script lines (no extra labels or commentary).
-8) Format: Choose the best format for this post in the niche: {nicheStyle}, based on the post’s concept/context. Output exactly one value from this allowed list: Reel, Story, Carousel, Static. Output only the single value.
-        9) CAPTION BODY RULES (HARD): write 2–4 sentences that follow the same emotional thread as the Hook and stay tightly anchored to the post’s unique idea. Avoid template prefixes or “story spotlight” labels. Keep the tone concrete and niche-credible; do not repeat scaffolds from other posts. Use natural wording (no hashtags, emojis, platform references, or overly promotional language). End with a single, non-generic question that relates directly to the topic. Output only the caption text.
-10) Keep outputs concise to avoid truncation.
-11) CRITICAL: every post MUST include script { hook, body, cta }.`;
+8) Captions and Reel Scripts must sound like a creator talking, not a brand; avoid corporate/marketing or curiosity-bait phrasing, and write plainly, specific to the niche, in natural language.
+9) Format: Choose the best format for this post in the niche: {nicheStyle}, based on the post’s concept/context. Output exactly one value from this allowed list: Reel, Story, Carousel, Static. Output only the single value.
+        10) CAPTION BODY RULES (HARD): write 2–4 sentences that follow the same emotional thread as the Hook and stay tightly anchored to the post’s unique idea. Avoid template prefixes or “story spotlight” labels. Keep the tone concrete and niche-credible; do not repeat scaffolds from other posts. Use natural wording (no hashtags, emojis, platform references, or overly promotional language). End with a single, non-generic question that relates directly to the topic. Output only the caption text.
+11) Keep outputs concise to avoid truncation.
+12) CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
