@@ -26,6 +26,18 @@ function isAuthSessionMissingError(error) {
   return msg.includes('auth session missing');
 }
 
+function isAuthFetchError(error) {
+  if (!error) return false;
+  const name = String(error.name || '').toLowerCase();
+  const msg = String(error.message || '').toLowerCase();
+  return (
+    name.includes('authretryablefetcherror') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('err_socket_not_connected') ||
+    msg.includes('fetch')
+  );
+}
+
 function markProfileSettingsColumnMissing() {
   profileSettingsColumnMissing = true;
   try {
@@ -64,6 +76,10 @@ export async function getCurrentUser() {
     if (userError) throw userError;
     return user?.email || null;
   } catch (error) {
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUser offline:', error);
+      return null;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUser error:', error);
     }
@@ -77,6 +93,10 @@ export async function getCurrentUserDetails() {
     if (error) throw error;
     return user || null;
   } catch (error) {
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUserDetails offline:', error);
+      return null;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUserDetails error:', error);
     }
@@ -90,6 +110,10 @@ export async function getCurrentUserId() {
     if (error) throw error;
     return user?.id || null;
   } catch (error) {
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUserId offline:', error);
+      return null;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUserId error:', error);
     }

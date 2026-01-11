@@ -4788,6 +4788,28 @@ document.addEventListener('click', (event) => {
   closeProfileMenu();
 });
 
+const isCalendarPagePath =
+  document.body?.classList.contains('page-calendar') ||
+  /calendar\.html/i.test(window.location.pathname || '');
+
+const runAccountModalMobileGuard = () => {
+  if (!isCalendarPagePath) return;
+  if (!window.matchMedia('(max-width: 640px)').matches) return;
+  const root = document.querySelector('[data-account-modal-root]');
+  if (!root) return;
+  const cs = getComputedStyle(root);
+  const open = cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+  if (!open) return;
+  root.style.display = 'none';
+  document.body.classList.remove('modal-open');
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', runAccountModalMobileGuard, { once: true });
+} else {
+  runAccountModalMobileGuard();
+}
+
 const postFrequencyContainer = document.querySelector('.post-frequency');
 if (postFrequencyContainer) {
   postFrequencyContainer.addEventListener('pointerdown', () => {

@@ -274,44 +274,6 @@
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
-    <script>
-      (function () {
-        if (!window.matchMedia || !window.matchMedia('(max-width: 768px)').matches) return;
-        try {
-          if (location.hash && /account|settings|profile|accessibility|security/i.test(location.hash)) {
-            history.replaceState(null, '', location.pathname + location.search);
-          }
-        } catch (_) {}
-        try {
-          const url = new URL(window.location.href);
-          const keys = ['modal', 'tab', 'view', 'panel', 'settings', 'account', 'profile', 'accessibility', 'security'];
-          let changed = false;
-          keys.forEach((key) => {
-            if (url.searchParams.has(key)) {
-              url.searchParams.delete(key);
-              changed = true;
-            }
-          });
-          if (changed) {
-            const query = url.searchParams.toString();
-            history.replaceState(null, '', url.pathname + (query ? `?${query}` : '') + url.hash);
-          }
-        } catch (_) {}
-        try {
-          const keys = [
-            'openAccountSettings',
-            'accountSettingsOpen',
-            'settingsModalOpen',
-            'activeSettingsTab',
-            'openAccountSettingsOnLoad'
-          ];
-          keys.forEach((key) => {
-            localStorage.removeItem(key);
-            sessionStorage.removeItem(key);
-          });
-        } catch (_) {}
-      })();
-    </script>
   </head>
   <body class="page-library" data-page="library">
     <div class="app-shell">
