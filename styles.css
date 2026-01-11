@@ -9231,12 +9231,14 @@ body.view-landing .landing-workflow + .landing-section {
   body.page-library [data-account-overlay] {
     position: fixed !important;
     inset: 0 !important;
-    display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     padding: 0.75rem !important;
     overflow: visible !important;
     z-index: 9999 !important;
+  }
+  body.page-library [data-account-overlay][aria-hidden="false"] {
+    display: flex !important;
   }
 
   body.page-library [data-account-modal] {

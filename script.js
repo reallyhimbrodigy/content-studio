@@ -9863,6 +9863,15 @@ if (isLibraryPage()) {
     });
   }
 
+  document.addEventListener('keydown', (event) => {
+    if (!isLibraryPage()) return;
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    if (event.key !== 'Escape') return;
+    if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
+    event.preventDefault();
+    closeLibraryAccountModal();
+  });
+
   if (libraryAccountModal) {
     libraryAccountModal.addEventListener(
       'touchmove',
