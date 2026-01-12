@@ -2970,7 +2970,7 @@ const PLAN_DETAILS = {
   },
   free: {
     label: 'Free plan',
-    limits: '1 calendar/month · single-platform exports',
+    limits: '',
   },
 };
 
