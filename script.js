@@ -102,7 +102,11 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const saveBtn = document.getElementById("save-calendar");
   const brandBtn = document.getElementById("brand-brain-btn");
   const brandModal = document.getElementById("brand-modal");
-  const voiceLockSection = document.getElementById('voice-lock-section');
+  const voiceLockBtn = document.getElementById('voice-lock-btn');
+  const voiceLockModal = document.getElementById('voice-lock-modal');
+  const voiceLockCloseBtn = document.getElementById('voice-lock-close-btn');
+  const voiceLockLockedCopy = document.getElementById('voice-lock-locked-copy');
+  const voiceLockLockedPill = document.getElementById('voice-lock-locked-pill');
   const voiceLockToggle = document.getElementById('voice-lock-enabled');
   const voiceLockControls = document.getElementById('voice-lock-controls');
   const voiceLockModeSample = document.getElementById('voice-lock-mode-sample');
@@ -3196,6 +3200,16 @@ function setVoiceLockControlsState(enabled, mode) {
   }
 }
 
+function setVoiceLockLockedState(locked) {
+  if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
+  if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
+  if (locked) {
+    setVoiceLockControlsState(false, voiceLockSettings.mode);
+  } else {
+    setVoiceLockControlsState(voiceLockSettings.enabled, voiceLockSettings.mode);
+  }
+}
+
 function applyVoiceLockUI(settings) {
   if (voiceLockToggle) voiceLockToggle.checked = settings.enabled;
   if (voiceLockModeSample) voiceLockModeSample.checked = settings.mode === 'sample';
@@ -3206,14 +3220,16 @@ function applyVoiceLockUI(settings) {
 }
 
 function syncVoiceLockFromSettings() {
-  if (!voiceLockSection) return;
+  if (!voiceLockModal) return;
   if (!window.cachedUserIsPro) {
-    voiceLockSection.style.display = 'none';
+    voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+    applyVoiceLockUI(voiceLockSettings);
+    setVoiceLockLockedState(true);
     return;
   }
-  voiceLockSection.style.display = '';
   voiceLockSettings = readVoiceLockSettingsFromProfile();
   applyVoiceLockUI(voiceLockSettings);
+  setVoiceLockLockedState(false);
 }
 
 function collectVoiceLockSettingsFromUI() {
@@ -3457,6 +3473,21 @@ function openAccountModal(initialTab = 'account') {
 function closeAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+}
+
+function openVoiceLockModal() {
+  if (!voiceLockModal) return;
+  voiceLockModal.style.display = 'flex';
+  voiceLockModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  syncVoiceLockFromSettings();
+}
+
+function closeVoiceLockModal() {
+  if (!voiceLockModal) return;
+  voiceLockModal.style.display = 'none';
+  voiceLockModal.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('modal-open');
 }
 
@@ -5009,10 +5040,31 @@ if (accountCancelBtn) {
   });
 }
 
+if (voiceLockBtn) {
+  voiceLockBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    openVoiceLockModal();
+  });
+}
+
+if (voiceLockCloseBtn) {
+  voiceLockCloseBtn.addEventListener('click', () => {
+    closeVoiceLockModal();
+  });
+}
+
 if (accountModal) {
   accountModal.addEventListener('click', (event) => {
     if (event.target === accountModal) {
       closeAccountModal();
+    }
+  });
+}
+
+if (voiceLockModal) {
+  voiceLockModal.addEventListener('click', (event) => {
+    if (event.target === voiceLockModal) {
+      closeVoiceLockModal();
     }
   });
 }
@@ -5083,7 +5135,14 @@ if (postFrequencySelect) {
 }
 
 const handleVoiceLockChange = () => {
-  if (!window.cachedUserIsPro) return;
+  if (!window.cachedUserIsPro) {
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    if (voiceLockToggle) voiceLockToggle.checked = false;
+    voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+    applyVoiceLockUI(voiceLockSettings);
+    setVoiceLockLockedState(true);
+    return;
+  }
   const nextSettings = collectVoiceLockSettingsFromUI();
   voiceLockSettings = nextSettings;
   applyVoiceLockUI(nextSettings);
