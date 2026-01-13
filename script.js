@@ -338,6 +338,7 @@ window.cachedUserIsPro = window.cachedUserIsPro ?? null;
 let currentPostFrequency = 1;
 let pendingAssetGeneration = null;
 let lastGenerateAssetOpener = null;
+let lastVoiceLockFocusEl = null;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
@@ -3477,17 +3478,42 @@ function closeAccountModal() {
 
 function openVoiceLockModal() {
   if (!voiceLockModal) return;
+  lastVoiceLockFocusEl = document.activeElement;
   voiceLockModal.style.display = 'flex';
   voiceLockModal.setAttribute('aria-hidden', 'false');
+  voiceLockModal.removeAttribute('inert');
+  voiceLockModal.setAttribute('tabindex', '-1');
   document.body.classList.add('modal-open');
   syncVoiceLockFromSettings();
+  const focusTarget = voiceLockCloseBtn || voiceLockToggle || voiceLockModal;
+  requestAnimationFrame(() => {
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  });
 }
 
 function closeVoiceLockModal() {
   if (!voiceLockModal) return;
+  const active = document.activeElement;
+  if (active && voiceLockModal.contains(active)) {
+    if (voiceLockBtn && typeof voiceLockBtn.focus === 'function') {
+      voiceLockBtn.focus();
+    } else {
+      active.blur();
+      document.body.focus();
+    }
+  }
   voiceLockModal.style.display = 'none';
   voiceLockModal.setAttribute('aria-hidden', 'true');
+  voiceLockModal.setAttribute('inert', '');
   document.body.classList.remove('modal-open');
+  const fallback = voiceLockBtn || brandBtn;
+  if (lastVoiceLockFocusEl && document.contains(lastVoiceLockFocusEl)) {
+    lastVoiceLockFocusEl.focus();
+  } else if (fallback && typeof fallback.focus === 'function') {
+    fallback.focus();
+  }
 }
 
 applyProfileSettings();
@@ -5044,6 +5070,12 @@ if (voiceLockBtn) {
     event.preventDefault();
     openVoiceLockModal();
   });
+}
+
+if (voiceLockModal) {
+  voiceLockModal.setAttribute('aria-hidden', 'true');
+  voiceLockModal.setAttribute('inert', '');
+  voiceLockModal.setAttribute('tabindex', '-1');
 }
 
 if (voiceLockCloseBtn) {
