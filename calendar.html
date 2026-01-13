@@ -710,6 +710,43 @@
         </div>
         <div class="brand-brain-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
 
+        <fieldset class="brand-brain-section" id="voice-lock-section">
+          <legend>Voice Lock</legend>
+          <div class="brand-brain-toggle">
+            <label class="brand-brain-switch">
+              <input type="checkbox" id="voice-lock-enabled" />
+              <span class="brand-brain-switch__slider"></span>
+            </label>
+            <span>Enabled</span>
+          </div>
+          <div class="brand-brain-section" id="voice-lock-controls">
+            <div class="brand-brain-radio">
+              <input type="radio" id="voice-lock-mode-sample" name="voice-lock-mode" value="sample" />
+              <label for="voice-lock-mode-sample">Use writing sample</label>
+            </div>
+            <div class="brand-brain-radio">
+              <input type="radio" id="voice-lock-mode-preset" name="voice-lock-mode" value="preset" />
+              <label for="voice-lock-mode-preset">Use preset</label>
+            </div>
+            <div id="voice-lock-sample-wrap">
+              <label for="voice-lock-sample" class="brand-brain-label">Paste a writing sample</label>
+              <textarea id="voice-lock-sample" rows="5"></textarea>
+              <div class="brand-brain-toggle-subtext">100-600 words works best</div>
+            </div>
+            <div id="voice-lock-preset-wrap">
+              <label for="voice-lock-preset" class="brand-brain-label">Preset</label>
+              <select id="voice-lock-preset">
+                <option value="Direct">Direct</option>
+                <option value="Casual">Casual</option>
+                <option value="Punchy">Punchy</option>
+                <option value="Story-first">Story-first</option>
+                <option value="Contrarian">Contrarian</option>
+                <option value="No-AI-polish">No-AI-polish</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
         <div class="brand-brain-footer">
           <div class="brand-brain-save">
             <span id="brand-brain-save-indicator"></span>

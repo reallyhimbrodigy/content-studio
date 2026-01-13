@@ -2594,6 +2594,99 @@ function buildBrandBrainDirective(settings = {}) {
   return lines.join('\n');
 }
 
+const VOICE_LOCK_PRESET_GUIDES = {
+  direct: {
+    label: 'Direct',
+    lines: [
+      '- Short sentences.',
+      '- Minimal adjectives, no fluff.',
+      '- State the point plainly.',
+    ],
+  },
+  casual: {
+    label: 'Casual',
+    lines: [
+      '- Conversational tone with contractions.',
+      '- Friendly imperatives that feel natural.',
+      '- Keep the phrasing relaxed and approachable.',
+    ],
+  },
+  punchy: {
+    label: 'Punchy',
+    lines: [
+      '- Varied sentence length with occasional fragments.',
+      '- Bold hooks that feel energetic.',
+      '- Keep momentum tight and crisp.',
+    ],
+  },
+  'story-first': {
+    label: 'Story-first',
+    lines: [
+      '- Open with a micro story setup before the point.',
+      '- Add light sensory detail when it fits.',
+      '- Move from story to takeaway quickly.',
+    ],
+  },
+  contrarian: {
+    label: 'Contrarian',
+    lines: [
+      '- Start with a surprising claim.',
+      '- Explain the why clearly and quickly.',
+      '- Keep the pushback grounded in the niche.',
+    ],
+  },
+  'no-ai-polish': {
+    label: 'No-AI-polish',
+    lines: [
+      '- Avoid generic marketing tone and polish.',
+      '- Skip the "discover/unlock/transform" vibe.',
+      '- Use grounded phrasing and vary openings.',
+    ],
+  },
+};
+
+function normalizeVoiceLockPresetKey(value = '') {
+  const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '-');
+  return VOICE_LOCK_PRESET_GUIDES[key] ? key : null;
+}
+
+function normalizeVoiceLockRequest(voiceLock = {}) {
+  if (!voiceLock || typeof voiceLock !== 'object') return null;
+  if (voiceLock.enabled !== true) return null;
+  const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
+  const sample = typeof voiceLock.sample === 'string' ? voiceLock.sample.trim() : '';
+  const presetKey = normalizeVoiceLockPresetKey(voiceLock.preset) || 'direct';
+  return {
+    enabled: true,
+    mode,
+    sample: sample ? sample.slice(0, 2000) : '',
+    presetKey,
+  };
+}
+
+function buildVoiceLockAddendum(voiceLock) {
+  if (!voiceLock || voiceLock.enabled !== true) return '';
+  const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
+  if (mode === 'sample') {
+    const sample = String(voiceLock.sample || '').trim();
+    if (!sample) return '';
+    const lines = [
+      'VOICE LOCK:',
+      '- Match the sample tone, cadence, vocabulary, and sentence length distribution.',
+      '- Vary openings and avoid repetitive starter words across posts.',
+      '- Avoid corporate or polished phrasing.',
+      'VOICE LOCK - WRITING SAMPLE',
+      '[BEGIN SAMPLE]',
+      sample,
+      '[END SAMPLE]',
+    ];
+    return `${lines.join('\n')}\n`;
+  }
+  const preset = VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey || 'direct'] || VOICE_LOCK_PRESET_GUIDES.direct;
+  const lines = ['VOICE LOCK:', `Preset: ${preset.label}`, ...preset.lines];
+  return `${lines.join('\n')}\n`;
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2603,6 +2696,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
+  const voiceLockBlock = buildVoiceLockAddendum(opts.voiceLock);
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
@@ -2673,7 +2767,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   return `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+${brandBlock}${brandBrainBlock}${voiceLockBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
@@ -5511,6 +5605,7 @@ const server = http.createServer((req, res) => {
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
+    const voiceLock = isProUser ? normalizeVoiceLockRequest(payload.voiceLock) : null;
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
       userId: userId || null,
@@ -5591,6 +5686,7 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         extraInstructions: planBlock || '',
         brandBrainDirective,
+        voiceLock,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
@@ -7121,6 +7217,7 @@ const server = http.createServer((req, res) => {
               postsPerDay,
               context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
               isPro,
+              voiceLock: body?.voiceLock,
             });
           } catch (genErr) {
             throw genErr;

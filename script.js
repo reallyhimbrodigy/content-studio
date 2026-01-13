@@ -102,6 +102,15 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const saveBtn = document.getElementById("save-calendar");
   const brandBtn = document.getElementById("brand-brain-btn");
   const brandModal = document.getElementById("brand-modal");
+  const voiceLockSection = document.getElementById('voice-lock-section');
+  const voiceLockToggle = document.getElementById('voice-lock-enabled');
+  const voiceLockControls = document.getElementById('voice-lock-controls');
+  const voiceLockModeSample = document.getElementById('voice-lock-mode-sample');
+  const voiceLockModePreset = document.getElementById('voice-lock-mode-preset');
+  const voiceLockSampleInput = document.getElementById('voice-lock-sample');
+  const voiceLockSampleWrap = document.getElementById('voice-lock-sample-wrap');
+  const voiceLockPresetSelect = document.getElementById('voice-lock-preset');
+  const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
   const brandText = document.getElementById("brand-text");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
@@ -2973,6 +2982,14 @@ const PLAN_DETAILS = {
     limits: '',
   },
 };
+const VOICE_LOCK_PRESETS = ['Direct', 'Casual', 'Punchy', 'Story-first', 'Contrarian', 'No-AI-polish'];
+const VOICE_LOCK_DEFAULTS = {
+  enabled: false,
+  mode: 'sample',
+  sample: '',
+  preset: 'Direct',
+};
+let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
 
 function getProfileSettingsStorageKey(email = '') {
   const normalized = (email || 'anon').toString().trim().toLowerCase();
@@ -3136,6 +3153,104 @@ function applyProfileSettings() {
   document.body.classList.toggle('prefers-large-type', !!settings.largeType);
   document.body.classList.toggle('prefers-reduced-motion', !!settings.reducedMotion);
   document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
+}
+
+function sanitizeVoiceLockSample(value = '') {
+  return String(value || '').trim().slice(0, 2000);
+}
+
+function normalizeVoiceLockSettings(raw = {}) {
+  const mode = raw.mode === 'preset' ? 'preset' : 'sample';
+  const preset = VOICE_LOCK_PRESETS.includes(raw.preset) ? raw.preset : VOICE_LOCK_DEFAULTS.preset;
+  const sample = sanitizeVoiceLockSample(raw.sample || '');
+  return {
+    enabled: Boolean(raw.enabled),
+    mode,
+    sample,
+    preset,
+  };
+}
+
+function readVoiceLockSettingsFromProfile() {
+  const settings = profileSettings || {};
+  return normalizeVoiceLockSettings({
+    enabled: settings.voice_lock_enabled,
+    mode: settings.voice_lock_mode,
+    sample: settings.voice_lock_sample,
+    preset: settings.voice_lock_preset,
+  });
+}
+
+function setVoiceLockControlsState(enabled, mode) {
+  if (voiceLockControls) voiceLockControls.style.display = enabled ? '' : 'none';
+  const disabled = !enabled;
+  const inputs = [voiceLockModeSample, voiceLockModePreset, voiceLockSampleInput, voiceLockPresetSelect].filter(Boolean);
+  inputs.forEach((input) => {
+    input.disabled = disabled;
+  });
+  if (voiceLockSampleWrap) {
+    voiceLockSampleWrap.style.display = enabled && mode === 'sample' ? '' : 'none';
+  }
+  if (voiceLockPresetWrap) {
+    voiceLockPresetWrap.style.display = enabled && mode === 'preset' ? '' : 'none';
+  }
+}
+
+function applyVoiceLockUI(settings) {
+  if (voiceLockToggle) voiceLockToggle.checked = settings.enabled;
+  if (voiceLockModeSample) voiceLockModeSample.checked = settings.mode === 'sample';
+  if (voiceLockModePreset) voiceLockModePreset.checked = settings.mode === 'preset';
+  if (voiceLockSampleInput) voiceLockSampleInput.value = settings.sample;
+  if (voiceLockPresetSelect) voiceLockPresetSelect.value = settings.preset;
+  setVoiceLockControlsState(settings.enabled, settings.mode);
+}
+
+function syncVoiceLockFromSettings() {
+  if (!voiceLockSection) return;
+  if (!window.cachedUserIsPro) {
+    voiceLockSection.style.display = 'none';
+    return;
+  }
+  voiceLockSection.style.display = '';
+  voiceLockSettings = readVoiceLockSettingsFromProfile();
+  applyVoiceLockUI(voiceLockSettings);
+}
+
+function collectVoiceLockSettingsFromUI() {
+  return normalizeVoiceLockSettings({
+    enabled: voiceLockToggle?.checked,
+    mode: voiceLockModePreset?.checked ? 'preset' : 'sample',
+    sample: voiceLockSampleInput?.value || '',
+    preset: voiceLockPresetSelect?.value || VOICE_LOCK_DEFAULTS.preset,
+  });
+}
+
+async function persistVoiceLockSettings(nextSettings) {
+  if (!window.cachedUserIsPro) return;
+  const payload = {
+    voice_lock_enabled: nextSettings.enabled,
+    voice_lock_mode: nextSettings.mode,
+    voice_lock_sample: nextSettings.sample,
+    voice_lock_preset: nextSettings.preset,
+  };
+  updateProfileSettings(payload, { targetEmail: activeUserEmail || undefined });
+  if (!activeUserEmail) return;
+  try {
+    await saveProfilePreferences(profileSettings);
+  } catch (error) {
+    console.warn('Unable to save voice lock preferences', error);
+  }
+}
+
+function buildVoiceLockRequestPayload() {
+  if (!window.cachedUserIsPro || !voiceLockSettings?.enabled) return null;
+  const mode = voiceLockSettings.mode === 'preset' ? 'preset' : 'sample';
+  const sample = sanitizeVoiceLockSample(voiceLockSettings.sample || '');
+  const preset = String(voiceLockSettings.preset || '').trim();
+  const payload = { enabled: true, mode };
+  if (mode === 'sample' && sample) payload.sample = sample;
+  if (mode === 'preset' && preset) payload.preset = preset;
+  return payload;
 }
 
 async function getAccountAuthUser() {
@@ -4582,7 +4697,7 @@ async function bootstrapApp(attempt = 0) {
     if (hydratedCalendar) ensurePlatformVariantsForCurrentCalendar('hydrate');
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
-    syncProfileSettingsFromSupabase();
+    const profileSync = syncProfileSettingsFromSupabase();
     await refreshBrandKitSafe();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
@@ -4612,6 +4727,12 @@ async function bootstrapApp(attempt = 0) {
     updatePostFrequencyUI();
     updateAccountPlanInfo(userIsPro);
     loadCalendarExportUsage();
+    syncVoiceLockFromSettings();
+    if (profileSync && typeof profileSync.then === 'function') {
+      profileSync.then(() => {
+        syncVoiceLockFromSettings();
+      });
+    }
     try {
       const userDetails = await getCurrentUserDetails();
       updateAccountLastLogin(userDetails?.last_sign_in_at || userDetails?.updated_at || userDetails?.created_at || '');
@@ -4695,6 +4816,7 @@ async function bootstrapApp(attempt = 0) {
     if (appExperience) appExperience.style.display = 'none';
     window.cachedUserIsPro = false;
     updatePostFrequencyUI();
+    syncVoiceLockFromSettings();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
     rememberActiveUserEmail('');
@@ -4958,6 +5080,42 @@ if (postFrequencySelect) {
     if (guardFreeChange()) return;
     setPostFrequency(postFrequencySelect.value);
   });
+}
+
+const handleVoiceLockChange = () => {
+  if (!window.cachedUserIsPro) return;
+  const nextSettings = collectVoiceLockSettingsFromUI();
+  voiceLockSettings = nextSettings;
+  applyVoiceLockUI(nextSettings);
+  persistVoiceLockSettings(nextSettings);
+};
+
+if (voiceLockToggle) {
+  voiceLockToggle.addEventListener('change', handleVoiceLockChange);
+}
+
+if (voiceLockModeSample) {
+  voiceLockModeSample.addEventListener('change', handleVoiceLockChange);
+}
+
+if (voiceLockModePreset) {
+  voiceLockModePreset.addEventListener('change', handleVoiceLockChange);
+}
+
+if (voiceLockPresetSelect) {
+  voiceLockPresetSelect.addEventListener('change', handleVoiceLockChange);
+}
+
+if (voiceLockSampleInput) {
+  voiceLockSampleInput.addEventListener('input', () => {
+    if (!window.cachedUserIsPro) return;
+    const trimmed = sanitizeVoiceLockSample(voiceLockSampleInput.value);
+    if (voiceLockSampleInput.value !== trimmed) {
+      voiceLockSampleInput.value = trimmed;
+    }
+    voiceLockSettings = { ...voiceLockSettings, sample: trimmed };
+  });
+  voiceLockSampleInput.addEventListener('change', handleVoiceLockChange);
 }
 
 if (accountForm) {
@@ -6080,6 +6238,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
     }
     let parsed = null;
     if (regenDaySupported) {
+      const voiceLockPayload = buildVoiceLockRequestPayload();
       const resp = await fetchWithAuth('/api/regen-day', {
         method: 'POST',
         body: JSON.stringify({
@@ -6090,6 +6249,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
           calendarId: currentCalendarId || undefined,
           calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
           postsPerDay,
+          ...(voiceLockPayload ? { voiceLock: voiceLockPayload } : {}),
         }),
       });
       if (resp.status === 404) {
@@ -6239,6 +6399,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
     showUpgradeModal();
     throw new Error('upgrade_required');
   }
+  const voiceLockPayload = buildVoiceLockRequestPayload();
   const resp = await fetchWithAuth('/api/calendar/regenerate', {
     method: 'POST',
     body: JSON.stringify({
@@ -6246,6 +6407,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
       days: 1,
       startDay: day,
       userId: currentUser || undefined,
+      ...(voiceLockPayload ? { voiceLock: voiceLockPayload } : {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
@@ -8301,6 +8463,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         postsPerDay: normalizedFrequency,
         usedSignatures: usedSignaturesForRun.slice(),
       };
+      const voiceLockPayload = buildVoiceLockRequestPayload();
+      if (voiceLockPayload) payload.voiceLock = voiceLockPayload;
       if (thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
       }
