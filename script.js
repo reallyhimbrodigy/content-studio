@@ -3263,9 +3263,8 @@ function buildVoiceLockRequestPayload() {
   const mode = voiceLockSettings.mode === 'preset' ? 'preset' : 'sample';
   const sample = sanitizeVoiceLockSample(voiceLockSettings.sample || '');
   const preset = String(voiceLockSettings.preset || '').trim();
-  const payload = { enabled: true, mode };
-  if (mode === 'sample' && sample) payload.sample = sample;
-  if (mode === 'preset' && preset) payload.preset = preset;
+  const payload = { voiceLockEnabled: true, voiceLockPreset: preset };
+  if (mode === 'sample' && sample) payload.voiceLockSample = sample;
   return payload;
 }
 
@@ -6308,7 +6307,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
           calendarId: currentCalendarId || undefined,
           calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
           postsPerDay,
-          ...(voiceLockPayload ? { voiceLock: voiceLockPayload } : {}),
+          ...(voiceLockPayload || {}),
         }),
       });
       if (resp.status === 404) {
@@ -6466,7 +6465,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
       days: 1,
       startDay: day,
       userId: currentUser || undefined,
-      ...(voiceLockPayload ? { voiceLock: voiceLockPayload } : {}),
+      ...(voiceLockPayload || {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
@@ -8523,7 +8522,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         usedSignatures: usedSignaturesForRun.slice(),
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
-      if (voiceLockPayload) payload.voiceLock = voiceLockPayload;
+      if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
       if (thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
       }

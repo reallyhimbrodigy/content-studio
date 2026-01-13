@@ -2595,8 +2595,19 @@ function buildBrandBrainDirective(settings = {}) {
 }
 
 const VOICE_LOCK_PRESET_GUIDES = {
+  'raw-creator': {
+    label: 'Raw Creator',
+    lines: [
+      '- Short, imperfect, human cadence with occasional fragments.',
+      '- Caption: 2-4 short paragraphs, sounds like texting a friend.',
+      '- Reel script: minimal stage directions, conversational.',
+      '- Hook: one line, direct, no colon titles.',
+      '- Sentence length: 5-12 words on average.',
+      '- Punctuation cadence: loose, occasional dashes.',
+    ],
+  },
   direct: {
-    label: 'Direct',
+    label: 'Coach / Direct',
     lines: [
       '- Hook: command or challenge; no colon titles.',
       '- Caption: structured steps, blunt feedback.',
@@ -2607,7 +2618,7 @@ const VOICE_LOCK_PRESET_GUIDES = {
     ],
   },
   casual: {
-    label: 'Casual',
+    label: 'Friendly Expert',
     lines: [
       '- Warm but not salesy.',
       '- Caption: teach with clarity; include one "why this matters" line.',
@@ -2629,7 +2640,7 @@ const VOICE_LOCK_PRESET_GUIDES = {
     ],
   },
   'story-first': {
-    label: 'Story-first',
+    label: 'Story-First',
     lines: [
       '- Hook: starts mid-moment with sensory detail.',
       '- Caption: short narrative arc (setup -> friction -> takeaway).',
@@ -2652,27 +2663,47 @@ const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
     label: 'No-AI-polish',
     lines: [
-      '- Short, imperfect, human cadence with occasional fragments.',
-      '- Caption: 2-4 short paragraphs, sounds like texting a friend.',
-      '- Reel script: minimal stage directions, conversational.',
-      '- CTA: plainspoken and direct.',
-      '- Sentence length: 5-12 words on average.',
-      '- Punctuation cadence: loose, occasional dashes.',
+      '- Strip any polish; keep phrasing grounded and plain.',
+      '- Avoid generic marketing tone.',
+      '- Sentence length: 6-12 words on average.',
+      '- Punctuation cadence: plain, sparse.',
     ],
   },
 };
 
 function normalizeVoiceLockPresetKey(value = '') {
-  const key = String(value || '').trim().toLowerCase().replace(/\s+/g, '-');
-  return VOICE_LOCK_PRESET_GUIDES[key] ? key : null;
+  const raw = String(value || '').trim().toLowerCase();
+  const key = raw.replace(/\s+/g, '-');
+  if (key === 'no-ai-polish') return 'raw-creator';
+  if (VOICE_LOCK_PRESET_GUIDES[key]) return key;
+  if (key === 'raw-creator' || key === 'raw') return 'raw-creator';
+  if (key === 'coach/direct' || key === 'coach-direct' || key === 'coach') return 'direct';
+  if (key === 'friendly-expert' || key === 'friendly') return 'casual';
+  if (key === 'story-first' || key === 'story-first') return 'story-first';
+  return null;
 }
 
-function normalizeVoiceLockRequest(voiceLock = {}) {
-  if (!voiceLock || typeof voiceLock !== 'object') return null;
-  if (voiceLock.enabled !== true) return null;
-  const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
-  const sample = typeof voiceLock.sample === 'string' ? voiceLock.sample.trim() : '';
-  const presetKey = normalizeVoiceLockPresetKey(voiceLock.preset) || 'direct';
+function normalizeVoiceLockRequest(input = {}) {
+  if (!input || typeof input !== 'object') return null;
+  const enabled =
+    input.voiceLockEnabled === true ||
+    input.enabled === true ||
+    input.voiceLock?.enabled === true ||
+    false;
+  if (!enabled) return null;
+  const sampleRaw =
+    input.voiceLockSample ||
+    input.sample ||
+    input.voiceLock?.sample ||
+    '';
+  const presetRaw =
+    input.voiceLockPreset ||
+    input.preset ||
+    input.voiceLock?.preset ||
+    '';
+  const sample = typeof sampleRaw === 'string' ? sampleRaw.trim() : '';
+  const presetKey = normalizeVoiceLockPresetKey(presetRaw) || 'direct';
+  const mode = sample ? 'sample' : 'preset';
   return {
     enabled: true,
     mode,
@@ -2684,6 +2715,7 @@ function normalizeVoiceLockRequest(voiceLock = {}) {
 function buildVoiceLockAddendum(voiceLock) {
   if (!voiceLock || voiceLock.enabled !== true) return '';
   const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
+  const preset = VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey || 'direct'] || VOICE_LOCK_PRESET_GUIDES.direct;
   const globalLines = [
     'VOICE LOCK IS ACTIVE.',
     'Apply this style to: title/topic, hook, caption, reel_script, pinned_comment, CTA, execution_notes, design_notes, engagement_loop.',
@@ -2698,6 +2730,7 @@ function buildVoiceLockAddendum(voiceLock) {
     const lines = [
       ...globalLines,
       'Match the sample tone, cadence, vocabulary, and sentence length distribution.',
+      `Preset: ${preset.label}`,
       'VOICE LOCK - WRITING SAMPLE',
       '[BEGIN SAMPLE]',
       sample,
@@ -2705,7 +2738,6 @@ function buildVoiceLockAddendum(voiceLock) {
     ];
     return `${lines.join('\n')}\n`;
   }
-  const preset = VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey || 'direct'] || VOICE_LOCK_PRESET_GUIDES.direct;
   const lines = [...globalLines, `Preset: ${preset.label}`, ...preset.lines];
   return `${lines.join('\n')}\n`;
 }
@@ -2721,10 +2753,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const voiceLockBlock = buildVoiceLockAddendum(opts.voiceLock);
   if (voiceLockBlock) {
-    const mode = opts.voiceLock?.mode === 'preset' ? 'preset' : 'sample';
-    const presetKey = opts.voiceLock?.presetKey || (mode === 'sample' ? 'sample' : 'direct');
+    const presetKey = opts.voiceLock?.presetKey || 'direct';
     const presetLabel = VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey;
-    console.log('[VoiceLock][Prompt] appended=true mode=%s preset=%s', mode, presetLabel);
+    console.log('[VoiceLock][Prompt] appended=true chars=%s', String(voiceLockBlock.length));
     console.log('[VoiceLock][Preset] %s', presetLabel);
   }
   const brandBrainAddendum = opts.brandBrainDirective
@@ -2882,6 +2913,8 @@ const TITLE_SIGNATURE_STOPWORDS = new Set([
   'understanding',
   'navigating',
 ]);
+
+const VOICE_LOCK_LOGGED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -4192,10 +4225,10 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
     normalized.title = normalized.idea || `Day ${String(dayNumber).padStart(2, '0')} idea`;
     applied.push('title');
   }
-  if (!isNonEmptyString(normalized.hook)) {
-    normalized.hook = `Start with ${normalized.idea || 'a key insight'}.`;
-    applied.push('hook');
-  }
+      if (!isNonEmptyString(normalized.hook)) {
+        normalized.hook = `Start with ${normalized.idea || 'a key insight'}.`;
+        applied.push('hook');
+      }
   if (allowFallbacks) {
     normalized.cta = ensureCtaFallback(normalized);
   }
@@ -4890,6 +4923,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       extraInstructions,
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    const voiceLockEnabled = Boolean(opts.voiceLock?.enabled);
+    const presetLabel = voiceLockEnabled
+      ? (VOICE_LOCK_PRESET_GUIDES[opts.voiceLock?.presetKey || 'direct']?.label || opts.voiceLock?.presetKey || 'direct')
+      : 'none';
+    console.log(
+      '[VoiceLock][OpenAI] enabled=%s preset=%s requestId=%s chunkIndex=%s',
+      voiceLockEnabled,
+      voiceLockEnabled ? presetLabel : 'none',
+      loggingContext?.requestId || 'unknown',
+      loggingContext?.chunkIndex ?? 'n/a'
+    );
     if (loggingContext?.requestId) {
       console.log('[Calendar][Prompt]', {
         requestId: loggingContext.requestId,
@@ -5635,7 +5679,31 @@ const server = http.createServer((req, res) => {
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
-    const voiceLock = isProUser ? normalizeVoiceLockRequest(payload.voiceLock) : null;
+    const voiceLock = isProUser ? normalizeVoiceLockRequest(payload) : null;
+    const requestId = String(loggingContext?.requestId || '');
+    if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
+      const enabled = Boolean(voiceLock?.enabled);
+      if (!enabled) {
+        console.log('[VoiceLock][Mode] enabled=false');
+      } else {
+        const presetLabel = voiceLock?.presetKey
+          ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
+          : 'none';
+        console.log('[VoiceLock][Mode] enabled=true preset=%s userId=%s requestId=%s', presetLabel, userId || 'unknown', requestId);
+      }
+      VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
+      if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
+    } else if (!requestId) {
+      const enabled = Boolean(voiceLock?.enabled);
+      if (!enabled) {
+        console.log('[VoiceLock][Mode] enabled=false');
+      } else {
+        const presetLabel = voiceLock?.presetKey
+          ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
+          : 'none';
+        console.log('[VoiceLock][Mode] enabled=true preset=%s userId=%s requestId=%s', presetLabel, userId || 'unknown', requestId || 'unknown');
+      }
+    }
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
       userId: userId || null,
@@ -7247,7 +7315,9 @@ const server = http.createServer((req, res) => {
               postsPerDay,
               context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
               isPro,
-              voiceLock: body?.voiceLock,
+              voiceLockEnabled: body?.voiceLockEnabled,
+              voiceLockPreset: body?.voiceLockPreset,
+              voiceLockSample: body?.voiceLockSample,
             });
           } catch (genErr) {
             throw genErr;
