@@ -2598,49 +2598,66 @@ const VOICE_LOCK_PRESET_GUIDES = {
   direct: {
     label: 'Direct',
     lines: [
-      '- Short sentences.',
-      '- Minimal adjectives, no fluff.',
-      '- State the point plainly.',
+      '- Hook: command or challenge; no colon titles.',
+      '- Caption: structured steps, blunt feedback.',
+      '- Reel script: clear drill format.',
+      '- CTA: specific action.',
+      '- Sentence length: 6-12 words on average.',
+      '- Punctuation cadence: short bursts, few commas.',
     ],
   },
   casual: {
     label: 'Casual',
     lines: [
-      '- Conversational tone with contractions.',
-      '- Friendly imperatives that feel natural.',
-      '- Keep the phrasing relaxed and approachable.',
+      '- Warm but not salesy.',
+      '- Caption: teach with clarity; include one "why this matters" line.',
+      '- Reel script: simple explanations, avoids hype.',
+      '- CTA: friendly and low-pressure.',
+      '- Sentence length: 8-14 words on average.',
+      '- Punctuation cadence: conversational, light commas.',
     ],
   },
   punchy: {
     label: 'Punchy',
     lines: [
-      '- Varied sentence length with occasional fragments.',
-      '- Bold hooks that feel energetic.',
-      '- Keep momentum tight and crisp.',
+      '- Sentence length: 6-10 words.',
+      '- Strong verbs, minimal adjectives.',
+      '- Hook: contrarian or curiosity gap, max 12 words, one line.',
+      '- Caption: tight, skimmable, 1 emoji max or none.',
+      '- CTA: single-line imperative.',
+      '- Punctuation cadence: sharp stops, occasional fragments.',
     ],
   },
   'story-first': {
     label: 'Story-first',
     lines: [
-      '- Open with a micro story setup before the point.',
-      '- Add light sensory detail when it fits.',
-      '- Move from story to takeaway quickly.',
+      '- Hook: starts mid-moment with sensory detail.',
+      '- Caption: short narrative arc (setup -> friction -> takeaway).',
+      '- Reel script: scene beats, concise.',
+      '- CTA: soft, community-driven.',
+      '- Sentence length: 10-16 words with a few shorter breaks.',
+      '- Punctuation cadence: flowing, light commas.',
     ],
   },
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Start with a surprising claim.',
-      '- Explain the why clearly and quickly.',
-      '- Keep the pushback grounded in the niche.',
+      '- Hook: surprising claim, one line, no colon titles.',
+      '- Caption: explain the pushback fast, then deliver the takeaway.',
+      '- CTA: invite a clear stance or action.',
+      '- Sentence length: 6-12 words on average.',
+      '- Punctuation cadence: crisp, minimal commas.',
     ],
   },
   'no-ai-polish': {
     label: 'No-AI-polish',
     lines: [
-      '- Avoid generic marketing tone and polish.',
-      '- Skip the "discover/unlock/transform" vibe.',
-      '- Use grounded phrasing and vary openings.',
+      '- Short, imperfect, human cadence with occasional fragments.',
+      '- Caption: 2-4 short paragraphs, sounds like texting a friend.',
+      '- Reel script: minimal stage directions, conversational.',
+      '- CTA: plainspoken and direct.',
+      '- Sentence length: 5-12 words on average.',
+      '- Punctuation cadence: loose, occasional dashes.',
     ],
   },
 };
@@ -2667,14 +2684,20 @@ function normalizeVoiceLockRequest(voiceLock = {}) {
 function buildVoiceLockAddendum(voiceLock) {
   if (!voiceLock || voiceLock.enabled !== true) return '';
   const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
+  const globalLines = [
+    'VOICE LOCK IS ACTIVE.',
+    'Apply this style to: title/topic, hook, caption, reel_script, pinned_comment, CTA, execution_notes, design_notes, engagement_loop.',
+    'Do NOT change: distribution_plan, suggested_audio, story_prompt.',
+    'Do not change the JSON schema or keys. Only rewrite the wording in those fields.',
+    'Avoid: discover, unlock, navigating, understanding.',
+    'Vary openings; avoid repetitive starter words across posts.',
+  ];
   if (mode === 'sample') {
     const sample = String(voiceLock.sample || '').trim();
     if (!sample) return '';
     const lines = [
-      'VOICE LOCK:',
-      '- Match the sample tone, cadence, vocabulary, and sentence length distribution.',
-      '- Vary openings and avoid repetitive starter words across posts.',
-      '- Avoid corporate or polished phrasing.',
+      ...globalLines,
+      'Match the sample tone, cadence, vocabulary, and sentence length distribution.',
       'VOICE LOCK - WRITING SAMPLE',
       '[BEGIN SAMPLE]',
       sample,
@@ -2683,7 +2706,7 @@ function buildVoiceLockAddendum(voiceLock) {
     return `${lines.join('\n')}\n`;
   }
   const preset = VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey || 'direct'] || VOICE_LOCK_PRESET_GUIDES.direct;
-  const lines = ['VOICE LOCK:', `Preset: ${preset.label}`, ...preset.lines];
+  const lines = [...globalLines, `Preset: ${preset.label}`, ...preset.lines];
   return `${lines.join('\n')}\n`;
 }
 
@@ -2697,6 +2720,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
   const voiceLockBlock = buildVoiceLockAddendum(opts.voiceLock);
+  if (voiceLockBlock) {
+    const mode = opts.voiceLock?.mode === 'preset' ? 'preset' : 'sample';
+    const presetKey = opts.voiceLock?.presetKey || (mode === 'sample' ? 'sample' : 'direct');
+    const presetLabel = VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey;
+    console.log('[VoiceLock][Prompt] appended=true mode=%s preset=%s', mode, presetLabel);
+    console.log('[VoiceLock][Preset] %s', presetLabel);
+  }
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
