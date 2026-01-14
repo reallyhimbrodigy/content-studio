@@ -2736,8 +2736,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
-  const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
@@ -2807,6 +2805,8 @@ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
         ].join('\\n')
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
+  const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
+${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
