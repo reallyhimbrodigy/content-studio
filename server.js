@@ -2786,76 +2786,16 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
 }
 
 const TARGET_AUDIENCE_PRESET_GUIDES = {
-  'first-time-buyers': {
-    label: 'First-Time Buyers',
-    goals: 'clarity on process, affordability, confidence to act',
-    objections: 'fear of overpaying, confusing steps, hidden costs',
-    ctaStyle: 'reassuring next step and guided action',
-    vocabulary: 'simple, supportive, low jargon',
-  },
-  investors: {
-    label: 'Investors',
-    goals: 'ROI, cash flow, deal velocity, downside protection',
-    objections: 'uncertain numbers, weak comps, unclear risk',
-    ctaStyle: 'numbers-first and direct',
-    vocabulary: 'analytical, concise, metrics-aware',
-  },
-  'luxury-high-net-worth': {
-    label: 'Luxury / High-Net-Worth',
-    goals: 'privacy, exclusivity, white-glove outcomes',
-    objections: 'time waste, poor discretion, generic service',
-    ctaStyle: 'discreet and invitation-based',
-    vocabulary: 'refined, understated, premium',
-  },
-  'renters-buyers-transition': {
-    label: 'Renters → Buyers Transition',
-    goals: 'path to ownership, readiness milestones, stability',
-    objections: 'down payment concerns, credit readiness, timing',
-    ctaStyle: 'step-by-step encouragement',
-    vocabulary: 'clear, practical, supportive',
-  },
-  'sellers-need-to-move': {
-    label: 'Sellers (Need to Move)',
-    goals: 'speed, certainty, minimal disruption, smart pricing',
-    objections: 'time on market, low offers, moving stress',
-    ctaStyle: 'decisive and time-aware',
-    vocabulary: 'direct, confident, pragmatic',
-  },
-  'relocation-out-of-state': {
-    label: 'Relocation / Out-of-State',
-    goals: 'remote confidence, local insight, smooth logistics',
-    objections: 'unknown area, timing risk, lack of trust',
-    ctaStyle: 'reassure with clear next step',
-    vocabulary: 'clear, informative, calm',
-  },
-  'new-construction': {
-    label: 'New Construction',
-    goals: 'builder trust, timelines, customization, warranties',
-    objections: 'delays, hidden upgrades, builder reliability',
-    ctaStyle: 'process-driven and concrete',
-    vocabulary: 'clear, detail-oriented, neutral',
-  },
-  'distressed-fixer-value-add': {
-    label: 'Distressed / Fixer / Value-Add',
-    goals: 'value upside, scope clarity, cost control',
-    objections: 'unknown repairs, budget overruns, risk',
-    ctaStyle: 'risk-aware and specific',
-    vocabulary: 'practical, numbers-aware, grounded',
-  },
-  'families-school-focused': {
-    label: 'Families / School-Focused',
-    goals: 'school quality, safety, routines, community fit',
-    objections: 'commute strain, school access, neighborhood risk',
-    ctaStyle: 'supportive and family-centered',
-    vocabulary: 'warm, reassuring, clear',
-  },
-  'young-professionals': {
-    label: 'Young Professionals',
-    goals: 'lifestyle fit, commute, convenience, modern amenities',
-    objections: 'price pressure, time constraints, uncertainty',
-    ctaStyle: 'clear and efficient',
-    vocabulary: 'modern, concise, practical',
-  },
+  'beginners-first-time': { label: 'Beginners / First-time' },
+  'budget-conscious': { label: 'Budget-conscious' },
+  'busy-professionals': { label: 'Busy Professionals' },
+  families: { label: 'Families' },
+  'enthusiasts-hobbyists': { label: 'Enthusiasts / Hobbyists' },
+  'high-intent-buyers': { label: 'High-intent Buyers' },
+  'comparison-shoppers': { label: 'Comparison Shoppers' },
+  'skeptics-objection-heavy': { label: 'Skeptics / Objection-heavy' },
+  'premium-high-end': { label: 'Premium / High-end' },
+  'returning-customers': { label: 'Returning Customers' },
 };
 
 function normalizeTargetAudiencePresetKey(value = '') {
@@ -2865,47 +2805,17 @@ function normalizeTargetAudiencePresetKey(value = '') {
   return null;
 }
 
-function normalizeTargetAudienceDetails(raw = {}) {
-  const details = raw && typeof raw === 'object' ? raw : {};
-  const industry = typeof details.industry === 'string' ? details.industry.trim().slice(0, 120) : '';
-  const notes = typeof details.notes === 'string' ? details.notes.trim().slice(0, 200) : '';
-  const pricePoint = ['low', 'mid', 'premium', 'luxury'].includes(details.pricePoint)
-    ? details.pricePoint
-    : 'mid';
-  const location = ['none', 'local', 'regional', 'national'].includes(details.location)
-    ? details.location
-    : 'none';
-  const stage = ['discovery', 'consideration', 'decision', 'retention'].includes(details.stage)
-    ? details.stage
-    : 'discovery';
-  return { industry, pricePoint, location, stage, notes };
-}
-
-function buildTargetAudienceInstructionBlock({ presetKey, details }) {
+function buildTargetAudienceInstructionBlock({ presetKey }) {
   const preset = TARGET_AUDIENCE_PRESET_GUIDES[presetKey];
   if (!preset) return '';
-  const normalizedDetails = normalizeTargetAudienceDetails(details);
   const lines = [
-    'TARGET AUDIENCE CONTEXT',
-    'Apply only to phrasing for: Hook, Caption, CTA, Engagement Loop, Reel Script, Execution Notes, Design Notes.',
+    'TARGET AUDIENCE',
+    `Target audience: ${preset.label}.`,
+    'Tailor Hook/Body/CTA/Engagement Loop wording and examples to resonate with this audience.',
+    'Apply only to phrasing for: Hook, Caption/Main body, CTA, Engagement Loop, Reel Script.',
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
     'Keep JSON keys and schema unchanged.',
-    `Audience preset: ${preset.label}`,
-    `Goals: ${preset.goals}.`,
-    `Primary objections: ${preset.objections}.`,
-    `CTA style: ${preset.ctaStyle}.`,
-    `Vocabulary level: ${preset.vocabulary}.`,
-    `Price point: ${normalizedDetails.pricePoint}.`,
-    `Location relevance: ${normalizedDetails.location}.`,
-    `Stage: ${normalizedDetails.stage}.`,
   ];
-  if (normalizedDetails.industry) {
-    lines.push(`Industry context: ${normalizedDetails.industry}.`);
-  }
-  if (normalizedDetails.notes) {
-    lines.push(`Additional notes: ${normalizedDetails.notes}.`);
-  }
-  lines.push('Tailor examples, pain points, objections, and CTA to this audience.');
   return `${lines.join('\n')}\n`;
 }
 
@@ -2925,7 +2835,7 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   return {
     enabled: true,
     preset: presetKey,
-    instructionBlock: buildTargetAudienceInstructionBlock({ presetKey, details: raw.details }),
+    instructionBlock: buildTargetAudienceInstructionBlock({ presetKey }),
     reason: 'enabled',
   };
 }

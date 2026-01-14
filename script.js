@@ -120,11 +120,6 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const targetAudienceControls = document.getElementById('target-audience-controls');
   const targetAudiencePresetSelect = document.getElementById('target-audience-preset');
   const targetAudiencePresetWrap = document.getElementById('target-audience-preset-wrap');
-  const targetAudienceIndustryInput = document.getElementById('target-audience-industry');
-  const targetAudiencePriceSelect = document.getElementById('target-audience-price');
-  const targetAudienceLocationSelect = document.getElementById('target-audience-location');
-  const targetAudienceStageSelect = document.getElementById('target-audience-stage');
-  const targetAudienceNotesInput = document.getElementById('target-audience-notes');
   const targetAudienceSaveBtn = document.getElementById('target-audience-save');
   const targetAudienceResetBtn = document.getElementById('target-audience-reset');
   const targetAudienceFeedback = document.getElementById('target-audience-feedback');
@@ -3007,30 +3002,20 @@ const VOICE_LOCK_DEFAULTS = {
 };
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
 const TARGET_AUDIENCE_PRESETS = [
-  'First-Time Buyers',
-  'Investors',
-  'Luxury / High-Net-Worth',
-  'Renters → Buyers Transition',
-  'Sellers (Need to Move)',
-  'Relocation / Out-of-State',
-  'New Construction',
-  'Distressed / Fixer / Value-Add',
-  'Families / School-Focused',
-  'Young Professionals',
+  'Beginners / First-time',
+  'Budget-conscious',
+  'Busy Professionals',
+  'Families',
+  'Enthusiasts / Hobbyists',
+  'High-intent Buyers',
+  'Comparison Shoppers',
+  'Skeptics / Objection-heavy',
+  'Premium / High-end',
+  'Returning Customers',
 ];
-const TARGET_AUDIENCE_PRICE_POINTS = ['low', 'mid', 'premium', 'luxury'];
-const TARGET_AUDIENCE_LOCATIONS = ['none', 'local', 'regional', 'national'];
-const TARGET_AUDIENCE_STAGES = ['discovery', 'consideration', 'decision', 'retention'];
 const TARGET_AUDIENCE_DEFAULTS = {
   enabled: false,
-  preset: 'First-Time Buyers',
-  details: {
-    industry: '',
-    pricePoint: 'mid',
-    location: 'none',
-    stage: 'discovery',
-    notes: '',
-  },
+  preset: 'Beginners / First-time',
 };
 let targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
 let lastTargetAudienceFocusEl = null;
@@ -3287,28 +3272,11 @@ function buildVoiceLockRequestPayload() {
   return { voiceLockEnabled: true, voiceLockPreset: preset };
 }
 
-function normalizeTargetAudienceDetails(raw = {}) {
-  const details = raw && typeof raw === 'object' ? raw : {};
-  const industry = typeof details.industry === 'string' ? details.industry.trim().slice(0, 120) : '';
-  const notes = typeof details.notes === 'string' ? details.notes.trim().slice(0, 200) : '';
-  const pricePoint = TARGET_AUDIENCE_PRICE_POINTS.includes(details.pricePoint)
-    ? details.pricePoint
-    : TARGET_AUDIENCE_DEFAULTS.details.pricePoint;
-  const location = TARGET_AUDIENCE_LOCATIONS.includes(details.location)
-    ? details.location
-    : TARGET_AUDIENCE_DEFAULTS.details.location;
-  const stage = TARGET_AUDIENCE_STAGES.includes(details.stage)
-    ? details.stage
-    : TARGET_AUDIENCE_DEFAULTS.details.stage;
-  return { industry, pricePoint, location, stage, notes };
-}
-
 function normalizeTargetAudienceSettings(raw = {}) {
   const preset = TARGET_AUDIENCE_PRESETS.includes(raw.preset) ? raw.preset : TARGET_AUDIENCE_DEFAULTS.preset;
   return {
     enabled: Boolean(raw.enabled),
     preset,
-    details: normalizeTargetAudienceDetails(raw.details),
   };
 }
 
@@ -3324,14 +3292,7 @@ function readTargetAudienceSettingsFromProfile() {
 function setTargetAudienceControlsState(enabled) {
   if (targetAudienceControls) targetAudienceControls.style.display = enabled ? '' : 'none';
   const disabled = !enabled;
-  const inputs = [
-    targetAudiencePresetSelect,
-    targetAudienceIndustryInput,
-    targetAudiencePriceSelect,
-    targetAudienceLocationSelect,
-    targetAudienceStageSelect,
-    targetAudienceNotesInput,
-  ].filter(Boolean);
+  const inputs = [targetAudiencePresetSelect].filter(Boolean);
   inputs.forEach((input) => {
     input.disabled = disabled;
   });
@@ -3353,11 +3314,6 @@ function setTargetAudienceLockedState(locked) {
 function applyTargetAudienceUI(settings) {
   if (targetAudienceToggle) targetAudienceToggle.checked = settings.enabled;
   if (targetAudiencePresetSelect) targetAudiencePresetSelect.value = settings.preset;
-  if (targetAudienceIndustryInput) targetAudienceIndustryInput.value = settings.details.industry || '';
-  if (targetAudiencePriceSelect) targetAudiencePriceSelect.value = settings.details.pricePoint || 'mid';
-  if (targetAudienceLocationSelect) targetAudienceLocationSelect.value = settings.details.location || 'none';
-  if (targetAudienceStageSelect) targetAudienceStageSelect.value = settings.details.stage || 'discovery';
-  if (targetAudienceNotesInput) targetAudienceNotesInput.value = settings.details.notes || '';
   setTargetAudienceControlsState(settings.enabled);
 }
 
@@ -3378,24 +3334,16 @@ function collectTargetAudienceSettingsFromUI() {
   return normalizeTargetAudienceSettings({
     enabled: targetAudienceToggle?.checked,
     preset: targetAudiencePresetSelect?.value || TARGET_AUDIENCE_DEFAULTS.preset,
-    details: {
-      industry: targetAudienceIndustryInput?.value || '',
-      pricePoint: targetAudiencePriceSelect?.value,
-      location: targetAudienceLocationSelect?.value,
-      stage: targetAudienceStageSelect?.value,
-      notes: targetAudienceNotesInput?.value || '',
-    },
   });
 }
 
 async function persistTargetAudienceSettings(nextSettings) {
   if (!window.cachedUserIsPro) return;
-  const payload = {
-    target_audience_enabled: nextSettings.enabled,
-    target_audience_preset: nextSettings.preset,
-    target_audience_details: nextSettings.details,
-  };
-  updateProfileSettings(payload, { targetEmail: activeUserEmail || undefined });
+  const cleaned = { ...(profileSettings || {}) };
+  delete cleaned.target_audience_details;
+  cleaned.target_audience_enabled = nextSettings.enabled;
+  cleaned.target_audience_preset = nextSettings.preset;
+  updateProfileSettings(cleaned, { replace: true, targetEmail: activeUserEmail || undefined });
   if (!activeUserEmail) return;
   try {
     await saveProfilePreferences(profileSettings);
@@ -3412,7 +3360,6 @@ function buildTargetAudienceRequestPayload() {
     targetAudience: {
       enabled: true,
       preset,
-      details: normalizeTargetAudienceDetails(targetAudienceSettings.details),
     },
   };
 }
@@ -5441,10 +5388,7 @@ const handleTargetAudienceReset = async () => {
     syncTargetAudienceFromSettings();
     return;
   }
-  const resetSettings = {
-    ...TARGET_AUDIENCE_DEFAULTS,
-    details: { ...TARGET_AUDIENCE_DEFAULTS.details },
-  };
+  const resetSettings = { ...TARGET_AUDIENCE_DEFAULTS, enabled: false };
   targetAudienceSettings = resetSettings;
   applyTargetAudienceUI(resetSettings);
   await persistTargetAudienceSettings(resetSettings);
@@ -5466,26 +5410,6 @@ if (targetAudienceToggle) {
 
 if (targetAudiencePresetSelect) {
   targetAudiencePresetSelect.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudienceIndustryInput) {
-  targetAudienceIndustryInput.addEventListener('input', handleTargetAudienceToggleChange);
-}
-
-if (targetAudiencePriceSelect) {
-  targetAudiencePriceSelect.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudienceLocationSelect) {
-  targetAudienceLocationSelect.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudienceStageSelect) {
-  targetAudienceStageSelect.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudienceNotesInput) {
-  targetAudienceNotesInput.addEventListener('input', handleTargetAudienceToggleChange);
 }
 
 if (targetAudienceSaveBtn) {
