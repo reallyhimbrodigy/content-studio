@@ -2962,6 +2962,7 @@ const TITLE_SIGNATURE_STOPWORDS = new Set([
 
 const VOICE_LOCK_LOGGED_REQUESTS = new Set();
 const VOICE_LOCK_APPLIED_REQUESTS = new Set();
+const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -2983,7 +2984,7 @@ function getTitleFirstWords(value = '', count = 4) {
   return normalizeTitleText(value).split(/\s+/).slice(0, count).join(' ').trim();
 }
 
-function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1) {
+function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pillarSchedule = null) {
   const slots = [];
   const perDay = Math.max(1, Number(postsPerDay) || 1);
   for (let i = 0; i < totalPosts; i += 1) {
@@ -2993,7 +2994,7 @@ function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1) {
       slot: i,
       day,
       postIndex,
-      pillar: getCalendarPillarForDay(day),
+      pillar: pillarSchedule && pillarSchedule[i] ? pillarSchedule[i] : getCalendarPillarForDay(day),
     });
   }
   return slots;
@@ -4034,6 +4035,45 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
 
+function seedFromString(value = '') {
+  let hash = 2166136261;
+  const str = String(value || '');
+  for (let i = 0; i < str.length; i += 1) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function makePrng(seed) {
+  let state = Number(seed) >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleArray(list = [], rand) {
+  const arr = list.slice();
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function buildPillarSchedule(totalSlots, rand) {
+  const schedule = [];
+  while (schedule.length < totalSlots) {
+    schedule.push(...CALENDAR_PILLARS);
+  }
+  schedule.length = totalSlots;
+  return shuffleArray(schedule, rand);
+}
+
 function normalizeCalendarPillar(value = '') {
   const text = toPlainString(value || '');
   if (!text) return '';
@@ -4069,13 +4109,13 @@ function isPillarDistributionBalanced(posts = []) {
   return hasAll && max - min <= 1;
 }
 
-function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1) {
+function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1, pillarSchedule = null) {
   return posts.map((post, idx) => {
     if (!post || typeof post !== 'object') return post;
     const day = Number.isFinite(Number(post.day))
       ? Number(post.day)
       : computePostDayIndex(idx, startDay, postsPerDay);
-    const pillar = getCalendarPillarForDay(day);
+    const pillar = pillarSchedule && pillarSchedule[idx] ? pillarSchedule[idx] : getCalendarPillarForDay(day);
     return { ...post, pillar };
   });
 }
@@ -4695,6 +4735,7 @@ async function generateTopicPlan({
   requestId,
   brandBrainDirective,
   context,
+  pillarSchedule,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
@@ -4704,7 +4745,7 @@ async function generateTopicPlan({
     if (!Array.isArray(context.warnings)) context.warnings = [];
     context.warnings.push({ code: 'TOPIC_PLAN_SKIPPED', detail });
   };
-  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay);
+  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay, pillarSchedule);
   const schema = {
     type: 'object',
     additionalProperties: false,
@@ -5761,6 +5802,15 @@ const server = http.createServer((req, res) => {
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const totalPosts = targetCount || (daysToGenerate * perDay);
+    const seedSource = `${requestId || 'req'}|${nicheStyle || ''}|${fallbackStart}`;
+    const baseSeed = seedFromString(seedSource);
+    const rand = makePrng(baseSeed);
+    const pillarSchedule = buildPillarSchedule(totalPosts, rand);
+    if (requestId && !CALENDAR_VARIETY_LOGGED_REQUESTS.has(requestId)) {
+      console.log('[Calendar][Variety] seed=%s requestId=%s firstTypes=%j', baseSeed, requestId, pillarSchedule.slice(0, 5));
+      CALENDAR_VARIETY_LOGGED_REQUESTS.add(requestId);
+      if (CALENDAR_VARIETY_LOGGED_REQUESTS.size > 5000) CALENDAR_VARIETY_LOGGED_REQUESTS.clear();
+    }
     let topicPlan = null;
     try {
       topicPlan = await generateTopicPlan({
@@ -5774,6 +5824,7 @@ const server = http.createServer((req, res) => {
         requestId: loggingContext?.requestId || null,
         brandBrainDirective,
         context: loggingContext,
+        pillarSchedule,
       });
     } catch (err) {
       console.warn('[Calendar] topic plan failed; continuing without plan', {
@@ -6245,7 +6296,7 @@ const server = http.createServer((req, res) => {
       }
     }
     if (!isPillarDistributionBalanced(posts)) {
-      posts = applyPillarSchedule(posts, startDay, perDay);
+      posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
       console.log('[Calendar] pillar schedule enforced', {
         requestId: loggingContext?.requestId,
         startDay,
