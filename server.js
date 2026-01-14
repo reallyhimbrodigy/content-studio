@@ -2598,52 +2598,67 @@ const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
     label: 'No AI Polish',
     lines: [
-      '- Avoid generic motivational or marketing phrasing.',
-      '- Short, plain sentences; casual and grounded.',
-      '- Fewer adjectives; no fluff.',
-    ],
-  },
-  direct: {
-    label: 'Direct',
-    lines: [
-      '- Present tense, one clear point.',
-      '- Short sentences, no fluff.',
-      '- Avoid rhetorical questions unless necessary.',
+      '- Sentence length: 6-10 words on average.',
+      '- Punctuation rhythm: minimal commas, no exclamation marks.',
+      '- Formality: informal, plainspoken.',
+      '- Hedging: minimal; avoid soft qualifiers.',
+      '- Questions: avoid rhetorical questions.',
+      '- Structure: Hook one sentence; Caption 2-3 sentences; CTA 4-7 words.',
     ],
   },
   punchy: {
     label: 'Punchy',
     lines: [
-      '- Sentence length: 5-10 words on average.',
-      '- Hooks are sharp and scroll-stopping; fragments allowed.',
-      '- Confident rhythm, strong verbs.',
-      '- Hook length <= 12 words.',
+      '- Sentence length: 5-9 words on average.',
+      '- Punctuation rhythm: short stops, line breaks in Reel Script.',
+      '- Formality: casual, confident.',
+      '- Hedging: none.',
+      '- Questions: no question marks.',
+      '- Structure: Hook one sentence <= 12 words; Reel Script body 3 beats, one sentence each.',
     ],
   },
-  'story-first': {
-    label: 'Story-First',
+  direct: {
+    label: 'Direct',
     lines: [
-      '- Hooks start mid-moment or scenario.',
-      '- Captions: setup -> friction -> takeaway.',
-      '- Narrative flow, fewer bullets.',
-      '- CTA: soft, community-oriented.',
+      '- Sentence length: 7-12 words on average.',
+      '- Punctuation rhythm: standard periods, no exclamation marks.',
+      '- Formality: plain and direct.',
+      '- Hedging: avoid hedges.',
+      '- Questions: avoid unless required by context.',
+      '- Structure: Caption 2-4 sentences; CTA 4-8 words, instruction style.',
     ],
   },
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Respectful counter-take.',
-      '- Tone is confident, not aggressive.',
-      '- Focus the disagreement within the niche.',
+      '- Sentence length: 7-12 words on average.',
+      '- Punctuation rhythm: calm, minimal commas.',
+      '- Formality: respectful and precise.',
+      '- Hedging: minimal; one counterpoint only.',
+      '- Questions: one optional question max, no rhetorical questions.',
+      '- Structure: Hook states counterpoint; Caption follows: counterpoint -> clarification -> takeaway.',
+    ],
+  },
+  'story-first': {
+    label: 'Story-First',
+    lines: [
+      '- Sentence length: 8-14 words on average.',
+      '- Punctuation rhythm: flowing, light commas.',
+      '- Formality: conversational.',
+      '- Hedging: light, avoid heavy qualifiers.',
+      '- Questions: one question max in CTA.',
+      '- Structure: Hook one sentence; Caption 3-4 sentences: setup -> friction -> takeaway; Reel Script 3 beats.',
     ],
   },
   casual: {
     label: 'Casual / Friendly Expert',
     lines: [
-      '- Warm, conversational tone.',
-      '- Explains without hype.',
-      '- Friendly, supportive stance.',
-      '- CTA is low pressure.',
+      '- Sentence length: 7-13 words on average.',
+      '- Punctuation rhythm: conversational, no exclamation marks.',
+      '- Formality: warm and casual.',
+      '- Hedging: light, avoid strong claims.',
+      '- Questions: one optional question in Engagement Loop.',
+      '- Structure: Caption 2-4 sentences; CTA 4-8 words, low pressure.',
     ],
   },
 };
@@ -2658,12 +2673,11 @@ function normalizeVoiceLockPresetKey(value = '') {
 
 const VOICE_LOCK_FIELDS = [
   'Hook',
-  'Caption',
+  'Caption/Main body',
   'CTA',
-  'Execution Notes',
   'Engagement Loop',
   'Reel Script',
-  'Design Notes',
+  'Execution Notes',
 ];
 
 function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
@@ -2711,28 +2725,30 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
     };
   }
   const sampleRaw = input.voiceLockSample || '';
-  const presetRaw = input.voiceLockPreset || 'direct';
+  const presetRaw = input.voiceLockPreset || '';
+  const requestedMode = String(input.voiceLockMode || '').trim().toLowerCase();
   const sample = typeof sampleRaw === 'string' ? sampleRaw.trim().slice(0, 2000) : '';
-  const presetKey = normalizeVoiceLockPresetKey(presetRaw) || 'direct';
-  const mode = sample ? 'sample' : 'preset';
+  const presetKey = normalizeVoiceLockPresetKey(presetRaw);
+  if (!presetKey && !sample) {
+    return {
+      enabled: false,
+      mode: 'preset',
+      preset: 'direct',
+      instructionBlock: '',
+      fields: VOICE_LOCK_FIELDS,
+      reason: 'missing_preset',
+    };
+  }
+  const mode = requestedMode === 'custom' && sample ? 'custom' : (sample ? 'custom' : 'preset');
+  const finalPreset = presetKey || 'direct';
   return {
     enabled: true,
     mode,
-    preset: presetKey,
-    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey, sample }),
+    preset: finalPreset,
+    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey: finalPreset, sample }),
     fields: VOICE_LOCK_FIELDS,
     reason: 'enabled',
   };
-}
-
-function insertVoiceLockBlock(schemaBlock = '', voiceLockBlock = '') {
-  if (!voiceLockBlock) return schemaBlock;
-  const marker = 'Rules:\n';
-  const idx = schemaBlock.indexOf(marker);
-  if (idx === -1) return `${schemaBlock}${voiceLockBlock}`;
-  const head = schemaBlock.slice(0, idx);
-  const tail = schemaBlock.slice(idx);
-  return `${head}${voiceLockBlock}${tail}`;
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -2827,24 +2843,13 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
-  if (opts.voiceLock?.enabled && !voiceLockBlock) {
-    console.warn('[VoiceLock][Assert] requestId=%s missing_block', opts.requestId || 'unknown');
-  }
   if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
     const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
-    console.log(
-      '[VoiceLock] applied=true preset="%s" mode="%s" fields=%s requestId=%s',
-      presetLabel,
-      opts.voiceLock.mode,
-      VOICE_LOCK_FIELDS.join(','),
-      opts.requestId
-    );
     console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(voiceLockBlock.length));
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const schemaWithVoiceLock = voiceLockBlock ? insertVoiceLockBlock(schemaBlock, voiceLockBlock) : schemaBlock;
-  return `${basePrompt}${schemaWithVoiceLock}`;
+  return `${basePrompt}${schemaBlock}${voiceLockBlock}`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -4932,6 +4937,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       requestId: loggingContext?.requestId || '',
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    const voiceLockApplied = Boolean(attemptOpts.voiceLock?.enabled);
+    const voiceLockPreset = attemptOpts.voiceLock?.preset
+      ? (VOICE_LOCK_PRESET_GUIDES[attemptOpts.voiceLock.preset]?.label || attemptOpts.voiceLock.preset)
+      : 'none';
+    const voiceLockMode = attemptOpts.voiceLock?.mode || 'none';
+    const openAiRequestId = loggingContext?.requestId || 'unknown';
+    if (openAiRequestId && !VOICE_LOCK_LOGGED_REQUESTS.has(`openai:${openAiRequestId}`)) {
+      console.log('[VoiceLock] applied=%s preset="%s" mode="%s" order="last"', voiceLockApplied, voiceLockPreset, voiceLockMode);
+      VOICE_LOCK_LOGGED_REQUESTS.add(`openai:${openAiRequestId}`);
+    }
     if (loggingContext?.requestId) {
       console.log('[Calendar][Prompt]', {
         requestId: loggingContext.requestId,
@@ -5680,12 +5695,8 @@ const server = http.createServer((req, res) => {
     const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
     const requestId = String(loggingContext?.requestId || '');
     if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
-      if (!voiceLockConfig.enabled) {
-        if (payload?.voiceLockEnabled && voiceLockConfig.reason !== 'disabled') {
-          console.log('[VoiceLock][Skipped] requestId=%s reason=%s', requestId, voiceLockConfig.reason || 'disabled');
-        } else {
-          console.log('[VoiceLock] enabled=false requestId=%s', requestId);
-        }
+      if (payload?.voiceLockEnabled && voiceLockConfig.reason !== 'disabled' && !voiceLockConfig.enabled) {
+        console.log('[VoiceLock][Skipped] requestId=%s reason=%s', requestId, voiceLockConfig.reason || 'disabled');
       }
       VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
       if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
