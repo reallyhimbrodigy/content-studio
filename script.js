@@ -109,10 +109,6 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const voiceLockLockedPill = document.getElementById('voice-lock-locked-pill');
   const voiceLockToggle = document.getElementById('voice-lock-enabled');
   const voiceLockControls = document.getElementById('voice-lock-controls');
-  const voiceLockModeSample = document.getElementById('voice-lock-mode-sample');
-  const voiceLockModePreset = document.getElementById('voice-lock-mode-preset');
-  const voiceLockSampleInput = document.getElementById('voice-lock-sample');
-  const voiceLockSampleWrap = document.getElementById('voice-lock-sample-wrap');
   const voiceLockPresetSelect = document.getElementById('voice-lock-preset');
   const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
   const brandText = document.getElementById("brand-text");
@@ -2990,8 +2986,6 @@ const PLAN_DETAILS = {
 const VOICE_LOCK_PRESETS = ['Direct', 'Casual', 'Punchy', 'Story-first', 'Contrarian', 'No-AI-polish'];
 const VOICE_LOCK_DEFAULTS = {
   enabled: false,
-  mode: 'sample',
-  sample: '',
   preset: 'Direct',
 };
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
@@ -3160,44 +3154,34 @@ function applyProfileSettings() {
   document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
 }
 
-function sanitizeVoiceLockSample(value = '') {
-  return String(value || '').trim().slice(0, 2000);
-}
-
 function normalizeVoiceLockSettings(raw = {}) {
-  const mode = raw.mode === 'preset' ? 'preset' : 'sample';
   const preset = VOICE_LOCK_PRESETS.includes(raw.preset) ? raw.preset : VOICE_LOCK_DEFAULTS.preset;
-  const sample = sanitizeVoiceLockSample(raw.sample || '');
   return {
     enabled: Boolean(raw.enabled),
-    mode,
-    sample,
     preset,
   };
 }
 
 function readVoiceLockSettingsFromProfile() {
   const settings = profileSettings || {};
+  if (settings.voice_lock_mode && settings.voice_lock_mode !== 'preset') {
+    return { ...VOICE_LOCK_DEFAULTS, enabled: false };
+  }
   return normalizeVoiceLockSettings({
     enabled: settings.voice_lock_enabled,
-    mode: settings.voice_lock_mode,
-    sample: settings.voice_lock_sample,
     preset: settings.voice_lock_preset,
   });
 }
 
-function setVoiceLockControlsState(enabled, mode) {
+function setVoiceLockControlsState(enabled) {
   if (voiceLockControls) voiceLockControls.style.display = enabled ? '' : 'none';
   const disabled = !enabled;
-  const inputs = [voiceLockModeSample, voiceLockModePreset, voiceLockSampleInput, voiceLockPresetSelect].filter(Boolean);
+  const inputs = [voiceLockPresetSelect].filter(Boolean);
   inputs.forEach((input) => {
     input.disabled = disabled;
   });
-  if (voiceLockSampleWrap) {
-    voiceLockSampleWrap.style.display = enabled && mode === 'sample' ? '' : 'none';
-  }
   if (voiceLockPresetWrap) {
-    voiceLockPresetWrap.style.display = enabled && mode === 'preset' ? '' : 'none';
+    voiceLockPresetWrap.style.display = enabled ? '' : 'none';
   }
 }
 
@@ -3205,19 +3189,16 @@ function setVoiceLockLockedState(locked) {
   if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
   if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
   if (locked) {
-    setVoiceLockControlsState(false, voiceLockSettings.mode);
+    setVoiceLockControlsState(false);
   } else {
-    setVoiceLockControlsState(voiceLockSettings.enabled, voiceLockSettings.mode);
+    setVoiceLockControlsState(voiceLockSettings.enabled);
   }
 }
 
 function applyVoiceLockUI(settings) {
   if (voiceLockToggle) voiceLockToggle.checked = settings.enabled;
-  if (voiceLockModeSample) voiceLockModeSample.checked = settings.mode === 'sample';
-  if (voiceLockModePreset) voiceLockModePreset.checked = settings.mode === 'preset';
-  if (voiceLockSampleInput) voiceLockSampleInput.value = settings.sample;
   if (voiceLockPresetSelect) voiceLockPresetSelect.value = settings.preset;
-  setVoiceLockControlsState(settings.enabled, settings.mode);
+  setVoiceLockControlsState(settings.enabled);
 }
 
 function syncVoiceLockFromSettings() {
@@ -3236,8 +3217,6 @@ function syncVoiceLockFromSettings() {
 function collectVoiceLockSettingsFromUI() {
   return normalizeVoiceLockSettings({
     enabled: voiceLockToggle?.checked,
-    mode: voiceLockModePreset?.checked ? 'preset' : 'sample',
-    sample: voiceLockSampleInput?.value || '',
     preset: voiceLockPresetSelect?.value || VOICE_LOCK_DEFAULTS.preset,
   });
 }
@@ -3246,8 +3225,6 @@ async function persistVoiceLockSettings(nextSettings) {
   if (!window.cachedUserIsPro) return;
   const payload = {
     voice_lock_enabled: nextSettings.enabled,
-    voice_lock_mode: nextSettings.mode,
-    voice_lock_sample: nextSettings.sample,
     voice_lock_preset: nextSettings.preset,
   };
   updateProfileSettings(payload, { targetEmail: activeUserEmail || undefined });
@@ -3261,12 +3238,8 @@ async function persistVoiceLockSettings(nextSettings) {
 
 function buildVoiceLockRequestPayload() {
   if (!window.cachedUserIsPro || !voiceLockSettings?.enabled) return null;
-  const mode = voiceLockSettings.mode === 'preset' ? 'preset' : 'sample';
-  const sample = sanitizeVoiceLockSample(voiceLockSettings.sample || '');
   const preset = String(voiceLockSettings.preset || '').trim();
-  const payload = { voiceLockEnabled: true, voiceLockPreset: preset };
-  if (mode === 'sample' && sample) payload.voiceLockSample = sample;
-  return payload;
+  return { voiceLockEnabled: true, voiceLockPreset: preset };
 }
 
 async function getAccountAuthUser() {
@@ -5184,28 +5157,8 @@ if (voiceLockToggle) {
   voiceLockToggle.addEventListener('change', handleVoiceLockChange);
 }
 
-if (voiceLockModeSample) {
-  voiceLockModeSample.addEventListener('change', handleVoiceLockChange);
-}
-
-if (voiceLockModePreset) {
-  voiceLockModePreset.addEventListener('change', handleVoiceLockChange);
-}
-
 if (voiceLockPresetSelect) {
   voiceLockPresetSelect.addEventListener('change', handleVoiceLockChange);
-}
-
-if (voiceLockSampleInput) {
-  voiceLockSampleInput.addEventListener('input', () => {
-    if (!window.cachedUserIsPro) return;
-    const trimmed = sanitizeVoiceLockSample(voiceLockSampleInput.value);
-    if (voiceLockSampleInput.value !== trimmed) {
-      voiceLockSampleInput.value = trimmed;
-    }
-    voiceLockSettings = { ...voiceLockSettings, sample: trimmed };
-  });
-  voiceLockSampleInput.addEventListener('change', handleVoiceLockChange);
 }
 
 if (accountForm) {
