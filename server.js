@@ -2598,19 +2598,17 @@ const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
     label: 'No AI Polish',
     lines: [
-      '- Hook openings sound like a real person speaking.',
+      '- Avoid generic motivational or marketing phrasing.',
       '- Short, plain sentences; casual and grounded.',
-      '- No inspirational or polished phrasing.',
-      '- CTA is direct and plainspoken.',
+      '- Fewer adjectives; no fluff.',
     ],
   },
   direct: {
     label: 'Direct',
     lines: [
-      '- Hooks open with a challenge or instruction.',
+      '- Present tense, one clear point.',
       '- Short sentences, no fluff.',
-      '- Tone is blunt and clear.',
-      '- CTA: one clear action, no soft language.',
+      '- Avoid rhetorical questions unless necessary.',
     ],
   },
   punchy: {
@@ -2618,8 +2616,8 @@ const VOICE_LOCK_PRESET_GUIDES = {
     lines: [
       '- Sentence length: 5-10 words on average.',
       '- Hooks are sharp and scroll-stopping; fragments allowed.',
-      '- High-contrast tone.',
-      '- CTA: imperative, short.',
+      '- Confident rhythm, strong verbs.',
+      '- Hook length <= 12 words.',
     ],
   },
   'story-first': {
@@ -2634,10 +2632,9 @@ const VOICE_LOCK_PRESET_GUIDES = {
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Hooks start with disagreement or reversal.',
+      '- Respectful counter-take.',
       '- Tone is confident, not aggressive.',
-      '- Stakes feel pointed and specific.',
-      '- CTA invites debate or response.',
+      '- Focus the disagreement within the niche.',
     ],
   },
   casual: {
@@ -2672,11 +2669,12 @@ const VOICE_LOCK_FIELDS = [
 function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
   const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
   const lines = [
-    'VOICE LOCK IS ACTIVE.',
+    'VOICE LOCK STYLE RULES',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
     'JSON keys and schema must remain unchanged; only wording, cadence, and phrasing may change.',
-    'If any earlier instruction conflicts with this Voice Lock, follow the Voice Lock.',
+    'Brand Brain determines strategy (psych triggers, engagement loops, algorithm tactics). Voice Lock determines tone/voice only.',
+    'If there is any conflict, Brand Brain strategy wins and Voice Lock rewrites phrasing to match the selected preset.',
     `Preset: ${preset.label}`,
     ...preset.lines,
   ];
@@ -2829,14 +2827,17 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
+  if (opts.voiceLock?.enabled && !voiceLockBlock) {
+    console.warn('[VoiceLock][Assert] requestId=%s missing_block', opts.requestId || 'unknown');
+  }
   if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
     const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
     console.log(
-      '[VoiceLock][Applied] requestId=%s enabled=true mode=%s preset=%s fields=%s',
-      opts.requestId,
-      opts.voiceLock.mode,
+      '[VoiceLock] applied=true preset="%s" mode="%s" fields=%s requestId=%s',
       presetLabel,
-      VOICE_LOCK_FIELDS.join(',')
+      opts.voiceLock.mode,
+      VOICE_LOCK_FIELDS.join(','),
+      opts.requestId
     );
     console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(voiceLockBlock.length));
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
