@@ -6382,6 +6382,58 @@ body.modal-open {
   opacity: 0.9;
 }
 
+.target-audience-select-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+}
+
+.target-audience-select {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  padding: 0 44px 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 22, 34, 0.72);
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  outline: none;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+.target-audience-select:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.target-audience-select:focus {
+  border-color: rgba(132, 102, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(132, 102, 255, 0.2), 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.target-audience-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.target-audience-select-wrap::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%) rotate(45deg);
+  border-right: 2px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
 .brand-brain-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

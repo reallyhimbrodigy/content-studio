@@ -111,6 +111,23 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const voiceLockControls = document.getElementById('voice-lock-controls');
   const voiceLockPresetSelect = document.getElementById('voice-lock-preset');
   const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
+  const targetAudienceBtn = document.getElementById('target-audience-btn');
+  const targetAudienceModal = document.getElementById('target-audience-modal');
+  const targetAudienceCloseBtn = document.getElementById('target-audience-close-btn');
+  const targetAudienceLockedCopy = document.getElementById('target-audience-locked-copy');
+  const targetAudienceLockedPill = document.getElementById('target-audience-locked-pill');
+  const targetAudienceToggle = document.getElementById('target-audience-enabled');
+  const targetAudienceControls = document.getElementById('target-audience-controls');
+  const targetAudiencePresetSelect = document.getElementById('target-audience-preset');
+  const targetAudiencePresetWrap = document.getElementById('target-audience-preset-wrap');
+  const targetAudienceIndustryInput = document.getElementById('target-audience-industry');
+  const targetAudiencePriceSelect = document.getElementById('target-audience-price');
+  const targetAudienceLocationSelect = document.getElementById('target-audience-location');
+  const targetAudienceStageSelect = document.getElementById('target-audience-stage');
+  const targetAudienceNotesInput = document.getElementById('target-audience-notes');
+  const targetAudienceSaveBtn = document.getElementById('target-audience-save');
+  const targetAudienceResetBtn = document.getElementById('target-audience-reset');
+  const targetAudienceFeedback = document.getElementById('target-audience-feedback');
   const brandText = document.getElementById("brand-text");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
@@ -2989,6 +3006,34 @@ const VOICE_LOCK_DEFAULTS = {
   preset: 'Direct',
 };
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+const TARGET_AUDIENCE_PRESETS = [
+  'First-Time Buyers',
+  'Investors',
+  'Luxury / High-Net-Worth',
+  'Renters → Buyers Transition',
+  'Sellers (Need to Move)',
+  'Relocation / Out-of-State',
+  'New Construction',
+  'Distressed / Fixer / Value-Add',
+  'Families / School-Focused',
+  'Young Professionals',
+];
+const TARGET_AUDIENCE_PRICE_POINTS = ['low', 'mid', 'premium', 'luxury'];
+const TARGET_AUDIENCE_LOCATIONS = ['none', 'local', 'regional', 'national'];
+const TARGET_AUDIENCE_STAGES = ['discovery', 'consideration', 'decision', 'retention'];
+const TARGET_AUDIENCE_DEFAULTS = {
+  enabled: false,
+  preset: 'First-Time Buyers',
+  details: {
+    industry: '',
+    pricePoint: 'mid',
+    location: 'none',
+    stage: 'discovery',
+    notes: '',
+  },
+};
+let targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+let lastTargetAudienceFocusEl = null;
 
 function getProfileSettingsStorageKey(email = '') {
   const normalized = (email || 'anon').toString().trim().toLowerCase();
@@ -3242,6 +3287,136 @@ function buildVoiceLockRequestPayload() {
   return { voiceLockEnabled: true, voiceLockPreset: preset };
 }
 
+function normalizeTargetAudienceDetails(raw = {}) {
+  const details = raw && typeof raw === 'object' ? raw : {};
+  const industry = typeof details.industry === 'string' ? details.industry.trim().slice(0, 120) : '';
+  const notes = typeof details.notes === 'string' ? details.notes.trim().slice(0, 200) : '';
+  const pricePoint = TARGET_AUDIENCE_PRICE_POINTS.includes(details.pricePoint)
+    ? details.pricePoint
+    : TARGET_AUDIENCE_DEFAULTS.details.pricePoint;
+  const location = TARGET_AUDIENCE_LOCATIONS.includes(details.location)
+    ? details.location
+    : TARGET_AUDIENCE_DEFAULTS.details.location;
+  const stage = TARGET_AUDIENCE_STAGES.includes(details.stage)
+    ? details.stage
+    : TARGET_AUDIENCE_DEFAULTS.details.stage;
+  return { industry, pricePoint, location, stage, notes };
+}
+
+function normalizeTargetAudienceSettings(raw = {}) {
+  const preset = TARGET_AUDIENCE_PRESETS.includes(raw.preset) ? raw.preset : TARGET_AUDIENCE_DEFAULTS.preset;
+  return {
+    enabled: Boolean(raw.enabled),
+    preset,
+    details: normalizeTargetAudienceDetails(raw.details),
+  };
+}
+
+function readTargetAudienceSettingsFromProfile() {
+  const settings = profileSettings || {};
+  return normalizeTargetAudienceSettings({
+    enabled: settings.target_audience_enabled,
+    preset: settings.target_audience_preset,
+    details: settings.target_audience_details,
+  });
+}
+
+function setTargetAudienceControlsState(enabled) {
+  if (targetAudienceControls) targetAudienceControls.style.display = enabled ? '' : 'none';
+  const disabled = !enabled;
+  const inputs = [
+    targetAudiencePresetSelect,
+    targetAudienceIndustryInput,
+    targetAudiencePriceSelect,
+    targetAudienceLocationSelect,
+    targetAudienceStageSelect,
+    targetAudienceNotesInput,
+  ].filter(Boolean);
+  inputs.forEach((input) => {
+    input.disabled = disabled;
+  });
+  if (targetAudiencePresetWrap) {
+    targetAudiencePresetWrap.style.display = enabled ? '' : 'none';
+  }
+}
+
+function setTargetAudienceLockedState(locked) {
+  if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
+  if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
+  if (locked) {
+    setTargetAudienceControlsState(false);
+  } else {
+    setTargetAudienceControlsState(targetAudienceSettings.enabled);
+  }
+}
+
+function applyTargetAudienceUI(settings) {
+  if (targetAudienceToggle) targetAudienceToggle.checked = settings.enabled;
+  if (targetAudiencePresetSelect) targetAudiencePresetSelect.value = settings.preset;
+  if (targetAudienceIndustryInput) targetAudienceIndustryInput.value = settings.details.industry || '';
+  if (targetAudiencePriceSelect) targetAudiencePriceSelect.value = settings.details.pricePoint || 'mid';
+  if (targetAudienceLocationSelect) targetAudienceLocationSelect.value = settings.details.location || 'none';
+  if (targetAudienceStageSelect) targetAudienceStageSelect.value = settings.details.stage || 'discovery';
+  if (targetAudienceNotesInput) targetAudienceNotesInput.value = settings.details.notes || '';
+  setTargetAudienceControlsState(settings.enabled);
+}
+
+function syncTargetAudienceFromSettings() {
+  if (!targetAudienceModal) return;
+  if (!window.cachedUserIsPro) {
+    targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+    applyTargetAudienceUI(targetAudienceSettings);
+    setTargetAudienceLockedState(true);
+    return;
+  }
+  targetAudienceSettings = readTargetAudienceSettingsFromProfile();
+  applyTargetAudienceUI(targetAudienceSettings);
+  setTargetAudienceLockedState(false);
+}
+
+function collectTargetAudienceSettingsFromUI() {
+  return normalizeTargetAudienceSettings({
+    enabled: targetAudienceToggle?.checked,
+    preset: targetAudiencePresetSelect?.value || TARGET_AUDIENCE_DEFAULTS.preset,
+    details: {
+      industry: targetAudienceIndustryInput?.value || '',
+      pricePoint: targetAudiencePriceSelect?.value,
+      location: targetAudienceLocationSelect?.value,
+      stage: targetAudienceStageSelect?.value,
+      notes: targetAudienceNotesInput?.value || '',
+    },
+  });
+}
+
+async function persistTargetAudienceSettings(nextSettings) {
+  if (!window.cachedUserIsPro) return;
+  const payload = {
+    target_audience_enabled: nextSettings.enabled,
+    target_audience_preset: nextSettings.preset,
+    target_audience_details: nextSettings.details,
+  };
+  updateProfileSettings(payload, { targetEmail: activeUserEmail || undefined });
+  if (!activeUserEmail) return;
+  try {
+    await saveProfilePreferences(profileSettings);
+  } catch (error) {
+    console.warn('Unable to save target audience preferences', error);
+  }
+}
+
+function buildTargetAudienceRequestPayload() {
+  if (!window.cachedUserIsPro || !targetAudienceSettings?.enabled) return null;
+  const preset = String(targetAudienceSettings.preset || '').trim();
+  if (!preset) return null;
+  return {
+    targetAudience: {
+      enabled: true,
+      preset,
+      details: normalizeTargetAudienceDetails(targetAudienceSettings.details),
+    },
+  };
+}
+
 async function getAccountAuthUser() {
   if (!supabase?.auth?.getUser) return null;
   try {
@@ -3484,6 +3659,48 @@ function closeVoiceLockModal() {
   const fallback = voiceLockBtn || brandBtn;
   if (lastVoiceLockFocusEl && document.contains(lastVoiceLockFocusEl)) {
     lastVoiceLockFocusEl.focus();
+  } else if (fallback && typeof fallback.focus === 'function') {
+    fallback.focus();
+  }
+}
+
+function openTargetAudienceModal() {
+  if (!targetAudienceModal) return;
+  lastTargetAudienceFocusEl = document.activeElement;
+  targetAudienceModal.style.display = 'flex';
+  targetAudienceModal.setAttribute('aria-hidden', 'false');
+  targetAudienceModal.removeAttribute('inert');
+  targetAudienceModal.setAttribute('tabindex', '-1');
+  if (appLayout) appLayout.setAttribute('inert', '');
+  document.body.classList.add('modal-open');
+  syncTargetAudienceFromSettings();
+  const focusTarget = targetAudienceCloseBtn || targetAudienceToggle || targetAudienceModal;
+  requestAnimationFrame(() => {
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  });
+}
+
+function closeTargetAudienceModal() {
+  if (!targetAudienceModal) return;
+  const active = document.activeElement;
+  if (active && targetAudienceModal.contains(active)) {
+    if (targetAudienceBtn && typeof targetAudienceBtn.focus === 'function') {
+      targetAudienceBtn.focus();
+    } else {
+      active.blur();
+      document.body.focus();
+    }
+  }
+  targetAudienceModal.style.display = 'none';
+  targetAudienceModal.setAttribute('aria-hidden', 'true');
+  targetAudienceModal.setAttribute('inert', '');
+  if (appLayout) appLayout.removeAttribute('inert');
+  document.body.classList.remove('modal-open');
+  const fallback = targetAudienceBtn || voiceLockBtn || brandBtn;
+  if (lastTargetAudienceFocusEl && document.contains(lastTargetAudienceFocusEl)) {
+    lastTargetAudienceFocusEl.focus();
   } else if (fallback && typeof fallback.focus === 'function') {
     fallback.focus();
   }
@@ -4757,9 +4974,11 @@ async function bootstrapApp(attempt = 0) {
     updateAccountPlanInfo(userIsPro);
     loadCalendarExportUsage();
     syncVoiceLockFromSettings();
+    syncTargetAudienceFromSettings();
     if (profileSync && typeof profileSync.then === 'function') {
       profileSync.then(() => {
         syncVoiceLockFromSettings();
+        syncTargetAudienceFromSettings();
       });
     }
     try {
@@ -4846,6 +5065,7 @@ async function bootstrapApp(attempt = 0) {
     window.cachedUserIsPro = false;
     updatePostFrequencyUI();
     syncVoiceLockFromSettings();
+    syncTargetAudienceFromSettings();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
     rememberActiveUserEmail('');
@@ -5045,15 +5265,34 @@ if (voiceLockBtn) {
   });
 }
 
+if (targetAudienceBtn) {
+  targetAudienceBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    openTargetAudienceModal();
+  });
+}
+
 if (voiceLockModal) {
   voiceLockModal.setAttribute('aria-hidden', 'true');
   voiceLockModal.setAttribute('inert', '');
   voiceLockModal.setAttribute('tabindex', '-1');
 }
 
+if (targetAudienceModal) {
+  targetAudienceModal.setAttribute('aria-hidden', 'true');
+  targetAudienceModal.setAttribute('inert', '');
+  targetAudienceModal.setAttribute('tabindex', '-1');
+}
+
 if (voiceLockCloseBtn) {
   voiceLockCloseBtn.addEventListener('click', () => {
     closeVoiceLockModal();
+  });
+}
+
+if (targetAudienceCloseBtn) {
+  targetAudienceCloseBtn.addEventListener('click', () => {
+    closeTargetAudienceModal();
   });
 }
 
@@ -5069,6 +5308,14 @@ if (voiceLockModal) {
   voiceLockModal.addEventListener('click', (event) => {
     if (event.target === voiceLockModal) {
       closeVoiceLockModal();
+    }
+  });
+}
+
+if (targetAudienceModal) {
+  targetAudienceModal.addEventListener('click', (event) => {
+    if (event.target === targetAudienceModal) {
+      closeTargetAudienceModal();
     }
   });
 }
@@ -5153,12 +5400,104 @@ const handleVoiceLockChange = () => {
   persistVoiceLockSettings(nextSettings);
 };
 
+const handleTargetAudienceToggleChange = () => {
+  if (!window.cachedUserIsPro) {
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    if (targetAudienceToggle) targetAudienceToggle.checked = false;
+    targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+    applyTargetAudienceUI(targetAudienceSettings);
+    setTargetAudienceLockedState(true);
+    return;
+  }
+  setTargetAudienceControlsState(!!targetAudienceToggle?.checked);
+};
+
+const handleTargetAudienceSave = async () => {
+  if (!window.cachedUserIsPro) {
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    syncTargetAudienceFromSettings();
+    return;
+  }
+  if (targetAudienceFeedback) {
+    targetAudienceFeedback.textContent = 'Saving...';
+    targetAudienceFeedback.classList.remove('error');
+  }
+  const nextSettings = collectTargetAudienceSettingsFromUI();
+  targetAudienceSettings = nextSettings;
+  applyTargetAudienceUI(nextSettings);
+  await persistTargetAudienceSettings(nextSettings);
+  if (targetAudienceFeedback) {
+    targetAudienceFeedback.textContent = 'Saved';
+    setTimeout(() => {
+      if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
+    }, 1200);
+  }
+  closeTargetAudienceModal();
+};
+
+const handleTargetAudienceReset = async () => {
+  if (!window.cachedUserIsPro) {
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    syncTargetAudienceFromSettings();
+    return;
+  }
+  const resetSettings = {
+    ...TARGET_AUDIENCE_DEFAULTS,
+    details: { ...TARGET_AUDIENCE_DEFAULTS.details },
+  };
+  targetAudienceSettings = resetSettings;
+  applyTargetAudienceUI(resetSettings);
+  await persistTargetAudienceSettings(resetSettings);
+  if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
+  closeTargetAudienceModal();
+};
+
 if (voiceLockToggle) {
   voiceLockToggle.addEventListener('change', handleVoiceLockChange);
 }
 
 if (voiceLockPresetSelect) {
   voiceLockPresetSelect.addEventListener('change', handleVoiceLockChange);
+}
+
+if (targetAudienceToggle) {
+  targetAudienceToggle.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudiencePresetSelect) {
+  targetAudiencePresetSelect.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceIndustryInput) {
+  targetAudienceIndustryInput.addEventListener('input', handleTargetAudienceToggleChange);
+}
+
+if (targetAudiencePriceSelect) {
+  targetAudiencePriceSelect.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceLocationSelect) {
+  targetAudienceLocationSelect.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceStageSelect) {
+  targetAudienceStageSelect.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceNotesInput) {
+  targetAudienceNotesInput.addEventListener('input', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceSaveBtn) {
+  targetAudienceSaveBtn.addEventListener('click', () => {
+    handleTargetAudienceSave();
+  });
+}
+
+if (targetAudienceResetBtn) {
+  targetAudienceResetBtn.addEventListener('click', () => {
+    handleTargetAudienceReset();
+  });
 }
 
 if (accountForm) {
@@ -6282,6 +6621,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
     let parsed = null;
     if (regenDaySupported) {
       const voiceLockPayload = buildVoiceLockRequestPayload();
+      const targetAudiencePayload = buildTargetAudienceRequestPayload();
       const resp = await fetchWithAuth('/api/regen-day', {
         method: 'POST',
         body: JSON.stringify({
@@ -6293,6 +6633,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
           calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
           postsPerDay,
           ...(voiceLockPayload || {}),
+          ...(targetAudiencePayload || {}),
         }),
       });
       if (resp.status === 404) {
@@ -6443,6 +6784,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
     throw new Error('upgrade_required');
   }
   const voiceLockPayload = buildVoiceLockRequestPayload();
+  const targetAudiencePayload = buildTargetAudienceRequestPayload();
   const resp = await fetchWithAuth('/api/calendar/regenerate', {
     method: 'POST',
     body: JSON.stringify({
@@ -6451,6 +6793,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
       startDay: day,
       userId: currentUser || undefined,
       ...(voiceLockPayload || {}),
+      ...(targetAudiencePayload || {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
@@ -8508,6 +8851,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
+      const targetAudiencePayload = buildTargetAudienceRequestPayload();
+      if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
       if (thisRunId !== currentGenerationRunId) {
         throw new Error('generation_cancelled');
       }

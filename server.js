@@ -2785,6 +2785,151 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
   };
 }
 
+const TARGET_AUDIENCE_PRESET_GUIDES = {
+  'first-time-buyers': {
+    label: 'First-Time Buyers',
+    goals: 'clarity on process, affordability, confidence to act',
+    objections: 'fear of overpaying, confusing steps, hidden costs',
+    ctaStyle: 'reassuring next step and guided action',
+    vocabulary: 'simple, supportive, low jargon',
+  },
+  investors: {
+    label: 'Investors',
+    goals: 'ROI, cash flow, deal velocity, downside protection',
+    objections: 'uncertain numbers, weak comps, unclear risk',
+    ctaStyle: 'numbers-first and direct',
+    vocabulary: 'analytical, concise, metrics-aware',
+  },
+  'luxury-high-net-worth': {
+    label: 'Luxury / High-Net-Worth',
+    goals: 'privacy, exclusivity, white-glove outcomes',
+    objections: 'time waste, poor discretion, generic service',
+    ctaStyle: 'discreet and invitation-based',
+    vocabulary: 'refined, understated, premium',
+  },
+  'renters-buyers-transition': {
+    label: 'Renters → Buyers Transition',
+    goals: 'path to ownership, readiness milestones, stability',
+    objections: 'down payment concerns, credit readiness, timing',
+    ctaStyle: 'step-by-step encouragement',
+    vocabulary: 'clear, practical, supportive',
+  },
+  'sellers-need-to-move': {
+    label: 'Sellers (Need to Move)',
+    goals: 'speed, certainty, minimal disruption, smart pricing',
+    objections: 'time on market, low offers, moving stress',
+    ctaStyle: 'decisive and time-aware',
+    vocabulary: 'direct, confident, pragmatic',
+  },
+  'relocation-out-of-state': {
+    label: 'Relocation / Out-of-State',
+    goals: 'remote confidence, local insight, smooth logistics',
+    objections: 'unknown area, timing risk, lack of trust',
+    ctaStyle: 'reassure with clear next step',
+    vocabulary: 'clear, informative, calm',
+  },
+  'new-construction': {
+    label: 'New Construction',
+    goals: 'builder trust, timelines, customization, warranties',
+    objections: 'delays, hidden upgrades, builder reliability',
+    ctaStyle: 'process-driven and concrete',
+    vocabulary: 'clear, detail-oriented, neutral',
+  },
+  'distressed-fixer-value-add': {
+    label: 'Distressed / Fixer / Value-Add',
+    goals: 'value upside, scope clarity, cost control',
+    objections: 'unknown repairs, budget overruns, risk',
+    ctaStyle: 'risk-aware and specific',
+    vocabulary: 'practical, numbers-aware, grounded',
+  },
+  'families-school-focused': {
+    label: 'Families / School-Focused',
+    goals: 'school quality, safety, routines, community fit',
+    objections: 'commute strain, school access, neighborhood risk',
+    ctaStyle: 'supportive and family-centered',
+    vocabulary: 'warm, reassuring, clear',
+  },
+  'young-professionals': {
+    label: 'Young Professionals',
+    goals: 'lifestyle fit, commute, convenience, modern amenities',
+    objections: 'price pressure, time constraints, uncertainty',
+    ctaStyle: 'clear and efficient',
+    vocabulary: 'modern, concise, practical',
+  },
+};
+
+function normalizeTargetAudiencePresetKey(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  const key = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (TARGET_AUDIENCE_PRESET_GUIDES[key]) return key;
+  return null;
+}
+
+function normalizeTargetAudienceDetails(raw = {}) {
+  const details = raw && typeof raw === 'object' ? raw : {};
+  const industry = typeof details.industry === 'string' ? details.industry.trim().slice(0, 120) : '';
+  const notes = typeof details.notes === 'string' ? details.notes.trim().slice(0, 200) : '';
+  const pricePoint = ['low', 'mid', 'premium', 'luxury'].includes(details.pricePoint)
+    ? details.pricePoint
+    : 'mid';
+  const location = ['none', 'local', 'regional', 'national'].includes(details.location)
+    ? details.location
+    : 'none';
+  const stage = ['discovery', 'consideration', 'decision', 'retention'].includes(details.stage)
+    ? details.stage
+    : 'discovery';
+  return { industry, pricePoint, location, stage, notes };
+}
+
+function buildTargetAudienceInstructionBlock({ presetKey, details }) {
+  const preset = TARGET_AUDIENCE_PRESET_GUIDES[presetKey];
+  if (!preset) return '';
+  const normalizedDetails = normalizeTargetAudienceDetails(details);
+  const lines = [
+    'TARGET AUDIENCE CONTEXT',
+    'Apply only to phrasing for: Hook, Caption, CTA, Engagement Loop, Reel Script, Execution Notes, Design Notes.',
+    'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
+    'Keep JSON keys and schema unchanged.',
+    `Audience preset: ${preset.label}`,
+    `Goals: ${preset.goals}.`,
+    `Primary objections: ${preset.objections}.`,
+    `CTA style: ${preset.ctaStyle}.`,
+    `Vocabulary level: ${preset.vocabulary}.`,
+    `Price point: ${normalizedDetails.pricePoint}.`,
+    `Location relevance: ${normalizedDetails.location}.`,
+    `Stage: ${normalizedDetails.stage}.`,
+  ];
+  if (normalizedDetails.industry) {
+    lines.push(`Industry context: ${normalizedDetails.industry}.`);
+  }
+  if (normalizedDetails.notes) {
+    lines.push(`Additional notes: ${normalizedDetails.notes}.`);
+  }
+  lines.push('Tailor examples, pain points, objections, and CTA to this audience.');
+  return `${lines.join('\n')}\n`;
+}
+
+function resolveTargetAudienceConfig(input = {}, isPro = false) {
+  const raw = input?.targetAudience && typeof input.targetAudience === 'object' ? input.targetAudience : {};
+  const wantsEnabled = Boolean(raw.enabled);
+  if (!wantsEnabled) {
+    return { enabled: false, preset: null, instructionBlock: '', reason: 'disabled' };
+  }
+  if (!isPro) {
+    return { enabled: false, preset: null, instructionBlock: '', reason: 'not_pro' };
+  }
+  const presetKey = normalizeTargetAudiencePresetKey(raw.preset);
+  if (!presetKey) {
+    return { enabled: false, preset: null, instructionBlock: '', reason: 'missing_preset' };
+  }
+  return {
+    enabled: true,
+    preset: presetKey,
+    instructionBlock: buildTargetAudienceInstructionBlock({ presetKey, details: raw.details }),
+    reason: 'enabled',
+  };
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2876,6 +3021,7 @@ TITLE QUALITY BAR
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
+  const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
   if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
     const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
@@ -2883,7 +3029,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = voiceLockBlock ? `${basePrompt}${schemaBlock}${voiceLockBlock}` : `${basePrompt}${schemaBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${targetAudienceBlock}${voiceLockBlock}`;
   return finalPrompt;
 }
 
@@ -2963,6 +3109,7 @@ const TITLE_SIGNATURE_STOPWORDS = new Set([
 const VOICE_LOCK_LOGGED_REQUESTS = new Set();
 const VOICE_LOCK_APPLIED_REQUESTS = new Set();
 const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
+const TARGET_AUDIENCE_LOGGED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -5771,6 +5918,7 @@ const server = http.createServer((req, res) => {
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
     const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
+    const targetAudienceConfig = resolveTargetAudienceConfig(payload, isProUser);
     const requestId = String(loggingContext?.requestId || '');
     if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
       if (payload?.voiceLockEnabled && voiceLockConfig.reason !== 'disabled' && !voiceLockConfig.enabled) {
@@ -5778,6 +5926,12 @@ const server = http.createServer((req, res) => {
       }
       VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
       if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
+    }
+    if (requestId && targetAudienceConfig.enabled && !TARGET_AUDIENCE_LOGGED_REQUESTS.has(requestId)) {
+      const presetLabel = TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset;
+      console.log('[TargetAudience] enabled=true preset=%s requestId=%s', presetLabel, requestId);
+      TARGET_AUDIENCE_LOGGED_REQUESTS.add(requestId);
+      if (TARGET_AUDIENCE_LOGGED_REQUESTS.size > 5000) TARGET_AUDIENCE_LOGGED_REQUESTS.clear();
     }
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
@@ -5870,6 +6024,7 @@ const server = http.createServer((req, res) => {
         extraInstructions: planBlock || '',
         brandBrainDirective,
         voiceLock: voiceLockConfig,
+        targetAudience: targetAudienceConfig,
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
@@ -7404,6 +7559,7 @@ const server = http.createServer((req, res) => {
               voiceLockEnabled: body?.voiceLockEnabled,
               voiceLockPreset: body?.voiceLockPreset,
               voiceLockSample: body?.voiceLockSample,
+              targetAudience: body?.targetAudience,
             });
           } catch (genErr) {
             throw genErr;

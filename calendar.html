@@ -60,6 +60,7 @@
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
               <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
               <button id="voice-lock-btn" class="primary brand-brain-btn">Voice Lock</button>
+              <button id="target-audience-btn" class="primary brand-brain-btn">Target Audience</button>
                 <div class="profile-wrapper">
                   <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
                   <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
@@ -619,6 +620,99 @@
                 <option value="No-AI-polish">No-AI-polish</option>
               </select>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Target Audience Modal -->
+    <div id="target-audience-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title" data-account-modal>
+        <div class="settings-modal__head">
+          <div>
+            <h3 id="target-audience-modal-title">Target Audience</h3>
+            <p class="modal-sub">Tailor copy for a specific audience segment.</p>
+          </div>
+          <button class="ghost icon-only account-settings-close" id="target-audience-close-btn" aria-label="Close Target Audience">
+            &times;
+          </button>
+        </div>
+        <div class="account-settings-body" data-account-modal-body>
+          <div class="settings-group">
+            <label>Target Audience</label>
+            <div class="brand-brain-toggle-row" data-pro-lock="1">
+              <label class="brand-brain-switch">
+                <input type="checkbox" id="target-audience-enabled" />
+                <span class="brand-brain-switch__slider"></span>
+              </label>
+              <div class="brand-brain-toggle-copy">
+                <div class="brand-brain-toggle-label">Enabled</div>
+                <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
+              </div>
+              <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
+            </div>
+            <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
+          </div>
+
+          <div id="target-audience-controls">
+            <div class="settings-group target-audience-select-wrap" id="target-audience-preset-wrap">
+              <label for="target-audience-preset">Preset</label>
+              <select id="target-audience-preset" class="target-audience-select">
+                <option value="First-Time Buyers">First-Time Buyers</option>
+                <option value="Investors">Investors</option>
+                <option value="Luxury / High-Net-Worth">Luxury / High-Net-Worth</option>
+                <option value="Renters → Buyers Transition">Renters → Buyers Transition</option>
+                <option value="Sellers (Need to Move)">Sellers (Need to Move)</option>
+                <option value="Relocation / Out-of-State">Relocation / Out-of-State</option>
+                <option value="New Construction">New Construction</option>
+                <option value="Distressed / Fixer / Value-Add">Distressed / Fixer / Value-Add</option>
+                <option value="Families / School-Focused">Families / School-Focused</option>
+                <option value="Young Professionals">Young Professionals</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label for="target-audience-industry">Industry context</label>
+              <input type="text" id="target-audience-industry" placeholder="e.g., real estate, fitness coaching" />
+            </div>
+            <div class="settings-group">
+              <label for="target-audience-price">Price point</label>
+              <select id="target-audience-price">
+                <option value="low">Low</option>
+                <option value="mid">Mid</option>
+                <option value="premium">Premium</option>
+                <option value="luxury">Luxury</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label for="target-audience-location">Location relevance</label>
+              <select id="target-audience-location">
+                <option value="none">None</option>
+                <option value="local">Local</option>
+                <option value="regional">Regional</option>
+                <option value="national">National</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label for="target-audience-stage">Stage</label>
+              <select id="target-audience-stage">
+                <option value="discovery">Discovery</option>
+                <option value="consideration">Consideration</option>
+                <option value="decision">Decision</option>
+                <option value="retention">Retention</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label for="target-audience-notes">Notes</label>
+              <textarea id="target-audience-notes" maxlength="200" rows="3"></textarea>
+              <div class="field-hint">Optional (max 200 chars).</div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-actions" data-account-modal-actions>
+          <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
+          <div class="settings-actions__buttons">
+            <button type="button" class="ghost" id="target-audience-reset">Reset</button>
+            <button type="button" class="primary" id="target-audience-save">Save</button>
           </div>
         </div>
       </div>
