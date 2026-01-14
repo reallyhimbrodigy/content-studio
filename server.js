@@ -2598,67 +2598,91 @@ const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
     label: 'No AI Polish',
     lines: [
-      '- Sentence length: 6-10 words on average.',
-      '- Punctuation rhythm: minimal commas, no exclamation marks.',
-      '- Formality: informal, plainspoken.',
-      '- Hedging: minimal; avoid soft qualifiers.',
-      '- Questions: avoid rhetorical questions.',
-      '- Structure: Hook one sentence; Caption 2-3 sentences; CTA 4-7 words.',
+      '- Hook: 1 sentence, 6-10 words, no question mark, no exclamation.',
+      '- Caption: 2-4 sentences; each 6-12 words; plain language.',
+      '- Caption: minimal adjectives; no filler transitions.',
+      '- CTA: 3-6 words, direct action, no exclamation.',
+      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words; calm tone.',
+      '- Reel Script: 4 lines (Hook + 2 body + CTA); each 6-12 words.',
+      '- Reel Script: no emojis; no exclamation marks.',
+      '- Global: informal, minimal hype.',
+      '- Global: few commas; short clauses.',
+      '- Global: avoid hedging.',
     ],
   },
   punchy: {
     label: 'Punchy',
     lines: [
-      '- Sentence length: 5-9 words on average.',
-      '- Punctuation rhythm: short stops, line breaks in Reel Script.',
-      '- Formality: casual, confident.',
-      '- Hedging: none.',
-      '- Questions: no question marks.',
-      '- Structure: Hook one sentence <= 12 words; Reel Script body 3 beats, one sentence each.',
+      '- Hook: 4-8 words, fragment allowed, ends with a period.',
+      '- Caption: 3-5 lines; each 4-9 words; one idea per line.',
+      '- Caption: energetic verbs; no long sentences.',
+      '- CTA: 2-5 words, imperative.',
+      '- Engagement Loop: comment reply <= 12 words; DM reply <= 14 words; brisk tone.',
+      '- Reel Script: 4 beats with line breaks; each beat 5-10 words.',
+      '- Reel Script: one short sentence per beat.',
+      '- Global: confident, higher tempo.',
+      '- Global: minimal commas; short stops.',
+      '- Global: no question marks.',
     ],
   },
   direct: {
     label: 'Direct',
     lines: [
-      '- Sentence length: 7-12 words on average.',
-      '- Punctuation rhythm: standard periods, no exclamation marks.',
-      '- Formality: plain and direct.',
-      '- Hedging: avoid hedges.',
-      '- Questions: avoid unless required by context.',
-      '- Structure: Caption 2-4 sentences; CTA 4-8 words, instruction style.',
+      '- Hook: 1 sentence, 7-12 words, declarative, no question.',
+      '- Caption: 2-3 sentences; each 8-14 words; zero hedging.',
+      '- Caption: no motivational fluff.',
+      '- CTA: 3-7 words; imperative; no exclamation.',
+      '- Engagement Loop: comment reply <= 14 words; DM reply <= 16 words; practical tone.',
+      '- Engagement Loop: question optional, keep it short.',
+      '- Reel Script: 3 steps with line breaks (statement -> key point -> CTA).',
+      '- Reel Script: each step 7-12 words.',
+      '- Global: present tense; no soft qualifiers.',
+      '- Global: plain, literal phrasing.',
     ],
   },
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Sentence length: 7-12 words on average.',
-      '- Punctuation rhythm: calm, minimal commas.',
-      '- Formality: respectful and precise.',
-      '- Hedging: minimal; one counterpoint only.',
-      '- Questions: one optional question max, no rhetorical questions.',
-      '- Structure: Hook states counterpoint; Caption follows: counterpoint -> clarification -> takeaway.',
+      '- Hook: 1 sentence, 8-14 words; respectful counterpoint; no exclamation.',
+      '- Caption: exactly 3 parts (belief -> counterpoint -> takeaway).',
+      '- Caption: each part 1 sentence, 8-14 words.',
+      '- CTA: 4-8 words; invites a specific stance or choice.',
+      '- Engagement Loop: comment reply asks for their take in <= 14 words.',
+      '- Engagement Loop: DM reply offers one clarifier in <= 16 words.',
+      '- Reel Script: 3 beats with line breaks; each 8-14 words.',
+      '- Reel Script: one sentence per beat.',
+      '- Global: calm, precise tone.',
+      '- Global: no exclamation marks.',
     ],
   },
   'story-first': {
     label: 'Story-First',
     lines: [
-      '- Sentence length: 8-14 words on average.',
-      '- Punctuation rhythm: flowing, light commas.',
-      '- Formality: conversational.',
-      '- Hedging: light, avoid heavy qualifiers.',
-      '- Questions: one question max in CTA.',
-      '- Structure: Hook one sentence; Caption 3-4 sentences: setup -> friction -> takeaway; Reel Script 3 beats.',
+      '- Hook: 1 sentence; mid-moment; 8-14 words; no exclamation.',
+      '- Caption: 3-4 sentences; setup -> friction -> takeaway.',
+      '- Caption: each 8-14 words; narrative flow.',
+      '- CTA: 4-8 words; soft invitation.',
+      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words; warm tone.',
+      '- Reel Script: 3 beats with line breaks; each 8-14 words.',
+      '- Reel Script: one sentence per beat.',
+      '- Global: conversational, lightly detailed.',
+      '- Global: minimal hype.',
+      '- Global: commas allowed, but keep clauses short.',
     ],
   },
   casual: {
     label: 'Casual / Friendly Expert',
     lines: [
-      '- Sentence length: 7-13 words on average.',
-      '- Punctuation rhythm: conversational, no exclamation marks.',
-      '- Formality: warm and casual.',
-      '- Hedging: light, avoid strong claims.',
-      '- Questions: one optional question in Engagement Loop.',
-      '- Structure: Caption 2-4 sentences; CTA 4-8 words, low pressure.',
+      '- Hook: 1 sentence, 7-12 words; friendly tone; no exclamation.',
+      '- Caption: 2-4 sentences; each 7-13 words.',
+      '- Caption: explain simply; no hype.',
+      '- CTA: 4-8 words; low pressure.',
+      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words.',
+      '- Engagement Loop: one optional question max.',
+      '- Reel Script: 3 beats with line breaks; each 7-12 words.',
+      '- Reel Script: one sentence per beat.',
+      '- Global: warm, conversational; mild hedging allowed.',
+      '- Global: avoid long clauses.',
     ],
   },
 };
@@ -2677,7 +2701,7 @@ const VOICE_LOCK_FIELDS = [
   'CTA',
   'Engagement Loop',
   'Reel Script',
-  'Execution Notes',
+  'Execution Notes (wording only)',
 ];
 
 function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
@@ -2686,6 +2710,7 @@ function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
     'VOICE LOCK STYLE RULES',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
+    'Leave those excluded sections exactly as generated by baseline/Brand Brain logic (content, structure, meaning).',
     'JSON keys and schema must remain unchanged; only wording, cadence, and phrasing may change.',
     'Brand Brain determines strategy (psych triggers, engagement loops, algorithm tactics). Voice Lock determines tone/voice only.',
     'If there is any conflict, Brand Brain strategy wins and Voice Lock rewrites phrasing to match the selected preset.',
@@ -2739,13 +2764,22 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
       reason: 'missing_preset',
     };
   }
-  const mode = requestedMode === 'custom' && sample ? 'custom' : (sample ? 'custom' : 'preset');
-  const finalPreset = presetKey || 'direct';
+  if (!presetKey) {
+    return {
+      enabled: false,
+      mode: 'preset',
+      preset: 'direct',
+      instructionBlock: '',
+      fields: VOICE_LOCK_FIELDS,
+      reason: 'unknown_preset',
+    };
+  }
+  const mode = requestedMode === 'custom' && sample ? 'custom' : 'preset';
   return {
     enabled: true,
     mode,
-    preset: finalPreset,
-    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey: finalPreset, sample }),
+    preset: presetKey,
+    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey, sample }),
     fields: VOICE_LOCK_FIELDS,
     reason: 'enabled',
   };
@@ -2849,7 +2883,8 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  return `${basePrompt}${schemaBlock}${voiceLockBlock}`;
+  const finalPrompt = voiceLockBlock ? `${basePrompt}${schemaBlock}${voiceLockBlock}` : `${basePrompt}${schemaBlock}`;
+  return finalPrompt;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -4941,11 +4976,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const voiceLockPreset = attemptOpts.voiceLock?.preset
       ? (VOICE_LOCK_PRESET_GUIDES[attemptOpts.voiceLock.preset]?.label || attemptOpts.voiceLock.preset)
       : 'none';
-    const voiceLockMode = attemptOpts.voiceLock?.mode || 'none';
     const openAiRequestId = loggingContext?.requestId || 'unknown';
-    if (openAiRequestId && !VOICE_LOCK_LOGGED_REQUESTS.has(`openai:${openAiRequestId}`)) {
-      console.log('[VoiceLock] applied=%s preset="%s" mode="%s" order="last"', voiceLockApplied, voiceLockPreset, voiceLockMode);
-      VOICE_LOCK_LOGGED_REQUESTS.add(`openai:${openAiRequestId}`);
+    if (voiceLockApplied) {
+      console.log('[VoiceLock] applied=true preset="%s" requestId=%s', voiceLockPreset, openAiRequestId);
+    } else if (attemptOpts.voiceLock?.reason === 'unknown_preset') {
+      console.log('[VoiceLock] applied=false requestId=%s reason=unknown_preset', openAiRequestId);
+    } else {
+      console.log('[VoiceLock] applied=false requestId=%s', openAiRequestId);
     }
     if (loggingContext?.requestId) {
       console.log('[Calendar][Prompt]', {
