@@ -2598,18 +2598,18 @@ const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
     label: 'No AI Polish',
     lines: [
-      '- Titles sound spoken, not like blog posts.',
+      '- Hook openings sound like a real person speaking.',
       '- Short, plain sentences; casual and grounded.',
       '- No inspirational or polished phrasing.',
-      '- CTA: simple and direct.',
+      '- CTA is direct and plainspoken.',
     ],
   },
   direct: {
     label: 'Direct',
     lines: [
-      '- Titles: commands or blunt statements.',
-      '- Hooks: challenge or instruction.',
+      '- Hooks open with a challenge or instruction.',
       '- Short sentences, no fluff.',
+      '- Tone is blunt and clear.',
       '- CTA: one clear action, no soft language.',
     ],
   },
@@ -2617,8 +2617,8 @@ const VOICE_LOCK_PRESET_GUIDES = {
     label: 'Punchy',
     lines: [
       '- Sentence length: 5-10 words on average.',
-      '- Hooks: sharp, scroll-stopping, sometimes fragmentary.',
-      '- High contrast tone.',
+      '- Hooks are sharp and scroll-stopping; fragments allowed.',
+      '- High-contrast tone.',
       '- CTA: imperative, short.',
     ],
   },
@@ -2627,26 +2627,26 @@ const VOICE_LOCK_PRESET_GUIDES = {
     lines: [
       '- Hooks start mid-moment or scenario.',
       '- Captions: setup -> friction -> takeaway.',
-      '- More narrative flow, fewer bullets.',
+      '- Narrative flow, fewer bullets.',
       '- CTA: soft, community-oriented.',
     ],
   },
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Titles challenge a common belief.',
       '- Hooks start with disagreement or reversal.',
-      '- Tone: confident, not aggressive.',
-      '- CTA: invites debate or response.',
+      '- Tone is confident, not aggressive.',
+      '- Stakes feel pointed and specific.',
+      '- CTA invites debate or response.',
     ],
   },
   casual: {
     label: 'Casual / Friendly Expert',
     lines: [
-      '- Warm and conversational.',
+      '- Warm, conversational tone.',
       '- Explains without hype.',
-      '- Titles sound like advice from a friend who knows the space.',
-      '- CTA: low pressure.',
+      '- Friendly, supportive stance.',
+      '- CTA is low pressure.',
     ],
   },
 };
@@ -2659,72 +2659,82 @@ function normalizeVoiceLockPresetKey(value = '') {
   return null;
 }
 
-function normalizeVoiceLockRequest(input = {}) {
-  if (!input || typeof input !== 'object') return null;
-  const enabled =
-    input.voiceLockEnabled === true ||
-    input.enabled === true ||
-    input.voiceLock?.enabled === true ||
-    false;
-  if (!enabled) return null;
-  const sampleRaw =
-    input.voiceLockSample ||
-    input.sample ||
-    input.voiceLock?.sample ||
-    '';
-  const presetRaw =
-    input.voiceLockPreset ||
-    input.preset ||
-    input.voiceLock?.preset ||
-    '';
-  const sample = typeof sampleRaw === 'string' ? sampleRaw.trim() : '';
+const VOICE_LOCK_FIELDS = [
+  'Hook',
+  'Caption',
+  'CTA',
+  'Execution Notes',
+  'Engagement Loop',
+  'Reel Script',
+  'Design Notes',
+];
+
+function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
+  const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
+  const lines = [
+    'VOICE LOCK IS ACTIVE.',
+    `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
+    'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
+    'JSON keys and schema must remain unchanged; only wording, cadence, and phrasing may change.',
+    'If any earlier instruction conflicts with this Voice Lock, follow the Voice Lock.',
+    `Preset: ${preset.label}`,
+    ...preset.lines,
+  ];
+  if (mode === 'sample' && sample) {
+    lines.push('Match the sample tone, cadence, and vocabulary.');
+    lines.push('VOICE LOCK - WRITING SAMPLE');
+    lines.push('[BEGIN SAMPLE]');
+    lines.push(sample);
+    lines.push('[END SAMPLE]');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function resolveVoiceLockConfig(input = {}, isPro = false) {
+  const wantsEnabled = Boolean(input?.voiceLockEnabled);
+  if (!wantsEnabled) {
+    return {
+      enabled: false,
+      mode: 'preset',
+      preset: 'direct',
+      instructionBlock: '',
+      fields: VOICE_LOCK_FIELDS,
+      reason: 'disabled',
+    };
+  }
+  if (!isPro) {
+    return {
+      enabled: false,
+      mode: 'preset',
+      preset: 'direct',
+      instructionBlock: '',
+      fields: VOICE_LOCK_FIELDS,
+      reason: 'not_pro',
+    };
+  }
+  const sampleRaw = input.voiceLockSample || '';
+  const presetRaw = input.voiceLockPreset || 'direct';
+  const sample = typeof sampleRaw === 'string' ? sampleRaw.trim().slice(0, 2000) : '';
   const presetKey = normalizeVoiceLockPresetKey(presetRaw) || 'direct';
   const mode = sample ? 'sample' : 'preset';
   return {
     enabled: true,
     mode,
-    sample: sample ? sample.slice(0, 2000) : '',
-    presetKey,
+    preset: presetKey,
+    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey, sample }),
+    fields: VOICE_LOCK_FIELDS,
+    reason: 'enabled',
   };
 }
 
-function buildVoiceLockAddendum(voiceLock) {
-  if (!voiceLock || voiceLock.enabled !== true) return '';
-  const mode = voiceLock.mode === 'preset' ? 'preset' : 'sample';
-  const preset = VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey || 'direct'] || VOICE_LOCK_PRESET_GUIDES.direct;
-  const globalLines = [
-    'VOICE LOCK IS ACTIVE.',
-    'Apply this style to: title/topic, hook, caption, reel_script, pinned_comment, CTA, execution_notes, design_notes, engagement_loop.',
-    'Do NOT change: distribution_plan, suggested_audio, story_prompt.',
-    'Do not change the JSON schema or keys. Only rewrite the wording in those fields.',
-    'Avoid: discover, unlock, navigating, understanding.',
-    'When Voice Lock is active, do NOT use generic educational title starters (e.g. Understanding, Navigating, Exploring). Generate titles that match the selected voice style instead.',
-    'If any earlier instruction conflicts with this Voice Lock, follow the Voice Lock.',
-    'Vary openings; avoid repetitive starter words across posts.',
-  ];
-  if (mode === 'sample') {
-    const sample = String(voiceLock.sample || '').trim();
-    if (!sample) return '';
-    const lines = [
-      ...globalLines,
-      'Match the sample tone, cadence, vocabulary, and sentence length distribution.',
-      `Preset: ${preset.label}`,
-      'VOICE LOCK - WRITING SAMPLE',
-      '[BEGIN SAMPLE]',
-      sample,
-      '[END SAMPLE]',
-    ];
-    return `${lines.join('\n')}\n`;
-  }
-  const lines = [...globalLines, `Preset: ${preset.label}`, ...preset.lines];
-  return `${lines.join('\n')}\n`;
-}
-
-function appendVoiceLockAddendum(prompt = '', voiceLock, isPro = false) {
-  if (!isPro || !voiceLock || voiceLock.enabled !== true) return prompt;
-  const addendum = buildVoiceLockAddendum(voiceLock);
-  if (!addendum) return prompt;
-  return `${prompt}${addendum}`;
+function insertVoiceLockBlock(schemaBlock = '', voiceLockBlock = '') {
+  if (!voiceLockBlock) return schemaBlock;
+  const marker = 'Rules:\n';
+  const idx = schemaBlock.indexOf(marker);
+  if (idx === -1) return `${schemaBlock}${voiceLockBlock}`;
+  const head = schemaBlock.slice(0, idx);
+  const tail = schemaBlock.slice(idx);
+  return `${head}${voiceLockBlock}${tail}`;
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -2818,7 +2828,22 @@ TITLE QUALITY BAR
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
-  return `${appendVoiceLockAddendum(basePrompt, opts.voiceLock, Boolean(opts.isPro))}${schemaBlock}`;
+  const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
+  if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
+    const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
+    console.log(
+      '[VoiceLock][Applied] requestId=%s enabled=true mode=%s preset=%s fields=%s',
+      opts.requestId,
+      opts.voiceLock.mode,
+      presetLabel,
+      VOICE_LOCK_FIELDS.join(',')
+    );
+    console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(voiceLockBlock.length));
+    VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
+    if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
+  }
+  const schemaWithVoiceLock = voiceLockBlock ? insertVoiceLockBlock(schemaBlock, voiceLockBlock) : schemaBlock;
+  return `${basePrompt}${schemaWithVoiceLock}`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -2895,6 +2920,7 @@ const TITLE_SIGNATURE_STOPWORDS = new Set([
 ]);
 
 const VOICE_LOCK_LOGGED_REQUESTS = new Set();
+const VOICE_LOCK_APPLIED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -4902,16 +4928,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       postsPerDay,
       extraInstructions,
       isPro: Boolean(opts.isPro),
+      requestId: loggingContext?.requestId || '',
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
-    if (opts.isPro && opts.voiceLock?.enabled) {
-      const presetKey = opts.voiceLock?.presetKey || 'direct';
-      const presetLabel = VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey;
-      const addendum = buildVoiceLockAddendum(opts.voiceLock);
-      if (addendum) {
-        console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(addendum.length));
-      }
-    }
     if (loggingContext?.requestId) {
       console.log('[Calendar][Prompt]', {
         requestId: loggingContext.requestId,
@@ -5657,32 +5676,18 @@ const server = http.createServer((req, res) => {
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
-    const voiceLock = isProUser ? normalizeVoiceLockRequest(payload) : null;
+    const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
     const requestId = String(loggingContext?.requestId || '');
     if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
-      const enabled = Boolean(voiceLock?.enabled);
-      if (!enabled) {
-        console.log('[VoiceLock] enabled=false requestId=%s', requestId);
-      } else {
-        const presetLabel = voiceLock?.presetKey
-          ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
-          : 'none';
-        const mode = voiceLock?.mode === 'sample' ? 'sample' : 'preset';
-        console.log('[VoiceLock] enabled=true mode=%s preset=%s requestId=%s', mode, presetLabel, requestId);
+      if (!voiceLockConfig.enabled) {
+        if (payload?.voiceLockEnabled && voiceLockConfig.reason !== 'disabled') {
+          console.log('[VoiceLock][Skipped] requestId=%s reason=%s', requestId, voiceLockConfig.reason || 'disabled');
+        } else {
+          console.log('[VoiceLock] enabled=false requestId=%s', requestId);
+        }
       }
       VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
       if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
-    } else if (!requestId) {
-      const enabled = Boolean(voiceLock?.enabled);
-      if (!enabled) {
-        console.log('[VoiceLock] enabled=false requestId=%s', requestId || 'unknown');
-      } else {
-        const presetLabel = voiceLock?.presetKey
-          ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
-          : 'none';
-        const mode = voiceLock?.mode === 'sample' ? 'sample' : 'preset';
-        console.log('[VoiceLock] enabled=true mode=%s preset=%s requestId=%s', mode, presetLabel, requestId || 'unknown');
-      }
     }
     console.log('[BrandBrain] generation mode', {
       requestId: loggingContext?.requestId || 'unknown',
@@ -5764,7 +5769,7 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         extraInstructions: planBlock || '',
         brandBrainDirective,
-        voiceLock,
+        voiceLock: voiceLockConfig,
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
