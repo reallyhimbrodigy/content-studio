@@ -2595,78 +2595,58 @@ function buildBrandBrainDirective(settings = {}) {
 }
 
 const VOICE_LOCK_PRESET_GUIDES = {
-  'raw-creator': {
-    label: 'Raw Creator',
+  'no-ai-polish': {
+    label: 'No AI Polish',
     lines: [
-      '- Short, imperfect, human cadence with occasional fragments.',
-      '- Caption: 2-4 short paragraphs, sounds like texting a friend.',
-      '- Reel script: minimal stage directions, conversational.',
-      '- Hook: one line, direct, no colon titles.',
-      '- Sentence length: 5-12 words on average.',
-      '- Punctuation cadence: loose, occasional dashes.',
+      '- Titles sound spoken, not like blog posts.',
+      '- Short, plain sentences; casual and grounded.',
+      '- No inspirational or polished phrasing.',
+      '- CTA: simple and direct.',
     ],
   },
   direct: {
-    label: 'Coach / Direct',
+    label: 'Direct',
     lines: [
-      '- Hook: command or challenge; no colon titles.',
-      '- Caption: structured steps, blunt feedback.',
-      '- Reel script: clear drill format.',
-      '- CTA: specific action.',
-      '- Sentence length: 6-12 words on average.',
-      '- Punctuation cadence: short bursts, few commas.',
-    ],
-  },
-  casual: {
-    label: 'Friendly Expert',
-    lines: [
-      '- Warm but not salesy.',
-      '- Caption: teach with clarity; include one "why this matters" line.',
-      '- Reel script: simple explanations, avoids hype.',
-      '- CTA: friendly and low-pressure.',
-      '- Sentence length: 8-14 words on average.',
-      '- Punctuation cadence: conversational, light commas.',
+      '- Titles: commands or blunt statements.',
+      '- Hooks: challenge or instruction.',
+      '- Short sentences, no fluff.',
+      '- CTA: one clear action, no soft language.',
     ],
   },
   punchy: {
     label: 'Punchy',
     lines: [
-      '- Sentence length: 6-10 words.',
-      '- Strong verbs, minimal adjectives.',
-      '- Hook: contrarian or curiosity gap, max 12 words, one line.',
-      '- Caption: tight, skimmable, 1 emoji max or none.',
-      '- CTA: single-line imperative.',
-      '- Punctuation cadence: sharp stops, occasional fragments.',
+      '- Sentence length: 5-10 words on average.',
+      '- Hooks: sharp, scroll-stopping, sometimes fragmentary.',
+      '- High contrast tone.',
+      '- CTA: imperative, short.',
     ],
   },
   'story-first': {
     label: 'Story-First',
     lines: [
-      '- Hook: starts mid-moment with sensory detail.',
-      '- Caption: short narrative arc (setup -> friction -> takeaway).',
-      '- Reel script: scene beats, concise.',
-      '- CTA: soft, community-driven.',
-      '- Sentence length: 10-16 words with a few shorter breaks.',
-      '- Punctuation cadence: flowing, light commas.',
+      '- Hooks start mid-moment or scenario.',
+      '- Captions: setup -> friction -> takeaway.',
+      '- More narrative flow, fewer bullets.',
+      '- CTA: soft, community-oriented.',
     ],
   },
   contrarian: {
     label: 'Contrarian',
     lines: [
-      '- Hook: surprising claim, one line, no colon titles.',
-      '- Caption: explain the pushback fast, then deliver the takeaway.',
-      '- CTA: invite a clear stance or action.',
-      '- Sentence length: 6-12 words on average.',
-      '- Punctuation cadence: crisp, minimal commas.',
+      '- Titles challenge a common belief.',
+      '- Hooks start with disagreement or reversal.',
+      '- Tone: confident, not aggressive.',
+      '- CTA: invites debate or response.',
     ],
   },
-  'no-ai-polish': {
-    label: 'No-AI-polish',
+  casual: {
+    label: 'Casual / Friendly Expert',
     lines: [
-      '- Strip any polish; keep phrasing grounded and plain.',
-      '- Avoid generic marketing tone.',
-      '- Sentence length: 6-12 words on average.',
-      '- Punctuation cadence: plain, sparse.',
+      '- Warm and conversational.',
+      '- Explains without hype.',
+      '- Titles sound like advice from a friend who knows the space.',
+      '- CTA: low pressure.',
     ],
   },
 };
@@ -2674,12 +2654,8 @@ const VOICE_LOCK_PRESET_GUIDES = {
 function normalizeVoiceLockPresetKey(value = '') {
   const raw = String(value || '').trim().toLowerCase();
   const key = raw.replace(/\s+/g, '-');
-  if (key === 'no-ai-polish') return 'raw-creator';
   if (VOICE_LOCK_PRESET_GUIDES[key]) return key;
-  if (key === 'raw-creator' || key === 'raw') return 'raw-creator';
-  if (key === 'coach/direct' || key === 'coach-direct' || key === 'coach') return 'direct';
   if (key === 'friendly-expert' || key === 'friendly') return 'casual';
-  if (key === 'story-first' || key === 'story-first') return 'story-first';
   return null;
 }
 
@@ -2722,6 +2698,8 @@ function buildVoiceLockAddendum(voiceLock) {
     'Do NOT change: distribution_plan, suggested_audio, story_prompt.',
     'Do not change the JSON schema or keys. Only rewrite the wording in those fields.',
     'Avoid: discover, unlock, navigating, understanding.',
+    'When Voice Lock is active, do NOT use generic educational title starters (e.g. Understanding, Navigating, Exploring). Generate titles that match the selected voice style instead.',
+    'If any earlier instruction conflicts with this Voice Lock, follow the Voice Lock.',
     'Vary openings; avoid repetitive starter words across posts.',
   ];
   if (mode === 'sample') {
@@ -2742,6 +2720,13 @@ function buildVoiceLockAddendum(voiceLock) {
   return `${lines.join('\n')}\n`;
 }
 
+function appendVoiceLockAddendum(prompt = '', voiceLock, isPro = false) {
+  if (!isPro || !voiceLock || voiceLock.enabled !== true) return prompt;
+  const addendum = buildVoiceLockAddendum(voiceLock);
+  if (!addendum) return prompt;
+  return `${prompt}${addendum}`;
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2751,13 +2736,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
 ` : '';
-  const voiceLockBlock = buildVoiceLockAddendum(opts.voiceLock);
-  if (voiceLockBlock) {
-    const presetKey = opts.voiceLock?.presetKey || 'direct';
-    const presetLabel = VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey;
-    console.log('[VoiceLock][Prompt] appended=true chars=%s', String(voiceLockBlock.length));
-    console.log('[VoiceLock][Preset] %s', presetLabel);
-  }
+  const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
+${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
@@ -2827,8 +2807,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         ].join('\\n')
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
-  return `You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}${brandBrainBlock}${voiceLockBlock}${nonBrandBrainMultiPostBlock}Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+  const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
@@ -2839,6 +2818,7 @@ TITLE QUALITY BAR
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
+  return `${appendVoiceLockAddendum(basePrompt, opts.voiceLock, Boolean(opts.isPro))}${schemaBlock}`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -4921,19 +4901,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       startDay: chunkStartDay,
       postsPerDay,
       extraInstructions,
+      isPro: Boolean(opts.isPro),
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
-    const voiceLockEnabled = Boolean(opts.voiceLock?.enabled);
-    const presetLabel = voiceLockEnabled
-      ? (VOICE_LOCK_PRESET_GUIDES[opts.voiceLock?.presetKey || 'direct']?.label || opts.voiceLock?.presetKey || 'direct')
-      : 'none';
-    console.log(
-      '[VoiceLock][OpenAI] enabled=%s preset=%s requestId=%s chunkIndex=%s',
-      voiceLockEnabled,
-      voiceLockEnabled ? presetLabel : 'none',
-      loggingContext?.requestId || 'unknown',
-      loggingContext?.chunkIndex ?? 'n/a'
-    );
+    if (opts.isPro && opts.voiceLock?.enabled) {
+      const presetKey = opts.voiceLock?.presetKey || 'direct';
+      const presetLabel = VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey;
+      const addendum = buildVoiceLockAddendum(opts.voiceLock);
+      if (addendum) {
+        console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(addendum.length));
+      }
+    }
     if (loggingContext?.requestId) {
       console.log('[Calendar][Prompt]', {
         requestId: loggingContext.requestId,
@@ -5684,24 +5662,26 @@ const server = http.createServer((req, res) => {
     if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
       const enabled = Boolean(voiceLock?.enabled);
       if (!enabled) {
-        console.log('[VoiceLock][Mode] enabled=false');
+        console.log('[VoiceLock] enabled=false requestId=%s', requestId);
       } else {
         const presetLabel = voiceLock?.presetKey
           ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
           : 'none';
-        console.log('[VoiceLock][Mode] enabled=true preset=%s userId=%s requestId=%s', presetLabel, userId || 'unknown', requestId);
+        const mode = voiceLock?.mode === 'sample' ? 'sample' : 'preset';
+        console.log('[VoiceLock] enabled=true mode=%s preset=%s requestId=%s', mode, presetLabel, requestId);
       }
       VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
       if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
     } else if (!requestId) {
       const enabled = Boolean(voiceLock?.enabled);
       if (!enabled) {
-        console.log('[VoiceLock][Mode] enabled=false');
+        console.log('[VoiceLock] enabled=false requestId=%s', requestId || 'unknown');
       } else {
         const presetLabel = voiceLock?.presetKey
           ? (VOICE_LOCK_PRESET_GUIDES[voiceLock.presetKey]?.label || voiceLock.presetKey)
           : 'none';
-        console.log('[VoiceLock][Mode] enabled=true preset=%s userId=%s requestId=%s', presetLabel, userId || 'unknown', requestId || 'unknown');
+        const mode = voiceLock?.mode === 'sample' ? 'sample' : 'preset';
+        console.log('[VoiceLock] enabled=true mode=%s preset=%s requestId=%s', mode, presetLabel, requestId || 'unknown');
       }
     }
     console.log('[BrandBrain] generation mode', {
@@ -5785,6 +5765,7 @@ const server = http.createServer((req, res) => {
         extraInstructions: planBlock || '',
         brandBrainDirective,
         voiceLock,
+        isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
