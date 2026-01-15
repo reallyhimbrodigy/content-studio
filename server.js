@@ -2708,7 +2708,7 @@ function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
   const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
   const lines = [
     'VOICE LOCK STYLE RULES',
-    'These additions may only change tone. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+    'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
     'Non-negotiable: do not change the post’s topic/title/angle. Only adjust tone while staying on the same topic_signature.',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Voice changes tone only; it must not change the topic or introduce new subject matter.',
@@ -2831,7 +2831,7 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
   if (!preset) return '';
   const lines = [
     'TARGET AUDIENCE',
-    'These additions may only change audience framing. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+    'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
     'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
     `Target audience: ${preset.label}.`,
     'TARGET AUDIENCE IS IMPLICIT ONLY. DO NOT mention or reference the target audience group anywhere in the output. This includes: title/topic, hook, caption, CTA, execution notes, design notes, engagement loop, reel script, distribution plan, hashtags, story prompt, suggested audio, and any other fields. No phrases like "for students", "if you’re a teacher", "for 18–25", "busy parents", "gen z", "millennials", etc.',
@@ -2878,7 +2878,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
-        'These additions may only change persuasion/algorithmic framing. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+        'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
         'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
         '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
@@ -2964,6 +2964,7 @@ TITLE ANCHOR (NON-NEGOTIABLE):
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- If a Topic (MUST USE) is provided, the title must match it exactly (character-for-character).
 - TOPIC LOCK: The title is the single source of truth for the post topic.
 - Every other field must be about the same topic as the title. If you start writing about a different idea, you MUST rewrite that section to match the title before returning JSON.
 - topic_signature is required for every post: 3–6 short tokens/phrases pulled directly from the title (or near-synonyms).
@@ -3126,9 +3127,9 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } =
   const lines = [
     'ASSIGNED TOPIC PLAN (read-only):',
     ...assigned.map((item) =>
-      `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
+      `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
     ),
-    'Use the provided title exactly.',
+    'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
     'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
     'All sections must be about the title. If any section drifts, rewrite it to match the title before returning JSON.',
     'Do not output generic real estate tips unrelated to the title.',
@@ -6378,13 +6379,28 @@ const server = http.createServer((req, res) => {
         if (!Number.isFinite(planDay) || !Number.isFinite(planIndex)) return;
         planByKey.set(`${planDay}|${planIndex}`, item);
       });
+      const postMeta = posts.map((post, idx) => {
+        const dayValue = Number.isFinite(Number(post?.day))
+          ? Number(post.day)
+          : computePostDayIndex(idx, startDay, perDay);
+        return { idx, day: dayValue };
+      });
+      const ordered = postMeta.slice().sort((a, b) => {
+        if (a.day !== b.day) return a.day - b.day;
+        return a.idx - b.idx;
+      });
+      const indexByKey = new Map();
       const dayCounts = new Map();
+      ordered.forEach((entry) => {
+        const count = dayCounts.get(entry.day) || 0;
+        dayCounts.set(entry.day, count + 1);
+        indexByKey.set(entry.idx, count);
+      });
       posts.forEach((post, idx) => {
         const dayValue = Number.isFinite(Number(post?.day))
           ? Number(post.day)
           : computePostDayIndex(idx, startDay, perDay);
-        const count = dayCounts.get(dayValue) || 0;
-        dayCounts.set(dayValue, count + 1);
+        const count = indexByKey.get(idx) ?? 0;
         const planItem = planByKey.get(`${dayValue}|${count}`);
         if (!planItem || !planItem.title) {
           const err = new Error('TitlePlanMismatch');
