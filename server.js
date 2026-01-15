@@ -2708,7 +2708,8 @@ function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
   const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
   const lines = [
     'VOICE LOCK STYLE RULES',
-    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
+    'These additions may only change tone. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust tone while staying on the same topic_signature.',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Voice changes tone only; it must not change the topic or introduce new subject matter.',
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
@@ -2830,7 +2831,8 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
   if (!preset) return '';
   const lines = [
     'TARGET AUDIENCE',
-    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust tone while staying on the same topic_signature.',
+    'These additions may only change audience framing. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
     `Target audience: ${preset.label}.`,
     'Tailor tone, assumptions, and explanation depth to this audience.',
     'Audience framing changes examples/wording only; it must not change the topic/title.',
@@ -2875,7 +2877,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
-    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
+        'These additions may only change persuasion/algorithmic framing. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
+        'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
         '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
         'TITLE QUALITY BAR',
@@ -2946,6 +2949,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+TITLE ANCHOR (NON-NEGOTIABLE):
+- The title/topic is the single source of truth.
+- All sections must be about the title. No section may introduce a different topic.
+- If any section drifts, rewrite that section to match the title BEFORE returning JSON.
+- Hook MUST explicitly reference the title topic in plain language and reuse at least one distinctive noun phrase from the title.
+- Caption/body MUST explicitly restate the same topic in its first sentence.
+- Reel Script MUST re-ground: first line of the Reel Script body must restate the topic using the title’s distinctive noun phrase.
+- Engagement loop comment OR DM line must also reference the same topic in one sentence.
+- MISMATCH CHECK: Before returning JSON, compare Title vs Hook + Caption first sentence + Reel Script first line. If any do not describe the same topic, rewrite Hook/Captions/Reel Script to match the title. Do not change the title.
+- Do not replace the title with a generic real estate tip theme.
+- Do not shift into: investment red flags, first-time buyer mistakes, neighborhood selection, staging/paint tips, market trends, unless the title is explicitly about that.
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
@@ -2957,6 +2971,7 @@ Rules:
 - All fields after angle must be derived from angle + topic_signature; do not invent a different theme.
 - Carry-through requirement: at least TWO topic_signature tokens (or direct synonyms) must appear in the Hook (or first caption line), the Reel Script body, and either the Story Prompt or Engagement Loop. If they don’t, rewrite the drifting section until they do.
 - If a title/topic is provided (e.g., via an assigned topic plan), do not replace it and do not switch to a different idea.
+- You are generating the FULL post for this EXACT title. Do not swap topics or use a generic template unrelated to the title.
 - TITLE LOCK: The title/topic is immutable and the single source of truth for the post.
 - Generate each post in this order: A) Choose the title/topic. B) Internally write a one-sentence topicAnchor that restates the title in concrete terms (who/what + specific angle). C) Generate every remaining field using only the title/topicAnchor.
 - The topicAnchor is an internal instruction only; do NOT output it as a field.
