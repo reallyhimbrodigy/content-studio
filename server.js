@@ -2513,7 +2513,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['post_key', 'day', 'slotIndex', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
+    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
     properties: {
       post_key: { type: 'string', minLength: 1 },
       day: {
@@ -2523,6 +2523,34 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       },
       slotIndex: { type: 'integer', minimum: 0 },
       title: { type: 'string', minLength: 1 },
+      topicCapsule: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['summary', 'mustUse', 'mustAvoid', 'audienceAngle', 'keyEntities'],
+        properties: {
+          summary: { type: 'string', minLength: 1 },
+          mustUse: {
+            type: 'array',
+            minItems: 5,
+            maxItems: 10,
+            items: { type: 'string', minLength: 1 },
+          },
+          mustAvoid: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 10,
+            items: { type: 'string', minLength: 1 },
+          },
+          audienceAngle: { type: 'string', minLength: 1 },
+          keyEntities: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 5,
+            items: { type: 'string', minLength: 1 },
+          },
+          timeframeOrLocale: { type: 'string', minLength: 1 },
+        },
+      },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
@@ -2907,20 +2935,34 @@ const FIELD_REGROUNDING_BLOCK = [
   `- Distribution Plan: ${FIELD_REGROUNDING_INSTRUCTION}`,
 ].join('\n');
 
-function buildRequestedPostIdentityBlock(startDay, days, postsPerDay) {
+function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const requestedSpecMap = buildRequestedSpecMap({
+    startDay: safeStart,
+    days: safeDays,
+    postsPerDay: perDay,
+    topicPlan,
+  });
+  const mustAvoidByKey = buildMustAvoidTokensByKey(requestedSpecMap);
   const lines = [
     'REQUESTED POST IDS (MUST MATCH):',
     '- Each post object MUST include: post_key, day, slotIndex, title.',
     '- post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
+    '- For each requested post, copy the provided mustAvoid list EXACTLY into topicCapsule.mustAvoid.',
     'Requested IDs:',
   ];
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
+      const key = postKey(day, slotIndex);
+      const spec = requestedSpecMap.get(key) || {};
+      const title = toPlainString(spec.title || '');
+      const mustAvoidList = mustAvoidByKey.get(key) || [];
+      const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
+      const titleSegment = title ? ` | title: ${title}` : '';
+      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
     }
   }
   return lines.join('\n');
@@ -3008,13 +3050,24 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         ].join('\\n')
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
-  const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting);
+  const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 ${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
+TOPIC CAPSULE (REQUIRED PER POST):
+- Each post MUST include topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities, timeframeOrLocale }.
+- For each post, FIRST fill topicCapsule based ONLY on that post's title/topic.
+- If a title is not provided in the requested IDs section, choose a title and use it as the sole source for topicCapsule.
+- mustUse: 5–10 words/phrases derived from the post's title/topic.
+- mustAvoid: copy EXACTLY from the requested IDs section for that post (tokens from other titles in this request).
+- audienceAngle: short phrase; keyEntities: 0–5 proper nouns if present; timeframeOrLocale: optional if implied.
+- Every other field MUST be generated using ONLY the topicCapsule (summary + mustUse + audienceAngle + keyEntities). No other post's capsule may influence it.
+- Hard constraint: Each required field MUST include at least TWO distinct items from topicCapsule.mustUse verbatim (case-insensitive). Hashtags count if they include the phrase.
+- Hard constraint: No required field may contain any token from topicCapsule.mustAvoid (case-insensitive word-boundary).
+- Do NOT mention "Miami" or niche examples unless they appear in the post's own title/topic or topicCapsule.
 TITLE ANCHOR (NON-NEGOTIABLE):
 - The title/topic is the single source of truth.
 - All sections must be about the title. No section may introduce a different topic.
@@ -3027,7 +3080,7 @@ TITLE ANCHOR (NON-NEGOTIABLE):
 ${FIELD_REGROUNDING_BLOCK}
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
-- Each post includes post_key, day, slotIndex, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- Each post includes post_key, day, slotIndex, title, topicCapsule, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - If a Topic (MUST USE) is provided, the title must match it exactly (character-for-character).
 - TOPIC LOCK: The title is the single source of truth for the post topic.
 - Every other field must be about the same topic as the title. If you start writing about a different idea, you MUST rewrite that section to match the title before returning JSON.
@@ -3068,7 +3121,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[],timeframeOrLocale}, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -3277,6 +3330,43 @@ function containsTopicReference(text = '', fingerprint = {}) {
       matchCount += 1;
       seen.add(token);
       if (matchCount >= 2) return true;
+    }
+  }
+  return false;
+}
+
+function deriveFingerprintFromCapsule(capsule = {}) {
+  const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
+  const combined = mustUse.map((item) => String(item || '')).join(' ');
+  return deriveTopicFingerprint(combined);
+}
+
+function countMustUseMatches(text = '', mustUse = []) {
+  if (!isNonEmptyString(text) || !Array.isArray(mustUse) || !mustUse.length) return 0;
+  const normalized = normalizeTopicText(text);
+  if (!normalized) return 0;
+  const matched = new Set();
+  mustUse.forEach((item) => {
+    const normalizedItem = normalizeTopicText(item);
+    if (!normalizedItem) return;
+    const regex = new RegExp(`\\b${escapeRegexPattern(normalizedItem)}\\b`, 'i');
+    if (regex.test(normalized)) matched.add(normalizedItem);
+  });
+  return matched.size;
+}
+
+function containsMustAvoidToken(text = '', mustAvoid = []) {
+  if (!isNonEmptyString(text) || !Array.isArray(mustAvoid) || !mustAvoid.length) return false;
+  const normalized = normalizeTopicText(text);
+  if (!normalized) return false;
+  const words = new Set(normalized.split(/\s+/).filter(Boolean));
+  for (const item of mustAvoid) {
+    const normalizedItem = normalizeTopicText(item);
+    if (!normalizedItem) continue;
+    if (normalizedItem.includes(' ')) {
+      if (normalized.includes(normalizedItem)) return true;
+    } else if (words.has(normalizedItem)) {
+      return true;
     }
   }
   return false;
@@ -4415,6 +4505,40 @@ function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicP
   return map;
 }
 
+function tokenizeTitleForAvoid(value = '') {
+  const normalized = normalizeTopicText(value);
+  if (!normalized) return [];
+  return normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => token.length >= 4 && !TOPIC_FINGERPRINT_STOPWORDS.has(token));
+}
+
+function buildMustAvoidTokensByKey(requestedSpecMap = new Map()) {
+  const entries = Array.from(requestedSpecMap.values());
+  const tokensByKey = new Map();
+  entries.forEach((entry) => {
+    tokensByKey.set(entry.post_key, tokenizeTitleForAvoid(entry.title || ''));
+  });
+  const result = new Map();
+  entries.forEach((entry) => {
+    const counts = new Map();
+    entries.forEach((other) => {
+      if (other.post_key === entry.post_key) return;
+      const tokens = tokensByKey.get(other.post_key) || [];
+      tokens.forEach((token) => {
+        counts.set(token, (counts.get(token) || 0) + 1);
+      });
+    });
+    const sorted = Array.from(counts.entries()).sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0]);
+    });
+    result.set(entry.post_key, sorted.slice(0, 8).map(([token]) => token));
+  });
+  return result;
+}
+
 function assertPostKeyMapping(posts = [], requestedSpecMap = new Map()) {
   const expectedPostKeys = Array.from(requestedSpecMap.keys());
   const expectedSet = new Set(expectedPostKeys);
@@ -4644,7 +4768,10 @@ function assertPostTopicBound(post = {}, requestedSpec = {}) {
   if (!post || typeof post !== 'object') return;
   const resolvedSpec = resolveRequestedSpec(requestedSpec, post);
   const titleText = toPlainString(resolvedSpec.title || resolvedSpec.topic || '');
-  const fingerprint = deriveTopicFingerprint(titleText);
+  const capsule = post.topicCapsule || post.topic_capsule || {};
+  const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
+  const mustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
+  const fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -4654,31 +4781,38 @@ function assertPostTopicBound(post = {}, requestedSpec = {}) {
   const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
   const failedFields = [];
   const snippets = {};
-  if (!containsTopicReference(hookText, fingerprint)) {
+  const hookMustUse = countMustUseMatches(hookText, mustUse);
+  if (!containsTopicReference(hookText, fingerprint) || hookMustUse < 2 || containsMustAvoidToken(hookText, mustAvoid)) {
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(captionText, fingerprint)) {
+  const captionMustUse = countMustUseMatches(captionText, mustUse);
+  if (!containsTopicReference(captionText, fingerprint) || captionMustUse < 2 || containsMustAvoidToken(captionText, mustAvoid)) {
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(scriptText, fingerprint)) {
+  const scriptMustUse = countMustUseMatches(scriptText, mustUse);
+  if (!containsTopicReference(scriptText, fingerprint) || scriptMustUse < 2 || containsMustAvoidToken(scriptText, mustAvoid)) {
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(hashtagsText, fingerprint)) {
+  const hashtagsMustUse = countMustUseMatches(hashtagsText, mustUse);
+  if (!containsTopicReference(hashtagsText, fingerprint) || hashtagsMustUse < 2 || containsMustAvoidToken(hashtagsText, mustAvoid)) {
     failedFields.push('hashtags');
     snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(designNotesText, fingerprint)) {
+  const designMustUse = countMustUseMatches(designNotesText, mustUse);
+  if (!containsTopicReference(designNotesText, fingerprint) || designMustUse < 2 || containsMustAvoidToken(designNotesText, mustAvoid)) {
     failedFields.push('designNotes');
     snippets.designNotes = designNotesText ? designNotesText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(engagementLoopText, fingerprint)) {
+  const engagementMustUse = countMustUseMatches(engagementLoopText, mustUse);
+  if (!containsTopicReference(engagementLoopText, fingerprint) || engagementMustUse < 2 || containsMustAvoidToken(engagementLoopText, mustAvoid)) {
     failedFields.push('engagementLoop');
     snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(distributionPlanText, fingerprint)) {
+  const distributionMustUse = countMustUseMatches(distributionPlanText, mustUse);
+  if (!containsTopicReference(distributionPlanText, fingerprint) || distributionMustUse < 2 || containsMustAvoidToken(distributionPlanText, mustAvoid)) {
     failedFields.push('distributionPlan');
     snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 80) : '';
   }
@@ -5096,6 +5230,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     slotIndex: slotIndexValue,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
     title: toPlainString(post.title || post.idea || ''),
+    topicCapsule: post.topicCapsule || post.topic_capsule,
     type: toPlainString(post.type || 'educational'),
     hook: toPlainString(post.hook || script.hook || ''),
     caption: toPlainString(post.caption || ''),
@@ -6374,6 +6509,7 @@ const server = http.createServer((req, res) => {
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
         extraInstructions: planBlock || '',
+        topicPlan,
         brandBrainDirective,
         voiceLock: voiceLockConfig,
         targetAudience: targetAudienceConfig,
