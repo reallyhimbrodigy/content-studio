@@ -2786,16 +2786,34 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
 }
 
 const TARGET_AUDIENCE_PRESET_GUIDES = {
-  'beginners-first-time': { label: 'Beginners / First-time' },
-  'budget-conscious': { label: 'Budget-conscious' },
-  'busy-professionals': { label: 'Busy Professionals' },
-  families: { label: 'Families' },
-  'enthusiasts-hobbyists': { label: 'Enthusiasts / Hobbyists' },
-  'high-intent-buyers': { label: 'High-intent Buyers' },
-  'comparison-shoppers': { label: 'Comparison Shoppers' },
-  'skeptics-objection-heavy': { label: 'Skeptics / Objection-heavy' },
-  'premium-high-end': { label: 'Premium / High-end' },
-  'returning-customers': { label: 'Returning Customers' },
+  students: { label: 'Students', lens: 'Use simple language, add brief context, keep it practical.' },
+  'young-adults-18-25': { label: 'Young Adults (18–25)', lens: 'Keep it concise, relatable, and action-oriented.' },
+  'early-career-professionals': {
+    label: 'Early Career Professionals',
+    lens: 'Explain essentials without jargon; focus on quick wins.',
+  },
+  'working-professionals': {
+    label: 'Working Professionals',
+    lens: 'Be concise, outcome-focused, and time-aware.',
+  },
+  'parents-families': {
+    label: 'Parents / Families',
+    lens: 'Use reassuring tone and practical considerations.',
+  },
+  entrepreneurs-founders: {
+    label: 'Entrepreneurs / Founders',
+    lens: 'Assume busy decision-makers; highlight leverage and clarity.',
+  },
+  creators: { label: 'Creators', lens: 'Speak to creative workflow and consistency.' },
+  'freelancers-solopreneurs': {
+    label: 'Freelancers / Solopreneurs',
+    lens: 'Emphasize efficiency, autonomy, and practical trade-offs.',
+  },
+  beginners: { label: 'Beginners', lens: 'Explain basics with extra context, keep it simple.' },
+  'experienced-advanced': {
+    label: 'Experienced / Advanced',
+    lens: 'Higher signal, less explanation, more nuance.',
+  },
 };
 
 function normalizeTargetAudiencePresetKey(value = '') {
@@ -2811,7 +2829,8 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
   const lines = [
     'TARGET AUDIENCE',
     `Target audience: ${preset.label}.`,
-    'Tailor Hook/Body/CTA/Engagement Loop wording and examples to resonate with this audience.',
+    'Tailor tone, assumptions, and explanation depth to this audience.',
+    preset.lens,
     'Apply only to phrasing for: Hook, Caption/Main body, CTA, Engagement Loop, Reel Script.',
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
     'Keep JSON keys and schema unchanged.',

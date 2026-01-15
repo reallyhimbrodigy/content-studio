@@ -3002,20 +3002,20 @@ const VOICE_LOCK_DEFAULTS = {
 };
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
 const TARGET_AUDIENCE_PRESETS = [
-  'Beginners / First-time',
-  'Budget-conscious',
-  'Busy Professionals',
-  'Families',
-  'Enthusiasts / Hobbyists',
-  'High-intent Buyers',
-  'Comparison Shoppers',
-  'Skeptics / Objection-heavy',
-  'Premium / High-end',
-  'Returning Customers',
+  'Students',
+  'Young Adults (18–25)',
+  'Early Career Professionals',
+  'Working Professionals',
+  'Parents / Families',
+  'Entrepreneurs / Founders',
+  'Creators',
+  'Freelancers / Solopreneurs',
+  'Beginners',
+  'Experienced / Advanced',
 ];
 const TARGET_AUDIENCE_DEFAULTS = {
   enabled: false,
-  preset: 'Beginners / First-time',
+  preset: 'Students',
 };
 let targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
 let lastTargetAudienceFocusEl = null;
