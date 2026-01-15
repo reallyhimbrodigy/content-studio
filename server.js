@@ -4195,6 +4195,39 @@ function buildPillarSchedule(totalSlots, rand) {
   return shuffleArray(schedule, rand);
 }
 
+function postKey(day, slotIndex) {
+  return `day-${day}-slot-${slotIndex}`;
+}
+
+function assignPostKeys(posts = [], startDay = 1, postsPerDay = 1) {
+  const meta = posts.map((post, idx) => {
+    const dayValue = Number.isFinite(Number(post?.day))
+      ? Number(post.day)
+      : computePostDayIndex(idx, startDay, postsPerDay);
+    return { idx, day: dayValue };
+  });
+  const ordered = meta.slice().sort((a, b) => {
+    if (a.day !== b.day) return a.day - b.day;
+    return a.idx - b.idx;
+  });
+  const dayCounts = new Map();
+  const slotByIndex = new Map();
+  ordered.forEach((entry) => {
+    const count = dayCounts.get(entry.day) || 0;
+    dayCounts.set(entry.day, count + 1);
+    slotByIndex.set(entry.idx, count);
+  });
+  posts.forEach((post, idx) => {
+    if (!post || typeof post !== 'object') return;
+    const dayValue = Number.isFinite(Number(post?.day))
+      ? Number(post.day)
+      : computePostDayIndex(idx, startDay, postsPerDay);
+    const slotIndex = slotByIndex.get(idx) ?? 0;
+    post.__slotIndex = slotIndex;
+    post.__key = postKey(dayValue, slotIndex);
+  });
+}
+
 function normalizeCalendarPillar(value = '') {
   const text = toPlainString(value || '');
   if (!text) return '';
@@ -6372,53 +6405,54 @@ const server = http.createServer((req, res) => {
     }
     let posts = normalizedPosts;
     if (Array.isArray(topicPlan) && topicPlan.length) {
-      const planByKey = new Map();
       topicPlan.forEach((item) => {
         const planDay = Number(item?.day);
-        const planIndex = Number(item?.postIndex);
-        if (!Number.isFinite(planDay) || !Number.isFinite(planIndex)) return;
-        planByKey.set(`${planDay}|${planIndex}`, item);
+        const slotIndex = Number.isFinite(Number(item?.postIndex)) ? Number(item.postIndex) : 0;
+        if (!Number.isFinite(planDay)) return;
+        item.__slotIndex = slotIndex;
+        item.__key = postKey(planDay, slotIndex);
       });
-      const postMeta = posts.map((post, idx) => {
-        const dayValue = Number.isFinite(Number(post?.day))
-          ? Number(post.day)
-          : computePostDayIndex(idx, startDay, perDay);
-        return { idx, day: dayValue };
-      });
-      const ordered = postMeta.slice().sort((a, b) => {
-        if (a.day !== b.day) return a.day - b.day;
-        return a.idx - b.idx;
-      });
-      const indexByKey = new Map();
-      const dayCounts = new Map();
-      ordered.forEach((entry) => {
-        const count = dayCounts.get(entry.day) || 0;
-        dayCounts.set(entry.day, count + 1);
-        indexByKey.set(entry.idx, count);
-      });
-      posts.forEach((post, idx) => {
-        const dayValue = Number.isFinite(Number(post?.day))
-          ? Number(post.day)
-          : computePostDayIndex(idx, startDay, perDay);
-        const count = indexByKey.get(idx) ?? 0;
-        const planItem = planByKey.get(`${dayValue}|${count}`);
-        if (!planItem || !planItem.title) {
-          const err = new Error('TitlePlanMismatch');
-          err.code = 'OPENAI_SCHEMA_ERROR';
-          err.statusCode = 422;
-          err.details = { reason: 'missing_plan_title', day: dayValue, postIndex: count };
-          throw err;
+      assignPostKeys(posts, startDay, perDay);
+      const topicByKey = new Map(
+        topicPlan
+          .filter((item) => item && item.__key && item.title)
+          .map((item) => [item.__key, String(item.title).trim()])
+      );
+      let missingBinding = false;
+      posts.forEach((post) => {
+        if (!post || typeof post !== 'object') return;
+        const topic = topicByKey.get(post.__key);
+        if (!topic) {
+          missingBinding = true;
+          return;
         }
-        const planTitle = String(planItem.title).trim();
-        post.title = planTitle;
-        if (normalizeTitleText(post.title) !== normalizeTitleText(planTitle)) {
-          const err = new Error('TitlePlanMismatch');
-          err.code = 'OPENAI_SCHEMA_ERROR';
-          err.statusCode = 422;
-          err.details = { reason: 'title_mismatch', day: dayValue, postIndex: count };
-          throw err;
+        post.topic = topic;
+        post.title = topic;
+        if (normalizeTitleText(post.title) !== normalizeTitleText(topic)) {
+          missingBinding = true;
         }
       });
+      if (missingBinding) {
+        const err = new Error('TopicBindFailed');
+        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.statusCode = 422;
+        err.details = { reason: 'topic_bind_failed' };
+        throw err;
+      }
+      const debugSample = posts
+        .slice(0, 3)
+        .map((post) => ({
+          day: post.day,
+          slot: post.__slotIndex,
+          topic: post.topic,
+          hook: String(post.hook || '').slice(0, 40),
+        }));
+      if (debugSample.length) {
+        console.log('[Calendar][TopicBind]', {
+          requestId: loggingContext?.requestId || 'unknown',
+          sample: debugSample,
+        });
+      }
     }
     const normalizedMissing = [];
     posts.forEach((post, idx) => {
@@ -6611,6 +6645,14 @@ const server = http.createServer((req, res) => {
       rawLength,
       latencyMs: openAiLatency,
       context: loggingContext,
+    });
+    posts.forEach((post) => {
+      if (!post || typeof post !== 'object') return;
+      delete post.__key;
+      delete post.__slotIndex;
+      if (Object.prototype.hasOwnProperty.call(post, 'topic')) {
+        delete post.topic;
+      }
     });
     return posts;
   }
