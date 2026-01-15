@@ -2800,7 +2800,7 @@ const TARGET_AUDIENCE_PRESET_GUIDES = {
     label: 'Parents / Families',
     lens: 'Use reassuring tone and practical considerations.',
   },
-  entrepreneurs-founders: {
+  "entrepreneurs-founders": {
     label: 'Entrepreneurs / Founders',
     lens: 'Assume busy decision-makers; highlight leverage and clarity.',
   },
