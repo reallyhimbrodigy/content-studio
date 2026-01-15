@@ -3127,6 +3127,10 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } =
       `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
     ),
     'Use the provided title exactly.',
+    'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
+    'All sections must be about the title. If any section drifts, rewrite it to match the title before returning JSON.',
+    'Do not output generic real estate tips unrelated to the title.',
+    'Do not swap to other themes (investment red flags, first-time buyer mistakes, neighborhoods, staging/paint, market trends) unless the title explicitly says so.',
   ];
   return lines.join('\n');
 }
@@ -5973,6 +5977,22 @@ const server = http.createServer((req, res) => {
         chunkStartDay,
         chunkDays,
       });
+      if (planBlock) {
+        const planTitles = planBlock
+          .split('\n')
+          .filter((line) => line.includes(' | title: '))
+          .map((line) => line.split(' | title: ')[1] || '')
+          .map((part) => part.split(' | angle: ')[0] || '')
+          .filter(Boolean);
+        if (planTitles.length) {
+          console.log('[Calendar][Plan][Title]', {
+            requestId: chunkContext?.requestId || 'unknown',
+            chunkIndex,
+            startDay: chunkStartDay,
+            titles: planTitles,
+          });
+        }
+      }
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
