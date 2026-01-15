@@ -512,7 +512,17 @@ function logServerError(tag, err, info = {}) {
 function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
   const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
+  const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
+  const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
   const requestIdValue = requestId || generateRequestId('server_error');
+  if (isTopicBinding || isPostKeyMapping) {
+    const payload = {
+      error: isTopicBinding ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+      ...(err?.payload || {}),
+    };
+    if (requestIdValue) payload.requestId = requestIdValue;
+    return sendJson(res, 422, payload);
+  }
   const status = statusCode || err?.statusCode || (isOpenAISchema ? 502 : 500);
   const code = isOpenAISchema ? 'OPENAI_SCHEMA_ERROR' : err?.code || 'server_error';
   const message = isOpenAISchema ? 'openai_schema_error' : err?.message || 'internal_error';
@@ -2503,13 +2513,15 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['day', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
+    required: ['post_key', 'day', 'slotIndex', 'title', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
     properties: {
+      post_key: { type: 'string', minLength: 1 },
       day: {
         type: 'integer',
         minimum: safeMin,
         maximum: safeMax,
       },
+      slotIndex: { type: 'integer', minimum: 0 },
       title: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
@@ -2868,9 +2880,6 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   };
 }
 
-const TOPIC_SPECIFICITY_RULE =
-  "Generic Miami real estate filler is not acceptable. Each field must include at least one specific concept from POST_TOPIC (not just 'Miami', 'real estate', 'neighborhoods', 'buyers', 'investors').";
-
 const TOPIC_LOCK_CONTRACT_BLOCK = [
   'TOPIC LOCK CONTRACT (INTERNAL, DO NOT OUTPUT IN JSON):',
   'Immediately before writing each post object\'s fields, write this block internally:',
@@ -2878,9 +2887,8 @@ const TOPIC_LOCK_CONTRACT_BLOCK = [
   'POST_TOPIC: <title/topic> (use the exact title/topic string for that post)',
   'TOPIC_LOCK:',
   '"All fields below MUST be about POST_TOPIC only."',
-  '"Do not borrow details, examples, neighborhoods, or storylines from any other post in this same response."',
+  '"Do not borrow details, examples, or storylines from any other post in this same response."',
   '"If you feel tempted to talk about something else, rewrite until it is clearly about POST_TOPIC."',
-  `TOPIC_SPECIFICITY: "${TOPIC_SPECIFICITY_RULE}"`,
   'This block is instruction-only; never include it in the output JSON.',
 ].join('\n');
 
@@ -2898,6 +2906,25 @@ const FIELD_REGROUNDING_BLOCK = [
   `- Engagement Loop (engagementScripts commentReply/dmReply): ${FIELD_REGROUNDING_INSTRUCTION}`,
   `- Distribution Plan: ${FIELD_REGROUNDING_INSTRUCTION}`,
 ].join('\n');
+
+function buildRequestedPostIdentityBlock(startDay, days, postsPerDay) {
+  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
+  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const lines = [
+    'REQUESTED POST IDS (MUST MATCH):',
+    '- Each post object MUST include: post_key, day, slotIndex, title.',
+    '- post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
+    'Requested IDs:',
+  ];
+  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+    const day = safeStart + dayOffset;
+    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
+      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
+    }
+  }
+  return lines.join('\n');
+}
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
@@ -2981,9 +3008,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         ].join('\\n')
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
+  const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting);
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
 TITLE ANCHOR (NON-NEGOTIABLE):
@@ -2995,14 +3024,10 @@ TITLE ANCHOR (NON-NEGOTIABLE):
 - Reel Script MUST re-ground: first line of the Reel Script body must restate the topic using the title’s distinctive noun phrase.
 - Engagement loop comment OR DM line must also reference the same topic in one sentence.
 - MISMATCH CHECK: Before returning JSON, compare Title vs Hook + Caption first sentence + Reel Script first line. If any do not describe the same topic, rewrite Hook/Captions/Reel Script to match the title. Do not change the title.
-- Do not replace the title with a generic real estate tip theme.
-- Do not shift into: investment red flags, first-time buyer mistakes, neighborhood selection, staging/paint tips, market trends, unless the title is explicitly about that.
-GLOBAL TOPIC SPECIFICITY (NON-NEGOTIABLE):
-- ${TOPIC_SPECIFICITY_RULE}
 ${FIELD_REGROUNDING_BLOCK}
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
-- Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
+- Each post includes post_key, day, slotIndex, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
 - If a Topic (MUST USE) is provided, the title must match it exactly (character-for-character).
 - TOPIC LOCK: The title is the single source of truth for the post topic.
 - Every other field must be about the same topic as the title. If you start writing about a different idea, you MUST rewrite that section to match the title before returning JSON.
@@ -3043,7 +3068,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with day, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -3136,8 +3161,125 @@ function normalizeTitleSignature(value = '') {
   return tokens.join(' ').trim();
 }
 
+const TOPIC_FINGERPRINT_STOPWORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'but',
+  'for',
+  'to',
+  'of',
+  'in',
+  'on',
+  'with',
+  'without',
+  'at',
+  'by',
+  'from',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'being',
+  'been',
+  'this',
+  'that',
+  'these',
+  'those',
+  'my',
+  'your',
+  'our',
+  'their',
+  'you',
+  'i',
+]);
+
+function normalizeTopicText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/(\w)'s\b/g, '$1')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function deriveTopicFingerprint(titleOrTopic = '') {
+  const base = normalizeTopicText(titleOrTopic);
+  const tokens = [];
+  const seen = new Set();
+  const rawTokens = base.split(/\s+/).filter(Boolean);
+  for (const token of rawTokens) {
+    if (token.length < 4) continue;
+    if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+    if (tokens.length >= 8) break;
+  }
+  let phrase = null;
+  if (tokens.length >= 2) {
+    const maxLen = Math.min(5, tokens.length);
+    phrase = tokens.slice(0, maxLen).join(' ');
+  }
+  return { tokens, phrase };
+}
+
 function getTitleFirstWords(value = '', count = 4) {
   return normalizeTitleText(value).split(/\s+/).slice(0, count).join(' ').trim();
+}
+
+function coerceFieldText(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean).join(' ').trim();
+  }
+  if (typeof value === 'object') {
+    const parts = [];
+    ['hook', 'body', 'cta', 'text', 'commentReply', 'dmReply'].forEach((key) => {
+      if (typeof value[key] === 'string' && value[key].trim()) {
+        parts.push(value[key].trim());
+      }
+    });
+    return parts.join(' ').trim();
+  }
+  return '';
+}
+
+function getField(post = {}, names = []) {
+  if (!post || typeof post !== 'object') return '';
+  for (const name of names) {
+    if (!name) continue;
+    const value = Object.prototype.hasOwnProperty.call(post, name) ? post[name] : undefined;
+    const text = coerceFieldText(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+function containsTopicReference(text = '', fingerprint = {}) {
+  if (!isNonEmptyString(text)) return false;
+  const normalized = normalizeTopicText(text);
+  if (!normalized) return false;
+  const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
+  if (phrase && normalized.includes(phrase)) return true;
+  const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
+  if (tokens.length < 2) return false;
+  const normalizedTokens = new Set(normalized.split(/\s+/).filter(Boolean));
+  let matchCount = 0;
+  const seen = new Set();
+  for (const token of tokens) {
+    if (!token || seen.has(token)) continue;
+    if (normalizedTokens.has(token)) {
+      matchCount += 1;
+      seen.add(token);
+      if (matchCount >= 2) return true;
+    }
+  }
+  return false;
 }
 
 function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pillarSchedule = null) {
@@ -3165,14 +3307,14 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } =
   if (!assigned.length) return '';
   const lines = [
     'ASSIGNED TOPIC PLAN (read-only):',
+    'Each post object MUST include: post_key, day, slotIndex, title.',
+    'post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
     ...assigned.map((item) =>
-      `Day ${item.day} | postIndex ${item.postIndex} | pillar: ${item.pillar} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
+      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | pillar: ${item.pillar} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
     ),
     'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
     'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
     'All sections must be about the title. If any section drifts, rewrite it to match the title before returning JSON.',
-    'Do not output generic real estate tips unrelated to the title.',
-    'Do not swap to other themes (investment red flags, first-time buyer mistakes, neighborhoods, staging/paint, market trends) unless the title explicitly says so.',
   ];
   return lines.join('\n');
 }
@@ -3295,8 +3437,6 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const qualityRules = `Quality Rules — Make each post specific and actionable:
 ${TOPIC_LOCK_CONTRACT_BLOCK}
 ${FIELD_REGROUNDING_BLOCK}
-GLOBAL TOPIC SPECIFICITY (NON-NEGOTIABLE):
-- ${TOPIC_SPECIFICITY_RULE}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Reference a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches or platforms, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
 2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and keep filler tags to a minimum.
@@ -4243,6 +4383,69 @@ function postKey(day, slotIndex) {
   return `day-${day}-slot-${slotIndex}`;
 }
 
+function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicPlan = null } = {}) {
+  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
+  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const topicByKey = new Map();
+  if (Array.isArray(topicPlan)) {
+    topicPlan.forEach((item) => {
+      const day = Number(item?.day);
+      const slotIndex = Number.isFinite(Number(item?.postIndex)) ? Number(item.postIndex) : null;
+      if (!Number.isFinite(day) || slotIndex === null) return;
+      const title = toPlainString(item?.title || item?.topic || '');
+      topicByKey.set(postKey(day, slotIndex), title);
+    });
+  }
+  const map = new Map();
+  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+    const day = safeStart + dayOffset;
+    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
+      const key = postKey(day, slotIndex);
+      const title = topicByKey.get(key) || '';
+      map.set(key, {
+        post_key: key,
+        day,
+        slotIndex,
+        title,
+        topic: title,
+      });
+    }
+  }
+  return map;
+}
+
+function assertPostKeyMapping(posts = [], requestedSpecMap = new Map()) {
+  const expectedPostKeys = Array.from(requestedSpecMap.keys());
+  const expectedSet = new Set(expectedPostKeys);
+  const returnedKeys = [];
+  const missingPostKey = [];
+  posts.forEach((post, idx) => {
+    const key = toPlainString(post?.post_key || post?.postKey || '');
+    if (!key) {
+      missingPostKey.push({ index: idx, day: post?.day ?? null, slotIndex: post?.slotIndex ?? null });
+      return;
+    }
+    returnedKeys.push(key);
+  });
+  const returnedSet = new Set(returnedKeys);
+  const missingKeys = expectedPostKeys.filter((key) => !returnedSet.has(key));
+  const extraKeys = returnedKeys.filter((key) => !expectedSet.has(key));
+  if (missingPostKey.length || missingKeys.length || extraKeys.length || returnedSet.size !== expectedSet.size) {
+    const err = new Error('POST_KEY_MAPPING_FAILED');
+    err.code = 'POST_KEY_MAPPING_FAILED';
+    err.statusCode = 422;
+    err.payload = {
+      expectedPostKeys,
+      returnedPostKeys: returnedKeys,
+      missingPostKeys: missingKeys,
+      extraPostKeys: extraKeys,
+      postsMissingPostKey: missingPostKey,
+    };
+    throw err;
+  }
+}
+
 function assignPostKeys(posts = [], startDay = 1, postsPerDay = 1) {
   const meta = posts.map((post, idx) => {
     const dayValue = Number.isFinite(Number(post?.day))
@@ -4263,6 +4466,13 @@ function assignPostKeys(posts = [], startDay = 1, postsPerDay = 1) {
   });
   posts.forEach((post, idx) => {
     if (!post || typeof post !== 'object') return;
+    const explicitKey = toPlainString(post.post_key || post.postKey || '');
+    const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
+    if (explicitKey) {
+      post.__slotIndex = explicitSlotIndex !== null ? explicitSlotIndex : (slotByIndex.get(idx) ?? 0);
+      post.__key = explicitKey;
+      return;
+    }
     const dayValue = Number.isFinite(Number(post?.day))
       ? Number(post.day)
       : computePostDayIndex(idx, startDay, postsPerDay);
@@ -4418,6 +4628,77 @@ function validatePostCompleteness(post = {}) {
   }
 
   return missing;
+}
+
+function resolveRequestedSpec(requestedSpec = {}, post = {}) {
+  const spec = requestedSpec && typeof requestedSpec === 'object' ? requestedSpec : {};
+  const title = toPlainString(spec.title || spec.topic || post.title || post.topic || '');
+  return {
+    ...spec,
+    title,
+    topic: title,
+  };
+}
+
+function assertPostTopicBound(post = {}, requestedSpec = {}) {
+  if (!post || typeof post !== 'object') return;
+  const resolvedSpec = resolveRequestedSpec(requestedSpec, post);
+  const titleText = toPlainString(resolvedSpec.title || resolvedSpec.topic || '');
+  const fingerprint = deriveTopicFingerprint(titleText);
+  const hookText = getField(post, ['hook']);
+  const captionText = getField(post, ['caption']);
+  const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
+  const hashtagsText = getField(post, ['hashtags']);
+  const designNotesText = getField(post, ['designNotes', 'design_notes']);
+  const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
+  const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
+  const failedFields = [];
+  const snippets = {};
+  if (!containsTopicReference(hookText, fingerprint)) {
+    failedFields.push('hook');
+    snippets.hook = hookText ? hookText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(captionText, fingerprint)) {
+    failedFields.push('caption');
+    snippets.caption = captionText ? captionText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(scriptText, fingerprint)) {
+    failedFields.push('script');
+    snippets.script = scriptText ? scriptText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(hashtagsText, fingerprint)) {
+    failedFields.push('hashtags');
+    snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(designNotesText, fingerprint)) {
+    failedFields.push('designNotes');
+    snippets.designNotes = designNotesText ? designNotesText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(engagementLoopText, fingerprint)) {
+    failedFields.push('engagementLoop');
+    snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 80) : '';
+  }
+  if (!containsTopicReference(distributionPlanText, fingerprint)) {
+    failedFields.push('distributionPlan');
+    snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 80) : '';
+  }
+  if (!failedFields.length) return;
+  const err = new Error('TOPIC_BINDING_FAILED');
+  err.code = 'TOPIC_BINDING_FAILED';
+  err.statusCode = 422;
+  err.payload = {
+    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
+    day: Number.isFinite(Number(resolvedSpec.day)) ? Number(resolvedSpec.day) : (Number.isFinite(Number(post.day)) ? Number(post.day) : null),
+    slotIndex: Number.isFinite(Number(resolvedSpec.slotIndex))
+      ? Number(resolvedSpec.slotIndex)
+      : (Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null),
+    title: titleText,
+    topic: resolvedSpec.topic || '',
+    fingerprint,
+    failedFields,
+    snippets,
+  };
+  throw err;
 }
 
 function stripSuggestedAudioLinks(value = '') {
@@ -4806,9 +5087,13 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
   }
   const resolvedDay = typeof post.day === 'number' ? post.day : fallbackDay;
+  const postKeyValue = toPlainString(post.post_key || post.postKey || '');
+  const slotIndexValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
   const resolvedPillar = normalizeCalendarPillar(post.pillar) || getCalendarPillarForDay(resolvedDay);
   const normalized = {
+    post_key: postKeyValue,
     day: resolvedDay,
+    slotIndex: slotIndexValue,
     idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
     title: toPlainString(post.title || post.idea || ''),
     type: toPlainString(post.type || 'educational'),
@@ -6095,6 +6380,19 @@ const server = http.createServer((req, res) => {
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
+      const chunkPosts = Array.isArray(result.posts) ? result.posts : [];
+      const requestedSpecMap = buildRequestedSpecMap({
+        startDay: chunkStartDay,
+        days: chunkDays,
+        postsPerDay: chunkPostsPerDay,
+        topicPlan,
+      });
+      assertPostKeyMapping(chunkPosts, requestedSpecMap);
+      chunkPosts.forEach((post) => {
+        const key = toPlainString(post?.post_key || post?.postKey || '');
+        const requestedSpec = requestedSpecMap.get(key) || {};
+        assertPostTopicBound(post, requestedSpec);
+      });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -6106,7 +6404,7 @@ const server = http.createServer((req, res) => {
         postCount: Array.isArray(result.posts) ? result.posts.length : 0,
       });
       return {
-        posts: Array.isArray(result.posts) ? result.posts : [],
+        posts: chunkPosts,
         rawLength: String(result.rawContent || '').length,
         latency: result.latency || 0,
         fallback: Boolean(result.fallback),
@@ -6463,24 +6761,27 @@ const server = http.createServer((req, res) => {
           .map((item) => [item.__key, String(item.title).trim()])
       );
       let missingBinding = false;
+      const missingKeys = [];
       posts.forEach((post) => {
         if (!post || typeof post !== 'object') return;
         const topic = topicByKey.get(post.__key);
         if (!topic) {
           missingBinding = true;
+          if (post.__key) missingKeys.push(post.__key);
           return;
         }
         post.topic = topic;
         post.title = topic;
         if (normalizeTitleText(post.title) !== normalizeTitleText(topic)) {
           missingBinding = true;
+          if (post.__key) missingKeys.push(post.__key);
         }
       });
       if (missingBinding) {
         const err = new Error('TopicBindFailed');
-        err.code = 'OPENAI_SCHEMA_ERROR';
+        err.code = 'POST_KEY_MAPPING_FAILED';
         err.statusCode = 422;
-        err.details = { reason: 'topic_bind_failed' };
+        err.payload = { reason: 'topic_plan_binding_failed', missingPostKeys: missingKeys };
         throw err;
       }
       const debugSample = posts
@@ -6959,6 +7260,8 @@ const server = http.createServer((req, res) => {
         };
         const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
         const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
+        const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
+        const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
         const logInfo = { requestId, context: errorContext };
         if (isSchemaError) {
           if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
@@ -6983,6 +7286,13 @@ const server = http.createServer((req, res) => {
         }
         logServerError('calendar_regenerate_error', err, logInfo);
         if (res.headersSent) return;
+        if (isTopicBinding || isPostKeyMapping) {
+          return sendJson(res, 422, {
+            error: isTopicBinding ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+            ...(err?.payload || {}),
+            requestId,
+          });
+        }
         const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
         const openaiDetails = err?.openaiDetails || {};
         const payload = {
@@ -7693,6 +8003,13 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { post: enriched });
       } catch (err) {
         console.error('regen-day error:', err);
+        if (err?.code === 'TOPIC_BINDING_FAILED' || err?.code === 'POST_KEY_MAPPING_FAILED') {
+          return sendJson(res, 422, {
+            error: err.code === 'TOPIC_BINDING_FAILED' ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+            ...(err?.payload || {}),
+            requestId,
+          });
+        }
         const status = err.statusCode || 500;
         return sendJson(res, status, { error: err.message || 'Failed to regenerate day' });
       }
