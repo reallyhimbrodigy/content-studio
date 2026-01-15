@@ -2834,7 +2834,8 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
     'These additions may only change audience framing. They must NOT change topic. Keep Hook/Caption/Reel Script fully aligned to the title.',
     'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
     `Target audience: ${preset.label}.`,
-    'Tailor tone, assumptions, and explanation depth to this audience.',
+    'TARGET AUDIENCE IS IMPLICIT ONLY. DO NOT mention or reference the target audience group anywhere in the output. This includes: title/topic, hook, caption, CTA, execution notes, design notes, engagement loop, reel script, distribution plan, hashtags, story prompt, suggested audio, and any other fields. No phrases like "for students", "if you’re a teacher", "for 18–25", "busy parents", "gen z", "millennials", etc.',
+    'Apply targeting only via: vocabulary level, examples, metaphors, pacing, platform-native behavior, objections, motivations, and scenario selection.',
     'Audience framing changes examples/wording only; it must not change the topic/title.',
     preset.lens,
     'Apply only to phrasing for: Hook, Caption/Main body, CTA, Engagement Loop, Reel Script.',
@@ -2985,6 +2986,7 @@ Rules:
 TITLE QUALITY BAR
 - Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
+- Distribution Plan must describe channels/timing/format/CTA mechanics only. It must not reference any audience group explicitly.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
@@ -2996,7 +2998,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = `${basePrompt}${schemaBlock}${targetAudienceBlock}${voiceLockBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}`;
   return finalPrompt;
 }
 
