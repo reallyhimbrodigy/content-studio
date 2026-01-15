@@ -3344,6 +3344,26 @@ function containsTopicReference(text = '', fingerprint = {}) {
   return false;
 }
 
+function hasAnyAnchorToken(text = '', fingerprint = {}) {
+  if (!isNonEmptyString(text)) return false;
+  const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
+  if (!tokens.length) return false;
+  const normalized = normalizeTopicText(text);
+  const wordSet = new Set(normalized.split(/\s+/).filter(Boolean));
+  for (const token of tokens) {
+    if (token && wordSet.has(token)) return true;
+  }
+  const hashtagTokens = (String(text).match(/#[A-Za-z0-9_]+/g) || [])
+    .map((tag) => normalizeTopicText(tag.replace(/^#/, '')))
+    .filter(Boolean);
+  for (const tag of hashtagTokens) {
+    for (const token of tokens) {
+      if (token && tag.includes(token)) return true;
+    }
+  }
+  return false;
+}
+
 function deriveFingerprintFromCapsule(capsule = {}) {
   const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
   const combined = mustUse.map((item) => String(item || '')).join(' ');
@@ -4523,18 +4543,22 @@ function tokenizeTitleForAvoid(value = '') {
     .filter((token) => token.length >= 4 && !TOPIC_FINGERPRINT_STOPWORDS.has(token));
 }
 
-function buildMustAvoidTokensByKey(requestedSpecMap = new Map()) {
-  const entries = Array.from(requestedSpecMap.values());
+function buildMustAvoidTokensByEntries(entries = [], maxTokens = 10) {
   const tokensByKey = new Map();
   entries.forEach((entry) => {
-    tokensByKey.set(entry.post_key, tokenizeTitleForAvoid(entry.title || ''));
+    const key = toPlainString(entry?.post_key || '');
+    if (!key) return;
+    tokensByKey.set(key, tokenizeTitleForAvoid(entry.title || ''));
   });
   const result = new Map();
   entries.forEach((entry) => {
+    const key = toPlainString(entry?.post_key || '');
+    if (!key) return;
     const counts = new Map();
     entries.forEach((other) => {
-      if (other.post_key === entry.post_key) return;
-      const tokens = tokensByKey.get(other.post_key) || [];
+      const otherKey = toPlainString(other?.post_key || '');
+      if (!otherKey || otherKey === key) return;
+      const tokens = tokensByKey.get(otherKey) || [];
       tokens.forEach((token) => {
         counts.set(token, (counts.get(token) || 0) + 1);
       });
@@ -4543,9 +4567,13 @@ function buildMustAvoidTokensByKey(requestedSpecMap = new Map()) {
       if (b[1] !== a[1]) return b[1] - a[1];
       return a[0].localeCompare(b[0]);
     });
-    result.set(entry.post_key, sorted.slice(0, 8).map(([token]) => token));
+    result.set(key, sorted.slice(0, maxTokens).map(([token]) => token));
   });
   return result;
+}
+
+function buildMustAvoidTokensByKey(requestedSpecMap = new Map()) {
+  return buildMustAvoidTokensByEntries(Array.from(requestedSpecMap.values()), 10);
 }
 
 function assertPostKeyMapping(posts = [], requestedSpecMap = new Map()) {
@@ -4763,9 +4791,9 @@ function validatePostCompleteness(post = {}) {
   return missing;
 }
 
-function resolveRequestedSpec(requestedSpec = {}, post = {}) {
+function resolveRequestedSpec(requestedSpec = {}) {
   const spec = requestedSpec && typeof requestedSpec === 'object' ? requestedSpec : {};
-  const title = toPlainString(spec.title || spec.topic || post.title || post.topic || '');
+  const title = toPlainString(spec.title || spec.topic || '');
   return {
     ...spec,
     title,
@@ -4773,13 +4801,14 @@ function resolveRequestedSpec(requestedSpec = {}, post = {}) {
   };
 }
 
-function assertPostTopicBound(post = {}, requestedSpec = {}) {
+function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = []) {
   if (!post || typeof post !== 'object') return;
-  const resolvedSpec = resolveRequestedSpec(requestedSpec, post);
+  const resolvedSpec = resolveRequestedSpec(requestedSpec);
   const titleText = toPlainString(resolvedSpec.title || resolvedSpec.topic || '');
   const capsule = post.topicCapsule || post.topic_capsule || {};
   const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
-  const mustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
+  const capsuleMustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
+  const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
   const fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
@@ -4789,39 +4818,43 @@ function assertPostTopicBound(post = {}, requestedSpec = {}) {
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
   const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
   const failedFields = [];
+  const tierAFailedFields = [];
+  const tierBFailedFields = [];
   const snippets = {};
-  const hookMustUse = countMustUseMatches(hookText, mustUse);
-  if (!containsTopicReference(hookText, fingerprint) || hookMustUse < 2 || containsMustAvoidToken(hookText, mustAvoid)) {
+  if (!containsTopicReference(hookText, fingerprint)) {
+    tierAFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  const captionMustUse = countMustUseMatches(captionText, mustUse);
-  if (!containsTopicReference(captionText, fingerprint) || captionMustUse < 2 || containsMustAvoidToken(captionText, mustAvoid)) {
+  if (!containsTopicReference(captionText, fingerprint)) {
+    tierAFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
   }
-  const scriptMustUse = countMustUseMatches(scriptText, mustUse);
-  if (!containsTopicReference(scriptText, fingerprint) || scriptMustUse < 2 || containsMustAvoidToken(scriptText, mustAvoid)) {
+  if (!containsTopicReference(scriptText, fingerprint)) {
+    tierAFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 80) : '';
   }
-  const hashtagsMustUse = countMustUseMatches(hashtagsText, mustUse);
-  if (!containsTopicReference(hashtagsText, fingerprint) || hashtagsMustUse < 2 || containsMustAvoidToken(hashtagsText, mustAvoid)) {
+  const hashtagsHasAnchor = hasAnyAnchorToken(hashtagsText, fingerprint);
+  const hashtagsHasAvoid = containsMustAvoidToken(hashtagsText, mustAvoid);
+  if (!isNonEmptyString(hashtagsText) || (!hashtagsHasAnchor && hashtagsHasAvoid)) {
+    tierBFailedFields.push('hashtags');
     failedFields.push('hashtags');
     snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 80) : '';
   }
-  const designMustUse = countMustUseMatches(designNotesText, mustUse);
-  if (!containsTopicReference(designNotesText, fingerprint) || designMustUse < 2 || containsMustAvoidToken(designNotesText, mustAvoid)) {
+  if (!isNonEmptyString(designNotesText) || containsMustAvoidToken(designNotesText, mustAvoid)) {
+    tierBFailedFields.push('designNotes');
     failedFields.push('designNotes');
     snippets.designNotes = designNotesText ? designNotesText.slice(0, 80) : '';
   }
-  const engagementMustUse = countMustUseMatches(engagementLoopText, mustUse);
-  if (!containsTopicReference(engagementLoopText, fingerprint) || engagementMustUse < 2 || containsMustAvoidToken(engagementLoopText, mustAvoid)) {
+  if (!isNonEmptyString(engagementLoopText) || containsMustAvoidToken(engagementLoopText, mustAvoid)) {
+    tierBFailedFields.push('engagementLoop');
     failedFields.push('engagementLoop');
     snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 80) : '';
   }
-  const distributionMustUse = countMustUseMatches(distributionPlanText, mustUse);
-  if (!containsTopicReference(distributionPlanText, fingerprint) || distributionMustUse < 2 || containsMustAvoidToken(distributionPlanText, mustAvoid)) {
+  if (!isNonEmptyString(distributionPlanText) || containsMustAvoidToken(distributionPlanText, mustAvoid)) {
+    tierBFailedFields.push('distributionPlan');
     failedFields.push('distributionPlan');
     snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 80) : '';
   }
@@ -4839,6 +4872,8 @@ function assertPostTopicBound(post = {}, requestedSpec = {}) {
     topic: resolvedSpec.topic || '',
     fingerprint,
     failedFields,
+    tierAFailedFields,
+    tierBFailedFields,
     snippets,
   };
   throw err;
@@ -6537,11 +6572,19 @@ const server = http.createServer((req, res) => {
         postsPerDay: chunkPostsPerDay,
         topicPlan,
       });
+      const fallbackAvoidByKey = buildMustAvoidTokensByEntries(
+        chunkPosts.map((post) => ({
+          post_key: toPlainString(post?.post_key || post?.postKey || ''),
+          title: toPlainString(post?.title || post?.topic || ''),
+        })),
+        10
+      );
       assertPostKeyMapping(chunkPosts, requestedSpecMap);
       chunkPosts.forEach((post) => {
         const key = toPlainString(post?.post_key || post?.postKey || '');
         const requestedSpec = requestedSpecMap.get(key) || {};
-        assertPostTopicBound(post, requestedSpec);
+        const fallbackMustAvoid = fallbackAvoidByKey.get(key) || [];
+        assertPostTopicBound(post, requestedSpec, fallbackMustAvoid);
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
