@@ -2710,6 +2710,7 @@ function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
     'VOICE LOCK STYLE RULES',
     'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
     'Non-negotiable: do not change the post’s topic/title/angle. Only adjust tone while staying on the same topic_signature.',
+    'Voice Lock: Change tone/voice ONLY. Must not change POST_TOPIC or structure.',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Voice changes tone only; it must not change the topic or introduce new subject matter.',
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
@@ -2833,6 +2834,7 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
     'TARGET AUDIENCE',
     'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
     'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
+    'Target Audience: Influence vocabulary/examples only; NEVER mention the audience explicitly; must not change POST_TOPIC.',
     `Target audience: ${preset.label}.`,
     'TARGET AUDIENCE IS IMPLICIT ONLY. DO NOT mention or reference the target audience group anywhere in the output. This includes: title/topic, hook, caption, CTA, execution notes, design notes, engagement loop, reel script, distribution plan, hashtags, story prompt, suggested audio, and any other fields. No phrases like "for students", "if you’re a teacher", "for 18–25", "busy parents", "gen z", "millennials", etc.',
     'Apply targeting only via: vocabulary level, examples, metaphors, pacing, platform-native behavior, objections, motivations, and scenario selection.',
@@ -2866,6 +2868,37 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   };
 }
 
+const TOPIC_SPECIFICITY_RULE =
+  "Generic Miami real estate filler is not acceptable. Each field must include at least one specific concept from POST_TOPIC (not just 'Miami', 'real estate', 'neighborhoods', 'buyers', 'investors').";
+
+const TOPIC_LOCK_CONTRACT_BLOCK = [
+  'TOPIC LOCK CONTRACT (INTERNAL, DO NOT OUTPUT IN JSON):',
+  'Immediately before writing each post object\'s fields, write this block internally:',
+  'POST_ID: <day>-<slot> (use the post day and slot/per-day index already provided)',
+  'POST_TOPIC: <title/topic> (use the exact title/topic string for that post)',
+  'TOPIC_LOCK:',
+  '"All fields below MUST be about POST_TOPIC only."',
+  '"Do not borrow details, examples, neighborhoods, or storylines from any other post in this same response."',
+  '"If you feel tempted to talk about something else, rewrite until it is clearly about POST_TOPIC."',
+  `TOPIC_SPECIFICITY: "${TOPIC_SPECIFICITY_RULE}"`,
+  'This block is instruction-only; never include it in the output JSON.',
+].join('\n');
+
+const FIELD_REGROUNDING_INSTRUCTION =
+  'Start by restating POST_TOPIC in your own words internally, then write the field strictly about it without keyword stuffing. Do NOT mention the phrase "POST_TOPIC".';
+
+const FIELD_REGROUNDING_BLOCK = [
+  'FIELD RE-GROUNDING (APPLY TO EACH FIELD BELOW):',
+  `- Hook: ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Caption: ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Script (script hook/body/cta): ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Reel Script (reelScript hook/body/cta): ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Hashtags: ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Design Notes: ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Engagement Loop (engagementScripts commentReply/dmReply): ${FIELD_REGROUNDING_INSTRUCTION}`,
+  `- Distribution Plan: ${FIELD_REGROUNDING_INSTRUCTION}`,
+].join('\n');
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -2880,6 +2913,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
         'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
         'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
+        'Brand Brain: Optimize persuasion and platform performance ONLY. Must not change POST_TOPIC.',
         '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
         'TITLE QUALITY BAR',
@@ -2950,6 +2984,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
   const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
+${TOPIC_LOCK_CONTRACT_BLOCK}
 TITLE ANCHOR (NON-NEGOTIABLE):
 - The title/topic is the single source of truth.
 - All sections must be about the title. No section may introduce a different topic.
@@ -2961,6 +2997,9 @@ TITLE ANCHOR (NON-NEGOTIABLE):
 - MISMATCH CHECK: Before returning JSON, compare Title vs Hook + Caption first sentence + Reel Script first line. If any do not describe the same topic, rewrite Hook/Captions/Reel Script to match the title. Do not change the title.
 - Do not replace the title with a generic real estate tip theme.
 - Do not shift into: investment red flags, first-time buyer mistakes, neighborhood selection, staging/paint tips, market trends, unless the title is explicitly about that.
+GLOBAL TOPIC SPECIFICITY (NON-NEGOTIABLE):
+- ${TOPIC_SPECIFICITY_RULE}
+${FIELD_REGROUNDING_BLOCK}
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
@@ -3254,6 +3293,11 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
   const qualityRules = `Quality Rules — Make each post specific and actionable:
+${TOPIC_LOCK_CONTRACT_BLOCK}
+${FIELD_REGROUNDING_BLOCK}
+GLOBAL TOPIC SPECIFICITY (NON-NEGOTIABLE):
+- ${TOPIC_SPECIFICITY_RULE}
+Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Reference a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches or platforms, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
 2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and keep filler tags to a minimum.
 3) CTA: write one short call-to-action (4–10 words) that is specific to this post’s topic. Do not output generic prompts such as “Thoughts?”, “Let us know!”, “Tell me what you think”, or “Share your story.” Never include “DM me” unless the context explicitly involves booking/consult calls, and avoid advising direct “Book now”/“Sign up” style language. Output only the CTA text with no label or prefix.
