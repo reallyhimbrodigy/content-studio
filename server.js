@@ -2708,6 +2708,7 @@ function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
   const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
   const lines = [
     'VOICE LOCK STYLE RULES',
+    'Non-negotiable: do not change the post’s topic/title. All modifications must be applied to the SAME topic.',
     `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
     'Voice changes tone only; it must not change the topic or introduce new subject matter.',
     'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
@@ -2829,6 +2830,7 @@ function buildTargetAudienceInstructionBlock({ presetKey }) {
   if (!preset) return '';
   const lines = [
     'TARGET AUDIENCE',
+    'Non-negotiable: do not change the post’s topic/title. All modifications must be applied to the SAME topic.',
     `Target audience: ${preset.label}.`,
     'Tailor tone, assumptions, and explanation depth to this audience.',
     'Audience framing changes examples/wording only; it must not change the topic/title.',
@@ -2873,6 +2875,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
         'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
+        'Non-negotiable: do not change the post’s topic/title. All modifications must be applied to the SAME topic.',
         '- Title must be present, human-readable, and non-empty.',
         '- Title must be at least 6 words.',
         'TITLE QUALITY BAR',
@@ -2946,12 +2949,15 @@ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes day, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
-- TOPIC ANCHOR: The title/topic is the single source of truth for the post.
+- TITLE LOCK: The title/topic is immutable and the single source of truth for the post.
+- Generate each post in this order: A) Choose the title/topic. B) Internally write a one-sentence topicAnchor that restates the title in concrete terms (who/what + specific angle). C) Generate every remaining field using only the title/topicAnchor.
+- The topicAnchor is an internal instruction only; do NOT output it as a field.
 - Every section (Hook, Caption, Reel Script, CTA, Execution Notes, Design Notes, Engagement Loop) must directly support the title/topic.
-- Do not introduce a different scenario/topic than the title/topic; no generic content unless the title explicitly matches it.
+- Do not introduce a different scenario/topic than the title/topic; do not substitute a different tip because it fits the niche.
+- Extract 2–4 key terms from the title. Those terms (or direct synonyms) must appear in: Hook or first caption sentence, Reel Script body, and Engagement Loop prompt.
 - Hook and the first sentence of the Caption/Reel body must include at least one concrete noun phrase from the title/topic.
 - CTA must match the intent implied by the title/topic (aligned action, not a generic mismatch).
-- SELF-CHECK: Before finalizing each post, verify Hook/Body/CTA are about the same subject as the title/topic; if not, rewrite the drifting section to match.
+- MISMATCH REWRITE: Before returning final JSON, check each post; if Hook/Caption/Reel Script is not clearly about the title, rewrite ONLY the drifting parts to match the title.
 - Title must be present, human-readable, and non-empty.
 TITLE QUALITY BAR
 - Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.
