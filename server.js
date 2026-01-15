@@ -2548,7 +2548,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
             maxItems: 5,
             items: { type: 'string', minLength: 1 },
           },
-          timeframeOrLocale: { type: 'string', minLength: 1 },
         },
       },
       hook: { type: 'string', minLength: 1 },
@@ -3053,21 +3052,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
-  const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 ${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
 TOPIC CAPSULE (REQUIRED PER POST):
-- Each post MUST include topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities, timeframeOrLocale }.
+- Each post MUST include topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
 - For each post, FIRST fill topicCapsule based ONLY on that post's title/topic.
 - If a title is not provided in the requested IDs section, choose a title and use it as the sole source for topicCapsule.
 - mustUse: 5–10 words/phrases derived from the post's title/topic.
 - mustAvoid: copy EXACTLY from the requested IDs section for that post (tokens from other titles in this request).
-- audienceAngle: short phrase; keyEntities: 0–5 proper nouns if present; timeframeOrLocale: optional if implied.
+- audienceAngle: short phrase; keyEntities: 0–5 proper nouns if present.
 - Every other field MUST be generated using ONLY the topicCapsule (summary + mustUse + audienceAngle + keyEntities). No other post's capsule may influence it.
 - Hard constraint: Each required field MUST include at least TWO distinct items from topicCapsule.mustUse verbatim (case-insensitive). Hashtags count if they include the phrase.
 - Hard constraint: No required field may contain any token from topicCapsule.mustAvoid (case-insensitive word-boundary).
-- Do NOT mention "Miami" or niche examples unless they appear in the post's own title/topic or topicCapsule.
 TITLE ANCHOR (NON-NEGOTIABLE):
 - The title/topic is the single source of truth.
 - All sections must be about the title. No section may introduce a different topic.
@@ -3121,7 +3119,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[],timeframeOrLocale}, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -3149,6 +3147,17 @@ function extractOpenAiErrorDetails(err) {
     openaiParam: openaiError?.param || null,
     openaiBody: payload || err?.body || err?.response || null,
   };
+}
+
+function extractSchemaObjectName(openaiMessage = '') {
+  const text = String(openaiMessage || '');
+  const knownObjects = ['topicCapsule', 'engagementScripts', 'reelScript', 'script', 'posts'];
+  for (const name of knownObjects) {
+    if (text.includes(name)) return name;
+  }
+  const tokens = (text.match(/'([^']+)'/g) || []).map((item) => item.slice(1, -1));
+  const filtered = tokens.filter((token) => !['properties', 'items', 'required', 'type', 'schema', 'json_schema', 'response_format'].includes(token));
+  return filtered.length ? filtered[filtered.length - 1] : 'unknown';
 }
 
 function assertJsonSchemaFiniteNumbers(schema, label = 'schema') {
@@ -5683,7 +5692,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           ...details,
         });
         if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
-          const schemaErr = new Error(payloadJson?.error?.message || 'OpenAI schema error');
+          const openaiMessage = payloadJson?.error?.message || err?.message || '';
+          const schemaObject = extractSchemaObjectName(openaiMessage);
+          console.warn('[OpenAI][SchemaError] object=%s message=%s', schemaObject, openaiMessage);
+          const schemaErr = new Error(openaiMessage || 'OpenAI schema error');
           schemaErr.code = 'OPENAI_SCHEMA_ERROR';
           schemaErr.statusCode = err?.statusCode || 400;
           schemaErr.details = {
@@ -5691,6 +5703,8 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
             response_format: { type: 'json_schema', json_schema: { name: 'calendar_batch', strict: true } },
             schemaKeys: Object.keys(schema || {}),
           };
+          schemaErr.openaiMessage = openaiMessage;
+          schemaErr.schemaObject = schemaObject;
           schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
           schemaErr.openaiDetails = details;
           schemaErr.mode = mode;
