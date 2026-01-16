@@ -3258,6 +3258,7 @@ const TOPIC_FINGERPRINT_STOPWORDS = new Set([
   'you',
   'i',
 ]);
+const TOPIC_FINGERPRINT_SHORT_TOKENS = new Set(['day', 'how', 'why', 'tips']);
 
 function normalizeTopicText(value = '') {
   return String(value || '')
@@ -3274,7 +3275,7 @@ function deriveTopicFingerprint(titleOrTopic = '') {
   const seen = new Set();
   const rawTokens = base.split(/\s+/).filter(Boolean);
   for (const token of rawTokens) {
-    if (token.length < 4) continue;
+    if (token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
     if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
     if (seen.has(token)) continue;
     seen.add(token);
@@ -3322,14 +3323,15 @@ function getField(post = {}, names = []) {
   return '';
 }
 
-function containsTopicReference(text = '', fingerprint = {}) {
+function containsTopicReference(text = '', fingerprint = {}, minTokens = 2) {
   if (!isNonEmptyString(text)) return false;
   const normalized = normalizeTopicText(text);
   if (!normalized) return false;
   const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
   if (phrase && normalized.includes(phrase)) return true;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
-  if (tokens.length < 2) return false;
+  if (!tokens.length) return false;
+  if (minTokens <= 0) return true;
   const normalizedTokens = new Set(normalized.split(/\s+/).filter(Boolean));
   let matchCount = 0;
   const seen = new Set();
@@ -3338,7 +3340,7 @@ function containsTopicReference(text = '', fingerprint = {}) {
     if (normalizedTokens.has(token)) {
       matchCount += 1;
       seen.add(token);
-      if (matchCount >= 2) return true;
+      if (matchCount >= minTokens) return true;
     }
   }
   return false;
@@ -4809,7 +4811,16 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
   const capsuleMustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
   const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
-  const fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
+  let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
+  if (titleText) {
+    const titleTokens = new Set(normalizeTopicText(titleText).split(/\s+/).filter(Boolean));
+    const fingerprintTokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
+    const mismatch = fingerprintTokens.filter((token) => token && !titleTokens.has(token));
+    if (mismatch.length) {
+      console.warn('[TopicBinding] fingerprint_mismatch rederive title="%s" tokens=%j', titleText, fingerprintTokens);
+      fingerprint = deriveTopicFingerprint(titleText);
+    }
+  }
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -4821,17 +4832,17 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const tierAFailedFields = [];
   const tierBFailedFields = [];
   const snippets = {};
-  if (!containsTopicReference(hookText, fingerprint)) {
+  if (!containsTopicReference(hookText, fingerprint, 1)) {
     tierAFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(captionText, fingerprint)) {
+  if (!containsTopicReference(captionText, fingerprint, 2)) {
     tierAFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(scriptText, fingerprint)) {
+  if (!containsTopicReference(scriptText, fingerprint, 2)) {
     tierAFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 80) : '';
