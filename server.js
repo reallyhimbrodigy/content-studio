@@ -3435,6 +3435,17 @@ function normalizeBindText(value = '') {
   return base;
 }
 
+function normalizeHashtagsForBinding(value = '') {
+  let text = String(value || '');
+  text = text.replace(/#/g, ' ');
+  text = text.replace(/[_-]+/g, ' ');
+  text = text.replace(/([a-z])([A-Z])/g, '$1 $2');
+  text = text.replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+  text = text.replace(/([A-Za-z])(\d)/g, '$1 $2');
+  text = text.replace(/(\d)([A-Za-z])/g, '$1 $2');
+  return normalizeBindText(text);
+}
+
 function stemToken(value = '') {
   let token = String(value || '').toLowerCase();
   if (!token) return '';
@@ -3474,7 +3485,6 @@ function parseOfferTokens(value = '') {
   while (match) {
     const number = match[1];
     add(`${number}pct`);
-    add(number);
     match = percentRegex.exec(normalized);
   }
   const currencyRegex = /\b(\d+(?:\.\d+)?)usd\b/g;
@@ -3482,14 +3492,7 @@ function parseOfferTokens(value = '') {
   while (match) {
     const number = match[1];
     add(`${number}usd`);
-    add(number);
     match = currencyRegex.exec(normalized);
-  }
-  const numberRegex = /\b\d+(?:\.\d+)?\b/g;
-  match = numberRegex.exec(normalized);
-  while (match) {
-    add(match[0]);
-    match = numberRegex.exec(normalized);
   }
   if (/\bfree\s+(home\s+valuation|valuation)\b/.test(normalized)) add('free_valuation');
   if (/\bfree\s+(consultation)\b/.test(normalized)) add('free_consult');
@@ -5215,6 +5218,42 @@ function getFieldBindingSignals(text = '', fingerprint = {}) {
   return { normalized, anchorHits, offerHit };
 }
 
+function getHashtagBindingSignals(text = '', fingerprint = {}) {
+  const normalized = normalizeHashtagsForBinding(text);
+  const tokens = new Set(tokenizeNormalizedText(normalized));
+  const offerTokenSet = new Set(Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : []);
+  const fieldOfferTokens = new Set(parseOfferTokens(normalized));
+  let offerHit = false;
+  for (const token of fieldOfferTokens) {
+    if (offerTokenSet.has(token)) {
+      offerHit = true;
+      break;
+    }
+  }
+  const anchors = Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [];
+  let anchorHits = 0;
+  const seen = new Set();
+  for (const anchor of anchors) {
+    if (!anchor || seen.has(anchor)) continue;
+    let matched = false;
+    if (offerTokenSet.has(anchor)) {
+      matched = fieldOfferTokens.has(anchor);
+    } else {
+      const groupKey = EQUIV_CANON_TO_GROUP[anchor];
+      if (groupKey) {
+        matched = matchesEquivalenceGroup(normalized, groupKey);
+      } else {
+        matched = tokens.has(anchor);
+      }
+    }
+    if (matched) {
+      anchorHits += 1;
+      seen.add(anchor);
+    }
+  }
+  return { normalized, anchorHits, offerHit };
+}
+
 function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = []) {
   if (!post || typeof post !== 'object') return;
   const resolvedSpec = resolveRequestedSpec(requestedSpec);
@@ -5248,28 +5287,34 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
   const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
   const failedFields = [];
+  const coreFailedFields = [];
+  const noncoreFailedFields = [];
   const snippets = {};
   const hookSignals = getFieldBindingSignals(hookText, fingerprint);
   const hookOk = isNonEmptyString(hookText) && (hookSignals.offerHit || hookSignals.anchorHits >= 1);
   if (!hookOk) {
+    coreFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 60) : '';
   }
   const captionSignals = getFieldBindingSignals(captionText, fingerprint);
   const captionOk = isNonEmptyString(captionText) && (captionSignals.offerHit || captionSignals.anchorHits >= 2);
   if (!captionOk) {
+    coreFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 60) : '';
   }
   const scriptSignals = getFieldBindingSignals(scriptText, fingerprint);
   const scriptOk = isNonEmptyString(scriptText) && (scriptSignals.offerHit || scriptSignals.anchorHits >= 2);
   if (!scriptOk) {
+    coreFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 60) : '';
   }
-  const hashtagsSignals = getFieldBindingSignals(hashtagsText, fingerprint);
+  const hashtagsSignals = getHashtagBindingSignals(hashtagsText, fingerprint);
   const hashtagsOk = isNonEmptyString(hashtagsText) && (hashtagsSignals.offerHit || hashtagsSignals.anchorHits >= 1);
   if (!hashtagsOk) {
+    noncoreFailedFields.push('hashtags');
     failedFields.push('hashtags');
     snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 60) : '';
   }
@@ -5277,6 +5322,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const designNotesOk = isNonEmptyString(designNotesText)
     && (designNotesSignals.offerHit || designNotesSignals.anchorHits >= 1);
   if (!designNotesOk) {
+    noncoreFailedFields.push('designNotes');
     failedFields.push('designNotes');
     snippets.designNotes = designNotesText ? designNotesText.slice(0, 60) : '';
   }
@@ -5284,6 +5330,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const engagementLoopOk = isNonEmptyString(engagementLoopText)
     && (engagementLoopSignals.offerHit || engagementLoopSignals.anchorHits >= 1);
   if (!engagementLoopOk) {
+    noncoreFailedFields.push('engagementLoop');
     failedFields.push('engagementLoop');
     snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
   }
@@ -5291,10 +5338,22 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const distributionPlanOk = isNonEmptyString(distributionPlanText)
     && (distributionPlanSignals.offerHit || distributionPlanSignals.anchorHits >= 1);
   if (!distributionPlanOk) {
+    noncoreFailedFields.push('distributionPlan');
     failedFields.push('distributionPlan');
     snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
   }
   if (!failedFields.length) return;
+  if (!coreFailedFields.length) {
+    console.warn('[TopicBinding] noncore_failed', {
+      post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
+      title: titleText,
+      anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
+      offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
+      failedFields: noncoreFailedFields,
+      fieldSamples: snippets,
+    });
+    return;
+  }
   const err = new Error('TOPIC_BINDING_FAILED');
   err.code = 'TOPIC_BINDING_FAILED';
   err.statusCode = 422;
