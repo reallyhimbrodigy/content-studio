@@ -7885,17 +7885,19 @@ const server = http.createServer((req, res) => {
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
-      let aborted = false;
-      let closed = false;
+      let clientAborted = false;
       req.on('aborted', () => {
-        aborted = true;
-        console.warn('[Calendar][Regen][Abort]', { requestId, elapsedMs: Date.now() - requestStart, event: 'aborted' });
+        clientAborted = true;
+        console.warn('[Calendar][Regen][ClientAborted]', { requestId, elapsedMs: Date.now() - requestStart });
       });
-      req.on('close', () => {
-        closed = true;
-        if (!res.writableEnded) {
-          console.warn('[Calendar][Regen][Abort]', { requestId, elapsedMs: Date.now() - requestStart, event: 'close' });
-        }
+      res.on('close', () => {
+        if (!res.headersSent) return;
+        console.warn('[Calendar][Regen][ResClosed]', {
+          requestId,
+          elapsedMs: Date.now() - requestStart,
+          headersSent: res.headersSent,
+          writableEnded: res.writableEnded,
+        });
       });
       res.on('finish', () => {
         console.log('[Calendar][Regen][Response]', {
@@ -7950,6 +7952,7 @@ const server = http.createServer((req, res) => {
           body.userId = user.id;
         }
         const targetCalendarId = body?.calendarId ?? null;
+        if (clientAborted || req.aborted) return;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
           days: body?.days,
@@ -7960,7 +7963,7 @@ const server = http.createServer((req, res) => {
         regenContext.startDay = body?.startDay;
         const requestedPostsPerDay = 1;
         let posts;
-        if (aborted || closed || res.writableEnded) return;
+        if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
           const timeoutGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS || 55000);
@@ -7990,7 +7993,7 @@ const server = http.createServer((req, res) => {
         } finally {
           releaseRegenSlot();
         }
-        if (aborted || closed || res.writableEnded) return;
+        if (clientAborted || req.aborted || res.writableEnded) return;
         const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
         console.log('[Calendar] regen audio counts', {
           requestId,
@@ -8041,7 +8044,7 @@ const server = http.createServer((req, res) => {
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
-        if (aborted || closed || res.writableEnded) return;
+        if (clientAborted || req.aborted || res.writableEnded) return;
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
