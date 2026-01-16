@@ -3259,6 +3259,57 @@ const TOPIC_FINGERPRINT_STOPWORDS = new Set([
   'i',
 ]);
 const TOPIC_FINGERPRINT_SHORT_TOKENS = new Set(['day', 'how', 'why', 'tips']);
+// Language-level idiom groups for Tier A matching; not niche-specific.
+const EQUIV_GROUPS = {
+  LOYALTY_RETURN: {
+    phrases: [
+      'come back',
+      'coming back',
+      'keep coming back',
+      'return',
+      'returning',
+      'back again',
+      'repeat clients',
+      'repeat customer',
+      'repeat customers',
+      'loyal',
+      'loyalty',
+    ],
+    canon: ['return'],
+  },
+  TRUST_CHOOSE: {
+    phrases: [
+      'trust',
+      'trusted',
+      'choose',
+      'choosing',
+      'work with',
+      'worked with',
+      'go with',
+      'picked',
+      'referred',
+      'referral',
+      'recommend',
+      'recommended',
+    ],
+    canon: ['trust'],
+  },
+  STORIES_TESTIMONIALS: {
+    phrases: [
+      'testimonial',
+      'testimonials',
+      'review',
+      'reviews',
+      'story',
+      'stories',
+      'case study',
+      'case studies',
+      'client story',
+      'client stories',
+    ],
+    canon: ['testimonial'],
+  },
+};
 const TITLE_META_TOKENS = new Set([
   'top',
   'reasons',
@@ -3308,6 +3359,27 @@ function deriveTopicFingerprint(titleOrTopic = '') {
     return tokens;
   };
   let tokens = buildTokens(true);
+  const addedCanonical = [];
+  Object.values(EQUIV_GROUPS).forEach((group) => {
+    const matched = group.phrases.some((phrase) => {
+      const normalizedPhrase = normalizeTopicText(phrase);
+      if (!normalizedPhrase) return false;
+      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
+      return regex.test(base);
+    });
+    if (matched) {
+      group.canon.forEach((item) => addedCanonical.push(item));
+    }
+  });
+  if (addedCanonical.length) {
+    const seen = new Set(tokens);
+    addedCanonical.forEach((token) => {
+      const normalizedToken = normalizeTopicText(token);
+      if (!normalizedToken || seen.has(normalizedToken)) return;
+      seen.add(normalizedToken);
+      tokens.push(normalizedToken);
+    });
+  }
   if (tokens.length < 2) tokens = buildTokens(false);
   let phrase = null;
   if (tokens.length >= 2) {
@@ -3384,12 +3456,29 @@ function tokenMatches(normalizedText = '', token = '', options = {}) {
   return false;
 }
 
+function containsEquivalenceGroupPhrase(normalizedText = '', options = {}) {
+  if (!normalizedText) return false;
+  const activeGroups = Array.isArray(options?.equivalenceGroups) ? options.equivalenceGroups : [];
+  for (const groupKey of activeGroups) {
+    const group = EQUIV_GROUPS[groupKey];
+    if (!group) continue;
+    for (const phrase of group.phrases) {
+      const normalizedPhrase = normalizeTopicText(phrase);
+      if (!normalizedPhrase) continue;
+      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
+      if (regex.test(normalizedText)) return true;
+    }
+  }
+  return false;
+}
+
 function containsTopicReference(text = '', fingerprint = {}, minTokens = 2, options = {}) {
   if (!isNonEmptyString(text)) return false;
   const normalized = normalizeTopicText(text);
   if (!normalized) return false;
   const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
   if (phrase && normalized.includes(phrase)) return true;
+  if (containsEquivalenceGroupPhrase(normalized, options)) return true;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
   if (minTokens <= 0) return true;
@@ -4872,6 +4961,17 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
   let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
   const allowMovementEquivalents = shouldAllowMovementEquivalents(titleText);
+  const normalizedTitle = normalizeTopicText(titleText);
+  const activeEquivalenceGroups = Object.keys(EQUIV_GROUPS).filter((groupKey) => {
+    const group = EQUIV_GROUPS[groupKey];
+    if (!group) return false;
+    return group.phrases.some((phrase) => {
+      const normalizedPhrase = normalizeTopicText(phrase);
+      if (!normalizedPhrase) return false;
+      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
+      return regex.test(normalizedTitle);
+    });
+  });
   if (titleText) {
     const titleTokens = new Set(normalizeTopicText(titleText).split(/\s+/).filter(Boolean));
     const fingerprintTokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
@@ -4892,17 +4992,17 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const tierAFailedFields = [];
   const tierBFailedFields = [];
   const snippets = {};
-  if (!containsTopicReference(hookText, fingerprint, 1, { allowMovementEquivalents })) {
+  if (!containsTopicReference(hookText, fingerprint, 1, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
     tierAFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(captionText, fingerprint, 2, { allowMovementEquivalents })) {
+  if (!containsTopicReference(captionText, fingerprint, 2, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
     tierAFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(scriptText, fingerprint, 2, { allowMovementEquivalents })) {
+  if (!containsTopicReference(scriptText, fingerprint, 2, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
     tierAFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 80) : '';
