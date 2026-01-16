@@ -3276,6 +3276,7 @@ const EQUIV_GROUPS = {
       'loyalty',
     ],
     canon: ['return'],
+    injectCanon: true,
   },
   TRUST_CHOOSE: {
     phrases: [
@@ -3293,6 +3294,7 @@ const EQUIV_GROUPS = {
       'recommended',
     ],
     canon: ['trust'],
+    injectCanon: true,
   },
   STORIES_TESTIMONIALS: {
     phrases: [
@@ -3308,6 +3310,23 @@ const EQUIV_GROUPS = {
       'client stories',
     ],
     canon: ['testimonial'],
+    injectCanon: true,
+  },
+  LISTING_SELLING: {
+    phrases: [
+      'list',
+      'listing',
+      'listed',
+      'listings',
+      'listing fee',
+      'commission',
+      'commission rate',
+      'seller',
+      'selling',
+      'sell',
+    ],
+    canon: ['listing'],
+    injectCanon: false,
   },
 };
 const TITLE_META_TOKENS = new Set([
@@ -3322,8 +3341,17 @@ const TITLE_META_TOKENS = new Set([
   'how',
   'why',
   'what',
+  'limited',
+  'time',
+  'exclusive',
+  'offer',
+  'special',
   'now',
   'today',
+  'inside',
+  'act',
+  'fast',
+  'hurry',
   'best',
   'ultimate',
   'list',
@@ -3341,14 +3369,58 @@ function normalizeTopicText(value = '') {
     .trim();
 }
 
+// Language-level offer parsing to preserve numeric tokens for topic binding.
+function parseOfferTokens(value = '') {
+  const raw = String(value || '');
+  const tokens = [];
+  const seen = new Set();
+  const add = (token) => {
+    const normalized = String(token || '').toLowerCase();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    tokens.push(normalized);
+  };
+  const percentRegex = /(\d+(?:\.\d+)?)\s*%/g;
+  let match = percentRegex.exec(raw);
+  while (match) {
+    const number = match[1];
+    add(`${number}pct`);
+    add(number);
+    match = percentRegex.exec(raw);
+  }
+  const currencyRegex = /\$\s*(\d+(?:\.\d+)?)/g;
+  match = currencyRegex.exec(raw);
+  while (match) {
+    const number = match[1];
+    add(`${number}usd`);
+    add(number);
+    match = currencyRegex.exec(raw);
+  }
+  const numberRegex = /\b\d+(?:\.\d+)?\b/g;
+  match = numberRegex.exec(raw);
+  while (match) {
+    add(match[0]);
+    match = numberRegex.exec(raw);
+  }
+  return tokens;
+}
+
+function normalizeTopicTextForBinding(value = '') {
+  const base = normalizeTopicText(value);
+  const offerTokens = parseOfferTokens(value);
+  if (!offerTokens.length) return base;
+  return `${base} ${offerTokens.join(' ')}`.replace(/\s+/g, ' ').trim();
+}
+
 function deriveTopicFingerprint(titleOrTopic = '') {
-  const base = normalizeTopicText(titleOrTopic);
+  const base = normalizeTopicTextForBinding(titleOrTopic);
   const rawTokens = base.split(/\s+/).filter(Boolean);
   const buildTokens = (skipMeta = true) => {
     const tokens = [];
     const seen = new Set();
     for (const token of rawTokens) {
-      if (token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
+      const isNumeric = /^\d+(?:\.\d+)?$/.test(token);
+      if (!isNumeric && token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
       if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
       if (skipMeta && TITLE_META_TOKENS.has(token)) continue;
       if (seen.has(token)) continue;
@@ -3361,6 +3433,7 @@ function deriveTopicFingerprint(titleOrTopic = '') {
   let tokens = buildTokens(true);
   const addedCanonical = [];
   Object.values(EQUIV_GROUPS).forEach((group) => {
+    if (!group.injectCanon) return;
     const matched = group.phrases.some((phrase) => {
       const normalizedPhrase = normalizeTopicText(phrase);
       if (!normalizedPhrase) return false;
@@ -3474,16 +3547,20 @@ function containsEquivalenceGroupPhrase(normalizedText = '', options = {}) {
 
 function containsTopicReference(text = '', fingerprint = {}, minTokens = 2, options = {}) {
   if (!isNonEmptyString(text)) return false;
-  const normalized = normalizeTopicText(text);
+  const normalized = normalizeTopicTextForBinding(text);
   if (!normalized) return false;
   const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
   if (phrase && normalized.includes(phrase)) return true;
-  if (containsEquivalenceGroupPhrase(normalized, options)) return true;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
   if (minTokens <= 0) return true;
   let matchCount = 0;
   const seen = new Set();
+  if (containsEquivalenceGroupPhrase(normalized, options)) {
+    matchCount += 1;
+    seen.add('__equiv');
+    if (matchCount >= minTokens) return true;
+  }
   for (const token of tokens) {
     if (!token || seen.has(token)) continue;
     if (tokenMatches(normalized, token, options)) {
@@ -3499,7 +3576,7 @@ function hasAnyAnchorToken(text = '', fingerprint = {}, options = {}) {
   if (!isNonEmptyString(text)) return false;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
-  const normalized = normalizeTopicText(text);
+  const normalized = normalizeTopicTextForBinding(text);
   for (const token of tokens) {
     if (token && tokenMatches(normalized, token, options)) return true;
   }
@@ -4951,6 +5028,15 @@ function resolveRequestedSpec(requestedSpec = {}) {
   };
 }
 
+const PROMO_FEE_WORDS = ['fee', 'commission', 'closing costs', 'rate', 'percent', 'percentage'];
+
+function normalizedHasToken(normalizedText = '', token = '') {
+  const normalizedToken = normalizeTopicText(token);
+  if (!normalizedText || !normalizedToken) return false;
+  const regex = new RegExp(`\\b${escapeRegexPattern(normalizedToken)}\\b`, 'i');
+  return regex.test(normalizedText);
+}
+
 function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = []) {
   if (!post || typeof post !== 'object') return;
   const resolvedSpec = resolveRequestedSpec(requestedSpec);
@@ -4961,7 +5047,19 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
   let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
   const allowMovementEquivalents = shouldAllowMovementEquivalents(titleText);
-  const normalizedTitle = normalizeTopicText(titleText);
+  const normalizedTitle = normalizeTopicTextForBinding(titleText);
+  const titleHasPercentOrCurrency = /\d+(?:\.\d+)?\s*%/.test(titleText) || /\$\s*\d+(?:\.\d+)?/.test(titleText);
+  const titleHasPromoFee = PROMO_FEE_WORDS.some((word) => {
+    const normalizedWord = normalizeTopicText(word);
+    if (!normalizedWord) return false;
+    if (normalizedWord.includes(' ')) {
+      return normalizedTitle.includes(normalizedWord);
+    }
+    return normalizedHasToken(normalizedTitle, normalizedWord);
+  });
+  const titleOfferTokens = parseOfferTokens(titleText);
+  const titleCanonicalOfferTokens = titleOfferTokens.filter((token) => token.endsWith('pct') || token.endsWith('usd'));
+  const titleNumberTokens = titleOfferTokens.filter((token) => /^\d+(?:\.\d+)?$/.test(token));
   const activeEquivalenceGroups = Object.keys(EQUIV_GROUPS).filter((groupKey) => {
     const group = EQUIV_GROUPS[groupKey];
     if (!group) return false;
@@ -4992,7 +5090,18 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const tierAFailedFields = [];
   const tierBFailedFields = [];
   const snippets = {};
-  if (!containsTopicReference(hookText, fingerprint, 1, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
+  const hookNormalized = normalizeTopicTextForBinding(hookText);
+  let hookOk = containsTopicReference(hookText, fingerprint, 1, {
+    allowMovementEquivalents,
+    equivalenceGroups: activeEquivalenceGroups,
+  });
+  if (!hookOk && (titleHasPercentOrCurrency || titleHasPromoFee)) {
+    const hookHasCanonicalOffer = titleCanonicalOfferTokens.some((token) => normalizedHasToken(hookNormalized, token));
+    const hookHasNumber = titleNumberTokens.some((token) => normalizedHasToken(hookNormalized, token));
+    const hookHasListing = containsEquivalenceGroupPhrase(hookNormalized, { equivalenceGroups: ['LISTING_SELLING'] });
+    if (hookHasCanonicalOffer || (hookHasListing && hookHasNumber)) hookOk = true;
+  }
+  if (!hookOk) {
     tierAFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
