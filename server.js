@@ -3434,6 +3434,12 @@ function parseOfferTokens(value = '') {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  if (/\bfree\s+(home\s+valuation|valuation)\b/.test(normalized)) add('free_valuation');
+  if (/\bfree\s+(consultation)\b/.test(normalized)) add('free_consult');
+  if (/\bfree\s+(evaluation)\b/.test(normalized)) add('free_eval');
+  if (/\bfree\s+(estimate)\b/.test(normalized)) add('free_estimate');
+  if (/\bfree\s+(guide)\b/.test(normalized)) add('free_guide');
+  if (/\bfree\s+\w+\b/.test(normalized)) add('free_offer');
   if (/\bno win no fee\b/.test(normalized)) add('nowin_nofee');
   if (/\bcontingency\b/.test(normalized)) add('contingency');
   if (/\bfree consultation\b/.test(normalized)) add('free_consult');
@@ -5183,6 +5189,17 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     if (word === '%') return titleText.includes('%') || normalizedTitle.includes('pct');
     return normalizedHasToken(normalizedTitle, word);
   });
+  const isOfferTitle = combinedOfferTokens.length > 0 || [
+    'free',
+    'offer',
+    'discount',
+    'off',
+    'percent',
+    'valuation',
+    'consultation',
+    'evaluation',
+    'estimate',
+  ].some((word) => normalizedHasToken(normalizedTitle, word)) || normalizedTitle.includes('pct') || titleText.includes('%');
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -5241,7 +5258,22 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(captionText, fingerprint, 2, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
+  const captionAnchorOk = containsTopicReference(captionText, fingerprint, 2, {
+    allowMovementEquivalents,
+    equivalenceGroups: activeEquivalenceGroups,
+  });
+  let captionOkOffer = false;
+  if (isOfferTitle) {
+    const captionNormalized = normalizeForBind(captionText);
+    const captionOfferTokens = new Set(parseOfferTokens(captionText).map((token) => normalizeTokenForBind(token)).filter(Boolean));
+    const hasOfferToken = combinedOfferTokens.some((token) => captionOfferTokens.has(token));
+    const hasFree = normalizedHasToken(captionNormalized, 'free');
+    const baseAnchorTokens = fingerprint.tokens
+      .filter((token) => token && !combinedOfferTokens.includes(token) && !TITLE_META_TOKENS.has(token) && token !== 'free');
+    const hasBaseAnchor = baseAnchorTokens.some((token) => normalizedHasToken(captionNormalized, token));
+    captionOkOffer = hasOfferToken || (hasFree && hasBaseAnchor);
+  }
+  if (!captionAnchorOk && !captionOkOffer) {
     tierAFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
@@ -5296,6 +5328,10 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     post_key: err.payload.post_key,
     offerTokens: err.payload.offerTokens,
     failedFields: err.payload.failedFields,
+    snippets: {
+      hook: err.payload.snippets?.hook || '',
+      caption: err.payload.snippets?.caption || '',
+    },
   });
   throw err;
 }
@@ -5427,6 +5463,49 @@ function runTopicBindSelfTest() {
     }
   })();
   console.assert(nowinFail, '[TopicBinding][SelfTest] off-topic no-win/no-fee hook should fail.');
+  const freeTitle = 'Exclusive Offer: Free Home Valuation for Miami Residents';
+  const freeFingerprint = deriveTopicFingerprint(freeTitle);
+  const hasFreeToken = Array.isArray(freeFingerprint.offerTokens)
+    && (freeFingerprint.offerTokens.includes('free_valuation') || freeFingerprint.offerTokens.includes('free_offer'));
+  console.assert(hasFreeToken, '[TopicBinding][SelfTest] free valuation title should include offer token.');
+  const freeSpec = {
+    post_key: 'day-4-slot-0',
+    day: 4,
+    slotIndex: 0,
+    title: freeTitle,
+    topic: freeTitle,
+  };
+  const freePost = {
+    post_key: 'day-4-slot-0',
+    day: 4,
+    slotIndex: 0,
+    title: freeTitle,
+    hook: 'Get your free home valuation today.',
+    caption: 'Get a free home valuation in Miami so you know your property\'s worth.',
+    script: { hook: 'Free home valuation.', body: 'We offer a free home valuation so you can price with confidence.', cta: 'Book yours.' },
+    hashtags: ['#FreeValuation'],
+    designNotes: 'Highlight the free valuation offer.',
+    engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your address to start.' },
+    distributionPlan: 'Post to feed and share in stories.',
+  };
+  const freePass = (() => {
+    try {
+      assertPostTopicBound(freePost, freeSpec, []);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  console.assert(freePass, '[TopicBinding][SelfTest] free valuation caption should pass.');
+  const freeFail = (() => {
+    try {
+      assertPostTopicBound({ ...freePost, caption: 'New neighborhood gems in Miami.' }, freeSpec, []);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+  console.assert(freeFail, '[TopicBinding][SelfTest] off-topic free valuation caption should fail.');
 }
 
 function stripSuggestedAudioLinks(value = '') {
