@@ -3296,6 +3296,26 @@ const EQUIV_GROUPS = {
     canon: ['trust'],
     injectCanon: true,
   },
+  SOCIAL_PROOF: {
+    phrases: [
+      'testimonial',
+      'testimonials',
+      'review',
+      'reviews',
+      'feedback',
+      'client feedback',
+      'what my clients say',
+      'what clients say',
+      'clients say',
+      'client says',
+      'experience',
+      'experiences',
+      'success story',
+      'success stories',
+    ],
+    canon: ['testimonial'],
+    injectCanon: true,
+  },
   STORIES_TESTIMONIALS: {
     phrases: [
       'testimonial',
@@ -3358,6 +3378,11 @@ const TITLE_META_TOKENS = new Set([
   'checklist',
   'step',
   'steps',
+  'about',
+  'with',
+  'me',
+  'my',
+  'our',
 ]);
 
 function normalizeTopicText(value = '') {
@@ -3439,8 +3464,8 @@ function deriveTopicFingerprint(titleOrTopic = '') {
     return tokens;
   };
   let tokens = buildTokens(true);
-  if (tokens.length < 2) tokens = buildTokens(false);
   const addedCanonical = [];
+  const socialProofActive = isSocialProofTitle(base);
   Object.values(EQUIV_GROUPS).forEach((group) => {
     if (!group.injectCanon) return;
     const matched = group.phrases.some((phrase) => {
@@ -3453,6 +3478,8 @@ function deriveTopicFingerprint(titleOrTopic = '') {
       group.canon.forEach((item) => addedCanonical.push(item));
     }
   });
+  if (socialProofActive) addedCanonical.push('testimonial');
+  if (tokens.length < 2) tokens = buildTokens(false);
   const seen = new Set(tokens);
   addedCanonical.forEach((token) => {
     const normalizedToken = normalizeTokenForBind(token);
@@ -3513,6 +3540,23 @@ function shouldAllowMovementEquivalents(titleText = '') {
   const normalized = normalizeForBind(titleText);
   const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
   return ['move', 'moving', 'relocate', 'relocating', 'relocation'].some((token) => tokens.has(token));
+}
+
+function isSocialProofTitle(normalizedTitle = '') {
+  if (!normalizedTitle) return false;
+  const group = EQUIV_GROUPS.SOCIAL_PROOF;
+  if (group?.phrases) {
+    for (const phrase of group.phrases) {
+      const normalizedPhrase = normalizeForBind(phrase);
+      if (!normalizedPhrase) continue;
+      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
+      if (regex.test(normalizedTitle)) return true;
+    }
+  }
+  const tokens = new Set(normalizedTitle.split(/\s+/).filter(Boolean));
+  const hasClient = tokens.has('client') || tokens.has('clients');
+  const hasSignal = ['say','says','feedback','review','reviews','testimonial','testimonials','experience','experiences'].some((token) => tokens.has(token));
+  return hasClient && hasSignal;
 }
 
 function normalizeTokenForBind(value = '') {
@@ -4783,7 +4827,7 @@ function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicP
 }
 
 function tokenizeTitleForAvoid(value = '') {
-  const normalized = normalizeTopicText(value);
+  const normalized = normalizeForBind(value);
   if (!normalized) return [];
   return normalized
     .split(/\s+/)
@@ -5069,31 +5113,16 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
   const allowMovementEquivalents = shouldAllowMovementEquivalents(titleText);
   const normalizedTitle = normalizeForBind(titleText);
-  const titleOfferTokens = parseOfferTokens(titleText)
-    .map((token) => normalizeTokenForBind(token))
-    .filter(Boolean);
-  const combinedOfferTokens = [];
-  const offerSeen = new Set();
-  titleOfferTokens.forEach((token) => {
-    if (offerSeen.has(token)) return;
-    offerSeen.add(token);
-    combinedOfferTokens.push(token);
-  });
-  if (!Array.isArray(fingerprint.tokens)) fingerprint.tokens = [];
-  const tokenSeen = new Set(fingerprint.tokens);
-  combinedOfferTokens.forEach((token) => {
-    if (tokenSeen.has(token)) return;
-    tokenSeen.add(token);
-    fingerprint.tokens.push(token);
-  });
-  fingerprint.offerTokens = combinedOfferTokens;
-  const isPromoTitle = combinedOfferTokens.length > 0 || PROMO_FEE_WORDS.some((word) => {
+  const socialProofActive = isSocialProofTitle(normalizedTitle);
+  const titleOfferTokens = parseOfferTokens(titleText).map((token) => normalizeTokenForBind(token)).filter(Boolean);
+  const isPromoTitle = titleOfferTokens.length > 0 || PROMO_FEE_WORDS.some((word) => {
     if (word === '%') return titleText.includes('%') || normalizedTitle.includes('pct');
     return normalizedHasToken(normalizedTitle, word);
   });
   const activeEquivalenceGroups = Object.keys(EQUIV_GROUPS).filter((groupKey) => {
     const group = EQUIV_GROUPS[groupKey];
     if (!group) return false;
+    if (groupKey === 'SOCIAL_PROOF') return socialProofActive;
     return group.phrases.some((phrase) => {
       const normalizedPhrase = normalizeForBind(phrase);
       if (!normalizedPhrase) return false;
@@ -5102,6 +5131,10 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     });
   });
   if (titleText) {
+    if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
+    if (fingerprint.tokens.length < 3) {
+      fingerprint = deriveTopicFingerprint(titleText);
+    }
     const titleTokens = new Set(normalizeForBind(titleText).split(/\s+/).filter(Boolean));
     const fingerprintTokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
     const mismatch = fingerprintTokens.filter((token) => token && !titleTokens.has(token));
@@ -5109,7 +5142,27 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
       console.warn('[TopicBinding] fingerprint_mismatch rederive title="%s" tokens=%j', titleText, fingerprintTokens);
       fingerprint = deriveTopicFingerprint(titleText);
     }
+    if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
+    if (fingerprint.tokens.length < 3) {
+      fingerprint = deriveTopicFingerprint(titleText);
+    }
   }
+  if (!Array.isArray(fingerprint.tokens)) fingerprint.tokens = [];
+  const combinedOfferTokens = [];
+  const offerSeen = new Set();
+  titleOfferTokens.forEach((token) => {
+    if (offerSeen.has(token)) return;
+    offerSeen.add(token);
+    combinedOfferTokens.push(token);
+  });
+  const tokenSeen = new Set(fingerprint.tokens);
+  combinedOfferTokens.forEach((token) => {
+    if (tokenSeen.has(token)) return;
+    tokenSeen.add(token);
+    fingerprint.tokens.push(token);
+  });
+  fingerprint.offerTokens = combinedOfferTokens;
+  fingerprint.flags = socialProofActive ? ['SOCIAL_PROOF'] : [];
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -5247,6 +5300,50 @@ function runTopicBindSelfTest() {
     }
   })();
   console.assert(fails, '[TopicBinding][SelfTest] off-topic promo hook should fail.');
+  const socialTitle = 'What My Clients Say About Working With Me';
+  const socialSpec = {
+    post_key: 'day-2-slot-0',
+    day: 2,
+    slotIndex: 0,
+    title: socialTitle,
+    topic: socialTitle,
+  };
+  const socialPost = {
+    post_key: 'day-2-slot-0',
+    day: 2,
+    slotIndex: 0,
+    title: socialTitle,
+    hook: 'Hear what my clients say about working together.',
+    caption: 'Clients share real feedback and return for the experience.',
+    script: { hook: 'Client feedback matters.', body: 'Listen to my clients share their experiences.', cta: 'See their stories.' },
+    hashtags: ['#Testimonials', '#ClientFeedback'],
+    designNotes: 'Quote-style layout with a client photo.',
+    engagementScripts: { commentReply: 'Thanks for sharing your experience.', dmReply: 'Happy to answer questions.' },
+    distributionPlan: 'Post to feed and pin a client quote.',
+  };
+  const socialFingerprint = deriveTopicFingerprint(socialTitle);
+  console.assert(
+    Array.isArray(socialFingerprint.tokens) && socialFingerprint.tokens.includes('testimonial'),
+    '[TopicBinding][SelfTest] social proof fingerprint should include testimonial.'
+  );
+  const socialPass = (() => {
+    try {
+      assertPostTopicBound(socialPost, socialSpec, []);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  console.assert(socialPass, '[TopicBinding][SelfTest] social proof script should pass.');
+  const socialFail = (() => {
+    try {
+      assertPostTopicBound({ ...socialPost, script: { hook: 'Neighborhood tips.', body: 'Explore neighborhood gems today.', cta: 'Save this.' } }, socialSpec, []);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+  console.assert(socialFail, '[TopicBinding][SelfTest] off-topic social proof script should fail.');
 }
 
 function stripSuggestedAudioLinks(value = '') {
