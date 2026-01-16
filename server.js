@@ -3259,6 +3259,27 @@ const TOPIC_FINGERPRINT_STOPWORDS = new Set([
   'i',
 ]);
 const TOPIC_FINGERPRINT_SHORT_TOKENS = new Set(['day', 'how', 'why', 'tips']);
+const TITLE_META_TOKENS = new Set([
+  'top',
+  'reasons',
+  'reason',
+  'ways',
+  'things',
+  'tips',
+  'guide',
+  'guides',
+  'how',
+  'why',
+  'what',
+  'now',
+  'today',
+  'best',
+  'ultimate',
+  'list',
+  'checklist',
+  'step',
+  'steps',
+]);
 
 function normalizeTopicText(value = '') {
   return String(value || '')
@@ -3271,17 +3292,23 @@ function normalizeTopicText(value = '') {
 
 function deriveTopicFingerprint(titleOrTopic = '') {
   const base = normalizeTopicText(titleOrTopic);
-  const tokens = [];
-  const seen = new Set();
   const rawTokens = base.split(/\s+/).filter(Boolean);
-  for (const token of rawTokens) {
-    if (token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
-    if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
-    if (seen.has(token)) continue;
-    seen.add(token);
-    tokens.push(token);
-    if (tokens.length >= 8) break;
-  }
+  const buildTokens = (skipMeta = true) => {
+    const tokens = [];
+    const seen = new Set();
+    for (const token of rawTokens) {
+      if (token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
+      if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
+      if (skipMeta && TITLE_META_TOKENS.has(token)) continue;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      tokens.push(token);
+      if (tokens.length >= 8) break;
+    }
+    return tokens;
+  };
+  let tokens = buildTokens(true);
+  if (tokens.length < 2) tokens = buildTokens(false);
   let phrase = null;
   if (tokens.length >= 2) {
     const maxLen = Math.min(5, tokens.length);
@@ -3323,7 +3350,41 @@ function getField(post = {}, names = []) {
   return '';
 }
 
-function containsTopicReference(text = '', fingerprint = {}, minTokens = 2) {
+const MOVEMENT_EQUIVALENTS = new Set(['move', 'moving', 'relocate', 'relocating', 'relocation']);
+
+function shouldAllowMovementEquivalents(titleText = '') {
+  const normalized = normalizeTopicText(titleText);
+  const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
+  return ['move', 'moving', 'relocate', 'relocating', 'relocation'].some((token) => tokens.has(token));
+}
+
+function tokenMatches(normalizedText = '', token = '', options = {}) {
+  const base = normalizeTopicText(token);
+  if (!normalizedText || !base) return false;
+  const allowMovement = Boolean(options.allowMovementEquivalents);
+  const candidates = new Set();
+  if (allowMovement && MOVEMENT_EQUIVALENTS.has(base)) {
+    MOVEMENT_EQUIVALENTS.forEach((item) => candidates.add(item));
+  } else {
+    candidates.add(base);
+  }
+  const variants = new Set();
+  candidates.forEach((candidate) => {
+    variants.add(candidate);
+    variants.add(`${candidate}s`);
+    variants.add(`${candidate}es`);
+    variants.add(`${candidate}ed`);
+    variants.add(`${candidate}ing`);
+    if (candidate.endsWith('e')) variants.add(`${candidate.slice(0, -1)}ing`);
+  });
+  for (const variant of variants) {
+    const regex = new RegExp(`\\b${escapeRegexPattern(variant)}\\b`, 'i');
+    if (regex.test(normalizedText)) return true;
+  }
+  return false;
+}
+
+function containsTopicReference(text = '', fingerprint = {}, minTokens = 2, options = {}) {
   if (!isNonEmptyString(text)) return false;
   const normalized = normalizeTopicText(text);
   if (!normalized) return false;
@@ -3332,12 +3393,11 @@ function containsTopicReference(text = '', fingerprint = {}, minTokens = 2) {
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
   if (minTokens <= 0) return true;
-  const normalizedTokens = new Set(normalized.split(/\s+/).filter(Boolean));
   let matchCount = 0;
   const seen = new Set();
   for (const token of tokens) {
     if (!token || seen.has(token)) continue;
-    if (normalizedTokens.has(token)) {
+    if (tokenMatches(normalized, token, options)) {
       matchCount += 1;
       seen.add(token);
       if (matchCount >= minTokens) return true;
@@ -3346,14 +3406,13 @@ function containsTopicReference(text = '', fingerprint = {}, minTokens = 2) {
   return false;
 }
 
-function hasAnyAnchorToken(text = '', fingerprint = {}) {
+function hasAnyAnchorToken(text = '', fingerprint = {}, options = {}) {
   if (!isNonEmptyString(text)) return false;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
   const normalized = normalizeTopicText(text);
-  const wordSet = new Set(normalized.split(/\s+/).filter(Boolean));
   for (const token of tokens) {
-    if (token && wordSet.has(token)) return true;
+    if (token && tokenMatches(normalized, token, options)) return true;
   }
   const hashtagTokens = (String(text).match(/#[A-Za-z0-9_]+/g) || [])
     .map((tag) => normalizeTopicText(tag.replace(/^#/, '')))
@@ -4812,6 +4871,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const capsuleMustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
   const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
   let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
+  const allowMovementEquivalents = shouldAllowMovementEquivalents(titleText);
   if (titleText) {
     const titleTokens = new Set(normalizeTopicText(titleText).split(/\s+/).filter(Boolean));
     const fingerprintTokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
@@ -4832,22 +4892,22 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const tierAFailedFields = [];
   const tierBFailedFields = [];
   const snippets = {};
-  if (!containsTopicReference(hookText, fingerprint, 1)) {
+  if (!containsTopicReference(hookText, fingerprint, 1, { allowMovementEquivalents })) {
     tierAFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(captionText, fingerprint, 2)) {
+  if (!containsTopicReference(captionText, fingerprint, 2, { allowMovementEquivalents })) {
     tierAFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 80) : '';
   }
-  if (!containsTopicReference(scriptText, fingerprint, 2)) {
+  if (!containsTopicReference(scriptText, fingerprint, 2, { allowMovementEquivalents })) {
     tierAFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 80) : '';
   }
-  const hashtagsHasAnchor = hasAnyAnchorToken(hashtagsText, fingerprint);
+  const hashtagsHasAnchor = hasAnyAnchorToken(hashtagsText, fingerprint, { allowMovementEquivalents });
   const hashtagsHasAvoid = containsMustAvoidToken(hashtagsText, mustAvoid);
   if (!isNonEmptyString(hashtagsText) || (!hashtagsHasAnchor && hashtagsHasAvoid)) {
     tierBFailedFields.push('hashtags');
