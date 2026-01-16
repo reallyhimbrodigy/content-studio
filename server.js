@@ -3427,6 +3427,17 @@ function parseOfferTokens(value = '') {
     add(match[0]);
     match = numberRegex.exec(raw);
   }
+  const normalized = raw
+    .toLowerCase()
+    .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1pct')
+    .replace(/\$\s*(\d+(?:\.\d+)?)/g, '$1usd')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/\bno win no fee\b/.test(normalized)) add('nowin_nofee');
+  if (/\bcontingency\b/.test(normalized)) add('contingency');
+  if (/\bfree consultation\b/.test(normalized)) add('free_consult');
+  if (/\bguarantee\b/.test(normalized) || /\bguaranteed\b/.test(normalized)) add('guarantee');
   return tokens;
 }
 
@@ -3446,8 +3457,17 @@ function normalizeForBind(value = '') {
 
 function deriveTopicFingerprint(titleOrTopic = '') {
   const base = normalizeForBind(titleOrTopic);
+  const limitedTimeActive = /\blimited time\b/.test(base);
+  const baseHasNoWinNoFee = /\bno win no fee\b/.test(base);
+  const baseHasContingency = /\bcontingency\b/.test(base);
+  const baseHasGuarantee = /\bguarantee\b/.test(base);
   const rawTokens = base.split(/\s+/).filter(Boolean);
   const offerTokens = parseOfferTokens(titleOrTopic);
+  if (limitedTimeActive && (baseHasNoWinNoFee || baseHasContingency || baseHasGuarantee)) {
+    if (baseHasNoWinNoFee) offerTokens.push('nowin_nofee');
+    if (baseHasContingency) offerTokens.push('contingency');
+    if (baseHasGuarantee) offerTokens.push('guarantee');
+  }
   const buildTokens = (skipMeta = true) => {
     const tokens = [];
     const seen = new Set();
@@ -5115,10 +5135,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const normalizedTitle = normalizeForBind(titleText);
   const socialProofActive = isSocialProofTitle(normalizedTitle);
   const titleOfferTokens = parseOfferTokens(titleText).map((token) => normalizeTokenForBind(token)).filter(Boolean);
-  const isPromoTitle = titleOfferTokens.length > 0 || PROMO_FEE_WORDS.some((word) => {
-    if (word === '%') return titleText.includes('%') || normalizedTitle.includes('pct');
-    return normalizedHasToken(normalizedTitle, word);
-  });
   const activeEquivalenceGroups = Object.keys(EQUIV_GROUPS).filter((groupKey) => {
     const group = EQUIV_GROUPS[groupKey];
     if (!group) return false;
@@ -5163,6 +5179,10 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   });
   fingerprint.offerTokens = combinedOfferTokens;
   fingerprint.flags = socialProofActive ? ['SOCIAL_PROOF'] : [];
+  const isPromoTitle = combinedOfferTokens.length > 0 || PROMO_FEE_WORDS.some((word) => {
+    if (word === '%') return titleText.includes('%') || normalizedTitle.includes('pct');
+    return normalizedHasToken(normalizedTitle, word);
+  });
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -5178,14 +5198,34 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   let hookOk = false;
   let hookOkPromo = false;
   if (isPromoTitle) {
-    const hookOfferTokens = parseOfferTokens(hookText);
-    const hookOfferSet = new Set(hookOfferTokens.map((token) => normalizeTokenForBind(token)));
+    const hookOfferTokens = parseOfferTokens(hookText).map((token) => normalizeTokenForBind(token)).filter(Boolean);
+    const hookOfferSet = new Set(hookOfferTokens);
     const titleOfferSet = new Set(combinedOfferTokens);
     const hookHasOfferToken = Array.from(hookOfferSet).some((token) => titleOfferSet.has(token));
     const hookNumberTokens = hookOfferTokens.filter((token) => /^\d+(?:\.\d+)?$/.test(token));
     const titleNumberTokens = combinedOfferTokens.filter((token) => /^\d+(?:\.\d+)?$/.test(token));
     const hookHasNumberMatch = hookNumberTokens.some((token) => titleNumberTokens.includes(token));
     const hookHasListing = containsEquivalenceGroupPhrase(hookNormalized, { equivalenceGroups: ['LISTING_SELLING'] });
+    const offerTokenSet = new Set(combinedOfferTokens);
+    const hasNoWinNoFee = offerTokenSet.has('nowin_nofee');
+    const hasContingency = offerTokenSet.has('contingency');
+    const hookHasNoWinNoFeeVariant = /\bno win no fee\b/.test(hookNormalized);
+    const hookHasContingencyVariant = /\bcontingency\b/.test(hookNormalized);
+    const hookTokens = hookNormalized.split(/\s+/).filter(Boolean);
+    const feeIndex = hookTokens.indexOf('fee');
+    const noFeeIndex = feeIndex > 0 ? feeIndex - 1 : -1;
+    let hookHasNoFeeWindow = false;
+    if (noFeeIndex >= 0 && hookTokens[noFeeIndex] === 'no') {
+      const start = Math.max(0, noFeeIndex - 4);
+      const end = Math.min(hookTokens.length, noFeeIndex + 6);
+      const windowTokens = hookTokens.slice(start, end);
+      hookHasNoFeeWindow = windowTokens.includes('win') || windowTokens.includes('pay');
+    }
+    if (hasNoWinNoFee || hasContingency) {
+      if (hookHasNoWinNoFeeVariant || hookHasContingencyVariant || hookHasNoFeeWindow) {
+        hookOkPromo = true;
+      }
+    }
     if (hookHasOfferToken || (hookHasListing && hookHasNumberMatch)) hookOkPromo = true;
   }
   if (hookOkPromo) {
@@ -5344,6 +5384,49 @@ function runTopicBindSelfTest() {
     }
   })();
   console.assert(socialFail, '[TopicBinding][SelfTest] off-topic social proof script should fail.');
+  const nowinTitle = 'Limited Time Offer: No Win, No Fee Guarantee!';
+  const nowinFingerprint = deriveTopicFingerprint(nowinTitle);
+  const hasNoWinToken = Array.isArray(nowinFingerprint.offerTokens)
+    && (nowinFingerprint.offerTokens.includes('nowin_nofee') || nowinFingerprint.offerTokens.includes('contingency'));
+  console.assert(hasNoWinToken, '[TopicBinding][SelfTest] no-win/no-fee fingerprint should include offer token.');
+  const nowinSpec = {
+    post_key: 'day-3-slot-0',
+    day: 3,
+    slotIndex: 0,
+    title: nowinTitle,
+    topic: nowinTitle,
+  };
+  const nowinPost = {
+    post_key: 'day-3-slot-0',
+    day: 3,
+    slotIndex: 0,
+    title: nowinTitle,
+    hook: 'No win, no fee — you don’t pay unless we win.',
+    caption: 'No win no fee guarantee, clients only pay when we win.',
+    script: { hook: 'No win, no fee.', body: 'You pay only if we win your case.', cta: 'Ask for details.' },
+    hashtags: ['#NoWinNoFee'],
+    designNotes: 'Bold guarantee headline.',
+    engagementScripts: { commentReply: 'Happy to explain the guarantee.', dmReply: 'Send your questions.' },
+    distributionPlan: 'Post to feed and pin the guarantee.',
+  };
+  const nowinPass = (() => {
+    try {
+      assertPostTopicBound(nowinPost, nowinSpec, []);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  console.assert(nowinPass, '[TopicBinding][SelfTest] no-win/no-fee hook should pass.');
+  const nowinFail = (() => {
+    try {
+      assertPostTopicBound({ ...nowinPost, hook: 'Miami neighborhoods you’ll love.' }, nowinSpec, []);
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+  console.assert(nowinFail, '[TopicBinding][SelfTest] off-topic no-win/no-fee hook should fail.');
 }
 
 function stripSuggestedAudioLinks(value = '') {
@@ -7710,6 +7793,8 @@ const server = http.createServer((req, res) => {
               ok: false,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
+              message: 'Upgrade required to regenerate the calendar.',
+              requestId,
             });
           }
         }
@@ -7799,6 +7884,26 @@ const server = http.createServer((req, res) => {
       let body = null;
       const requestId = generateRequestId('regen');
       const regenContext = { requestId, warnings: [] };
+      const requestStart = Date.now();
+      let aborted = false;
+      let closed = false;
+      req.on('aborted', () => {
+        aborted = true;
+        console.warn('[Calendar][Regen][Abort]', { requestId, elapsedMs: Date.now() - requestStart, event: 'aborted' });
+      });
+      req.on('close', () => {
+        closed = true;
+        if (!res.writableEnded) {
+          console.warn('[Calendar][Regen][Abort]', { requestId, elapsedMs: Date.now() - requestStart, event: 'close' });
+        }
+      });
+      res.on('finish', () => {
+        console.log('[Calendar][Regen][Response]', {
+          requestId,
+          statusCode: res.statusCode,
+          elapsedMs: Date.now() - requestStart,
+        });
+      });
       try {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
@@ -7855,17 +7960,37 @@ const server = http.createServer((req, res) => {
         regenContext.startDay = body?.startDay;
         const requestedPostsPerDay = 1;
         let posts;
+        if (aborted || closed || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
-          posts = await generateCalendarPosts({
-            ...(body || {}),
-            postsPerDay: requestedPostsPerDay,
-            context: regenContext,
-            isPro,
+          const timeoutGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS || 55000);
+          let timeoutId;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              const err = new Error('REQUEST_TIMEOUT_GUARD');
+              err.code = 'REQUEST_TIMEOUT_GUARD';
+              err.statusCode = 504;
+              err.elapsedMs = Date.now() - requestStart;
+              reject(err);
+            }, timeoutGuardMs);
           });
+          try {
+            posts = await Promise.race([
+              generateCalendarPosts({
+                ...(body || {}),
+                postsPerDay: requestedPostsPerDay,
+                context: regenContext,
+                isPro,
+              }),
+              timeoutPromise,
+            ]);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
         } finally {
           releaseRegenSlot();
         }
+        if (aborted || closed || res.writableEnded) return;
         const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
         console.log('[Calendar] regen audio counts', {
           requestId,
@@ -7883,7 +8008,8 @@ const server = http.createServer((req, res) => {
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         if (!Array.isArray(posts) || !posts.length) {
           return sendJson(res, 500, {
-            error: { message: 'REGENERATE_RETURNED_NO_POSTS' },
+            error: 'REGENERATE_RETURNED_NO_POSTS',
+            message: 'Regeneration returned no posts.',
             requestId,
           });
         }
@@ -7915,6 +8041,7 @@ const server = http.createServer((req, res) => {
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
+        if (aborted || closed || res.writableEnded) return;
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
@@ -7952,18 +8079,19 @@ const server = http.createServer((req, res) => {
         if (isTopicBinding || isPostKeyMapping) {
           return sendJson(res, 422, {
             error: isTopicBinding ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+            message: err?.message || 'Topic binding failed.',
             ...(err?.payload || {}),
             requestId,
           });
         }
         const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
         const openaiDetails = err?.openaiDetails || {};
+        const message = err?.message || 'Internal Server Error';
         const payload = {
-          error: isSchemaError
-            ? { message: 'openai_schema_error', code: 'OPENAI_SCHEMA_ERROR' }
-            : isInvalidJson
-              ? { message: 'invalid_model_json', code: 'INVALID_MODEL_JSON' }
-              : { message: err?.message || 'Internal Server Error', code: err?.code || 'CALENDAR_REGENERATE_FAILED' },
+          error: err?.code || (isSchemaError ? 'OPENAI_SCHEMA_ERROR' : (isInvalidJson ? 'INVALID_MODEL_JSON' : 'CALENDAR_REGENERATE_FAILED')),
+          message: isSchemaError ? 'openai_schema_error' : (isInvalidJson ? 'invalid_model_json' : message),
+          requestId,
+          context: errorContext,
           details: isSchemaError
             ? {
               openaiType: openaiDetails.openaiType || null,
@@ -7971,25 +8099,7 @@ const server = http.createServer((req, res) => {
               openaiParam: openaiDetails.openaiParam || null,
             }
             : undefined,
-          requestId,
-          mode: err?.mode || null,
         };
-        if (isSchemaError) {
-          if (!isProduction && err?.rawContent) {
-            payload.error.debug = err.rawContent;
-          }
-          const detailPayload = { ...(err?.details || {}) };
-          if (err?.schemaSnippet) detailPayload.schemaSnippet = err.schemaSnippet;
-          if (Object.keys(detailPayload).length) {
-            payload.error.details = detailPayload;
-          }
-        }
-        if (isInvalidJson && !isProduction && err?.rawContent) {
-          payload.error.details = { rawContentPreview: String(err.rawContent).slice(0, 400) };
-        }
-        if (!isSchemaError && !isProduction && err?.stack) {
-          payload.debugStack = err.stack;
-        }
         return sendJson(res, status, payload);
       }
     })();
