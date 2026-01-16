@@ -515,9 +515,18 @@ function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
   const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
   const requestIdValue = requestId || generateRequestId('server_error');
-  if (isTopicBinding || isPostKeyMapping) {
+  if (isTopicBinding) {
     const payload = {
-      error: isTopicBinding ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+      error: 'TOPIC_BINDING_FAILED',
+      requestId: requestIdValue,
+    };
+    if (err?.payload?.post_key) payload.post_key = err.payload.post_key;
+    if (Array.isArray(err?.payload?.failedFields)) payload.failedFields = err.payload.failedFields;
+    return sendJson(res, 422, payload);
+  }
+  if (isPostKeyMapping) {
+    const payload = {
+      error: 'PostKeyMappingFailed',
       ...(err?.payload || {}),
     };
     if (requestIdValue) payload.requestId = requestIdValue;
@@ -3348,7 +3357,35 @@ const EQUIV_GROUPS = {
     canon: ['listing'],
     injectCanon: false,
   },
+  VALUATION_VALUE: {
+    phrases: ['valuation', 'value', 'worth', 'price', 'pricing', 'appraisal', 'estimate'],
+    canon: ['valuation_value'],
+    injectCanon: true,
+  },
+  BUYING_HOME: {
+    phrases: ['buy', 'buyer', 'homebuying', 'purchase', 'purchasing', 'offer', 'closing'],
+    canon: ['buying_home'],
+    injectCanon: true,
+  },
+  NEIGHBORHOOD_AREA: {
+    phrases: ['neighborhood', 'area', 'community', 'district', 'zip', 'school zone'],
+    canon: ['neighborhood_area'],
+    injectCanon: true,
+  },
+  MARKET_TRENDS: {
+    phrases: ['market', 'trend', 'inventory', 'rates', 'pricing', 'median', 'data'],
+    canon: ['market_trends'],
+    injectCanon: true,
+  },
 };
+const EQUIV_CANON_TO_GROUP = Object.entries(EQUIV_GROUPS).reduce((acc, [key, group]) => {
+  const canonTokens = Array.isArray(group?.canon) ? group.canon : [];
+  canonTokens.forEach((token) => {
+    if (!token) return;
+    acc[token] = key;
+  });
+  return acc;
+}, {});
 const TITLE_META_TOKENS = new Set([
   'top',
   'reasons',
@@ -3385,55 +3422,75 @@ const TITLE_META_TOKENS = new Set([
   'our',
 ]);
 
-function normalizeTopicText(value = '') {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/(\w)'s\b/g, '$1')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function normalizeBindText(value = '') {
+  let base = String(value || '');
+  base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  base = base.toLowerCase();
+  base = base.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1pct');
+  base = base.replace(/\$\s*(\d+(?:\.\d+)?)/g, '$1usd');
+  base = base.replace(/(\w)'s\b/g, '$1');
+  base = base.replace(/[^a-z0-9]+/g, ' ');
+  base = base.replace(/(.)\1{2,}/g, '$1$1');
+  base = base.replace(/\s+/g, ' ').trim();
+  return base;
+}
+
+function stemToken(value = '') {
+  let token = String(value || '').toLowerCase();
+  if (!token) return '';
+  if (/\d/.test(token)) return token;
+  if (token.endsWith("'s")) token = token.slice(0, -2);
+  if (token.endsWith('ing') && token.length > 5) token = token.slice(0, -3);
+  else if (token.endsWith('ed') && token.length > 4) token = token.slice(0, -2);
+  else if (token.endsWith('ly') && token.length > 4) token = token.slice(0, -2);
+  if (token.endsWith('es') && token.length > 4) token = token.slice(0, -2);
+  else if (token.endsWith('s') && token.length > 3) token = token.slice(0, -1);
+  return token;
+}
+
+function tokenizeNormalizedText(normalized = '') {
+  if (!normalized) return [];
+  return normalized.split(/\s+/).filter(Boolean).map((token) => stemToken(token)).filter(Boolean);
+}
+
+function tokenizeBindText(value = '') {
+  const normalized = normalizeBindText(value);
+  return tokenizeNormalizedText(normalized);
 }
 
 // Language-level offer parsing to preserve numeric tokens for topic binding.
 function parseOfferTokens(value = '') {
-  const raw = String(value || '');
+  const normalized = normalizeBindText(value);
   const tokens = [];
   const seen = new Set();
   const add = (token) => {
-    const normalized = String(token || '').toLowerCase();
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    tokens.push(normalized);
+    const normalizedToken = String(token || '').toLowerCase();
+    if (!normalizedToken || seen.has(normalizedToken)) return;
+    seen.add(normalizedToken);
+    tokens.push(normalizedToken);
   };
-  const percentRegex = /(\d+(?:\.\d+)?)\s*%/g;
-  let match = percentRegex.exec(raw);
+  const percentRegex = /\b(\d+(?:\.\d+)?)pct\b/g;
+  let match = percentRegex.exec(normalized);
   while (match) {
     const number = match[1];
     add(`${number}pct`);
     add(number);
-    match = percentRegex.exec(raw);
+    match = percentRegex.exec(normalized);
   }
-  const currencyRegex = /\$\s*(\d+(?:\.\d+)?)/g;
-  match = currencyRegex.exec(raw);
+  const currencyRegex = /\b(\d+(?:\.\d+)?)usd\b/g;
+  match = currencyRegex.exec(normalized);
   while (match) {
     const number = match[1];
     add(`${number}usd`);
     add(number);
-    match = currencyRegex.exec(raw);
+    match = currencyRegex.exec(normalized);
   }
   const numberRegex = /\b\d+(?:\.\d+)?\b/g;
-  match = numberRegex.exec(raw);
+  match = numberRegex.exec(normalized);
   while (match) {
     add(match[0]);
-    match = numberRegex.exec(raw);
+    match = numberRegex.exec(normalized);
   }
-  const normalized = raw
-    .toLowerCase()
-    .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1pct')
-    .replace(/\$\s*(\d+(?:\.\d+)?)/g, '$1usd')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
   if (/\bfree\s+(home\s+valuation|valuation)\b/.test(normalized)) add('free_valuation');
   if (/\bfree\s+(consultation)\b/.test(normalized)) add('free_consult');
   if (/\bfree\s+(evaluation)\b/.test(normalized)) add('free_eval');
@@ -3447,33 +3504,10 @@ function parseOfferTokens(value = '') {
   return tokens;
 }
 
-function normalizeForBind(value = '') {
-  let base = String(value || '').toLowerCase();
-  base = base.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1pct');
-  base = base.replace(/\$\s*(\d+(?:\.\d+)?)/g, '$1usd');
-  base = base
-    .replace(/(\w)'s\b/g, '$1')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const offerTokens = parseOfferTokens(value);
-  if (!offerTokens.length) return base;
-  return `${base} ${offerTokens.join(' ')}`.replace(/\s+/g, ' ').trim();
-}
-
 function deriveTopicFingerprint(titleOrTopic = '') {
-  const base = normalizeForBind(titleOrTopic);
-  const limitedTimeActive = /\blimited time\b/.test(base);
-  const baseHasNoWinNoFee = /\bno win no fee\b/.test(base);
-  const baseHasContingency = /\bcontingency\b/.test(base);
-  const baseHasGuarantee = /\bguarantee\b/.test(base);
-  const rawTokens = base.split(/\s+/).filter(Boolean);
+  const titleNormalized = normalizeBindText(titleOrTopic);
+  const rawTokens = titleNormalized.split(/\s+/).filter(Boolean);
   const offerTokens = parseOfferTokens(titleOrTopic);
-  if (limitedTimeActive && (baseHasNoWinNoFee || baseHasContingency || baseHasGuarantee)) {
-    if (baseHasNoWinNoFee) offerTokens.push('nowin_nofee');
-    if (baseHasContingency) offerTokens.push('contingency');
-    if (baseHasGuarantee) offerTokens.push('guarantee');
-  }
   const buildTokens = (skipMeta = true) => {
     const tokens = [];
     const seen = new Set();
@@ -3482,49 +3516,57 @@ function deriveTopicFingerprint(titleOrTopic = '') {
       if (!isNumeric && token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
       if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
       if (skipMeta && TITLE_META_TOKENS.has(token)) continue;
-      if (seen.has(token)) continue;
-      seen.add(token);
-      tokens.push(token);
+      const stemmed = stemToken(token);
+      if (!stemmed || seen.has(stemmed)) continue;
+      seen.add(stemmed);
+      tokens.push(stemmed);
       if (tokens.length >= 8) break;
     }
     return tokens;
   };
-  let tokens = buildTokens(true);
-  const addedCanonical = [];
-  const socialProofActive = isSocialProofTitle(base);
+  let baseTokens = buildTokens(true);
+  if (baseTokens.length < 2) baseTokens = buildTokens(false);
+  const canonTokens = [];
   Object.values(EQUIV_GROUPS).forEach((group) => {
     if (!group.injectCanon) return;
     const matched = group.phrases.some((phrase) => {
-      const normalizedPhrase = normalizeForBind(phrase);
+      const normalizedPhrase = normalizeBindText(phrase);
       if (!normalizedPhrase) return false;
       const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-      return regex.test(base);
+      return regex.test(titleNormalized);
     });
     if (matched) {
-      group.canon.forEach((item) => addedCanonical.push(item));
+      group.canon.forEach((item) => {
+        if (item) canonTokens.push(item);
+      });
     }
   });
-  if (socialProofActive) addedCanonical.push('testimonial');
-  if (tokens.length < 2) tokens = buildTokens(false);
-  const seen = new Set(tokens);
-  addedCanonical.forEach((token) => {
-    const normalizedToken = normalizeTokenForBind(token);
-    if (!normalizedToken || seen.has(normalizedToken)) return;
-    seen.add(normalizedToken);
-    tokens.push(normalizedToken);
-  });
-  offerTokens.forEach((token) => {
-    const normalizedToken = normalizeTokenForBind(token);
-    if (!normalizedToken || seen.has(normalizedToken)) return;
-    seen.add(normalizedToken);
-    tokens.push(normalizedToken);
-  });
-  let phrase = null;
-  if (tokens.length >= 2) {
-    const maxLen = Math.min(5, tokens.length);
-    phrase = tokens.slice(0, maxLen).join(' ');
+  if (isSocialProofTitle(titleNormalized)) canonTokens.push('testimonial');
+  const canonStemTokens = new Set(
+    canonTokens
+      .filter((token) => token && !String(token).includes('_'))
+      .map((token) => stemToken(token))
+      .filter(Boolean)
+  );
+  const filteredBaseTokens = baseTokens.filter((token) => !canonStemTokens.has(token));
+  const dedupe = (list) => {
+    const seen = new Set();
+    const output = [];
+    list.forEach((item) => {
+      const value = String(item || '');
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      output.push(value);
+    });
+    return output;
+  };
+  const tokens = dedupe([...baseTokens, ...canonTokens, ...offerTokens]);
+  let anchors = dedupe([...canonTokens, ...offerTokens, ...filteredBaseTokens]);
+  if (anchors.length < 3 && baseTokens.length > anchors.length) {
+    anchors = dedupe([...anchors, ...filteredBaseTokens]);
   }
-  return { tokens, phrase, offerTokens };
+  anchors = anchors.slice(0, 5);
+  return { tokens, offerTokens, anchors, titleNormalized };
 }
 
 function getTitleFirstWords(value = '', count = 4) {
@@ -3563,7 +3605,7 @@ function getField(post = {}, names = []) {
 const MOVEMENT_EQUIVALENTS = new Set(['move', 'moving', 'relocate', 'relocating', 'relocation']);
 
 function shouldAllowMovementEquivalents(titleText = '') {
-  const normalized = normalizeForBind(titleText);
+  const normalized = normalizeBindText(titleText);
   const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
   return ['move', 'moving', 'relocate', 'relocating', 'relocation'].some((token) => tokens.has(token));
 }
@@ -3573,7 +3615,7 @@ function isSocialProofTitle(normalizedTitle = '') {
   const group = EQUIV_GROUPS.SOCIAL_PROOF;
   if (group?.phrases) {
     for (const phrase of group.phrases) {
-      const normalizedPhrase = normalizeForBind(phrase);
+      const normalizedPhrase = normalizeBindText(phrase);
       if (!normalizedPhrase) continue;
       const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
       if (regex.test(normalizedTitle)) return true;
@@ -3586,8 +3628,9 @@ function isSocialProofTitle(normalizedTitle = '') {
 }
 
 function normalizeTokenForBind(value = '') {
-  const normalized = normalizeForBind(value);
-  return normalized.split(/\s+/).filter(Boolean)[0] || '';
+  const normalized = normalizeBindText(value);
+  const token = normalized.split(/\s+/).filter(Boolean)[0] || '';
+  return token ? stemToken(token) : '';
 }
 
 function tokenMatches(normalizedText = '', token = '', options = {}) {
@@ -3627,7 +3670,7 @@ function containsEquivalenceGroupPhrase(normalizedText = '', options = {}) {
     const group = EQUIV_GROUPS[groupKey];
     if (!group) continue;
     for (const phrase of group.phrases) {
-      const normalizedPhrase = normalizeForBind(phrase);
+      const normalizedPhrase = normalizeBindText(phrase);
       if (!normalizedPhrase) continue;
       const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
       if (regex.test(normalizedText)) return true;
@@ -3638,7 +3681,7 @@ function containsEquivalenceGroupPhrase(normalizedText = '', options = {}) {
 
 function containsTopicReference(text = '', fingerprint = {}, minTokens = 2, options = {}) {
   if (!isNonEmptyString(text)) return false;
-  const normalized = normalizeForBind(text);
+  const normalized = normalizeBindText(text);
   if (!normalized) return false;
   const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
   if (phrase && normalized.includes(phrase)) return true;
@@ -3667,7 +3710,7 @@ function hasAnyAnchorToken(text = '', fingerprint = {}, options = {}) {
   if (!isNonEmptyString(text)) return false;
   const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
   if (!tokens.length) return false;
-  const normalized = normalizeForBind(text);
+  const normalized = normalizeBindText(text);
   for (const token of tokens) {
     if (token && tokenMatches(normalized, token, options)) return true;
   }
@@ -3690,7 +3733,7 @@ function deriveFingerprintFromCapsule(capsule = {}) {
 
 function countMustUseMatches(text = '', mustUse = []) {
   if (!isNonEmptyString(text) || !Array.isArray(mustUse) || !mustUse.length) return 0;
-  const normalized = normalizeForBind(text);
+  const normalized = normalizeBindText(text);
   if (!normalized) return 0;
   const matched = new Set();
   mustUse.forEach((item) => {
@@ -3704,7 +3747,7 @@ function countMustUseMatches(text = '', mustUse = []) {
 
 function containsMustAvoidToken(text = '', mustAvoid = []) {
   if (!isNonEmptyString(text) || !Array.isArray(mustAvoid) || !mustAvoid.length) return false;
-  const normalized = normalizeForBind(text);
+  const normalized = normalizeBindText(text);
   if (!normalized) return false;
   const words = new Set(normalized.split(/\s+/).filter(Boolean));
   for (const item of mustAvoid) {
@@ -4853,7 +4896,7 @@ function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicP
 }
 
 function tokenizeTitleForAvoid(value = '') {
-  const normalized = normalizeForBind(value);
+  const normalized = normalizeBindText(value);
   if (!normalized) return [];
   return normalized
     .split(/\s+/)
@@ -5119,87 +5162,84 @@ function resolveRequestedSpec(requestedSpec = {}) {
   };
 }
 
-const PROMO_FEE_WORDS = ['fee', 'fees', 'commission', 'rate', 'rates', 'closing', 'cost', 'costs', 'percent', 'percentage', '%'];
+function getPostTopicString(post = {}) {
+  return toPlainString(post?.topic || post?.title || post?.postTitle || '');
+}
 
-function normalizedHasToken(normalizedText = '', token = '') {
-  const normalizedToken = normalizeTokenForBind(token);
-  if (!normalizedText || !normalizedToken) return false;
-  const regex = new RegExp(`\\b${escapeRegexPattern(normalizedToken)}\\b`, 'i');
-  return regex.test(normalizedText);
+function matchesEquivalenceGroup(normalizedText = '', groupKey = '') {
+  if (!normalizedText) return false;
+  const group = EQUIV_GROUPS[groupKey];
+  if (!group) return false;
+  for (const phrase of group.phrases) {
+    const normalizedPhrase = normalizeBindText(phrase);
+    if (!normalizedPhrase) continue;
+    const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
+    if (regex.test(normalizedText)) return true;
+  }
+  return false;
+}
+
+function getFieldBindingSignals(text = '', fingerprint = {}) {
+  const normalized = normalizeBindText(text);
+  const tokens = new Set(tokenizeNormalizedText(normalized));
+  const offerTokenSet = new Set(Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : []);
+  const fieldOfferTokens = new Set(parseOfferTokens(text));
+  let offerHit = false;
+  for (const token of fieldOfferTokens) {
+    if (offerTokenSet.has(token)) {
+      offerHit = true;
+      break;
+    }
+  }
+  const anchors = Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [];
+  let anchorHits = 0;
+  const seen = new Set();
+  for (const anchor of anchors) {
+    if (!anchor || seen.has(anchor)) continue;
+    let matched = false;
+    if (offerTokenSet.has(anchor)) {
+      matched = fieldOfferTokens.has(anchor);
+    } else {
+      const groupKey = EQUIV_CANON_TO_GROUP[anchor];
+      if (groupKey) {
+        matched = matchesEquivalenceGroup(normalized, groupKey);
+      } else {
+        matched = tokens.has(anchor);
+      }
+    }
+    if (matched) {
+      anchorHits += 1;
+      seen.add(anchor);
+    }
+  }
+  return { normalized, anchorHits, offerHit };
 }
 
 function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = []) {
   if (!post || typeof post !== 'object') return;
   const resolvedSpec = resolveRequestedSpec(requestedSpec);
-  const titleText = toPlainString(resolvedSpec.title || resolvedSpec.topic || '');
-  const capsule = post.topicCapsule || post.topic_capsule || {};
-  const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
-  const capsuleMustAvoid = Array.isArray(capsule?.mustAvoid) ? capsule.mustAvoid : [];
-  const mustAvoid = capsuleMustAvoid.length ? capsuleMustAvoid : (Array.isArray(fallbackMustAvoid) ? fallbackMustAvoid : []);
-  let fingerprint = mustUse.length >= 5 ? deriveFingerprintFromCapsule(capsule) : deriveTopicFingerprint(titleText);
-  const allowMovementEquivalents = shouldAllowMovementEquivalents(titleText);
-  const normalizedTitle = normalizeForBind(titleText);
-  const socialProofActive = isSocialProofTitle(normalizedTitle);
-  const titleOfferTokens = parseOfferTokens(titleText).map((token) => normalizeTokenForBind(token)).filter(Boolean);
-  const activeEquivalenceGroups = Object.keys(EQUIV_GROUPS).filter((groupKey) => {
-    const group = EQUIV_GROUPS[groupKey];
-    if (!group) return false;
-    if (groupKey === 'SOCIAL_PROOF') return socialProofActive;
-    return group.phrases.some((phrase) => {
-      const normalizedPhrase = normalizeForBind(phrase);
-      if (!normalizedPhrase) return false;
-      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-      return regex.test(normalizedTitle);
-    });
-  });
-  if (titleText) {
-    if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
-    if (fingerprint.tokens.length < 3) {
-      fingerprint = deriveTopicFingerprint(titleText);
-    }
-    const titleTokens = new Set(normalizeForBind(titleText).split(/\s+/).filter(Boolean));
-    const fingerprintTokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
-    const mismatch = fingerprintTokens.filter((token) => token && !titleTokens.has(token));
-    if (mismatch.length) {
-      console.warn('[TopicBinding] fingerprint_mismatch rederive title="%s" tokens=%j', titleText, fingerprintTokens);
-      fingerprint = deriveTopicFingerprint(titleText);
-    }
-    if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
-    if (fingerprint.tokens.length < 3) {
-      fingerprint = deriveTopicFingerprint(titleText);
-    }
+  const titleText = getPostTopicString(post);
+  if (!titleText) {
+    const err = new Error('POST_TOPIC_MISSING');
+    err.code = 'INVALID_MODEL_JSON';
+    err.statusCode = 400;
+    err.payload = {
+      post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
+      day: Number.isFinite(Number(resolvedSpec.day)) ? Number(resolvedSpec.day) : (Number.isFinite(Number(post.day)) ? Number(post.day) : null),
+      slotIndex: Number.isFinite(Number(resolvedSpec.slotIndex))
+        ? Number(resolvedSpec.slotIndex)
+        : (Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null),
+    };
+    throw err;
   }
-  if (!Array.isArray(fingerprint.tokens)) fingerprint.tokens = [];
-  const combinedOfferTokens = [];
-  const offerSeen = new Set();
-  titleOfferTokens.forEach((token) => {
-    if (offerSeen.has(token)) return;
-    offerSeen.add(token);
-    combinedOfferTokens.push(token);
-  });
-  const tokenSeen = new Set(fingerprint.tokens);
-  combinedOfferTokens.forEach((token) => {
-    if (tokenSeen.has(token)) return;
-    tokenSeen.add(token);
-    fingerprint.tokens.push(token);
-  });
-  fingerprint.offerTokens = combinedOfferTokens;
-  fingerprint.flags = socialProofActive ? ['SOCIAL_PROOF'] : [];
-  const isPromoTitle = combinedOfferTokens.length > 0 || PROMO_FEE_WORDS.some((word) => {
-    if (word === '%') return titleText.includes('%') || normalizedTitle.includes('pct');
-    return normalizedHasToken(normalizedTitle, word);
-  });
-  const isOfferTitle = combinedOfferTokens.length > 0 || [
-    'free',
-    'offer',
-    'discount',
-    'off',
-    'percent',
-    'valuation',
-    'consultation',
-    'evaluation',
-    'estimate',
-  ].some((word) => normalizedHasToken(normalizedTitle, word)) || normalizedTitle.includes('pct') || titleText.includes('%');
+  let fingerprint = deriveTopicFingerprint(titleText);
+  if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
+  if (!Array.isArray(fingerprint?.anchors) || !fingerprint.anchors.length) {
+    fingerprint.anchors = fingerprint.tokens.slice(0, 5);
+  }
+  if (fingerprint.tokens.length < 3) {
+    fingerprint = deriveTopicFingerprint(titleText);
+  }
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
@@ -5208,102 +5248,51 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
   const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
   const failedFields = [];
-  const tierAFailedFields = [];
-  const tierBFailedFields = [];
   const snippets = {};
-  const hookNormalized = normalizeForBind(hookText);
-  let hookOk = false;
-  let hookOkPromo = false;
-  if (isPromoTitle) {
-    const hookOfferTokens = parseOfferTokens(hookText).map((token) => normalizeTokenForBind(token)).filter(Boolean);
-    const hookOfferSet = new Set(hookOfferTokens);
-    const titleOfferSet = new Set(combinedOfferTokens);
-    const hookHasOfferToken = Array.from(hookOfferSet).some((token) => titleOfferSet.has(token));
-    const hookNumberTokens = hookOfferTokens.filter((token) => /^\d+(?:\.\d+)?$/.test(token));
-    const titleNumberTokens = combinedOfferTokens.filter((token) => /^\d+(?:\.\d+)?$/.test(token));
-    const hookHasNumberMatch = hookNumberTokens.some((token) => titleNumberTokens.includes(token));
-    const hookHasListing = containsEquivalenceGroupPhrase(hookNormalized, { equivalenceGroups: ['LISTING_SELLING'] });
-    const offerTokenSet = new Set(combinedOfferTokens);
-    const hasNoWinNoFee = offerTokenSet.has('nowin_nofee');
-    const hasContingency = offerTokenSet.has('contingency');
-    const hookHasNoWinNoFeeVariant = /\bno win no fee\b/.test(hookNormalized);
-    const hookHasContingencyVariant = /\bcontingency\b/.test(hookNormalized);
-    const hookTokens = hookNormalized.split(/\s+/).filter(Boolean);
-    const feeIndex = hookTokens.indexOf('fee');
-    const noFeeIndex = feeIndex > 0 ? feeIndex - 1 : -1;
-    let hookHasNoFeeWindow = false;
-    if (noFeeIndex >= 0 && hookTokens[noFeeIndex] === 'no') {
-      const start = Math.max(0, noFeeIndex - 4);
-      const end = Math.min(hookTokens.length, noFeeIndex + 6);
-      const windowTokens = hookTokens.slice(start, end);
-      hookHasNoFeeWindow = windowTokens.includes('win') || windowTokens.includes('pay');
-    }
-    if (hasNoWinNoFee || hasContingency) {
-      if (hookHasNoWinNoFeeVariant || hookHasContingencyVariant || hookHasNoFeeWindow) {
-        hookOkPromo = true;
-      }
-    }
-    if (hookHasOfferToken || (hookHasListing && hookHasNumberMatch)) hookOkPromo = true;
-  }
-  if (hookOkPromo) {
-    hookOk = true;
-  } else {
-    hookOk = containsTopicReference(hookText, fingerprint, 1, {
-      allowMovementEquivalents,
-      equivalenceGroups: activeEquivalenceGroups,
-    });
-  }
+  const hookSignals = getFieldBindingSignals(hookText, fingerprint);
+  const hookOk = isNonEmptyString(hookText) && (hookSignals.offerHit || hookSignals.anchorHits >= 1);
   if (!hookOk) {
-    tierAFailedFields.push('hook');
     failedFields.push('hook');
-    snippets.hook = hookText ? hookText.slice(0, 80) : '';
+    snippets.hook = hookText ? hookText.slice(0, 60) : '';
   }
-  const captionAnchorOk = containsTopicReference(captionText, fingerprint, 2, {
-    allowMovementEquivalents,
-    equivalenceGroups: activeEquivalenceGroups,
-  });
-  let captionOkOffer = false;
-  if (isOfferTitle) {
-    const captionNormalized = normalizeForBind(captionText);
-    const captionOfferTokens = new Set(parseOfferTokens(captionText).map((token) => normalizeTokenForBind(token)).filter(Boolean));
-    const hasOfferToken = combinedOfferTokens.some((token) => captionOfferTokens.has(token));
-    const hasFree = normalizedHasToken(captionNormalized, 'free');
-    const baseAnchorTokens = fingerprint.tokens
-      .filter((token) => token && !combinedOfferTokens.includes(token) && !TITLE_META_TOKENS.has(token) && token !== 'free');
-    const hasBaseAnchor = baseAnchorTokens.some((token) => normalizedHasToken(captionNormalized, token));
-    captionOkOffer = hasOfferToken || (hasFree && hasBaseAnchor);
-  }
-  if (!captionAnchorOk && !captionOkOffer) {
-    tierAFailedFields.push('caption');
+  const captionSignals = getFieldBindingSignals(captionText, fingerprint);
+  const captionOk = isNonEmptyString(captionText) && (captionSignals.offerHit || captionSignals.anchorHits >= 2);
+  if (!captionOk) {
     failedFields.push('caption');
-    snippets.caption = captionText ? captionText.slice(0, 80) : '';
+    snippets.caption = captionText ? captionText.slice(0, 60) : '';
   }
-  if (!containsTopicReference(scriptText, fingerprint, 2, { allowMovementEquivalents, equivalenceGroups: activeEquivalenceGroups })) {
-    tierAFailedFields.push('script');
+  const scriptSignals = getFieldBindingSignals(scriptText, fingerprint);
+  const scriptOk = isNonEmptyString(scriptText) && (scriptSignals.offerHit || scriptSignals.anchorHits >= 2);
+  if (!scriptOk) {
     failedFields.push('script');
-    snippets.script = scriptText ? scriptText.slice(0, 80) : '';
+    snippets.script = scriptText ? scriptText.slice(0, 60) : '';
   }
-  const hashtagsHasAnchor = hasAnyAnchorToken(hashtagsText, fingerprint, { allowMovementEquivalents });
-  const hashtagsHasAvoid = containsMustAvoidToken(hashtagsText, mustAvoid);
-  if (!isNonEmptyString(hashtagsText) || (!hashtagsHasAnchor && hashtagsHasAvoid)) {
-    tierBFailedFields.push('hashtags');
+  const hashtagsSignals = getFieldBindingSignals(hashtagsText, fingerprint);
+  const hashtagsOk = isNonEmptyString(hashtagsText) && (hashtagsSignals.offerHit || hashtagsSignals.anchorHits >= 1);
+  if (!hashtagsOk) {
     failedFields.push('hashtags');
-    snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 80) : '';
+    snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 60) : '';
   }
-  if (!isNonEmptyString(designNotesText) || containsMustAvoidToken(designNotesText, mustAvoid)) {
-    tierBFailedFields.push('designNotes');
+  const designNotesSignals = getFieldBindingSignals(designNotesText, fingerprint);
+  const designNotesOk = isNonEmptyString(designNotesText)
+    && (designNotesSignals.offerHit || designNotesSignals.anchorHits >= 1);
+  if (!designNotesOk) {
     failedFields.push('designNotes');
-    snippets.designNotes = designNotesText ? designNotesText.slice(0, 80) : '';
+    snippets.designNotes = designNotesText ? designNotesText.slice(0, 60) : '';
   }
-  if (!isNonEmptyString(engagementLoopText) || containsMustAvoidToken(engagementLoopText, mustAvoid)) {
-    tierBFailedFields.push('engagementLoop');
+  const engagementLoopSignals = getFieldBindingSignals(engagementLoopText, fingerprint);
+  const engagementLoopOk = isNonEmptyString(engagementLoopText)
+    && (engagementLoopSignals.offerHit || engagementLoopSignals.anchorHits >= 1);
+  if (!engagementLoopOk) {
     failedFields.push('engagementLoop');
-    snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 80) : '';
+    snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
   }
-  if (!isNonEmptyString(distributionPlanText) || containsMustAvoidToken(distributionPlanText, mustAvoid)) {
-    tierBFailedFields.push('distributionPlan');
+  const distributionPlanSignals = getFieldBindingSignals(distributionPlanText, fingerprint);
+  const distributionPlanOk = isNonEmptyString(distributionPlanText)
+    && (distributionPlanSignals.offerHit || distributionPlanSignals.anchorHits >= 1);
+  if (!distributionPlanOk) {
     failedFields.push('distributionPlan');
-    snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 80) : '';
+    snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
   }
   if (!failedFields.length) return;
   const err = new Error('TOPIC_BINDING_FAILED');
@@ -5316,22 +5305,18 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
       ? Number(resolvedSpec.slotIndex)
       : (Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null),
     title: titleText,
-    topic: resolvedSpec.topic || '',
+    topic: titleText,
     fingerprint,
-    offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
     failedFields,
-    tierAFailedFields,
-    tierBFailedFields,
     snippets,
   };
   console.warn('[TopicBinding] failed', {
     post_key: err.payload.post_key,
-    offerTokens: err.payload.offerTokens,
-    failedFields: err.payload.failedFields,
-    snippets: {
-      hook: err.payload.snippets?.hook || '',
-      caption: err.payload.snippets?.caption || '',
-    },
+    title: titleText,
+    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
+    offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
+    failedFields,
+    fieldSamples: snippets,
   });
   throw err;
 }
@@ -5356,7 +5341,7 @@ function runTopicBindSelfTest() {
     hashtags: ['#Listing', '#1Percent', '#NewClients'],
     designNotes: 'Minimal layout with the 1% offer highlighted.',
     engagementScripts: { commentReply: 'Happy to help with your listing.', dmReply: 'Share your timeline and we can help.' },
-    distributionPlan: 'Post to feed, then share in stories with a short CTA.',
+    distributionPlan: 'Post to feed with the 1% listing offer, then share in stories.',
   };
   const passes = (() => {
     try {
@@ -5486,7 +5471,7 @@ function runTopicBindSelfTest() {
     hashtags: ['#FreeValuation'],
     designNotes: 'Highlight the free valuation offer.',
     engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your address to start.' },
-    distributionPlan: 'Post to feed and share in stories.',
+    distributionPlan: 'Post to feed with the free valuation highlight, then share in stories.',
   };
   const freePass = (() => {
     try {
@@ -8159,9 +8144,16 @@ const server = http.createServer((req, res) => {
         logServerError('calendar_regenerate_error', err, logInfo);
         if (res.headersSent) return;
         if (isTopicBinding || isPostKeyMapping) {
+          if (isTopicBinding) {
+            return sendJson(res, 422, {
+              error: 'TOPIC_BINDING_FAILED',
+              requestId,
+              post_key: err?.payload?.post_key,
+              failedFields: err?.payload?.failedFields,
+            });
+          }
           return sendJson(res, 422, {
-            error: isTopicBinding ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
-            message: err?.message || 'Topic binding failed.',
+            error: 'PostKeyMappingFailed',
             ...(err?.payload || {}),
             requestId,
           });
@@ -8858,9 +8850,17 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { post: enriched });
       } catch (err) {
         console.error('regen-day error:', err);
-        if (err?.code === 'TOPIC_BINDING_FAILED' || err?.code === 'POST_KEY_MAPPING_FAILED') {
+        if (err?.code === 'TOPIC_BINDING_FAILED') {
           return sendJson(res, 422, {
-            error: err.code === 'TOPIC_BINDING_FAILED' ? 'TopicBindingFailed' : 'PostKeyMappingFailed',
+            error: 'TOPIC_BINDING_FAILED',
+            requestId,
+            post_key: err?.payload?.post_key,
+            failedFields: err?.payload?.failedFields,
+          });
+        }
+        if (err?.code === 'POST_KEY_MAPPING_FAILED') {
+          return sendJson(res, 422, {
+            error: 'PostKeyMappingFailed',
             ...(err?.payload || {}),
             requestId,
           });
