@@ -3341,6 +3341,26 @@ const EQUIV_GROUPS = {
     canon: ['testimonial'],
     injectCanon: true,
   },
+  TESTIMONIAL_STORY: {
+    phrases: [
+      'testimonial',
+      'testimonials',
+      'testimonies',
+      'story',
+      'stories',
+      'success story',
+      'real story',
+      'case result',
+      'case results',
+      'victory',
+      'victories',
+      'win',
+      'won',
+      'wins',
+    ],
+    canon: ['testimonial'],
+    injectCanon: true,
+  },
   LISTING_SELLING: {
     phrases: [
       'list',
@@ -5254,7 +5274,7 @@ function getHashtagBindingSignals(text = '', fingerprint = {}) {
   return { normalized, anchorHits, offerHit };
 }
 
-function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = []) {
+function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = [], context = {}) {
   if (!post || typeof post !== 'object') return;
   const resolvedSpec = resolveRequestedSpec(requestedSpec);
   const titleText = getPostTopicString(post);
@@ -5282,6 +5302,19 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const hookText = getField(post, ['hook']);
   const captionText = getField(post, ['caption']);
   const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
+  const formatValue = toPlainString(post.format || post.type || post.postFormat || '');
+  const formatNormalized = String(formatValue).toLowerCase();
+  const isVideoFormat = ['reel', 'tiktok', 'video'].some((item) => formatNormalized.includes(item));
+  let primaryFieldName = 'caption';
+  if (isVideoFormat && isNonEmptyString(scriptText)) {
+    primaryFieldName = 'script';
+  } else if (isNonEmptyString(captionText)) {
+    primaryFieldName = 'caption';
+  } else if (isNonEmptyString(hookText)) {
+    primaryFieldName = 'hook';
+  } else if (isNonEmptyString(scriptText)) {
+    primaryFieldName = 'script';
+  }
   const hashtagsText = getField(post, ['hashtags']);
   const designNotesText = getField(post, ['designNotes', 'design_notes']);
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
@@ -5291,22 +5324,22 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const noncoreFailedFields = [];
   const snippets = {};
   const hookSignals = getFieldBindingSignals(hookText, fingerprint);
-  const hookOk = isNonEmptyString(hookText) && (hookSignals.offerHit || hookSignals.anchorHits >= 1);
-  if (!hookOk) {
+  const hookOk = isNonEmptyString(hookText) ? (hookSignals.offerHit || hookSignals.anchorHits >= 1) : null;
+  if (hookOk === false) {
     coreFailedFields.push('hook');
     failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 60) : '';
   }
   const captionSignals = getFieldBindingSignals(captionText, fingerprint);
-  const captionOk = isNonEmptyString(captionText) && (captionSignals.offerHit || captionSignals.anchorHits >= 2);
-  if (!captionOk) {
+  const captionOk = isNonEmptyString(captionText) ? (captionSignals.offerHit || captionSignals.anchorHits >= 2) : null;
+  if (captionOk === false) {
     coreFailedFields.push('caption');
     failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 60) : '';
   }
   const scriptSignals = getFieldBindingSignals(scriptText, fingerprint);
-  const scriptOk = isNonEmptyString(scriptText) && (scriptSignals.offerHit || scriptSignals.anchorHits >= 2);
-  if (!scriptOk) {
+  const scriptOk = isNonEmptyString(scriptText) ? (scriptSignals.offerHit || scriptSignals.anchorHits >= 2) : null;
+  if (scriptOk === false) {
     coreFailedFields.push('script');
     failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 60) : '';
@@ -5354,9 +5387,27 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     });
     return;
   }
+  const primaryFieldOk = primaryFieldName === 'script'
+    ? scriptOk
+    : (primaryFieldName === 'hook' ? hookOk : captionOk);
+  const topicBoundOk = [hookOk, captionOk, scriptOk].some((value) => value === true);
+  if (!(primaryFieldOk === false && !topicBoundOk)) {
+    return;
+  }
   const err = new Error('TOPIC_BINDING_FAILED');
   err.code = 'TOPIC_BINDING_FAILED';
   err.statusCode = 422;
+  const primaryFieldText = primaryFieldName === 'script'
+    ? scriptText
+    : (primaryFieldName === 'hook' ? hookText : captionText);
+  console.warn('[TopicBinding] core_failed', {
+    requestId: context?.requestId || 'unknown',
+    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
+    title: titleText,
+    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
+    primaryFieldName,
+    primaryFieldSample: normalizeBindText(primaryFieldText || '').slice(0, 120),
+  });
   err.payload = {
     post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
     day: Number.isFinite(Number(resolvedSpec.day)) ? Number(resolvedSpec.day) : (Number.isFinite(Number(post.day)) ? Number(post.day) : null),
@@ -7260,7 +7311,7 @@ const server = http.createServer((req, res) => {
         const key = toPlainString(post?.post_key || post?.postKey || '');
         const requestedSpec = requestedSpecMap.get(key) || {};
         const fallbackMustAvoid = fallbackAvoidByKey.get(key) || [];
-        assertPostTopicBound(post, requestedSpec, fallbackMustAvoid);
+        assertPostTopicBound(post, requestedSpec, fallbackMustAvoid, { requestId: chunkContext?.requestId || 'unknown' });
       });
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
