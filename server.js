@@ -2949,30 +2949,53 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Write as if for a 15-20 second vertical video.',
   '- Use spoken language. Short lines. No paragraphs longer than 2 lines.',
   '- Ban weak hooks: do NOT use "is key for success", "is important", "is crucial", "don\'t miss out", "stay ahead", "discover", "unlock", "game-changer" unless followed by a concrete claim within the same sentence.',
-  '- Every post must include at least ONE concrete mechanism (a why/how): a cause → effect, a tradeoff, or a specific decision rule tied to the title/topic.',
+  '- Every post must include at least ONE concrete mechanism (a why/how): a cause -> effect, a tradeoff, or a specific decision rule tied to the title/topic.',
   '- Every post must include at least TWO concrete specifics (numbers, time windows, thresholds, examples, steps, do/don\'t). Keep them plausible and general; do not claim unverifiable stats.',
   '- No repeating the same sentence across hook/caption/script/CTA.',
   '- Every field must stay strictly on the post title/topic.',
-  'HOOK (field: hook):',
-  '- 6-12 words max OR 1 punchy question max. No two-sentence hooks.',
-  '- Must be a pattern interrupt using one format (do not label it):',
-  '  1) "Stop doing X if you want Y"',
-  '  2) "Most people get X wrong—here\'s why"',
-  '  3) "If you see X, do Y"',
-  '  4) "3 signs X is about to happen"',
-  '  5) "The #1 mistake with X"',
-  '  6) "Before you do X, check this"',
-  '- Must reference the title/topic directly (not generic "success").',
+  'OPENING DIVERSITY (HARD REQUIREMENT):',
+  '- Caption first line must not reuse the hook\'s first 3 words.',
+  '- Script "0-2s" line must not be identical to the hook field; same idea, different wording.',
+  '- Engagement loop pinned comment keyword must not reuse the same keyword across posts unless the title explicitly requires it.',
+  'FACT SAFETY:',
+  '- Do not invent precise statistics, counts, or year-over-year percentages.',
+  '- If you use numbers, use them as steps, time windows, ranges, or decision thresholds that are general (e.g., "within 7-10 days", "3 checks", "under X minutes"), not claims about real-world markets.',
+  '- If you reference trends, describe them qualitatively unless the user provided data.',
+  'VOICE NATURALITY:',
+  '- Avoid AI cadence. Prefer short, colloquial lines.',
+  '- No corporate phrases ("hidden gems", "dream outcome awaits", "key for success") unless made specific and fresh.',
+  'HOOK (hard constraints):',
+  '- 6-12 words OR one question.',
+  '- Must create immediate tension/curiosity.',
+  '- Must include a concrete angle tied to the title/topic (a mistake, tradeoff, rule, or surprising detail).',
+  '- Must satisfy HOOK VARIETY CONTRACT.',
+  'NO GENERIC HOOKS:',
+  '- Hooks that are generic slogans are banned (e.g., vague claims about importance or urgency).',
+  '- Hook must contain a concrete angle from one of these forms (do not label it): a specific mistake to avoid, a tradeoff/decision point, a quick diagnostic/checklist, a contrarian claim tied to the title, or a short scene (1 sentence) tied to the title.',
+  'HOOK VARIETY CONTRACT (REQUIRED):',
+  '- Hooks must be a pattern interrupt, but you must NOT reuse the same opening word across posts within the same batch.',
+  '- Do not start more than ONE hook in a 10-post batch with the same first word.',
+  '- Vary hook form across posts by rotating among these categories (do not label them):',
+  '  1) Question hook',
+  '  2) Contrarian/hot-take claim',
+  '  3) Specific-number hook ("3..." "5...")',
+  '  4) Mini-story/scene hook (1 sentence)',
+  '  5) Mistake-to-avoid hook',
+  '  6) Checklist/diagnostic hook',
+  '- Wording must be natural and unique.',
   'REEL SCRIPT (field: script or reelScript):',
   '- Must be timestamped beats with exact labels:',
   '  "0–2s: ..."',
   '  "2–6s: ..."',
   '  "6–14s: ..."',
   '  "14–20s: ..."',
+  'SCRIPT MICRO-STRUCTURE (REQUIRED):',
+  '- 0–2s line must contain the title\'s key nouns (see Title-Anchor Echo).',
+  '- First body sentence must also contain at least one of those nouns, then expand into value.',
   '- 0–2s: Hook line (same idea as hook field but NOT the exact same sentence).',
   '- 2–6s: Explain the stake in 1 line (why viewer should care), tied to the title/topic.',
   '- 6–14s: Deliver 3 fast value points: 3 mistakes + fixes OR 3 checks OR 3 steps OR 3 rules. Each point must be specific (numbers/thresholds/conditions).',
-  '- 14–20s: CTA + comment prompt. CTA must be ONE action. Comment prompt must be keyword-based ("comment \'X\' for ..."), tied to topic.',
+  '- 14–20s: CTA + comment prompt. CTA must be ONE action. Comment prompt must use a keyword derived from the title/topic and should vary across posts.',
   '- Use spoken language, not written prose. No names, no fictional clients unless explicitly required by title.',
   'CAPTION (field: caption):',
   '- First 2 lines: a bold claim or curiosity gap (NOT the hook repeated).',
@@ -2984,7 +3007,7 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Cannot be generic ("follow for more tips") unless the post is pure education AND the script contains an explicit promise of what\'s next.',
   'ENGAGEMENT LOOP (field: engagementScripts):',
   '- Output plain text that includes:',
-  '  "Pinned comment: ..." (keyword-based)',
+  '  "Pinned comment: ..." (keyword must be derived from the title/topic and should differ across posts)',
   '  "Reply template: ..." (1-2 lines)',
   '  "DM opener: ..." (1 line)',
   '- All must directly relate to the topic, not generic engagement.',
@@ -3002,11 +3025,35 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Brand Brain: persuasion optimization only; never changes topic/structure.',
   '- Voice Lock: tone only; never changes topic/structure.',
   '- Target Audience: influences wording/examples only; must NEVER be named explicitly.',
+  'BATCH UNIQUENESS CHECK (REQUIRED):',
+  '- Ensure no two hooks start with the same first word.',
+  '- Ensure no two captions start with the same first 5 words.',
+  '- Ensure scripts do not reuse the same 0–2s phrasing across posts.',
+  '- If you accidentally repeat an opener, rewrite the opener while keeping the topic and structure.',
+  'OPENER DIVERSITY (HARD REQUIREMENT):',
+  '- Across a single 10-post batch: no more than 1 hook may start with the same first word.',
+  '- Across a single 10-post batch: no more than 1 caption may start with the same first word.',
+  '- Across a single 10-post batch: no more than 1 script 0–2s line may start with the same first word.',
+  '- Never start hook/caption/script with "Stop" unless the title itself contains "Stop".',
   'FINAL CHECK (before output):',
   '- Hook is a pattern interrupt (not "important/crucial").',
   '- Script is timestamped and has 3 specific value points.',
   '- Caption is scannable and not repetitive.',
   '- Every field stays on the post title/topic.',
+].join('\n');
+
+const TITLE_ANCHOR_ECHO_BLOCK = [
+  'TITLE-ANCHOR ECHO (HARD REQUIREMENT):',
+  'For each post, the Title is the binding source. You must explicitly echo the Title\'s key noun phrase(s) inside EACH of these fields:',
+  '- hook',
+  '- caption (first 1-2 lines)',
+  '- script (0–2s line AND first body sentence)',
+  '"Echo" means reusing the same key nouns from the title (not synonyms). Keep it natural, but the nouns must appear verbatim at least once per field.',
+  'Do not rely on generic wording when the title names a specific type of post (e.g., testimonial, success story, case study, checklist). Use the title nouns.',
+  'If the title implies testimonial/success story (e.g., "success story", "testimonial", "real stories", "case study"), then:',
+  '- hook must include the phrase "client success story" OR "client testimonial" (match the title wording).',
+  '- caption must include that same phrase in the first 2 lines.',
+  '- script must include that phrase in the 0–2s line or first body sentence.',
 ].join('\n');
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3128,6 +3175,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
 const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
+${TITLE_ANCHOR_ECHO_BLOCK}
 Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 ${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
@@ -4021,7 +4069,8 @@ OUTPUT DISCIPLINE:
 - Keep outputs concise to avoid truncation.
 - CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
+  const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
+Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
