@@ -3332,12 +3332,13 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
-    'RETURN FORMAT (STRICT)',
-    'Return ONLY valid JSON. No markdown. No code fences. No extra keys.',
-    'Top-level must be: {"posts":[...]}',
-    `posts must contain exactly ${totalPostsRequired} items.`,
-    `Only days ${startDay}..${chunkEndDay}.`,
-    'Every post must include day, slotIndex, post_key, title, topicCapsule, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts, distributionPlan, topic_signature, angle.',
+    'STRICT OUTPUT CONTRACT',
+    'Return ONLY JSON (no markdown, no code fences, no commentary).',
+    'Top-level: {"posts":[...]} and NOTHING ELSE.',
+    `posts must contain EXACTLY ${totalPostsRequired} items — not more, not less.`,
+    `Generate ONLY for day range ${startDay}..${chunkEndDay}.`,
+    `Each item must match exactly ONE slot: slotIndex in 0..${Math.max(0, postsPerDaySetting - 1)}.`,
+    'Do NOT include posts for any other day or slot.',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -6743,10 +6744,55 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       logParseDebug();
       throw parseErr;
     }
-    const posts = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.posts)
+    const postsRaw = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.posts)
       ? parsed.posts
       : null;
     const parseMs = Date.now() - parseStart;
+    let posts = postsRaw;
+    const expectedStart = chunkStartDay;
+    const expectedEnd = chunkStartDay + chunkDays - 1;
+    const slotIndexMax = Math.max(0, postsPerDay - 1);
+    if (Array.isArray(posts) && posts.length > expectedChunkCount) {
+      const filtered = posts.filter((post) => {
+        const dayValue = Number(post?.day);
+        const slotValue = Number(post?.slotIndex);
+        if (!Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return false;
+        if (dayValue < expectedStart || dayValue > expectedEnd) return false;
+        if (slotValue < 0 || slotValue > slotIndexMax) return false;
+        const keyValue = toPlainString(post?.post_key || post?.postKey || '');
+        if (!keyValue) return false;
+        return keyValue === `day-${dayValue}-slot-${slotValue}`;
+      });
+      const deduped = [];
+      const seenKeys = new Set();
+      filtered
+        .sort((a, b) => {
+          const dayA = Number(a?.day);
+          const dayB = Number(b?.day);
+          if (dayA !== dayB) return dayA - dayB;
+          const slotA = Number(a?.slotIndex);
+          const slotB = Number(b?.slotIndex);
+          return slotA - slotB;
+        })
+        .forEach((post) => {
+          const keyValue = toPlainString(post?.post_key || post?.postKey || '');
+          if (!keyValue || seenKeys.has(keyValue)) return;
+          seenKeys.add(keyValue);
+          deduped.push(post);
+        });
+      const selected = deduped.slice(0, expectedChunkCount);
+      if (process.env.CALENDAR_PARSE_DEBUG === '1') {
+        console.warn('[Calendar][Parse] trimmed_posts', {
+          requestId: loggingContext?.requestId || 'unknown',
+          chunkIndex: loggingContext?.chunkIndex ?? null,
+          expected: expectedChunkCount,
+          actual: posts.length,
+          keptKeys: selected.map((post) => toPlainString(post?.post_key || post?.postKey || '')).filter(Boolean),
+          droppedCount: posts.length - selected.length,
+        });
+      }
+      posts = selected;
+    }
     const dayValues = posts
       ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day))
       : [];
@@ -6778,8 +6824,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       logParseDebug();
       throw parseErr;
     }
-    const expectedStart = chunkStartDay;
-    const expectedEnd = chunkStartDay + chunkDays - 1;
     if (minDay === null || maxDay === null || minDay < expectedStart || maxDay > expectedEnd) {
       const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
       parseErr.code = 'PARSE_FAILED';
@@ -6794,6 +6838,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       const dayValue = Number(post?.day);
       const slotValue = Number(post?.slotIndex);
       if (!keyValue || !Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return true;
+      if (slotValue < 0 || slotValue > slotIndexMax) return true;
       const match = keyValue.match(keyPattern);
       if (!match) return true;
       return Number(match[1]) !== dayValue || Number(match[2]) !== slotValue;
