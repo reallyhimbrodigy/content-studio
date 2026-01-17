@@ -8256,7 +8256,18 @@ const server = http.createServer((req, res) => {
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
-          const timeoutGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS || 55000);
+          const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
+          const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
+          const perDayChunkSize = safeDays >= 10 ? 1 : 2;
+          const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
+          const baseMs = 45000;
+          const perChunkBudgetMs = 15000;
+          const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
+          const minGuardMs = OPENAI_GENERATION_TIMEOUT_MS + 30000;
+          const timeoutGuardMs = Math.min(
+            240000,
+            Math.max(minGuardMs, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
+          );
           let timeoutId;
           const timeoutPromise = new Promise((_, reject) => {
             timeoutId = setTimeout(() => {
