@@ -2943,6 +2943,44 @@ const FIELD_REGROUNDING_BLOCK = [
   `- Distribution Plan: ${FIELD_REGROUNDING_INSTRUCTION}`,
 ].join('\n');
 
+const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
+  'SHORT-FORM CONTENT CONTRACT (STRICT, NICHE-AGNOSTIC):',
+  'GLOBAL RULES (apply to every post):',
+  '- Every field must be on the post\'s own title/topic. Do not drift.',
+  '- No generic filler. Avoid vague phrases ("discover", "unlock", "don\'t miss out", "game-changer", "competitive market") unless paired with concrete specifics.',
+  '- Use concrete specifics: include at least TWO concrete details per post (numbers, steps, constraints, examples, do/don\'t, comparisons, timelines). Do not invent facts; use plausible, general specifics.',
+  '- Add ONE proof element per post: a mini case scenario, a common mistake seen in practice, a before/after, a simple rule-of-thumb, or a cautious general stat (no fake citations).',
+  'HOOK (1-2 lines):',
+  '- Use exactly one pattern: Contradiction, Myth vs Fact, "3 mistakes", Checklist, Secret, POV, Before/After, Hot take.',
+  '- Create tension or curiosity within the first line.',
+  'REEL SCRIPT (Reel/TikTok/video formats):',
+  '- 8-15 seconds with labeled beats:',
+  '  "0-2s: ..."',
+  '  "2-6s: ..."',
+  '  "6-12s: ..."',
+  '  "12-15s: ..."',
+  '- 0-2s includes a pattern interrupt.',
+  '- Include 3 quick value points, then a CTA + comment bait.',
+  '- Keep sentences short, speakable, and punchy.',
+  'CAPTION (IG/TikTok style):',
+  '- First 1-2 lines must be a strong opener (do not repeat the hook verbatim).',
+  '- Use skimmable formatting: short paragraphs and bullets.',
+  '- Include: 3 value bullets + 1 proof element line + 1 CTA line + 1 "save/share because" line.',
+  'ENGAGEMENT LOOP:',
+  '- Provide a pinned comment prompt (keyword-based), a creator reply comment template, and a DM opener template.',
+  '- All three must tie directly to the post\'s topic and CTA.',
+  'HASHTAGS:',
+  '- 5-10 max. Mix: niche + intent + audience-language (never name the target audience preset).',
+  '- Avoid generic #fyp/#viral unless absolutely necessary.',
+  'DISTRIBUTION PLAN:',
+  '- Include 2 platform-native actions (e.g., pin comment, reply to top comments in the first hour, share to story with a poll, post a carousel follow-up tomorrow).',
+  '- Reference the post topic implicitly; avoid generic "increase engagement" filler.',
+  'FEATURE CONSTRAINTS (must hold):',
+  '- Brand Brain adds persuasion/algorithm optimization ONLY; never changes topic.',
+  '- Voice Lock changes tone/voice ONLY; never changes structure/topic.',
+  '- Target Audience influences vocabulary/examples ONLY; NEVER mention the audience explicitly.',
+].join('\n');
+
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
@@ -3085,6 +3123,7 @@ TITLE ANCHOR (NON-NEGOTIABLE):
 - Engagement loop comment OR DM line must also reference the same topic in one sentence.
 - MISMATCH CHECK: Before returning JSON, compare Title vs Hook + Caption first sentence + Reel Script first line. If any do not describe the same topic, rewrite Hook/Captions/Reel Script to match the title. Do not change the title.
 ${FIELD_REGROUNDING_BLOCK}
+${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 Rules:
 - pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
 - Each post includes post_key, day, slotIndex, title, topicCapsule, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
@@ -3937,22 +3976,21 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const brandBlock = brandContext
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
-  const qualityRules = `Quality Rules — Make each post specific and actionable:
+  const qualityRules = `Quality Rules — Short-Form Content Contract:
 ${TOPIC_LOCK_CONTRACT_BLOCK}
 ${FIELD_REGROUNDING_BLOCK}
+${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
-1) Hook: write ONE sentence (6–14 words, sentence case) that acts as a niche-specific cold open tied directly to the post’s unique idea/context. Reference a tension, routine, insight, or surprising takeaway about the provided niche/style, and immediately promise a payoff that only this niche would understand. Do not mention unrelated niches or platforms, and do not prefix the line with “Hook:” or any label. Avoid templates, clichés, or repeating the same phrasing across cards—each hook must feel novel, grounded, and non-generic.
-2) Hashtags: generate 6–10 space-separated hashtags that tie directly to the niche and this post’s concept. At least half must be specific to the niche/topic (no generic tags or weekday gimmicks). Avoid reusing the same set across posts and keep filler tags to a minimum.
-3) CTA: write one short call-to-action (4–10 words) that is specific to this post’s topic. Do not output generic prompts such as “Thoughts?”, “Let us know!”, “Tell me what you think”, or “Share your story.” Never include “DM me” unless the context explicitly involves booking/consult calls, and avoid advising direct “Book now”/“Sign up” style language. Output only the CTA text with no label or prefix.
-4) Design notes: output 2–4 bullet points tied directly to this post’s concept. Each bullet should describe concrete visual choices (lighting, shot type, on-screen text, pacing) that reinforce the specific message and feel native to the niche. Avoid generic advice or filler (no “use warm footage”, “keep it high energy”, “add captions”). Output only bullets.
-5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
-6) Response Guidance: output two items tied to the niche and post concept: (1) a sample reply to a viewer comment (1–2 sentences) that feels specific, helpful, and speaks to the idea without slipping into promotional language; (2) a follow-up prompt (1 sentence) that nudges the viewer to keep the conversation going on the same topic. Avoid boilerplate “DM me” pushes or scripted closings; keep both items informative and grounded in the niche. Output only those two items.
-7) Reel Script: write 3–6 short lines that form a niche-specific mini script rooted in this post’s concept. Each line should feel concrete (no generic “introduce, explain, close” scaffolds); vary the structure line-to-line and let the closing line naturally lead into the CTA. Avoid reusing the same phrasing from other cards. Output only the script lines (no extra labels or commentary).
-8) Captions and Reel Scripts must sound like a creator talking, not a brand; avoid corporate/marketing or curiosity-bait phrasing, and write plainly, specific to the niche, in natural language.
-9) Format: Choose the best format for this post in the niche: {nicheStyle}, based on the post’s concept/context. Output exactly one value from this allowed list: Reel, Story, Carousel, Static. Output only the single value.
-        10) CAPTION BODY RULES (HARD): write 2–4 sentences that follow the same emotional thread as the Hook and stay tightly anchored to the post’s unique idea. Avoid template prefixes or “story spotlight” labels. Keep the tone concrete and niche-credible; do not repeat scaffolds from other posts. Use natural wording (no hashtags, emojis, platform references, or overly promotional language). End with a single, non-generic question that relates directly to the topic. Output only the caption text.
-11) Keep outputs concise to avoid truncation.
-12) CRITICAL: every post MUST include script { hook, body, cta }.`;
+ENGAGEMENT LOOP FIELD MAPPING:
+- engagementScripts.commentReply: include the pinned comment prompt (keyword-based) and the creator reply template in two short sentences.
+- engagementScripts.dmReply: DM opener template tied to the topic/CTA.
+DESIGN NOTES:
+- Output 2-4 bullet points with concrete visual choices tied to the topic (lighting, shot type, on-screen text, pacing).
+FORMAT:
+- Choose the best format for this post in the niche: ${nicheStyle}. Output exactly one value from: Reel, Story, Carousel, Static.
+OUTPUT DISCIPLINE:
+- Keep outputs concise to avoid truncation.
+- CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
