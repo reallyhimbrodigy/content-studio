@@ -3205,7 +3205,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const chunkEndDay = startDay + days - 1;
   const postsPerDaySetting = 1;
-  const slotIndexMax = Math.max(0, postsPerDaySetting - 1);
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -3346,17 +3345,12 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
-    'OUTPUT FORMAT (HARD REQUIREMENT)',
-    'Return a single JSON object and nothing else.',
-    'No markdown, no code fences, no preamble, no trailing text.',
-    'Top-level must be exactly: {"posts":[...]}',
-    `"posts" must contain exactly ${totalPostsRequired} items.`,
-    `Only generate posts for day numbers ${startDay} through ${chunkEndDay}.`,
-    'Every post must include:',
-    '- day: integer within the chunk day range',
-    `- slotIndex: integer 0..${slotIndexMax}`,
-    '- post_key: "day-{day}-slot-{slotIndex}"',
-    'Do not include any other top-level keys. Do not wrap this object inside another object. Do not return an array at the top level.',
+    'OUTPUT CONTRACT (MUST FOLLOW)',
+    '- Output a single JSON object and nothing else.',
+    '- Top-level must be exactly: {"posts":[...]}',
+    `- posts length must be exactly ${totalPostsRequired}`,
+    `- Only include days ${startDay}..${chunkEndDay}`,
+    '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -4198,17 +4192,12 @@ OUTPUT DISCIPLINE:
 - CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const hardOutputContractBlock = [
-    'OUTPUT FORMAT (HARD REQUIREMENT)',
-    'Return a single JSON object and nothing else.',
-    'No markdown, no code fences, no preamble, no trailing text.',
-    'Top-level must be exactly: {"posts":[...]}',
-    '"posts" must contain exactly 1 item.',
-    `Only generate posts for day numbers ${day} through ${day}.`,
-    'Every post must include:',
-    '- day: integer within the chunk day range',
-    '- slotIndex: integer 0..0',
-    '- post_key: "day-{day}-slot-{slotIndex}"',
-    'Do not include any other top-level keys. Do not wrap this object inside another object. Do not return an array at the top level.',
+    'OUTPUT CONTRACT (MUST FOLLOW)',
+    '- Output a single JSON object and nothing else.',
+    '- Top-level must be exactly: {"posts":[...]}',
+    '- posts length must be exactly 1',
+    `- Only include days ${day}..${day}`,
+    '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
   ].join('\n');
   const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
 Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.
@@ -6674,16 +6663,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         planUsed: Boolean(opts.planUsed),
       });
     }
-    const responseFormat = useSchema
-      ? {
-          type: 'json_schema',
-          json_schema: {
-            name: 'calendar_batch',
-            strict: true,
-            schema,
-          },
-        }
-      : { type: 'json_object' };
+    const responseFormat = { type: 'json_object' };
     const payload = JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
