@@ -2944,64 +2944,69 @@ const FIELD_REGROUNDING_BLOCK = [
 ].join('\n');
 
 const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
-  'GLOBAL CONTENT CONTRACT (APPLY TO EVERY POST AND EVERY FIELD):',
-  'PLATFORM FIRST:',
-  '- Write for TikTok / Instagram Reels first.',
-  '- Assume 8-15 second attention window.',
-  '- Sentences must be short, spoken, punchy.',
-  '- No blog paragraphs. No storytelling fluff.',
-  'NO REDUNDANCY:',
-  '- Hook, caption, script, CTA must NOT repeat the same sentence.',
-  '- Each field adds new value.',
-  'SPECIFICITY OVER GENERIC:',
-  '- Ban vague phrases unless followed by specifics: "journey", "navigate", "dream", "discover", "game-changer", "within reach".',
-  '- Replace with concrete actions, outcomes, or insights.',
-  'TOPIC LOCK:',
+  'SHORT-FORM VIDEO CONTRACT (REQUIRED):',
+  'UNIVERSAL QUALITY GATES (apply to every post):',
+  '- Write as if for a 15-20 second vertical video.',
+  '- Use spoken language. Short lines. No paragraphs longer than 2 lines.',
+  '- Ban weak hooks: do NOT use "is key for success", "is important", "is crucial", "don\'t miss out", "stay ahead", "discover", "unlock", "game-changer" unless followed by a concrete claim within the same sentence.',
+  '- Every post must include at least ONE concrete mechanism (a why/how): a cause → effect, a tradeoff, or a specific decision rule tied to the title/topic.',
+  '- Every post must include at least TWO concrete specifics (numbers, time windows, thresholds, examples, steps, do/don\'t). Keep them plausible and general; do not claim unverifiable stats.',
+  '- No repeating the same sentence across hook/caption/script/CTA.',
   '- Every field must stay strictly on the post title/topic.',
-  '- Do not drift into brand storytelling unless the title explicitly requires it.',
-  'CREATOR-GRADE VALUE:',
-  '- Each post must include at least ONE of: a mistake to avoid, a behind-the-scenes insight, a rule of thumb, a before/after contrast, or a concrete takeaway viewers can act on today.',
-  'FIELD-LEVEL REQUIREMENTS:',
-  'HOOK:',
-  '- Max 2 lines.',
-  '- Must follow ONE short-form pattern (do not label it): Mistake, Myth vs reality, POV, Before/After, "Most people don\'t realize...".',
-  '- No greetings. No filler. Immediate tension.',
-  'CAPTION (IG/TikTok style):',
-  '- First 2 lines = strong opener (not the hook repeated).',
-  '- Then 3-5 short bullet lines.',
-  '- Bullets must be scannable and specific.',
-  '- End with ONE clear CTA.',
-  '- Avoid long paragraphs entirely.',
-  'REEL SCRIPT:',
-  '- 0-2s: Pattern interrupt (bold statement or question).',
-  '- 2-6s: Context (what\'s happening / why it matters).',
-  '- 6-12s: Value (steps, insight, mistake, contrast).',
-  '- 12-15s: CTA + comment prompt.',
-  '- Use spoken language, not written prose.',
-  '- No names, no fictional clients unless explicitly required by title.',
-  'ENGAGEMENT LOOP:',
-  '- Must include a pinned comment prompt (short, keyword-based), a creator reply template (1-2 lines), and a DM opener (1 line).',
+  'HOOK (field: hook):',
+  '- 6-12 words max OR 1 punchy question max. No two-sentence hooks.',
+  '- Must be a pattern interrupt using one format (do not label it):',
+  '  1) "Stop doing X if you want Y"',
+  '  2) "Most people get X wrong—here\'s why"',
+  '  3) "If you see X, do Y"',
+  '  4) "3 signs X is about to happen"',
+  '  5) "The #1 mistake with X"',
+  '  6) "Before you do X, check this"',
+  '- Must reference the title/topic directly (not generic "success").',
+  'REEL SCRIPT (field: script or reelScript):',
+  '- Must be timestamped beats with exact labels:',
+  '  "0–2s: ..."',
+  '  "2–6s: ..."',
+  '  "6–14s: ..."',
+  '  "14–20s: ..."',
+  '- 0–2s: Hook line (same idea as hook field but NOT the exact same sentence).',
+  '- 2–6s: Explain the stake in 1 line (why viewer should care), tied to the title/topic.',
+  '- 6–14s: Deliver 3 fast value points: 3 mistakes + fixes OR 3 checks OR 3 steps OR 3 rules. Each point must be specific (numbers/thresholds/conditions).',
+  '- 14–20s: CTA + comment prompt. CTA must be ONE action. Comment prompt must be keyword-based ("comment \'X\' for ..."), tied to topic.',
+  '- Use spoken language, not written prose. No names, no fictional clients unless explicitly required by title.',
+  'CAPTION (field: caption):',
+  '- First 2 lines: a bold claim or curiosity gap (NOT the hook repeated).',
+  '- Then exactly 4 bullets using "- ".',
+  '- Bullets must be specific takeaways aligned to the 3 value points + 1 proof/why line.',
+  '- End with 1 CTA line and 1 "save/share because" line (concrete, not generic).',
+  'CTA (field: cta):',
+  '- Must be a single, specific action (comment/DM/follow/save).',
+  '- Cannot be generic ("follow for more tips") unless the post is pure education AND the script contains an explicit promise of what\'s next.',
+  'ENGAGEMENT LOOP (field: engagementScripts):',
+  '- Output plain text that includes:',
+  '  "Pinned comment: ..." (keyword-based)',
+  '  "Reply template: ..." (1-2 lines)',
+  '  "DM opener: ..." (1 line)',
   '- All must directly relate to the topic, not generic engagement.',
-  'DESIGN NOTES:',
-  '- Must describe visuals that support the hook.',
-  '- Avoid vague phrases like "beautiful visuals".',
-  '- Reference overlays, text beats, or shot ideas.',
-  'DISTRIBUTION PLAN:',
-  '- Platform-native actions only.',
-  '- Examples: pin the comment, reply to top comments in first hour, post a carousel follow-up tomorrow, share to story with poll.',
-  '- No generic "encourage engagement" language.',
-  'HASHTAGS:',
-  '- 5-10 max.',
-  '- Mix niche + intent + audience language.',
-  '- No #fyp or #viral unless unavoidable.',
-  'STRICT CONSTRAINTS:',
-  '- Do NOT add any niche-specific helper text.',
-  '- Do NOT include example industries in the prompt.',
-  '- Brand Brain may optimize persuasion ONLY, never topic.',
-  '- Voice Lock may adjust tone ONLY, never structure.',
-  '- Target Audience may influence wording ONLY, never be named.',
-  '- Output JSON structure must remain EXACTLY the same.',
-  '- Do NOT add or remove fields.',
+  'DISTRIBUTION PLAN (field: distributionPlan):',
+  '- Must list exactly 3 platform-native actions, each on its own line.',
+  '- Must avoid generic phrases ("engage with comments", "increase reach") unless paired with a concrete action (pin, poll, remix, reply cadence, follow-up post type).',
+  'DESIGN NOTES (field: designNotes):',
+  '- Must describe 3 visual beats aligned to script timestamps (0–2s, 2–6s, 6–14s).',
+  '- Must include an on-screen text suggestion for the hook.',
+  'HASHTAGS (field: hashtags):',
+  '- 5-8 hashtags max. Must be relevant to the title/topic. No #fyp/#viral.',
+  'STORY PROMPT (field: storyPrompt):',
+  '- Must be a single, specific question tied to the title/topic and prompts a detailed reply.',
+  'FEATURE RULES (must hold):',
+  '- Brand Brain: persuasion optimization only; never changes topic/structure.',
+  '- Voice Lock: tone only; never changes topic/structure.',
+  '- Target Audience: influences wording/examples only; must NEVER be named explicitly.',
+  'FINAL CHECK (before output):',
+  '- Hook is a pattern interrupt (not "important/crucial").',
+  '- Script is timestamped and has 3 specific value points.',
+  '- Caption is scannable and not repetitive.',
+  '- Every field stays on the post title/topic.',
 ].join('\n');
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3122,7 +3127,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
-const schemaBlock = `Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
+Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
 ${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
@@ -3999,16 +4005,16 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const brandBlock = brandContext
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
-  const qualityRules = `Quality Rules — Short-Form Content Contract:
+  const qualityRules = `SHORT-FORM VIDEO CONTRACT (REQUIRED):
+${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 ${TOPIC_LOCK_CONTRACT_BLOCK}
 ${FIELD_REGROUNDING_BLOCK}
-${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ENGAGEMENT LOOP FIELD MAPPING:
-- engagementScripts.commentReply: include the pinned comment prompt (keyword-based) and the creator reply template in two short sentences.
-- engagementScripts.dmReply: DM opener template tied to the topic/CTA.
+- engagementScripts.commentReply: include "Pinned comment: ..." and "Reply template: ..." in plain text.
+- engagementScripts.dmReply: include "DM opener: ..." in plain text.
 DESIGN NOTES:
-- Output 2-4 bullet points with concrete visual choices tied to the topic (lighting, shot type, on-screen text, pacing).
+- Output 3 bullet points aligned to script beats (0–2s, 2–6s, 6–14s) and include on-screen text for the hook.
 FORMAT:
 - Choose the best format for this post in the niche: ${nicheStyle}. Output exactly one value from: Reel, Story, Carousel, Static.
 OUTPUT DISCIPLINE:
