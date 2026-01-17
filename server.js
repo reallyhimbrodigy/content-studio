@@ -3203,6 +3203,7 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
+  const chunkEndDay = startDay + days - 1;
   const postsPerDaySetting = 1;
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
@@ -3288,6 +3289,7 @@ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}`;
 const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 ${TITLE_ANCHOR_ECHO_BLOCK}
 Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
+SCOPE LOCK: Only generate content for the provided day(s) in this chunk. Do not generate other days.
 ${postIdentityBlock}
 Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
@@ -3342,6 +3344,15 @@ TITLE QUALITY BAR
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
+  const hardOutputContractBlock = [
+    'HARD OUTPUT CONTRACT (MUST FOLLOW EXACTLY):',
+    '- Output a single JSON value and nothing else.',
+    '- No markdown. No code fences. No commentary.',
+    '- Top-level JSON must be exactly: {"posts":[...]}',
+    `- Return EXACTLY ${totalPostsRequired} posts and ONLY for day numbers ${startDay} through ${chunkEndDay}.`,
+    '- Every post must include post_key formatted exactly "day-{DAY}-slot-{SLOT}" and day must be within the chunk range.',
+    '- Do not include posts for any other day. Do not include more or fewer posts. Do not wrap inside any other object.',
+  ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
   if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
@@ -3350,7 +3361,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${hardOutputContractBlock}`;
   return finalPrompt;
 }
 
@@ -4181,8 +4192,19 @@ OUTPUT DISCIPLINE:
 - Keep outputs concise to avoid truncation.
 - CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
+  const hardOutputContractBlock = [
+    'HARD OUTPUT CONTRACT (MUST FOLLOW EXACTLY):',
+    '- Output a single JSON value and nothing else.',
+    '- No markdown. No code fences. No commentary.',
+    '- Top-level JSON must be exactly: {"posts":[...]}',
+    `- Return EXACTLY 1 post and ONLY for day numbers ${day} through ${day}.`,
+    '- Every post must include post_key formatted exactly "day-{DAY}-slot-{SLOT}" and day must be within the chunk range.',
+    '- Do not include posts for any other day. Do not include more or fewer posts. Do not wrap inside any other object.',
+  ].join('\n');
   const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
-Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.`;
+Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.
+SCOPE LOCK: Only generate content for the provided day in this chunk. Do not generate other days.
+${hardOutputContractBlock}`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
 
