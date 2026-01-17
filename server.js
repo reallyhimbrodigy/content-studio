@@ -2291,6 +2291,109 @@ function extractJsonChunk(raw = '') {
   return null;
 }
 
+function extractCalendarJsonCandidates(rawText = '') {
+  const text = String(rawText || '');
+  const candidates = [];
+  const seen = new Set();
+  const maxLen = 200000;
+  const addCandidate = (value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return;
+    if (trimmed.length > maxLen) return;
+    if (seen.has(trimmed)) return;
+    seen.add(trimmed);
+    candidates.push(trimmed);
+  };
+  const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let match;
+  while ((match = fenceRegex.exec(text))) {
+    addCandidate(match[1]);
+  }
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (char !== '{' && char !== '[') continue;
+    const segment = captureJsonSegment(text, i);
+    if (segment) {
+      addCandidate(segment);
+      i += segment.length - 1;
+    }
+  }
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    addCandidate(trimmed);
+  }
+  return candidates;
+}
+
+function extractDayFromPostKeyValue(value = '') {
+  const match = String(value || '').match(/day-(\d+)-slot-/i);
+  if (!match) return null;
+  const dayValue = Number(match[1]);
+  return Number.isFinite(dayValue) ? dayValue : null;
+}
+
+function parseFirstValidCalendarPayload(candidates = [], expectedCount, startDay, days, postsPerDay = 1) {
+  const expectedStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const expectedDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
+  const expectedEnd = expectedStart + expectedDays - 1;
+  for (let idx = 0; idx < candidates.length; idx += 1) {
+    const rawCandidate = candidates[idx];
+    if (!rawCandidate) continue;
+    const cleaned = String(rawCandidate).trim().replace(/,\s*([}\]])/g, '$1');
+    let parsed;
+    try {
+      parsed = cleaned ? JSON.parse(cleaned) : null;
+    } catch {
+      continue;
+    }
+    let posts = null;
+    if (Array.isArray(parsed)) {
+      posts = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.posts)) {
+        posts = parsed.posts;
+      } else {
+        const keys = Object.keys(parsed);
+        if (keys.length === 1) {
+          const wrapper = parsed[keys[0]];
+          if (Array.isArray(wrapper)) {
+            posts = wrapper;
+          } else if (wrapper && typeof wrapper === 'object' && Array.isArray(wrapper.posts)) {
+            posts = wrapper.posts;
+          }
+        }
+      }
+    }
+    if (!Array.isArray(posts)) continue;
+    if (Number.isFinite(expectedCount) && posts.length !== expectedCount) continue;
+    const dayValues = posts
+      .map((post) => {
+        const direct = Number(post?.day);
+        if (Number.isFinite(direct)) return direct;
+        const keyValue = toPlainString(post?.post_key || post?.postKey || '');
+        return extractDayFromPostKeyValue(keyValue);
+      })
+      .filter((day) => Number.isFinite(day));
+    if (!dayValues.length) continue;
+    const minDay = Math.min(...dayValues);
+    const maxDay = Math.max(...dayValues);
+    const inRange = minDay >= expectedStart && maxDay <= expectedEnd;
+    const overlaps = maxDay >= expectedStart && minDay <= expectedEnd;
+    if (!inRange || !overlaps) continue;
+    return {
+      posts,
+      payloadRaw: cleaned,
+      parsedType: Array.isArray(parsed) ? 'array' : typeof parsed,
+      chosenIndex: idx,
+      candidatesCount: candidates.length,
+      minDay,
+      maxDay,
+      postsPerDay,
+    };
+  }
+  return null;
+}
+
 function parseAiJson(raw) {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === 'object') return raw;
@@ -6622,12 +6725,15 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const firstResponse = await attemptRequest('', true);
     const parseStart = Date.now();
     const rawText = firstResponse.content || '';
-    const extracted = extractFirstJsonObject(rawText);
-    const jsonText = extracted || rawText.trim();
-    let parsed = null;
-    try {
-      parsed = jsonText ? JSON.parse(jsonText) : null;
-    } catch (err) {
+    const candidates = extractCalendarJsonCandidates(rawText);
+    const parseResult = parseFirstValidCalendarPayload(
+      candidates,
+      expectedChunkCount,
+      chunkStartDay,
+      chunkDays,
+      postsPerDay
+    );
+    if (!parseResult) {
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
@@ -6636,23 +6742,26 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
         rawLength: rawText.length,
-        extracted: Boolean(extracted),
+        extracted: false,
+        candidatesCount: candidates.length,
       });
       throw parseErr;
     }
     const parseMs = Date.now() - parseStart;
-    const posts = parsed && Array.isArray(parsed.posts) ? parsed.posts : null;
-    const dayValues = posts ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day)) : [];
-    const minDay = dayValues.length ? Math.min(...dayValues) : null;
-    const maxDay = dayValues.length ? Math.max(...dayValues) : null;
+    const posts = parseResult.posts;
+    const minDay = parseResult.minDay ?? null;
+    const maxDay = parseResult.maxDay ?? null;
     console.log('[Calendar][Parse]', {
       requestId: loggingContext?.requestId || 'unknown',
-      parsedType: parsed ? typeof parsed : 'null',
+      parsedType: parseResult.parsedType,
       postsArray: Array.isArray(posts),
       postCount: posts ? posts.length : 0,
       expectedCount: expectedChunkCount,
       minDay,
       maxDay,
+      extracted: true,
+      candidatesCount: parseResult.candidatesCount,
+      chosenIndex: parseResult.chosenIndex,
     });
     if (!posts) {
       const parseErr = new Error('missing_posts');
@@ -11329,6 +11438,18 @@ function serveFile(filePath, res) {
   else headers['Cache-Control'] = 'public, max-age=86400';
   res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
+}
+
+if (process.env.CALENDAR_PARSE_SELFTEST === '1') {
+  const sampleA = 'Preamble\n```json\n{"posts":[{"day":1,"post_key":"day-1-slot-0"}]}\n```\n';
+  const sampleB = '[{"day":2,"post_key":"day-2-slot-0"}]\nTrailing note.';
+  const sampleC = '{"foo":"bar"}\n{"posts":[{"day":3,"post_key":"day-3-slot-0"}]}';
+  const resultA = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleA), 1, 1, 1, 1);
+  const resultB = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleB), 1, 2, 1, 1);
+  const resultC = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleC), 1, 3, 1, 1);
+  console.assert(resultA && Array.isArray(resultA.posts), 'CALENDAR_PARSE_SELFTEST A failed');
+  console.assert(resultB && Array.isArray(resultB.posts), 'CALENDAR_PARSE_SELFTEST B failed');
+  console.assert(resultC && Array.isArray(resultC.posts), 'CALENDAR_PARSE_SELFTEST C failed');
 }
 
 const PORT = process.env.PORT || 8000;
