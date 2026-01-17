@@ -2347,21 +2347,9 @@ function parseFirstValidCalendarPayload(candidates = [], expectedCount, startDay
       continue;
     }
     let posts = null;
-    if (Array.isArray(parsed)) {
-      posts = parsed;
-    } else if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.posts)) {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      if (Object.prototype.hasOwnProperty.call(parsed, 'posts') && Array.isArray(parsed.posts)) {
         posts = parsed.posts;
-      } else {
-        const keys = Object.keys(parsed);
-        if (keys.length === 1) {
-          const wrapper = parsed[keys[0]];
-          if (Array.isArray(wrapper)) {
-            posts = wrapper;
-          } else if (wrapper && typeof wrapper === 'object' && Array.isArray(wrapper.posts)) {
-            posts = wrapper.posts;
-          }
-        }
       }
     }
     if (!Array.isArray(posts)) continue;
@@ -2378,8 +2366,7 @@ function parseFirstValidCalendarPayload(candidates = [], expectedCount, startDay
     const minDay = Math.min(...dayValues);
     const maxDay = Math.max(...dayValues);
     const inRange = minDay >= expectedStart && maxDay <= expectedEnd;
-    const overlaps = maxDay >= expectedStart && minDay <= expectedEnd;
-    if (!inRange || !overlaps) continue;
+    if (!inRange) continue;
     return {
       posts,
       payloadRaw: cleaned,
@@ -3205,6 +3192,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const chunkEndDay = startDay + days - 1;
   const postsPerDaySetting = 1;
+  const slotIndexMax = Math.max(0, postsPerDaySetting - 1);
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -3346,11 +3334,13 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
     'OUTPUT CONTRACT (MUST FOLLOW)',
-    '- Output a single JSON object and nothing else.',
-    '- Top-level must be exactly: {"posts":[...]}',
-    `- posts length must be exactly ${totalPostsRequired}`,
-    `- Only include days ${startDay}..${chunkEndDay}`,
-    '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
+    '- Return a single JSON object and nothing else.',
+    '- Do not use markdown or code fences.',
+    '- The JSON must be exactly: {"posts":[...]}',
+    `- "posts" must contain exactly ${totalPostsRequired} items.`,
+    `- Only include days ${startDay}..${chunkEndDay}.`,
+    `- Each post must include: day (int), slotIndex (int), post_key (string) where post_key === \`day-\${day}-slot-\${slotIndex}\`.`,
+    '- Do not wrap the object in any other keys. Do not return an array at the top level.',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -6748,6 +6738,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         extracted: false,
         candidatesCount: candidates.length,
       });
+      if (process.env.CALENDAR_PARSE_DEBUG === '1') {
+        console.warn('[Calendar][Parse][Debug]', {
+          requestId: loggingContext?.requestId || 'unknown',
+          rawHead: rawText.slice(0, 300),
+          rawTail: rawText.slice(-300),
+        });
+      }
       throw parseErr;
     }
     const parseMs = Date.now() - parseStart;
