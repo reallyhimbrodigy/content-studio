@@ -3205,6 +3205,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const chunkEndDay = startDay + days - 1;
   const postsPerDaySetting = 1;
+  const slotIndexMax = Math.max(0, postsPerDaySetting - 1);
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -3345,13 +3346,17 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
-    'HARD OUTPUT CONTRACT (MUST FOLLOW EXACTLY):',
-    '- Output a single JSON value and nothing else.',
-    '- No markdown. No code fences. No commentary.',
-    '- Top-level JSON must be exactly: {"posts":[...]}',
-    `- Return EXACTLY ${totalPostsRequired} posts and ONLY for day numbers ${startDay} through ${chunkEndDay}.`,
-    '- Every post must include post_key formatted exactly "day-{DAY}-slot-{SLOT}" and day must be within the chunk range.',
-    '- Do not include posts for any other day. Do not include more or fewer posts. Do not wrap inside any other object.',
+    'OUTPUT FORMAT (HARD REQUIREMENT)',
+    'Return a single JSON object and nothing else.',
+    'No markdown, no code fences, no preamble, no trailing text.',
+    'Top-level must be exactly: {"posts":[...]}',
+    `"posts" must contain exactly ${totalPostsRequired} items.`,
+    `Only generate posts for day numbers ${startDay} through ${chunkEndDay}.`,
+    'Every post must include:',
+    '- day: integer within the chunk day range',
+    `- slotIndex: integer 0..${slotIndexMax}`,
+    '- post_key: "day-{day}-slot-{slotIndex}"',
+    'Do not include any other top-level keys. Do not wrap this object inside another object. Do not return an array at the top level.',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -4193,13 +4198,17 @@ OUTPUT DISCIPLINE:
 - CRITICAL: every post MUST include script { hook, body, cta }.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
   const hardOutputContractBlock = [
-    'HARD OUTPUT CONTRACT (MUST FOLLOW EXACTLY):',
-    '- Output a single JSON value and nothing else.',
-    '- No markdown. No code fences. No commentary.',
-    '- Top-level JSON must be exactly: {"posts":[...]}',
-    `- Return EXACTLY 1 post and ONLY for day numbers ${day} through ${day}.`,
-    '- Every post must include post_key formatted exactly "day-{DAY}-slot-{SLOT}" and day must be within the chunk range.',
-    '- Do not include posts for any other day. Do not include more or fewer posts. Do not wrap inside any other object.',
+    'OUTPUT FORMAT (HARD REQUIREMENT)',
+    'Return a single JSON object and nothing else.',
+    'No markdown, no code fences, no preamble, no trailing text.',
+    'Top-level must be exactly: {"posts":[...]}',
+    '"posts" must contain exactly 1 item.',
+    `Only generate posts for day numbers ${day} through ${day}.`,
+    'Every post must include:',
+    '- day: integer within the chunk day range',
+    '- slotIndex: integer 0..0',
+    '- post_key: "day-{day}-slot-{slotIndex}"',
+    'Do not include any other top-level keys. Do not wrap this object inside another object. Do not return an array at the top level.',
   ].join('\n');
   const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
 Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.
@@ -5569,7 +5578,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const designNotesText = getField(post, ['designNotes', 'design_notes']);
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
   const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
-  const failedFields = [];
   const coreFailedFields = [];
   const noncoreFailedFields = [];
   const snippets = {};
@@ -5577,28 +5585,24 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const hookOk = isNonEmptyString(hookText) ? (hookSignals.offerHit || hookSignals.anchorHits >= 1) : null;
   if (hookOk === false) {
     coreFailedFields.push('hook');
-    failedFields.push('hook');
     snippets.hook = hookText ? hookText.slice(0, 60) : '';
   }
   const captionSignals = getFieldBindingSignals(captionText, fingerprint);
   const captionOk = isNonEmptyString(captionText) ? (captionSignals.offerHit || captionSignals.anchorHits >= 2) : null;
   if (captionOk === false) {
     coreFailedFields.push('caption');
-    failedFields.push('caption');
     snippets.caption = captionText ? captionText.slice(0, 60) : '';
   }
   const scriptSignals = getFieldBindingSignals(scriptText, fingerprint);
   const scriptOk = isNonEmptyString(scriptText) ? (scriptSignals.offerHit || scriptSignals.anchorHits >= 2) : null;
   if (scriptOk === false) {
     coreFailedFields.push('script');
-    failedFields.push('script');
     snippets.script = scriptText ? scriptText.slice(0, 60) : '';
   }
   const hashtagsSignals = getHashtagBindingSignals(hashtagsText, fingerprint);
   const hashtagsOk = isNonEmptyString(hashtagsText) && (hashtagsSignals.offerHit || hashtagsSignals.anchorHits >= 1);
   if (!hashtagsOk) {
-    noncoreFailedFields.push('hashtags');
-    failedFields.push('hashtags');
+    coreFailedFields.push('hashtags');
     snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 60) : '';
   }
   const designNotesSignals = getFieldBindingSignals(designNotesText, fingerprint);
@@ -5606,7 +5610,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     && (designNotesSignals.offerHit || designNotesSignals.anchorHits >= 1);
   if (!designNotesOk) {
     noncoreFailedFields.push('designNotes');
-    failedFields.push('designNotes');
     snippets.designNotes = designNotesText ? designNotesText.slice(0, 60) : '';
   }
   const engagementLoopSignals = getFieldBindingSignals(engagementLoopText, fingerprint);
@@ -5614,7 +5617,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     && (engagementLoopSignals.offerHit || engagementLoopSignals.anchorHits >= 1);
   if (!engagementLoopOk) {
     noncoreFailedFields.push('engagementLoop');
-    failedFields.push('engagementLoop');
     snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
   }
   const distributionPlanSignals = getFieldBindingSignals(distributionPlanText, fingerprint);
@@ -5622,10 +5624,9 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     && (distributionPlanSignals.offerHit || distributionPlanSignals.anchorHits >= 1);
   if (!distributionPlanOk) {
     noncoreFailedFields.push('distributionPlan');
-    failedFields.push('distributionPlan');
     snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
   }
-  if (!failedFields.length) return;
+  if (!coreFailedFields.length && !noncoreFailedFields.length) return;
   if (!coreFailedFields.length) {
     console.warn('[TopicBinding] noncore_failed', {
       post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
@@ -5667,7 +5668,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     title: titleText,
     topic: titleText,
     fingerprint,
-    failedFields,
+    failedFields: coreFailedFields,
     snippets,
   };
   console.warn('[TopicBinding] failed', {
@@ -5675,7 +5676,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     title: titleText,
     anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
     offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
-    failedFields,
+    failedFields: coreFailedFields,
     fieldSamples: snippets,
   });
   throw err;
