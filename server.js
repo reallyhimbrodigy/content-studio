@@ -3192,7 +3192,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const chunkEndDay = startDay + days - 1;
   const postsPerDaySetting = 1;
-  const slotIndexMax = Math.max(0, postsPerDaySetting - 1);
   const totalPostsRequired = days * postsPerDaySetting;
   const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
@@ -3333,14 +3332,12 @@ TITLE QUALITY BAR
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
-    'OUTPUT CONTRACT (MUST FOLLOW)',
-    '- Return a single JSON object and nothing else.',
-    '- Do not use markdown or code fences.',
-    '- The JSON must be exactly: {"posts":[...]}',
-    `- "posts" must contain exactly ${totalPostsRequired} items.`,
-    `- Only include days ${startDay}..${chunkEndDay}.`,
-    `- Each post must include: day (int), slotIndex (int), post_key (string) where post_key === \`day-\${day}-slot-\${slotIndex}\`.`,
-    '- Do not wrap the object in any other keys. Do not return an array at the top level.',
+    'RETURN FORMAT (STRICT)',
+    'Return ONLY valid JSON. No markdown. No code fences. No extra keys.',
+    'Top-level must be: {"posts":[...]}',
+    `posts must contain exactly ${totalPostsRequired} items.`,
+    `Only days ${startDay}..${chunkEndDay}.`,
+    'Every post must include day, slotIndex, post_key, title, topicCapsule, hook, caption, pillar, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, engagementScripts, distributionPlan, topic_signature, angle.',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -6657,7 +6654,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const payload = JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.5,
+      temperature: 0,
       max_tokens: maxTokens,
       response_format: responseFormat,
     });
@@ -6718,15 +6715,21 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const firstResponse = await attemptRequest('', true);
     const parseStart = Date.now();
     const rawText = firstResponse.content || '';
-    const candidates = extractCalendarJsonCandidates(rawText);
-    const parseResult = parseFirstValidCalendarPayload(
-      candidates,
-      expectedChunkCount,
-      chunkStartDay,
-      chunkDays,
-      postsPerDay
-    );
-    if (!parseResult) {
+    const logParseDebug = () => {
+      if (process.env.CALENDAR_PARSE_DEBUG !== '1') return;
+      console.warn('[Calendar][Parse][Debug]', {
+        requestId: loggingContext?.requestId || 'unknown',
+        chunkIndex: loggingContext?.chunkIndex ?? null,
+        chunkStartDay,
+        chunkDays,
+        rawHead: rawText.slice(0, 250),
+        rawTail: rawText.slice(-250),
+      });
+    };
+    let parsed = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch (err) {
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
@@ -6736,38 +6739,35 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         expectedCount: expectedChunkCount,
         rawLength: rawText.length,
         extracted: false,
-        candidatesCount: candidates.length,
       });
-      if (process.env.CALENDAR_PARSE_DEBUG === '1') {
-        console.warn('[Calendar][Parse][Debug]', {
-          requestId: loggingContext?.requestId || 'unknown',
-          rawHead: rawText.slice(0, 300),
-          rawTail: rawText.slice(-300),
-        });
-      }
+      logParseDebug();
       throw parseErr;
     }
+    const posts = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.posts)
+      ? parsed.posts
+      : null;
     const parseMs = Date.now() - parseStart;
-    const posts = parseResult.posts;
-    const minDay = parseResult.minDay ?? null;
-    const maxDay = parseResult.maxDay ?? null;
+    const dayValues = posts
+      ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day))
+      : [];
+    const minDay = dayValues.length ? Math.min(...dayValues) : null;
+    const maxDay = dayValues.length ? Math.max(...dayValues) : null;
     console.log('[Calendar][Parse]', {
       requestId: loggingContext?.requestId || 'unknown',
-      parsedType: parseResult.parsedType,
+      parsedType: parsed ? typeof parsed : 'null',
       postsArray: Array.isArray(posts),
       postCount: posts ? posts.length : 0,
       expectedCount: expectedChunkCount,
       minDay,
       maxDay,
-      extracted: true,
-      candidatesCount: parseResult.candidatesCount,
-      chosenIndex: parseResult.chosenIndex,
+      extracted: Boolean(posts),
     });
     if (!posts) {
       const parseErr = new Error('missing_posts');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      logParseDebug();
       throw parseErr;
     }
     if (posts.length !== expectedChunkCount) {
@@ -6775,15 +6775,35 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      logParseDebug();
       throw parseErr;
     }
     const expectedStart = chunkStartDay;
     const expectedEnd = chunkStartDay + chunkDays - 1;
-    if (minDay !== expectedStart || maxDay !== expectedEnd) {
+    if (minDay === null || maxDay === null || minDay < expectedStart || maxDay > expectedEnd) {
       const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      logParseDebug();
+      throw parseErr;
+    }
+    const keyPattern = /^day-(\d+)-slot-(\d+)$/i;
+    const invalidKey = posts.find((post) => {
+      const keyValue = toPlainString(post?.post_key || post?.postKey || '');
+      const dayValue = Number(post?.day);
+      const slotValue = Number(post?.slotIndex);
+      if (!keyValue || !Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return true;
+      const match = keyValue.match(keyPattern);
+      if (!match) return true;
+      return Number(match[1]) !== dayValue || Number(match[2]) !== slotValue;
+    });
+    if (invalidKey) {
+      const parseErr = new Error('missing_posts_parse_failed');
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.rawContent = rawText;
+      logParseDebug();
       throw parseErr;
     }
     return {
