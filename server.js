@@ -5537,6 +5537,17 @@ const REQUIRED_POST_FIELDS = [
   'engagementScripts.dmReply',
 ];
 
+const NONCORE_OPTIONAL_FIELDS = new Set([
+  'engagementLoop',
+  'engagementScripts',
+  'engagementScripts.commentReply',
+  'engagementScripts.dmReply',
+  'distributionPlan',
+  'designNotes',
+  'suggestedAudio',
+  'executionNotes',
+]);
+
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -8043,14 +8054,49 @@ const server = http.createServer((req, res) => {
       rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
     }
     const missingFieldsReport = [];
+    const noncoreMissingReport = [];
     rawPosts.forEach((post, idx) => {
       const missing = validatePostCompleteness(post);
       if (!missing.length) return;
+      const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
+      const noncoreMissing = missing.filter((field) => NONCORE_OPTIONAL_FIELDS.has(field));
       const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
       const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
       const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-      missingFieldsReport.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
+      if (noncoreMissing.length) {
+        noncoreMissingReport.push({
+          index: idx,
+          day,
+          slotIndex,
+          postsPerDay: perDay,
+          post_key: postKeyValue,
+          missing: noncoreMissing,
+        });
+      }
+      if (coreMissing.length) {
+        missingFieldsReport.push({
+          index: idx,
+          day,
+          slotIndex,
+          postsPerDay: perDay,
+          post_key: postKeyValue,
+          missing: coreMissing,
+        });
+      }
     });
+    if (noncoreMissingReport.length) {
+      console.warn('[Calendar][Server][SchemaValidation] noncore empty fields', {
+        requestId: loggingContext?.requestId,
+        startDay,
+        days,
+        postsPerDay,
+        count: noncoreMissingReport.length,
+        detailSamples: noncoreMissingReport.slice(0, 2).map((entry) => ({
+          ...entry,
+          missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
+        })),
+      });
+    }
     if (missingFieldsReport.length) {
       if (brandBrainEnabled) {
         const schema = buildCalendarSchemaObject(
@@ -8115,10 +8161,19 @@ const server = http.createServer((req, res) => {
             rawPosts.forEach((post, idx) => {
               const missing = validatePostCompleteness(post);
               if (!missing.length) return;
+              const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
+              if (!coreMissing.length) return;
               const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
               const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
               const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-              missingFieldsReport.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
+              missingFieldsReport.push({
+                index: idx,
+                day,
+                slotIndex,
+                postsPerDay: perDay,
+                post_key: postKeyValue,
+                missing: coreMissing,
+              });
             });
           }
         } catch (repairErr) {
@@ -8147,10 +8202,12 @@ const server = http.createServer((req, res) => {
           rawPosts.forEach((post, idx) => {
             const missing = validatePostCompleteness(post);
             if (!missing.length) return;
+            const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
+            if (!coreMissing.length) return;
             const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
             const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
             const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-            stillMissing.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
+            stillMissing.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing: coreMissing });
           });
           const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
           if (missingDay) {
