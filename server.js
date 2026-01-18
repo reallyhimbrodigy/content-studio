@@ -5233,10 +5233,27 @@ function canonicalizeSlotIndex(post = {}, postsPerDay = 1) {
   return post;
 }
 
+function canonicalizeDayValue(post = {}) {
+  if (!post || typeof post !== 'object') return post;
+  let dayValue = post.day;
+  if (!Number.isFinite(Number(dayValue))) {
+    if (post.dayIndex != null) dayValue = post.dayIndex;
+    if (!Number.isFinite(Number(dayValue)) && post.day_index != null) dayValue = post.day_index;
+  }
+  if (typeof dayValue === 'string') {
+    const parsed = parseInt(dayValue, 10);
+    if (Number.isFinite(parsed)) dayValue = parsed;
+  }
+  if (Number.isFinite(Number(dayValue))) post.day = Number(dayValue);
+  return post;
+}
+
 function applyCalendarPostAliases(post = {}) {
   if (!post || typeof post !== 'object') return post;
-  const copyAlias = (canonical, alias) => {
-    if (post[canonical] == null || post[canonical] === '') {
+  const isMissingStringField = (value) =>
+    value == null || (typeof value === 'string' && value.trim().length === 0);
+  const copyAliasString = (canonical, alias) => {
+    if (isMissingStringField(post[canonical])) {
       const value = post[alias];
       if (isNonEmptyString(value)) {
         post[canonical] = value;
@@ -5244,18 +5261,35 @@ function applyCalendarPostAliases(post = {}) {
       }
     }
   };
-  copyAlias('distributionPlan', 'distribution_plan');
-  copyAlias('engagementLoop', 'engagement_loop');
-  copyAlias('designNotes', 'design_notes');
-  copyAlias('reelScript', 'reel_script');
-  copyAlias('executionNotes', 'execution_notes');
-  copyAlias('storyPrompt', 'story_prompt');
-  copyAlias('pinnedComment', 'pinned_comment');
+  const copyAliasObject = (canonical, alias) => {
+    if (isMissingStringField(post[canonical])) {
+      const value = post[alias];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        post[canonical] = value;
+        delete post[alias];
+      }
+    }
+  };
+  copyAliasString('distributionPlan', 'distribution_plan');
+  copyAliasString('engagementLoop', 'engagement_loop');
+  copyAliasString('designNotes', 'design_notes');
+  copyAliasString('reelScript', 'reel_script');
+  copyAliasObject('reelScript', 'reel_script');
+  copyAliasString('executionNotes', 'execution_notes');
+  copyAliasString('storyPrompt', 'story_prompt');
+  copyAliasString('pinnedComment', 'pinned_comment');
+  copyAliasString('caption', 'caption_text');
+  copyAliasString('caption', 'post_caption');
+  copyAliasString('hook', 'hook_text');
+  copyAliasString('script', 'script_text');
+  copyAliasObject('script', 'video_script');
+  copyAliasString('script', 'video_script');
   return post;
 }
 
 function canonicalizeCalendarPost(post = {}, postsPerDay = 1) {
   if (!post || typeof post !== 'object') return post;
+  canonicalizeDayValue(post);
   canonicalizeSlotIndex(post, postsPerDay);
   applyCalendarPostAliases(post);
   const dayValue = Number(post.day);
@@ -5504,7 +5538,7 @@ const REQUIRED_POST_FIELDS = [
 ];
 
 function isNonEmptyString(value) {
-  return typeof value === 'string' && Boolean(value.trim());
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function validatePostCompleteness(post = {}) {
@@ -8103,7 +8137,10 @@ const server = http.createServer((req, res) => {
             actualCount: rawPosts.length,
             missingFields: missingFieldsReport.length,
             responseLength: rawLength,
-            detailSamples: missingFieldsReport.slice(0, 2),
+            detailSamples: missingFieldsReport.slice(0, 2).map((entry) => ({
+              ...entry,
+              missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
+            })),
           });
           rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
           const stillMissing = [];
@@ -8139,7 +8176,10 @@ const server = http.createServer((req, res) => {
           actualCount: rawPosts.length,
           missingFields: missingFieldsReport.length,
           responseLength: rawLength,
-          detailSamples: missingFieldsReport.slice(0, 2),
+          detailSamples: missingFieldsReport.slice(0, 2).map((entry) => ({
+            ...entry,
+            missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
+          })),
         });
         throw err;
       }
