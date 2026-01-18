@@ -6341,6 +6341,122 @@ function extractFirstJsonObject(text = '') {
   return null;
 }
 
+function findFirstJsonSegment(text = '') {
+  const source = String(text || '');
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === '\\') {
+        escape = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{' || char === '[') {
+      const segment = captureJsonSegment(source, i);
+      if (segment) return segment;
+    }
+  }
+  return null;
+}
+
+function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkEndDay, postsPerDay } = {}) {
+  const text = String(rawText || '').trim();
+  const candidates = [];
+  const addCandidate = (value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return;
+    if (candidates.includes(trimmed)) return;
+    candidates.push(trimmed);
+  };
+  if (text && (text.startsWith('{') || text.startsWith('['))) {
+    addCandidate(text);
+  }
+  const firstSegment = findFirstJsonSegment(text);
+  if (firstSegment) addCandidate(firstSegment);
+  const postsIndex = text.indexOf('posts');
+  if (postsIndex !== -1) {
+    const arrayStart = text.indexOf('[', postsIndex);
+    if (arrayStart !== -1) {
+      const postsSegment = captureJsonSegment(text, arrayStart);
+      if (postsSegment) addCandidate(postsSegment);
+    }
+  }
+  for (const candidate of candidates) {
+    let parsed;
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    let posts = null;
+    let shape = 'unknown';
+    if (Array.isArray(parsed)) {
+      posts = parsed;
+      shape = 'array';
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.posts)) {
+        posts = parsed.posts;
+        shape = 'posts-wrapper';
+      } else if (parsed.post && typeof parsed.post === 'object') {
+        posts = [parsed.post];
+        shape = 'post-wrapper';
+      } else if (parsed.day != null) {
+        posts = [parsed];
+        shape = 'single-object';
+      }
+    }
+    if (!Array.isArray(posts)) continue;
+    const normalized = posts.filter((post) => post && typeof post === 'object').map((post) => {
+      const dayValue = Number(post.day);
+      const slotValue = Number(post.slotIndex);
+      if (Number.isFinite(dayValue)) post.day = dayValue;
+      if (Number.isFinite(slotValue)) post.slotIndex = slotValue;
+      return post;
+    });
+    const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : null;
+    const dayEnd = Number.isFinite(Number(chunkEndDay)) ? Number(chunkEndDay) : null;
+    const slotMax = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) - 1 : null;
+    const filtered = normalized.filter((post) => {
+      const dayValue = Number(post.day);
+      const slotValue = Number(post.slotIndex);
+      if (Number.isFinite(dayValue) && dayStart !== null && dayEnd !== null) {
+        if (dayValue < dayStart || dayValue > dayEnd) return false;
+      }
+      if (Number.isFinite(slotValue) && slotMax !== null) {
+        if (slotValue < 0 || slotValue > slotMax) return false;
+      }
+      return true;
+    });
+    let selected = filtered;
+    if (Number.isFinite(Number(expectedPosts)) && filtered.length > expectedPosts) {
+      selected = filtered
+        .slice()
+        .sort((a, b) => {
+          const dayA = Number.isFinite(Number(a.day)) ? Number(a.day) : Number.POSITIVE_INFINITY;
+          const dayB = Number.isFinite(Number(b.day)) ? Number(b.day) : Number.POSITIVE_INFINITY;
+          if (dayA !== dayB) return dayA - dayB;
+          const slotA = Number.isFinite(Number(a.slotIndex)) ? Number(a.slotIndex) : Number.POSITIVE_INFINITY;
+          const slotB = Number.isFinite(Number(b.slotIndex)) ? Number(b.slotIndex) : Number.POSITIVE_INFINITY;
+          return slotA - slotB;
+        })
+        .slice(0, expectedPosts);
+    }
+    if (Number.isFinite(Number(expectedPosts)) && selected.length !== expectedPosts) continue;
+    return { posts: selected, shape };
+  }
+  return null;
+}
+
 async function generateTopicPlan({
   nicheStyle,
   brandContext,
@@ -6727,10 +6843,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         rawTail: rawText.slice(-250),
       });
     };
-    let parsed = null;
-    try {
-      parsed = rawText ? JSON.parse(rawText) : null;
-    } catch (err) {
+    const parseMs = Date.now() - parseStart;
+    const expectedStart = chunkStartDay;
+    const expectedEnd = chunkStartDay + chunkDays - 1;
+    const slotIndexMax = Math.max(0, postsPerDay - 1);
+    const parseResult = parsePostsFromModelText(rawText, {
+      expectedPosts: expectedChunkCount,
+      chunkStartDay: expectedStart,
+      chunkEndDay: expectedEnd,
+      postsPerDay,
+    });
+    if (!parseResult) {
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
@@ -6744,55 +6867,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       logParseDebug();
       throw parseErr;
     }
-    const postsRaw = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.posts)
-      ? parsed.posts
-      : null;
-    const parseMs = Date.now() - parseStart;
-    let posts = postsRaw;
-    const expectedStart = chunkStartDay;
-    const expectedEnd = chunkStartDay + chunkDays - 1;
-    const slotIndexMax = Math.max(0, postsPerDay - 1);
-    if (Array.isArray(posts) && posts.length > expectedChunkCount) {
-      const filtered = posts.filter((post) => {
-        const dayValue = Number(post?.day);
-        const slotValue = Number(post?.slotIndex);
-        if (!Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return false;
-        if (dayValue < expectedStart || dayValue > expectedEnd) return false;
-        if (slotValue < 0 || slotValue > slotIndexMax) return false;
-        const keyValue = toPlainString(post?.post_key || post?.postKey || '');
-        if (!keyValue) return false;
-        return keyValue === `day-${dayValue}-slot-${slotValue}`;
-      });
-      const deduped = [];
-      const seenKeys = new Set();
-      filtered
-        .sort((a, b) => {
-          const dayA = Number(a?.day);
-          const dayB = Number(b?.day);
-          if (dayA !== dayB) return dayA - dayB;
-          const slotA = Number(a?.slotIndex);
-          const slotB = Number(b?.slotIndex);
-          return slotA - slotB;
-        })
-        .forEach((post) => {
-          const keyValue = toPlainString(post?.post_key || post?.postKey || '');
-          if (!keyValue || seenKeys.has(keyValue)) return;
-          seenKeys.add(keyValue);
-          deduped.push(post);
-        });
-      const selected = deduped.slice(0, expectedChunkCount);
-      if (process.env.CALENDAR_PARSE_DEBUG === '1') {
-        console.warn('[Calendar][Parse] trimmed_posts', {
-          requestId: loggingContext?.requestId || 'unknown',
-          chunkIndex: loggingContext?.chunkIndex ?? null,
-          expected: expectedChunkCount,
-          actual: posts.length,
-          keptKeys: selected.map((post) => toPlainString(post?.post_key || post?.postKey || '')).filter(Boolean),
-          droppedCount: posts.length - selected.length,
-        });
-      }
-      posts = selected;
-    }
+    let posts = parseResult.posts;
     const dayValues = posts
       ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day))
       : [];
@@ -6800,7 +6875,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const maxDay = dayValues.length ? Math.max(...dayValues) : null;
     console.log('[Calendar][Parse]', {
       requestId: loggingContext?.requestId || 'unknown',
-      parsedType: parsed ? typeof parsed : 'null',
+      parsedType: parseResult.shape || 'unknown',
       postsArray: Array.isArray(posts),
       postCount: posts ? posts.length : 0,
       expectedCount: expectedChunkCount,
