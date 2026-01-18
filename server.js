@@ -5155,6 +5155,70 @@ function postKey(day, slotIndex) {
   return `day-${day}-slot-${slotIndex}`;
 }
 
+function canonicalizeSlotIndex(post = {}, postsPerDay = 1) {
+  if (!post || typeof post !== 'object') return post;
+  let slotIndex = post.slotIndex;
+  if (slotIndex === null || slotIndex === undefined) {
+    if (Number.isFinite(Number(post.slot))) slotIndex = Number(post.slot);
+    if (slotIndex === null || slotIndex === undefined) {
+      if (Number.isFinite(Number(post.slot_index))) slotIndex = Number(post.slot_index);
+    }
+  }
+  if (typeof slotIndex === 'string') {
+    const parsed = parseInt(slotIndex, 10);
+    if (Number.isFinite(parsed)) slotIndex = parsed;
+  }
+  const perDay = Number(postsPerDay);
+  if (Number.isFinite(perDay) && perDay > 0) {
+    if (perDay === 1) {
+      slotIndex = 0;
+    } else if (Number.isFinite(Number(slotIndex))) {
+      if (slotIndex < 0) slotIndex = 0;
+      if (slotIndex >= perDay) slotIndex = perDay - 1;
+    }
+  }
+  if (Number.isFinite(Number(slotIndex))) post.slotIndex = Number(slotIndex);
+  return post;
+}
+
+function applyCalendarPostAliases(post = {}) {
+  if (!post || typeof post !== 'object') return post;
+  const copyAlias = (canonical, alias) => {
+    if (post[canonical] == null || post[canonical] === '') {
+      const value = post[alias];
+      if (isNonEmptyString(value)) {
+        post[canonical] = value;
+        delete post[alias];
+      }
+    }
+  };
+  copyAlias('distributionPlan', 'distribution_plan');
+  copyAlias('engagementLoop', 'engagement_loop');
+  copyAlias('designNotes', 'design_notes');
+  copyAlias('reelScript', 'reel_script');
+  copyAlias('executionNotes', 'execution_notes');
+  copyAlias('storyPrompt', 'story_prompt');
+  copyAlias('pinnedComment', 'pinned_comment');
+  return post;
+}
+
+function canonicalizeCalendarPost(post = {}, postsPerDay = 1) {
+  if (!post || typeof post !== 'object') return post;
+  canonicalizeSlotIndex(post, postsPerDay);
+  applyCalendarPostAliases(post);
+  const dayValue = Number(post.day);
+  const slotValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
+  if (Number.isFinite(dayValue) && Number.isFinite(slotValue)) {
+    const keyValue = postKey(dayValue, slotValue);
+    const currentKey = toPlainString(post.post_key || post.postKey || '');
+    if (!currentKey || currentKey !== keyValue) {
+      post.post_key = keyValue;
+      post.postKey = keyValue;
+    }
+  }
+  return post;
+}
+
 function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicPlan = null } = {}) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
@@ -7712,6 +7776,7 @@ const server = http.createServer((req, res) => {
       const chunkPosts = Array.isArray(result.posts)
         ? result.posts
         : (Array.isArray(result?.posts?.posts) ? result.posts.posts : []);
+      chunkPosts.forEach((post) => canonicalizeCalendarPost(post, chunkPostsPerDay));
       const requestedSpecMap = buildRequestedSpecMap({
         startDay: chunkStartDay,
         days: chunkDays,
@@ -7896,8 +7961,9 @@ const server = http.createServer((req, res) => {
       const missing = validatePostCompleteness(post);
       if (!missing.length) return;
       const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-      const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-      missingFieldsReport.push({ index: idx, day, slot, missing });
+      const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+      const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
+      missingFieldsReport.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
     });
     if (missingFieldsReport.length) {
       if (brandBrainEnabled) {
@@ -7912,7 +7978,9 @@ const server = http.createServer((req, res) => {
         const missingSummary = missingFieldsReport.map((entry) => ({
           index: entry.index,
           day: entry.day,
-          slot: entry.slot,
+          slotIndex: entry.slotIndex,
+          postsPerDay: entry.postsPerDay,
+          post_key: entry.post_key,
           missing: entry.missing,
         }));
         const repairPrompt = [
@@ -7962,8 +8030,9 @@ const server = http.createServer((req, res) => {
               const missing = validatePostCompleteness(post);
               if (!missing.length) return;
               const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-              const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-              missingFieldsReport.push({ index: idx, day, slot, missing });
+              const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+              const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
+              missingFieldsReport.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
             });
           }
         } catch (repairErr) {
@@ -7990,8 +8059,9 @@ const server = http.createServer((req, res) => {
             const missing = validatePostCompleteness(post);
             if (!missing.length) return;
             const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-            const slot = perDay > 1 ? ((idx % perDay) + 1) : 1;
-            stillMissing.push({ index: idx, day, slot, missing });
+            const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+            const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
+            stillMissing.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing });
           });
           const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
           if (missingDay) {
