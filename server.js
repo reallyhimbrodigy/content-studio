@@ -3076,15 +3076,15 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   'Do not paraphrase away from the Title/Topic. If the post is a success story/testimonial, those Title words must appear in Hook/Caption/Script.',
   'The first sentence of the Reel Script must include at least 2 of those exact Title/Topic words.',
   'If you cannot satisfy this while keeping it punchy, change the wording of Hook/Caption/Script, not the Topic.',
-  'TITLE (internal): No hype/ad wording (ban: "dream," "awaits," "exclusive opportunity," "don\'t miss," "perfect," etc.).',
-  'Title must be an angle + filter (include a concrete constraint like timeline, neighborhood type, budget band, or a specific feature).',
-  'Title must imply a decision/risk/mistake, not just a topic.',
-  'Titles that begin with "Understanding," "Exploring," "Overview," "Guide," or other topic-framing wording are not allowed.',
-  'CONTENT TYPE / CATEGORY (internal): Choose a delivery mode that forces structure: mistake, myth-bust, comparison, quick audit, rule-of-thumb, teardown, checklist, objection-handle. Do not use broad labels.',
+  'TITLE (internal): Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".',
+  'Title must imply stakes: a timing error, risk, consequence, or common mistake.',
+  'Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").',
+  'CONTENT TYPE / CATEGORY (internal): Choose a delivery mode that creates tension: mistake, myth-bust, warning, rule-of-thumb, comparison, quick audit. Avoid generic labels.',
   'HOOK (hard constraints):',
-  '- Must be a warning or rule tied to the topic (contrarian, mistake, or consequence).',
+  '- Ban generic "market is shifting/changing/evolving" statements.',
+  '- Hook must break a mental model: warn about a specific wrong behavior OR state a contrarian rule with consequence.',
   '- Must include at least one concrete detail (timeline/threshold/signal/scenario).',
-  '- Ban generic safe lines (e.g., "many people overlook...", "the market is changing...").',
+  '- Must be short enough for on-screen text and feel native to TikTok/IG (no formal wording).',
   '- Must contain at least 2 exact words from the Title/Topic.',
   '- Hook must contradict a common assumption OR warn of a specific downside.',
   '- Hooks that could apply to any city/year (e.g., "the market is changing/shifting/hot/cooling") are not allowed.',
@@ -3107,7 +3107,9 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Wording must be natural and unique.',
   'REEL SCRIPT (15–20s contract, REQUIRED):',
   '- 15–20s, 90–140 spoken words, no intros.',
-  '- Required structure: (1) warning/rule opener, (2) promise, (3) 2–3 concrete steps/signals, (4) one mistake that causes failure, (5) one decisive action line.',
+  '- No neutral summaries. Must take a clear stance.',
+  '- Required structure: (1) warning/contrarian opener, (2) who it’s for, (3) 2–3 concrete signals/steps, (4) one common mistake, (5) one decisive action line.',
+  '- Ban "stay informed / make the best decision" endings. Replace with a concrete decision rule.',
   '- Replace "act fast" urgency with concrete mechanisms and criteria; ban hype adjectives.',
   '- Must contain at least one concrete detail (number/threshold/scenario). No vague wrap-ups.',
   '- Script must take a clear stance (do X / avoid Y). Neutral summaries are not allowed.',
@@ -3118,6 +3120,9 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Use spoken language, not written prose. No names, no fictional clients unless explicitly required by title.',
   'CAPTION (hard constraints):',
   '- Do not summarize. 1–2 short sentences that reward the viewer with one concrete takeaway. No rhetorical questions.',
+  '- No re-explaining the hook.',
+  '- Must pay off curiosity with one actionable mechanism (what to do differently next).',
+  '- Ban vague advice phrases: "stay informed", "keep an eye on", "know the trends", "make informed decisions".',
   '- Must contain at least 2 exact words from the Title/Topic.',
   '- Must deliver one actionable mechanism (how to do/spot/get/avoid something), not encouragement.',
   '- Must include one concrete detail; ban "don\'t settle," "usual options," and other vague persuasion.',
@@ -3130,23 +3135,28 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Do not use filler phrases ("the charm is unmatched", "here are three reasons", "don\'t miss out", "comment below", "ready to", "let\'s connect").',
   'CTA (field: cta):',
   '- Opinion-based CTAs like "share your thoughts," "what do you think" are not allowed.',
-  '- CTA must segment the viewer (forced choice) OR request a keyword tied to a concrete deliverable.',
-  '- Ban "check it out" / "share your thoughts" / generic CTAs.',
+  '- CTA must qualify/segment the viewer (forced choice) OR a keyword tied to a concrete deliverable.',
+  '- Ban newsletter/ad CTAs like "get the latest updates" and generic engagement CTAs.',
   'EXECUTION NOTES (field: executionNotes):',
-  '- Specify production choices that affect retention: talking head vs voiceover, cut pace, on-screen text length (3–5 words), when the reveal happens (timestamp), and one pattern interrupt at ~2–3s (hard cut/zoom/text slam).',
+  '- Specify talking head vs voiceover.',
+  '- Specify cut pace.',
+  '- Specify first on-screen text (3–5 words).',
+  '- Specify a pattern interrupt at 2–3s (hard cut/zoom/text slam).',
+  '- Specify exact reveal second/time marker.',
   'ENGAGEMENT LOOP (field: engagementScripts):',
   '- Output plain text with exactly three lines:',
-  '  "Comment: ..." (1 sentence, <= 18 words, forced choice aligned with the CTA)',
+  '  "Comment: ..." (1 sentence, <= 18 words, forced choice aligned to the CTA)',
   '  "DM: ..." (1 sentence, <= 18 words, promises a concrete, specific asset/outcome; no salesy fluff)',
   '  "Follow up: ..." (1 short action, <= 12 words, delivers the specific asset/outcome)',
-  'DM/follow-up must promise a specific asset/outcome (checklist, alert setup, criteria list), not generic "DM me."',
+  'DM/follow-up must promise a specific asset/outcome (checklist, rules-of-thumb, criteria list, alert setup), not generic "DM me."',
   '- Do not use repeated openers or filler like "Thanks for your interest".',
   'DISTRIBUTION PLAN (field: distributionPlan):',
-  '- Platform-specific packaging: TikTok needs a stronger opening text overlay + faster first cut; Instagram includes a story reshare using a forced-choice poll aligned to CTA. Keep it 1–2 lines per platform.',
-  '- Ban vague "highlight listings / post engaging visuals" wording.',
+  '- TikTok: stronger opening overlay + faster first cut.',
+  '- Instagram: reshare to story with a forced-choice poll aligned to CTA.',
+  '- Ban vague "post engaging visuals" language.',
   'DESIGN NOTES (field: designNotes):',
-  '- Must be beat-by-beat 0–20s tied directly to script lines.',
-  '- Each beat must add meaning (risk/choice/contrast), not decorative filler.',
+  '- Beat-by-beat 0–20s tied directly to script lines.',
+  '- Every beat must either clarify risk, contrast choices, or reinforce the mechanism—no decorative filler like "show skyline/graph" unless it proves a point.',
   '- Include time range + shot + on-screen text per beat.',
   'HASHTAGS (field: hashtags):',
   '- 5-8 hashtags only.',
@@ -3155,8 +3165,8 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Must be relevant to the title/topic. No #fyp/#viral.',
   'STORY PROMPT (field: storyPrompt):',
   '- Must be a single, specific question tied to the title/topic and prompts a detailed reply.',
-  '- Must be self-identification/segmentation (timeline, budget band, neighborhood type, non-negotiable constraint).',
-  '- Ban generic "what features do you want" prompts.',
+  '- Must self-segment (role + timeline + constraint). Examples: buyer vs seller, timeline (0–3 months vs 6+), condo vs house, budget band, neighborhood type.',
+  '- Ban opinion fishing ("what trends have you noticed / what do you think").',
   'FEATURE RULES (must hold):',
   '- Brand Brain: persuasion optimization only; never changes topic/structure.',
   '- Voice Lock: tone only; never changes topic/structure.',
@@ -3241,10 +3251,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
         'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
         'Brand Brain: Optimize persuasion and platform performance ONLY. Must not change POST_TOPIC.',
-        '- No hype/ad wording (ban: "dream," "awaits," "exclusive opportunity," "don\'t miss," "perfect," etc.).',
-        '- Title must be an angle + filter (include a concrete constraint like timeline, neighborhood type, budget band, or a specific feature).',
-        '- Title must imply a decision/risk/mistake, not just a topic.',
-        '- Titles that begin with "Understanding," "Exploring," "Overview," "Guide," or other topic-framing wording are not allowed.',
+        '- Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".',
+        '- Title must imply stakes: a timing error, risk, consequence, or common mistake.',
+        '- Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").',
         '- Title must be at least 6 words.',
         'TITLE QUALITY BAR',
         '- Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.',
@@ -3364,14 +3373,13 @@ Rules:
 - Hook and the first sentence of the Caption/Reel body must include at least one concrete noun phrase from the title/topic.
 - CTA must match the intent implied by the title/topic (aligned action, not a generic mismatch).
 - MISMATCH REWRITE: Before returning final JSON, verify Hook/Caption/Reel Script match the title and angle; if any part is off-topic, rewrite ONLY that part to match title+angle. Never change the title to fit off-topic content.
-- No hype/ad wording (ban: "dream," "awaits," "exclusive opportunity," "don\'t miss," "perfect," etc.).
-- Title must be an angle + filter (include a concrete constraint like timeline, neighborhood type, budget band, or a specific feature).
-- Title must imply a decision/risk/mistake, not just a topic.
-- Titles that begin with "Understanding," "Exploring," "Overview," "Guide," or other topic-framing wording are not allowed.
+- Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".
+- Title must imply stakes: a timing error, risk, consequence, or common mistake.
+- Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").
 TITLE QUALITY BAR
 - Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.
 - hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
-- Distribution Plan must specify platform framing: TikTok gets a stronger opening text overlay; Instagram includes a story reshare prompt using a forced-choice poll. Keep it 1–2 lines per platform and never reference any audience group explicitly.
+- Distribution Plan must specify platform framing: TikTok uses a stronger opening overlay + faster first cut; Instagram reshares to story with a forced-choice poll aligned to CTA. Keep it 1–2 lines per platform and never reference any audience group explicitly.
 - StoryPrompt is a short creator prompt/question; never append the niche label.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
