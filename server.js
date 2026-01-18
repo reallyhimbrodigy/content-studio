@@ -3340,6 +3340,39 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     `Each item must match exactly ONE slot: slotIndex in 0..${Math.max(0, postsPerDaySetting - 1)}.`,
     'Do NOT include posts for any other day or slot.',
   ].join('\n');
+  const requiredKeysBlock = [
+    'REQUIRED KEYS (DO NOT OMIT):',
+    '- post_key (string "day-<day>-slot-<slotIndex>")',
+    '- day (number)',
+    '- slotIndex (number, 0-based within day)',
+    '- title (string)',
+    '- topicCapsule.summary (string)',
+    '- topicCapsule.mustUse (array of 5-10 strings)',
+    '- topicCapsule.mustAvoid (array of 0-10 strings)',
+    '- topicCapsule.audienceAngle (string)',
+    '- topicCapsule.keyEntities (array of 0-5 strings)',
+    '- hook (string)',
+    '- caption (string)',
+    '- pillar (Education | Social Proof | Promotion | Lifestyle)',
+    '- topic_signature (string)',
+    '- angle (string)',
+    '- cta (string)',
+    '- hashtags (array of strings)',
+    '- script.hook (string)',
+    '- script.body (string)',
+    '- script.cta (string)',
+    '- reelScript.hook (string)',
+    '- reelScript.body (string)',
+    '- reelScript.cta (string)',
+    '- designNotes (string)',
+    '- storyPrompt (string)',
+    '- storyPromptPlus (string)',
+    '- distributionPlan (string)',
+    '- engagementScripts.commentReply (string)',
+    '- engagementScripts.dmReply (string)',
+    'Every field must be present and non-empty string where applicable. Do not omit keys.',
+    'Return ONLY JSON.',
+  ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
   if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
@@ -3348,7 +3381,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${hardOutputContractBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${hardOutputContractBlock}`;
   return finalPrompt;
 }
 
@@ -6418,9 +6451,20 @@ function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkE
     if (!Array.isArray(posts)) continue;
     const normalized = posts.filter((post) => post && typeof post === 'object').map((post) => {
       const dayValue = Number(post.day);
-      const slotValue = Number(post.slotIndex);
+      const perDay = Number(postsPerDay);
+      const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
+      let slotValue = explicitSlotIndex;
+      if (slotValue === null && Number.isFinite(Number(post.slot_index))) {
+        slotValue = Number(post.slot_index);
+      }
+      if (slotValue === null && Number.isFinite(Number(post.slot))) {
+        slotValue = Number(post.slot) - 1;
+      }
       if (Number.isFinite(dayValue)) post.day = dayValue;
       if (Number.isFinite(slotValue)) post.slotIndex = slotValue;
+      if (Number.isFinite(perDay) && perDay === 1 && (post.slotIndex == null || post.slotIndex === 1)) {
+        post.slotIndex = 0;
+      }
       return post;
     });
     const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : null;
@@ -6767,13 +6811,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         planUsed: Boolean(opts.planUsed),
       });
     }
-    const responseFormat = { type: 'json_object' };
+    const responseFormat = null;
     const payload = JSON.stringify({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0,
       max_tokens: maxTokens,
-      response_format: responseFormat,
     });
     const requestPromise = withOpenAiSlot(() =>
       openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
@@ -7666,7 +7709,9 @@ const server = http.createServer((req, res) => {
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
-      const chunkPosts = Array.isArray(result.posts) ? result.posts : [];
+      const chunkPosts = Array.isArray(result.posts)
+        ? result.posts
+        : (Array.isArray(result?.posts?.posts) ? result.posts.posts : []);
       const requestedSpecMap = buildRequestedSpecMap({
         startDay: chunkStartDay,
         days: chunkDays,
@@ -8657,7 +8702,9 @@ const server = http.createServer((req, res) => {
         const openaiDetails = err?.openaiDetails || {};
         const message = err?.message || 'Internal Server Error';
         const payload = {
-          error: err?.code || (isSchemaError ? 'OPENAI_SCHEMA_ERROR' : (isInvalidJson ? 'INVALID_MODEL_JSON' : 'CALENDAR_REGENERATE_FAILED')),
+          error: isSchemaError
+            ? 'openai_schema_error'
+            : (err?.code || (isInvalidJson ? 'invalid_model_json' : 'CALENDAR_REGENERATE_FAILED')),
           message: isSchemaError ? 'openai_schema_error' : (isInvalidJson ? 'invalid_model_json' : message),
           requestId,
           context: errorContext,
