@@ -3028,6 +3028,10 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Temporal grounding (internal): classify TIME_SENSITIVE vs EVERGREEN.',
   '- TIME_SENSITIVE may use CALENDAR CONTEXT for month/year/day; EVERGREEN forbids time words.',
   '- On-topic: Hook, Caption, Reel Script must include >= 2 exact words from Title/Topic; Reel Script first sentence must include them.',
+  '- Binding: Hook, Caption, and Script must include the post title/topic as an exact substring at least once OR include 2-3 topic keywords derived from the title.',
+  '- Hook must reference the specific topic; avoid generic hooks that could fit any niche.',
+  '- Caption must stay on the same specific topic; no pivots to unrelated concepts.',
+  '- Script must stay on the same specific topic; do not introduce unrelated before/pivot/after arcs unless the topic explicitly calls for it.',
   '- Time-awareness: never output year-specific claims unless provided and aligned to the calendar context.',
   '- Uniqueness: fresh phrasing, no repeated opening patterns across days, no reused CTA wording or boilerplate. Avoid repeated openers like "Did you know", "Here\'s why", "Many people", "In today\'s video".',
   'UNIQUENESS:',
@@ -3381,6 +3385,7 @@ const VOICE_LOCK_APPLIED_REQUESTS = new Set();
 const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
 const TARGET_AUDIENCE_LOGGED_REQUESTS = new Set();
 const BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS = new Set();
+const TOPIC_BINDING_WARNING_LOGGED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -4695,6 +4700,7 @@ const BRAND_BRAIN_MIN_LENGTHS = {
   engagementDm: 12,
 };
 const BRAND_BRAIN_HASHTAG_RANGE = { min: 8, max: 12 };
+const TOPIC_BINDING_HASHTAG_MAX = BRAND_BRAIN_HASHTAG_RANGE.max;
 const BRAND_BRAIN_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
   'in', 'on', 'at', 'by', 'your', 'you', 'our', 'my', 'their', 'this', 'that',
@@ -4820,7 +4826,7 @@ function findBrandBrainForbiddenMatch(value = '') {
   return null;
 }
 
-function extractBrandBrainHashtagTokens(value = null) {
+function extractHashtagTokens(value = null) {
   if (Array.isArray(value)) {
     return value.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
   }
@@ -4834,9 +4840,9 @@ function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTA
   if (!post || typeof post !== 'object') return;
   const raw = post.hashtags;
   if (!raw) return;
-  let tokens = extractBrandBrainHashtagTokens(raw);
+  let tokens = extractHashtagTokens(raw);
   if (!tokens.length && post.details) {
-    tokens = extractBrandBrainHashtagTokens(post.details);
+    tokens = extractHashtagTokens(post.details);
   }
   if (!tokens.length) return;
   const seen = new Set();
@@ -4857,6 +4863,31 @@ function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTA
   }
   if (!normalized.length) return;
   post.hashtags = normalized.join(' ');
+}
+
+function normalizeHashtagsForTopicBinding(post = {}, maxCount = TOPIC_BINDING_HASHTAG_MAX) {
+  if (!post || typeof post !== 'object') return;
+  const raw = post.hashtags;
+  let tokens = extractHashtagTokens(raw);
+  if (!tokens.length && post.details) {
+    tokens = extractHashtagTokens(post.details);
+  }
+  if (!tokens.length) return;
+  const seen = new Set();
+  const deduped = [];
+  tokens.forEach((token) => {
+    const key = token.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(token);
+  });
+  const shouldTruncate = Number.isFinite(maxCount) && deduped.length > maxCount;
+  if (shouldTruncate) deduped.length = maxCount;
+  const shouldRewrite = !Array.isArray(raw) || shouldTruncate || deduped.length !== tokens.length;
+  if (shouldRewrite) {
+    post.hashtags = deduped.join(' ');
+  }
+  return deduped;
 }
 
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
@@ -4927,7 +4958,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
       reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
     }
   });
-  const hashtags = extractBrandBrainHashtagTokens(post.hashtags);
+  const hashtags = extractHashtagTokens(post.hashtags);
   if (hashtags.length < BRAND_BRAIN_HASHTAG_RANGE.min || hashtags.length > BRAND_BRAIN_HASHTAG_RANGE.max) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
   }
@@ -5607,7 +5638,9 @@ function getHashtagBindingSignals(text = '', fingerprint = {}) {
 }
 
 function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = [], context = {}) {
-  if (!post || typeof post !== 'object') return;
+  if (!post || typeof post !== 'object') {
+    return { ok: false, fatal: true, failedFields: ['post'], noncoreFailedFields: [], details: { code: 'INVALID_POST' } };
+  }
   const resolvedSpec = resolveRequestedSpec(requestedSpec);
   const titleText = getPostTopicString(post);
   if (!titleText) {
@@ -5699,60 +5732,28 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
     noncoreFailedFields.push('distributionPlan');
     snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
   }
-  if (!coreFailedFields.length && !noncoreFailedFields.length) return;
+  if (!coreFailedFields.length && !noncoreFailedFields.length) {
+    return { ok: true, failedFields: [], noncoreFailedFields: [], details: {} };
+  }
+  const details = {
+    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
+    title: titleText,
+    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
+    offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
+    primaryFieldName,
+    snippets,
+  };
   if (!coreFailedFields.length) {
-    console.warn('[TopicBinding] noncore_failed', {
-      post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
-      title: titleText,
-      anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
-      offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
-      failedFields: noncoreFailedFields,
-      fieldSamples: snippets,
-    });
-    return;
+    return { ok: true, failedFields: [], noncoreFailedFields, details };
   }
   const primaryFieldOk = primaryFieldName === 'script'
     ? scriptOk
     : (primaryFieldName === 'hook' ? hookOk : captionOk);
   const topicBoundOk = [hookOk, captionOk, scriptOk].some((value) => value === true);
   if (!(primaryFieldOk === false && !topicBoundOk)) {
-    return;
+    return { ok: true, failedFields: [], noncoreFailedFields, details };
   }
-  const err = new Error('TOPIC_BINDING_FAILED');
-  err.code = 'TOPIC_BINDING_FAILED';
-  err.statusCode = 422;
-  const primaryFieldText = primaryFieldName === 'script'
-    ? scriptText
-    : (primaryFieldName === 'hook' ? hookText : captionText);
-  console.warn('[TopicBinding] core_failed', {
-    requestId: context?.requestId || 'unknown',
-    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
-    title: titleText,
-    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
-    primaryFieldName,
-    primaryFieldSample: normalizeBindText(primaryFieldText || '').slice(0, 120),
-  });
-  err.payload = {
-    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
-    day: Number.isFinite(Number(resolvedSpec.day)) ? Number(resolvedSpec.day) : (Number.isFinite(Number(post.day)) ? Number(post.day) : null),
-    slotIndex: Number.isFinite(Number(resolvedSpec.slotIndex))
-      ? Number(resolvedSpec.slotIndex)
-      : (Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null),
-    title: titleText,
-    topic: titleText,
-    fingerprint,
-    failedFields: coreFailedFields,
-    snippets,
-  };
-  console.warn('[TopicBinding] failed', {
-    post_key: err.payload.post_key,
-    title: titleText,
-    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
-    offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
-    failedFields: coreFailedFields,
-    fieldSamples: snippets,
-  });
-  throw err;
+  return { ok: false, failedFields: coreFailedFields, noncoreFailedFields, details };
 }
 
 function runTopicBindSelfTest() {
@@ -5778,21 +5779,13 @@ function runTopicBindSelfTest() {
     distributionPlan: 'Post to feed with the 1% listing offer, then share in stories.',
   };
   const passes = (() => {
-    try {
-      assertPostTopicBound(basePost, requestedSpec, []);
-      return true;
-    } catch {
-      return false;
-    }
+    const result = assertPostTopicBound(basePost, requestedSpec, []);
+    return result && result.ok !== false;
   })();
   console.assert(passes, '[TopicBinding][SelfTest] promo hook example should pass.');
   const fails = (() => {
-    try {
-      assertPostTopicBound({ ...basePost, hook: 'Explore neighborhood gems and investment tips.' }, requestedSpec, []);
-      return false;
-    } catch {
-      return true;
-    }
+    const result = assertPostTopicBound({ ...basePost, hook: 'Explore neighborhood gems and investment tips.' }, requestedSpec, []);
+    return result && result.ok === false;
   })();
   console.assert(fails, '[TopicBinding][SelfTest] off-topic promo hook should fail.');
   const socialTitle = 'What My Clients Say About Working With Me';
@@ -5822,21 +5815,13 @@ function runTopicBindSelfTest() {
     '[TopicBinding][SelfTest] social proof fingerprint should include testimonial.'
   );
   const socialPass = (() => {
-    try {
-      assertPostTopicBound(socialPost, socialSpec, []);
-      return true;
-    } catch {
-      return false;
-    }
+    const result = assertPostTopicBound(socialPost, socialSpec, []);
+    return result && result.ok !== false;
   })();
   console.assert(socialPass, '[TopicBinding][SelfTest] social proof script should pass.');
   const socialFail = (() => {
-    try {
-      assertPostTopicBound({ ...socialPost, script: { hook: 'Neighborhood tips.', body: 'Explore neighborhood gems today.', cta: 'Save this.' } }, socialSpec, []);
-      return false;
-    } catch {
-      return true;
-    }
+    const result = assertPostTopicBound({ ...socialPost, script: { hook: 'Neighborhood tips.', body: 'Explore neighborhood gems today.', cta: 'Save this.' } }, socialSpec, []);
+    return result && result.ok === false;
   })();
   console.assert(socialFail, '[TopicBinding][SelfTest] off-topic social proof script should fail.');
   const nowinTitle = 'Limited Time Offer: No Win, No Fee Guarantee!';
@@ -5865,21 +5850,13 @@ function runTopicBindSelfTest() {
     distributionPlan: 'Post to feed and pin the guarantee.',
   };
   const nowinPass = (() => {
-    try {
-      assertPostTopicBound(nowinPost, nowinSpec, []);
-      return true;
-    } catch {
-      return false;
-    }
+    const result = assertPostTopicBound(nowinPost, nowinSpec, []);
+    return result && result.ok !== false;
   })();
   console.assert(nowinPass, '[TopicBinding][SelfTest] no-win/no-fee hook should pass.');
   const nowinFail = (() => {
-    try {
-      assertPostTopicBound({ ...nowinPost, hook: 'Miami neighborhoods you’ll love.' }, nowinSpec, []);
-      return false;
-    } catch {
-      return true;
-    }
+    const result = assertPostTopicBound({ ...nowinPost, hook: 'Miami neighborhoods you’ll love.' }, nowinSpec, []);
+    return result && result.ok === false;
   })();
   console.assert(nowinFail, '[TopicBinding][SelfTest] off-topic no-win/no-fee hook should fail.');
   const freeTitle = 'Exclusive Offer: Free Home Valuation for Miami Residents';
@@ -5908,21 +5885,13 @@ function runTopicBindSelfTest() {
     distributionPlan: 'Post to feed with the free valuation highlight, then share in stories.',
   };
   const freePass = (() => {
-    try {
-      assertPostTopicBound(freePost, freeSpec, []);
-      return true;
-    } catch {
-      return false;
-    }
+    const result = assertPostTopicBound(freePost, freeSpec, []);
+    return result && result.ok !== false;
   })();
   console.assert(freePass, '[TopicBinding][SelfTest] free valuation caption should pass.');
   const freeFail = (() => {
-    try {
-      assertPostTopicBound({ ...freePost, caption: 'New neighborhood gems in Miami.' }, freeSpec, []);
-      return false;
-    } catch {
-      return true;
-    }
+    const result = assertPostTopicBound({ ...freePost, caption: 'New neighborhood gems in Miami.' }, freeSpec, []);
+    return result && result.ok === false;
   })();
   console.assert(freeFail, '[TopicBinding][SelfTest] off-topic free valuation caption should fail.');
 }
@@ -6351,6 +6320,12 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     distributionPlan,
     suggestedAudio: extractSuggestedAudioFromPost(post),
   };
+  if (post.topicBindingFailed) {
+    normalized.topicBindingFailed = true;
+    if (Array.isArray(post.topicBindingFailedFields) && post.topicBindingFailedFields.length) {
+      normalized.topicBindingFailedFields = post.topicBindingFailedFields.slice();
+    }
+  }
   if (!normalized.promoSlot) normalized.weeklyPromo = '';
   if (allowFallbacks) {
     normalized.cta = ensureCtaFallback(normalized);
@@ -7790,12 +7765,56 @@ const server = http.createServer((req, res) => {
         10
       );
       assertPostKeyMapping(chunkPosts, requestedSpecMap);
+      const topicBindingFailures = [];
       chunkPosts.forEach((post) => {
+        normalizeHashtagsForTopicBinding(post);
         const key = toPlainString(post?.post_key || post?.postKey || '');
         const requestedSpec = requestedSpecMap.get(key) || {};
         const fallbackMustAvoid = fallbackAvoidByKey.get(key) || [];
-        assertPostTopicBound(post, requestedSpec, fallbackMustAvoid, { requestId: chunkContext?.requestId || 'unknown' });
+        const binding = assertPostTopicBound(post, requestedSpec, fallbackMustAvoid, {
+          requestId: chunkContext?.requestId || 'unknown',
+        });
+        if (!binding) return;
+        if (binding.fatal) {
+          const err = new Error('INVALID_MODEL_JSON');
+          err.code = 'INVALID_MODEL_JSON';
+          err.statusCode = 422;
+          err.payload = {
+            post_key: toPlainString(requestedSpec.post_key || requestedSpec.postKey || post?.post_key || post?.postKey || ''),
+            day: Number.isFinite(Number(requestedSpec.day)) ? Number(requestedSpec.day) : (Number.isFinite(Number(post?.day)) ? Number(post.day) : null),
+            slotIndex: Number.isFinite(Number(requestedSpec.slotIndex))
+              ? Number(requestedSpec.slotIndex)
+              : (Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null),
+          };
+          throw err;
+        }
+        if (binding.ok === false) {
+          post.topicBindingFailed = true;
+          post.topicBindingFailedFields = Array.isArray(binding.failedFields) ? binding.failedFields.slice() : [];
+          topicBindingFailures.push({
+            post_key: toPlainString(requestedSpec.post_key || requestedSpec.postKey || post?.post_key || post?.postKey || ''),
+            title: toPlainString(post?.title || post?.topic || ''),
+            failedFields: post.topicBindingFailedFields,
+          });
+        }
       });
+      if (topicBindingFailures.length) {
+        const requestId = chunkContext?.requestId || '';
+        const requestLabel = requestId || 'unknown';
+        if (!requestId || !TOPIC_BINDING_WARNING_LOGGED_REQUESTS.has(requestId)) {
+          console.warn('[TopicBinding] degraded_to_warning', {
+            requestId: requestLabel,
+            count: topicBindingFailures.length,
+            samples: topicBindingFailures.slice(0, 3),
+          });
+          if (requestId) {
+            TOPIC_BINDING_WARNING_LOGGED_REQUESTS.add(requestId);
+            if (TOPIC_BINDING_WARNING_LOGGED_REQUESTS.size > 5000) {
+              TOPIC_BINDING_WARNING_LOGGED_REQUESTS.clear();
+            }
+          }
+        }
+      }
       console.log('[Calendar][Server][Perf] callOpenAI end', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
