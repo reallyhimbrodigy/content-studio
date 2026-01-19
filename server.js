@@ -3380,6 +3380,7 @@ const VOICE_LOCK_LOGGED_REQUESTS = new Set();
 const VOICE_LOCK_APPLIED_REQUESTS = new Set();
 const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
 const TARGET_AUDIENCE_LOGGED_REQUESTS = new Set();
+const BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS = new Set();
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -4615,7 +4616,9 @@ function ensureHashtagPrefix(value = '') {
 }
 
 function ensureHashtagArray(value, fallback = [], minLength = 0) {
-  const rawList = ensureStringArray(value, fallback, minLength);
+  const rawList = (typeof value === 'string' && value.includes('#'))
+    ? (value.match(/#[A-Za-z0-9_]+/g) || [])
+    : ensureStringArray(value, fallback, minLength);
   const hashtags = rawList
     .map(ensureHashtagPrefix)
     .filter(Boolean);
@@ -4817,15 +4820,23 @@ function findBrandBrainForbiddenMatch(value = '') {
   return null;
 }
 
+function extractBrandBrainHashtagTokens(value = null) {
+  if (Array.isArray(value)) {
+    return value.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.match(/#[A-Za-z0-9_]+/g) || [];
+  }
+  return [];
+}
+
 function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTAG_RANGE) {
   if (!post || typeof post !== 'object') return;
   const raw = post.hashtags;
   if (!raw) return;
-  let tokens = [];
-  if (Array.isArray(raw)) {
-    tokens = raw.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
-  } else if (typeof raw === 'string') {
-    tokens = raw.match(/#[A-Za-z0-9_]+/g) || [];
+  let tokens = extractBrandBrainHashtagTokens(raw);
+  if (!tokens.length && post.details) {
+    tokens = extractBrandBrainHashtagTokens(post.details);
   }
   if (!tokens.length) return;
   const seen = new Set();
@@ -4845,7 +4856,7 @@ function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTA
     normalized = deduped.slice(0, expectedMax);
   }
   if (!normalized.length) return;
-  post.hashtags = normalized;
+  post.hashtags = normalized.join(' ');
 }
 
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
@@ -4916,7 +4927,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
       reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
     }
   });
-  const hashtags = Array.isArray(post.hashtags) ? post.hashtags.filter((tag) => toPlainString(tag)) : [];
+  const hashtags = extractBrandBrainHashtagTokens(post.hashtags);
   if (hashtags.length < BRAND_BRAIN_HASHTAG_RANGE.min || hashtags.length > BRAND_BRAIN_HASHTAG_RANGE.max) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
   }
@@ -8133,34 +8144,69 @@ const server = http.createServer((req, res) => {
       }
     }
     if (brandBrainEnabled) {
-      const invalidEntries = [];
+      const warningPostSets = new Map();
+      const fatalEntries = [];
       rawPosts.forEach((post, idx) => {
-        if (post && typeof post === 'object') {
-          normalizeHashtagsForBrandBrain(post, BRAND_BRAIN_HASHTAG_RANGE);
-        }
         const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+        if (!post || typeof post !== 'object') {
+          fatalEntries.push({ index: idx, day, reasons: [{ code: 'INVALID_POST' }] });
+          return;
+        }
+        normalizeHashtagsForBrandBrain(post, BRAND_BRAIN_HASHTAG_RANGE);
         const validation = validateBrandBrainPost(post, nicheStyle);
-        if (!validation.ok) {
-          invalidEntries.push({ index: idx, day, reasons: validation.reasons });
+        if (validation.ok) return;
+        const fatalReasons = [];
+        const warningReasons = [];
+        validation.reasons.forEach((reason) => {
+          if (reason.code === 'MISSING_FIELD') {
+            fatalReasons.push(reason);
+          } else {
+            warningReasons.push(reason);
+          }
+        });
+        if (fatalReasons.length) {
+          fatalEntries.push({ index: idx, day, reasons: fatalReasons });
+        }
+        if (warningReasons.length) {
+          warningReasons.forEach((reason) => {
+            const code = String(reason.code || 'UNKNOWN');
+            if (!warningPostSets.has(code)) warningPostSets.set(code, new Set());
+            warningPostSets.get(code).add(idx);
+          });
         }
       });
-      if (invalidEntries.length) {
-        invalidEntries.forEach((entry) => {
-          console.warn('[BrandBrain][Validation] rejected post', {
-            requestId: loggingContext?.requestId || 'unknown',
-            day: entry.day,
-            index: entry.index,
-            reasons: entry.reasons,
+      if (warningPostSets.size) {
+        const requestId = loggingContext?.requestId || '';
+        const requestLabel = requestId || 'unknown';
+        if (!requestId || !BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.has(requestId)) {
+          const warningCounts = {};
+          const warnedPosts = new Set();
+          warningPostSets.forEach((set, code) => {
+            warningCounts[code] = set.size;
+            set.forEach((idx) => warnedPosts.add(idx));
           });
-        });
+          console.warn('[BrandBrain][Validation][Warning]', {
+            requestId: requestLabel,
+            warningCounts,
+            postsWithWarnings: warnedPosts.size,
+          });
+          if (requestId) {
+            BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.add(requestId);
+            if (BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.size > 5000) {
+              BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.clear();
+            }
+          }
+        }
+      }
+      if (fatalEntries.length) {
         const err = new Error('Brand Brain validation failed');
         err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
         err.statusCode = 500;
-        err.details = invalidEntries;
+        err.details = fatalEntries;
         console.error('[BrandBrain][Validation] rejected posts', {
           requestId: loggingContext?.requestId || 'unknown',
-          failures: invalidEntries.length,
-          samples: invalidEntries.slice(0, 2),
+          failures: fatalEntries.length,
+          samples: fatalEntries.slice(0, 2),
         });
         throw err;
       }
