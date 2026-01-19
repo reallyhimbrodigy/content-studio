@@ -3036,13 +3036,13 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   'CTA: low-friction, comment-first, matches the promise; forced choice or keyword comment. DM only optional/secondary.',
   'ExecutionNotes: first 1.5s on-screen text promise; cut every 1-2s; open loop at 0-2s, payoff at 8-14s; list 2-4 b-roll categories tied to the claim.',
   'StoryPrompt: one-tap interaction (poll/quiz/slider/this-or-that); no open-ended questions.',
-  'DesignNotes: on-screen text must be claim/proof/step/payoff; include at least one proof shot; no decorative filler.',
-  'EngagementScripts: reply-tree with 3 ready-to-use comment replies (agree+micro-tip+question, clarify+two options+pick, mini-audit offer). No DM push.',
-  'EngagementScripts output: put Reply 1 and Reply 2 in engagementScripts.commentReply (newline-separated), Reply 3 in engagementScripts.dmReply; do not mention DMs.',
+  'DesignNotes: single string with 3-5 "-" bullets; each bullet is a specific shot/on-screen element (one must be a proof shot); on-screen text must be claim/proof/step/payoff; no decorative filler.',
+  'EngagementScripts: reply-tree with 3 ready-to-use comment replies: (1) agree + micro-tip + question, (2) clarify + two options + ask to pick, (3) mini-audit offer ("comment KEYWORD and I\'ll reply with X"). No DM push.',
+  'EngagementScripts output: engagementScripts.commentReply = Reply 1 + Reply 2 separated by "\\n"; engagementScripts.dmReply = Reply 3; both non-empty and do not mention DMs.',
   'ReelScript: 15-25s; 0-2s hook, 2-6s stakes, 6-14s 2-3 steps or twist + proof, 14-20s payoff + CTA. For testimonials/social proof, require one specific moment; ban "happy client" / "personalized service".',
   'Script: hook/body/cta; keep it consistent with Hook and CTA.',
   'Hashtags: 5-8, relevant to title/topic; no #fyp/#viral.',
-  'DistributionPlan: one short line per platform with a concrete packaging change; no generic phrasing.',
+  'DistributionPlan: exactly two short lines: "TikTok: ..." and "Instagram: ...", each with one concrete packaging change; no generic phrasing.',
 ].join('\n');
 
 const TITLE_ANCHOR_ECHO_BLOCK = [
@@ -3153,6 +3153,30 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
+  const outputContractBlock = [
+    'OUTPUT CONTRACT (MANDATORY)',
+    '- Return ONLY valid JSON. No markdown. No backticks. No commentary. No headings.',
+    '- The first character of your entire response must be "{" and the last character must be "}".',
+    '- Always return the SAME top-level object shape: {"posts":[ ... ]}. Even when generating 1 post, still wrap it in {"posts":[{...}]}.',
+    `- The "posts" value must be an array containing EXACTLY ${totalPostsRequired} post objects. Do not return fewer or more.`,
+    '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string (no "", no null), except numeric fields defined as numbers or arrays defined as arrays.',
+    '- Never omit a field. Never change field names. Never nest unexpected keys.',
+    '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
+    '- NOTE: Output contract prevents parse failures (422 missing_posts_parse_failed).',
+    'NON-EMPTY REQUIREMENT',
+    '- These fields MUST NEVER be empty or missing: title, hook, caption, cta, executionNotes, storyPrompt, designNotes, distributionPlan, hashtags, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topic_signature, angle, pillar, post_key, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
+    '- If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
+    'SINGLE POST RULE',
+    '- When the expected post count is 1, you still must return {"posts":[{...}]} (NOT a single object, NOT an array alone).',
+  ].join('\n');
+  const finalSelfCheckBlock = [
+    'FINAL SELF-CHECK (REQUIRED BEFORE RESPONDING)',
+    '- Confirm JSON parses.',
+    '- Confirm top-level is an object with key "posts" only.',
+    `- Confirm posts.length === ${totalPostsRequired}.`,
+    '- Confirm every post includes all required fields with NON-EMPTY strings.',
+    '- Confirm no field value is just whitespace.',
+  ].join('\n');
   const calendarContextBlock = [
     'CALENDAR CONTEXT (GROUNDING ONLY):',
     `- Current year: ${currentYear}`,
@@ -3160,7 +3184,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- This chunk covers day ${startDay}..${chunkEndDay}, slotIndex 0..${Math.max(0, postsPerDaySetting - 1)}.`,
     '- Use this context only if a post is TIME_SENSITIVE; avoid time language in EVERGREEN posts.',
   ].join('\n');
-  const basePrompt = `You are a thoughtful calendar writer${cleanNiche}.
+  const basePrompt = `${outputContractBlock}
+You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBlock}
 `;
 const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
@@ -3205,7 +3230,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${hardOutputContractBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${hardOutputContractBlock}`;
   return finalPrompt;
 }
 
