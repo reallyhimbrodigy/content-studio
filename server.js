@@ -3030,6 +3030,9 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- On-topic: Hook, Caption, Reel Script must include >= 2 exact words from Title/Topic; Reel Script first sentence must include them.',
   '- Time-awareness: never output year-specific claims unless provided and aligned to the calendar context.',
   '- Uniqueness: fresh phrasing, no repeated opening patterns across days, no reused CTA wording or boilerplate. Avoid repeated openers like "Did you know", "Here\'s why", "Many people", "In today\'s video".',
+  'UNIQUENESS:',
+  'Do not reuse phrasing across posts. Avoid generic filler like “Absolutely!” and avoid repeating identical distributionPlan/engagementLoop structures beyond the required format.',
+  'Each post must use topic-specific wording and details.',
   'Title: watchable premise (conflict/curiosity/specific moment); avoid brochure phrases ("Dream Home Awaits", "Exclusive", "Happy Client", "Personalized Service"); specific to topic and niche.',
   'Category/Pillar: Education (myth vs fact / 3 signs / what I would do / common mistake), Social Proof (before/after / mistake->fix / turning point / receipts), Promotion (subtle, entertainment-first; no hard sell).',
   'Hook: viewer-centric pattern interrupt, 7-11 words; single clear promise; ban salesy phrases ("reveals the secret", "dream home", "exclusive listings", "personalized service", "don\'t settle", "act fast", "ready to navigate"); falsifiable and specific.',
@@ -3038,13 +3041,27 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   'CTA: exactly ONE CTA, comment-first, intent-revealing, keyword tied to the post; must say what they get. No DM instructions.',
   'ExecutionNotes: 20-30s, 6-10 cuts, avg shot length 1-2s, on-screen captions each beat; structure: Hook (0-2s) → Proof clip (2-5s) → Steps (5-18s) → CTA (18-22s).',
   'StoryPrompt: frictionless one-tap interaction (A/B, multiple choice, slider, this-or-that); no open-ended questions.',
-  'DesignNotes: exactly 5 time-coded beats (0-2s, 2-5s, 5-12s, 12-18s, 18-22s); each shot supports the claim; on-screen text must be claim/proof/step/payoff; include at least one proof shot; no decorative filler.',
-  'EngagementScripts: THREE short preset replies (not a paragraph): (1) agree + micro-tip + question, (2) clarify + A/B choice, (3) keyword offer + what they receive. No DM.',
-  'EngagementScripts output: engagementScripts.commentReply = Reply 1 + Reply 2 separated by "\\n"; engagementScripts.dmReply = Reply 3; both non-empty and do not mention DMs.',
+  'designNotes format (STRICT):',
+  'Exactly 5 lines. Each line begins with one of these timecodes, in order:',
+  '0-2s:',
+  '2-5s:',
+  '5-12s:',
+  '12-18s:',
+  '18-22s:',
+  'Each line must be a complete sentence, <= 110 characters.',
+  'engagementLoop format (STRICT):',
+  'Exactly 3 lines. Each line starts with "Reply 1:", "Reply 2:", "Reply 3:".',
+  'Each reply must be 1–2 complete sentences, <= 180 characters.',
+  'Must be niche-specific to the post topic. Never blank.',
+  'EngagementScripts output: engagementScripts.commentReply = Reply 1 + Reply 2 separated by "\\n"; engagementScripts.dmReply = Reply 3.',
   'ReelScript: beat-based lines; Hook line must match Hook exactly; then 3 short body beats + CTA line. Structure: 0-2s hook, 2-6s stakes, 6-14s steps/twist + proof, 14-20s payoff + CTA. For testimonials/social proof, require one specific moment; ban "happy client" / "personalized service".',
   'Script: hook/body/cta; keep it consistent with Hook and CTA.',
   'Hashtags: 5-8, relevant to title/topic; no #fyp/#viral.',
-  'DistributionPlan: exactly two short lines, each a complete sentence. Line 1 starts with "TikTok:" and line 2 starts with "Instagram:"; no parentheses. Example format only (do NOT copy wording): TikTok: <complete sentence>. Instagram: <complete sentence>.',
+  'distributionPlan format (STRICT):',
+  'Exactly 2 lines:',
+  'TikTok: <one complete sentence, <= 160 characters>',
+  'Instagram: <one complete sentence, <= 160 characters>',
+  'No parentheses. No fragments. No trailing commas.',
 ].join('\n');
 
 const TITLE_ANCHOR_ECHO_BLOCK = [
@@ -3108,7 +3125,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         '- No emojis, fake stats, guarantees, placeholders, or templates.',
         '- Hook: 0-3s retention; Caption: short beats with one concrete mechanism.',
         '- CTA: one action only (comment/poll/keyword), no DM asks.',
-        '- StoryPrompt: binary tradeoff; DesignNotes: 3-5 visual beats with on-screen text and pattern shifts.',
+        '- StoryPrompt: binary tradeoff; DesignNotes: follow the designNotes format (STRICT) with 5 timecoded lines.',
         '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
         '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
         '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
@@ -3168,7 +3185,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
     '- NOTE: Output contract prevents parse failures (422 missing_posts_parse_failed).',
     'NON-EMPTY REQUIREMENT',
-    '- These fields MUST NEVER be empty or missing: title, hook, caption, cta, executionNotes, storyPrompt, designNotes, distributionPlan, hashtags, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topic_signature, angle, pillar, post_key, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
+    '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, designNotes, storyPrompt, storyPromptPlus, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
     '- Empty string is invalid. Missing key is invalid. If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
     'SINGLE POST RULE',
     '- When the expected post count is 1, you still must return {"posts":[{...}]} (NOT a single object, NOT an array alone).',
@@ -3195,6 +3212,13 @@ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBl
 `;
 const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 ${TITLE_ANCHOR_ECHO_BLOCK}
+REQUIRED FIELDS (STRICT):
+For EACH post object, EVERY key in the schema MUST be present and MUST be non-empty.
+- Missing key = invalid.
+- Empty string "" = invalid.
+- Whitespace-only = invalid.
+- Truncated/incomplete phrase = invalid.
+Output will be rejected if any post violates this.
 Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
 SCOPE LOCK: only generate content for the provided day(s) in this chunk.
 ${postIdentityBlock}
@@ -3223,6 +3247,12 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     'Do NOT include posts for any other day or slot.',
   ].join('\n');
   const requiredKeysBlock = [
+    'COMPLETENESS RULES:',
+    '- Every string must be a complete thought. Do not end with unfinished clauses.',
+    '- Never end any value with an opening parenthesis “(”, trailing comma, colon, dash, or dangling “and/or”.',
+    '- designNotes MUST be fully written and timecoded; do not truncate mid-beat.',
+    '- engagementLoop MUST never be blank; include all required items.',
+    '- distributionPlan MUST be fully written and complete for BOTH platforms.',
     'REQUIRED KEYS (DO NOT OMIT):',
     'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, hook, caption, pillar, topic_signature, angle, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}.',
     'Each required key must be present and a non-empty string (min 8 characters) except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
@@ -3237,7 +3267,17 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
     if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
   }
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${hardOutputContractBlock}`;
+  const finalCheckBlock = [
+    'FINAL CHECK (SILENT):',
+    'Before you output, verify:',
+    '1) Valid JSON only.',
+    '2) posts length matches expectedPosts.',
+    '3) Every post includes every schema key.',
+    '4) No field is empty or truncated.',
+    '5) designNotes has 5 timecoded lines; engagementLoop has 3 Reply lines; distributionPlan has TikTok/Instagram lines.',
+    'If any check fails, fix it BEFORE outputting.',
+  ].join('\n');
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${hardOutputContractBlock}`;
   return finalPrompt;
 }
 
