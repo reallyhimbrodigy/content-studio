@@ -3129,17 +3129,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
       '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
       '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
-      'BRAND BRAIN VALIDATION REQUIREMENT (STRICT):',
-      'hashtags MUST contain 12–18 hashtags total.',
-      '- Include 3 niche-specific hashtags, 3 location/platform-context hashtags if relevant, 3 audience hashtags, and 3 topic hashtags.',
-      '- Output as a single space-separated string (e.g., "#A #B #C ..."), not a list.',
-      '- Never output fewer than 12 hashtags.',
-      '- Do not write “+ more” or “+3 more”.',
-      'Do not abbreviate hashtags. Do not use placeholders. Do not summarize with “+ more”. Print all hashtags explicitly.',
+      'BRAND BRAIN HASHTAGS (STRICT VALIDATION):',
+      'Output 8-12 hashtags.',
+      '- 8-12 tokens that begin with "#".',
+      '- Output as a JSON array of strings, e.g., ["#A", "#B", "#C"].',
+      '- No commas inside hashtags, no line breaks, no bullet points, no "+ more".',
+      '- Do not repeat the same hashtag within a post.',
+      '- Hashtags must be niche/topic relevant.',
       '- Every post must include all required keys and non-empty values.',
       'FINAL CHECK (SILENT, BRAND BRAIN):',
-      'Verify hashtags count is between 12 and 18 and begins with "#".',
-      'If not, fix hashtags before output.',
+      'Count hashtags tokens (array entries starting with "#").',
+      'If not between 8 and 12, rewrite hashtags until it is within range.',
       '- Output JSON only.',
     ].join('\\n')
     : '';
@@ -4691,6 +4691,7 @@ const BRAND_BRAIN_MIN_LENGTHS = {
   engagementComment: 12,
   engagementDm: 12,
 };
+const BRAND_BRAIN_HASHTAG_RANGE = { min: 8, max: 12 };
 const BRAND_BRAIN_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
   'in', 'on', 'at', 'by', 'your', 'you', 'our', 'my', 'their', 'this', 'that',
@@ -4721,7 +4722,11 @@ function extractBrandBrainTokens(nicheStyle = '') {
   return Array.from(new Set(tokens));
 }
 
-function buildBrandBrainHashtags(nicheStyle = '', minCount = 8, maxCount = 12) {
+function buildBrandBrainHashtags(
+  nicheStyle = '',
+  minCount = BRAND_BRAIN_HASHTAG_RANGE.min,
+  maxCount = BRAND_BRAIN_HASHTAG_RANGE.max
+) {
   const tokens = extractBrandBrainTokens(nicheStyle);
   const tags = [];
   tokens.forEach((token) => {
@@ -4812,6 +4817,37 @@ function findBrandBrainForbiddenMatch(value = '') {
   return null;
 }
 
+function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTAG_RANGE) {
+  if (!post || typeof post !== 'object') return;
+  const raw = post.hashtags;
+  if (!raw) return;
+  let tokens = [];
+  if (Array.isArray(raw)) {
+    tokens = raw.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
+  } else if (typeof raw === 'string') {
+    tokens = raw.match(/#[A-Za-z0-9_]+/g) || [];
+  }
+  if (!tokens.length) return;
+  const seen = new Set();
+  const deduped = [];
+  tokens.forEach((token) => {
+    const key = token.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(token);
+  });
+  const expectedExact = Number.isFinite(expected?.exact) ? expected.exact : null;
+  const expectedMax = Number.isFinite(expected?.max) ? expected.max : null;
+  let normalized = deduped;
+  if (expectedExact !== null) {
+    if (deduped.length >= expectedExact) normalized = deduped.slice(0, expectedExact);
+  } else if (expectedMax !== null && deduped.length > expectedMax) {
+    normalized = deduped.slice(0, expectedMax);
+  }
+  if (!normalized.length) return;
+  post.hashtags = normalized;
+}
+
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
   const reasons = [];
   const missing = validatePostCompleteness(post);
@@ -4881,7 +4917,7 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
     }
   });
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags.filter((tag) => toPlainString(tag)) : [];
-  if (hashtags.length < 8 || hashtags.length > 12) {
+  if (hashtags.length < BRAND_BRAIN_HASHTAG_RANGE.min || hashtags.length > BRAND_BRAIN_HASHTAG_RANGE.max) {
     reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
   }
   const nicheTokens = extractBrandBrainTokens(nicheStyle);
@@ -8099,6 +8135,9 @@ const server = http.createServer((req, res) => {
     if (brandBrainEnabled) {
       const invalidEntries = [];
       rawPosts.forEach((post, idx) => {
+        if (post && typeof post === 'object') {
+          normalizeHashtagsForBrandBrain(post, BRAND_BRAIN_HASHTAG_RANGE);
+        }
         const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
         const validation = validateBrandBrainPost(post, nicheStyle);
         if (!validation.ok) {
