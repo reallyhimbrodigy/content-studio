@@ -3007,238 +3007,45 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
 }
 
 const TOPIC_LOCK_CONTRACT_BLOCK = [
-  'TOPIC LOCK CONTRACT (INTERNAL, DO NOT OUTPUT IN JSON):',
-  'Immediately before writing each post object\'s fields, write this block internally:',
-  'POST_ID: <day>-<slot> (use the post day and slot/per-day index already provided)',
-  'POST_TOPIC: <title/topic> (use the exact title/topic string for that post)',
-  'TOPIC_LOCK:',
-  '"All fields below MUST be about POST_TOPIC only."',
-  '"Do not borrow details, examples, or storylines from any other post in this same response."',
-  '"If you feel tempted to talk about something else, rewrite until it is clearly about POST_TOPIC."',
-  'This block is instruction-only; never include it in the output JSON.',
+  'TOPIC LOCK (internal, do not output):',
+  '- Before each post, note POST_ID and POST_TOPIC (title/topic).',
+  '- All fields must stay about POST_TOPIC only; do not borrow from other posts.',
 ].join('\n');
 
 const FIELD_REGROUNDING_INSTRUCTION =
   'Start by restating POST_TOPIC in your own words internally, then write the field strictly about it without keyword stuffing. Do NOT mention the phrase "POST_TOPIC".';
 
 const FIELD_REGROUNDING_BLOCK = [
-  'FIELD RE-GROUNDING (APPLY TO EACH FIELD BELOW):',
-  `- Hook: ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Caption: ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Script (script hook/body/cta): ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Reel Script (reelScript hook/body/cta): ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Hashtags: ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Design Notes: ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Engagement Loop (engagementScripts commentReply/dmReply): ${FIELD_REGROUNDING_INSTRUCTION}`,
-  `- Distribution Plan: ${FIELD_REGROUNDING_INSTRUCTION}`,
+  'FIELD RE-GROUNDING:',
+  `- ${FIELD_REGROUNDING_INSTRUCTION}`,
 ].join('\n');
 
 const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
-  'SHORT-FORM VIDEO CONTRACT (REQUIRED):',
-  'UNIVERSAL QUALITY GATES (apply to every post):',
-  '- Every required field must be present and non-empty; do not output blank strings.',
-  'TEMPORAL GROUNDING (INTERNAL STEP, DO NOT OUTPUT):',
-  '- For each post, classify as TIME_SENSITIVE or EVERGREEN.',
-  '- TIME_SENSITIVE if the post implies timing, trends, seasons, "this month/year", market conditions, urgency, or recency.',
-  '- EVERGREEN if it is principles, education, lifestyle, or story not tied to a date.',
-  '- This classification must control wording in every field.',
-  '- Use the provided CALENDAR CONTEXT (year/month/day/slot) for TIME_SENSITIVE posts only; do not output the classification or the context.',
-  'TEMPORAL RULES:',
-  '- If EVERGREEN: forbid explicit years, months, "right now/currently/recently/last year", season claims, and time-bound statements. Rewrite to timeless language.',
-  '- If TIME_SENSITIVE: all time references must be correct relative to the calendar context provided. Forbid past years or vague relative time words unless resolved to the correct month/year. If you reference "this month/this year", it must match the provided month/year.',
-  '- If TIME_SENSITIVE and you reference a day or window, it must align with the assigned day/slot for that post.',
-  '- Only mention time when TIME_SENSITIVE; otherwise avoid time language.',
-  '- Write as if for a 12-20 second vertical video.',
-  '- Use spoken language. Short lines. No paragraphs longer than 2 lines.',
-  '- ANTI-FILLER: Avoid empty adjectives and generic claims ("unmatched", "exclusive", "stunning", "dream", "vibrant") unless paired with a concrete detail.',
-  '- If a sentence does not add a new idea, delete it.',
-  '- Ban weak hooks: do NOT use "is key for success", "is important", "is crucial", "don\'t miss out", "stay ahead", "discover", "unlock", "game-changer" unless followed by a concrete claim within the same sentence.',
-  '- Every post must include at least ONE concrete mechanism (a why/how): a cause -> effect, a tradeoff, or a specific decision rule tied to the title/topic.',
-  '- Every post must include at least TWO concrete specifics (numbers, time windows, thresholds, examples, steps, do/don\'t). Keep them plausible and general; do not claim unverifiable stats.',
-  '- Do not repeat the same sentence across caption/script body/CTA. The Hook may be reused only for reelScript.hook.',
-  '- Every field must stay strictly on the post title/topic.',
-  '- Do not use hyphen bullet lists in caption or script. Only use structured labels that already exist (Hook/Body/CTA, timestamps).',
-  'OPENING DIVERSITY (HARD REQUIREMENT):',
-  '- Caption first line must not reuse the hook\'s first 3 words.',
-  '- Script Hook line must match the hook field exactly.',
-  '- Engagement loop Comment line must not reuse the same keyword across posts unless the title explicitly requires it.',
-  'FACT SAFETY:',
-  '- Do not invent precise statistics, counts, or year-over-year percentages.',
-  '- If you use numbers, use them as steps, time windows, ranges, or decision thresholds that are general (e.g., "within 7-10 days", "3 checks", "under X minutes"), not claims about real-world markets.',
-  '- If you reference trends, describe them qualitatively unless the user provided data.',
-  'VOICE NATURALITY:',
-  '- Avoid AI cadence. Prefer short, colloquial lines.',
-  '- No corporate phrases ("hidden gems", "dream outcome awaits", "key for success") unless made specific and fresh.',
-  'Uniqueness is mandatory: every post must be meaningfully different from every other post in wording and angle. Never reuse the same opener/closer phrasing, the same sentence starters, or the same pattern of lines across posts.',
-  '',
-  'No templates: do not follow a repeated formula across posts.',
-  'Each field must be semantically distinct across posts in this batch. Do not reuse CTA formats, engagement phrasing, or distribution plan wording.',
-  '',
-  'Angle rotation: each post must use a different angle chosen from: myth-bust, checklist, mistake, quick story, comparison, contrarian take, “before you do X”, objection handling, teardown, mini case study, rules-of-thumb, fast audit, red flags, “do this not that”, one metric that matters. Do not repeat an angle until you have used others.',
-  '',
-  'Specificity anchor required: each post must include at least one concrete, niche-specific detail (number, threshold, named place, scenario, misconception, tool, timeline, constraint). This concrete detail must appear in both the first spoken line and the main script.',
-  '',
-  'Ban filler: do not use vague phrases like “want to know more”, “some tips”, “amazing”, “game changer”, “let’s dive in”, “here’s the thing”, “in today’s video”, “what do you think”, “let me know”, “comment below” (unless it is a forced-choice or keyword tied to a specific deliverable).',
-  'No genericness: avoid high-level summaries. Every post must deliver a specific insight that changes what the viewer would do next.',
-  'One idea per post: one clear promise, one angle, no multi-topic scripts.',
-  'No rhetorical questions and no soft filler like "are you ready," "want to know more," "stay tuned," "let me know," "comment your thoughts."',
-  'Specificity requirement: include at least one concrete detail (number, threshold, named place, scenario, misconception, tool, timeline, constraint). Do not write vague advice.',
-  'Retention-first: no intros, no scene-setting. Viewer gets value by second 3.',
-  'ON-TOPIC REQUIREMENT (must pass validation):',
-  'The Hook, Caption, and Reel Script must each include at least 2 exact meaningful words from the post\'s Title/Topic (not synonyms). Use the exact words as written in the Title/Topic.',
-  'Do not paraphrase away from the Title/Topic. If the post is a success story/testimonial, those Title words must appear in Hook/Caption/Script.',
-  'The first sentence of the Reel Script must include at least 2 of those exact Title/Topic words.',
-  'If you cannot satisfy this while keeping it punchy, change the wording of Hook/Caption/Script, not the Topic.',
-  'TITLE (internal):',
-  '- Must obey temporal rules: TIME_SENSITIVE titles may include the correct month/year; EVERGREEN titles must avoid time language.',
-  '- Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".',
-  '- Title must imply stakes: a timing error, risk, consequence, or common mistake.',
-  '- Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").',
-  '- Titles must be unique across the batch; do not reuse phrasing patterns.',
-  'CONTENT TYPE / CATEGORY (internal): Choose a delivery mode that creates tension: mistake, myth-bust, warning, rule-of-thumb, comparison, quick audit. Avoid generic labels.',
-  'HOOK (hard constraints):',
-  '- Short, punchy, pattern-break.',
-  '- If TIME_SENSITIVE, include a correct time anchor from CALENDAR CONTEXT; if EVERGREEN, avoid time language.',
-  '- Ban generic "market is shifting/changing/evolving" statements.',
-  '- Hook must break a mental model: warn about a specific wrong behavior OR state a contrarian rule with consequence.',
-  '- Must include at least one concrete detail (timeline/threshold/signal/scenario).',
-  '- Must be short enough for on-screen text and feel native to TikTok/IG (no formal wording).',
-  '- Must contain at least 2 exact words from the Title/Topic.',
-  '- Hook must contradict a common assumption OR warn of a specific downside.',
-  '- Hooks that could apply to any city/year (e.g., "the market is changing/shifting/hot/cooling") are not allowed.',
-  '- Avoid neutral summaries; create a clear open loop.',
-  '- No generic hooks (e.g., "Why X matters", "Understanding X is key").',
-  '- Must satisfy HOOK VARIETY CONTRACT.',
-  'NO GENERIC HOOKS:',
-  '- Hooks that are generic slogans are banned (e.g., vague claims about importance or urgency).',
-  '- Hook must contain a concrete angle from one of these forms (do not label it): a specific mistake to avoid, a tradeoff/decision point, a quick diagnostic/checklist, a contrarian claim tied to the title, or a short scene (1 sentence) tied to the title.',
-  'HOOK VARIETY CONTRACT (REQUIRED):',
-  '- Hooks must be a pattern interrupt, but you must NOT reuse the same opening word across posts within the same batch.',
-  '- Do not start more than ONE hook in a 10-post batch with the same first word.',
-  '- Vary hook form across posts by rotating among these categories (do not label them):',
-  '  1) Direct question hook (non-rhetorical)',
-  '  2) Contrarian/hot-take claim',
-  '  3) Specific-number hook (use a number)',
-  '  4) Mini-story/scene hook (1 sentence)',
-  '  5) Mistake-to-avoid hook',
-  '  6) Checklist/diagnostic hook',
-  '- Wording must be natural and unique.',
-  'REEL SCRIPT (12–20s contract, REQUIRED):',
-  '- 12–20s max, no intros.',
-  '- Apply temporal rules: TIME_SENSITIVE may include the correct time anchor; EVERGREEN must avoid time language.',
-  '- No neutral summaries. Must take a clear stance.',
-  '- Required structure and mapping:',
-  '  Line 1 = reelScript.hook (must match Hook field exactly).',
-  '  Lines 2–3 = reelScript.body proof/insight (mechanism -> example/constraint).',
-  '  Line 4 = reelScript.body rule/takeaway (actionable).',
-  '  Line 5 = reelScript.cta (must match CTA field exactly).',
-  '- reelScript.body must be exactly 3 short lines (Lines 2–4).',
-  '- Reel script lines must be unique per post; do not reuse phrasing across the batch.',
-  '- Must contain at least one concrete detail (number/threshold/scenario). No vague wrap-ups.',
-  '- Script must take a clear stance (do X / avoid Y). Neutral summaries are not allowed.',
-  '- Must contain at least 2 exact words from the Title/Topic (and the first sentence must include them).',
-  '- Hook line must include the title\'s key nouns (see Title-Anchor Echo).',
-  '- Use spoken language, not written prose. No names, no fictional clients unless explicitly required by title.',
-  'CAPTION (hard constraints):',
-  '- Do not summarize. 1–2 short sentences that reward the viewer with one concrete takeaway. No rhetorical questions.',
-  '- Value spine: mechanism -> example/constraint -> actionable rule (compress into 1–2 sentences).',
-  '- Apply temporal rules: TIME_SENSITIVE may include the correct time anchor; EVERGREEN must avoid time language.',
-  '- No re-explaining the hook.',
-  '- Must pay off curiosity with one actionable mechanism (what to do differently next).',
-  '- Ban vague advice phrases: "stay informed", "keep an eye on", "know the trends", "make informed decisions".',
-  '- Must contain at least 2 exact words from the Title/Topic.',
-  '- Must deliver one actionable mechanism (how to do/spot/get/avoid something), not encouragement.',
-  '- Must include one concrete detail; ban "don\'t settle," "usual options," and other vague persuasion.',
-  '- Body must state a clear takeaway that changes what the viewer should do next.',
-  '- If the takeaway is "be informed," "understand," "navigate," or similar abstract benefit, choose a different angle.',
-  '- Must be skimmable and sound like TikTok/IG (no essay tone).',
-  '- No bullet lists or numbered lists. No "-" list formatting.',
-  '- Must include ONE concrete payoff or curiosity gap tied to the title/topic.',
-  '- Do not add extra CTAs here; the CTA field carries the single action.',
-  '- Do not use filler phrases ("the charm is unmatched", "here are three reasons", "don\'t miss out", "comment below", "ready to", "let\'s connect").',
-  'CTA (field: cta):',
-  '- One action only; interaction-first (comment/poll/keyword).',
-  '- Forbid "DM me", "contact me", "learn more", or canned CTA phrases.',
-  '- Opinion-based CTAs like "share your thoughts," "what do you think" are not allowed.',
-  '- CTA must qualify/segment the viewer (forced choice) OR a keyword tied to a concrete deliverable.',
-  '- Ban newsletter/ad CTAs like "get the latest updates" and generic engagement CTAs.',
-  '- CTA must be unique per post; do not reuse the same CTA format or wording across the batch.',
-  'EXECUTION NOTES (field: executionNotes):',
-  '- Specify talking head vs voiceover.',
-  '- Specify cut pace.',
-  '- Specify the first 1–2s visual requirement.',
-  '- Max clip length per shot: <= 2s.',
-  '- Specify first on-screen text (3–5 words).',
-  '- Specify hook on-screen placement.',
-  '- Specify a pattern interrupt at 2–3s (hard cut/zoom/text slam).',
-  '- Specify exact reveal second/time marker.',
-  '- Execution notes must be unique per post.',
-  'ENGAGEMENT LOOP (field: engagementScripts):',
-  '- Output plain text with exactly three lines:',
-  '  "Comment: ..." (pinned comment prompt, <= 18 words, forced choice or keyword tied to the CTA)',
-  '  "DM: ..." (do NOT mention DMs; use this line to name the follow-up content action: reply video/stitch/carousel)',
-  '  "Follow up: ..." (1 short action, <= 12 words, states what the follow-up delivers)',
-  'Must include a pinned comment prompt and a follow-up content action (reply video/stitch/carousel). Do not request DMs.',
-  '- Do not use repeated openers or filler like "Thanks for your interest".',
-  '- Engagement loops must be unique per post; do not reuse the same prompt format.',
-  'DISTRIBUTION PLAN (field: distributionPlan):',
-  '- Must be present and concrete. If multiple platforms, specify 1 distinct behavior per platform.',
-  '- TikTok: stronger opening overlay + faster first cut.',
-  '- Instagram: reshare to story with a forced-choice poll aligned to CTA.',
-  '- Ban vague "post engaging visuals" language.',
-  '- Do not reuse distribution plan wording across posts.',
-  'DESIGN NOTES (field: designNotes):',
-  '- Beat-by-beat 0–20s tied directly to script lines.',
-  '- Must describe what visually proves the claim; ban generic "clean/modern/high quality" language.',
-  '- Every beat must either clarify risk, contrast choices, or reinforce the mechanism—no decorative filler like "show skyline/graph" unless it proves a point.',
-  '- Include time range + shot + on-screen text per beat.',
-  '- Design notes must be unique per post.',
-  'HASHTAGS (field: hashtags):',
-  '- 5-8 hashtags only.',
-  '- Mix: 2 niche, 2 intent, 1 local/scene, remainder variety.',
-  '- Do not repeat the exact same hashtag set across posts.',
-  '- Must be relevant to the title/topic. No #fyp/#viral.',
-  'STORY PROMPT (field: storyPrompt):',
-  '- Must be a single, specific question tied to the title/topic and answerable in <3 seconds.',
-  '- Must be binary or single-variable; no multi-part prompts.',
-  '- Apply temporal rules: TIME_SENSITIVE may include the correct time anchor; EVERGREEN must avoid time language.',
-  '- Must self-segment (role + timeline + constraint). Examples: buyer vs seller, timeline (0–3 months vs 6+), condo vs house, budget band, neighborhood type.',
-  '- Ban opinion fishing ("what trends have you noticed / what do you think").',
-  '- Story prompts must be unique per post.',
-  'FEATURE RULES (must hold):',
-  '- Brand Brain: persuasion optimization only; never changes topic/structure.',
-  '- Voice Lock: tone only; never changes topic/structure.',
-  '- Target Audience: influences wording/examples only; must NEVER be named explicitly.',
-  'BATCH UNIQUENESS CHECK (REQUIRED):',
-  '- Ensure no two hooks start with the same first word.',
-  '- Ensure no two captions start with the same first 5 words.',
-  '- Ensure scripts do not reuse the same Hook line phrasing across posts.',
-  '- Ensure CTAs, engagement loops, and distribution plans do not reuse the same format or wording across posts.',
-  '- If you accidentally repeat an opener, rewrite the opener while keeping the topic and structure.',
-  'OPENER DIVERSITY (HARD REQUIREMENT):',
-  '- Across a single 10-post batch: no more than 1 hook may start with the same first word.',
-  '- Across a single 10-post batch: no more than 1 caption may start with the same first word.',
-  '- Across a single 10-post batch: no more than 1 script Hook line may start with the same first word.',
-  '- Never start hook/caption/script with "Stop" unless the title itself contains "Stop".',
-  'FINAL CHECK (before output):',
-  '- Hook is a pattern interrupt (not "important/crucial").',
-  '- Reel Script follows the 5-line structure (hook exact match + 3-line body + CTA) and fits 12–20 seconds.',
-  '- Caption is concise and not repetitive.',
-  '- Every field stays on the post title/topic.',
+  'SHORT-FORM CONTRACT:',
+  '- Output all required fields, non-empty.',
+  '- Style: TikTok/IG-native, punchy, 12-20s, no intros.',
+  '- Temporal grounding (internal): classify TIME_SENSITIVE vs EVERGREEN.',
+  '- TIME_SENSITIVE may use CALENDAR CONTEXT for month/year/day; EVERGREEN forbids time words.',
+  '- On-topic: Hook, Caption, Reel Script must include >= 2 exact words from Title/Topic; Reel Script first sentence must include them.',
+  '- Uniqueness: do not reuse phrasing/CTA/distribution/engagement formats across posts.',
+  'Title: no topic-framing starters (Understanding/Overview/Trends/Guide/Exploring); imply stakes; no hype.',
+  'Hook: short pattern-break; contrarian/mistake/consequence; include a concrete detail; no generic market-shift lines.',
+  'Caption: 1-2 sentences; mechanism -> example/constraint -> action; no filler; no extra CTA.',
+  'CTA: one action only; forced choice or keyword deliverable; no DM/contact/learn more.',
+  'ExecutionNotes: talking head vs voiceover, first 1-2s visual, on-screen text 3-5 words, cut pace, pattern interrupt at 2-3s, reveal timestamp.',
+  'EngagementScripts: 3 lines (Comment/DM/Follow up). Comment = forced choice/keyword; DM line = follow-up content action (reply video/stitch/carousel), no DM asks; Follow up = asset/outcome.',
+  'DesignNotes: 0-20s beats with time range + shot + on-screen text; must prove the claim; no decorative filler.',
+  'StoryPrompt: single, answerable <3s, self-segment (role/timeline/constraint), no opinion fishing.',
+  'ReelScript: 5 lines total; line1 exact Hook, lines2-4 body (proof/insight -> rule), line5 exact CTA; spoken language; include a concrete detail.',
+  'Script: hook/body/cta; keep it consistent with Hook and CTA.',
+  'Hashtags: 5-8, relevant to title/topic; no #fyp/#viral.',
+  'DistributionPlan: platform-specific with distinct behaviors (TikTok strong overlay + fast cut; IG story poll aligned to CTA); no boilerplate.',
 ].join('\n');
 
 const TITLE_ANCHOR_ECHO_BLOCK = [
-  'TITLE-ANCHOR ECHO (HARD REQUIREMENT):',
-  'For each post, the Title is the binding source. You must explicitly echo the Title\'s key noun phrase(s) inside EACH of these fields:',
-  '- hook',
-  '- caption (first 1-2 lines)',
-  '- script (Hook line AND first body sentence)',
-  '"Echo" means reusing the same key nouns from the title (not synonyms). Keep it natural, but the nouns must appear verbatim at least once per field.',
-  'Do not rely on generic wording when the title names a specific type of post (e.g., testimonial, success story, case study, checklist). Use the title nouns.',
-  'If the title implies testimonial/success story (e.g., "success story", "testimonial", "real stories", "case study"), then:',
-  '- hook must include the phrase "client success story" OR "client testimonial" (match the title wording).',
-  '- caption must include that same phrase in the first 2 lines.',
-  '- script must include that phrase in the Hook line or first body sentence.',
+  'TITLE ANCHOR (hard requirement):',
+  '- Title is binding. Hook, caption, and reelScript must echo the title\'s key noun phrase(s) verbatim.',
+  '- If title implies testimonial/success story/case study, include that exact phrase in hook, caption, and reelScript hook.',
 ].join('\n');
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3290,38 +3097,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        'NON-NEGOTIABLE OUTPUT CONSTRAINTS (must follow the base JSON schema):',
-        'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
-        'Non-negotiable: do not change the post’s topic/title/angle. Only adjust persuasion while staying on the same topic_signature.',
-        'Brand Brain: Optimize persuasion and platform performance ONLY. Must not change POST_TOPIC.',
-        '- Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".',
-        '- Title must imply stakes: a timing error, risk, consequence, or common mistake.',
-        '- Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").',
-        '- Title must be at least 6 words.',
-        'TITLE QUALITY BAR',
-        '- Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.',
-        '- All required fields must be present and non-empty.',
-        'Brand Brain enabled: final publishable copy, no meta-instructions or templates.',
-        'Brand Brain optimizes persuasion/algorithmic framing WITHOUT changing the topic/title; it must amplify the same topic.',
-        'Output JSON only: { "posts": [ ... ] }.',
-        'Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
-        'Every card sells the service with a concrete next step; include one differentiator without unverifiable claims.',
-        'No emojis, no fabricated stats, no guarantees/medical promises.',
-        'One persona + desire + objection per post; include pain, mechanism, next step, retention device.',
-        'Exactly one persuasion lever (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal).',
-        'Exactly one algorithm signal (comments, saves, shares, watch time/rewatch); DistributionPlan must name it and why.',
-        'Hook 1–2 lines; 0–3s retention hook; explicit niche pain/goal; no vague one-liners.',
-        'Caption: short beats; include one concrete mechanism; leave an open loop; avoid long paragraphs.',
-        'CTA: one action only, interaction-first (comment/poll/keyword); no DMs or canned phrases.',
-        'StoryPrompt: decision/tradeoff; force a binary choice; no open-ended "what do you think".',
-        'DesignNotes: 3–5 visual beats + on-screen text plan + pattern changes every 2–3s + pause-and-read overlay.',
-        'EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel); no DM asks; include a reply-to-comment follow-up post idea.',
-        'ReelScript: Line1 hook (exact match), Lines2–3 proof/insight, Line4 rule/takeaway, Line5 CTA; no filler.',
-        'Captions and Reel Scripts must sound like a creator talking, not a brand; avoid corporate/marketing or curiosity-bait phrasing, and write plainly, specific to the niche, in natural language.',
-        'DistributionPlan: actionable window, early engagement action, follow-up trigger; must name the algorithm signal.',
-        'hashtags: array of 8–12 tags; 2–3 location tags (if applicable), 2–3 niche service tags, 2 intent tags; no irrelevant/holiday tags.',
-        'If you are not confident, output ‘Trending audio (native)’. Do not guess.',
-        'Every post must include all required keys; no empty strings, no nulls, no extra keys; never omit hashtags.',
+        'BRAND BRAIN ADDENDUM (style only; schema locked):',
+        '- Do not change title/topic or required fields. Output JSON only.',
+        '- Optimize persuasion/platform performance without changing the topic.',
+        '- No emojis, fake stats, guarantees, placeholders, or templates.',
+        '- Hook: 0-3s retention; Caption: short beats with one concrete mechanism.',
+        '- CTA: one action only (comment/poll/keyword), no DM asks.',
+        '- StoryPrompt: binary tradeoff; DesignNotes: 3-5 visual beats with on-screen text and pattern shifts.',
+        '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
+        '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
+        '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
+        '- Every post must include all required keys and non-empty values.',
       ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -3376,62 +3162,22 @@ ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBl
 `;
 const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 ${TITLE_ANCHOR_ECHO_BLOCK}
-Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes; keep strings concise.
-SCOPE LOCK: Only generate content for the provided day(s) in this chunk. Do not generate other days.
+Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
+SCOPE LOCK: only generate content for the provided day(s) in this chunk.
 ${postIdentityBlock}
-Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
 ${TOPIC_LOCK_CONTRACT_BLOCK}
-TOPIC CAPSULE (REQUIRED PER POST):
-- Each post MUST include topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
-- For each post, FIRST fill topicCapsule based ONLY on that post's title/topic.
-- If a title is not provided in the requested IDs section, choose a title and use it as the sole source for topicCapsule.
-- mustUse: 5–10 words/phrases derived from the post's title/topic.
-- mustAvoid: copy EXACTLY from the requested IDs section for that post (tokens from other titles in this request).
-- audienceAngle: short phrase; keyEntities: 0–5 proper nouns if present.
-- Every other field MUST be generated using ONLY the topicCapsule (summary + mustUse + audienceAngle + keyEntities). No other post's capsule may influence it.
-- Hard constraint: Each required field MUST include at least TWO distinct items from topicCapsule.mustUse verbatim (case-insensitive). Hashtags count if they include the phrase.
-- Hard constraint: No required field may contain any token from topicCapsule.mustAvoid (case-insensitive word-boundary).
-TITLE ANCHOR (NON-NEGOTIABLE):
-- The title/topic is the single source of truth.
-- All sections must be about the title. No section may introduce a different topic.
-- If any section drifts, rewrite that section to match the title BEFORE returning JSON.
-- Hook MUST explicitly reference the title topic in plain language and reuse at least one distinctive noun phrase from the title.
-- Caption/body MUST explicitly restate the same topic in its first sentence.
-- Reel Script MUST re-ground: first line of the Reel Script body must restate the topic using the title’s distinctive noun phrase.
-- Engagement loop comment OR DM line must also reference the same topic in one sentence.
-- MISMATCH CHECK: Before returning JSON, compare Title vs Hook + Caption first sentence + Reel Script first line. If any do not describe the same topic, rewrite Hook/Captions/Reel Script to match the title. Do not change the title.
+TOPIC CAPSULE (required per post):
+- topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
+- mustUse: 5-10 phrases from the title/topic. mustAvoid: copy from Requested IDs for that post.
+- Every required field must include at least 2 distinct mustUse terms (case-insensitive).
+- No required field may include mustAvoid terms (case-insensitive).
 ${FIELD_REGROUNDING_BLOCK}
-${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
-Rules:
-- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; follow day cycle 1=Education, 2=Social Proof, 3=Promotion, 4=Lifestyle, repeat.
-- Each post includes post_key, day, slotIndex, title, topicCapsule, hook, caption, pillar, topic_signature, angle, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts; all non-empty.
-- If a Topic (MUST USE) is provided, the title must match it exactly (character-for-character).
-- TOPIC LOCK: The title is the single source of truth for the post topic.
-- Every other field must be about the same topic as the title. If you start writing about a different idea, you MUST rewrite that section to match the title before returning JSON.
-- topic_signature is required for every post: 3–6 short tokens/phrases pulled directly from the title (or near-synonyms).
-- angle is required for every post: one sentence describing the specific angle of THIS post, derived from the title.
-- Generate each post in this order: title → topic_signature → angle → hook → caption/body → CTA → story prompt → engagement loop → reel script → remaining fields.
-- All fields after angle must be derived from angle + topic_signature; do not invent a different theme.
-- Carry-through requirement: at least TWO topic_signature tokens (or direct synonyms) must appear in the Hook (or first caption line), the Reel Script body, and either the Story Prompt or Engagement Loop. If they don’t, rewrite the drifting section until they do.
-- If a title/topic is provided (e.g., via an assigned topic plan), do not replace it and do not switch to a different idea.
-- You are generating the FULL post for this EXACT title. Do not swap topics or use a generic template unrelated to the title.
-- TITLE LOCK: The title/topic is immutable and the single source of truth for the post.
-- Generate each post in this order: A) Choose the title/topic. B) Internally write a one-sentence topicAnchor that restates the title in concrete terms (who/what + specific angle). C) Generate every remaining field using only the title/topicAnchor.
-- The topicAnchor is an internal instruction only; do NOT output it as a field.
-- Every section (Hook, Caption, Reel Script, CTA, Execution Notes, Design Notes, Engagement Loop) must directly support the title/topic.
-- Do not introduce a different scenario/topic than the title/topic; do not substitute a different tip because it fits the niche.
-- Extract 2–4 key terms from the title. Those terms (or direct synonyms) must appear in: Hook or first caption sentence, Reel Script body, and Engagement Loop prompt.
-- Hook and the first sentence of the Caption/Reel body must include at least one concrete noun phrase from the title/topic.
-- CTA must match the intent implied by the title/topic (aligned action, not a generic mismatch).
-- MISMATCH REWRITE: Before returning final JSON, verify Hook/Caption/Reel Script match the title and angle; if any part is off-topic, rewrite ONLY that part to match title+angle. Never change the title to fit off-topic content.
-- Ban textbook/topic framing titles. Explicitly disallow starting with: "Understanding", "Overview", "Trends", "Guide", "Exploring".
-- Title must imply stakes: a timing error, risk, consequence, or common mistake.
-- Avoid hype/ad phrases (e.g., "dream home awaits", "don\'t miss").
-TITLE QUALITY BAR
-- Generate titles as original editorial headlines. Each title must represent a different idea/angle for the niche and must not resemble other titles in the same calendar. Avoid repeating the same phrasing pattern across the list.
-- hashtags must be an array of ${hashtagRange} strings; script/reelScript include hook/body/cta; engagementScripts include commentReply/dmReply.
-- Distribution Plan must specify platform framing: TikTok uses a stronger opening overlay + faster first cut; Instagram reshares to story with a forced-choice poll aligned to CTA. Keep it 1–2 lines per platform, make each platform behavior distinct, and never reference any audience group explicitly. Do not reuse distribution plan wording across posts.
-- StoryPrompt is a short creator prompt/question; never append the niche label.
+RULES:
+- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; cycle day 1..4.
+- If a Topic (MUST USE) is provided, the title must match it exactly.
+- topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
+- Each post must include all required fields and non-empty values.
+- Generate each post fully before starting the next.
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
@@ -3445,36 +3191,8 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
   ].join('\n');
   const requiredKeysBlock = [
     'REQUIRED KEYS (DO NOT OMIT):',
-    '- post_key (string "day-<day>-slot-<slotIndex>")',
-    '- day (number)',
-    '- slotIndex (number, 0-based within day)',
-    '- title (string)',
-    '- topicCapsule.summary (string)',
-    '- topicCapsule.mustUse (array of 5-10 strings)',
-    '- topicCapsule.mustAvoid (array of 0-10 strings)',
-    '- topicCapsule.audienceAngle (string)',
-    '- topicCapsule.keyEntities (array of 0-5 strings)',
-    '- hook (string)',
-    '- caption (string)',
-    '- pillar (Education | Social Proof | Promotion | Lifestyle)',
-    '- topic_signature (string)',
-    '- angle (string)',
-    '- cta (string)',
-    '- hashtags (array of strings)',
-    '- script.hook (string)',
-    '- script.body (string)',
-    '- script.cta (string)',
-    '- reelScript.hook (string)',
-    '- reelScript.body (string)',
-    '- reelScript.cta (string)',
-    '- designNotes (string)',
-    '- storyPrompt (string)',
-    '- storyPromptPlus (string)',
-    '- distributionPlan (string)',
-    '- engagementScripts.commentReply (string)',
-    '- engagementScripts.dmReply (string)',
-    'Every field must be present and non-empty string where applicable. Do not omit keys.',
-    'Return ONLY JSON.',
+    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, hook, caption, pillar, topic_signature, angle, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}.',
+    'Every field must be present and non-empty where applicable. Return ONLY JSON.',
   ].join('\n');
   const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
   const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
@@ -7983,7 +7701,7 @@ const server = http.createServer((req, res) => {
       const chunkCount = chunkPlan.length;
       let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
-        chunkConcurrency = 6;
+        chunkConcurrency = 3;
       }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
@@ -8030,7 +7748,7 @@ const server = http.createServer((req, res) => {
       const chunkCount = chunkPlan.length;
       let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
-        chunkConcurrency = 6;
+        chunkConcurrency = 3;
       }
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
