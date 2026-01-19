@@ -3119,18 +3119,29 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
-        'BRAND BRAIN ADDENDUM (style only; schema locked):',
-        '- Do not change title/topic or required fields. Output JSON only.',
-        '- Optimize persuasion/platform performance without changing the topic.',
-        '- No emojis, fake stats, guarantees, placeholders, or templates.',
-        '- Hook: 0-3s retention; Caption: short beats with one concrete mechanism.',
-        '- CTA: one action only (comment/poll/keyword), no DM asks.',
-        '- StoryPrompt: binary tradeoff; DesignNotes: follow the designNotes format (STRICT) with 5 timecoded lines.',
-        '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
-        '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
-        '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
-        '- Every post must include all required keys and non-empty values.',
-      ].join('\\n')
+      'BRAND BRAIN ADDENDUM (style only; schema locked):',
+      '- Do not change title/topic or required fields.',
+      '- Optimize persuasion/platform performance without changing the topic.',
+      '- No emojis, fake stats, guarantees, placeholders, or templates.',
+      '- Hook: 0-3s retention; Caption: short beats with one concrete mechanism.',
+      '- CTA: one action only (comment/poll/keyword), no DM asks.',
+      '- StoryPrompt: binary tradeoff; DesignNotes: follow the designNotes format (STRICT) with 5 timecoded lines.',
+      '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
+      '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
+      '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
+      'BRAND BRAIN VALIDATION REQUIREMENT (STRICT):',
+      'hashtags MUST contain 12–18 hashtags total.',
+      '- Include 3 niche-specific hashtags, 3 location/platform-context hashtags if relevant, 3 audience hashtags, and 3 topic hashtags.',
+      '- Output as a single space-separated string (e.g., "#A #B #C ..."), not a list.',
+      '- Never output fewer than 12 hashtags.',
+      '- Do not write “+ more” or “+3 more”.',
+      'Do not abbreviate hashtags. Do not use placeholders. Do not summarize with “+ more”. Print all hashtags explicitly.',
+      '- Every post must include all required keys and non-empty values.',
+      'FINAL CHECK (SILENT, BRAND BRAIN):',
+      'Verify hashtags count is between 12 and 18 and begins with "#".',
+      'If not, fix hashtags before output.',
+      '- Output JSON only.',
+    ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
     ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
