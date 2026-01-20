@@ -5980,7 +5980,8 @@ const createCard = (post) => {
 
     const typeEl = document.createElement('span');
     typeEl.className = 'calendar-card__type';
-    typeEl.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : '';
+    const pillarLabel = card.dataset.pillar;
+    typeEl.textContent = pillarLabel ? pillarLabel.charAt(0).toUpperCase() + pillarLabel.slice(1) : '';
 
     const captionRow = document.createElement('div');
     captionRow.className = 'calendar-card__caption-row';
@@ -8046,7 +8047,7 @@ function buildPostHTML(post){
   const day = post.day || '';
   const title = post.title || '';
   const pillar = post.pillar || '';
-  const type = post.type || '';
+  const type = pillar || '';
   const format = post.format || '';
   const caption = post.caption || '';
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
