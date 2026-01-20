@@ -6516,7 +6516,9 @@ body.modal-open {
   opacity: 0.8;
 }
 
-#brand-modal[data-locked="true"] [data-pro-lock] {
+#brand-modal[data-locked="true"] [data-pro-lock],
+#voice-lock-modal[data-locked="true"] [data-pro-lock],
+#target-audience-modal[data-locked="true"] [data-pro-lock] {
   opacity: 0.65;
 }
 
@@ -6729,7 +6731,7 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 12000;
   padding: 1rem;
   width: 100vw;
   height: 100vh;

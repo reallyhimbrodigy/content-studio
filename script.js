@@ -3216,6 +3216,7 @@ function setVoiceLockControlsState(enabled) {
 }
 
 function setVoiceLockLockedState(locked) {
+  if (voiceLockModal) voiceLockModal.dataset.locked = locked ? 'true' : 'false';
   if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
   if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
   if (locked) {
@@ -3302,6 +3303,7 @@ function setTargetAudienceControlsState(enabled) {
 }
 
 function setTargetAudienceLockedState(locked) {
+  if (targetAudienceModal) targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
   if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
   if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
   if (locked) {
@@ -5334,7 +5336,7 @@ if (postFrequencySelect) {
 
 const handleVoiceLockChange = () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    openUpgradeModalFromFeature(closeVoiceLockModal);
     if (voiceLockToggle) voiceLockToggle.checked = false;
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
@@ -5349,7 +5351,7 @@ const handleVoiceLockChange = () => {
 
 const handleTargetAudienceToggleChange = () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    openUpgradeModalFromFeature(closeTargetAudienceModal);
     if (targetAudienceToggle) targetAudienceToggle.checked = false;
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
@@ -5361,7 +5363,7 @@ const handleTargetAudienceToggleChange = () => {
 
 const handleTargetAudienceSave = async () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    openUpgradeModalFromFeature(closeTargetAudienceModal);
     syncTargetAudienceFromSettings();
     return;
   }
@@ -5384,7 +5386,7 @@ const handleTargetAudienceSave = async () => {
 
 const handleTargetAudienceReset = async () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    openUpgradeModalFromFeature(closeTargetAudienceModal);
     syncTargetAudienceFromSettings();
     return;
   }
@@ -5583,6 +5585,11 @@ function showUpgradeModal() {
   mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
+}
+
+function openUpgradeModalFromFeature(closeModal) {
+  if (typeof closeModal === 'function') closeModal();
+  if (typeof showUpgradeModal === 'function') showUpgradeModal();
 }
 
 function hideUpgradeModal() {
