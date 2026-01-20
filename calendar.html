@@ -581,45 +581,44 @@
     </div>
 
     <!-- Voice Lock Modal -->
-    <div id="voice-lock-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="voice-lock-modal-title" data-account-modal>
-        <div class="settings-modal__head brand-brain-header">
+    <div id="voice-lock-modal" class="brand-brain-overlay" style="display:none">
+      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="voice-lock-modal-title">
+        <header class="brand-brain-header">
           <div class="brand-brain-header-left">
             <h3 id="voice-lock-modal-title">Voice Lock</h3>
+            <span class="brand-brain-badge">Pro</span>
           </div>
-        </div>
-        <p class="modal-sub brand-brain-subtitle" data-pro-lock="1">Pin a writing voice for your next calendar generation.</p>
-        <div class="account-settings-body" data-account-modal-body data-pro-lock="1">
-          <div class="settings-group">
-            <label>Voice Lock</label>
-            <div class="brand-brain-toggle-row" data-pro-lock="1">
-              <label class="brand-brain-switch">
-                <input type="checkbox" id="voice-lock-enabled" />
-                <span class="brand-brain-switch__slider"></span>
-              </label>
-              <div class="brand-brain-toggle-copy">
-                <div class="brand-brain-toggle-label">Enabled</div>
-                <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-              </div>
-              <span class="brand-brain-locked-pill" id="voice-lock-locked-pill">Pro</span>
-            </div>
-            <div class="brand-brain-locked-copy" id="voice-lock-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
-          </div>
+          <span id="voice-lock-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">Pin a writing voice for your next calendar generation.</p>
 
-          <div id="voice-lock-controls">
-            <div class="settings-group voice-lock-select-wrap" id="voice-lock-preset-wrap">
-              <label for="voice-lock-preset">Preset</label>
-              <select id="voice-lock-preset" class="voice-lock-select">
-                <option value="Direct">Direct</option>
-                <option value="Casual">Casual</option>
-                <option value="Punchy">Punchy</option>
-                <option value="Story-first">Story-first</option>
-                <option value="Contrarian">Contrarian</option>
-                <option value="No-AI-polish">No-AI-polish</option>
-              </select>
-            </div>
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="voice-lock-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Enabled</div>
+            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
+          </div>
+          <span class="brand-brain-locked-pill" id="voice-lock-locked-pill">Pro</span>
+        </div>
+        <div class="brand-brain-locked-copy" id="voice-lock-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
+
+        <div id="voice-lock-controls" class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label" for="voice-lock-preset">Preset</label>
+          <div class="voice-lock-select-wrap" id="voice-lock-preset-wrap">
+            <select id="voice-lock-preset" class="voice-lock-select">
+              <option value="Direct">Direct</option>
+              <option value="Casual">Casual</option>
+              <option value="Punchy">Punchy</option>
+              <option value="Story-first">Story-first</option>
+              <option value="Contrarian">Contrarian</option>
+              <option value="No-AI-polish">No-AI-polish</option>
+            </select>
           </div>
         </div>
+
         <div class="brand-brain-footer">
           <div class="brand-brain-save"></div>
           <button type="button" id="voice-lock-close-btn" class="ghost">Close</button>
@@ -628,57 +627,56 @@
     </div>
 
     <!-- Target Audience Modal -->
-    <div id="target-audience-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title" data-account-modal>
-        <div class="settings-modal__head brand-brain-header">
+    <div id="target-audience-modal" class="brand-brain-overlay" style="display:none">
+      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title">
+        <header class="brand-brain-header">
           <div class="brand-brain-header-left">
             <h3 id="target-audience-modal-title">Target Audience</h3>
+            <span class="brand-brain-badge">Pro</span>
           </div>
-        </div>
-        <p class="modal-sub brand-brain-subtitle" data-pro-lock="1">Tailor copy for a specific audience segment.</p>
-        <div class="account-settings-body" data-account-modal-body data-pro-lock="1">
-          <div class="settings-group">
-            <label>Target Audience</label>
-            <div class="brand-brain-toggle-row" data-pro-lock="1">
-              <label class="brand-brain-switch">
-                <input type="checkbox" id="target-audience-enabled" />
-                <span class="brand-brain-switch__slider"></span>
-              </label>
-              <div class="brand-brain-toggle-copy">
-                <div class="brand-brain-toggle-label">Enabled</div>
-                <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-              </div>
-              <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
-            </div>
-            <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
-          </div>
+          <span id="target-audience-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">Tailor copy for a specific audience segment.</p>
 
-          <div id="target-audience-controls">
-            <div class="settings-group target-audience-select-wrap" id="target-audience-preset-wrap">
-              <label for="target-audience-preset">Preset</label>
-              <select id="target-audience-preset" class="target-audience-select">
-                <option value="Students">Students</option>
-                <option value="Young Adults (18–25)">Young Adults (18–25)</option>
-                <option value="Early Career Professionals">Early Career Professionals</option>
-                <option value="Working Professionals">Working Professionals</option>
-                <option value="Parents / Families">Parents / Families</option>
-                <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
-                <option value="Creators">Creators</option>
-                <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
-                <option value="Beginners">Beginners</option>
-                <option value="Experienced / Advanced">Experienced / Advanced</option>
-              </select>
-            </div>
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="target-audience-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Enabled</div>
+            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
+          </div>
+          <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
+        </div>
+        <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
+
+        <div id="target-audience-controls" class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label" for="target-audience-preset">Preset</label>
+          <div class="target-audience-select-wrap" id="target-audience-preset-wrap">
+            <select id="target-audience-preset" class="target-audience-select">
+              <option value="Students">Students</option>
+              <option value="Young Adults (18–25)">Young Adults (18–25)</option>
+              <option value="Early Career Professionals">Early Career Professionals</option>
+              <option value="Working Professionals">Working Professionals</option>
+              <option value="Parents / Families">Parents / Families</option>
+              <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
+              <option value="Creators">Creators</option>
+              <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
+              <option value="Beginners">Beginners</option>
+              <option value="Experienced / Advanced">Experienced / Advanced</option>
+            </select>
+          </div>
+          <div class="settings-actions__buttons">
+            <button type="button" class="primary" id="target-audience-save">Save</button>
           </div>
         </div>
+
         <div class="brand-brain-footer">
           <div class="brand-brain-save">
             <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
           </div>
-          <div class="settings-actions__buttons">
-            <button type="button" class="primary" id="target-audience-save">Save</button>
-            <button type="button" id="target-audience-close-btn" class="ghost">Close</button>
-          </div>
+          <button type="button" id="target-audience-close-btn" class="ghost">Close</button>
         </div>
       </div>
     </div>
@@ -1280,4 +1278,3 @@
     </div>
   </body>
 </html>
-
