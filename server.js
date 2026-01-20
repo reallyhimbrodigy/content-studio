@@ -7533,10 +7533,14 @@ const server = http.createServer((req, res) => {
   }
 
   // Helper: serve static file with optional gzip if client supports
+  function stripCspMeta(html) {
+    return html.replace(/<meta[^>]*http-equiv=["']content-security-policy["'][^>]*>/gi, '');
+  }
+
   function injectNonceIntoInlineScripts(html, nonce) {
     return html.replace(/<script\\b([^>]*)>/gi, (match, attrs) => {
-      if (/\\snonce\\s*=/.test(attrs)) return match;
-      if (/\\ssrc\\s*=/.test(attrs)) return match;
+      if (/\\snonce\\s*=/i.test(attrs)) return match;
+      if (/\\ssrc\\s*=/i.test(attrs)) return match;
       return `<script${attrs} nonce=\"${nonce}\">`;
     });
   }
@@ -7568,6 +7572,7 @@ const server = http.createServer((req, res) => {
       if (ext === '.html') {
         const snippet = '<script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>';
         let html = raw.toString('utf8');
+        html = stripCspMeta(html);
         if (!isProdRequest) {
           if (html.includes(snippet)) {
             const newline = html.includes('\r\n') ? '\r\n' : '\n';
