@@ -6794,6 +6794,10 @@ body.modal-open {
   transform: rotate(90deg);
 }
 
+#upgrade-modal .modal-close:hover {
+  transform: none;
+}
+
 .upgrade-modal .upgrade-header {
   text-align: center;
   margin-bottom: 2rem;
