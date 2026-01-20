@@ -7422,7 +7422,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none';");
   // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
@@ -7543,10 +7543,35 @@ const server = http.createServer((req, res) => {
         '.png': 'image/png',
         '.ico': 'image/x-icon'
       };
-      const raw = fs.readFileSync(filePath);
+      let raw = fs.readFileSync(filePath);
       const accept = req.headers['accept-encoding'] || '';
       // Only compress text-like content
       const isText = /\.(html|css|js|json|txt)$/i.test(filePath);
+      const host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
+      const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+      const isHttps = proto === 'https' || req.socket?.encrypted === true;
+      const shouldInjectContentsquare = ext === '.html' && isHttps && (host === 'usepromptly.app' || host === 'www.usepromptly.app');
+      if (shouldInjectContentsquare) {
+        const snippet = '<script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>';
+        let html = raw.toString('utf8');
+        if (!html.includes(snippet)) {
+          const lower = html.toLowerCase();
+          const headIndex = lower.indexOf('</head>');
+          if (headIndex !== -1) {
+            const newline = html.includes('\r\n') ? '\r\n' : '\n';
+            const before = html.slice(0, headIndex);
+            const after = html.slice(headIndex);
+            const lastNl = before.lastIndexOf('\n');
+            let indent = '';
+            if (lastNl !== -1) {
+              const line = before.slice(lastNl + 1);
+              indent = line.match(/^\s*/)?.[0] || '';
+            }
+            html = `${before}${newline}${indent}${snippet}${newline}${after}`;
+            raw = Buffer.from(html, 'utf8');
+          }
+        }
+      }
       // Override content-type for JSON-LD schema files to satisfy validators
       try {
         const base = path.basename(filePath);
