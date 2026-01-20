@@ -79,9 +79,9 @@
     <div class="card">
       <h2>Debug Log</h2>
       <div class="log-box" id="log"></div>
-      <button data-hide-when-authenticated onclick="location.href='http://localhost:8000/auth.html'">Try Auth Page Again</button>
-      <button onclick="location.href='http://localhost:8000/'">Try Main App</button>
-      <button onclick="location.reload()">Refresh This Page</button>
+      <button id="diag-auth-btn" data-hide-when-authenticated>Try Auth Page Again</button>
+      <button id="diag-main-btn">Try Main App</button>
+      <button id="diag-refresh-btn">Refresh This Page</button>
     </div>
   </div>
 
@@ -89,6 +89,25 @@
     const logBox = document.getElementById('log');
     const statusBox = document.getElementById('status');
     const logs = [];
+    const authBtn = document.getElementById('diag-auth-btn');
+    const mainBtn = document.getElementById('diag-main-btn');
+    const refreshBtn = document.getElementById('diag-refresh-btn');
+
+    if (authBtn) {
+      authBtn.addEventListener('click', () => {
+        location.href = 'http://localhost:8000/auth.html';
+      });
+    }
+    if (mainBtn) {
+      mainBtn.addEventListener('click', () => {
+        location.href = 'http://localhost:8000/';
+      });
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', () => {
+        location.reload();
+      });
+    }
 
     function addLog(msg, type = 'info') {
       const timestamp = new Date().toLocaleTimeString();
@@ -191,6 +210,5 @@
   <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>
-
 
 

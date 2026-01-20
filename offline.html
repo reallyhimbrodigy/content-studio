@@ -13,9 +13,17 @@
   <div class="offline-card">
     <h1>You're Offline</h1>
     <p>The network is unavailable. Core assets are cached so you can retry shortly.</p>
-    <p><button onclick="location.reload()" class="primary">Retry Connection</button></p>
+    <p><button id="offline-retry" class="primary">Retry Connection</button></p>
   </div>
 </div>
 <footer class="footer">© 2025 Promptly.</footer>
+<script>
+  const retryButton = document.getElementById('offline-retry');
+  if (retryButton) {
+    retryButton.addEventListener('click', () => {
+      location.reload();
+    });
+  }
+</script>
 </body>
 </html>

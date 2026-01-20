@@ -7413,6 +7413,7 @@ function isBrandKitPath(pathname) {
 const server = http.createServer((req, res) => {
   try {
   const parsed = url.parse(req.url, true);
+  const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -7423,7 +7424,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob:; child-src 'self' blob:;";
+  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob:; child-src 'self' blob:;`;
   res.setHeader('Content-Security-Policy', baseCsp);
   // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
@@ -7532,6 +7533,14 @@ const server = http.createServer((req, res) => {
   }
 
   // Helper: serve static file with optional gzip if client supports
+  function injectNonceIntoInlineScripts(html, nonce) {
+    return html.replace(/<script\\b([^>]*)>/gi, (match, attrs) => {
+      if (/\\snonce\\s*=/.test(attrs)) return match;
+      if (/\\ssrc\\s*=/.test(attrs)) return match;
+      return `<script${attrs} nonce=\"${nonce}\">`;
+    });
+  }
+
   function serveFile(filePath, res) {
     try {
       const ext = path.extname(filePath).toLowerCase();
@@ -7564,7 +7573,6 @@ const server = http.createServer((req, res) => {
             const newline = html.includes('\r\n') ? '\r\n' : '\n';
             const lines = html.split(/\r?\n/);
             html = lines.filter((line) => line.trim() !== snippet).join(newline);
-            raw = Buffer.from(html, 'utf8');
           }
         } else if (!html.includes(snippet)) {
           const lower = html.toLowerCase();
@@ -7580,9 +7588,10 @@ const server = http.createServer((req, res) => {
               indent = line.match(/^\s*/)?.[0] || '';
             }
             html = `${before}${newline}${indent}${snippet}${newline}${after}`;
-            raw = Buffer.from(html, 'utf8');
           }
         }
+        html = injectNonceIntoInlineScripts(html, cspNonce);
+        raw = Buffer.from(html, 'utf8');
       }
       // Override content-type for JSON-LD schema files to satisfy validators
       try {
@@ -11786,6 +11795,10 @@ Output format:
       }
 
       const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.html') {
+        res.setHeader('Cache-Control', 'no-store');
+        return serveFile(filePath, res);
+      }
       const mimeTypes = {
         '.html': 'text/html; charset=utf-8',
         '.css': 'text/css',
@@ -11801,8 +11814,7 @@ Output format:
 
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       const headers = { 'Content-Type': contentType };
-      if (ext === '.html') headers['Cache-Control'] = 'no-store';
-      else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
+      if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
       else headers['Cache-Control'] = 'public, max-age=86400';
       res.writeHead(200, headers);
       fs.createReadStream(filePath).pipe(res);
