@@ -59,9 +59,9 @@
               <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
             </div>
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-              <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
-              <button id="voice-lock-btn" class="primary brand-brain-btn">Voice Lock</button>
-              <button id="target-audience-btn" class="primary brand-brain-btn">Target Audience</button>
+              <button id="brand-brain-btn" class="primary brand-brain-btn" data-analytics="modal_brandbrain_open">Brand Brain</button>
+              <button id="voice-lock-btn" class="primary brand-brain-btn" data-analytics="modal_voicelock_open">Voice Lock</button>
+              <button id="target-audience-btn" class="primary brand-brain-btn" data-analytics="modal_targetaudience_open">Target Audience</button>
                 <div class="profile-wrapper">
                   <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
                   <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
@@ -96,7 +96,7 @@
                 aria-required="true"
                 required
               />
-              <button id="generate-calendar" class="secondary primary-large">
+              <button id="generate-calendar" class="secondary primary-large" data-analytics="calendar_generate">
                 <span class="spinner" aria-hidden="true" style="display:none"></span>
                 <span class="btn-text">Generate My 30-Day Calendar</span>
               </button>
@@ -621,7 +621,7 @@
 
         <div class="brand-brain-footer">
           <div class="brand-brain-save"></div>
-          <button type="button" id="voice-lock-close-btn" class="ghost">Close</button>
+          <button type="button" id="voice-lock-close-btn" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>
     </div>
@@ -676,7 +676,7 @@
           <div class="brand-brain-save">
             <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
           </div>
-          <button type="button" id="target-audience-close-btn" class="ghost">Close</button>
+          <button type="button" id="target-audience-close-btn" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>
     </div>
@@ -819,7 +819,7 @@
             <span id="brand-brain-save-indicator"></span>
             <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
           </div>
-          <button id="brand-brain-close" class="ghost">Close</button>
+          <button id="brand-brain-close" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>
     </div>
@@ -1201,7 +1201,7 @@
   <!-- Upgrade Modal -->
   <div id="upgrade-modal" class="modal" style="display: none;">
     <div class="modal-content upgrade-modal">
-      <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
+      <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal" data-analytics="modal_close">&times;</button>
       <div class="upgrade-header">
         <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1230,9 +1230,9 @@
               <li><span class="check">✓</span> Regenerate a single post</li>
               <li><span class="check">✓</span> Unlimited Saves and Exports</li>
             </ul>
-          <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
-            Upgrade to Pro
-          </button>
+              <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;" data-analytics="upgrade_cta">
+                Upgrade to Pro
+              </button>
         </div>
       </div>
 
@@ -1278,5 +1278,3 @@
     </div>
   </body>
 </html>
-
-

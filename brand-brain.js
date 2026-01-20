@@ -13,6 +13,7 @@ export function initBrandBrainPanel({
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
+  emitAnalytics,
 }) {
   const brandBtn = document.getElementById('brand-brain-btn');
   const brandModal = document.getElementById('brand-modal');
@@ -155,6 +156,9 @@ let saveTimer = null;
     document.body.dataset.prevOverflow = document.body.style.overflow || '';
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    if (typeof emitAnalytics === 'function') {
+      emitAnalytics('brandbrain_open');
+    }
     await loadSettings();
   };
 

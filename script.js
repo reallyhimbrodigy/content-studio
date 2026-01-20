@@ -340,12 +340,175 @@ if (forceLandingView) {
   appExperience.style.display = '';
 }
 
+const isProdHost = () => {
+  const host = window.location.hostname;
+  return window.location.protocol === 'https:' && (host === 'usepromptly.app' || host === 'www.usepromptly.app');
+};
+
+const analyticsState = {
+  enabled: isProdHost(),
+  pageviewsInitialized: false,
+  frustrationInitialized: false,
+  lastPath: '',
+  rageClicks: [],
+  lastRageEmit: 0,
+};
+
+const analyticsDebug =
+  analyticsState.enabled &&
+  new URLSearchParams(window.location.search || '').get('analytics_debug') === '1';
+
+const getAnalyticsPath = () => `${window.location.pathname}${window.location.search}${window.location.hash || ''}`;
+
+const getAnalyticsTargetSelector = (el) => {
+  if (!el || !el.tagName) return '';
+  if (el.dataset?.analytics) return `[data-analytics="${el.dataset.analytics}"]`;
+  if (el.id) return `#${el.id}`;
+  const className = typeof el.className === 'string' ? el.className.trim() : '';
+  if (className) {
+    const short = className.split(/\s+/).slice(0, 2).join('.');
+    return `${el.tagName.toLowerCase()}.${short}`;
+  }
+  return el.tagName.toLowerCase();
+};
+
+const isInteractiveElement = (el) => {
+  if (!el || el.nodeType !== 1) return false;
+  const selector = 'a,button,input,select,textarea,summary,[role="button"],[data-analytics],label';
+  if (el.matches(selector) || el.closest(selector)) return true;
+  if (typeof el.onclick === 'function') return true;
+  const tabindex = el.getAttribute?.('tabindex');
+  return tabindex === '0';
+};
+
+const emitAnalytics = (eventName, payload = {}) => {
+  if (!analyticsState.enabled) return;
+  const userTier =
+    typeof window.cachedUserIsPro === 'boolean' ? (window.cachedUserIsPro ? 'pro' : 'free') : undefined;
+  const userId = activeUserEmail || undefined;
+  const nicheStyleValue = nicheInput ? (nicheInput.value || '').trim() : '';
+  const detail = {
+    event: eventName,
+    path: getAnalyticsPath(),
+    title: document.title,
+    ...payload,
+    ts: Date.now(),
+  };
+  if (userTier && !detail.userTier) detail.userTier = userTier;
+  if (userId && !detail.userId) detail.userId = userId;
+  if (nicheStyleValue && !detail.nicheStyle) detail.nicheStyle = nicheStyleValue;
+  window.dispatchEvent(new CustomEvent('promptly_analytics', { detail }));
+  if (analyticsDebug) console.info('[PromptlyAnalytics]', eventName, detail);
+};
+
+window.emitPromptlyAnalytics = emitAnalytics;
+
+const initAnalyticsPageviews = () => {
+  if (!analyticsState.enabled || analyticsState.pageviewsInitialized) return;
+  analyticsState.pageviewsInitialized = true;
+  analyticsState.lastPath = getAnalyticsPath();
+  emitAnalytics('pageview', {
+    path: analyticsState.lastPath,
+    title: document.title,
+    referrer: document.referrer || '',
+  });
+  const handleRouteChange = () => {
+    const nextPath = getAnalyticsPath();
+    if (nextPath === analyticsState.lastPath) return;
+    const referrer = analyticsState.lastPath;
+    analyticsState.lastPath = nextPath;
+    emitAnalytics('virtual_pageview', {
+      path: nextPath,
+      title: document.title,
+      referrer,
+    });
+  };
+  const wrapHistory = (method) => {
+    if (!history[method] || history[method].__promptlyWrapped) return;
+    const original = history[method];
+    const wrapped = function (...args) {
+      const result = original.apply(this, args);
+      handleRouteChange();
+      return result;
+    };
+    wrapped.__promptlyWrapped = true;
+    history[method] = wrapped;
+  };
+  wrapHistory('pushState');
+  wrapHistory('replaceState');
+  window.addEventListener('popstate', handleRouteChange);
+  window.addEventListener('hashchange', handleRouteChange);
+};
+
+const initAnalyticsFrustrationSignals = () => {
+  if (!analyticsState.enabled || analyticsState.frustrationInitialized) return;
+  analyticsState.frustrationInitialized = true;
+  document.addEventListener('click', (event) => {
+    const now = Date.now();
+    const x = typeof event.clientX === 'number' ? event.clientX : 0;
+    const y = typeof event.clientY === 'number' ? event.clientY : 0;
+    analyticsState.rageClicks = analyticsState.rageClicks.filter((c) => now - c.ts <= 2000);
+    analyticsState.rageClicks.push({ ts: now, x, y });
+    const nearbyClicks = analyticsState.rageClicks.filter((c) => Math.hypot(c.x - x, c.y - y) <= 40);
+    if (nearbyClicks.length >= 5 && now - analyticsState.lastRageEmit > 2000) {
+      analyticsState.lastRageEmit = now;
+      analyticsState.rageClicks = [];
+      emitAnalytics('rage_click', {
+        x,
+        y,
+        targetSelector: getAnalyticsTargetSelector(event.target),
+      });
+    }
+
+    const target = event.target;
+    if (!isInteractiveElement(target)) {
+      const startHref = window.location.href;
+      const startActive = document.activeElement;
+      setTimeout(() => {
+        if (window.location.href !== startHref) return;
+        if (document.activeElement && document.activeElement !== startActive) return;
+        emitAnalytics('dead_click', {
+          targetTag: target?.tagName?.toLowerCase() || '',
+          targetSelector: getAnalyticsTargetSelector(target),
+        });
+      }, 350);
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    emitAnalytics('js_error', {
+      message: event.message || 'Script error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      stack: event.error?.stack || '',
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    emitAnalytics('js_error', {
+      message: reason?.message || String(reason || 'Unhandled rejection'),
+      stack: reason?.stack || '',
+      source: 'unhandledrejection',
+      lineno: 0,
+      colno: 0,
+    });
+  });
+};
+
+initAnalyticsPageviews();
+initAnalyticsFrustrationSignals();
+
   // Posted state per user+niche
 let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
 window.cachedUserIsPro = window.cachedUserIsPro ?? null;
 let currentPostFrequency = 1;
+let lastGenerationRequestId = null;
+let lastGenerationErrorStatus = null;
+let lastGenerationErrorCode = null;
 let pendingAssetGeneration = null;
 let lastGenerateAssetOpener = null;
 let lastVoiceLockFocusEl = null;
@@ -3592,6 +3755,7 @@ function openVoiceLockModal() {
   voiceLockModal.setAttribute('tabindex', '-1');
   document.body.classList.add('modal-open');
   syncVoiceLockFromSettings();
+  emitAnalytics('voicelock_open');
   const focusTarget = voiceLockCloseBtn || voiceLockToggle || voiceLockModal;
   requestAnimationFrame(() => {
     if (focusTarget && typeof focusTarget.focus === 'function') {
@@ -3633,6 +3797,7 @@ function openTargetAudienceModal() {
   if (appLayout) appLayout.setAttribute('inert', '');
   document.body.classList.add('modal-open');
   syncTargetAudienceFromSettings();
+  emitAnalytics('targetaudience_open');
   const focusTarget = targetAudienceCloseBtn || targetAudienceToggle || targetAudienceModal;
   requestAnimationFrame(() => {
     if (focusTarget && typeof focusTarget.focus === 'function') {
@@ -5604,6 +5769,7 @@ function showUpgradeModal() {
   mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
+  emitAnalytics('upgrade_modal_open');
 }
 
 function hideUpgradeModal() {
@@ -5624,6 +5790,7 @@ if (upgradeModal) {
 
 if (upgradeBtn) {
   upgradeBtn.addEventListener('click', async () => {
+    emitAnalytics('upgrade_click');
     const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
     try {
       // Try in-app Checkout first
@@ -5662,6 +5829,7 @@ initBrandBrainPanel({
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
+  emitAnalytics,
 });
 
 function handleCalendarCardExpansion(card, expanded) {
@@ -6341,6 +6509,7 @@ const createCard = (post) => {
     regenBtn.dataset.action = 'regen-day';
     regenBtn.dataset.day = String(entryDay);
     regenBtn.dataset.entryIndex = String(idx);
+    regenBtn.dataset.analytics = 'calendar_regenerate';
     if (entry?.calendar_day_id || entry?.calendarDayId || entry?.id) {
       regenBtn.dataset.calendarDayId = String(entry.calendar_day_id || entry.calendarDayId || entry.id);
     }
@@ -8835,6 +9004,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
         const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
         const preview = responseText.slice(0, 300);
+        lastGenerationErrorStatus = response.status;
+        lastGenerationRequestId = data?.requestId || data?.error?.requestId || null;
+        lastGenerationErrorCode = data?.error?.code || data?.code || null;
         console.error('[Calendar] fetchBatch bad response', {
           batchIndex,
           status: response.status,
@@ -8842,6 +9014,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           error: msg,
         });
         if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
+          lastGenerationErrorCode = data?.error?.code;
           throw new Error('openai_schema_error');
         }
         throw new Error(msg);
@@ -8858,6 +9031,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           lockCalendarExportButtons();
         }
         showUpgradeModal();
+        lastGenerationErrorCode = 'upgrade_required';
         throw new Error('upgrade_required');
       }
 
@@ -8878,6 +9052,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         responsePayload;
       const calendarId = responsePayload.calendarId ?? responsePayload.id ?? responsePayload.calendar?.id ?? null;
       const requestIdFromPayload = responsePayload.requestId;
+      if (requestIdFromPayload) lastGenerationRequestId = requestIdFromPayload;
       if (!Array.isArray(postsCandidate)) {
         console.error('[Calendar] fetchBatch invalid JSON response', {
           batchIndex,
@@ -9135,6 +9310,7 @@ async function onGenerateCalendarClick() {
     console.log(`[Calendar][Perf] button click (t=${Math.round(tClick)}ms)`);
   } catch (_) {}
   const niche = nicheInput ? nicheInput.value.trim() : "";
+  emitAnalytics('calendar_generate_click', { nicheStyle: niche });
   console.log(" Generate clicked, niche:", niche);
   const { ok, msg } = validateNiche(niche);
   console.log(" Validation result:", { ok, msg });
@@ -9157,6 +9333,9 @@ async function onGenerateCalendarClick() {
   }
   const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
   const runId = ++calendarRunCounter;
+  lastGenerationRequestId = null;
+  lastGenerationErrorStatus = null;
+  lastGenerationErrorCode = null;
   console.log('[Calendar] generate clicked runId=' + runId);
   const controller = new AbortController();
   if (generationAbortController) {
@@ -9190,6 +9369,10 @@ async function onGenerateCalendarClick() {
     syncCalendarUIAfterDataChange({ scrollToCalendar: true });
     persistCurrentCalendarState();
     console.log(`[Calendar] generate run ${runId} completed successfully`);
+    emitAnalytics('calendar_generate_success', {
+      requestId: lastGenerationRequestId || undefined,
+      nicheStyle: niche,
+    });
     if (feedbackEl) {
       feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
       feedbackEl.classList.add("success");
@@ -9208,6 +9391,13 @@ async function onGenerateCalendarClick() {
     console.error("❌ Failed to generate calendar:", err);
     console.error("❌ Error message:", err.message);
     console.error("❌ Full error:", err);
+    emitAnalytics('calendar_generate_error', {
+      requestId: lastGenerationRequestId || undefined,
+      status: lastGenerationErrorStatus || undefined,
+      code: lastGenerationErrorCode || undefined,
+      error: err.message || 'Unknown error',
+      nicheStyle: niche,
+    });
     if (feedbackEl) {
       feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
       feedbackEl.classList.remove("success");
