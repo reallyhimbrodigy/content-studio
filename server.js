@@ -7551,14 +7551,21 @@ const server = http.createServer((req, res) => {
       const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
       const isHttps = proto === 'https' || req.socket?.encrypted === true;
       const isProdHost = host === 'usepromptly.app' || host === 'www.usepromptly.app';
-      const shouldInjectContentsquare = ext === '.html' && isHttps && isProdHost;
-      if (ext === '.html' && !isProdHost) {
+      const isProdRequest = isProdHost && isHttps;
+      if (ext === '.html' && !isProdRequest) {
         console.info('Contentsquare disabled on dev host');
       }
-      if (shouldInjectContentsquare) {
+      if (ext === '.html') {
         const snippet = '<script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>';
         let html = raw.toString('utf8');
-        if (!html.includes(snippet)) {
+        if (!isProdRequest) {
+          if (html.includes(snippet)) {
+            const newline = html.includes('\r\n') ? '\r\n' : '\n';
+            const lines = html.split(/\r?\n/);
+            html = lines.filter((line) => line.trim() !== snippet).join(newline);
+            raw = Buffer.from(html, 'utf8');
+          }
+        } else if (!html.includes(snippet)) {
           const lower = html.toLowerCase();
           const headIndex = lower.indexOf('</head>');
           if (headIndex !== -1) {
