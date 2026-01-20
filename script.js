@@ -5336,7 +5336,7 @@ if (postFrequencySelect) {
 
 const handleVoiceLockChange = () => {
   if (!window.cachedUserIsPro) {
-    openUpgradeModalFromFeature(closeVoiceLockModal);
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     if (voiceLockToggle) voiceLockToggle.checked = false;
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
@@ -5351,7 +5351,7 @@ const handleVoiceLockChange = () => {
 
 const handleTargetAudienceToggleChange = () => {
   if (!window.cachedUserIsPro) {
-    openUpgradeModalFromFeature(closeTargetAudienceModal);
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     if (targetAudienceToggle) targetAudienceToggle.checked = false;
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
@@ -5363,7 +5363,7 @@ const handleTargetAudienceToggleChange = () => {
 
 const handleTargetAudienceSave = async () => {
   if (!window.cachedUserIsPro) {
-    openUpgradeModalFromFeature(closeTargetAudienceModal);
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     syncTargetAudienceFromSettings();
     return;
   }
@@ -5386,7 +5386,7 @@ const handleTargetAudienceSave = async () => {
 
 const handleTargetAudienceReset = async () => {
   if (!window.cachedUserIsPro) {
-    openUpgradeModalFromFeature(closeTargetAudienceModal);
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     syncTargetAudienceFromSettings();
     return;
   }
@@ -5585,11 +5585,6 @@ function showUpgradeModal() {
   mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
-}
-
-function openUpgradeModalFromFeature(closeModal) {
-  if (typeof closeModal === 'function') closeModal();
-  if (typeof showUpgradeModal === 'function') showUpgradeModal();
 }
 
 function hideUpgradeModal() {
