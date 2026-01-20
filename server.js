@@ -7550,7 +7550,11 @@ const server = http.createServer((req, res) => {
       const host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
       const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
       const isHttps = proto === 'https' || req.socket?.encrypted === true;
-      const shouldInjectContentsquare = ext === '.html' && isHttps && (host === 'usepromptly.app' || host === 'www.usepromptly.app');
+      const isProdHost = host === 'usepromptly.app' || host === 'www.usepromptly.app';
+      const shouldInjectContentsquare = ext === '.html' && isHttps && isProdHost;
+      if (ext === '.html' && !isProdHost) {
+        console.info('Contentsquare disabled on dev host');
+      }
       if (shouldInjectContentsquare) {
         const snippet = '<script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>';
         let html = raw.toString('utf8');
