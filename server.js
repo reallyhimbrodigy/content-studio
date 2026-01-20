@@ -3386,6 +3386,7 @@ const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
 const TARGET_AUDIENCE_LOGGED_REQUESTS = new Set();
 const BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS = new Set();
 const TOPIC_BINDING_WARNING_LOGGED_REQUESTS = new Set();
+let TERMS_CSP_LOGGED = false;
 
 function normalizeTitleText(value = '') {
   return String(value || '')
@@ -7538,19 +7539,31 @@ const server = http.createServer((req, res) => {
   }
 
   function injectNonceIntoInlineScripts(html, nonce) {
-    return html.replace(/<script\\b([^>]*)>/gi, (match, attrs) => {
-      if (/\\snonce\\s*=/i.test(attrs)) return match;
-      if (/\\ssrc\\s*=/i.test(attrs)) return match;
-      return `<script${attrs} nonce=\"${nonce}\">`;
+    return html.replace(/<script\b([^>]*)>/gi, (match, attrs) => {
+      if (/\snonce\s*=/i.test(attrs)) return match;
+      if (/\ssrc\s*=/i.test(attrs)) return match;
+      return `<script nonce="${nonce}"${attrs}>`;
     });
   }
 
-  function hasInlineScriptWithoutNonce(html) {
-    return /<script\\b(?![^>]*\\bnonce\\s*=)(?![^>]*\\bsrc\\s*=)[^>]*>/i.test(html);
+  function scanInlineScriptsWithoutNonce(html) {
+    const regex = /<script\b(?![^>]*\bnonce\s*=)(?![^>]*\bsrc\s*=)[^>]*>/ig;
+    let count = 0;
+    let snippet = null;
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      count += 1;
+      if (!snippet) {
+        const start = Math.max(0, match.index - 100);
+        const end = Math.min(html.length, match.index + match[0].length + 100);
+        snippet = html.slice(start, end);
+      }
+    }
+    return { count, snippet };
   }
 
   function hasInlineHandlers(html) {
-    return /\\son[a-z]+\\s*=\\s*["']/i.test(html);
+    return /\son[a-z]+\s*=\s*["']/i.test(html);
   }
 
   function serveFile(filePath, res) {
@@ -7606,15 +7619,19 @@ const server = http.createServer((req, res) => {
         html = injectNonceIntoInlineScripts(html, cspNonce);
         if (!isProdRequest) {
           const base = path.basename(filePath).toLowerCase();
-          if (base === 'help.html' || base === 'terms.html' || base === 'privacy.html') {
-            const missingNonce = hasInlineScriptWithoutNonce(html);
+          if (base === 'terms.html' && !TERMS_CSP_LOGGED) {
+            const inlineScan = scanInlineScriptsWithoutNonce(html);
             const inlineHandlers = hasInlineHandlers(html);
-            console.info('[CSP][NonceCheck]', {
-              file: base,
-              nonce: cspNonce,
-              missingNonce,
-              inlineHandlers,
-            });
+            if (inlineScan.count > 0 || inlineHandlers) {
+              console.info('[CSP][NonceCheck]', {
+                file: base,
+                nonce: cspNonce,
+                missingNonceCount: inlineScan.count,
+                inlineHandlers,
+                snippet: inlineScan.count > 0 ? inlineScan.snippet : null,
+              });
+              TERMS_CSP_LOGGED = true;
+            }
           }
         }
         raw = Buffer.from(html, 'utf8');
