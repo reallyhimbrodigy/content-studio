@@ -7412,6 +7412,7 @@ function isBrandKitPath(pathname) {
 
 const server = http.createServer((req, res) => {
   try {
+  const parsed = url.parse(req.url, true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -7422,7 +7423,10 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none';");
+  const baseCsp = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none';";
+  const authPath = parsed.pathname === '/auth.html' || parsed.pathname === '/auth';
+  const authCsp = authPath ? `${baseCsp} worker-src 'self' blob:; child-src 'self' blob:;` : baseCsp;
+  res.setHeader('Content-Security-Policy', authCsp);
   // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
@@ -7435,7 +7439,6 @@ const server = http.createServer((req, res) => {
   }
 
   // Short-circuit legacy Design Lab page when disabled
-  const parsed = url.parse(req.url, true);
   if (!ENABLE_DESIGN_LAB && parsed.pathname === '/design.html') {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not found');
