@@ -104,6 +104,7 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const brandModal = document.getElementById("brand-modal");
   const voiceLockBtn = document.getElementById('voice-lock-btn');
   const voiceLockModal = document.getElementById('voice-lock-modal');
+  const voiceLockPanel = voiceLockModal?.querySelector('.modal');
   const voiceLockCloseBtn = document.getElementById('voice-lock-close-btn');
   const voiceLockLockedCopy = document.getElementById('voice-lock-locked-copy');
   const voiceLockLockedPill = document.getElementById('voice-lock-locked-pill');
@@ -113,6 +114,7 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
   const targetAudienceBtn = document.getElementById('target-audience-btn');
   const targetAudienceModal = document.getElementById('target-audience-modal');
+  const targetAudiencePanel = targetAudienceModal?.querySelector('.modal');
   const targetAudienceCloseBtn = document.getElementById('target-audience-close-btn');
   const targetAudienceLockedCopy = document.getElementById('target-audience-locked-copy');
   const targetAudienceLockedPill = document.getElementById('target-audience-locked-pill');
@@ -3216,7 +3218,13 @@ function setVoiceLockControlsState(enabled) {
 }
 
 function setVoiceLockLockedState(locked) {
-  if (voiceLockModal) voiceLockModal.dataset.locked = locked ? 'true' : 'false';
+  if (voiceLockModal) {
+    voiceLockModal.dataset.locked = locked ? 'true' : 'false';
+    voiceLockModal.classList.toggle('brand-brain-overlay', locked);
+  }
+  if (voiceLockPanel) {
+    voiceLockPanel.classList.toggle('brand-brain-panel', locked);
+  }
   if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
   if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
   if (locked) {
@@ -3303,7 +3311,13 @@ function setTargetAudienceControlsState(enabled) {
 }
 
 function setTargetAudienceLockedState(locked) {
-  if (targetAudienceModal) targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
+  if (targetAudienceModal) {
+    targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
+    targetAudienceModal.classList.toggle('brand-brain-overlay', locked);
+  }
+  if (targetAudiencePanel) {
+    targetAudiencePanel.classList.toggle('brand-brain-panel', locked);
+  }
   if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
   if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
   if (locked) {
@@ -5336,11 +5350,12 @@ if (postFrequencySelect) {
 
 const handleVoiceLockChange = () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     if (voiceLockToggle) voiceLockToggle.checked = false;
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
     setVoiceLockLockedState(true);
+    closeVoiceLockModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   const nextSettings = collectVoiceLockSettingsFromUI();
@@ -5351,11 +5366,12 @@ const handleVoiceLockChange = () => {
 
 const handleTargetAudienceToggleChange = () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     if (targetAudienceToggle) targetAudienceToggle.checked = false;
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
     setTargetAudienceLockedState(true);
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   setTargetAudienceControlsState(!!targetAudienceToggle?.checked);
@@ -5363,8 +5379,9 @@ const handleTargetAudienceToggleChange = () => {
 
 const handleTargetAudienceSave = async () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     syncTargetAudienceFromSettings();
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   if (targetAudienceFeedback) {
@@ -5386,8 +5403,9 @@ const handleTargetAudienceSave = async () => {
 
 const handleTargetAudienceReset = async () => {
   if (!window.cachedUserIsPro) {
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     syncTargetAudienceFromSettings();
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   const resetSettings = { ...TARGET_AUDIENCE_DEFAULTS, enabled: false };

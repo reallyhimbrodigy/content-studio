@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
@@ -582,16 +583,13 @@
     <!-- Voice Lock Modal -->
     <div id="voice-lock-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
       <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="voice-lock-modal-title" data-account-modal>
-        <div class="settings-modal__head">
-          <div>
+        <div class="settings-modal__head brand-brain-header">
+          <div class="brand-brain-header-left">
             <h3 id="voice-lock-modal-title">Voice Lock</h3>
-            <p class="modal-sub">Pin a writing voice for your next calendar generation.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="voice-lock-close-btn" aria-label="Close Voice Lock">
-            &times;
-          </button>
         </div>
-        <div class="account-settings-body" data-account-modal-body>
+        <p class="modal-sub brand-brain-subtitle" data-pro-lock="1">Pin a writing voice for your next calendar generation.</p>
+        <div class="account-settings-body" data-account-modal-body data-pro-lock="1">
           <div class="settings-group">
             <label>Voice Lock</label>
             <div class="brand-brain-toggle-row" data-pro-lock="1">
@@ -622,22 +620,23 @@
             </div>
           </div>
         </div>
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save"></div>
+          <button type="button" id="voice-lock-close-btn" class="ghost">Close</button>
+        </div>
       </div>
     </div>
 
     <!-- Target Audience Modal -->
     <div id="target-audience-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog">
       <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title" data-account-modal>
-        <div class="settings-modal__head">
-          <div>
+        <div class="settings-modal__head brand-brain-header">
+          <div class="brand-brain-header-left">
             <h3 id="target-audience-modal-title">Target Audience</h3>
-            <p class="modal-sub">Tailor copy for a specific audience segment.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="target-audience-close-btn" aria-label="Close Target Audience">
-            &times;
-          </button>
         </div>
-        <div class="account-settings-body" data-account-modal-body>
+        <p class="modal-sub brand-brain-subtitle" data-pro-lock="1">Tailor copy for a specific audience segment.</p>
+        <div class="account-settings-body" data-account-modal-body data-pro-lock="1">
           <div class="settings-group">
             <label>Target Audience</label>
             <div class="brand-brain-toggle-row" data-pro-lock="1">
@@ -672,11 +671,13 @@
             </div>
           </div>
         </div>
-        <div class="settings-actions" data-account-modal-actions>
-          <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save">
+            <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
+          </div>
           <div class="settings-actions__buttons">
-            <button type="button" class="ghost" id="target-audience-reset">Reset</button>
             <button type="button" class="primary" id="target-audience-save">Save</button>
+            <button type="button" id="target-audience-close-btn" class="ghost">Close</button>
           </div>
         </div>
       </div>
@@ -1279,3 +1280,4 @@
     </div>
   </body>
 </html>
+

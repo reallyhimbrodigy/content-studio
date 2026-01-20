@@ -6155,6 +6155,11 @@ body.modal-open {
   z-index: 1000;
 }
 
+#voice-lock-modal.brand-brain-overlay,
+#target-audience-modal.brand-brain-overlay {
+  z-index: 10000;
+}
+
 .brand-brain-panel {
   width: 100%;
   max-width: 720px;
@@ -6520,6 +6525,10 @@ body.modal-open {
 #voice-lock-modal[data-locked="true"] [data-pro-lock],
 #target-audience-modal[data-locked="true"] [data-pro-lock] {
   opacity: 0.65;
+}
+
+#target-audience-modal[data-locked="true"] #target-audience-save {
+  display: none;
 }
 
 @media (max-width: 600px) {
