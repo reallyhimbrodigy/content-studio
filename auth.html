@@ -374,6 +374,19 @@
       @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
       @media (max-width: 700px) {
+        body {
+          justify-content: flex-start;
+          align-items: stretch;
+        }
+
+        .auth-card {
+          order: 1;
+        }
+
+        .auth-brand {
+          order: 2;
+        }
+
         .auth-card,
         .auth-brand {
           border-radius: 24px;
@@ -388,11 +401,11 @@
       <section class="auth-brand">
         <img src="assets/promptly-logo.svg" alt="Promptly" />
         <h1>Promptly</h1>
-        <p>Log in to manage every campaign from one streamlined dashboard.<br/>New here? Create your account in seconds.</p>
+        <p>Log in to your Promptly account.<br/>Get a full month of content planned with built-in strategy so your posts are made to perform.</p>
         <ul>
-          <li>No credit card required to create your first calendar</li>
-          <li>Save hours of planning with sequenced, ready-to-post calendars</li>
-          <li>Access download-ready posts for every major platform</li>
+          <li>Create an account in seconds.</li>
+          <li>Know what to post—and why it works.</li>
+          <li></li>
         </ul>
         <div class="auth-back-home">
           <a href="/?view=landing" class="auth-back-home__link" data-back-home>
@@ -499,6 +512,4 @@
     <script src="/pwa-install.js" defer></script>
   </body>
 </html>
-
-
 
