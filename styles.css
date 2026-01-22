@@ -6155,11 +6155,6 @@ body.modal-open {
   z-index: 1000;
 }
 
-#voice-lock-modal.brand-brain-overlay,
-#target-audience-modal.brand-brain-overlay {
-  z-index: 10000;
-}
-
 .brand-brain-panel {
   width: 100%;
   max-width: 720px;
@@ -6335,110 +6330,6 @@ body.modal-open {
   font-size: 14px;
 }
 
-.voice-lock-select-wrap {
-  position: relative;
-  width: 100%;
-  max-width: 320px;
-}
-
-.voice-lock-select {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 44px;
-  padding: 0 44px 0 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(18, 22, 34, 0.72);
-  backdrop-filter: blur(10px);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.2px;
-  outline: none;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
-}
-
-.voice-lock-select:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-.voice-lock-select:focus {
-  border-color: rgba(132, 102, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(132, 102, 255, 0.2), 0 10px 24px rgba(0, 0, 0, 0.28);
-}
-
-.voice-lock-select:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.voice-lock-select-wrap::after {
-  content: "";
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  transform: translateY(-50%) rotate(45deg);
-  border-right: 2px solid rgba(255, 255, 255, 0.55);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.55);
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-.target-audience-select-wrap {
-  position: relative;
-  width: 100%;
-  max-width: 320px;
-}
-
-.target-audience-select {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 44px;
-  padding: 0 44px 0 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(18, 22, 34, 0.72);
-  backdrop-filter: blur(10px);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.2px;
-  outline: none;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
-}
-
-.target-audience-select:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-.target-audience-select:focus {
-  border-color: rgba(132, 102, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(132, 102, 255, 0.2), 0 10px 24px rgba(0, 0, 0, 0.28);
-}
-
-.target-audience-select:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.target-audience-select-wrap::after {
-  content: "";
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  transform: translateY(-50%) rotate(45deg);
-  border-right: 2px solid rgba(255, 255, 255, 0.55);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.55);
-  pointer-events: none;
-  opacity: 0.9;
-}
-
 .brand-brain-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -6521,14 +6412,8 @@ body.modal-open {
   opacity: 0.8;
 }
 
-#brand-modal[data-locked="true"] [data-pro-lock],
-#voice-lock-modal[data-locked="true"] [data-pro-lock],
-#target-audience-modal[data-locked="true"] [data-pro-lock] {
+#brand-modal[data-locked="true"] [data-pro-lock] {
   opacity: 0.65;
-}
-
-#target-audience-modal[data-locked="true"] #target-audience-save {
-  display: none;
 }
 
 @media (max-width: 600px) {
@@ -6740,7 +6625,7 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 12000;
+  z-index: 2000;
   padding: 1rem;
   width: 100vw;
   height: 100vh;
@@ -6792,10 +6677,6 @@ body.modal-open {
 .modal-close:hover {
   background: rgba(255,255,255,0.1);
   transform: rotate(90deg);
-}
-
-#upgrade-modal .modal-close:hover {
-  transform: none;
 }
 
 .upgrade-modal .upgrade-header {
@@ -9350,14 +9231,12 @@ body.view-landing .landing-workflow + .landing-section {
   body.page-library [data-account-overlay] {
     position: fixed !important;
     inset: 0 !important;
+    display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     padding: 0.75rem !important;
     overflow: visible !important;
     z-index: 9999 !important;
-  }
-  body.page-library [data-account-overlay][aria-hidden="false"] {
-    display: flex !important;
   }
 
   body.page-library [data-account-modal] {
@@ -9591,43 +9470,6 @@ body.view-landing .landing-workflow + .landing-section {
     flex: 0 0 auto !important;
     white-space: nowrap !important;
     align-self: flex-start !important;
-  }
-
-  body.page-library #account-modal .account-settings-close,
-  body.page-library #account-modal [data-account-close],
-  body.page-library #account-modal button[aria-label="Close profile settings"] {
-    position: absolute !important;
-    top: 16px !important;
-    right: 16px !important;
-    z-index: 100000 !important;
-    pointer-events: auto !important;
-  }
-
-  body.page-library #account-modal {
-    pointer-events: auto !important;
-  }
-
-  body.page-library [data-account-modal] {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  body.page-library [data-account-modal-body] {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-  }
-
-  body.page-library [data-account-modal] .settings-actions {
-    flex: 0 0 auto !important;
-  }
-}
-
-@media (max-width: 640px) {
-  body.page-library [data-account-modal] {
-    width: 94vw !important;
-    max-width: 94vw !important;
-    padding: 18px 16px !important;
-    border-radius: 16px !important;
   }
 }
 

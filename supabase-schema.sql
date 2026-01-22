@@ -86,184 +86,73 @@ CREATE TRIGGER on_auth_user_created
 CREATE INDEX IF NOT EXISTS idx_calendars_user_id ON public.calendars(user_id);
 CREATE INDEX IF NOT EXISTS idx_calendars_saved_at ON public.calendars(saved_at DESC);
 
--- Design assets table
-CREATE TABLE IF NOT EXISTS public.design_assets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  calendar_day_id TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('story', 'carousel')),
-  placid_template_id TEXT NOT NULL,
-  placid_render_id TEXT,
-  cloudinary_public_id TEXT,
-  status TEXT NOT NULL DEFAULT 'rendering' CHECK (status IN ('draft','rendering','ready','failed')),
-  data JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- ============================================================================
+-- Storage bucket for profile photos
+-- ============================================================================
 
--- Helper to keep updated_at in sync
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('profile-photos', 'profile-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies (profile photos bucket)
+DO $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Profile photos public read'
+  ) THEN
+    CREATE POLICY "Profile photos public read"
+      ON storage.objects
+      FOR SELECT
+      USING (
+        bucket_id = 'profile-photos'
+      );
+  END IF;
 
-DROP TRIGGER IF EXISTS on_design_assets_updated ON public.design_assets;
-CREATE TRIGGER on_design_assets_updated
-  BEFORE UPDATE ON public.design_assets
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_updated_at();
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Profile photos owner insert'
+  ) THEN
+    CREATE POLICY "Profile photos owner insert"
+      ON storage.objects
+      FOR INSERT
+      WITH CHECK (
+        bucket_id = 'profile-photos'
+        AND (auth.uid() = owner OR owner IS NULL)
+      );
+  END IF;
 
-ALTER TABLE public.design_assets ENABLE ROW LEVEL SECURITY;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Profile photos owner update'
+  ) THEN
+    CREATE POLICY "Profile photos owner update"
+      ON storage.objects
+      FOR UPDATE
+      USING (
+        bucket_id = 'profile-photos'
+        AND auth.uid() = owner
+      );
+  END IF;
 
-DROP POLICY IF EXISTS "Users can view own design assets" ON public.design_assets;
-DROP POLICY IF EXISTS "Users can insert own design assets" ON public.design_assets;
-DROP POLICY IF EXISTS "Users can update own design assets" ON public.design_assets;
-DROP POLICY IF EXISTS "Users can delete own design assets" ON public.design_assets;
-
-CREATE POLICY "Users can view own design assets"
-  ON public.design_assets FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own design assets"
-  ON public.design_assets FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own design assets"
-  ON public.design_assets FOR UPDATE
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own design assets"
-  ON public.design_assets FOR DELETE
-  USING (auth.uid() = user_id);
-
-CREATE INDEX IF NOT EXISTS idx_design_assets_user_id ON public.design_assets(user_id);
-CREATE INDEX IF NOT EXISTS idx_design_assets_calendar_day ON public.design_assets(calendar_day_id);
-
--- Phyllo / Growth Analytics tables
-CREATE TABLE IF NOT EXISTS phyllo_users (
-  id uuid primary key default gen_random_uuid(),
-  promptly_user_id uuid not null,
-  phyllo_user_id text not null,
-  created_at timestamptz default now(),
-  unique (promptly_user_id),
-  unique (phyllo_user_id)
-);
-
-CREATE TABLE IF NOT EXISTS phyllo_accounts (
-  id uuid primary key default gen_random_uuid(),
-  phyllo_account_id text not null,
-  phyllo_user_id text not null,
-  promptly_user_id uuid not null,
-  work_platform_id text not null,
-  username text,
-  profile_name text,
-  account_id text,
-  avatar_url text,
-  status text,
-  connected_at timestamptz,
-  created_at timestamptz default now(),
-  unique (phyllo_account_id)
-);
-
-CREATE TABLE IF NOT EXISTS phyllo_posts (
-  id uuid primary key default gen_random_uuid(),
-  phyllo_content_id text not null,
-  phyllo_account_id text not null,
-  promptly_user_id uuid not null,
-  platform text not null,
-  title text,
-  caption text,
-  url text,
-  published_at timestamptz,
-  created_at timestamptz default now(),
-  unique (phyllo_content_id)
-);
-
-CREATE TABLE IF NOT EXISTS phyllo_post_metrics (
-  id uuid primary key default gen_random_uuid(),
-  phyllo_content_id text not null,
-  collected_at timestamptz default now(),
-  views bigint,
-  likes bigint,
-  comments bigint,
-  shares bigint,
-  saves bigint,
-  watch_time_seconds bigint,
-  retention_pct numeric
-);
-
-CREATE TABLE IF NOT EXISTS phyllo_account_daily (
-  id uuid primary key default gen_random_uuid(),
-  phyllo_account_id text not null,
-  date date not null,
-  followers bigint,
-  impressions bigint,
-  engagement_rate numeric,
-  created_at timestamptz default now(),
-  unique (phyllo_account_id, date)
-);
-
-CREATE TABLE IF NOT EXISTS growth_insights (
-  id uuid primary key default gen_random_uuid(),
-  promptly_user_id uuid not null,
-  week_start date not null,
-  summary text not null,
-  recommendations jsonb,
-  created_at timestamptz default now(),
-  unique (promptly_user_id, week_start)
-);
-
--- Analytics insights (AI-generated, persisted)
-CREATE TABLE IF NOT EXISTS analytics_insights (
-  id uuid primary key default gen_random_uuid(),
-  user_id text not null,
-  insights jsonb not null default '[]'::jsonb,
-  created_at timestamptz default now()
-);
-
--- Analytics alerts (persisted)
-CREATE TABLE IF NOT EXISTS analytics_alerts (
-  id uuid primary key default gen_random_uuid(),
-  user_id text not null,
-  message text,
-  severity text,
-  created_at timestamptz default now()
-);
-
--- Additional profile-level metrics
-CREATE TABLE IF NOT EXISTS phyllo_profile_metrics (
-  id uuid primary key default gen_random_uuid(),
-  phyllo_account_id text not null,
-  captured_at timestamptz default now(),
-  followers bigint,
-  following bigint,
-  views_last_30 bigint,
-  engagement_rate_last_30 numeric,
-  avg_views_per_post_last_30 numeric,
-  retention_pct_last_30 numeric
-);
-
--- Alerts generated from analytics/insights
-CREATE TABLE IF NOT EXISTS analytics_alerts (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  created_at timestamptz default now(),
-  type text,
-  payload_json jsonb,
-  is_read boolean default false
-);
-
--- Generic feature usage tracking
-CREATE TABLE IF NOT EXISTS feature_usage (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
-  feature_key text not null,
-  count integer not null default 0,
-  updated_at timestamptz not null default now()
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS feature_usage_user_feature_idx
-  ON feature_usage(user_id, feature_key);
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND policyname = 'Profile photos owner delete'
+  ) THEN
+    CREATE POLICY "Profile photos owner delete"
+      ON storage.objects
+      FOR DELETE
+      USING (
+        bucket_id = 'profile-photos'
+        AND auth.uid() = owner
+      );
+  END IF;
+END $$;

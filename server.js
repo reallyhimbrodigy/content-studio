@@ -3,7 +3,6 @@ const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const promptPresets = require('./assets/prompt-presets.json');
 const JSZip = require('jszip');
 const {
@@ -17,14 +16,13 @@ const {
   updateCachedAnalyticsForUser,
 } = require('./services/supabase-admin');
 const cron = require('node-cron');
-let uploadAssetFromUrl = async () => null;
-let buildCloudinaryUrl = () => '';
-let generateBrandedBackgroundImage = async () => null;
-try {
-  ({ uploadAssetFromUrl, buildCloudinaryUrl, generateBrandedBackgroundImage } = require('./services/cloudinary'));
-} catch (err) {
-  console.log('[Assets] Cloudinary service unavailable; asset helpers disabled.');
-}
+const { advanceDesignAssetPipeline } = require('./advanceDesignAssetPipeline');
+const {
+  uploadAssetFromUrl,
+  buildCloudinaryUrl,
+  isCloudinaryConfigured,
+  generateBrandedBackgroundImage,
+} = require('./services/cloudinary');
 const { getBrandBrainForUser } = require('./services/brand-brain');
 const {
   getPhylloPosts,
@@ -36,13 +34,15 @@ const {
   syncFollowerMetrics,
   syncDemographics,
 } = require('./services/phyllo-metrics');
-const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
-  getNonHolidayHot100,
-  getEvergreenFallbackList,
-  isHolidayTrack,
-  normalizeAudioString,
-} = require('./server/lib/billboardHot100');
+  createPhylloUser,
+  createSdkToken,
+  fetchAccountContents,
+  fetchAccountEngagement,
+  getPhylloUserByExternalId,
+  getPhylloAccountDetails,
+} = require('./services/phyllo');
+const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createPlacidRender = async () => ({ id: null, status: 'disabled' });
@@ -57,245 +57,6 @@ const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
 const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
 // NOTE: Placid and Cloudinary secrets must never be exposed client-side.
-const PHYLLO_ENVIRONMENT = process.env.PHYLLO_ENVIRONMENT || 'production';
-const PHYLLO_WEBHOOK_SIGNING_SECRET = process.env.PHYLLO_WEBHOOK_SIGNING_SECRET || '';
-const PHYLLO_WEBHOOK_ENV = process.env.PHYLLO_WEBHOOK_ENV || 'production';
-const PHYLLO_WEBHOOK_URL =
-  process.env.PHYLLO_WEBHOOK_URL ||
-  (CANONICAL_HOST ? `${CANONICAL_HOST.replace(/\/+$/, '')}/api/phyllo/webhook` : '');
-const PHYLLO_WEBHOOK_DESCRIPTION = process.env.PHYLLO_WEBHOOK_DESCRIPTION || 'Promptly Phyllo webhook';
-const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
-  'ACCOUNTS.CONNECTED',
-  'ACCOUNTS.DISCONNECTED',
-  'PROFILES.UPDATED',
-  'CONTENTS.CREATED',
-  'CONTENTS.UPDATED',
-  'CONTENT_GROUPS.CREATED',
-  'CONTENT_GROUPS.UPDATED',
-  'COMMENTS.CREATED',
-  'AUDIENCE.UPDATED',
-].join(','))
-  .split(',')
-  .map((item) => String(item || '').trim())
-  .filter(Boolean);
-const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
-const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
-const PHYLLO_WORK_PLATFORM_LABELS = {
-  'de55aeec-0dc8-4119-bf90-16b3d1f0c987': 'tiktok',
-  '9bb8913b-ddd9-430b-a66a-d74d846e6c66': 'instagram',
-};
-
-const ANALYTICS_CACHE_TTL_MS = 120 * 1000;
-const analyticsCache = new Map();
-
-async function ensurePhylloUserForPromptlyUser(promptlyUserId) {
-  if (!promptlyUserId) throw new Error('Promptly user ID is required for Phyllo user lookup');
-  const externalId = String(promptlyUserId);
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('phyllo_users')
-        .select('phyllo_user_id')
-        .eq('promptly_user_id', promptlyUserId)
-        .single();
-      if (!error && data?.phyllo_user_id) {
-        return { phylloUserId: data.phyllo_user_id, externalId };
-      }
-    } catch (err) {
-      console.error('[Phyllo] fetch phyllo_users mapping failed', err);
-    }
-  }
-}
-
-async function resolvePromptlyUserIdFromPhyllo({ phylloUserId, phylloAccountId }) {
-  if (!supabaseAdmin) return null;
-  if (phylloUserId) {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('phyllo_users')
-        .select('promptly_user_id')
-        .eq('phyllo_user_id', phylloUserId)
-        .single();
-      if (!error && data?.promptly_user_id) {
-        return data.promptly_user_id;
-      }
-    } catch (err) {
-      console.error('[Phyllo] resolvePromptlyUserIdFromPhyllo failed', err);
-    }
-  }
-  if (phylloAccountId) {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('phyllo_accounts')
-        .select('promptly_user_id')
-        .eq('phyllo_account_id', phylloAccountId)
-        .single();
-      if (!error && data?.promptly_user_id) {
-        return data.promptly_user_id;
-      }
-    } catch (err) {
-      console.error('[Phyllo] resolvePromptlyUserIdFromPhyllo (account) failed', err);
-    }
-  }
-  return null;
-}
-
-async function processPhylloWebhookEvent(event = {}) {
-  if (!event || typeof event !== 'object') return;
-  const type = event?.type || 'unknown';
-  const data = event?.data || {};
-  const account = data.account || {};
-  const phylloUserId = account.user_id || data.user_id;
-  const phylloAccountId = account.id || data.account_id;
-  const promptlyUserId = await resolvePromptlyUserIdFromPhyllo({ phylloUserId, phylloAccountId });
-  const ensureAnalyticsRefresh = async () => {
-    if (promptlyUserId) {
-      try {
-        await updateCachedAnalyticsForUser(promptlyUserId);
-      } catch (err) {
-        console.error('[Phyllo] updateCachedAnalyticsForUser failed', err);
-      }
-    }
-  };
-
-  switch (type) {
-    case 'ACCOUNTS.CONNECTED':
-      if (supabaseAdmin && upsertPhylloAccount) {
-        try {
-          await upsertPhylloAccount({
-            userId: promptlyUserId,
-            phylloUserId,
-            platform: account.platform || account.work_platform_id || 'unknown',
-            accountId: phylloAccountId,
-            workPlatformId: account.work_platform_id,
-            handle: account.username || account.handle,
-            displayName: account.profile_name || account.display_name,
-            avatarUrl: account.avatar_url || account.profile?.avatar_url,
-          });
-        } catch (err) {
-          console.error('[Phyllo] webhook upsert account failed', err);
-        }
-      }
-      await ensureAnalyticsRefresh();
-      break;
-    case 'ACCOUNTS.DISCONNECTED':
-      if (supabaseAdmin && phylloAccountId) {
-        try {
-          await supabaseAdmin
-            .from('phyllo_accounts')
-            .update({ status: 'disconnected' })
-            .eq('phyllo_account_id', phylloAccountId);
-        } catch (err) {
-          console.error('[Phyllo] webhook disconnect update failed', err);
-        }
-      }
-      await ensureAnalyticsRefresh();
-      break;
-    case 'PROFILES.UPDATED':
-      if (supabaseAdmin && phylloAccountId) {
-        try {
-          await supabaseAdmin
-            .from('phyllo_accounts')
-            .update({
-              username: account.username || account.handle || account.login,
-              profile_name: account.profile_name || account.display_name,
-            })
-            .eq('phyllo_account_id', phylloAccountId);
-        } catch (err) {
-          console.error('[Phyllo] webhook profile update failed', err);
-        }
-      }
-      await ensureAnalyticsRefresh();
-      break;
-    case 'CONTENTS.CREATED':
-    case 'CONTENTS.UPDATED':
-    case 'CONTENT_GROUPS.CREATED':
-    case 'CONTENT_GROUPS.UPDATED':
-    case 'COMMENTS.CREATED':
-    case 'AUDIENCE.UPDATED':
-      await ensureAnalyticsRefresh();
-      break;
-    default:
-      await ensureAnalyticsRefresh();
-      break;
-  }
-}
-
-async function syncAccountMetricsForAnalytics(acct = {}, since = new Date(), until = new Date()) {
-  if (!acct || !acct.phyllo_account_id || !acct.promptly_user_id) return;
-  if (!supabaseAdmin) return;
-  try {
-    const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
-    await wait(50);
-    const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
-    const items = contents?.data || contents?.items || contents || [];
-    const metricsByDay = {};
-    for (const item of items) {
-      const contentId = item.id || item.content_id;
-      if (!contentId) continue;
-      const platform = item.platform || acct.work_platform_id || 'unknown';
-      const publishedAt = item.published_at || item.posted_at || item.created_at || null;
-      await supabaseAdmin.from('phyllo_posts').upsert(
-        {
-          phyllo_content_id: contentId,
-          phyllo_account_id: acct.phyllo_account_id,
-          promptly_user_id: acct.promptly_user_id,
-          platform,
-          title: item.title || item.caption || null,
-          caption: item.caption || null,
-          url: item.url || item.link || null,
-          published_at: publishedAt,
-        },
-        { onConflict: 'phyllo_content_id' }
-      );
-      const metrics = item.metrics || item.stats || item;
-      const views = Number(metrics.views || metrics.impressions || 0);
-      const likes = Number(metrics.likes || 0);
-      const comments = Number(metrics.comments || 0);
-      const shares = Number(metrics.shares || metrics.reposts || 0);
-      const saves = Number(metrics.saves || 0);
-      await supabaseAdmin.from('phyllo_post_metrics').insert({
-        phyllo_content_id: contentId,
-        collected_at: new Date().toISOString(),
-        views,
-        likes,
-        comments,
-        shares,
-        saves,
-      });
-      const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
-      if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
-      metricsByDay[dateKey].views += views;
-      metricsByDay[dateKey].likes += likes;
-      metricsByDay[dateKey].comments += comments;
-      metricsByDay[dateKey].shares += shares;
-      metricsByDay[dateKey].saves += saves;
-    }
-    const engagementData = engagement?.data || engagement?.items || engagement || [];
-    engagementData.forEach((row) => {
-      const dateKey = row.date || row.day || row.collected_at;
-      if (!dateKey) return;
-      if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
-      metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
-      metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
-      metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
-    });
-    for (const [dateKey, agg] of Object.entries(metricsByDay)) {
-      await supabaseAdmin.from('phyllo_account_daily').upsert(
-        {
-          phyllo_account_id: acct.phyllo_account_id,
-          date: dateKey,
-          followers: agg.followers || null,
-          impressions: agg.impressions || agg.views || null,
-          engagement_rate: agg.engagement_rate || null,
-        },
-        { onConflict: 'phyllo_account_id,date' }
-      );
-    }
-  } catch (err) {
-    console.error('[Phyllo Sync] account refresh failed', acct.phyllo_account_id, err?.response?.data || err);
-  }
-}
 
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
@@ -303,6 +64,19 @@ if (!OPENAI_API_KEY) {
 if (!STABILITY_API_KEY) {
   console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
 }
+if (!STORY_TEMPLATE_ID) {
+  console.warn('Warning: PLACID_STORY_TEMPLATE_ID is not set. Story assets will fail to render.');
+}
+if (!CAROUSEL_TEMPLATE_ID) {
+  console.warn('Warning: PLACID_CAROUSEL_TEMPLATE_ID is not set. Carousel assets will fail to render.');
+}
+console.log('[Placid config]', {
+  STORY_TEMPLATE_ID: STORY_TEMPLATE_ID ? '[set]' : '[missing]',
+  CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID ? '[set]' : '[missing]',
+});
+validatePlacidTemplateConfig().catch((err) => {
+  console.error('[Placid] Template validation failed', err);
+});
 
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
@@ -486,14 +260,11 @@ function wait(ms) {
 }
 
 function sendJson(res, statusCode, payload) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (payload && payload.requestId) headers['x-request-id'] = payload.requestId;
-  res.writeHead(statusCode, headers);
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(payload));
 }
 
 const isProduction = process.env.NODE_ENV === 'production';
-const DEBUG_ANALYTICS = process.env.DEBUG_ANALYTICS === 'true';
 
 function generateRequestId(prefix = 'req') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -511,598 +282,29 @@ function logServerError(tag, err, info = {}) {
 
 function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
-  const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
-  const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
-  const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
-  const requestIdValue = requestId || generateRequestId('server_error');
-  if (isTopicBinding) {
-    const payload = {
-      error: 'TOPIC_BINDING_FAILED',
-      requestId: requestIdValue,
-    };
-    if (err?.payload?.post_key) payload.post_key = err.payload.post_key;
-    if (Array.isArray(err?.payload?.failedFields)) payload.failedFields = err.payload.failedFields;
-    return sendJson(res, 422, payload);
-  }
-  if (isPostKeyMapping) {
-    const payload = {
-      error: 'PostKeyMappingFailed',
-      ...(err?.payload || {}),
-    };
-    if (requestIdValue) payload.requestId = requestIdValue;
-    return sendJson(res, 422, payload);
-  }
-  const status = statusCode || err?.statusCode || (isOpenAISchema ? 502 : 500);
-  const code = isOpenAISchema ? 'OPENAI_SCHEMA_ERROR' : err?.code || 'server_error';
-  const message = isOpenAISchema ? 'openai_schema_error' : err?.message || 'internal_error';
+  const status = statusCode || err?.statusCode || 500;
   const payload = {
-    error: {
-      code,
-      message,
-      requestId: requestIdValue,
-    },
+    error: err?.message || 'internal_error',
   };
-  if (isOpenAISchema) {
-    const detailPayload = { ...(err?.details || {}) };
-    if (err?.schemaSnippet) detailPayload.schemaSnippet = err.schemaSnippet;
-    if (Object.keys(detailPayload).length) {
-      payload.error.details = detailPayload;
-    }
-    if (!isProduction && err?.rawContent) {
-      payload.error.debug = err.rawContent;
-    }
-  } else if (!isProduction && err?.stack) {
+  if (requestId) payload.requestId = requestId;
+  if (!isProduction && err?.stack) {
     payload.debugStack = err.stack;
   }
   sendJson(res, status, payload);
 }
 
-const REQUIRED_PHYLLO_ENV_KEYS = [
-  'PHYLLO_ENABLED',
-  'PHYLLO_CLIENT_ID',
-  'PHYLLO_CLIENT_SECRET',
-  'PHYLLO_API_BASE_URL',
-  'PHYLLO_ENVIRONMENT',
-];
-
-function getMissingSupabaseEnvVars() {
-  const missing = [];
-  if (!process.env.SUPABASE_URL) {
-    missing.push('SUPABASE_URL');
-  }
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SERVICE_KEY) {
-    missing.push('SUPABASE_SERVICE_ROLE_KEY');
-  }
-  return missing;
-}
-
-function getMissingPhylloEnvVars() {
-  return REQUIRED_PHYLLO_ENV_KEYS.filter((key) => {
-    const value = process.env[key];
-    return value === undefined || value === null || value === '';
-  });
-}
-
-function sendServerMisconfigured(res, missing, requestId) {
-  const payload = { ok: false, error: 'server_misconfigured', missing };
-  if (requestId) payload.requestId = requestId;
-  sendJson(res, 500, payload);
-}
-
-function getAnalyticsCache(key) {
-  const cached = analyticsCache.get(key);
-  if (!cached) return null;
-  if (Date.now() - cached.timestamp > ANALYTICS_CACHE_TTL_MS) {
-    analyticsCache.delete(key);
-    return null;
-  }
-  return cached.value;
-}
-
-function setAnalyticsCache(key, value) {
-  analyticsCache.set(key, { timestamp: Date.now(), value });
-}
-
-function buildEmptyAnalyticsPayload({ connected = false, upstream_ok = true } = {}) {
-  return {
-    ok: true,
-    connected,
-    upstream_ok,
-    overview: null,
-    posts: [],
-    demographics: {
-      age_groups: {},
-      genders: {},
-      countries: {},
-      languages: {},
-    },
-    insights: [],
-    alerts: [],
-    last_sync: null,
-  };
-}
-
-function resolvePhylloPlatformLabel(account = {}) {
-  if (!account) return 'unknown';
-  if (account.platform) return String(account.platform).toLowerCase();
-  const workPlatform = account.work_platform_id || account.workPlatformId;
-  if (workPlatform && PHYLLO_WORK_PLATFORM_LABELS[workPlatform]) {
-    return PHYLLO_WORK_PLATFORM_LABELS[workPlatform];
-  }
-  return workPlatform || 'unknown';
-}
-
-function mapPhylloAccountForResponse(account = {}) {
-  if (!account) return null;
-  return {
-    id: account.phyllo_account_id || account.account_id || account.id,
-    platform: resolvePhylloPlatformLabel(account),
-    username: account.username || account.handle || null,
-    handle: account.username || account.handle || null,
-    external_account_id: account.account_id || account.phyllo_account_id || null,
-    status: account.status || null,
-    connected_at: account.connected_at || null,
-    work_platform_id: account.work_platform_id || null,
-    profile_name: account.profile_name || null,
-    avatar_url: account.avatar_url || null,
-  };
-}
-
-async function getConnectedPhylloAccounts(userId, requestId, route) {
-  if (!userId || !supabaseAdmin) return { accounts: [], error: 'missing_supabase' };
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('phyllo_accounts')
-      .select('*')
-      .eq('promptly_user_id', userId)
-      .eq('status', 'connected');
-    if (error) {
-      logServerError('phyllo_accounts_db_error', error, {
-        requestId,
-        route,
-        userId,
-        query: 'phyllo_accounts_select',
-      });
-      return { accounts: [], error: 'db_error' };
-    }
-    return { accounts: data || [], error: null };
-  } catch (err) {
-    logServerError('phyllo_accounts_db_error', err, {
-      requestId,
-      route,
-      userId,
-      query: 'phyllo_accounts_select',
-    });
-    return { accounts: [], error: 'db_error' };
-  }
-}
-
-async function fetchPhylloAnalyticsSnapshot({ userId, requestId, route }) {
-  if (!userId) return buildEmptyAnalyticsPayload({ connected: false });
-  const cacheKey = `${userId}:analytics`;
-  const cached = getAnalyticsCache(cacheKey);
-  if (cached) return cached;
-
-  const { accounts, error: accountsError } = await getConnectedPhylloAccounts(userId, requestId, route);
-  if (accountsError) {
-    const empty = buildEmptyAnalyticsPayload({ connected: false, upstream_ok: false });
-    setAnalyticsCache(cacheKey, empty);
-    return empty;
-  }
-  if (!accounts.length) {
-    const empty = buildEmptyAnalyticsPayload({ connected: false });
-    setAnalyticsCache(cacheKey, empty);
-    return empty;
-  }
-  if (DEBUG_ANALYTICS) {
-    console.log('[Analytics][Debug] connected accounts', {
-      requestId,
-      route,
-      userId,
-      count: accounts.length,
-    });
-  }
-  const missingPhyllo = getMissingPhylloEnvVars();
-  if (missingPhyllo.length) {
-    logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
-      requestId,
-      route,
-      missing: missingPhyllo,
-    });
-    return buildEmptyAnalyticsPayload({ connected: true, upstream_ok: false });
-  }
-  console.log('[Analytics] phyllo accounts', {
-    requestId,
-    route,
-    userId,
-    platforms: accounts.map((acc) => acc.platform || acc.work_platform_id || 'unknown'),
-    count: accounts.length,
-  });
-
-  try {
-    if (DEBUG_ANALYTICS) {
-      console.log('[Analytics][Debug] fetching Phyllo metrics', {
-        requestId,
-        route,
-        userId,
-      });
-    }
-    const metrics = await getUserPostMetrics(accounts, { requestId, userId });
-    if (DEBUG_ANALYTICS) {
-      console.log('[Analytics][Debug] fetching Phyllo demographics', {
-        requestId,
-        route,
-        userId,
-      });
-    }
-    const demographicsRaw = await getAudienceDemographics(accounts, { requestId, userId });
-    const overview = {
-      follower_growth: metrics?.summary?.followerGrowth ?? null,
-      engagement_rate: metrics?.summary?.engagementRate ?? null,
-      avg_views: metrics?.summary?.avgViews ?? null,
-      retention: metrics?.summary?.retention ?? null,
-    };
-    const demographics = Array.isArray(demographicsRaw)
-      ? { age_groups: {}, genders: {}, countries: {}, languages: {} }
-      : {
-          age_groups: demographicsRaw?.age_groups || demographicsRaw?.age || {},
-          genders: demographicsRaw?.genders || demographicsRaw?.gender || {},
-          countries: demographicsRaw?.countries || demographicsRaw?.location || {},
-          languages: demographicsRaw?.languages || demographicsRaw?.language || {},
-        };
-    const payload = {
-      ok: true,
-      connected: true,
-      upstream_ok: true,
-      overview,
-      posts: metrics?.posts || [],
-      demographics,
-      insights: [],
-      alerts: [],
-      last_sync: null,
-    };
-    setAnalyticsCache(cacheKey, payload);
-    return payload;
-  } catch (err) {
-    logServerError('phyllo_upstream_error', err, { requestId, route });
-    return buildEmptyAnalyticsPayload({ connected: true, upstream_ok: false });
-  }
-}
-
-async function authenticateRequestForRoute(req, res, requestId, route) {
-  const missingEnv = getMissingSupabaseEnvVars();
-  if (missingEnv.length) {
-    logServerError('supabase_env_missing', new Error('Missing Supabase environment variables'), {
-      requestId,
-      route,
-      missing: missingEnv,
-    });
-    sendServerMisconfigured(res, missingEnv, requestId);
-    return null;
-  }
-  try {
-    const user = await requireSupabaseUser(req);
-    req.user = user;
-    return user;
-  } catch (err) {
-    if (err?.statusCode === 401) {
-      sendJson(res, 401, { ok: false, error: 'unauthorized', error_code: 'unauthorized', requestId });
-      return null;
-    }
-    logServerError('supabase_auth_error', err, { requestId, route });
-    sendJson(res, 500, { ok: false, error: 'server_error', error_code: 'server_error', requestId });
-    return null;
-  }
-}
-
-async function handleAnalyticsHeatmap(req, res) {
-  const requestId = generateRequestId('analytics_heatmap');
-  try {
-    const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/heatmap');
-    if (!user) return;
-
-    const snapshot = await fetchPhylloAnalyticsSnapshot({
-      userId: user.id,
-      requestId,
-      route: '/api/analytics/heatmap',
-    });
-    const days = getAnalyticsWindowDays(req);
-    const posts = filterPostsByWindow((snapshot.posts || []), days);
-    const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
-
-    posts.forEach((p) => {
-      if (!p.published_at && !p.publishedAt) return;
-      const date = new Date(p.published_at || p.publishedAt);
-      const day = date.getDay();
-      const hour = date.getHours();
-      const score = (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
-      if (day >= 0 && day < 7 && hour >= 0 && hour < 24) {
-        heatmap[day][hour] += score;
-      }
-    });
-
-    return sendJson(res, 200, { ok: true, heatmap, requestId });
-  } catch (err) {
-    logServerError('analytics_heatmap_error', err, {
-      requestId,
-      route: '/api/analytics/heatmap',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'analytics_heatmap_upstream_failed',
-        error_code: 'analytics_heatmap_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
-async function handleAnalyticsFull(req, res) {
-  const requestId = generateRequestId('analytics_full');
-  try {
-    const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/full');
-    if (!user) return;
-
-    const snapshot = await fetchPhylloAnalyticsSnapshot({
-      userId: user.id,
-      requestId,
-      route: '/api/analytics/full',
-    });
-
-    let insights = [];
-    let lastSync = null;
-    if (supabaseAdmin) {
-      const { data: insightsRows, error: insightsErr } = await supabaseAdmin
-        .from('analytics_ai_insights')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      if (insightsErr) {
-        logServerError('analytics_full_insights_error', insightsErr, {
-          requestId,
-          route: '/api/analytics/full',
-        });
-      } else {
-        insights = insightsRows || [];
-      }
-      const { data: syncRow } = await supabaseAdmin
-        .from('analytics_sync_status')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      lastSync = syncRow?.last_sync || null;
-    }
-
-    return sendJson(res, 200, {
-      ...snapshot,
-      insights,
-      last_sync: lastSync,
-      requestId,
-    });
-  } catch (err) {
-    logServerError('analytics_full_error', err, {
-      requestId,
-      route: '/api/analytics/full',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'analytics_full_upstream_failed',
-        error_code: 'analytics_full_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
-async function handleAnalyticsFollowers(req, res) {
-  const requestId = generateRequestId('analytics_followers');
-  try {
-    const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/followers');
-    if (!user) return;
-
-    const snapshot = await fetchPhylloAnalyticsSnapshot({
-      userId: user.id,
-      requestId,
-      route: '/api/analytics/followers',
-    });
-    const trends = (snapshot && snapshot.followers) || [];
-    const days = getAnalyticsWindowDays(req);
-    const limited = filterSeriesByWindow(trends, days);
-    const sorted = limited.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    return sendJson(res, 200, { ok: true, trends: sorted, requestId });
-  } catch (err) {
-    logServerError('analytics_followers_error', err, {
-      requestId,
-      route: '/api/analytics/followers',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'analytics_followers_upstream_failed',
-        error_code: 'analytics_followers_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
-async function handleAnalyticsDemographics(req, res) {
-  const requestId = generateRequestId('analytics_demographics');
-  try {
-    const user = await authenticateRequestForRoute(
-      req,
-      res,
-      requestId,
-      '/api/analytics/demographics'
-    );
-    if (!user) return;
-
-    const snapshot = await fetchPhylloAnalyticsSnapshot({
-      userId: user.id,
-      requestId,
-      route: '/api/analytics/demographics',
-    });
-    return sendJson(res, 200, {
-      ok: true,
-      demographics: snapshot.demographics || { age_groups: {}, genders: {}, countries: {}, languages: {} },
-      requestId,
-    });
-  } catch (err) {
-    logServerError('analytics_demographics_error', err, {
-      requestId,
-      route: '/api/analytics/demographics',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'analytics_demographics_upstream_failed',
-        error_code: 'analytics_demographics_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
-async function handleAnalyticsAlerts(req, res) {
-  const requestId = generateRequestId('analytics_alerts');
-  try {
-    const user = await authenticateRequestForRoute(req, res, requestId, '/api/analytics/alerts');
-    if (!user) return;
-
-    if (!supabaseAdmin) {
-      return sendJson(res, 200, { ok: true, alerts: [], requestId });
-    }
-    const days = getAnalyticsWindowDays(req);
-    const since = getSinceDate(days).toISOString();
-    const { data, error } = await supabaseAdmin
-      .from('analytics_alerts')
-      .select('*')
-      .eq('user_id', user.id)
-      .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) {
-      logServerError('analytics_alerts_db_error', error, {
-        requestId,
-        route: '/api/analytics/alerts',
-      });
-      return sendJson(res, 200, { ok: true, alerts: [], requestId });
-    }
-
-    return sendJson(res, 200, { ok: true, alerts: data || [], requestId });
-  } catch (err) {
-    logServerError('analytics_alerts_error', err, {
-      requestId,
-      route: '/api/analytics/alerts',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'analytics_alerts_upstream_failed',
-        error_code: 'analytics_alerts_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
-async function handlePhylloAccounts(req, res) {
-  const requestId = generateRequestId('phyllo_accounts');
-  try {
-    const user = await authenticateRequestForRoute(req, res, requestId, '/api/phyllo/accounts');
-    if (!user) return;
-
-    const missingPhyllo = getMissingPhylloEnvVars();
-    if (missingPhyllo.length) {
-      logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
-        requestId,
-        route: '/api/phyllo/accounts',
-        missing: missingPhyllo,
-      });
-      return sendJson(res, 200, { ok: true, connected: false, accounts: [], upstream_ok: false, requestId });
-    }
-
-    const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
-      user.id,
-      requestId,
-      '/api/phyllo/accounts'
-    );
-    if (accountsError) {
-      return sendJson(res, 502, {
-        ok: false,
-        error: 'phyllo_accounts_db_error',
-        error_code: 'phyllo_accounts_db_error',
-        requestId,
-      });
-    }
-    const mapped = accounts.map(mapPhylloAccountForResponse).filter(Boolean);
-
-    return sendJson(res, 200, {
-      ok: true,
-      connected: mapped.length > 0,
-      accounts: mapped,
-      upstream_ok: true,
-      requestId,
-    });
-  } catch (err) {
-    logServerError('phyllo_accounts_error', err, {
-      requestId,
-      route: '/api/phyllo/accounts',
-    });
-    if (!res.headersSent) {
-      sendJson(res, 502, {
-        ok: false,
-        error: 'phyllo_accounts_upstream_failed',
-        error_code: 'phyllo_accounts_upstream_failed',
-        requestId,
-      });
-    }
-  }
-}
-
 function isUserPro(req) {
   const plan = req?.user?.plan;
-  const tier = req?.user?.tier;
   if (req?.user?.isPro) return true;
-  const normalizedTier = tier ? String(tier).toLowerCase().trim() : '';
-  if (normalizedTier === 'pro' || normalizedTier === 'paid' || normalizedTier === 'premium') return true;
   if (plan && (plan === 'pro' || plan === 'teams')) return true;
   return false;
 }
 
-function isUserAdmin(req) {
-  return !!req?.user?.isAdmin;
-}
-
-async function configurePhylloWebhook() {
-  if (!PHYLLO_WEBHOOK_URL) {
-    throw new Error('Phyllo webhook URL is not configured');
-  }
-  const events = PHYLLO_WEBHOOK_EVENTS || [];
-  const payload = await ensurePhylloWebhook({
-    webhookUrl: PHYLLO_WEBHOOK_URL,
-    events,
-    environment: PHYLLO_WEBHOOK_ENV,
-    description: PHYLLO_WEBHOOK_DESCRIPTION,
-  });
-  const webhookId = payload?.id || payload?.webhook_id;
-  if (webhookId) {
-    const map = loadCustomersMap();
-    map.phyllo_webhook_id = webhookId;
-    saveCustomersMap(map);
-    console.log('[Phyllo] webhook configured', webhookId);
-  }
-  return payload;
-}
-
 function analyticsUpgradeRequired(res) {
-  return sendJson(res, 200, {
-    disabled: true,
-    reason: 'upgrade_required',
+  return sendJson(res, 402, {
+    ok: false,
+    error: 'upgrade_required',
+    feature: 'analytics_full',
   });
 }
 
@@ -1170,74 +372,6 @@ async function readJsonBody(req) {
   });
 }
 
-async function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let length = 0;
-    req.on('data', (chunk) => {
-      length += chunk.length;
-      if (length > MAX_JSON_BODY) {
-        const err = new Error('Payload too large');
-        err.statusCode = 413;
-        reject(err);
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      resolve(Buffer.concat(chunks, length));
-    });
-    req.on('error', (err) => reject(err));
-  });
-}
-
-function parsePhylloSignatureHeader(signatureHeader) {
-  if (!signatureHeader) return '';
-  const parts = String(signatureHeader)
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-  for (const part of parts) {
-    const idx = part.indexOf('=');
-    if (idx > 0) {
-      const key = part.slice(0, idx).trim().toLowerCase();
-      const value = part.slice(idx + 1).trim();
-      if (['sha256', 'signature', 'v1'].includes(key) && value) {
-        return value;
-      }
-    }
-  }
-  if (parts.length === 1) {
-    const single = parts[0];
-    const idx = single.indexOf('=');
-    if (idx > 0) {
-      return single.slice(idx + 1).trim();
-    }
-    return single;
-  }
-  return signatureHeader.trim();
-}
-
-function verifyPhylloWebhookSignature(rawBody, signatureHeader) {
-  if (!PHYLLO_WEBHOOK_SIGNING_SECRET) return true;
-  const signature = parsePhylloSignatureHeader(signatureHeader);
-  if (!signature) return false;
-  try {
-    const expected = crypto
-      .createHmac('sha256', PHYLLO_WEBHOOK_SIGNING_SECRET)
-      .update(rawBody)
-      .digest('hex');
-    const expectedBuf = Buffer.from(expected, 'hex');
-    const providedBuf = Buffer.from(signature, 'hex');
-    if (expectedBuf.length !== providedBuf.length) return false;
-    return crypto.timingSafeEqual(expectedBuf, providedBuf);
-  } catch (err) {
-    console.error('[Phyllo] webhook signature verification error', err);
-    return false;
-  }
-}
-
 async function requireSupabaseUser(req) {
   if (!supabaseAdmin) {
     const err = new Error('Supabase admin client not configured');
@@ -1258,35 +392,6 @@ async function requireSupabaseUser(req) {
     throw err;
   }
   return data.user;
-}
-
-async function resolveAuthorizationHeaderUser(req) {
-  if (!supabaseAdmin) return null;
-  if (req.user) return req.user;
-  const authHeader =
-    (req.headers['authorization'] || req.headers['Authorization'] || '').trim();
-  if (!authHeader.toLowerCase().startsWith('bearer ')) {
-    return null;
-  }
-  const token = authHeader.slice(7).trim();
-  if (!token) return null;
-  try {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !data?.user) {
-      console.warn('[Auth] Authorization header lookup failed', error?.message || 'invalid token');
-      return null;
-    }
-    req.user = data.user;
-    return data.user;
-  } catch (err) {
-    console.warn('[Auth] Authorization header processing error', err?.message || err);
-    return null;
-  }
-}
-
-async function ensureAnalyticsRequestUser(req) {
-  if (req.user) return req.user;
-  return resolveAuthorizationHeaderUser(req);
 }
 
 function parseLinkedDayFromKey(calendarDayId) {
@@ -1717,6 +822,15 @@ async function handleGetDesignAsset(req, res, assetId) {
       return sendJson(res, 404, { error: 'Asset not found' });
     }
     let assetRow = data;
+    if (assetRow.status === 'rendering' || assetRow.status === 'queued') {
+      try {
+        await advanceDesignAssetPipeline();
+        const refreshed = await getDesignAssetById(assetId, user.id);
+        if (refreshed) assetRow = refreshed;
+      } catch (pipelineError) {
+        console.warn('Design asset inline pipeline tick failed', pipelineError?.message || pipelineError);
+      }
+    }
     return sendJson(res, 200, mapDesignAssetRow(assetRow));
   } catch (error) {
     console.error('Design asset fetch error:', error);
@@ -2088,7 +1202,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
       : 'Keep the layout hero-image forward with concise overlays that stay under 12 total English words.',
     'All copy must be real English words (no lorem ipsum, no pseudo text).',
     'Avoid dense paragraphs—use large typography, capsule shapes, stickers, and gradient blocks so it is visually appealing, not a page of text.',
-    'Ensure the design feels native to Instagram/TikTok: bold hook, social proof mid-frame, urgent CTA at the end.',
+    'Ensure the design feels native to Instagram/TikTok algorithms: bold hook, social proof mid-frame, urgent CTA at the end.',
     'Use bold, legible typography and high-contrast layering suitable for mobile.',
     paletteTokens.length ? `Stick to this palette: ${paletteTokens.join(', ')}.` : '',
     fontTokens.length ? `Typography should pair ${fontTokens.join(' + ')}.` : '',
@@ -2098,118 +1212,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 }
 
 
-const OPENAI_MAX_CONCURRENCY = (() => {
-  const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 10;
-})();
-const OPENAI_CHUNK_MAX_DAYS = (() => {
-  const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
-  return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
-})();
-const OPENAI_GENERATION_TIMEOUT_MS = (() => {
-  const configured = Number(process.env.OPENAI_GENERATION_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured >= 120000 ? configured : 120000;
-})();
-const OPENAI_MAX_ATTEMPTS = (() => {
-  const configured = Number(process.env.OPENAI_MAX_ATTEMPTS);
-  return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
-})();
-const REGEN_MAX_CONCURRENT = (() => {
-  const configured = Number(process.env.REGEN_MAX_CONCURRENT);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 3;
-})();
-const openAiQueue = [];
-let openAiActiveRequests = 0;
-async function withOpenAiSlot(fn) {
-  if (openAiActiveRequests >= OPENAI_MAX_CONCURRENCY) {
-    await new Promise((resolve) => {
-      openAiQueue.push(resolve);
-    });
-  }
-  openAiActiveRequests += 1;
-  try {
-    return await fn();
-  } finally {
-    openAiActiveRequests -= 1;
-    const next = openAiQueue.shift();
-    if (next) next();
-  }
-}
-
-const regenQueue = [];
-let regenInFlight = 0;
-const HOT100_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const hot100Cache = new Map();
-async function acquireRegenSlot(requestId) {
-  if (regenInFlight >= REGEN_MAX_CONCURRENT) {
-    console.log('[Calendar][Regen] queued', { requestId, inFlight: regenInFlight });
-    await new Promise((resolve) => regenQueue.push(resolve));
-  }
-  regenInFlight += 1;
-}
-function releaseRegenSlot() {
-  regenInFlight = Math.max(0, regenInFlight - 1);
-  const next = regenQueue.shift();
-  if (next) next();
-}
-
-async function mapLimit(items, limit, worker) {
-  if (!Array.isArray(items) || items.length === 0) return [];
-  const results = new Array(items.length);
-  let index = 0;
-  let active = 0;
-  return new Promise((resolve, reject) => {
-    const runNext = () => {
-      if (index >= items.length && active === 0) {
-        resolve(results);
-        return;
-      }
-      while (active < limit && index < items.length) {
-        const currentIndex = index;
-        const item = items[currentIndex];
-        index += 1;
-        active += 1;
-        Promise.resolve()
-          .then(() => worker(item, currentIndex))
-          .then((result) => {
-            results[currentIndex] = result;
-            active -= 1;
-            runNext();
-          })
-          .catch((err) => reject(err));
-      }
-    };
-    runNext();
-  });
-}
-
-async function mapWithConcurrency(items, limit, fn) {
-  if (!Array.isArray(items) || items.length === 0) return [];
-  const results = new Array(items.length);
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const idx = i++;
-      if (idx >= items.length) return;
-      results[idx] = await fn(items[idx], idx);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-async function getCachedHot100(options = {}) {
-  const key = 'nonholiday_hot100';
-  const cached = hot100Cache.get(key);
-  if (cached && Date.now() - cached.fetchedAt < HOT100_CACHE_TTL_MS) {
-    return cached.value;
-  }
-  const fresh = await getNonHolidayHot100(options);
-  hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
-  return fresh;
-}
-
-function openAIRequest(options, payload) {
+function openAIRequest(options, payload, retryCount = 0) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
@@ -2219,201 +1222,43 @@ function openAIRequest(options, payload) {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             resolve(JSON.parse(data));
           } else {
-            const err = new Error(`OpenAI error ${res.statusCode}: ${data}`);
-            err.code = 'OPENAI_BACKEND_ERROR';
-            err.statusCode = res.statusCode;
-            reject(err);
+            // Retry on 502, 503, 504 (server errors) up to 3 times
+            if ((res.statusCode === 502 || res.statusCode === 503 || res.statusCode === 504) && retryCount < 3) {
+              const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+              console.log(`OpenAI ${res.statusCode} error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+              setTimeout(() => {
+                openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+              }, delay);
+            } else {
+              reject(new Error(`OpenAI error ${res.statusCode}: ${data}`));
+            }
           }
         } catch (err) {
           reject(err);
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      // Retry on network errors up to 3 times
+      if (retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(`OpenAI network error, retrying in ${delay}ms (attempt ${retryCount + 1}/3)...`, err.message);
+        setTimeout(() => {
+          openAIRequest(options, payload, retryCount + 1).then(resolve).catch(reject);
+        }, delay);
+      } else {
+        reject(err);
+      }
+    });
     if (payload) req.write(payload);
     req.end();
   });
 }
 
-function stripJsonFences(raw = '') {
-  return String(raw || '')
-    .replace(/```(?:json)?\s*/gi, '')
-    .replace(/```/g, '')
-    .trim();
-}
-
-function captureJsonSegment(text, startIndex) {
-  const len = text.length;
-  let inString = false;
-  let escape = false;
-  const stack = [];
-  for (let i = startIndex; i < len; i += 1) {
-    const char = text[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-      } else if (char === '\\') {
-        escape = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === '{' || char === '[') {
-      stack.push(char);
-      continue;
-    }
-    if (char === '}' || char === ']') {
-      if (!stack.length) break;
-      const opener = stack.pop();
-      if ((opener === '{' && char !== '}') || (opener === '[' && char !== ']')) break;
-      if (!stack.length) {
-        return text.slice(startIndex, i + 1);
-      }
-    }
-  }
-  return null;
-}
-
-function extractJsonChunk(raw = '') {
-  const text = stripJsonFences(raw);
-  if (!text) return null;
-  for (let start = 0; start < text.length; start += 1) {
-    const char = text[start];
-    if (char !== '{' && char !== '[') continue;
-    const segment = captureJsonSegment(text, start);
-    if (segment) return segment.trim();
-  }
-  return null;
-}
-
-function extractCalendarJsonCandidates(rawText = '') {
-  const text = String(rawText || '');
-  const candidates = [];
-  const seen = new Set();
-  const maxLen = 200000;
-  const addCandidate = (value) => {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return;
-    if (trimmed.length > maxLen) return;
-    if (seen.has(trimmed)) return;
-    seen.add(trimmed);
-    candidates.push(trimmed);
-  };
-  const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
-  let match;
-  while ((match = fenceRegex.exec(text))) {
-    addCandidate(match[1]);
-  }
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (char !== '{' && char !== '[') continue;
-    const segment = captureJsonSegment(text, i);
-    if (segment) {
-      addCandidate(segment);
-      i += segment.length - 1;
-    }
-  }
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    addCandidate(trimmed);
-  }
-  return candidates;
-}
-
-function extractDayFromPostKeyValue(value = '') {
-  const match = String(value || '').match(/day-(\d+)-slot-/i);
-  if (!match) return null;
-  const dayValue = Number(match[1]);
-  return Number.isFinite(dayValue) ? dayValue : null;
-}
-
-function parseFirstValidCalendarPayload(candidates = [], expectedCount, startDay, days, postsPerDay = 1) {
-  const expectedStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const expectedDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
-  const expectedEnd = expectedStart + expectedDays - 1;
-  for (let idx = 0; idx < candidates.length; idx += 1) {
-    const rawCandidate = candidates[idx];
-    if (!rawCandidate) continue;
-    const cleaned = String(rawCandidate).trim().replace(/,\s*([}\]])/g, '$1');
-    let parsed;
-    try {
-      parsed = cleaned ? JSON.parse(cleaned) : null;
-    } catch {
-      continue;
-    }
-    let posts = null;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      if (Object.prototype.hasOwnProperty.call(parsed, 'posts') && Array.isArray(parsed.posts)) {
-        posts = parsed.posts;
-      }
-    }
-    if (!Array.isArray(posts)) continue;
-    if (Number.isFinite(expectedCount) && posts.length !== expectedCount) continue;
-    const dayValues = posts
-      .map((post) => {
-        const direct = Number(post?.day);
-        if (Number.isFinite(direct)) return direct;
-        const keyValue = toPlainString(post?.post_key || post?.postKey || '');
-        return extractDayFromPostKeyValue(keyValue);
-      })
-      .filter((day) => Number.isFinite(day));
-    if (!dayValues.length) continue;
-    const minDay = Math.min(...dayValues);
-    const maxDay = Math.max(...dayValues);
-    const inRange = minDay >= expectedStart && maxDay <= expectedEnd;
-    if (!inRange) continue;
-    return {
-      posts,
-      payloadRaw: cleaned,
-      parsedType: Array.isArray(parsed) ? 'array' : typeof parsed,
-      chosenIndex: idx,
-      candidatesCount: candidates.length,
-      minDay,
-      maxDay,
-      postsPerDay,
-    };
-  }
-  return null;
-}
-
-function parseAiJson(raw) {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === 'object') return raw;
-  const chunk = extractJsonChunk(raw);
-  if (!chunk) return null;
-  try {
-    return JSON.parse(chunk);
-  } catch (err) {
-    return null;
-  }
-}
-
-function resolvePostsCandidate(parsed) {
-  if (!parsed) return null;
-  if (Array.isArray(parsed)) return parsed;
-  const candidate = parsed.posts || parsed.calendar_posts || parsed.data || parsed.value;
-  if (Array.isArray(candidate)) return candidate;
-  return null;
-}
-
 // Generic sanitizer + parse attempts for LLM JSON array output.
 // Returns { data, attempts } where data is parsed array (or object wrapped into array) and attempts is diagnostics.
-function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}, context = {}) {
-  const diagnostics = { rawLength: String(rawContent || '').length, attempts: [] };
-  const directParsed = parseAiJson(rawContent);
-  const directPosts = resolvePostsCandidate(directParsed);
-  if (Array.isArray(directPosts)) {
-    const validated = typeof itemValidate === 'function'
-      ? directPosts.filter((item) => itemValidate(item))
-      : directPosts;
-    diagnostics.attempts.push('direct');
-    return { data: validated, attempts: diagnostics.attempts };
-  }
+function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}) {
+  const diagnostics = { rawLength: rawContent.length, attempts: [] };
   let raw = String(rawContent || '').trim()
     .replace(/```\s*json\s*/gi, '')
     .replace(/```/g, '')
@@ -2520,37 +1365,9 @@ function parseLLMArray(rawContent, { requireArray = true, itemValidate } = {}, c
   } catch (e2) {
     diagnostics.attempts.push({ ok: false, fallbackError: e2.message });
   }
-  const preview = raw.slice(0, 300);
-  const contextLabel = formatParseContext(context);
-  const messageParts = [
-    `Failed to parse JSON after attempts: ${lastErr && lastErr.message ? lastErr.message : 'unknown error'}`,
-  ];
-  if (contextLabel) {
-    messageParts.push(`context: ${contextLabel}`);
-  }
-  if (preview) {
-    messageParts.push(`preview: ${preview}`);
-  }
-  throw new Error(messageParts.join(' | '));
-}
-
-function formatCalendarLogContext(context = {}) {
-  const parts = [];
-  if (context.requestId) parts.push(`requestId=${context.requestId}`);
-  if (context.batchIndex !== undefined && context.batchIndex !== null) parts.push(`batchIndex=${context.batchIndex}`);
-  if (context.startDay !== undefined && context.startDay !== null) parts.push(`startDay=${context.startDay}`);
-  return parts.join(' ');
-}
-
-function formatParseContext(context = {}) {
-  if (!context || typeof context !== 'object') return '';
-  const parts = [];
-  if (context.endpoint) parts.push(`endpoint=${context.endpoint}`);
-  if (context.requestId) parts.push(`requestId=${context.requestId}`);
-  if (context.batchIndex !== undefined && context.batchIndex !== null) parts.push(`batchIndex=${context.batchIndex}`);
-  if (context.startDay !== undefined && context.startDay !== null) parts.push(`startDay=${context.startDay}`);
-  if (context.day !== undefined && context.day !== null) parts.push(`day=${context.day}`);
-  return parts.join(' ');
+  const truncated = raw.slice(0, 500);
+  const msg = 'Failed to parse JSON after attempts: ' + (lastErr && lastErr.message) + '\nRaw (truncated): ' + truncated;
+  throw new Error(msg);
 }
 
 async function embedTextList(texts) {
@@ -2593,1505 +1410,214 @@ function extractStrategyKeyword(text = '') {
   return tokens.length ? tokens[0] : 'this topic';
 }
 
-const CALENDAR_ANGLE_OPTIONS = [
-  'beginner explainer',
-  'common mistake',
-  'myth vs reality',
-  'step-by-step process',
-  'checklist',
-  "do vs don’t",
-  'framework/mental model',
-  'case study/story',
-  'tools/resources',
-  'advanced nuance',
-];
-
-function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
-  const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
-  const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
-  return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'storyPrompt', 'storyPromptPlus', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
-    properties: {
-      post_key: { type: 'string', minLength: 1 },
-      day: {
-        type: 'integer',
-        minimum: safeMin,
-        maximum: safeMax,
-      },
-      slotIndex: { type: 'integer', minimum: 0 },
-      title: { type: 'string', minLength: 1 },
-      topicCapsule: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['summary', 'mustUse', 'mustAvoid', 'audienceAngle', 'keyEntities'],
-        properties: {
-          summary: { type: 'string', minLength: 1 },
-          mustUse: {
-            type: 'array',
-            minItems: 5,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          mustAvoid: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          audienceAngle: { type: 'string', minLength: 1 },
-          keyEntities: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 5,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
-      },
-      hook: { type: 'string', minLength: 1 },
-      caption: { type: 'string', minLength: 1 },
-      pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
-      topic_signature: { type: 'string', minLength: 3 },
-      angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
-      cta: { type: 'string', minLength: 1 },
-      designNotes: { type: 'string', minLength: 1 },
-      storyPrompt: { type: 'string', minLength: 1 },
-      storyPromptPlus: { type: 'string', minLength: 1 },
-      distributionPlan: { type: 'string', minLength: 1 },
-      hashtags: {
-        type: 'array',
-        items: { type: 'string', minLength: 1 },
-      },
-      script: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      reelScript: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      engagementScripts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commentReply', 'dmReply'],
-        properties: {
-          commentReply: { type: 'string', minLength: 1 },
-          dmReply: { type: 'string', minLength: 1 },
-        },
-      },
-    },
-  };
-}
-
-function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
-  const safeCount = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
-  return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['posts'],
-    properties: {
-      posts: {
-        type: 'array',
-        items: buildCalendarPostSchema(minDay, maxDay),
-      },
-    },
-  };
-}
-
-function buildBrandBrainDirective(settings = {}) {
-  if (!settings || !settings.enabled) return '';
-  const lines = [
-    'Apply sales psychology and platform heuristics without naming specific apps.',
-    'Choose EXACTLY ONE persuasion lever per post (loss aversion, curiosity gap, authority/insider expertise, social proof, identity/status, risk reversal) and make it explicit in the writing.',
-    'Choose EXACTLY ONE primary algorithm signal per post (comments, saves, shares) and make DistributionPlan state the signal and why it was chosen.',
-    'STRUCTURE (Brand Brain only): For EACH post, select EXACTLY ONE archetype: Beginners/How-To, Instant Hooks, Tips/Tools/Hacks, Storytelling/Mindset.',
-    'Single intent rule: Pick ONE primary intent per post (SAVE or COMMENT or SHARE). Hook, Reel Script, Caption, CTA, Engagement Loop, Distribution Plan, and Design Notes must align to that single intent and the chosen archetype; no mixed intents.',
-    'Hook rules (Instant Hooks): pattern-interrupting in the first 1-2 seconds, niche-specific and concrete; ban generic openers like "Discover why", "Did you know", "Game changer" unless rewritten with specific details; prefer contrast, misconception, numbers, or a bold claim immediately supported by the body.',
-    'Proof specificity (global): every post must include at least 2 niche-specific proof points (numbers, constraints, tradeoffs, criteria, concrete checks). Ban vague phrasing like "game changer", "discover why", "clients share", "inspire others" unless rewritten with specific, concrete details.',
-    'Body rules by archetype:',
-    '- Beginners/How-To: simple 3-5 step method, beginner mistakes, or a "start here" sequence.',
-    '- Tips/Tools/Hacks: checklist/framework, "do this instead", or "3 things to check" designed for saves/shares.',
-    '- Storytelling/Mindset: short lesson/shift, what changed, and a clear takeaway.',
-    '- Instant Hooks: tight, proof-based body; no fluffy lifestyle adjectives.',
-    'Category-specific rules:',
-    '- Social Proof: mini case study structure (PROBLEM -> CONSTRAINT -> DECISION/MOVE -> RESULT). Hook leads with outcome + specificity (numbers/time/constraint), not generic client praise. Require 2+ concrete proof points (timeframe, neighborhood tier, budget band, offer terms concept, inspection issue, HOA/insurance constraint, flood zone, walkability, rental rules) tailored to the niche. CTA must match intent: COMMENT offers a specific resource tied to the case (model invents a short keyword), SAVE frames saving the checklist/steps. Engagement loop ladders: acknowledge -> one qualifying question -> offer resource. Distribution Plan must state a concrete reason to save/share/comment tied to the proof artifact.',
-    '- Education/How-To: teach by simplifying/reframing (not listing). Expose one dominant mistake, a broken mental model, or a leverage point that changes outcomes. Hook challenges what beginners think matters; avoid neutral tips framing; favor mistake/myth/reordering hooks. Body is 3-4 ranked-by-impact points with explicit why it matters. Use stats/facts only to validate the belief shift. Primary intent must be SAVE or CHECKLIST REQUEST; CTA aligns with future utility and avoids generic comment prompts unless qualifying. Engagement loop advances qualification (timeline/readiness/constraints) with no polite filler. Bias toward saves over likes; Distribution Plan must justify why saving/sharing benefits the viewer later. Self-check: framework over list, belief shift present, sales-adjacent intent without overt selling.',
-    '- Tips/Tools/Hacks: checklist/framework designed for saves/shares.',
-    '- Storytelling/Mindset: clear shift/lesson + takeaway, still with 2+ proof points.',
-    '- Lifestyle: do not describe benefits; expose why most people misunderstand the lifestyle. Hook challenges a belief or expectation and creates expectation-vs-reality tension; ban declarative praise. Body avoids multi-point benefit lists; focus on ONE underlying lifestyle lever that compounds daily life, explain why people underestimate it and how ignoring it leads to poor decisions. Any data supports the insight, not decorates it. Implicitly separate informed vs uninformed movers; position the insight as decision leverage, not inspiration; avoid motivational tone. CTA removes tips/learn-more/generic comments; favor SAVE/SHARE/GUIDE or INSIGHT requests and frame as preventing a future mistake. Engagement loop qualifies seriousness/timing, avoids praise-only or casual acknowledgements, and progresses toward DM intent naturally. Bias toward saves/shares; Distribution Plan must justify rewatch/reference value. Self-check: changes how viewers evaluate the lifestyle, creates perception-vs-reality tension, and subtly advances sales readiness without pitching.',
-    'CTA + Engagement Loop: CTA must match the primary intent with specific wording (save this checklist, comment X for Y, share with someone choosing A/B). Engagement loop replies must ladder: easy answer -> qualifying question -> offer resource, all tied to the post angle.',
-    'Distribution Plan: must explain why the viewer should save/share/comment in one line and match the chosen intent.',
-    'Variety rule: rotate archetypes across the month and avoid repeating the same hook structure on adjacent posts; do this without fixed templates.',
-    'Brand Brain self-check (silent): before finalizing each post, confirm single archetype, single intent, hook specificity, 2+ proof points, no generic openers, and CTA/engagement/distribution alignment.',
-    'Use conversion-forward language while staying compliant and specific; avoid vague claims.',
-  ];
-  return lines.join('\n');
-}
-
-const VOICE_LOCK_PRESET_GUIDES = {
-  'no-ai-polish': {
-    label: 'No AI Polish',
-    lines: [
-      '- Hook: 1 sentence, 6-10 words, no question mark, no exclamation.',
-      '- Caption: 2-4 sentences; each 6-12 words; plain language.',
-      '- Caption: minimal adjectives; no filler transitions.',
-      '- CTA: 3-6 words, direct action, no exclamation.',
-      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words; calm tone.',
-      '- Reel Script: 4 lines (Hook + 2 body + CTA); each 6-12 words.',
-      '- Reel Script: no emojis; no exclamation marks.',
-      '- Global: informal, minimal hype.',
-      '- Global: few commas; short clauses.',
-      '- Global: avoid hedging.',
-    ],
-  },
-  punchy: {
-    label: 'Punchy',
-    lines: [
-      '- Hook: 4-8 words, fragment allowed, ends with a period.',
-      '- Caption: 3-5 lines; each 4-9 words; one idea per line.',
-      '- Caption: energetic verbs; no long sentences.',
-      '- CTA: 2-5 words, imperative.',
-      '- Engagement Loop: comment reply <= 12 words; DM reply <= 14 words; brisk tone.',
-      '- Reel Script: 4 beats with line breaks; each beat 5-10 words.',
-      '- Reel Script: one short sentence per beat.',
-      '- Global: confident, higher tempo.',
-      '- Global: minimal commas; short stops.',
-      '- Global: no question marks.',
-    ],
-  },
-  direct: {
-    label: 'Direct',
-    lines: [
-      '- Hook: 1 sentence, 7-12 words, declarative, no question.',
-      '- Caption: 2-3 sentences; each 8-14 words; zero hedging.',
-      '- Caption: no motivational fluff.',
-      '- CTA: 3-7 words; imperative; no exclamation.',
-      '- Engagement Loop: comment reply <= 14 words; DM reply <= 16 words; practical tone.',
-      '- Engagement Loop: question optional, keep it short.',
-      '- Reel Script: 3 steps with line breaks (statement -> key point -> CTA).',
-      '- Reel Script: each step 7-12 words.',
-      '- Global: present tense; no soft qualifiers.',
-      '- Global: plain, literal phrasing.',
-    ],
-  },
-  contrarian: {
-    label: 'Contrarian',
-    lines: [
-      '- Hook: 1 sentence, 8-14 words; respectful counterpoint; no exclamation.',
-      '- Caption: exactly 3 parts (belief -> counterpoint -> takeaway).',
-      '- Caption: each part 1 sentence, 8-14 words.',
-      '- CTA: 4-8 words; invites a specific stance or choice.',
-      '- Engagement Loop: comment reply asks for their take in <= 14 words.',
-      '- Engagement Loop: DM reply offers one clarifier in <= 16 words.',
-      '- Reel Script: 3 beats with line breaks; each 8-14 words.',
-      '- Reel Script: one sentence per beat.',
-      '- Global: calm, precise tone.',
-      '- Global: no exclamation marks.',
-    ],
-  },
-  'story-first': {
-    label: 'Story-First',
-    lines: [
-      '- Hook: 1 sentence; mid-moment; 8-14 words; no exclamation.',
-      '- Caption: 3-4 sentences; setup -> friction -> takeaway.',
-      '- Caption: each 8-14 words; narrative flow.',
-      '- CTA: 4-8 words; soft invitation.',
-      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words; warm tone.',
-      '- Reel Script: 3 beats with line breaks; each 8-14 words.',
-      '- Reel Script: one sentence per beat.',
-      '- Global: conversational, lightly detailed.',
-      '- Global: minimal hype.',
-      '- Global: commas allowed, but keep clauses short.',
-    ],
-  },
-  casual: {
-    label: 'Casual / Friendly Expert',
-    lines: [
-      '- Hook: 1 sentence, 7-12 words; friendly tone; no exclamation.',
-      '- Caption: 2-4 sentences; each 7-13 words.',
-      '- Caption: explain simply; no hype.',
-      '- CTA: 4-8 words; low pressure.',
-      '- Engagement Loop: comment reply <= 16 words; DM reply <= 18 words.',
-      '- Engagement Loop: one optional question max.',
-      '- Reel Script: 3 beats with line breaks; each 7-12 words.',
-      '- Reel Script: one sentence per beat.',
-      '- Global: warm, conversational; mild hedging allowed.',
-      '- Global: avoid long clauses.',
-    ],
-  },
-};
-
-function normalizeVoiceLockPresetKey(value = '') {
-  const raw = String(value || '').trim().toLowerCase();
-  const key = raw.replace(/\s+/g, '-');
-  if (VOICE_LOCK_PRESET_GUIDES[key]) return key;
-  if (key === 'friendly-expert' || key === 'friendly') return 'casual';
-  return null;
-}
-
-const VOICE_LOCK_FIELDS = [
-  'Hook',
-  'Caption/Main body',
-  'CTA',
-  'Engagement Loop',
-  'Reel Script',
-  'Execution Notes (wording only)',
-];
-
-function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
-  const preset = VOICE_LOCK_PRESET_GUIDES[presetKey] || VOICE_LOCK_PRESET_GUIDES.direct;
-  const lines = [
-    'VOICE LOCK STYLE RULES',
-    'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
-    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust tone while staying on the same topic_signature.',
-    'Voice Lock: Change tone/voice ONLY. Must not change POST_TOPIC or structure.',
-    `Apply ONLY to: ${VOICE_LOCK_FIELDS.join(', ')}.`,
-    'Voice changes tone only; it must not change the topic or introduce new subject matter.',
-    'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
-    'Leave those excluded sections exactly as generated by baseline/Brand Brain logic (content, structure, meaning).',
-    'JSON keys and schema must remain unchanged; only wording, cadence, and phrasing may change.',
-    'Brand Brain determines strategy (psych triggers, engagement loops, algorithm tactics). Voice Lock determines tone/voice only.',
-    'If there is any conflict, Brand Brain strategy wins and Voice Lock rewrites phrasing to match the selected preset.',
-    `Preset: ${preset.label}`,
-    ...preset.lines,
-  ];
-  if (mode === 'sample' && sample) {
-    lines.push('Match the sample tone, cadence, and vocabulary.');
-    lines.push('VOICE LOCK - WRITING SAMPLE');
-    lines.push('[BEGIN SAMPLE]');
-    lines.push(sample);
-    lines.push('[END SAMPLE]');
-  }
-  return `${lines.join('\n')}\n`;
-}
-
-function resolveVoiceLockConfig(input = {}, isPro = false) {
-  const wantsEnabled = Boolean(input?.voiceLockEnabled);
-  if (!wantsEnabled) {
-    return {
-      enabled: false,
-      mode: 'preset',
-      preset: 'direct',
-      instructionBlock: '',
-      fields: VOICE_LOCK_FIELDS,
-      reason: 'disabled',
-    };
-  }
-  if (!isPro) {
-    return {
-      enabled: false,
-      mode: 'preset',
-      preset: 'direct',
-      instructionBlock: '',
-      fields: VOICE_LOCK_FIELDS,
-      reason: 'not_pro',
-    };
-  }
-  const sampleRaw = input.voiceLockSample || '';
-  const presetRaw = input.voiceLockPreset || '';
-  const requestedMode = String(input.voiceLockMode || '').trim().toLowerCase();
-  const sample = typeof sampleRaw === 'string' ? sampleRaw.trim().slice(0, 2000) : '';
-  const presetKey = normalizeVoiceLockPresetKey(presetRaw);
-  if (!presetKey && !sample) {
-    return {
-      enabled: false,
-      mode: 'preset',
-      preset: 'direct',
-      instructionBlock: '',
-      fields: VOICE_LOCK_FIELDS,
-      reason: 'missing_preset',
-    };
-  }
-  if (!presetKey) {
-    return {
-      enabled: false,
-      mode: 'preset',
-      preset: 'direct',
-      instructionBlock: '',
-      fields: VOICE_LOCK_FIELDS,
-      reason: 'unknown_preset',
-    };
-  }
-  const mode = requestedMode === 'custom' && sample ? 'custom' : 'preset';
-  return {
-    enabled: true,
-    mode,
-    preset: presetKey,
-    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey, sample }),
-    fields: VOICE_LOCK_FIELDS,
-    reason: 'enabled',
-  };
-}
-
-const TARGET_AUDIENCE_PRESET_GUIDES = {
-  students: { label: 'Students', lens: 'Use simple language, add brief context, keep it practical.' },
-  'young-adults-18-25': { label: 'Young Adults (18–25)', lens: 'Keep it concise, relatable, and action-oriented.' },
-  'early-career-professionals': {
-    label: 'Early Career Professionals',
-    lens: 'Explain essentials without jargon; focus on quick wins.',
-  },
-  'working-professionals': {
-    label: 'Working Professionals',
-    lens: 'Be concise, outcome-focused, and time-aware.',
-  },
-  'parents-families': {
-    label: 'Parents / Families',
-    lens: 'Use reassuring tone and practical considerations.',
-  },
-  "entrepreneurs-founders": {
-    label: 'Entrepreneurs / Founders',
-    lens: 'Assume busy decision-makers; highlight leverage and clarity.',
-  },
-  creators: { label: 'Creators', lens: 'Speak to creative workflow and consistency.' },
-  'freelancers-solopreneurs': {
-    label: 'Freelancers / Solopreneurs',
-    lens: 'Emphasize efficiency, autonomy, and practical trade-offs.',
-  },
-  beginners: { label: 'Beginners', lens: 'Explain basics with extra context, keep it simple.' },
-  'experienced-advanced': {
-    label: 'Experienced / Advanced',
-    lens: 'Higher signal, less explanation, more nuance.',
-  },
-};
-
-function normalizeTargetAudiencePresetKey(value = '') {
-  const raw = String(value || '').trim().toLowerCase();
-  const key = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  if (TARGET_AUDIENCE_PRESET_GUIDES[key]) return key;
-  return null;
-}
-
-function buildTargetAudienceInstructionBlock({ presetKey }) {
-  const preset = TARGET_AUDIENCE_PRESET_GUIDES[presetKey];
-  if (!preset) return '';
-  const lines = [
-    'TARGET AUDIENCE',
-    'These instructions modify style/strategy only. The subject is locked to the provided Topic (MUST USE). Do not pivot to adjacent subjects.',
-    'Non-negotiable: do not change the post’s topic/title/angle. Only adjust audience framing while staying on the same topic_signature.',
-    'Target Audience: Influence vocabulary/examples only; NEVER mention the audience explicitly; must not change POST_TOPIC.',
-    `Target audience: ${preset.label}.`,
-    'TARGET AUDIENCE IS IMPLICIT ONLY. DO NOT mention or reference the target audience group anywhere in the output. This includes: title/topic, hook, caption, CTA, execution notes, design notes, engagement loop, reel script, distribution plan, hashtags, story prompt, suggested audio, and any other fields. No phrases like "for students", "if you’re a teacher", "for 18–25", "busy parents", "gen z", "millennials", etc.',
-    'Apply targeting only via: vocabulary level, examples, metaphors, pacing, platform-native behavior, objections, motivations, and scenario selection.',
-    'Audience framing changes examples/wording only; it must not change the topic/title.',
-    preset.lens,
-    'Apply only to phrasing for: Hook, Caption/Main body, CTA, Engagement Loop, Reel Script.',
-    'Do NOT change: Distribution Plan, Suggested Audio, Story Prompt.',
-    'Keep JSON keys and schema unchanged.',
-  ];
-  return `${lines.join('\n')}\n`;
-}
-
-function resolveTargetAudienceConfig(input = {}, isPro = false) {
-  const raw = input?.targetAudience && typeof input.targetAudience === 'object' ? input.targetAudience : {};
-  const wantsEnabled = Boolean(raw.enabled);
-  if (!wantsEnabled) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'disabled' };
-  }
-  if (!isPro) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'not_pro' };
-  }
-  const presetKey = normalizeTargetAudiencePresetKey(raw.preset);
-  if (!presetKey) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'missing_preset' };
-  }
-  return {
-    enabled: true,
-    preset: presetKey,
-    instructionBlock: buildTargetAudienceInstructionBlock({ presetKey }),
-    reason: 'enabled',
-  };
-}
-
-const TOPIC_LOCK_CONTRACT_BLOCK = [
-  'TOPIC LOCK (internal, do not output):',
-  '- Before each post, note POST_ID and POST_TOPIC (title/topic).',
-  '- All fields must stay about POST_TOPIC only; do not borrow from other posts.',
-].join('\n');
-
-const FIELD_REGROUNDING_INSTRUCTION =
-  'Start by restating POST_TOPIC in your own words internally, then write the field strictly about it without keyword stuffing. Do NOT mention the phrase "POST_TOPIC".';
-
-const FIELD_REGROUNDING_BLOCK = [
-  'FIELD RE-GROUNDING:',
-  `- ${FIELD_REGROUNDING_INSTRUCTION}`,
-].join('\n');
-
-const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
-  'SHORT-FORM CONTRACT:',
-  '- Output all required fields, non-empty.',
-  '- Style: TikTok/IG-native, entertaining-first, punchy, no intros.',
-  '- No fabricated facts: do not invent stats, dates/years, client stories, awards, sales numbers, exclusive listings, or real-world proof unless provided in input context.',
-  '- Temporal grounding (internal): classify TIME_SENSITIVE vs EVERGREEN.',
-  '- TIME_SENSITIVE may use CALENDAR CONTEXT for month/year/day; EVERGREEN forbids time words.',
-  '- On-topic: Hook, Caption, Reel Script must include >= 2 exact words from Title/Topic; Reel Script first sentence must include them.',
-  '- Binding: Hook, Caption, and Script must include the post title/topic as an exact substring at least once OR include 2-3 topic keywords derived from the title.',
-  '- Hook must reference the specific topic; avoid generic hooks that could fit any niche.',
-  '- Caption must stay on the same specific topic; no pivots to unrelated concepts.',
-  '- Script must stay on the same specific topic; do not introduce unrelated before/pivot/after arcs unless the topic explicitly calls for it.',
-  '- Time-awareness: never output year-specific claims unless provided and aligned to the calendar context.',
-  '- Uniqueness: fresh phrasing, no repeated opening patterns across days, no reused CTA wording or boilerplate. Avoid repeated openers like "Did you know", "Here\'s why", "Many people", "In today\'s video".',
-  'UNIQUENESS:',
-  'Do not reuse phrasing across posts. Avoid generic filler like “Absolutely!” and avoid repeating identical distributionPlan/engagementLoop structures beyond the required format.',
-  'Each post must use topic-specific wording and details.',
-  'Title: watchable premise (conflict/curiosity/specific moment); avoid brochure phrases ("Dream Home Awaits", "Exclusive", "Happy Client", "Personalized Service"); specific to topic and niche.',
-  'Category/Pillar: Education (myth vs fact / 3 signs / what I would do / common mistake), Social Proof (before/after / mistake->fix / turning point / receipts), Promotion (subtle, entertainment-first; no hard sell).',
-  'Hook: viewer-centric pattern interrupt, 7-11 words; single clear promise; ban salesy phrases ("reveals the secret", "dream home", "exclusive listings", "personalized service", "don\'t settle", "act fast", "ready to navigate"); falsifiable and specific.',
-  'Caption: use a mini-arc in short lines (6-9 lines max): 1) Before state, 2) Pivot/insight, 3-5) 3 repeatable steps/heuristics (one per line), 6) "show this on screen" proof element. Exactly one concrete proof detail; no vague claims.',
-  'Use the same single proof element in Caption and Reel Script.',
-  'CTA: exactly ONE CTA, comment-first, intent-revealing, keyword tied to the post; must say what they get. No DM instructions.',
-  'ExecutionNotes: 20-30s, 6-10 cuts, avg shot length 1-2s, on-screen captions each beat; structure: Hook (0-2s) → Proof clip (2-5s) → Steps (5-18s) → CTA (18-22s).',
-  'StoryPrompt: frictionless one-tap interaction (A/B, multiple choice, slider, this-or-that); no open-ended questions.',
-  'designNotes format (STRICT):',
-  'Exactly 5 lines. Each line begins with one of these timecodes, in order:',
-  '0-2s:',
-  '2-5s:',
-  '5-12s:',
-  '12-18s:',
-  '18-22s:',
-  'Each line must be a complete sentence, <= 110 characters.',
-  'engagementLoop format (STRICT):',
-  'Exactly 3 lines. Each line starts with "Reply 1:", "Reply 2:", "Reply 3:".',
-  'Each reply must be 1–2 complete sentences, <= 180 characters.',
-  'Must be niche-specific to the post topic. Never blank.',
-  'EngagementScripts output: engagementScripts.commentReply = Reply 1 + Reply 2 separated by "\\n"; engagementScripts.dmReply = Reply 3.',
-  'ReelScript: beat-based lines; Hook line must match Hook exactly; then 3 short body beats + CTA line. Structure: 0-2s hook, 2-6s stakes, 6-14s steps/twist + proof, 14-20s payoff + CTA. For testimonials/social proof, require one specific moment; ban "happy client" / "personalized service".',
-  'Script: hook/body/cta; keep it consistent with Hook and CTA.',
-  'Hashtags: 5-8, relevant to title/topic; no #fyp/#viral.',
-  'distributionPlan format (STRICT):',
-  'Exactly 2 lines:',
-  'TikTok: <one complete sentence, <= 160 characters>',
-  'Instagram: <one complete sentence, <= 160 characters>',
-  'No parentheses. No fragments. No trailing commas.',
-].join('\n');
-
-const TITLE_ANCHOR_ECHO_BLOCK = [
-  'TITLE ANCHOR (hard requirement):',
-  '- Title is binding. Hook, caption, and reelScript must echo the title\'s key noun phrase(s) verbatim.',
-  '- If title implies testimonial/success story/case study, include that exact phrase in hook, caption, and reelScript hook.',
-].join('\n');
-
-function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
-  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
-  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const requestedSpecMap = buildRequestedSpecMap({
-    startDay: safeStart,
-    days: safeDays,
-    postsPerDay: perDay,
-    topicPlan,
-  });
-  const mustAvoidByKey = buildMustAvoidTokensByKey(requestedSpecMap);
-  const lines = [
-    'REQUESTED POST IDS (MUST MATCH):',
-    '- Each post object MUST include: post_key, day, slotIndex, title.',
-    '- post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
-    '- For each requested post, copy the provided mustAvoid list EXACTLY into topicCapsule.mustAvoid.',
-    'Requested IDs:',
-  ];
-  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-    const day = safeStart + dayOffset;
-    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      const key = postKey(day, slotIndex);
-      const spec = requestedSpecMap.get(key) || {};
-      const title = toPlainString(spec.title || '');
-      const mustAvoidList = mustAvoidByKey.get(key) || [];
-      const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
-      const titleSegment = title ? ` | title: ${title}` : '';
-      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
-    }
-  }
-  return lines.join('\n');
-}
-
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
-  const chunkEndDay = startDay + days - 1;
-  const postsPerDaySetting = 1;
-  const totalPostsRequired = days * postsPerDaySetting;
-  const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonthNumber = now.getMonth() + 1;
-  const currentMonthName = now.toLocaleString('en-US', { month: 'long' });
-  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
-` : '';
-  const brandBrainAddendum = opts.brandBrainDirective
-    ? [
-      'BRAND BRAIN ADDENDUM (style only; schema locked):',
-      '- Do not change title/topic or required fields.',
-      '- Optimize persuasion/platform performance without changing the topic.',
-      '- No emojis, fake stats, guarantees, placeholders, or templates.',
-      '- Hook: 0-3s retention; Caption: short beats with one concrete mechanism.',
-      '- CTA: one action only (comment/poll/keyword), no DM asks.',
-      '- StoryPrompt: binary tradeoff; DesignNotes: follow the designNotes format (STRICT) with 5 timecoded lines.',
-      '- EngagementScripts: pinned comment prompt + follow-up content action (reply video/stitch/carousel).',
-      '- ReelScript: 5-line structure (hook, proof/insight, rule, CTA).',
-      '- DistributionPlan: actionable window + early engagement trigger; name the algorithm signal.',
-      'BRAND BRAIN HASHTAGS (STRICT VALIDATION):',
-      'Output 8-12 hashtags.',
-      '- 8-12 tokens that begin with "#".',
-      '- Output as a JSON array of strings, e.g., ["#A", "#B", "#C"].',
-      '- No commas inside hashtags, no line breaks, no bullet points, no "+ more".',
-      '- Do not repeat the same hashtag within a post.',
-      '- Hashtags must be niche/topic relevant.',
-      '- Every post must include all required keys and non-empty values.',
-      'FINAL CHECK (SILENT, BRAND BRAIN):',
-      'Count hashtags tokens (array entries starting with "#").',
-      'If not between 8 and 12, rewrite hashtags until it is within range.',
-      '- Output JSON only.',
-    ].join('\\n')
+  const classification = categorizeNiche(nicheStyle);
+  const brandBlock = brandContext
+    ? `\n\nBrand Context: ${brandContext}\n\n`
+    : '\n';
+  const preset = getPresetGuidelines(nicheStyle);
+  const presetGuidelines = (() => {
+    if (!preset) return '';
+    if (Array.isArray(preset.presetGuidelines)) {
+      return preset.presetGuidelines.join('\n');
+    }
+    return preset.presetGuidelines || '';
+  })();
+  const presetBlock = presetGuidelines
+    ? `\n\nPreset Guidelines for this niche:\n${presetGuidelines}\n\n`
+    : '\n';
+  const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
+    ? preset.nicheRules.join('\n')
     : '';
-  const brandBrainBlock = opts.brandBrainDirective
-    ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
-    : '';
-  if (opts.brandBrainDirective) {
-    console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
-  }
-  const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
-  const nonBrandBrainMultiPostBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          'MULTIPLE POSTS PER DAY (CRITICAL):',
-          '- You must create multiple posts for the same calendar day.',
-          `- postsPerDay = ${postsPerDaySetting}. For each day D, output exactly ${postsPerDaySetting} separate post objects with "day": D.`,
-          '- When postsPerDay > 1, repeated "day" values are required and expected.',
-          '',
-        ].join('\\n')
-      : '';
-  const nonBrandBrainQualityBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          '',
-          'QUALITY REQUIREMENTS:',
-          '- No filler, no vague “tips”, no generic motivational lines, no placeholders.',
-        ].join('\\n')
-      : '';
-  const nonBrandBrainAbsoluteBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          '',
-          'ABSOLUTE OUTPUT REQUIREMENTS (DO NOT VIOLATE):',
-          '- Output JSON only. No markdown. No commentary.',
-          '- Return exactly: {"posts":[...]}.',
-          '- "posts" must be a flat array of post objects (do not group by day).',
-          `- posts.length MUST equal days * postsPerDay (= ${days} * ${postsPerDaySetting} = ${totalPostsRequired}).`,
-          `- For each day D in [${startDay} .. ${startDay + days - 1}], include EXACTLY ${postsPerDaySetting} objects with "day": D.`,
-          '- Do not output fewer posts. Do not output extra posts.',
-        ].join('\\n')
-      : '';
-  const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
-  const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
-  const outputContractBlock = [
-    'OUTPUT CONTRACT (MANDATORY)',
-    '- Return ONLY a single JSON object. No markdown. No backticks. No commentary. No headings.',
-    '- The first character of your entire response must be "{" and the last character must be "}".',
-    '- Always return the SAME top-level object shape: {"posts":[ ... ]}. Even when generating 1 post, still wrap it in {"posts":[{...}]}.',
-    `- The "posts" value must be an array containing EXACTLY ${totalPostsRequired} post objects. Do not return fewer or more.`,
-    '- Do not include newline-delimited templates or partial phrases. Every string must be complete and finished.',
-    '- Never end a string with an opening parenthesis, trailing comma, colon, dash, or unfinished clause.',
-    '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string (min 8 characters), except numeric fields defined as numbers or arrays defined as arrays.',
-    '- Never omit a field. Never change field names. Never nest unexpected keys.',
-    '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
-    '- NOTE: Output contract prevents parse failures (422 missing_posts_parse_failed).',
-    'NON-EMPTY REQUIREMENT',
-    '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, hook, caption, pillar, topic_signature, angle, cta, hashtags, designNotes, storyPrompt, storyPromptPlus, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
-    '- Empty string is invalid. Missing key is invalid. If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
-    'SINGLE POST RULE',
-    '- When the expected post count is 1, you still must return {"posts":[{...}]} (NOT a single object, NOT an array alone).',
-  ].join('\n');
-  const finalSelfCheckBlock = [
-    'FINAL SELF-CHECK (REQUIRED BEFORE RESPONDING)',
-    '- Confirm JSON parses.',
-    '- Confirm top-level is an object with key "posts" only.',
-    `- Confirm posts.length === ${totalPostsRequired}.`,
-    '- Confirm every post includes all required fields with NON-EMPTY strings.',
-    '- Confirm no field value is just whitespace.',
-    '- Confirm distributionPlan contains both "TikTok:" and "Instagram:" lines.',
-  ].join('\n');
-  const calendarContextBlock = [
-    'CALENDAR CONTEXT (GROUNDING ONLY):',
-    `- Current year: ${currentYear}`,
-    `- Current month: ${currentMonthName} (${currentMonthNumber})`,
-    `- This chunk covers day ${startDay}..${chunkEndDay}, slotIndex 0..${Math.max(0, postsPerDaySetting - 1)}.`,
-    '- Use this context only if a post is TIME_SENSITIVE; avoid time language in EVERGREEN posts.',
-  ].join('\n');
-  const basePrompt = `${outputContractBlock}
-You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBlock}
-`;
-const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
-${TITLE_ANCHOR_ECHO_BLOCK}
-REQUIRED FIELDS (STRICT):
-For EACH post object, EVERY key in the schema MUST be present and MUST be non-empty.
-- Missing key = invalid.
-- Empty string "" = invalid.
-- Whitespace-only = invalid.
-- Truncated/incomplete phrase = invalid.
-Output will be rejected if any post violates this.
-Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
-SCOPE LOCK: only generate content for the provided day(s) in this chunk.
-${postIdentityBlock}
-${TOPIC_LOCK_CONTRACT_BLOCK}
-TOPIC CAPSULE (required per post):
-- topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
-- mustUse: 5-10 phrases from the title/topic. mustAvoid: copy from Requested IDs for that post.
-- Every required field must include at least 2 distinct mustUse terms (case-insensitive).
-- No required field may include mustAvoid terms (case-insensitive).
-${FIELD_REGROUNDING_BLOCK}
-RULES:
-- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; cycle day 1..4.
-- If a Topic (MUST USE) is provided, the title must match it exactly.
-- topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
-- Each post must include all required fields and non-empty values.
-- Generate each post fully before starting the next.
-${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
-`;
-  const hardOutputContractBlock = [
-    'STRICT OUTPUT CONTRACT',
-    'Return ONLY JSON (no markdown, no code fences, no commentary).',
-    'Top-level: {"posts":[...]} and NOTHING ELSE.',
-    `posts must contain EXACTLY ${totalPostsRequired} items — not more, not less.`,
-    `Generate ONLY for day range ${startDay}..${chunkEndDay}.`,
-    `Each item must match exactly ONE slot: slotIndex in 0..${Math.max(0, postsPerDaySetting - 1)}.`,
-    'Do NOT include posts for any other day or slot.',
-  ].join('\n');
-  const requiredKeysBlock = [
-    'COMPLETENESS RULES:',
-    '- Every string must be a complete thought. Do not end with unfinished clauses.',
-    '- Never end any value with an opening parenthesis “(”, trailing comma, colon, dash, or dangling “and/or”.',
-    '- designNotes MUST be fully written and timecoded; do not truncate mid-beat.',
-    '- engagementLoop MUST never be blank; include all required items.',
-    '- distributionPlan MUST be fully written and complete for BOTH platforms.',
-    'REQUIRED KEYS (DO NOT OMIT):',
-    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, hook, caption, pillar, topic_signature, angle, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}.',
-    'Each required key must be present and a non-empty string (min 8 characters) except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
-    'Do not use partial phrases or unfinished templates; complete every string.',
-    'Return ONLY JSON.',
-  ].join('\n');
-  const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
-  const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
-  if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
-    const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
-    console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(voiceLockBlock.length));
-    VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
-    if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
-  }
-  const finalCheckBlock = [
-    'FINAL CHECK (SILENT):',
-    'Before you output, verify:',
-    '1) Valid JSON only.',
-    '2) posts length matches expectedPosts.',
-    '3) Every post includes every schema key.',
-    '4) No field is empty or truncated.',
-    '5) designNotes has 5 timecoded lines; engagementLoop has 3 Reply lines; distributionPlan has TikTok/Instagram lines.',
-    'If any check fails, fix it BEFORE outputting.',
-  ].join('\n');
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${hardOutputContractBlock}`;
-  return finalPrompt;
+  const promoGuardrail = `\nNiche-specific constraints:\n- Limit promoSlot=true or discount-focused posts to at most 3 per calendar. Only the single strongest weekly offer should get promoSlot=true and a weeklyPromo string. All other days must focus on storytelling, education, or lifestyle (promoSlot=false, weeklyPromo empty).`;
+  const qualityRules = `Quality Rules — Make each post plug-and-play & conversion-ready:\n1) Hook harder: first 3 seconds must be scroll-stopping; include a single, final hook string.\n2) Hashtags: one canonical set of 6–8 tags (no broad/niche splits).\n3) CTA: time-bound urgency (e.g., \"book today\", \"spots fill fast\").\n4) Design: specify colors, typography, pacing, and end-card CTA.\n5) Repurpose: 2–3 concrete transformations (Reel→Reel remix or Carousel clips).\n6) Engagement: natural, friendly scripts for comments & DMs.\n7) Format: ALWAYS set format to \"Reel\" (video); never return Story/Carousel/Static.\n8) Captions: a single, final caption (no variants) and platform-ready blocks for Instagram, TikTok, LinkedIn.\n9) Keep outputs concise to avoid truncation.\n10) CRITICAL: Every post MUST include a single script/reelScript with hook/body/cta.`;
+  const brandBrainRules = `Brand Brain global constraints:\n- Force perception shift: reframe the problem, surface hidden levers, separate informed vs uninformed.\n- No motivational filler, no tourism/lifestyle praise, no feature lists, no obvious ads.\n- Maintain pillar label integrity: pillar must match UI labels (Education|Social Proof|Promotion|Lifestyle).\n- Time correctness: do not reference past years incorrectly.\n- Across the calendar, use these structural families while keeping pillar intent: (1) Instant Hook (tension in first 1-2 seconds), (2) Tips/Tools/Hacks (practical value that drives saves/shares), (3) Beginners/How-To (teach + simplify = authority).\n- Uniqueness: vary hook shapes, steps, and framing across posts; avoid repeating structures.`;
+  const socialProofRules = `Social Proof pillar rules (apply ONLY when pillar is "Social Proof"):\n1) Hook (1-2 seconds): create tension or contradiction; do NOT lead with an "X% increase" claim; use one of these hook intents (contrarian truth, common mistake callout, myth-bust, why it is not working, I almost quit but did not, this is the part nobody tells you, everyone overcomplicates X); frame an implicit risk or mistake the viewer is making. The hook field and script.hook must align.\n2) Body (mechanism-driven, not descriptive): script.body must be a causal chain with 4 beats in order:\nA) Constraint: what was stuck + why typical fixes failed.\nB) Hidden lever: the overlooked variable that separates informed vs uninformed.\nC) Sequence: 2-4 concrete steps in order (what changed, where, why).\nD) Proof + signal: metric + timeframe + what they measured (conversion proxy), no fluffy adjectives.\nInclude at least one decision-protection line in your own words (risk avoidance, margin protection, discount traps, dead inventory, or wasted posts). Avoid generic phrases like \"targeted marketing\", \"engaged customers\", \"boosted sales\", \"game changer\", \"strategy for success\".\n3) Practical takeaway: caption must include a copyable mini-framework (checklist, 3-step method, or template) specific enough to implement without extra context.\n4) CTA: mistake-prevention / decision-protection framed; ask for a specific keyword comment to deliver a checklist/script/sequence. Generate a contextual keyword and do not reuse the same keyword across Social Proof posts.\n5) Design Notes: designNotes must include rewatch mechanics (open loop early + payoff later), an on-screen text plan, and pattern interrupts with timestamped beats; be specific and stay within field limits.\n6) Engagement Loop: engagementScripts must reinforce the decision-protection framing and the promised deliverable.\n7) Distribution Plan: repurpose entries must specify save/share intent, who should save this and why, plus platform-aware packaging notes (TikTok vs IG) without filler.\n8) Uniqueness: do not repeat the same hook shape, steps, or framing across multiple Social Proof posts.`;
+  const audioRules = `Audio rules (STRICT) for "${nicheStyle}":
+1) First, list the current Top 10 trending TikTok sounds for this niche (platform-native or creator-original, last 7 days).
+2) Separately, list the Top 10 trending Instagram Reels audios for this niche (last 7 days).
+3) Choose ONE TikTok sound and ONE DIFFERENT Instagram sound; do NOT reuse the same audio unless you explicitly state "trending on both this week".
+4) Sounds may be songs or creator sounds and must lean into the niche vibe (sports = higher energy, wellness = calming), yet remain real titles.
+5) Output ONLY the final audio line: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.
+6) BANNED: bpm, tempo, genre, style, "search:", synth, neo-soul, moody, upbeat, "vibe", "pulse", or any evergreen hit older than 90 days (e.g., Blinding Lights, Levitating, Savage Love, Shape of You, Old Town Road).`;
+  const classificationRules =
+    classification === 'business'
+      ? 'Business/coaching hooks must focus on problems, outcomes, and offers using curiosity gap, pain-agitation-relief, proof, objection handling, or direct CTA to comment/DM. Pinned comments must promise a niche-specific deliverable that feels like a mini-audit, checklist, guide, or audit plan.'
+      : 'Creator/lifestyle hooks must feel identity or relatability driven (story time, contrarian take, behind-the-scenes, challenge, or trend frames) and avoid aggressive selling. Pinned comments should feel human, promise a helpful resource, and stay conversational.';
+  const postingTimeRules =
+    'Posting-time tips must target the right audience (students/athletes for sports, adult consumers for wellness, etc.), mention a specific clock time (e.g., 3:15 PM, 8 AM) with a rationale, and stay one sentence. Do NOT refer to days of the week or use vague words like "morning" without a clock time. Avoid exec/founder/enterprise audiences unless the niche is specifically business/coaching.';
+  const strategyRules = `Strategy rules:
+1) Include a strategy block in every post with { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options } and reference the specific post's title, description, pillar, type/format, or CTA when writing each field.
+2) Angle and pinned_keyword must be unique across all ${days} posts and should not reuse the same phrasing.
+3) Hook_options must be an array of 3 distinct hooks tied to this post's concept; avoid repeating any hook within or across posts.
+4) target_saves_pct and target_comments_pct must be numeric percentages (e.g., 5 or 3.5) and describe goals relative to views.
+5) Strategy wording must vary per post - do not recycle the same blocks verbatim across posts.
+6) Provide padded keyword/deliverable pairs instead of a full pinned_comment. pinned_keyword should be a single uppercase word (3–16 letters) that feels niche specific and does not duplicate the post title. pinned_deliverable should describe the resource you promise (checklist, template, roadmap, etc.).
+7) Hooks for each post must be three concise lead lines: business hooks mention pains/outcomes/offers with CTA to comment/DM, creator hooks feel relatable (story time, challenge, trend) with a prompt; avoid meta strategy language.
+8) We will build the final pinned comment string on the server; do not return the completed sentence as a strategy field.`;
+  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${brandBrainRules}${socialProofRules}${audioRules}${strategyRules}${postingTimeRules}${classificationRules}${nicheSpecific}${promoGuardrail}\n\nCreate a calendar for \"${nicheStyle}\". Return a JSON array of ${days} objects for days ${startDay}..${startDay + days - 1}.\nALL FIELDS BELOW ARE REQUIRED for every object (never omit any):\n- day (number)\n- idea (string)\n- type (educational|promotional|lifestyle|interactive)\n- hook (single punchy hook line)\n- caption (final ready-to-post caption; no variants)\n- hashtags (array of 6–8 strings; one canonical set)\n- format (must be exactly \"Reel\")\n- cta (urgent, time-bound)\n- pillar (Education|Social Proof|Promotion|Lifestyle)\n- storyPrompt (<= 120 chars)\n- designNotes (<= 120 chars; specific)\n- repurpose (array of 2–3 short strings)\n- analytics (array of 2–3 short metric names, e.g., [\"Reach\",\"Saves\"])\n- engagementScripts { commentReply, dmReply } (each <= 140 chars; friendly, natural)\n- promoSlot (boolean)\n- weeklyPromo (string; include only if promoSlot is true; otherwise set to \"\")\n- script { hook, body, cta } (REQUIRED for ALL posts; hook 5–8 words; body 2–3 short beats (4 beats for Social Proof); cta urgent)\n- instagram_caption (final, trimmed block)
+- tiktok_caption (final, trimmed block)
+- linkedin_caption (final, trimmed block)
+- postingTimeTip (single sentence describing an audience + scroll window)
+- audio (string: EXACTLY one line in this format — "TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>")\n  - Must reference LAST-7-DAYS trending sounds; TikTok and Instagram must differ unless trending on both.
+- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, hook_options }
+
+Rules:
+- If unsure, invent concise, plausible content rather than omitting fields.
+- Always include every field above (use empty string only if absolutely necessary).
+- Strategy values must reference the post's unique title/description/pillar/type/CTA and vary across posts.
+- Return ONLY a valid JSON array of ${days} objects. No markdown, no comments, no trailing commas.`;
+}
+const AUDIO_INVALID_PATTERN = /\b(bpm|search:|genre|vibe|vibes|retro|synth|style|pulse|moody|tempo|drone|neo\-soul|upbeat)\b/i;
+const AUDIO_DIGIT_PATTERN = /\d{2,4}(-|–)\d{2,4}/;
+const EVERGREEN_TITLES = ['blinding lights','levitating','savage love','shape of you','old town road','dance monkey'];
+
+function normalizeAudioLine(value) {
+  if (!value && value !== 0) return '';
+  return String(value).trim().replace(/["'“”]/g, '').replace(/\s+/g, ' ');
 }
 
-function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, hook, caption, pillar, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts{commentReply,dmReply}. Each field must be non-empty and JSON must be valid.`;
+function isAudioLineValid(line = '') {
+  const text = normalizeAudioLine(line);
+  if (!text) return false;
+  if (!text.includes('TikTok:') || !text.includes('Instagram:')) return false;
+  if (AUDIO_INVALID_PATTERN.test(text)) return false;
+  const segments = text.split(';').map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length < 2) return false;
+  return segments.every((segment) => {
+    if (!/^(TikTok|Instagram):/i.test(segment)) return false;
+    // Require em dash separator between title and creator
+    return segment.includes(' — ');
+  });
 }
 
-function safeStringify(value) {
+function parseAudioSegments(line = '') {
+  const text = normalizeAudioLine(line);
+  if (!text || !text.includes('TikTok:') || !text.includes('Instagram:')) return null;
+  const segments = text.split(';').map((s) => s.trim()).filter(Boolean);
+  if (segments.length < 2) return null;
+  const result = {};
+  for (const segment of segments) {
+    const match = segment.match(/^(TikTok|Instagram):\s*(.+)$/i);
+    if (!match) return null;
+    const platform = match[1].toLowerCase();
+    result[platform] = match[2].trim();
+  }
+  return result;
+}
+
+function isBadAudio(line = '') {
+  const segments = parseAudioSegments(line);
+  if (!segments) return true;
+  const { tiktok = '', instagram = '' } = segments;
+  if (!tiktok || !instagram) return true;
+  if (AUDIO_INVALID_PATTERN.test(line) || AUDIO_DIGIT_PATTERN.test(line)) return true;
+  if (tiktok.replace(/\s+/g, ' ').toLowerCase() === instagram.replace(/\s+/g, ' ').toLowerCase()) return true;
+  if (!/\s—\s/.test(tiktok) || !/\s—\s/.test(instagram)) return true;
+  const combined = `${tiktok.toLowerCase()} ${instagram.toLowerCase()}`;
+  for (const title of EVERGREEN_TITLES) {
+    if (combined.includes(title)) return true;
+  }
+  return false;
+}
+
+async function requestAudioCorrection(nicheStyle, brandContext, post, options = {}) {
+  if (!OPENAI_API_KEY) return '';
+  const instructions = [
+    'You are a content strategist who only lists REAL, LAST-7-DAYS TRENDING audio names.',
+    'Return ONLY one line in this EXACT format: TikTok: <Sound Title> — <Creator>; Instagram: <Sound Title> — <Creator>.',
+    'TikTok and Instagram MUST DIFFER unless the sound is verifiably trending on both.',
+    'Do NOT include BPM, genre words, "search:", style, synth, neo-soul, moody, upbeat, or any descriptive adjectives—only the official sound name and creator.',
+  ].join(' ');
+  const avoidParts = Array.isArray(options.avoidList) ? options.avoidList : [];
+  const userParts = [
+    `Niche: ${nicheStyle}`,
+    brandContext ? `Brand context: ${brandContext}` : null,
+    post.hook ? `Hook: ${post.hook}` : null,
+    post.caption ? `Caption: ${post.caption}` : null,
+    post.audio ? `Previous audio: ${post.audio}` : null,
+    avoidParts.length ? `Avoid: ${avoidParts.join(', ')}` : null,
+  ].filter(Boolean).join('\n');
+  const payload = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: instructions },
+      { role: 'user', content: `${userParts}\nReturn ONLY the one-line audio string in the exact format.` },
+    ],
+    temperature: 0.3,
+    max_tokens: 200,
+  });
+  const requestOptions = {
+    hostname: 'api.openai.com',
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload),
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+  };
   try {
-    return JSON.stringify(value);
+    const json = await openAIRequest(requestOptions, payload);
+    const content = json?.choices?.[0]?.message?.content || '';
+    const line = content.split(/\r?\n/)[0].trim();
+    return normalizeAudioLine(line);
   } catch (err) {
-    return '"[unserializable]"';
+    console.error('[Calendar] audio correction failed', err?.message || err);
+    return '';
   }
 }
 
-function extractOpenAiErrorDetails(err) {
-  const rawMessage = String(err?.message || '');
-  let payload = null;
-  const marker = rawMessage.indexOf(':');
-  if (marker !== -1) {
-    const payloadText = rawMessage.slice(marker + 1).trim();
-    try {
-      payload = JSON.parse(payloadText);
-    } catch {}
-  }
-  const openaiError = payload?.error || err?.error || null;
-  return {
-    openaiType: openaiError?.type || null,
-    openaiMessage: openaiError?.message || err?.message || null,
-    openaiParam: openaiError?.param || null,
-    openaiBody: payload || err?.body || err?.response || null,
-  };
-}
-
-function extractSchemaObjectName(openaiMessage = '') {
-  const text = String(openaiMessage || '');
-  const knownObjects = ['topicCapsule', 'engagementScripts', 'reelScript', 'script', 'posts'];
-  for (const name of knownObjects) {
-    if (text.includes(name)) return name;
-  }
-  const tokens = (text.match(/'([^']+)'/g) || []).map((item) => item.slice(1, -1));
-  const filtered = tokens.filter((token) => !['properties', 'items', 'required', 'type', 'schema', 'json_schema', 'response_format'].includes(token));
-  return filtered.length ? filtered[filtered.length - 1] : 'unknown';
-}
-
-function assertJsonSchemaFiniteNumbers(schema, label = 'schema') {
-  const issues = [];
-  const walk = (value, path) => {
-    if (typeof value === 'number' && !Number.isFinite(value)) {
-      issues.push(path);
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item, idx) => walk(item, `${path}[${idx}]`));
-      return;
-    }
-    if (value && typeof value === 'object') {
-      Object.entries(value).forEach(([key, child]) => walk(child, `${path}.${key}`));
-    }
-  };
-  walk(schema, label);
-  if (issues.length) {
-    const err = new Error('Invalid JSON schema');
-    err.code = 'OPENAI_SCHEMA_ERROR';
-    err.statusCode = 400;
-    err.details = { reason: 'non_finite_number', paths: issues };
-    throw err;
-  }
-}
-
-const TITLE_SIGNATURE_STOPWORDS = new Set([
-  'a',
-  'an',
-  'the',
-  'and',
-  'or',
-  'to',
-  'of',
-  'in',
-  'on',
-  'for',
-  'with',
-  'how',
-  'understanding',
-  'navigating',
-]);
-
-const VOICE_LOCK_LOGGED_REQUESTS = new Set();
-const VOICE_LOCK_APPLIED_REQUESTS = new Set();
-const CALENDAR_VARIETY_LOGGED_REQUESTS = new Set();
-const TARGET_AUDIENCE_LOGGED_REQUESTS = new Set();
-const BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS = new Set();
-const TOPIC_BINDING_WARNING_LOGGED_REQUESTS = new Set();
-let TERMS_CSP_LOGGED = false;
-
-function normalizeTitleText(value = '') {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeTitleSignature(value = '') {
-  const tokens = normalizeTitleText(value)
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((token) => !TITLE_SIGNATURE_STOPWORDS.has(token));
-  return tokens.join(' ').trim();
-}
-
-const TOPIC_FINGERPRINT_STOPWORDS = new Set([
-  'a',
-  'an',
-  'the',
-  'and',
-  'or',
-  'but',
-  'for',
-  'to',
-  'of',
-  'in',
-  'on',
-  'with',
-  'without',
-  'at',
-  'by',
-  'from',
-  'is',
-  'are',
-  'was',
-  'were',
-  'be',
-  'being',
-  'been',
-  'this',
-  'that',
-  'these',
-  'those',
-  'my',
-  'your',
-  'our',
-  'their',
-  'you',
-  'i',
-]);
-const TOPIC_FINGERPRINT_SHORT_TOKENS = new Set(['day', 'how', 'why', 'tips']);
-// Language-level idiom groups for Tier A matching; not niche-specific.
-const EQUIV_GROUPS = {
-  LOYALTY_RETURN: {
-    phrases: [
-      'come back',
-      'coming back',
-      'keep coming back',
-      'return',
-      'returning',
-      'back again',
-      'repeat clients',
-      'repeat customer',
-      'repeat customers',
-      'loyal',
-      'loyalty',
-    ],
-    canon: ['return'],
-    injectCanon: true,
-  },
-  TRUST_CHOOSE: {
-    phrases: [
-      'trust',
-      'trusted',
-      'choose',
-      'choosing',
-      'work with',
-      'worked with',
-      'go with',
-      'picked',
-      'referred',
-      'referral',
-      'recommend',
-      'recommended',
-    ],
-    canon: ['trust'],
-    injectCanon: true,
-  },
-  SOCIAL_PROOF: {
-    phrases: [
-      'testimonial',
-      'testimonials',
-      'review',
-      'reviews',
-      'feedback',
-      'client feedback',
-      'what my clients say',
-      'what clients say',
-      'clients say',
-      'client says',
-      'experience',
-      'experiences',
-      'success story',
-      'success stories',
-    ],
-    canon: ['testimonial'],
-    injectCanon: true,
-  },
-  STORIES_TESTIMONIALS: {
-    phrases: [
-      'testimonial',
-      'testimonials',
-      'review',
-      'reviews',
-      'story',
-      'stories',
-      'case study',
-      'case studies',
-      'client story',
-      'client stories',
-    ],
-    canon: ['testimonial'],
-    injectCanon: true,
-  },
-  TESTIMONIAL_STORY: {
-    phrases: [
-      'testimonial',
-      'testimonials',
-      'testimonies',
-      'story',
-      'stories',
-      'success story',
-      'real story',
-      'case result',
-      'case results',
-      'victory',
-      'victories',
-      'win',
-      'won',
-      'wins',
-    ],
-    canon: ['testimonial'],
-    injectCanon: true,
-  },
-  LISTING_SELLING: {
-    phrases: [
-      'list',
-      'listing',
-      'listed',
-      'listings',
-      'listing fee',
-      'commission',
-      'commission rate',
-      'seller',
-      'selling',
-      'sell',
-    ],
-    canon: ['listing'],
-    injectCanon: false,
-  },
-  VALUATION_VALUE: {
-    phrases: ['valuation', 'value', 'worth', 'price', 'pricing', 'appraisal', 'estimate'],
-    canon: ['valuation_value'],
-    injectCanon: true,
-  },
-  BUYING_HOME: {
-    phrases: ['buy', 'buyer', 'homebuying', 'purchase', 'purchasing', 'offer', 'closing'],
-    canon: ['buying_home'],
-    injectCanon: true,
-  },
-  NEIGHBORHOOD_AREA: {
-    phrases: ['neighborhood', 'area', 'community', 'district', 'zip', 'school zone'],
-    canon: ['neighborhood_area'],
-    injectCanon: true,
-  },
-  MARKET_TRENDS: {
-    phrases: ['market', 'trend', 'inventory', 'rates', 'pricing', 'median', 'data'],
-    canon: ['market_trends'],
-    injectCanon: true,
-  },
-};
-const EQUIV_CANON_TO_GROUP = Object.entries(EQUIV_GROUPS).reduce((acc, [key, group]) => {
-  const canonTokens = Array.isArray(group?.canon) ? group.canon : [];
-  canonTokens.forEach((token) => {
-    if (!token) return;
-    acc[token] = key;
-  });
-  return acc;
-}, {});
-const TITLE_META_TOKENS = new Set([
-  'top',
-  'reasons',
-  'reason',
-  'ways',
-  'things',
-  'tips',
-  'guide',
-  'guides',
-  'how',
-  'why',
-  'what',
-  'limited',
-  'time',
-  'exclusive',
-  'offer',
-  'special',
-  'now',
-  'today',
-  'inside',
-  'act',
-  'fast',
-  'hurry',
-  'best',
-  'ultimate',
-  'list',
-  'checklist',
-  'step',
-  'steps',
-  'about',
-  'with',
-  'me',
-  'my',
-  'our',
-]);
-
-function normalizeBindText(value = '') {
-  let base = String(value || '');
-  base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  base = base.toLowerCase();
-  base = base.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1pct');
-  base = base.replace(/\$\s*(\d+(?:\.\d+)?)/g, '$1usd');
-  base = base.replace(/(\w)'s\b/g, '$1');
-  base = base.replace(/[^a-z0-9]+/g, ' ');
-  base = base.replace(/(.)\1{2,}/g, '$1$1');
-  base = base.replace(/\s+/g, ' ').trim();
-  return base;
-}
-
-function normalizeHashtagsForBinding(value = '') {
-  let text = String(value || '');
-  text = text.replace(/#/g, ' ');
-  text = text.replace(/[_-]+/g, ' ');
-  text = text.replace(/([a-z])([A-Z])/g, '$1 $2');
-  text = text.replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
-  text = text.replace(/([A-Za-z])(\d)/g, '$1 $2');
-  text = text.replace(/(\d)([A-Za-z])/g, '$1 $2');
-  return normalizeBindText(text);
-}
-
-function stemToken(value = '') {
-  let token = String(value || '').toLowerCase();
-  if (!token) return '';
-  if (/\d/.test(token)) return token;
-  if (token.endsWith("'s")) token = token.slice(0, -2);
-  if (token.endsWith('ing') && token.length > 5) token = token.slice(0, -3);
-  else if (token.endsWith('ed') && token.length > 4) token = token.slice(0, -2);
-  else if (token.endsWith('ly') && token.length > 4) token = token.slice(0, -2);
-  if (token.endsWith('es') && token.length > 4) token = token.slice(0, -2);
-  else if (token.endsWith('s') && token.length > 3) token = token.slice(0, -1);
-  return token;
-}
-
-function tokenizeNormalizedText(normalized = '') {
-  if (!normalized) return [];
-  return normalized.split(/\s+/).filter(Boolean).map((token) => stemToken(token)).filter(Boolean);
-}
-
-function tokenizeBindText(value = '') {
-  const normalized = normalizeBindText(value);
-  return tokenizeNormalizedText(normalized);
-}
-
-// Language-level offer parsing to preserve numeric tokens for topic binding.
-function parseOfferTokens(value = '') {
-  const normalized = normalizeBindText(value);
-  const tokens = [];
-  const seen = new Set();
-  const add = (token) => {
-    const normalizedToken = String(token || '').toLowerCase();
-    if (!normalizedToken || seen.has(normalizedToken)) return;
-    seen.add(normalizedToken);
-    tokens.push(normalizedToken);
-  };
-  const percentRegex = /\b(\d+(?:\.\d+)?)pct\b/g;
-  let match = percentRegex.exec(normalized);
-  while (match) {
-    const number = match[1];
-    add(`${number}pct`);
-    match = percentRegex.exec(normalized);
-  }
-  const currencyRegex = /\b(\d+(?:\.\d+)?)usd\b/g;
-  match = currencyRegex.exec(normalized);
-  while (match) {
-    const number = match[1];
-    add(`${number}usd`);
-    match = currencyRegex.exec(normalized);
-  }
-  if (/\bfree\s+(home\s+valuation|valuation)\b/.test(normalized)) add('free_valuation');
-  if (/\bfree\s+(consultation)\b/.test(normalized)) add('free_consult');
-  if (/\bfree\s+(evaluation)\b/.test(normalized)) add('free_eval');
-  if (/\bfree\s+(estimate)\b/.test(normalized)) add('free_estimate');
-  if (/\bfree\s+(guide)\b/.test(normalized)) add('free_guide');
-  if (/\bfree\s+\w+\b/.test(normalized)) add('free_offer');
-  if (/\bno win no fee\b/.test(normalized)) add('nowin_nofee');
-  if (/\bcontingency\b/.test(normalized)) add('contingency');
-  if (/\bfree consultation\b/.test(normalized)) add('free_consult');
-  if (/\bguarantee\b/.test(normalized) || /\bguaranteed\b/.test(normalized)) add('guarantee');
-  return tokens;
-}
-
-function deriveTopicFingerprint(titleOrTopic = '') {
-  const titleNormalized = normalizeBindText(titleOrTopic);
-  const rawTokens = titleNormalized.split(/\s+/).filter(Boolean);
-  const offerTokens = parseOfferTokens(titleOrTopic);
-  const buildTokens = (skipMeta = true) => {
-    const tokens = [];
-    const seen = new Set();
-    for (const token of rawTokens) {
-      const isNumeric = /^\d+(?:\.\d+)?$/.test(token);
-      if (!isNumeric && token.length < 4 && !(token.length === 3 && TOPIC_FINGERPRINT_SHORT_TOKENS.has(token))) continue;
-      if (TOPIC_FINGERPRINT_STOPWORDS.has(token)) continue;
-      if (skipMeta && TITLE_META_TOKENS.has(token)) continue;
-      const stemmed = stemToken(token);
-      if (!stemmed || seen.has(stemmed)) continue;
-      seen.add(stemmed);
-      tokens.push(stemmed);
-      if (tokens.length >= 8) break;
-    }
-    return tokens;
-  };
-  let baseTokens = buildTokens(true);
-  if (baseTokens.length < 2) baseTokens = buildTokens(false);
-  const canonTokens = [];
-  Object.values(EQUIV_GROUPS).forEach((group) => {
-    if (!group.injectCanon) return;
-    const matched = group.phrases.some((phrase) => {
-      const normalizedPhrase = normalizeBindText(phrase);
-      if (!normalizedPhrase) return false;
-      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-      return regex.test(titleNormalized);
-    });
-    if (matched) {
-      group.canon.forEach((item) => {
-        if (item) canonTokens.push(item);
-      });
-    }
-  });
-  if (isSocialProofTitle(titleNormalized)) canonTokens.push('testimonial');
-  const canonStemTokens = new Set(
-    canonTokens
-      .filter((token) => token && !String(token).includes('_'))
-      .map((token) => stemToken(token))
-      .filter(Boolean)
-  );
-  const filteredBaseTokens = baseTokens.filter((token) => !canonStemTokens.has(token));
-  const dedupe = (list) => {
-    const seen = new Set();
-    const output = [];
-    list.forEach((item) => {
-      const value = String(item || '');
-      if (!value || seen.has(value)) return;
-      seen.add(value);
-      output.push(value);
-    });
-    return output;
-  };
-  const tokens = dedupe([...baseTokens, ...canonTokens, ...offerTokens]);
-  let anchors = dedupe([...canonTokens, ...offerTokens, ...filteredBaseTokens]);
-  if (anchors.length < 3 && baseTokens.length > anchors.length) {
-    anchors = dedupe([...anchors, ...filteredBaseTokens]);
-  }
-  anchors = anchors.slice(0, 5);
-  return { tokens, offerTokens, anchors, titleNormalized };
-}
-
-function getTitleFirstWords(value = '', count = 4) {
-  return normalizeTitleText(value).split(/\s+/).slice(0, count).join(' ').trim();
-}
-
-function coerceFieldText(value) {
-  if (!value) return '';
-  if (typeof value === 'string') return value.trim();
-  if (Array.isArray(value)) {
-    return value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean).join(' ').trim();
-  }
-  if (typeof value === 'object') {
-    const parts = [];
-    ['hook', 'body', 'cta', 'text', 'commentReply', 'dmReply'].forEach((key) => {
-      if (typeof value[key] === 'string' && value[key].trim()) {
-        parts.push(value[key].trim());
+async function ensureAudioLines(nicheStyle, brandContext, posts = [], options = {}) {
+  if (!Array.isArray(posts)) return posts;
+  const usedTikTok = options.usedTikTok || new Set();
+  const usedInstagram = options.usedInstagram || new Set();
+  for (let idx = 0; idx < posts.length; idx += 1) {
+    const post = posts[idx];
+    const normalized = normalizeAudioLine(post.audio);
+    const segments = parseAudioSegments(normalized);
+    const duplicate = segments
+      && usedTikTok.has(segments.tiktok?.toLowerCase())
+      && usedInstagram.has(segments.instagram?.toLowerCase());
+    if (!isBadAudio(normalized) && !duplicate) {
+      post.audio = normalized;
+      if (segments) {
+        usedTikTok.add(segments.tiktok.toLowerCase());
+        usedInstagram.add(segments.instagram.toLowerCase());
       }
-    });
-    return parts.join(' ').trim();
-  }
-  return '';
-}
-
-function getField(post = {}, names = []) {
-  if (!post || typeof post !== 'object') return '';
-  for (const name of names) {
-    if (!name) continue;
-    const value = Object.prototype.hasOwnProperty.call(post, name) ? post[name] : undefined;
-    const text = coerceFieldText(value);
-    if (text) return text;
-  }
-  return '';
-}
-
-const MOVEMENT_EQUIVALENTS = new Set(['move', 'moving', 'relocate', 'relocating', 'relocation']);
-
-function shouldAllowMovementEquivalents(titleText = '') {
-  const normalized = normalizeBindText(titleText);
-  const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
-  return ['move', 'moving', 'relocate', 'relocating', 'relocation'].some((token) => tokens.has(token));
-}
-
-function isSocialProofTitle(normalizedTitle = '') {
-  if (!normalizedTitle) return false;
-  const group = EQUIV_GROUPS.SOCIAL_PROOF;
-  if (group?.phrases) {
-    for (const phrase of group.phrases) {
-      const normalizedPhrase = normalizeBindText(phrase);
-      if (!normalizedPhrase) continue;
-      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-      if (regex.test(normalizedTitle)) return true;
+      continue;
+    }
+    const dayLabel = post.day || idx + 1;
+    console.warn('[Calendar] invalid audio string detected for day', dayLabel, normalized || post.audio);
+    const avoidList = [
+      ...(segments?.tiktok ? [segments.tiktok] : []),
+      ...(segments?.instagram ? [segments.instagram] : []),
+      ...Array.from(usedTikTok),
+      ...Array.from(usedInstagram),
+    ];
+    const corrected = await requestAudioCorrection(nicheStyle, brandContext, post, { avoidList });
+    if (!isBadAudio(corrected)) {
+      post.audio = corrected;
+      const correctedSegments = parseAudioSegments(corrected);
+      if (correctedSegments) {
+        usedTikTok.add(correctedSegments.tiktok.toLowerCase());
+        usedInstagram.add(correctedSegments.instagram.toLowerCase());
+      }
+    } else {
+      console.warn('[Calendar] audio correction failed for day', dayLabel, corrected || normalized);
+      post.audio = normalized || corrected || 'TikTok: TBD — Creator; Instagram: TBD — Creator';
     }
   }
-  const tokens = new Set(normalizedTitle.split(/\s+/).filter(Boolean));
-  const hasClient = tokens.has('client') || tokens.has('clients');
-  const hasSignal = ['say','says','feedback','review','reviews','testimonial','testimonials','experience','experiences'].some((token) => tokens.has(token));
-  return hasClient && hasSignal;
-}
-
-function normalizeTokenForBind(value = '') {
-  const normalized = normalizeBindText(value);
-  const token = normalized.split(/\s+/).filter(Boolean)[0] || '';
-  return token ? stemToken(token) : '';
-}
-
-function tokenMatches(normalizedText = '', token = '', options = {}) {
-  const base = normalizeTokenForBind(token);
-  if (!normalizedText || !base) return false;
-  if (/^\d+(?:\.\d+)?$/.test(base) || base.endsWith('pct') || base.endsWith('usd')) {
-    const regex = new RegExp(`\\b${escapeRegexPattern(base)}\\b`, 'i');
-    return regex.test(normalizedText);
-  }
-  const allowMovement = Boolean(options.allowMovementEquivalents);
-  const candidates = new Set();
-  if (allowMovement && MOVEMENT_EQUIVALENTS.has(base)) {
-    MOVEMENT_EQUIVALENTS.forEach((item) => candidates.add(item));
-  } else {
-    candidates.add(base);
-  }
-  const variants = new Set();
-  candidates.forEach((candidate) => {
-    variants.add(candidate);
-    variants.add(`${candidate}s`);
-    variants.add(`${candidate}es`);
-    variants.add(`${candidate}ed`);
-    variants.add(`${candidate}ing`);
-    if (candidate.endsWith('e')) variants.add(`${candidate.slice(0, -1)}ing`);
-  });
-  for (const variant of variants) {
-    const regex = new RegExp(`\\b${escapeRegexPattern(variant)}\\b`, 'i');
-    if (regex.test(normalizedText)) return true;
-  }
-  return false;
-}
-
-function containsEquivalenceGroupPhrase(normalizedText = '', options = {}) {
-  if (!normalizedText) return false;
-  const activeGroups = Array.isArray(options?.equivalenceGroups) ? options.equivalenceGroups : [];
-  for (const groupKey of activeGroups) {
-    const group = EQUIV_GROUPS[groupKey];
-    if (!group) continue;
-    for (const phrase of group.phrases) {
-      const normalizedPhrase = normalizeBindText(phrase);
-      if (!normalizedPhrase) continue;
-      const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-      if (regex.test(normalizedText)) return true;
-    }
-  }
-  return false;
-}
-
-function containsTopicReference(text = '', fingerprint = {}, minTokens = 2, options = {}) {
-  if (!isNonEmptyString(text)) return false;
-  const normalized = normalizeBindText(text);
-  if (!normalized) return false;
-  const phrase = fingerprint && fingerprint.phrase ? String(fingerprint.phrase) : '';
-  if (phrase && normalized.includes(phrase)) return true;
-  const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
-  if (!tokens.length) return false;
-  if (minTokens <= 0) return true;
-  let matchCount = 0;
-  const seen = new Set();
-  if (containsEquivalenceGroupPhrase(normalized, options)) {
-    matchCount += 1;
-    seen.add('__equiv');
-    if (matchCount >= minTokens) return true;
-  }
-  for (const token of tokens) {
-    if (!token || seen.has(token)) continue;
-    if (tokenMatches(normalized, token, options)) {
-      matchCount += 1;
-      seen.add(token);
-      if (matchCount >= minTokens) return true;
-    }
-  }
-  return false;
-}
-
-function hasAnyAnchorToken(text = '', fingerprint = {}, options = {}) {
-  if (!isNonEmptyString(text)) return false;
-  const tokens = Array.isArray(fingerprint?.tokens) ? fingerprint.tokens : [];
-  if (!tokens.length) return false;
-  const normalized = normalizeBindText(text);
-  for (const token of tokens) {
-    if (token && tokenMatches(normalized, token, options)) return true;
-  }
-  const hashtagTokens = (String(text).match(/#[A-Za-z0-9_]+/g) || [])
-    .map((tag) => normalizeTokenForBind(tag.replace(/^#/, '')))
-    .filter(Boolean);
-  for (const tag of hashtagTokens) {
-    for (const token of tokens) {
-      if (token && tag.includes(token)) return true;
-    }
-  }
-  return false;
-}
-
-function deriveFingerprintFromCapsule(capsule = {}) {
-  const mustUse = Array.isArray(capsule?.mustUse) ? capsule.mustUse : [];
-  const combined = mustUse.map((item) => String(item || '')).join(' ');
-  return deriveTopicFingerprint(combined);
-}
-
-function countMustUseMatches(text = '', mustUse = []) {
-  if (!isNonEmptyString(text) || !Array.isArray(mustUse) || !mustUse.length) return 0;
-  const normalized = normalizeBindText(text);
-  if (!normalized) return 0;
-  const matched = new Set();
-  mustUse.forEach((item) => {
-    const normalizedItem = normalizeTokenForBind(item);
-    if (!normalizedItem) return;
-    const regex = new RegExp(`\\b${escapeRegexPattern(normalizedItem)}\\b`, 'i');
-    if (regex.test(normalized)) matched.add(normalizedItem);
-  });
-  return matched.size;
-}
-
-function containsMustAvoidToken(text = '', mustAvoid = []) {
-  if (!isNonEmptyString(text) || !Array.isArray(mustAvoid) || !mustAvoid.length) return false;
-  const normalized = normalizeBindText(text);
-  if (!normalized) return false;
-  const words = new Set(normalized.split(/\s+/).filter(Boolean));
-  for (const item of mustAvoid) {
-    const normalizedItem = normalizeTokenForBind(item);
-    if (!normalizedItem) continue;
-    if (normalizedItem.includes(' ')) {
-      if (normalized.includes(normalizedItem)) return true;
-    } else if (words.has(normalizedItem)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pillarSchedule = null) {
-  const slots = [];
-  const perDay = Math.max(1, Number(postsPerDay) || 1);
-  for (let i = 0; i < totalPosts; i += 1) {
-    const day = startDay + Math.floor(i / perDay);
-    const postIndex = i % perDay;
-    slots.push({
-      slot: i,
-      day,
-      postIndex,
-      pillar: pillarSchedule && pillarSchedule[i] ? pillarSchedule[i] : getCalendarPillarForDay(day),
-    });
-  }
-  return slots;
-}
-
-function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } = {}) {
-  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
-  const dayEnd = dayStart + Math.max(1, Number(chunkDays) || 1) - 1;
-  const assigned = Array.isArray(topics)
-    ? topics.filter((item) => item.day >= dayStart && item.day <= dayEnd)
-    : [];
-  if (!assigned.length) return '';
-  const lines = [
-    'ASSIGNED TOPIC PLAN (read-only):',
-    'Each post object MUST include: post_key, day, slotIndex, title.',
-    'post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
-    ...assigned.map((item) =>
-      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | pillar: ${item.pillar} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
-    ),
-    'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
-    'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
-    'All sections must be about the title. If any section drifts, rewrite it to match the title before returning JSON.',
-  ];
-  return lines.join('\n');
-}
-
-function sanitizeJsonContent(content = '') {
-  if (typeof content !== 'string') return '';
-  const firstBrace = content.indexOf('{');
-  const lastBrace = content.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    return content;
-  }
-  let snippet = content.slice(firstBrace, lastBrace + 1);
-  snippet = snippet.replace(/,\s*([}\]])/g, '$1');
-  snippet = snippet.replace(/[\u2018\u2019]/g, "'");
-  return snippet;
-}
-
-function parseCalendarPostsFromContent(content = '') {
-  if (!content) return null;
-  try {
-    const parsed = JSON.parse(content);
-    return Array.isArray(parsed.posts) ? parsed.posts : null;
-  } catch {
-    return null;
-  }
-}
-
-function tryParsePosts(content = '', expectedCount = null) {
-  const posts = parseCalendarPostsFromContent(content);
-  if (!Array.isArray(posts)) {
-    return { posts: null, reason: 'missing_posts', parsed: null };
-  }
-  if (expectedCount !== null && posts.length !== expectedCount) {
-    return { posts: null, reason: 'count_mismatch', parsed: posts };
-  }
-  return { posts, reason: null };
-}
-
-function buildFallbackChunkPosts(nicheStyle, startDay, postsPerDay, totalCount) {
-  const fallback = [];
-  for (let idx = 0; idx < totalCount; idx += 1) {
-    const day = computePostDayIndex(idx, startDay, postsPerDay);
-    fallback.push(buildFallbackPost(nicheStyle, day));
-  }
-  return fallback;
-}
-
-function selectBillboardEntry(list = [], indexSeed = 0) {
-  if (!Array.isArray(list) || !list.length) return null;
-  const safeIndex = Math.abs(Number(indexSeed) || 0) % list.length;
-  return list[safeIndex];
-}
-
-function sanitizeAudioText(value = '') {
-  let text = toPlainString(value || '').trim();
-  text = text.replace(/\(link:[^)]+\)/gi, '');
-  text = text.replace(/https?:\/\/\S+/gi, '');
-  text = text.replace(/@[A-Za-z0-9._-]+/g, '');
-  text = text.replace(/[\u2018\u2019]/g, "'");
-  text = text.replace(/\s+/g, ' ').trim();
-  return text;
-}
-
-function isValidSuggestedAudio(audio = '') {
-  if (!audio || typeof audio !== 'string') return false;
-  return /.+\s-\s.+/.test(audio);
-}
-
-function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStartDay = 1, postsPerDay = 1 } = {}) {
-  if (!Array.isArray(posts) || !posts.length) {
-    return { total: 0, missingAudio: 0 };
-  }
-  const list = Array.isArray(audioEntries) ? audioEntries : [];
-  const stats = { total: posts.length, missingAudio: 0 };
-  posts.forEach((post, idx) => {
-    if (!list.length) {
-      post.suggestedAudio = '';
-      stats.missingAudio += 1;
-      return;
-    }
-    const dayIndex = Number(post.day) || computePostDayIndex(idx, chunkStartDay, postsPerDay);
-    const postIndex = Number.isFinite(Number(post.slot)) ? Number(post.slot) - 1 : (idx % postsPerDay);
-    const pickIndex = (dayIndex + postIndex) % list.length;
-    const entry = selectBillboardEntry(list, pickIndex) || selectBillboardEntry(list, idx);
-    const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
-    post.suggestedAudio = audioString || '';
-    if (!audioString) stats.missingAudio += 1;
-  });
-  return stats;
+  options.usedTikTok = usedTikTok;
+  options.usedInstagram = usedInstagram;
+  return posts;
 }
 
 function sanitizePostForPrompt(post = {}) {
-  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','storyPromptPlus','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
+  const fields = ['idea','title','type','hook','caption','format','pillar','storyPrompt','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
   const clone = { ...post };
   if (!clone.script && clone.videoScript) clone.script = clone.videoScript;
@@ -4118,37 +1644,42 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const brandBlock = brandContext
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
-  const qualityRules = `SHORT-FORM VIDEO CONTRACT (REQUIRED):
-${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
-${TOPIC_LOCK_CONTRACT_BLOCK}
-${FIELD_REGROUNDING_BLOCK}
-Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
-ENGAGEMENT LOOP FIELD MAPPING:
-- engagementScripts.commentReply: include "Comment: ..." and "Follow up: ..." in plain text.
-- engagementScripts.dmReply: include "DM: ..." in plain text.
-DESIGN NOTES:
-- Output 4 timestamped lines for 0–2s, 2–6s, 6–14s, 14–20s.
-- Each line: 1 short sentence; include on-screen text for the hook (3–5 words max).
-FORMAT:
-- Choose the best format for this post in the niche: ${nicheStyle}. Output exactly one value from: Reel, Story, Carousel, Static.
-OUTPUT DISCIPLINE:
-- Keep outputs concise to avoid truncation.
-- CRITICAL: every post MUST include script { hook, body, cta }.`;
+  const qualityRules = `Quality Rules — Make each post plug-and-play and conversion-ready:
+1) Hook harder: first 3 seconds must be scroll-stopping; script.hook must punch.
+2) Hashtags: mix broad + niche/local; 6–8 total to balance reach and targeting.
+3) CTA: time-bound urgency (e.g., "book today", "spots fill fast").
+4) Design notes: specify colors, typography, pacing, and end-card CTA.
+5) Repurpose: 2–3 concrete transformations (Reel remix ideas).
+6) Engagement: natural, friendly scripts for comments & DMs.
+7) Format: ALWAYS set format to "Reel" (video-first); never Story/Carousel/Static.
+8) Captions: start with a short hook line, then 1–2 value lines (use \\n).
+9) Keep outputs concise to avoid truncation.
+10) CRITICAL: every post MUST include script { hook, body, cta }.`;
+  const brandBrainRules = `Brand Brain global constraints:
+- Force perception shift: reframe the problem, surface hidden levers, separate informed vs uninformed.
+- No motivational filler, no tourism/lifestyle praise, no feature lists, no obvious ads.
+- Maintain pillar label integrity: pillar must match UI labels (Education|Social Proof|Promotion|Lifestyle).
+- Time correctness: do not reference past years incorrectly.
+- Across the calendar, use these structural families while keeping pillar intent: (1) Instant Hook (tension in first 1-2 seconds), (2) Tips/Tools/Hacks (practical value that drives saves/shares), (3) Beginners/How-To (teach + simplify = authority).
+- Uniqueness: vary hook shapes, steps, and framing across posts; avoid repeating structures.`;
+  const socialProofRules = `Social Proof pillar rules (apply ONLY when pillar is "Social Proof"):
+1) Hook (1-2 seconds): create tension or contradiction; do NOT lead with an "X% increase" claim; use one of these hook intents (contrarian truth, common mistake callout, myth-bust, why it is not working, I almost quit but did not, this is the part nobody tells you, everyone overcomplicates X); frame an implicit risk or mistake the viewer is making. The hook field and script.hook must align.
+2) Body (mechanism-driven, not descriptive): script.body must be a causal chain with 4 beats in order:
+A) Constraint: what was stuck + why typical fixes failed.
+B) Hidden lever: the overlooked variable that separates informed vs uninformed.
+C) Sequence: 2-4 concrete steps in order (what changed, where, why).
+D) Proof + signal: metric + timeframe + what they measured (conversion proxy), no fluffy adjectives.
+Include at least one decision-protection line in your own words (risk avoidance, margin protection, discount traps, dead inventory, or wasted posts). Avoid generic phrases like "targeted marketing", "engaged customers", "boosted sales", "game changer", "strategy for success".
+3) Practical takeaway: caption must include a copyable mini-framework (checklist, 3-step method, or template) specific enough to implement without extra context.
+4) CTA: mistake-prevention / decision-protection framed; ask for a specific keyword comment to deliver a checklist/script/sequence. Generate a contextual keyword and do not reuse the same keyword across Social Proof posts.
+5) Design Notes: designNotes must include rewatch mechanics (open loop early + payoff later), an on-screen text plan, and pattern interrupts with timestamped beats; be specific and stay within field limits.
+6) Engagement Loop: engagementScripts must reinforce the decision-protection framing and the promised deliverable.
+7) Distribution Plan: repurpose entries must specify save/share intent, who should save this and why, plus platform-aware packaging notes (TikTok vs IG) without filler.
+8) Uniqueness: do not repeat the same hook shape, steps, or framing across multiple Social Proof posts.`;
   const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const hardOutputContractBlock = [
-    'OUTPUT CONTRACT (MUST FOLLOW)',
-    '- Output a single JSON object and nothing else.',
-    '- Top-level must be exactly: {"posts":[...]}',
-    '- posts length must be exactly 1',
-    `- Only include days ${day}..${day}`,
-    '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
-  ].join('\n');
-  const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
-Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, storyPromptPlus, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). storyPrompt must be 1–2 short sentences that read like a free-form creator note tied to the topic. storyPromptPlus must be 1–2 sentences (at least 12 words) that expands on the topic with extra stakes or proof and ends with a follow-up question. Return JSON only; do not omit fields or use null/placeholder values.
-SCOPE LOCK: Only generate content for the provided day in this chunk. Do not generate other days.
-${hardOutputContractBlock}`;
+  const schema = `Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio).`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
+  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${brandBrainRules}${socialProofRules}${nicheSpecific}
 
 Niche/Style: ${nicheStyle}
 Day to regenerate: ${day}
@@ -4159,6 +1690,22 @@ ${snapshot}
 Rewrite this day from scratch with a fresh angle while respecting every schema field. ${schema}`;
 }
 
+function hasAllRequiredFields(p){
+  if (!p) return false;
+  const scriptObj = p.script || p.videoScript;
+  const ok = p.day!=null && p.idea && p.type && p.hook && p.caption && p.hashtags && Array.isArray(p.hashtags) && p.hashtags.length>=6
+    && p.format && p.cta && p.pillar && p.storyPrompt && p.designNotes
+    && p.repurpose && Array.isArray(p.repurpose) && p.repurpose.length>=2
+    && p.analytics && Array.isArray(p.analytics) && p.analytics.length>=2
+    && p.engagementScripts && p.engagementScripts.commentReply && p.engagementScripts.dmReply
+    && scriptObj && scriptObj.hook && scriptObj.body && scriptObj.cta
+    && typeof p.promoSlot === 'boolean' && (p.promoSlot ? typeof p.weeklyPromo==='string' : true)
+    && typeof p.instagram_caption === 'string' && typeof p.tiktok_caption === 'string' && typeof p.linkedin_caption === 'string'
+    && typeof p.postingTimeTip === 'string' && p.postingTimeTip.trim()
+    && typeof p.audio === 'string' && p.audio.trim()
+    && hasValidStrategy(p);
+  return !!ok;
+}
 
 function parseStrategyPercent(value) {
   if (value === null || value === undefined) return NaN;
@@ -4187,13 +1734,19 @@ function normalizeStrategyForPost(post = {}) {
   });
   const savesPct = clampStrategyPercent(parseStrategyPercent(raw.target_saves_pct ?? raw.target_saves ?? raw.targetSaves));
   const commentsPct = clampStrategyPercent(parseStrategyPercent(raw.target_comments_pct ?? raw.target_comments ?? raw.targetComments));
-  const keyword = String(raw.pinned_keyword || raw.pinnedKeyword || raw.keyword || '').trim();
-  const deliverable = String(raw.pinned_deliverable || raw.pinnedDeliverable || '').trim();
+  const pinnedKeywordRaw = String(raw.pinned_keyword || raw.pinnedKeyword || raw.keyword || '').trim();
+  const pinnedDeliverableRaw = String(raw.pinned_deliverable || raw.pinnedDeliverable || '').trim();
+  const pinnedCommentRaw = String(raw.pinned_comment || raw.pinnedComment || '').trim();
+  const parsedFromComment = pinnedCommentRaw ? parsePinnedCommentString(pinnedCommentRaw) : null;
+  const keyword = pinnedKeywordRaw || (parsedFromComment?.keyword || '');
+  const deliverable = pinnedDeliverableRaw || (parsedFromComment?.deliverable || '');
+  const builtComment = buildPinnedCommentLine(keyword, deliverable);
   return {
     angle: angleText,
     objective: objectiveText,
     pinned_keyword: keyword,
     pinned_deliverable: deliverable,
+    pinned_comment: builtComment || pinnedCommentRaw,
     target_saves_pct: Number.isFinite(savesPct) ? savesPct : null,
     target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : null,
     hook_options: dedupedHooks,
@@ -4203,20 +1756,30 @@ function normalizeStrategyForPost(post = {}) {
 const BANNED_TERMS = ['angle', 'objective', 'major objection', 'insight'];
 const PINNED_COMMENT_REGEX = /^Comment\s+([A-Za-z0-9]+)\s+and I(?:'|’|`)?ll send you\s+(.+)\.$/i;
 const KEYWORD_STOPWORDS = new Set(['THE','A','AN','AND','OR','TO','OF','IN','ON','FOR','WITH','MY','YOUR','THIS','THAT']);
+const POSTING_TIME_BANNED_AUDIENCE_TERMS = [
+  'exec', 'executive', 'executives', 'founder', 'founders', 'ceo', 'ceos', 'enterprise', 'board', 'investor', 'investors'
+];
+const POSTING_TIME_WINDOW_OPTIONS = [
+  'weekday mornings around 7am before practice or meetings begin',
+  'midweek lunch breaks around noon when phones pop up',
+  'weekday evenings around 7pm when people unwind and scroll',
+  'Saturday afternoons around 3pm during relaxed scrolling',
+  'Sunday evenings around 8pm when folks plan their week'
+];
+const POSTING_TIME_AUDIENCE_PATTERNS = [
+  { match: /basketball|athlete|sport|coach/, creator: 'local athletes and their parents', business: 'club directors and athletic directors' },
+  { match: /fitness|nutrition|wellness|gym|meal|trainer/, creator: 'wellness seekers and gym goers', business: 'studio owners and operations leads' },
+  { match: /beauty|skincare|esthetic|spa|salon/, creator: 'skincare fans and self-care seekers', business: 'boutique owners and studio managers' },
+  { match: /business|coach|consult|agency|strategy|growth|marketing|sales/, creator: 'ambitious creators and community builders', business: 'founders and growth leaders' },
+  { match: /creator|influencer|lifestyle|content|story/, creator: 'your creative audience and community', business: 'marketing leaders and brand storytellers' },
+];
+const POSTING_TIME_TIME_PATTERN = /\b((1[0-2]|[1-9])(:[0-5][0-9])?\s?(AM|PM))\b/i;
+const POSTING_TIME_24H_PATTERN = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
+const POSTING_TIME_DAY_PATTERN = /\b(mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/i;
 
-function sanitizeKeywordForComment(keyword = '', nicheStyle = '') {
-  const lettersOnly = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10);
-  if (lettersOnly.length >= 4) {
-    return lettersOnly;
-  }
-  return deriveNicheFallbackKeyword(nicheStyle) || 'ACCESS';
-}
-
-function buildPinnedCommentLine(keyword = '', deliverable = '', nicheStyle = '', salesMode = 'DIRECT_RESPONSE') {
-  const safeKeyword = sanitizeKeywordForComment(keyword, nicheStyle);
-  if (!safeKeyword || !deliverable) return '';
-  const action = salesMode === 'NON_DIRECT_RESPONSE' ? 'reply with' : 'send you';
-  return `Comment "${safeKeyword}" and I'll ${action} ${deliverable}.`;
+function buildPinnedCommentLine(keyword = '', deliverable = '') {
+  if (!keyword || !deliverable) return '';
+  return `Comment ${keyword} and I'll send you ${deliverable}.`;
 }
 
 function parsePinnedCommentString(text = '') {
@@ -4230,10 +1793,6 @@ function parsePinnedCommentString(text = '') {
 
 function normalizeKeywordToken(value = '') {
   return String(value || '').trim().toUpperCase();
-}
-
-function deriveNicheFallbackKeyword(nicheStyle = '') {
-  return '';
 }
 
 function getPostTitleWordSet(post = {}) {
@@ -4302,6 +1861,85 @@ function isStrategyCopyBad(strategy = {}, post = {}) {
   return false;
 }
 
+function containsBannedPostingAudience(text = '') {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  return POSTING_TIME_BANNED_AUDIENCE_TERMS.some((term) => lower.includes(term));
+}
+
+function isPostingTimeTipValid(tip = '', classification = 'creator') {
+  const cleaned = String(tip || '').trim();
+  if (!cleaned) return false;
+  if (classification !== 'business' && containsBannedPostingAudience(cleaned)) return false;
+  if (POSTING_TIME_DAY_PATTERN.test(cleaned)) return false;
+  if (!POSTING_TIME_TIME_PATTERN.test(cleaned) && !POSTING_TIME_24H_PATTERN.test(cleaned)) return false;
+  return true;
+}
+
+function derivePostingAudience(post = {}, classification = 'creator', nicheStyle = '') {
+  const text = [nicheStyle, post.idea, post.title, post.pillar, post.caption].filter(Boolean).join(' ').toLowerCase();
+  for (const entry of POSTING_TIME_AUDIENCE_PATTERNS) {
+    if (entry.match.test(text)) return entry[classification] || entry.creator;
+  }
+  return classification === 'business'
+    ? 'founders and growth leaders'
+    : 'your niche community of curious fans';
+}
+
+function derivePostingTimeWindow(post = {}) {
+  if (!POSTING_TIME_WINDOW_OPTIONS.length) return 'during peak scrolling hours';
+  const idx = Number(post.day || 0) % POSTING_TIME_WINDOW_OPTIONS.length;
+  return POSTING_TIME_WINDOW_OPTIONS[idx] || POSTING_TIME_WINDOW_OPTIONS[0];
+}
+
+function derivePostingTimeTipFallback(post = {}, classification = 'creator', nicheStyle = '') {
+  const audience = derivePostingAudience(post, classification, nicheStyle);
+  const window = derivePostingTimeWindow(post);
+  const nicheHint = nicheStyle ? ` around your ${nicheStyle} content` : '';
+  return `Post ${window} when ${audience} are scrolling${nicheHint}.`.replace(/\s+/g, ' ').trim();
+}
+
+async function regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms = []) {
+  const summary = [post.idea, post.caption, post.pillar, post.cta].filter(Boolean).join(' | ') || 'Fresh concept';
+  const brandLine = brandContext ? `Brand context: ${brandContext}` : '';
+  const bannedLine = bannedTerms.length
+    ? `Avoid these audience keywords: ${bannedTerms.join(', ')}.`
+    : '';
+  const prompt = `You are a content strategist for ${classification} content. ${brandLine}
+Niche/Style: ${nicheStyle || 'General'}
+Post summary: ${summary}
+${bannedLine}
+Return ONLY one sentence for posting_time_tip. Mention the niche audience, include a specific clock time (e.g., 3:15 PM), explain why that window works, and do NOT mention days of the week or generic phrases like "morning" without a clock time.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.5, maxTokens: 250 });
+    const lines = (raw || '').split(/\\n+/).map((line) => line.trim()).filter(Boolean);
+    return lines[0] || '';
+  } catch (err) {
+    return '';
+  }
+}
+
+async function ensurePostingTimeTips(posts = [], classification, nicheStyle, brandContext) {
+  if (!Array.isArray(posts)) return posts;
+  const bannedTerms = classification === 'business' ? [] : POSTING_TIME_BANNED_AUDIENCE_TERMS;
+  for (const post of posts) {
+    let tip = String(post.postingTimeTip || '').trim();
+    if (!isPostingTimeTipValid(tip, classification)) {
+      const regenerated = await regeneratePostingTimeTip(post, classification, nicheStyle, brandContext, bannedTerms);
+      if (isPostingTimeTipValid(regenerated, classification)) {
+        tip = regenerated;
+      }
+    }
+    if (!tip) {
+      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
+    }
+    if (!isPostingTimeTipValid(tip, classification)) {
+      tip = derivePostingTimeTipFallback(post, classification, nicheStyle);
+    }
+    post.postingTimeTip = tip;
+  }
+  return posts;
+}
 
 function ensureUniqueStrategyValues(posts = []) {
   if (!Array.isArray(posts)) return posts;
@@ -4351,6 +1989,44 @@ function logDuplicateStrategyValues(posts = []) {
   }
 }
 
+async function regeneratePostStrategy(post, nicheStyle, classification, brandContext) {
+  const keyword = extractStrategyKeyword(post.title || post.idea || nicheStyle).replace(/"/g, '');
+  const deliverables = classification === 'business'
+    ? ['audit', 'playbook', 'checklist', 'report', 'blueprint']
+    : ['mini-guide', 'cheat sheet', 'template', 'lookbook', 'routine'];
+  const deliverable = deliverables[(keyword.length || 1) % deliverables.length];
+  const patternInstructions =
+    classification === 'business'
+      ? 'Business hooks should call out a pain, show a proof or outcome, and close with a direct comment/DM CTA.'
+      : 'Creator hooks should feel like story time, contrarian take, or behind-the-scenes content that invites engagement.';
+  const prompt = `You are a content strategist. ${patternInstructions}
+Niche: ${nicheStyle}
+Post title: ${post.title || post.idea || 'Untitled'}
+Pillar: ${post.pillar || 'General'}
+
+Provide a JSON object with keys "angle", "objective", "pinned_comment", and "hook_options" (array of exactly 3 hooks). Each hook must be one sentence, mention the pain/outcome (business) or a relatable moment (creator), and end with a call-to-action to comment or DM. Pinned comment must follow this exact format: Comment <ONE_WORD_KEYWORD> and I'll send you <DELIVERABLE>. The keyword should be niche relevant and unique; the deliverable must be a specific resource tied to this post (checklist, template, roadmap, meal plan, etc.). Do not reuse the title verbatim or mention the words insight, angle, objective, or major objection.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 900 });
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.hook_options || !Array.isArray(parsed.hook_options)) return null;
+    const savesPct = Number(parsed.target_saves_pct ?? post.strategy?.target_saves_pct ?? 5);
+    const commentsPct = Number(parsed.target_comments_pct ?? post.strategy?.target_comments_pct ?? 2);
+    const parsedKeyword = normalizeKeywordToken(parsed.pinned_keyword || parsed.pinnedKeyword || parsed.keyword || '');
+    const parsedDeliverable = String(parsed.pinned_deliverable || parsed.pinnedDeliverable || parsed.deliverable || '').trim();
+    return {
+      angle: String(parsed.angle || post.strategy?.angle || '').trim(),
+      objective: String(parsed.objective || post.strategy?.objective || '').trim(),
+      pinned_keyword: parsedKeyword,
+      pinned_deliverable: parsedDeliverable,
+      pinned_comment: buildPinnedCommentLine(parsedKeyword, parsedDeliverable),
+      target_saves_pct: Number.isFinite(savesPct) ? savesPct : 5,
+      target_comments_pct: Number.isFinite(commentsPct) ? commentsPct : 2,
+      hook_options: parsed.hook_options.map((h) => String(h || '').trim()).filter(Boolean),
+    };
+  } catch (err) {
+    return null;
+  }
+}
 
 function deriveFallbackDeliverable(post = {}, classification = 'creator') {
   const text = [post.type, post.pillar, post.idea, post.caption, post.storyPrompt]
@@ -4373,26 +2049,6 @@ function deriveFallbackDeliverable(post = {}, classification = 'creator') {
   return classification === 'business' ? 'my blueprint' : 'my creative guide';
 }
 
-const NICHE_KEYWORD_BANK = {
-  fitness: ['TRAIN','GRIND','LIFT','FIGHT','STRONG'],
-  basketball: ['HOOPS','DRILLS','SHOOT','DEFENSE','HANDLES'],
-  'real estate': ['LISTING','HOME','DEAL'],
-  beauty: ['GLOW','SKIN','LOOK'],
-  cooking: ['RECIPE','EAT','COOK'],
-  restaurant: ['BURGER','FRIES','MENU','SAUCE','DEAL','ORDER'],
-  business: ['GROW','SCALE','LEAD'],
-  marketing: ['LEADS','SALES','LAUNCH'],
-  creator: ['CREATE','IMPACT','INSPIRE'],
-};
-const DIRECT_RESPONSE_KEYWORDS = ['coach','consult','agency','course','training','consultant','creator','fitness','real estate','broker'];
-const NON_DIRECT_RESPONSE_KEYWORDS = ['restaurant','fast-food','cafe','local','diner','bar','retail','bakery','food'];
-const NON_DIRECT_DELIVERABLES = {
-  restaurant: 'reply with the best item to try first',
-  cafe: 'reply with my top pick',
-  food: 'reply with my favorite tasting note',
-  default: 'reply with my top pick',
-};
-const SANITIZED_KEYWORD_WARNED = new Set();
 const FALLBACK_KEYWORD_MAP = [
   { match: /basketball|athlete|sport|drills/, keywords: ['DRILLS', 'ATHLETE'] },
   { match: /fitness|nutrition|wellness|meal|recipe|gym/, keywords: ['MEAL'] },
@@ -4400,78 +2056,7 @@ const FALLBACK_KEYWORD_MAP = [
   { match: /creator|influencer|lifestyle|content|story/, keywords: ['ROUTINE', 'VIBES'] },
 ];
 
-function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
-  const letters = (String(value || '').toUpperCase().match(/[A-Z]+/g) || []).join('');
-  if (!letters) return '';
-  const truncated = letters.slice(0, maxLen);
-  if (truncated.length < minLen) return '';
-  return truncated;
-}
-
-function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
-  const niche = String(nicheStyle || 'General').trim() || 'General';
-  const audience = brandContext ? `Audience: ${brandContext.split('\n')[0]}` : 'Audience: General';
-  const offer = 'Offer: N/A';
-  return `\n=== NICHE PROFILE (SOURCE OF TRUTH) ===\nNiche: ${niche}\n${audience}\n${offer}\nHard rules:\n- Every line MUST be directly relevant to the niche above.\n- NEVER include concepts from unrelated niches.\n- If uncertain, stay generic within the niche.\n- Avoid beauty/med-spa language unless the niche is beauty/med-spa.\n- Avoid discount-code vibes unless the niche explicitly uses it.\n=== END NICHE PROFILE ===\n`;
-}
-
-function deriveNicheKeyword(nicheStyle = '') {
-  const normalized = String(nicheStyle || '').toLowerCase();
-  for (const [key, keywords] of Object.entries(NICHE_KEYWORD_BANK)) {
-    if (normalized.includes(key)) {
-      return keywords[0];
-    }
-  }
-  const sanitized = sanitizeLettersOnly(nicheStyle, 4, 10);
-  return sanitized || 'TIPS';
-}
-
-function deriveSalesMode(post = {}, classification = 'creator', nicheStyle = '') {
-  const text = [post.businessType, post.industry, post.nicheCategory, classification, nicheStyle]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  if (DIRECT_RESPONSE_KEYWORDS.some((keyword) => text.includes(keyword))) return 'DIRECT_RESPONSE';
-  if (NON_DIRECT_RESPONSE_KEYWORDS.some((keyword) => text.includes(keyword))) return 'NON_DIRECT_RESPONSE';
-  return 'DIRECT_RESPONSE';
-}
-
-function deriveNonDirectDeliverable(nicheStyle = '') {
-  const normalized = (nicheStyle || '').toLowerCase();
-  for (const key of Object.keys(NON_DIRECT_DELIVERABLES)) {
-    if (key !== 'default' && normalized.includes(key)) {
-      return NON_DIRECT_DELIVERABLES[key];
-    }
-  }
-  return NON_DIRECT_DELIVERABLES.default;
-}
-function sanitizeStoryPromptPlus(nicheStyle = '', text = '', post = {}) {
-  return String(text || '').trim();
-}
-
-function buildStoryPromptPlusNicheFallback(nicheStyle = '') {
-  return '';
-}
-
-function validateNicheLock(card = {}, nicheStyle = '') {
-  return true;
-}
-
-if (process.env.NODE_ENV !== 'production') {
-  const dev_niche = 'fast food burger joint';
-  sanitizeStoryPromptPlus(dev_niche, 'What’s your favorite combo right now? Add a poll and slider.');
-}
-
-function ensureStoryPromptMatchesNiche(nicheStyle = '', storyPrompt = '', hashtags = []) {
-  const trimmed = String(storyPrompt || '').trim();
-  return trimmed;
-}
-
 function deterministicKeywordFallback(post = {}, classification = 'creator', nicheStyle = '', used = new Set()) {
-  const nicheKeyword = deriveNicheKeyword(nicheStyle);
-  if (nicheKeyword && isKeywordValid(nicheKeyword, post) && !used.has(nicheKeyword)) {
-    return nicheKeyword;
-  }
   const text = [nicheStyle, post.idea, post.title, post.pillar, post.type].filter(Boolean).join(' ').toLowerCase();
   for (const entry of FALLBACK_KEYWORD_MAP) {
     if (entry.match.test(text)) {
@@ -4527,6 +2112,134 @@ function buildFallbackStrategyPieces(post, classification, nicheStyle) {
   return { keyword, deliverable, hooks };
 }
 
+async function regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist = []) {
+  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
+  const blacklistLine = (Array.isArray(blacklist) && blacklist.length)
+    ? `Do NOT use these keywords: ${blacklist.join(', ')}.`
+    : '';
+  const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
+Post title: ${post.title || post.idea || 'Untitled'}
+Post summary: ${summary || 'Fresh concept'}
+
+${blacklistLine}
+Return a single uppercase keyword (3-16 letters) that feels specific to this post. Do NOT use stopwords (THE, A, AN, AND, OR, TO, OF, IN, ON, FOR, WITH, MY, YOUR, THIS, THAT). Do not reuse the title or any title word. Return only the keyword on its own line.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
+    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
+    return candidate ? normalizeKeywordToken(candidate) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function selectUnusedFallbackKeyword(post, classification, nicheStyle, used = new Set()) {
+  const candidate = deriveFallbackKeyword(post, classification, nicheStyle, '', used);
+  if (candidate && !used.has(candidate) && isKeywordValid(candidate, post)) return candidate;
+  const fallbackPool = classification === 'business'
+    ? ['CLIENTS', 'SYSTEM', 'PROOF', 'GROWTH', 'PLAN', 'AUDIT', 'TRUST', 'COACH']
+    : ['ROUTINE', 'VIBES', 'STORY', 'CREW', 'FLOW', 'MOMENT', 'SPARK', 'FRESH'];
+  for (const option of fallbackPool) {
+    if (!used.has(option) && isKeywordValid(option, post)) return option;
+  }
+  for (const option of fallbackPool) {
+    if (isKeywordValid(option, post)) return option;
+  }
+  return classification === 'business' ? 'CLIENTS' : 'ROUTINE';
+}
+async function regeneratePinnedKeywordOnly(post, classification, nicheStyle) {
+  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
+  const prompt = `You are a content strategist focused on ${classification} content. Niche: ${nicheStyle}.
+Post title: ${post.title || post.idea || 'Untitled'}
+Post summary: ${summary || 'Fresh concept'}
+
+Return a single uppercase keyword (3-16 letters) that feels specific to this post. Do NOT use stopwords (THE, A, AN, AND, OR, TO, OF, IN, ON, FOR, WITH, MY, YOUR, THIS, THAT). Do not reuse the title or any title word. Return only the keyword on its own line.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
+    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
+    return candidate ? normalizeKeywordToken(candidate) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function regeneratePinnedDeliverableOnly(post, classification, nicheStyle) {
+  const summary = [post.idea, post.caption, post.pillar, post.type].filter(Boolean).join(' | ');
+  const prompt = `You are a content strategist for ${classification} creators. Niche: ${nicheStyle}.
+Post title: ${post.title || post.idea || 'Untitled'}
+Post summary: ${summary || 'Fresh concept'}
+
+Return one concise deliverable phrase (e.g., "my checklist", "my template pack", "my meal plan") that promises a specific resource tied to this post. Do not mention the title, insight, angle, or objective. Return only that phrase.`;
+  try {
+    const raw = await callChatCompletion(prompt, { temperature: 0.6, maxTokens: 200 });
+    const candidate = (raw || '').split('\n').map((line) => line.trim()).find(Boolean);
+    return candidate || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function ensurePinnedFieldsValid(strategy = {}, post, classification, nicheStyle) {
+  let keyword = normalizeKeywordToken(strategy.pinned_keyword || '');
+  let deliverable = String(strategy.pinned_deliverable || '').trim();
+  if (!isKeywordValid(keyword, post)) {
+    const regenerated = await regeneratePinnedKeywordOnly(post, classification, nicheStyle);
+    if (regenerated && isKeywordValid(regenerated, post)) {
+      keyword = regenerated;
+    } else {
+      keyword = deterministicKeywordFallback(post, classification, nicheStyle);
+    }
+  }
+  if (!isDeliverableValid(deliverable, post)) {
+    const regenerated = await regeneratePinnedDeliverableOnly(post, classification, nicheStyle);
+    if (regenerated && isDeliverableValid(regenerated, post)) {
+      deliverable = regenerated;
+    } else {
+      deliverable = deriveFallbackDeliverable(post, classification);
+    }
+  }
+  return {
+    ...strategy,
+    pinned_keyword: keyword,
+    pinned_deliverable: deliverable,
+    pinned_comment: buildPinnedCommentLine(keyword, deliverable),
+  };
+}
+
+async function dedupePinnedComments(posts = [], classification, nicheStyle) {
+  const usedKeywords = new Set();
+  for (const post of posts) {
+    const strategy = post.strategy || {};
+    const currentKeyword = normalizeKeywordToken(strategy.pinned_keyword || '');
+    if (currentKeyword && isKeywordValid(currentKeyword, post) && !usedKeywords.has(currentKeyword)) {
+      usedKeywords.add(currentKeyword);
+      continue;
+    }
+    const blacklist = [...usedKeywords];
+    let finalKeyword = currentKeyword;
+    let attempts = 0;
+    while (
+      (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) &&
+      attempts < 2
+    ) {
+      const regenerated = await regenerateKeywordWithBlacklist(post, classification, nicheStyle, blacklist);
+      if (regenerated && isKeywordValid(regenerated, post) && !usedKeywords.has(regenerated)) {
+        finalKeyword = regenerated;
+        break;
+      }
+      if (regenerated) blacklist.push(regenerated);
+      attempts += 1;
+    }
+    if (!finalKeyword || !isKeywordValid(finalKeyword, post) || usedKeywords.has(finalKeyword)) {
+      finalKeyword = selectUnusedFallbackKeyword(post, classification, nicheStyle, usedKeywords);
+    }
+    const updatedStrategy = await ensurePinnedFieldsValid({ ...strategy, pinned_keyword: finalKeyword }, post, classification, nicheStyle);
+    if (updatedStrategy.pinned_keyword) {
+      usedKeywords.add(updatedStrategy.pinned_keyword);
+    }
+    post.strategy = updatedStrategy;
+  }
+  return posts;
+}
 
 function templateStrategyFromTitle(post, classification, nicheStyle) {
   const fallback = buildFallbackStrategyPieces(post, classification, nicheStyle);
@@ -4542,1722 +2255,88 @@ function templateStrategyFromTitle(post, classification, nicheStyle) {
   };
 }
 
-async function sanitizeStrategyCopy(posts, nicheStyle, classification) {
+async function sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext) {
   const results = [];
   for (const post of posts) {
-    let strategy = normalizeStrategyForPost(post);
+    let strategy = post.strategy || {};
     if (isStrategyCopyBad(strategy, post)) {
-      strategy = templateStrategyFromTitle(post, classification, nicheStyle);
+      const regenerated = await regeneratePostStrategy(post, nicheStyle, classification, brandContext);
+      if (regenerated && !isStrategyCopyBad(regenerated, post)) {
+        strategy = regenerated;
+      } else {
+        strategy = templateStrategyFromTitle(post, classification, nicheStyle);
+      }
     }
-    try {
-      strategy = ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
-    } catch (err) {
-      console.warn('[Calendar] ensurePinnedFieldsValid failure', {
-        type: typeof ensurePinnedFieldsValid,
-        keys: Object.keys(strategy || {}),
-      });
-      throw err;
-    }
+    strategy = await ensurePinnedFieldsValid(strategy, post, classification, nicheStyle);
     post.strategy = strategy;
     results.push(post);
   }
   return results;
 }
 
+async function repairMissingFields(nicheStyle, brandContext, partialPosts){
+  try {
+    const schema = `Fill missing fields for each post. Keep existing values exactly as given. Return ONLY a JSON array with the same length and order. ALL fields must be present for every item (never omit):
+- day (number)
+- idea (string)
+- type (educational|promotional|lifestyle|interactive)
+- hook (single hook line)
+- caption (final caption)
+- hashtags (array of 6-8 strings)
+- format (must be "Reel")
+- cta (string)
+- pillar (Education|Social Proof|Promotion|Lifestyle)
+- storyPrompt (string <= 120 chars)
+- designNotes (string <= 120 chars)
+- repurpose (array of 2-3 short strings)
+- analytics (array of 2-3 strings)
+- engagementScripts { commentReply, dmReply } (each <= 140 chars)
+- promoSlot (boolean)
+- weeklyPromo (string; include empty string if promoSlot is false)
+- postingTimeTip (string; mention a niche audience + time/window)
+- script { hook, body, cta }
+- strategy { angle, objective, target_saves_pct, target_comments_pct, pinned_keyword, pinned_deliverable, pinned_comment, hook_options }
+- instagram_caption (string)
+- tiktok_caption (string)
+- linkedin_caption (string)`;
+    const prompt = `Brand Context (optional):
+${brandContext || 'N/A'}
 
-function toPlainString(value) {
-  return String(value || '').trim();
-}
+Niche/Style: ${nicheStyle}
 
-function ensurePinnedFieldsValid(strategy = {}, post = {}, classification = 'creator', nicheStyle = '') {
-  const normalizedStrategy = { ...strategy };
-  const candidateKeyword = normalizeKeywordToken(normalizedStrategy.pinned_keyword || '');
-  const candidateDeliverable = String(normalizedStrategy.pinned_deliverable || '').trim();
-  const finalKeyword = isKeywordValid(candidateKeyword, post)
-    ? candidateKeyword
-    : deterministicKeywordFallback(post, classification, nicheStyle);
-  const finalDeliverable = isDeliverableValid(candidateDeliverable, post)
-    ? candidateDeliverable
-    : deriveFallbackDeliverable(post, classification);
-  const sanitizedKeyword = sanitizeKeywordForComment(finalKeyword, nicheStyle);
-  if (finalKeyword !== sanitizedKeyword && !SANITIZED_KEYWORD_WARNED.has(finalKeyword)) {
-    console.warn('[Calendar] sanitized pinned keyword', { original: finalKeyword, sanitized: sanitizedKeyword });
-    SANITIZED_KEYWORD_WARNED.add(finalKeyword);
-  }
-  const salesMode = deriveSalesMode(post, classification, nicheStyle);
-  const deliverableForMode = salesMode === 'NON_DIRECT_RESPONSE'
-    ? deriveNonDirectDeliverable(nicheStyle)
-    : finalDeliverable;
-  return {
-    ...normalizedStrategy,
-    pinned_keyword: sanitizedKeyword,
-    pinned_deliverable: deliverableForMode,
-    pinned_comment: buildPinnedCommentLine(sanitizedKeyword, deliverableForMode, nicheStyle, salesMode),
-  };
-}
+Here are partial posts with some fields missing. Repair them to include ALL required fields with concise, plausible values. Preserve existing values verbatim.
 
-async function dedupePinnedComments(posts = [], classification = 'creator', nicheStyle = '') {
-  return Array.isArray(posts) ? posts : [];
-}
+Partial posts (JSON array):
+${JSON.stringify(partialPosts)}
 
-function ensureStringArray(value, fallback = [], minLength = 0) {
-  const list = [];
-  const pushValue = (input) => {
-    const normalized = toPlainString(input);
-    if (normalized) list.push(normalized);
-  };
-  if (Array.isArray(value)) {
-    value.forEach(pushValue);
-  } else if (typeof value === 'string') {
-    value.split(/[,\n]+/).forEach(pushValue);
-  }
-  const fallbackList = (Array.isArray(fallback) ? fallback : [])
-    .map((item) => toPlainString(item))
-    .filter(Boolean);
-  while (list.length < minLength && fallbackList.length) {
-    list.push(fallbackList[list.length % fallbackList.length]);
-  }
-  if (!list.length && fallbackList.length) {
-    return fallbackList.slice(0, Math.max(minLength, fallbackList.length));
-  }
-  return list;
-}
-
-function ensureHashtagPrefix(value = '') {
-  const trimmed = toPlainString(value)
-    .replace(/^[#]+/, '')
-    .replace(/\s+/g, '');
-  return trimmed ? `#${trimmed}` : '';
-}
-
-function ensureHashtagArray(value, fallback = [], minLength = 0) {
-  const rawList = (typeof value === 'string' && value.includes('#'))
-    ? (value.match(/#[A-Za-z0-9_]+/g) || [])
-    : ensureStringArray(value, fallback, minLength);
-  const hashtags = rawList
-    .map(ensureHashtagPrefix)
-    .filter(Boolean);
-  const fallbackTags = (Array.isArray(fallback) ? fallback : [])
-    .map(ensureHashtagPrefix)
-    .filter(Boolean);
-  let idx = 0;
-  while (hashtags.length < minLength && fallbackTags.length) {
-    hashtags.push(fallbackTags[idx % fallbackTags.length]);
-    idx += 1;
-  }
-  return hashtags;
-}
-
-function sanitizeHashtagToken(value = '') {
-  const normalized = String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-  return normalized;
-}
-
-function buildFallbackHashtagList(nicheStyle = '', platform = '') {
-  const tokens = [];
-  const addToken = (value) => {
-    const sanitized = sanitizeHashtagToken(value);
-    if (sanitized && !tokens.includes(sanitized)) tokens.push(sanitized);
-  };
-  addToken(nicheStyle);
-  addToken(platform);
-  const extras = ['content', 'creator', 'shortform', 'story', 'strategy', 'engagement', 'tips', 'insight', 'daily', 'plan', 'workflow', 'framework', 'ideas'];
-  extras.forEach(addToken);
-  let fillerIndex = 0;
-  while (tokens.length < 8) {
-    addToken(`content${fillerIndex}`);
-    fillerIndex += 1;
-  }
-  return tokens.slice(0, 15).map((token) => `#${token}`);
-}
-
-function normalizeScriptObject(source = {}) {
-  const hook = toPlainString(source.hook);
-  const body = toPlainString(source.body);
-  const cta = toPlainString(source.cta);
-  return { hook, body, cta };
-}
-
-const PLACEHOLDER_PROMPT_REGEX = /^(?:tbd|n\/a|null|undefined|none|story prompt here)$/i;
-const DISTRIBUTION_PLACEHOLDER_REGEX = /^(?:tbd|n\/a|null|undefined|none|distribution plan here)$/i;
-const BRAND_BRAIN_FORBIDDEN_PHRASES = [
-  'placeholder',
-  'quick hook',
-  'explain the idea',
-  'ask for feedback',
-  'neutral background',
-  'let me know what you think',
-  'talk briefly',
-  'screenshot this so you remember',
-  'office hours',
-];
-const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
-  (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
-);
-const BRAND_BRAIN_MIN_LENGTHS = {
-  hook: 12,
-  caption: 80,
-  cta: 10,
-  storyPrompt: 12,
-  storyPromptPlus: 18,
-  designNotes: 40,
-  distributionPlan: 40,
-  scriptBody: 40,
-  reelScriptBody: 40,
-  engagementComment: 12,
-  engagementDm: 12,
-};
-const BRAND_BRAIN_HASHTAG_RANGE = { min: 8, max: 12 };
-const TOPIC_BINDING_HASHTAG_MAX = BRAND_BRAIN_HASHTAG_RANGE.max;
-const BRAND_BRAIN_STOPWORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
-  'in', 'on', 'at', 'by', 'your', 'you', 'our', 'my', 'their', 'this', 'that',
-  'these', 'those', 'about', 'into', 'over', 'under', 'near', 'per', 'via',
-]);
-
-function truncateWords(text = '', maxWords = 6) {
-  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return '';
-  return words.slice(0, maxWords).join(' ');
-}
-
-function titleCase(text = '') {
-  return String(text || '')
-    .split(/\s+/)
-    .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
-    .join(' ')
-    .trim();
-}
-
-function extractBrandBrainTokens(nicheStyle = '') {
-  const raw = toPlainString(nicheStyle).toLowerCase();
-  if (!raw) return [];
-  const tokens = raw
-    .split(/[^a-z0-9]+/g)
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 4 && !BRAND_BRAIN_STOPWORDS.has(token));
-  return Array.from(new Set(tokens));
-}
-
-function buildBrandBrainHashtags(
-  nicheStyle = '',
-  minCount = BRAND_BRAIN_HASHTAG_RANGE.min,
-  maxCount = BRAND_BRAIN_HASHTAG_RANGE.max
-) {
-  const tokens = extractBrandBrainTokens(nicheStyle);
-  const tags = [];
-  tokens.forEach((token) => {
-    if (token && !tags.includes(token)) tags.push(token);
-  });
-  const extras = ['leads', 'growth', 'booked', 'strategy', 'results', 'pipeline', 'conversion', 'clients'];
-  extras.forEach((token) => {
-    if (tags.length < maxCount && !tags.includes(token)) tags.push(token);
-  });
-  if (!tags.length) tags.push('growth', 'strategy');
-  return tags.slice(0, maxCount).map((token) => `#${token}`);
-}
-
-function buildBrandBrainCta(nicheStyle = '', topic = '') {
-  const nicheLabel = toPlainString(nicheStyle || '').trim() || 'your niche';
-  const keyword = topic ? truncateWords(topic, 1).toUpperCase() : 'PLAN';
-  return `DM ${keyword} for the ${nicheLabel} checklist`;
-}
-
-function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
-  const next = { ...(post || {}) };
-  const nicheLabel = toPlainString(nicheStyle || '').trim() || 'your niche';
-  const topic = toPlainString(next.idea || next.title || next.hook || next.caption || '').trim();
-  if (!isNonEmptyString(next.title)) {
-    const candidate = topic ? truncateWords(topic, 6) : `${nicheLabel} lead play`;
-    next.title = titleCase(candidate);
-  }
-  if (!isNonEmptyString(next.hook)) {
-    const base = next.title || topic || nicheLabel;
-    next.hook = `Most ${nicheLabel} leads drop before ${base} converts.`;
-  }
-  if (!isNonEmptyString(next.cta)) {
-    next.cta = buildBrandBrainCta(nicheStyle, topic);
-  }
-  if (!isNonEmptyString(next.caption)) {
-    const opener = next.hook;
-    const detail = topic
-      ? `Here’s the shift ${nicheLabel} clients respond to when ${topic}.`
-      : `Here’s the shift ${nicheLabel} clients respond to when deciding.`;
-    next.caption = `${opener} ${detail} ${next.cta}.`;
-  }
-  if (!Array.isArray(next.hashtags) || !next.hashtags.length) {
-    next.hashtags = buildBrandBrainHashtags(nicheStyle);
-  }
-  if (!isNonEmptyString(next.designNotes)) {
-    next.designNotes = `On-screen text: ${next.title}. Show a niche-specific scene, then a proof moment, then the CTA keyword.`;
-  }
-  if (!isNonEmptyString(next.storyPrompt)) {
-    next.storyPrompt = `What's your biggest ${nicheLabel} obstacle right now?`;
-  }
-  if (!isNonEmptyString(next.storyPromptPlus)) {
-    next.storyPromptPlus = `Poll: biggest blocker. Question box: your goal. Slider: readiness to act.`;
-  }
-  if (!isNonEmptyString(next.distributionPlan)) {
-    const visual = topic ? `Show ${topic} on screen.` : `Show a niche-specific moment on screen.`;
-    next.distributionPlan = `Open with the hook in the first second. ${visual} Pin a comment with the DM keyword and reply to early comments within 30 minutes. Close with the CTA.`;
-  }
-  if (!next.engagementScripts || typeof next.engagementScripts !== 'object') {
-    next.engagementScripts = {};
-  }
-  if (!isNonEmptyString(next.engagementScripts.commentReply)) {
-    next.engagementScripts.commentReply = `Thanks! What's your timeline and biggest ${nicheLabel} priority?`;
-  }
-  if (!isNonEmptyString(next.engagementScripts.dmReply)) {
-    next.engagementScripts.dmReply = `Happy to send the checklist—what's your timeline and budget range?`;
-  }
-  if (!next.script || typeof next.script !== 'object') {
-    next.script = {};
-  }
-  if (!isNonEmptyString(next.script.hook)) next.script.hook = next.hook;
-  if (!isNonEmptyString(next.script.body)) next.script.body = next.caption;
-  if (!isNonEmptyString(next.script.cta)) next.script.cta = next.cta;
-  if (!next.reelScript || typeof next.reelScript !== 'object') {
-    next.reelScript = {};
-  }
-  if (!isNonEmptyString(next.reelScript.hook)) next.reelScript.hook = next.script.hook;
-  if (!isNonEmptyString(next.reelScript.body)) next.reelScript.body = next.script.body;
-  if (!isNonEmptyString(next.reelScript.cta)) next.reelScript.cta = next.script.cta;
-  return next;
-}
-
-function findBrandBrainForbiddenMatch(value = '') {
-  const text = toPlainString(value);
-  if (!text) return null;
-  for (const regex of BRAND_BRAIN_FORBIDDEN_REGEXES) {
-    if (regex.test(text)) return regex;
-  }
-  return null;
-}
-
-function extractHashtagTokens(value = null) {
-  if (Array.isArray(value)) {
-    return value.map((tag) => ensureHashtagPrefix(tag)).filter(Boolean);
-  }
-  if (typeof value === 'string') {
-    return value.match(/#[A-Za-z0-9_]+/g) || [];
-  }
-  return [];
-}
-
-function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTAG_RANGE) {
-  if (!post || typeof post !== 'object') return;
-  const raw = post.hashtags;
-  if (!raw) return;
-  let tokens = extractHashtagTokens(raw);
-  if (!tokens.length && post.details) {
-    tokens = extractHashtagTokens(post.details);
-  }
-  if (!tokens.length) return;
-  const seen = new Set();
-  const deduped = [];
-  tokens.forEach((token) => {
-    const key = token.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    deduped.push(token);
-  });
-  const expectedExact = Number.isFinite(expected?.exact) ? expected.exact : null;
-  const expectedMax = Number.isFinite(expected?.max) ? expected.max : null;
-  let normalized = deduped;
-  if (expectedExact !== null) {
-    if (deduped.length >= expectedExact) normalized = deduped.slice(0, expectedExact);
-  } else if (expectedMax !== null && deduped.length > expectedMax) {
-    normalized = deduped.slice(0, expectedMax);
-  }
-  if (!normalized.length) return;
-  post.hashtags = normalized.join(' ');
-}
-
-function normalizeHashtagsForTopicBinding(post = {}, maxCount = TOPIC_BINDING_HASHTAG_MAX) {
-  if (!post || typeof post !== 'object') return;
-  const raw = post.hashtags;
-  let tokens = extractHashtagTokens(raw);
-  if (!tokens.length && post.details) {
-    tokens = extractHashtagTokens(post.details);
-  }
-  if (!tokens.length) return;
-  const seen = new Set();
-  const deduped = [];
-  tokens.forEach((token) => {
-    const key = token.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    deduped.push(token);
-  });
-  const shouldTruncate = Number.isFinite(maxCount) && deduped.length > maxCount;
-  if (shouldTruncate) deduped.length = maxCount;
-  const shouldRewrite = !Array.isArray(raw) || shouldTruncate || deduped.length !== tokens.length;
-  if (shouldRewrite) {
-    post.hashtags = deduped.join(' ');
-  }
-  return deduped;
-}
-
-function validateBrandBrainPost(post = {}, nicheStyle = '') {
-  const reasons = [];
-  const missing = validatePostCompleteness(post);
-  if (missing.length) {
-    reasons.push({ code: 'MISSING_FIELD', detail: missing });
-  }
-  const title = toPlainString(post.title);
-  const hook = toPlainString(post.hook);
-  const caption = toPlainString(post.caption);
-  const cta = toPlainString(post.cta);
-  const storyPrompt = toPlainString(post.storyPrompt);
-  const storyPromptPlus = resolveStoryPromptPlusValue(post) || toPlainString(post.storyPromptPlus || post.storyPromptExpanded);
-  const designNotes = toPlainString(post.designNotes);
-  const distributionPlan = resolveDistributionPlanValue(post);
-  const scriptBody = toPlainString(post.script?.body);
-  const reelScriptBody = toPlainString(post.reelScript?.body || post.script?.body);
-  const engagementComment = toPlainString(post.engagementScripts?.commentReply);
-  const engagementDm = toPlainString(post.engagementScripts?.dmReply);
-  const fields = {
-    title,
-    hook,
-    caption,
-    cta,
-    storyPrompt,
-    storyPromptPlus,
-    designNotes,
-    distributionPlan,
-    scriptBody,
-    reelScriptBody,
-    engagementComment,
-    engagementDm,
-    scriptHook: post.script?.hook,
-    scriptCta: post.script?.cta,
-    reelScriptHook: post.reelScript?.hook,
-    reelScriptCta: post.reelScript?.cta,
-  };
-  Object.entries(fields).forEach(([field, value]) => {
-    const match = findBrandBrainForbiddenMatch(value);
-    if (match) {
-      reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
-    }
-  });
-  if (/^\s*placeholder\b/i.test(title) || /\boffice hours\b/i.test(title)) {
-    reasons.push({ code: 'PLACEHOLDER_DETECTED', field: 'title', match: 'placeholder_title' });
-  }
-  const titleWords = title.split(/\s+/).filter(Boolean);
-  if (titleWords.length && titleWords.length < 4) {
-    reasons.push({ code: 'TOO_SHORT', field: 'title', length: titleWords.length });
-  }
-  const minChecks = [
-    ['hook', hook],
-    ['caption', caption],
-    ['cta', cta],
-    ['storyPrompt', storyPrompt],
-    ['storyPromptPlus', storyPromptPlus],
-    ['designNotes', designNotes],
-    ['distributionPlan', distributionPlan],
-    ['scriptBody', scriptBody],
-    ['reelScriptBody', reelScriptBody],
-    ['engagementComment', engagementComment],
-    ['engagementDm', engagementDm],
-  ];
-  minChecks.forEach(([field, value]) => {
-    const min = BRAND_BRAIN_MIN_LENGTHS[field];
-    if (min && toPlainString(value).length < min) {
-      reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
-    }
-  });
-  const hashtags = extractHashtagTokens(post.hashtags);
-  if (hashtags.length < BRAND_BRAIN_HASHTAG_RANGE.min || hashtags.length > BRAND_BRAIN_HASHTAG_RANGE.max) {
-    reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
-  }
-  const nicheTokens = extractBrandBrainTokens(nicheStyle);
-  if (nicheTokens.length) {
-    const combined = [
-      title,
-      hook,
-      caption,
-      cta,
-      designNotes,
-      storyPrompt,
-      storyPromptPlus,
-      distributionPlan,
-      ...hashtags,
-    ]
-      .map((val) => toPlainString(val).toLowerCase())
-      .join(' ');
-    const hasToken = nicheTokens.some((token) => combined.includes(token));
-    if (!hasToken) {
-      // Allow Brand Brain posts without explicit niche tokens to avoid hard-failing.
-    }
-  }
-  return { ok: reasons.length === 0, reasons };
-}
-
-const STORY_PROMPT_ALIASES = [
-  'storyPrompt',
-  'story_prompt',
-  'story prompt',
-  'storyPromptPlus',
-  'story_prompt_plus',
-  'storyPromptExpanded',
-  'story_prompt_expanded',
-  'storyPromptVariant',
-  'story_prompt_variant',
-];
-
-function resolveStoryPromptValue(post = {}) {
-  for (const key of STORY_PROMPT_ALIASES) {
-    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
-    const value = post[key];
-    const trimmed = toPlainString(value);
-    if (trimmed && !PLACEHOLDER_PROMPT_REGEX.test(trimmed)) return trimmed;
-  }
-  return '';
-}
-
-function buildStoryPromptFromPost(post = {}, nicheStyle = '') {
-  const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
-  const hook = toPlainString(post.hook || '');
-  const parts = [hook, topic]
-    .map((part) => toPlainString(part))
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts.join('. ');
-}
-
-function ensureStoryPromptFallback(post = {}, nicheStyle = '') {
-  const current = String(post.storyPrompt || '').trim();
-  if (current) return current;
-  const fallback = buildStoryPromptFromPost(post, nicheStyle);
-  if (fallback) return fallback;
-  const idea = toPlainString(post.idea || post.title || 'talk through this insight');
-  if (idea) return `${idea}.`;
-  return 'Share one specific idea worth discussing.';
-}
-
-function ensureStoryPromptPlusFallback(post = {}, nicheStyle = '') {
-  const current = String(post.storyPromptPlus || '').trim();
-  if (current) return current;
-  const fallback = buildStoryPromptPlusFromPost(post, nicheStyle);
-  if (fallback) return fallback;
-  const idea = toPlainString(post.idea || post.title || 'add more context');
-  if (idea) return `Add context to ${idea} and ask what viewers think?`;
-  return 'Add one more detail and end with a focused question.';
-}
-
-function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
-  const existing = String(post.designNotes || '').trim();
-  if (existing) return existing;
-  const idea = toPlainString(post.idea || post.title || post.hook || '');
-  const promptRef = toPlainString(post.storyPrompt || '').trim();
-  const topic = idea || promptRef || 'this topic';
-  const format = toPlainString(post.format || 'Reel').toLowerCase();
-  const niche = toPlainString(nicheStyle || 'your niche');
-  const direction = [];
-  if (format) {
-    direction.push(`Frame this ${format} with visual cues that spotlight ${topic}.`);
-  } else {
-    direction.push(`Use visuals that underline ${topic}.`);
-  }
-  if (niche) {
-    direction.push(`Tie palette and props to ${niche} so the story feels anchored.`);
-  }
-  if (promptRef) {
-    direction.push(`Let the movement echo "${promptRef}" while keeping transitions smooth.`);
-  }
-  return direction.join(' ').trim() || `Visuals should stay focused on ${topic}.`;
-}
-
-function escapeRegexPattern(value = '') {
-  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function sanitizeStoryPromptFromNiche(text = '', nicheStyle = '') {
-  const raw = String(text || '').trim();
-  return raw;
-}
-
-function sanitizeCtaText(value) {
-  return String(value || '').trim().replace(/[!?]/g, '');
-}
-
-function hasNormalizedEngagement(post = {}) {
-  const comment = toPlainString(post.engagementScripts?.commentReply);
-  const dm = toPlainString(post.engagementScripts?.dmReply);
-  return Boolean(comment) && Boolean(dm);
-}
-
-function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
-  const scripts = post.engagementScripts || {};
-  const commentCandidate = toPlainString(
-    scripts.commentReply || scripts.comment || post.engagementScript || post.engagement_comment
-  );
-  const dmCandidate = toPlainString(
-    scripts.dmReply || scripts.dm || post.engagementDm || post.engagement_dm
-  );
-  const topic = toPlainString(post.title || post.idea || post.hook || nicheStyle || 'this topic');
-  const topicLabel = topic || 'this topic';
-  return {
-    commentReply: commentCandidate || `Appreciate you noticing this idea about ${topicLabel}.`,
-    dmReply: dmCandidate || `Happy to keep unpacking ${topicLabel}.`,
-  };
-}
-
-const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
-
-function seedFromString(value = '') {
-  let hash = 2166136261;
-  const str = String(value || '');
-  for (let i = 0; i < str.length; i += 1) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function makePrng(seed) {
-  let state = Number(seed) >>> 0;
-  return () => {
-    state = (state + 0x6D2B79F5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function shuffleArray(list = [], rand) {
-  const arr = list.slice();
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rand() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function buildPillarSchedule(totalSlots, rand) {
-  const schedule = [];
-  while (schedule.length < totalSlots) {
-    schedule.push(...CALENDAR_PILLARS);
-  }
-  schedule.length = totalSlots;
-  return shuffleArray(schedule, rand);
-}
-
-function postKey(day, slotIndex) {
-  return `day-${day}-slot-${slotIndex}`;
-}
-
-function canonicalizeSlotIndex(post = {}, postsPerDay = 1) {
-  if (!post || typeof post !== 'object') return post;
-  let slotIndex = post.slotIndex;
-  if (slotIndex === null || slotIndex === undefined) {
-    if (Number.isFinite(Number(post.slot))) slotIndex = Number(post.slot);
-    if (slotIndex === null || slotIndex === undefined) {
-      if (Number.isFinite(Number(post.slot_index))) slotIndex = Number(post.slot_index);
-    }
-  }
-  if (typeof slotIndex === 'string') {
-    const parsed = parseInt(slotIndex, 10);
-    if (Number.isFinite(parsed)) slotIndex = parsed;
-  }
-  const perDay = Number(postsPerDay);
-  if (Number.isFinite(perDay) && perDay > 0) {
-    if (perDay === 1) {
-      slotIndex = 0;
-    } else if (Number.isFinite(Number(slotIndex))) {
-      if (slotIndex < 0) slotIndex = 0;
-      if (slotIndex >= perDay) slotIndex = perDay - 1;
-    }
-  }
-  if (Number.isFinite(Number(slotIndex))) post.slotIndex = Number(slotIndex);
-  return post;
-}
-
-function canonicalizeDayValue(post = {}) {
-  if (!post || typeof post !== 'object') return post;
-  let dayValue = post.day;
-  if (!Number.isFinite(Number(dayValue))) {
-    if (post.dayIndex != null) dayValue = post.dayIndex;
-    if (!Number.isFinite(Number(dayValue)) && post.day_index != null) dayValue = post.day_index;
-  }
-  if (typeof dayValue === 'string') {
-    const parsed = parseInt(dayValue, 10);
-    if (Number.isFinite(parsed)) dayValue = parsed;
-  }
-  if (Number.isFinite(Number(dayValue))) post.day = Number(dayValue);
-  return post;
-}
-
-function applyCalendarPostAliases(post = {}) {
-  if (!post || typeof post !== 'object') return post;
-  const isMissingStringField = (value) =>
-    value == null || (typeof value === 'string' && value.trim().length === 0);
-  const copyAliasString = (canonical, alias) => {
-    if (isMissingStringField(post[canonical])) {
-      const value = post[alias];
-      if (isNonEmptyString(value)) {
-        post[canonical] = value;
-        delete post[alias];
-      }
-    }
-  };
-  const copyAliasObject = (canonical, alias) => {
-    if (isMissingStringField(post[canonical])) {
-      const value = post[alias];
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        post[canonical] = value;
-        delete post[alias];
-      }
-    }
-  };
-  copyAliasString('distributionPlan', 'distribution_plan');
-  copyAliasString('engagementLoop', 'engagement_loop');
-  copyAliasString('designNotes', 'design_notes');
-  copyAliasString('reelScript', 'reel_script');
-  copyAliasObject('reelScript', 'reel_script');
-  copyAliasString('executionNotes', 'execution_notes');
-  copyAliasString('storyPrompt', 'story_prompt');
-  copyAliasString('pinnedComment', 'pinned_comment');
-  copyAliasString('caption', 'caption_text');
-  copyAliasString('caption', 'post_caption');
-  copyAliasString('hook', 'hook_text');
-  copyAliasString('script', 'script_text');
-  copyAliasObject('script', 'video_script');
-  copyAliasString('script', 'video_script');
-  return post;
-}
-
-function canonicalizeCalendarPost(post = {}, postsPerDay = 1) {
-  if (!post || typeof post !== 'object') return post;
-  canonicalizeDayValue(post);
-  canonicalizeSlotIndex(post, postsPerDay);
-  applyCalendarPostAliases(post);
-  const dayValue = Number(post.day);
-  const slotValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-  if (Number.isFinite(dayValue) && Number.isFinite(slotValue)) {
-    const keyValue = postKey(dayValue, slotValue);
-    const currentKey = toPlainString(post.post_key || post.postKey || '');
-    if (!currentKey || currentKey !== keyValue) {
-      post.post_key = keyValue;
-      post.postKey = keyValue;
-    }
-  }
-  return post;
-}
-
-function buildRequestedSpecMap({ startDay = 1, days = 1, postsPerDay = 1, topicPlan = null } = {}) {
-  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
-  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const topicByKey = new Map();
-  if (Array.isArray(topicPlan)) {
-    topicPlan.forEach((item) => {
-      const day = Number(item?.day);
-      const slotIndex = Number.isFinite(Number(item?.postIndex)) ? Number(item.postIndex) : null;
-      if (!Number.isFinite(day) || slotIndex === null) return;
-      const title = toPlainString(item?.title || item?.topic || '');
-      topicByKey.set(postKey(day, slotIndex), title);
+${schema}`;
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 3000,
     });
-  }
-  const map = new Map();
-  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-    const day = safeStart + dayOffset;
-    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      const key = postKey(day, slotIndex);
-      const title = topicByKey.get(key) || '';
-      map.set(key, {
-        post_key: key,
-        day,
-        slotIndex,
-        title,
-        topic: title,
-      });
-    }
-  }
-  return map;
-}
-
-function tokenizeTitleForAvoid(value = '') {
-  const normalized = normalizeBindText(value);
-  if (!normalized) return [];
-  return normalized
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((token) => token.length >= 4 && !TOPIC_FINGERPRINT_STOPWORDS.has(token));
-}
-
-function buildMustAvoidTokensByEntries(entries = [], maxTokens = 10) {
-  const tokensByKey = new Map();
-  entries.forEach((entry) => {
-    const key = toPlainString(entry?.post_key || '');
-    if (!key) return;
-    tokensByKey.set(key, tokenizeTitleForAvoid(entry.title || ''));
-  });
-  const result = new Map();
-  entries.forEach((entry) => {
-    const key = toPlainString(entry?.post_key || '');
-    if (!key) return;
-    const counts = new Map();
-    entries.forEach((other) => {
-      const otherKey = toPlainString(other?.post_key || '');
-      if (!otherKey || otherKey === key) return;
-      const tokens = tokensByKey.get(otherKey) || [];
-      tokens.forEach((token) => {
-        counts.set(token, (counts.get(token) || 0) + 1);
-      });
-    });
-    const sorted = Array.from(counts.entries()).sort((a, b) => {
-      if (b[1] !== a[1]) return b[1] - a[1];
-      return a[0].localeCompare(b[0]);
-    });
-    result.set(key, sorted.slice(0, maxTokens).map(([token]) => token));
-  });
-  return result;
-}
-
-function buildMustAvoidTokensByKey(requestedSpecMap = new Map()) {
-  return buildMustAvoidTokensByEntries(Array.from(requestedSpecMap.values()), 10);
-}
-
-function assertPostKeyMapping(posts = [], requestedSpecMap = new Map()) {
-  const expectedPostKeys = Array.from(requestedSpecMap.keys());
-  const expectedSet = new Set(expectedPostKeys);
-  const returnedKeys = [];
-  const missingPostKey = [];
-  posts.forEach((post, idx) => {
-    const key = toPlainString(post?.post_key || post?.postKey || '');
-    if (!key) {
-      missingPostKey.push({ index: idx, day: post?.day ?? null, slotIndex: post?.slotIndex ?? null });
-      return;
-    }
-    returnedKeys.push(key);
-  });
-  const returnedSet = new Set(returnedKeys);
-  const missingKeys = expectedPostKeys.filter((key) => !returnedSet.has(key));
-  const extraKeys = returnedKeys.filter((key) => !expectedSet.has(key));
-  if (missingPostKey.length || missingKeys.length || extraKeys.length || returnedSet.size !== expectedSet.size) {
-    const err = new Error('POST_KEY_MAPPING_FAILED');
-    err.code = 'POST_KEY_MAPPING_FAILED';
-    err.statusCode = 422;
-    err.payload = {
-      expectedPostKeys,
-      returnedPostKeys: returnedKeys,
-      missingPostKeys: missingKeys,
-      extraPostKeys: extraKeys,
-      postsMissingPostKey: missingPostKey,
+    const options = {
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
     };
-    throw err;
+    const json = await openAIRequest(options, payload);
+    const content = json.choices?.[0]?.message?.content || '[]';
+    const { data } = parseLLMArray(content, { requireArray: true });
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn('repairMissingFields error:', e.message);
+    return [];
   }
 }
 
-function assignPostKeys(posts = [], startDay = 1, postsPerDay = 1) {
-  const meta = posts.map((post, idx) => {
-    const dayValue = Number.isFinite(Number(post?.day))
-      ? Number(post.day)
-      : computePostDayIndex(idx, startDay, postsPerDay);
-    return { idx, day: dayValue };
-  });
-  const ordered = meta.slice().sort((a, b) => {
-    if (a.day !== b.day) return a.day - b.day;
-    return a.idx - b.idx;
-  });
-  const dayCounts = new Map();
-  const slotByIndex = new Map();
-  ordered.forEach((entry) => {
-    const count = dayCounts.get(entry.day) || 0;
-    dayCounts.set(entry.day, count + 1);
-    slotByIndex.set(entry.idx, count);
-  });
-  posts.forEach((post, idx) => {
-    if (!post || typeof post !== 'object') return;
-    const explicitKey = toPlainString(post.post_key || post.postKey || '');
-    const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-    if (explicitKey) {
-      post.__slotIndex = explicitSlotIndex !== null ? explicitSlotIndex : (slotByIndex.get(idx) ?? 0);
-      post.__key = explicitKey;
-      return;
-    }
-    const dayValue = Number.isFinite(Number(post?.day))
-      ? Number(post.day)
-      : computePostDayIndex(idx, startDay, postsPerDay);
-    const slotIndex = slotByIndex.get(idx) ?? 0;
-    post.__slotIndex = slotIndex;
-    post.__key = postKey(dayValue, slotIndex);
-  });
-}
-
-function normalizeCalendarPillar(value = '') {
-  const text = toPlainString(value || '');
-  if (!text) return '';
-  const exact = CALENDAR_PILLARS.find((pillar) => pillar.toLowerCase() === text.toLowerCase());
-  if (exact) return exact;
-  const lowered = text.toLowerCase();
-  if (lowered.includes('social') && lowered.includes('proof')) return 'Social Proof';
-  if (lowered.includes('promo') || lowered.includes('offer')) return 'Promotion';
-  if (lowered.includes('life')) return 'Lifestyle';
-  if (lowered.includes('educ')) return 'Education';
-  return '';
-}
-
-function getCalendarPillarForDay(day) {
-  const numericDay = Number.isFinite(Number(day)) ? Number(day) : 1;
-  const index = Math.max(0, numericDay - 1) % CALENDAR_PILLARS.length;
-  return CALENDAR_PILLARS[index];
-}
-
-function isPillarDistributionBalanced(posts = []) {
-  const counts = CALENDAR_PILLARS.reduce((acc, pillar) => {
-    acc[pillar] = 0;
-    return acc;
-  }, {});
-  posts.forEach((post) => {
-    const normalized = normalizeCalendarPillar(post?.pillar);
-    if (normalized) counts[normalized] += 1;
-  });
-  const values = CALENDAR_PILLARS.map((pillar) => counts[pillar]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const hasAll = values.every((value) => value > 0);
-  return hasAll && max - min <= 1;
-}
-
-function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1, pillarSchedule = null) {
-  return posts.map((post, idx) => {
-    if (!post || typeof post !== 'object') return post;
-    const day = Number.isFinite(Number(post.day))
-      ? Number(post.day)
-      : computePostDayIndex(idx, startDay, postsPerDay);
-    const pillar = pillarSchedule && pillarSchedule[idx] ? pillarSchedule[idx] : getCalendarPillarForDay(day);
-    return { ...post, pillar };
-  });
-}
-
-function ensureCtaFallback(post = {}) {
-  const normalizedCta =
-    sanitizeCtaText(post.cta) ||
-    sanitizeCtaText(post.callToAction) ||
-    sanitizeCtaText(post.call_to_action) ||
-    sanitizeCtaText(post.cta_text);
-  if (normalizedCta) return normalizedCta;
-  const pillar = String(post.pillar || '').toLowerCase();
-  const format = String(post.format || post.platform || '').toLowerCase();
-  const promoSlot = !!post.promoSlot;
-  if (promoSlot || pillar.includes('promo')) return 'Book now';
-  if (pillar.includes('social proof') || pillar.includes('proof')) return 'See the proof';
-  if (pillar.includes('engagement')) return 'Share your take';
-  if (format.includes('story') || format.includes('reel')) return 'Watch this';
-  if (format.includes('static')) return 'Check it out';
-  return 'Learn more';
-}
-
-const MIN_HASHTAGS = 0;
-// Contract: required fields for regenerated posts (mirrors validatePostCompleteness).
-const REQUIRED_POST_FIELDS = [
-  'title',
-  'hook',
-  'caption',
-  'cta',
-  'topic_signature',
-  'angle',
-  'storyPrompt',
-  'designNotes',
-  'distributionPlan',
-  'day',
-  'hashtags',
-  'script',
-  'script.hook',
-  'script.body',
-  'script.cta',
-  'reelScript',
-  'reelScript.hook',
-  'reelScript.body',
-  'reelScript.cta',
-  'engagementScripts',
-  'engagementScripts.commentReply',
-  'engagementScripts.dmReply',
-];
-
-const NONCORE_OPTIONAL_FIELDS = new Set([
-  'engagementLoop',
-  'engagementScripts',
-  'engagementScripts.commentReply',
-  'engagementScripts.dmReply',
-  'distributionPlan',
-  'designNotes',
-  'suggestedAudio',
-  'executionNotes',
-]);
-
-function isNonEmptyString(value) {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-function validatePostCompleteness(post = {}) {
-  const missing = [];
-  const checkString = (value, key) => {
-    if (!isNonEmptyString(value) && !missing.includes(key)) {
-      missing.push(key);
-    }
-  };
-  checkString(post.title, 'title');
-  checkString(post.hook, 'hook');
-  checkString(post.caption, 'caption');
-  checkString(post.cta, 'cta');
-  checkString(post.topic_signature, 'topic_signature');
-  checkString(post.angle, 'angle');
-  checkString(post.storyPrompt, 'storyPrompt');
-  checkString(post.designNotes, 'designNotes');
-  checkString(post.distributionPlan, 'distributionPlan');
-  if (!Number.isFinite(Number(post.day))) missing.push('day');
-
-  const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
-  const validHashtags = hashtags
-    .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
-    .filter(Boolean);
-  if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
-
-  const scriptCandidate = post.script || post.videoScript;
-  if (!scriptCandidate) {
-    missing.push('script');
-  } else {
-    checkString(scriptCandidate.hook, 'script.hook');
-    checkString(scriptCandidate.body, 'script.body');
-    checkString(scriptCandidate.cta, 'script.cta');
-  }
-
-  const reelCandidate = post.reelScript || post.reel_script || post.script || post.videoScript;
-  if (!reelCandidate) {
-    missing.push('reelScript');
-  } else {
-    checkString(reelCandidate.hook, 'reelScript.hook');
-    checkString(reelCandidate.body, 'reelScript.body');
-    checkString(reelCandidate.cta, 'reelScript.cta');
-  }
-
-  const engagement = post.engagementScripts;
-  if (!engagement) {
-    missing.push('engagementScripts');
-  } else {
-    checkString(engagement.commentReply, 'engagementScripts.commentReply');
-    checkString(engagement.dmReply, 'engagementScripts.dmReply');
-  }
-
-  return missing;
-}
-
-function resolveRequestedSpec(requestedSpec = {}) {
-  const spec = requestedSpec && typeof requestedSpec === 'object' ? requestedSpec : {};
-  const title = toPlainString(spec.title || spec.topic || '');
-  return {
-    ...spec,
-    title,
-    topic: title,
-  };
-}
-
-function getPostTopicString(post = {}) {
-  return toPlainString(post?.topic || post?.title || post?.postTitle || '');
-}
-
-function matchesEquivalenceGroup(normalizedText = '', groupKey = '') {
-  if (!normalizedText) return false;
-  const group = EQUIV_GROUPS[groupKey];
-  if (!group) return false;
-  for (const phrase of group.phrases) {
-    const normalizedPhrase = normalizeBindText(phrase);
-    if (!normalizedPhrase) continue;
-    const regex = new RegExp(`\\b${escapeRegexPattern(normalizedPhrase)}\\b`, 'i');
-    if (regex.test(normalizedText)) return true;
-  }
-  return false;
-}
-
-function getFieldBindingSignals(text = '', fingerprint = {}) {
-  const normalized = normalizeBindText(text);
-  const tokens = new Set(tokenizeNormalizedText(normalized));
-  const offerTokenSet = new Set(Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : []);
-  const fieldOfferTokens = new Set(parseOfferTokens(text));
-  let offerHit = false;
-  for (const token of fieldOfferTokens) {
-    if (offerTokenSet.has(token)) {
-      offerHit = true;
-      break;
-    }
-  }
-  const anchors = Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [];
-  let anchorHits = 0;
-  const seen = new Set();
-  for (const anchor of anchors) {
-    if (!anchor || seen.has(anchor)) continue;
-    let matched = false;
-    if (offerTokenSet.has(anchor)) {
-      matched = fieldOfferTokens.has(anchor);
-    } else {
-      const groupKey = EQUIV_CANON_TO_GROUP[anchor];
-      if (groupKey) {
-        matched = matchesEquivalenceGroup(normalized, groupKey);
-      } else {
-        matched = tokens.has(anchor);
-      }
-    }
-    if (matched) {
-      anchorHits += 1;
-      seen.add(anchor);
-    }
-  }
-  return { normalized, anchorHits, offerHit };
-}
-
-function getHashtagBindingSignals(text = '', fingerprint = {}) {
-  const normalized = normalizeHashtagsForBinding(text);
-  const tokens = new Set(tokenizeNormalizedText(normalized));
-  const offerTokenSet = new Set(Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : []);
-  const fieldOfferTokens = new Set(parseOfferTokens(normalized));
-  let offerHit = false;
-  for (const token of fieldOfferTokens) {
-    if (offerTokenSet.has(token)) {
-      offerHit = true;
-      break;
-    }
-  }
-  const anchors = Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [];
-  let anchorHits = 0;
-  const seen = new Set();
-  for (const anchor of anchors) {
-    if (!anchor || seen.has(anchor)) continue;
-    let matched = false;
-    if (offerTokenSet.has(anchor)) {
-      matched = fieldOfferTokens.has(anchor);
-    } else {
-      const groupKey = EQUIV_CANON_TO_GROUP[anchor];
-      if (groupKey) {
-        matched = matchesEquivalenceGroup(normalized, groupKey);
-      } else {
-        matched = tokens.has(anchor);
-      }
-    }
-    if (matched) {
-      anchorHits += 1;
-      seen.add(anchor);
-    }
-  }
-  return { normalized, anchorHits, offerHit };
-}
-
-function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = [], context = {}) {
-  if (!post || typeof post !== 'object') {
-    return { ok: false, fatal: true, failedFields: ['post'], noncoreFailedFields: [], details: { code: 'INVALID_POST' } };
-  }
-  const resolvedSpec = resolveRequestedSpec(requestedSpec);
-  const titleText = getPostTopicString(post);
-  if (!titleText) {
-    const err = new Error('POST_TOPIC_MISSING');
-    err.code = 'INVALID_MODEL_JSON';
-    err.statusCode = 400;
-    err.payload = {
-      post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
-      day: Number.isFinite(Number(resolvedSpec.day)) ? Number(resolvedSpec.day) : (Number.isFinite(Number(post.day)) ? Number(post.day) : null),
-      slotIndex: Number.isFinite(Number(resolvedSpec.slotIndex))
-        ? Number(resolvedSpec.slotIndex)
-        : (Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null),
-    };
-    throw err;
-  }
-  let fingerprint = deriveTopicFingerprint(titleText);
-  if (!Array.isArray(fingerprint?.tokens)) fingerprint.tokens = [];
-  if (!Array.isArray(fingerprint?.anchors) || !fingerprint.anchors.length) {
-    fingerprint.anchors = fingerprint.tokens.slice(0, 5);
-  }
-  if (fingerprint.tokens.length < 3) {
-    fingerprint = deriveTopicFingerprint(titleText);
-  }
-  const hookText = getField(post, ['hook']);
-  const captionText = getField(post, ['caption']);
-  const scriptText = getField(post, ['reelScript', 'reel_script', 'script']);
-  const formatValue = toPlainString(post.format || post.type || post.postFormat || '');
-  const formatNormalized = String(formatValue).toLowerCase();
-  const isVideoFormat = ['reel', 'tiktok', 'video'].some((item) => formatNormalized.includes(item));
-  let primaryFieldName = 'caption';
-  if (isVideoFormat && isNonEmptyString(scriptText)) {
-    primaryFieldName = 'script';
-  } else if (isNonEmptyString(captionText)) {
-    primaryFieldName = 'caption';
-  } else if (isNonEmptyString(hookText)) {
-    primaryFieldName = 'hook';
-  } else if (isNonEmptyString(scriptText)) {
-    primaryFieldName = 'script';
-  }
-  const hashtagsText = getField(post, ['hashtags']);
-  const designNotesText = getField(post, ['designNotes', 'design_notes']);
-  const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
-  const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
-  const coreFailedFields = [];
-  const noncoreFailedFields = [];
-  const snippets = {};
-  const hookSignals = getFieldBindingSignals(hookText, fingerprint);
-  const hookOk = isNonEmptyString(hookText) ? (hookSignals.offerHit || hookSignals.anchorHits >= 1) : null;
-  if (hookOk === false) {
-    coreFailedFields.push('hook');
-    snippets.hook = hookText ? hookText.slice(0, 60) : '';
-  }
-  const captionSignals = getFieldBindingSignals(captionText, fingerprint);
-  const captionOk = isNonEmptyString(captionText) ? (captionSignals.offerHit || captionSignals.anchorHits >= 2) : null;
-  if (captionOk === false) {
-    coreFailedFields.push('caption');
-    snippets.caption = captionText ? captionText.slice(0, 60) : '';
-  }
-  const scriptSignals = getFieldBindingSignals(scriptText, fingerprint);
-  const scriptOk = isNonEmptyString(scriptText) ? (scriptSignals.offerHit || scriptSignals.anchorHits >= 2) : null;
-  if (scriptOk === false) {
-    coreFailedFields.push('script');
-    snippets.script = scriptText ? scriptText.slice(0, 60) : '';
-  }
-  const hashtagsSignals = getHashtagBindingSignals(hashtagsText, fingerprint);
-  const hashtagsOk = isNonEmptyString(hashtagsText) && (hashtagsSignals.offerHit || hashtagsSignals.anchorHits >= 1);
-  if (!hashtagsOk) {
-    coreFailedFields.push('hashtags');
-    snippets.hashtags = hashtagsText ? hashtagsText.slice(0, 60) : '';
-  }
-  const designNotesSignals = getFieldBindingSignals(designNotesText, fingerprint);
-  const designNotesOk = isNonEmptyString(designNotesText)
-    && (designNotesSignals.offerHit || designNotesSignals.anchorHits >= 1);
-  if (!designNotesOk) {
-    noncoreFailedFields.push('designNotes');
-    snippets.designNotes = designNotesText ? designNotesText.slice(0, 60) : '';
-  }
-  const engagementLoopSignals = getFieldBindingSignals(engagementLoopText, fingerprint);
-  const engagementLoopOk = isNonEmptyString(engagementLoopText)
-    && (engagementLoopSignals.offerHit || engagementLoopSignals.anchorHits >= 1);
-  if (!engagementLoopOk) {
-    noncoreFailedFields.push('engagementLoop');
-    snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
-  }
-  const distributionPlanSignals = getFieldBindingSignals(distributionPlanText, fingerprint);
-  const distributionPlanOk = isNonEmptyString(distributionPlanText)
-    && (distributionPlanSignals.offerHit || distributionPlanSignals.anchorHits >= 1);
-  if (!distributionPlanOk) {
-    noncoreFailedFields.push('distributionPlan');
-    snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
-  }
-  if (!coreFailedFields.length && !noncoreFailedFields.length) {
-    return { ok: true, failedFields: [], noncoreFailedFields: [], details: {} };
-  }
-  const details = {
-    post_key: toPlainString(resolvedSpec.post_key || resolvedSpec.postKey || post.post_key || post.postKey || ''),
-    title: titleText,
-    anchors: Array.isArray(fingerprint?.anchors) ? fingerprint.anchors : [],
-    offerTokens: Array.isArray(fingerprint?.offerTokens) ? fingerprint.offerTokens : [],
-    primaryFieldName,
-    snippets,
-  };
-  if (!coreFailedFields.length) {
-    return { ok: true, failedFields: [], noncoreFailedFields, details };
-  }
-  const primaryFieldOk = primaryFieldName === 'script'
-    ? scriptOk
-    : (primaryFieldName === 'hook' ? hookOk : captionOk);
-  const topicBoundOk = [hookOk, captionOk, scriptOk].some((value) => value === true);
-  if (!(primaryFieldOk === false && !topicBoundOk)) {
-    return { ok: true, failedFields: [], noncoreFailedFields, details };
-  }
-  return { ok: false, failedFields: coreFailedFields, noncoreFailedFields, details };
-}
-
-function runTopicBindSelfTest() {
-  const title = 'Limited Time: 1% Listing Fee for New Clients!';
-  const requestedSpec = {
-    post_key: 'day-1-slot-0',
-    day: 1,
-    slotIndex: 0,
-    title,
-    topic: title,
-  };
-  const basePost = {
-    post_key: 'day-1-slot-0',
-    day: 1,
-    slotIndex: 0,
-    title,
-    hook: 'Discover how to list your home for just 1%.',
-    caption: 'List your home for 1% with our listing fee for new clients.',
-    script: { hook: 'List for 1%.', body: 'List your home for 1% with our listing fee.', cta: 'Ask for details.' },
-    hashtags: ['#Listing', '#1Percent', '#NewClients'],
-    designNotes: 'Minimal layout with the 1% offer highlighted.',
-    engagementScripts: { commentReply: 'Happy to help with your listing.', dmReply: 'Share your timeline and we can help.' },
-    distributionPlan: 'Post to feed with the 1% listing offer, then share in stories.',
-  };
-  const passes = (() => {
-    const result = assertPostTopicBound(basePost, requestedSpec, []);
-    return result && result.ok !== false;
-  })();
-  console.assert(passes, '[TopicBinding][SelfTest] promo hook example should pass.');
-  const fails = (() => {
-    const result = assertPostTopicBound({ ...basePost, hook: 'Explore neighborhood gems and investment tips.' }, requestedSpec, []);
-    return result && result.ok === false;
-  })();
-  console.assert(fails, '[TopicBinding][SelfTest] off-topic promo hook should fail.');
-  const socialTitle = 'What My Clients Say About Working With Me';
-  const socialSpec = {
-    post_key: 'day-2-slot-0',
-    day: 2,
-    slotIndex: 0,
-    title: socialTitle,
-    topic: socialTitle,
-  };
-  const socialPost = {
-    post_key: 'day-2-slot-0',
-    day: 2,
-    slotIndex: 0,
-    title: socialTitle,
-    hook: 'Hear what my clients say about working together.',
-    caption: 'Clients share real feedback and return for the experience.',
-    script: { hook: 'Client feedback matters.', body: 'Listen to my clients share their experiences.', cta: 'See their stories.' },
-    hashtags: ['#Testimonials', '#ClientFeedback'],
-    designNotes: 'Quote-style layout with a client photo.',
-    engagementScripts: { commentReply: 'Thanks for sharing your experience.', dmReply: 'Happy to answer questions.' },
-    distributionPlan: 'Post to feed and pin a client quote.',
-  };
-  const socialFingerprint = deriveTopicFingerprint(socialTitle);
-  console.assert(
-    Array.isArray(socialFingerprint.tokens) && socialFingerprint.tokens.includes('testimonial'),
-    '[TopicBinding][SelfTest] social proof fingerprint should include testimonial.'
-  );
-  const socialPass = (() => {
-    const result = assertPostTopicBound(socialPost, socialSpec, []);
-    return result && result.ok !== false;
-  })();
-  console.assert(socialPass, '[TopicBinding][SelfTest] social proof script should pass.');
-  const socialFail = (() => {
-    const result = assertPostTopicBound({ ...socialPost, script: { hook: 'Neighborhood tips.', body: 'Explore neighborhood gems today.', cta: 'Save this.' } }, socialSpec, []);
-    return result && result.ok === false;
-  })();
-  console.assert(socialFail, '[TopicBinding][SelfTest] off-topic social proof script should fail.');
-  const nowinTitle = 'Limited Time Offer: No Win, No Fee Guarantee!';
-  const nowinFingerprint = deriveTopicFingerprint(nowinTitle);
-  const hasNoWinToken = Array.isArray(nowinFingerprint.offerTokens)
-    && (nowinFingerprint.offerTokens.includes('nowin_nofee') || nowinFingerprint.offerTokens.includes('contingency'));
-  console.assert(hasNoWinToken, '[TopicBinding][SelfTest] no-win/no-fee fingerprint should include offer token.');
-  const nowinSpec = {
-    post_key: 'day-3-slot-0',
-    day: 3,
-    slotIndex: 0,
-    title: nowinTitle,
-    topic: nowinTitle,
-  };
-  const nowinPost = {
-    post_key: 'day-3-slot-0',
-    day: 3,
-    slotIndex: 0,
-    title: nowinTitle,
-    hook: 'No win, no fee — you don’t pay unless we win.',
-    caption: 'No win no fee guarantee, clients only pay when we win.',
-    script: { hook: 'No win, no fee.', body: 'You pay only if we win your case.', cta: 'Ask for details.' },
-    hashtags: ['#NoWinNoFee'],
-    designNotes: 'Bold guarantee headline.',
-    engagementScripts: { commentReply: 'Happy to explain the guarantee.', dmReply: 'Send your questions.' },
-    distributionPlan: 'Post to feed and pin the guarantee.',
-  };
-  const nowinPass = (() => {
-    const result = assertPostTopicBound(nowinPost, nowinSpec, []);
-    return result && result.ok !== false;
-  })();
-  console.assert(nowinPass, '[TopicBinding][SelfTest] no-win/no-fee hook should pass.');
-  const nowinFail = (() => {
-    const result = assertPostTopicBound({ ...nowinPost, hook: 'Miami neighborhoods you’ll love.' }, nowinSpec, []);
-    return result && result.ok === false;
-  })();
-  console.assert(nowinFail, '[TopicBinding][SelfTest] off-topic no-win/no-fee hook should fail.');
-  const freeTitle = 'Exclusive Offer: Free Home Valuation for Miami Residents';
-  const freeFingerprint = deriveTopicFingerprint(freeTitle);
-  const hasFreeToken = Array.isArray(freeFingerprint.offerTokens)
-    && (freeFingerprint.offerTokens.includes('free_valuation') || freeFingerprint.offerTokens.includes('free_offer'));
-  console.assert(hasFreeToken, '[TopicBinding][SelfTest] free valuation title should include offer token.');
-  const freeSpec = {
-    post_key: 'day-4-slot-0',
-    day: 4,
-    slotIndex: 0,
-    title: freeTitle,
-    topic: freeTitle,
-  };
-  const freePost = {
-    post_key: 'day-4-slot-0',
-    day: 4,
-    slotIndex: 0,
-    title: freeTitle,
-    hook: 'Get your free home valuation today.',
-    caption: 'Get a free home valuation in Miami so you know your property\'s worth.',
-    script: { hook: 'Free home valuation.', body: 'We offer a free home valuation so you can price with confidence.', cta: 'Book yours.' },
-    hashtags: ['#FreeValuation'],
-    designNotes: 'Highlight the free valuation offer.',
-    engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your address to start.' },
-    distributionPlan: 'Post to feed with the free valuation highlight, then share in stories.',
-  };
-  const freePass = (() => {
-    const result = assertPostTopicBound(freePost, freeSpec, []);
-    return result && result.ok !== false;
-  })();
-  console.assert(freePass, '[TopicBinding][SelfTest] free valuation caption should pass.');
-  const freeFail = (() => {
-    const result = assertPostTopicBound({ ...freePost, caption: 'New neighborhood gems in Miami.' }, freeSpec, []);
-    return result && result.ok === false;
-  })();
-  console.assert(freeFail, '[TopicBinding][SelfTest] off-topic free valuation caption should fail.');
-}
-
-function stripSuggestedAudioLinks(value = '') {
-  let text = String(value || '').trim();
-  if (!text) return '';
-  text = text.replace(/\([^)]*(https?:\/\/|link:)[^)]*\)/gi, '');
-  text = text.replace(/\bhttps?:\/\/\S+/gi, '');
-  text = text.replace(/\blink:\s*\S+/gi, '');
-  text = text.replace(/@[A-Za-z0-9._-]+/g, '');
-  text = text.replace(/\s+/g, ' ').trim();
-  return text;
-}
-
-function splitSuggestedAudioTitleArtist(text = '') {
-  const cleaned = stripSuggestedAudioLinks(text).trim();
-  if (!cleaned) return { title: '', artist: '' };
-  const parts = cleaned.split(/\s+—\s+|\s+-\s+/);
-  if (parts.length <= 1) return { title: cleaned, artist: '' };
-  const title = parts.shift().trim();
-  const artist = parts.join(' - ').trim();
-  return { title, artist };
-}
-
-function normalizeSuggestedAudioFromText(text = '') {
-  return splitSuggestedAudioTitleArtist(String(text || ''));
-}
-
-function sanitizeSuggestedAudioEntry(entry = {}) {
-  const title = stripSuggestedAudioLinks(entry.title || entry.name || entry.sound || entry.track || '');
-  const artist = stripSuggestedAudioLinks(entry.artist || entry.creator || entry.by || '');
-  return { title, artist };
-}
-
-function normalizeSuggestedAudioValue(candidate, fallbackEntry = null) {
-  const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-  const fallbackString = normalizeAudioString(fallback.title, fallback.artist);
-  if (!candidate) {
-    return fallbackString;
-  }
-  if (typeof candidate === 'string') {
-    const parsed = normalizeSuggestedAudioFromText(candidate);
-    return normalizeAudioString(parsed.title || fallback.title, parsed.artist || fallback.artist);
-  }
-  if (candidate && typeof candidate === 'object') {
-    const hasDirect = candidate.title || candidate.name || candidate.track;
-    if (hasDirect) {
-      const sanitized = sanitizeSuggestedAudioEntry(candidate);
-      return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
-    }
-    const sanitized = sanitizeSuggestedAudioEntry(candidate);
-    return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
-  }
-  return fallbackString;
-}
-
-function fillMissingFieldsFromFallback(post = {}, fallback = {}, missingFields = [], nicheStyle = '') {
-  const missingSet = new Set(missingFields || []);
-  if (missingSet.has('title')) post.title = post.title || fallback.title;
-  if (missingSet.has('hook')) post.hook = post.hook || fallback.hook;
-  if (missingSet.has('caption')) post.caption = post.caption || fallback.caption;
-  if (missingSet.has('cta')) post.cta = post.cta || fallback.cta;
-  if (missingSet.has('storyPrompt')) post.storyPrompt = post.storyPrompt || fallback.storyPrompt;
-  if (missingSet.has('designNotes')) post.designNotes = post.designNotes || fallback.designNotes;
-  if (missingSet.has('hashtags')) {
-    post.hashtags = Array.isArray(post.hashtags) && post.hashtags.length
-      ? post.hashtags
-      : buildFallbackHashtagList(nicheStyle || fallback.nicheStyle || '', post.format || 'Reel');
-  }
-  if (missingSet.has('script') || missingSet.has('script.hook') || missingSet.has('script.body') || missingSet.has('script.cta')) {
-    post.script = {
-      hook: post.script?.hook || fallback.script?.hook || fallback.hook,
-      body: post.script?.body || fallback.script?.body || fallback.caption,
-      cta: post.script?.cta || fallback.script?.cta || fallback.cta,
-    };
-  }
-  if (missingSet.has('reelScript') || missingSet.has('reelScript.hook') || missingSet.has('reelScript.body') || missingSet.has('reelScript.cta')) {
-    post.reelScript = post.reelScript || post.script || fallback.script || {};
-  }
-  if (missingSet.has('engagementScripts') || missingSet.has('engagementScripts.commentReply') || missingSet.has('engagementScripts.dmReply')) {
-    post.engagementScripts = post.engagementScripts || fallback.engagementScripts;
-  }
-  return post;
-}
-
-function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1, options = {}) {
-  const allowFallbacks = options?.allowFallbacks !== false;
-  const normalized = normalizePostWithOverrideFallback(rawPost, 0, dayNumber, dayNumber, nicheStyle, {}, options);
-  const applied = [];
-  if (!isNonEmptyString(normalized.title)) {
-    normalized.title = normalized.idea || `Day ${String(dayNumber).padStart(2, '0')} idea`;
-    applied.push('title');
-  }
-      if (!isNonEmptyString(normalized.hook)) {
-        normalized.hook = `Start with ${normalized.idea || 'a key insight'}.`;
-        applied.push('hook');
-      }
-  if (allowFallbacks) {
-    normalized.cta = ensureCtaFallback(normalized);
-  }
-  if (!isNonEmptyString(normalized.caption)) {
-    if (allowFallbacks) {
-      normalized.caption = `${normalized.hook} ${normalized.cta}.`.trim();
-      applied.push('caption');
-    }
-  }
-  if (!isNonEmptyString(normalized.storyPrompt)) {
-    if (allowFallbacks) {
-      normalized.storyPrompt = ensureStoryPromptFallback(normalized, nicheStyle);
-      applied.push('storyPrompt');
-    }
-  }
-  if (allowFallbacks) {
-    normalized.storyPromptPlus = ensureStoryPromptPlusFallback(normalized, nicheStyle);
-    normalized.storyPromptExpanded = sanitizeStoryPromptPlus(nicheStyle, normalized.storyPromptPlus, normalized);
-  }
-  if (!isNonEmptyString(normalized.designNotes)) {
-    if (allowFallbacks) {
-      normalized.designNotes = ensureDesignNotesFallback(normalized, nicheStyle);
-      applied.push('designNotes');
-    }
-  }
-  if (!isNonEmptyString(normalized.distributionPlan)) {
-    if (allowFallbacks) {
-      normalized.distributionPlan = buildDistributionPlanFallback(normalized, nicheStyle);
-      applied.push('distributionPlan');
-    }
-  }
-  if (allowFallbacks) {
-    normalized.engagementScripts = ensureEngagementScriptsFallback(normalized, nicheStyle);
-  }
-  if (!isNonEmptyString(normalized.topic_signature)) {
-    const signature = toPlainString(rawPost.topic_signature || rawPost.topicSignature || '');
-    if (signature) {
-      normalized.topic_signature = signature;
-    } else if (allowFallbacks) {
-      normalized.topic_signature = normalizeTitleSignature(normalized.title || normalized.idea || '');
-    }
-    applied.push('topic_signature');
-  }
-  if (!isNonEmptyString(normalized.angle)) {
-    const angle = toPlainString(rawPost.angle || rawPost.strategy?.angle || '');
-    if (angle) {
-      normalized.angle = angle;
-    } else if (allowFallbacks) {
-      normalized.angle = CALENDAR_ANGLE_OPTIONS[0] || 'beginner explainer';
-    }
-    applied.push('angle');
-  }
-  const scriptBase = {
-    hook: normalized.script?.hook || normalized.hook,
-    body: normalized.script?.body || normalized.caption || normalized.idea,
-    cta: normalized.script?.cta || normalized.cta,
-  };
-  normalized.script = scriptBase;
-  normalized.videoScript = normalized.videoScript && normalized.videoScript.hook ? normalized.videoScript : scriptBase;
-  normalized.reelScript = normalized.reelScript || scriptBase;
-  const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-  normalized.suggestedAudio = normalizeSuggestedAudioValue(
-    normalized.suggestedAudio || rawPost.suggestedAudio || rawPost.suggested_audio,
-    fallbackAudio
-  );
-  let missing = validatePostCompleteness(normalized);
-  return { post: normalized, missingFields: missing, appliedFixes: applied };
-}
-
-function ensureRegenDaySignatureAngle(post = {}, dayNumber = 1) {
-  const next = { ...post };
-  if (!isNonEmptyString(next.topic_signature)) {
-    const signature = normalizeTitleSignature(next.title || next.idea || '');
-    next.topic_signature = signature || `day-${String(dayNumber).padStart(2, '0')}`;
-  }
-  if (!isNonEmptyString(next.angle)) {
-    const pillar = toPlainString(next.pillar || '').toLowerCase();
-    const format = toPlainString(next.format || next.type || '').toLowerCase();
-    const hook = toPlainString(next.hook || '');
-    const hookSnippet = hook.split(/[.!?]/)[0].trim();
-    const combined = [pillar, format].filter(Boolean).join(' ').trim();
-    next.angle = hookSnippet || combined || 'general angle';
-  }
-  return next;
-}
-
-function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
-  const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
-  const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
-  const missing = validatePostCompleteness(result.post);
-  return { post: result.post, missingFields: missing, appliedFixes: result.appliedFixes || [] };
-}
-
-function runRegenNormalizationSelfTest() {
-  if (isProduction) return;
-  const sample = 'Calm Down — Rema (link: https://tiktok.com)';
-  const parsed = normalizeSuggestedAudioFromText(sample);
-  if (!parsed.title || !parsed.artist) {
-    console.warn('[Calendar][Test] suggested audio normalize failed', { parsed });
-  }
-  const repaired = ensureRegenRequiredFields({ day: 1, idea: 'Test idea' }, 'Test niche', 1);
-  if (repaired.missingFields.length) {
-    console.warn('[Calendar][Test] regen normalization missing fields', repaired.missingFields);
-  }
-  const unexpected = repaired.missingFields.filter((field) => !REQUIRED_POST_FIELDS.includes(field));
-  if (unexpected.length) {
-    console.warn('[Calendar][Test] regen normalization unexpected required fields', unexpected);
-  }
-}
-
-function computePostCountTarget(days, postsPerDay) {
-  const safeDays = Number.isFinite(Number(days)) ? Number(days) : null;
-  const safePerDay = Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : null;
-  if (safeDays && safePerDay) {
-    return Math.max(1, Math.round(safeDays)) * Math.max(1, Math.round(safePerDay));
-  }
-  return null;
-}
-
-function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
-  const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
-  return baseStart + Math.floor(index / perDay);
-}
-
-function buildFallbackPost(nicheStyle = '', day = 1) {
-  const normalizedNiche = toPlainString(nicheStyle || 'this niche').trim();
-  const sanitizedNiche = normalizedNiche || 'this niche';
-  const idea = `Placeholder idea about ${sanitizedNiche}`;
-  const baseHashtag = sanitizedNiche.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'niche';
-  return {
-    day,
-    idea,
-    title: idea,
-    type: 'lifestyle',
-    hook: `Share a quick tip about ${sanitizedNiche}.`,
-    caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
-    hashtags: [`#${baseHashtag}`],
-    format: 'Reel',
-    formatIntent: '',
-    cta: 'Let me know what you think.',
-    pillar: 'Lifestyle',
-    storyPrompt: `Talk briefly about ${sanitizedNiche} and invite a reaction.`,
-    storyPromptPlus: `Add proof or context on ${sanitizedNiche} and ask what viewers would try next?`,
-    designNotes: 'Neutral background with subtle motion.',
-    repurpose: [],
-    analytics: [],
-    engagementScripts: { commentReply: 'Thanks! What would you try next?', dmReply: 'Happy to share more details.' },
-    promoSlot: false,
-    weeklyPromo: '',
-    script: { hook: 'Quick hook', body: 'Explain the idea fast.', cta: 'Ask for feedback.' },
-    instagram_caption: '',
-    tiktok_caption: '',
-    linkedin_caption: '',
-    audio: '',
-    strategy: {
-      angle: `Placeholder angle for ${sanitizedNiche}`,
-      objective: 'engagement',
-      target_saves_pct: 3,
-      target_comments_pct: 2,
-      pinned_keyword: 'IDEA',
-      pinned_deliverable: 'Checklist',
-      hook_options: ['Hook 1', 'Hook 2', 'Hook 3'],
-      pinned_comment: `Tell me what you think.`,
-    },
-    distributionPlan: buildDistributionPlanFallback({
-      idea,
-      title: idea,
-      caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
-      cta: 'Let me know what you think.',
-    }),
-  };
-}
-
-const STORY_PROMPT_PLUS_ALIASES = [
-  'storyPromptPlus',
-  'storyPromptPlusInstructions',
-  'storyPromptPlusPrompt',
-  'storyPromptPlusText',
-  'storyPrompt+',
-  'story prompt plus',
-  'story_prompt_plus',
-  'story_prompt_plus_instructions',
-  'story_prompt_plus_prompt',
-  'story_prompt_plus_text',
-  'storyPromptExpanded',
-  'story_prompt_expanded',
-];
-
-const DISTRIBUTION_PLAN_ALIASES = [
-  'distributionPlan',
-  'distribution_plan',
-  'distribution plan',
-  'distributionPlanSteps',
-  'distribution_plan_steps',
-  'distributionPlanText',
-];
-
-function resolveStoryPromptPlusValue(post = {}) {
-  for (const key of STORY_PROMPT_PLUS_ALIASES) {
-    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
-    const value = post[key];
-    const trimmed = toPlainString(value);
-    if (trimmed && !PLACEHOLDER_PROMPT_REGEX.test(trimmed)) return trimmed;
-  }
-  return '';
-}
-
-function resolveDistributionPlanValue(post = {}) {
-  for (const key of DISTRIBUTION_PLAN_ALIASES) {
-    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
-    const value = post[key];
-    const trimmed = toPlainString(value);
-    if (trimmed && !DISTRIBUTION_PLACEHOLDER_REGEX.test(trimmed)) return trimmed;
-  }
-  return '';
-}
-
-function buildDistributionPlanFallback(post = {}) {
-  const idea = toPlainString(post.idea || post.title || 'this idea');
-  const topic = toPlainString(post.topic || post.caption || 'the topic');
-  const cta = toPlainString(post.cta || 'Learn more');
-  const plan = [
-    `0–2s: open on ${idea} with on-screen text.`,
-    `3–8s: show ${topic} with a concrete visual beat tied to the niche.`,
-    `Close: restate the takeaway and end with "${cta}".`,
-  ];
-  return plan.join(' ');
-}
-
-function buildStoryPromptPlusFromPost(post = {}, nicheStyle = '') {
-  const format = toPlainString(post.format || 'Reel') || 'Reel';
-  const topic = toPlainString(post.topic || post.idea || post.caption || post.title || 'today’s insight');
-  const hook = toPlainString(post.hook || '');
-  const angle = toPlainString(post.angle || '');
-  const detail = hook || angle || topic;
-  const cta = toPlainString(post.cta || 'What would you try next?');
-  const question = cta.endsWith('?') ? cta : `${cta}?`;
-  const base = toPlainString(post.storyPrompt || detail);
-  return `Shape a ${format} story about ${base}: describe the turning point, what changed, and ask ${question}`;
-}
-
-function extractSuggestedAudioFromPost(post = {}) {
-  if (!post || typeof post !== 'object') return null;
-  const candidate = post.suggestedAudio ?? post.suggested_audio;
-  if (!candidate) return null;
-  if (typeof candidate === 'string') {
-    return candidate.trim();
-  }
-  if (typeof candidate === 'object') {
-    const normalized = normalizeSuggestedAudioValue(candidate);
-    return normalized || null;
-  }
-  return null;
-}
-
-function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', options = {}) {
-  const allowFallbacks = options?.allowFallbacks !== false;
+function normalizePost(post, idx = 0, startDay = 1, forcedDay) {
   if (!post || typeof post !== 'object') {
     const err = new Error('Invalid post payload');
     err.code = 'BAD_REQUEST';
@@ -6267,109 +2346,54 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const fallbackDay = typeof forcedDay === 'number'
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
-  const platform = toPlainString(post.format || post.platform || 'Reel');
-  const fallbackHashtags = buildFallbackHashtagList(nicheStyle, platform);
-  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, 8);
-  const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
-  const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
-  const scriptSource = post.script || post.videoScript || post.reelScript || {};
-  const script = normalizeScriptObject(scriptSource);
-  const videoScript = { ...script };
-  const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
-  const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
-  const rawStoryPrompt = resolveStoryPromptValue(post);
-  let storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPrompt, hashtags);
-  if (!storyPrompt && allowFallbacks) {
-    storyPrompt = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptFromPost(post, nicheStyle), hashtags);
-  }
-  const rawStoryPromptPlus = resolveStoryPromptPlusValue(post);
-  let storyPromptPlus = ensureStoryPromptMatchesNiche(nicheStyle, rawStoryPromptPlus, hashtags);
-  if (!storyPromptPlus && allowFallbacks) {
-    storyPromptPlus = ensureStoryPromptMatchesNiche(nicheStyle, buildStoryPromptPlusFromPost(post, nicheStyle), hashtags);
-  }
-  let distributionPlan = resolveDistributionPlanValue(post);
-  if (!distributionPlan && allowFallbacks) {
-    distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
-  }
-  const resolvedDay = typeof post.day === 'number' ? post.day : fallbackDay;
-  const postKeyValue = toPlainString(post.post_key || post.postKey || '');
-  const slotIndexValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-  const resolvedPillar = normalizeCalendarPillar(post.pillar) || getCalendarPillarForDay(resolvedDay);
-  const normalized = {
-    post_key: postKeyValue,
-    day: resolvedDay,
-    slotIndex: slotIndexValue,
-    idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
-    title: toPlainString(post.title || post.idea || ''),
-    topicCapsule: post.topicCapsule || post.topic_capsule,
-    type: toPlainString(post.type || 'educational'),
-    hook: toPlainString(post.hook || script.hook || ''),
-    caption: toPlainString(post.caption || ''),
-    topic_signature: toPlainString(post.topic_signature || post.topicSignature || ''),
-    angle: toPlainString(post.angle || post.strategy?.angle || ''),
-    hashtags,
-    format: 'Reel',
-    formatIntent: toPlainString(post.formatIntent || ''),
-    cta: toPlainString(post.cta || ''),
-    pillar: resolvedPillar,
-    storyPrompt,
-    storyPromptPlus,
-    designNotes: toPlainString(post.designNotes || ''),
-    repurpose,
-    analytics,
-    engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
-    promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
-    weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
-    script,
-    videoScript,
-    instagram_caption: toPlainString(post.instagram_caption || post.caption || ''),
-    tiktok_caption: toPlainString(post.tiktok_caption || post.caption || ''),
-    linkedin_caption: toPlainString(post.linkedin_caption || post.caption || ''),
-    audio: toPlainString(post.audio || ''),
-    strategy: post.strategy || {},
-    distributionPlan,
-    suggestedAudio: extractSuggestedAudioFromPost(post),
-  };
-  if (post.topicBindingFailed) {
-    normalized.topicBindingFailed = true;
-    if (Array.isArray(post.topicBindingFailedFields) && post.topicBindingFailedFields.length) {
-      normalized.topicBindingFailedFields = post.topicBindingFailedFields.slice();
+  const defaultHashtags = ['marketing', 'content', 'tips', 'learn', 'growth', 'brand'];
+  const out = Object.assign({}, post);
+  out.day = typeof out.day === 'number' ? out.day : fallbackDay;
+  out.idea = out.idea || out.title || 'Engaging post idea';
+  out.type = out.type || 'educational';
+  out.caption = out.caption || 'Quick tip that helps you today. Save this for later.';
+  out.hook = out.hook || (out.caption ? String(out.caption).split(/\n/)[0] : 'Stop scrolling quick tip');
+  if (!Array.isArray(out.hashtags)) {
+    if (typeof out.hashtags === 'string') {
+      out.hashtags = out.hashtags.split(/[,\s]+/).filter(Boolean);
+    } else {
+      out.hashtags = defaultHashtags.slice();
     }
   }
-  if (!normalized.promoSlot) normalized.weeklyPromo = '';
-  if (allowFallbacks) {
-    normalized.cta = ensureCtaFallback(normalized);
-    normalized.engagementScripts = ensureEngagementScriptsFallback(normalized, nicheStyle);
+  out.format = 'Reel';
+  out.cta = out.cta || 'DM us to book today';
+  out.pillar = out.pillar || 'Education';
+  out.storyPrompt = out.storyPrompt || "Share behind-the-scenes of today's work.";
+  out.designNotes = out.designNotes || 'Clean layout, bold headline, brand colors.';
+  out.postingTimeTip = typeof post.postingTimeTip === 'string' ? post.postingTimeTip : '';
+  if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
+    out.repurpose = ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'];
   }
-  return normalized;
+  if (!Array.isArray(out.analytics) || !out.analytics.length) {
+    out.analytics = ['Reach', 'Saves'];
+  }
+  if (!out.engagementScripts) {
+    out.engagementScripts = { commentReply: '', dmReply: '' };
+  }
+  if (!out.engagementScripts.commentReply) {
+    out.engagementScripts.commentReply = 'Thanks! Want our quick guide?';
+  }
+  if (!out.engagementScripts.dmReply) {
+    out.engagementScripts.dmReply = 'Starts at $99. Want me to book you this week?';
+  }
+  if (typeof out.promoSlot !== 'boolean') out.promoSlot = !!out.weeklyPromo;
+  if (!out.promoSlot && out.weeklyPromo) out.weeklyPromo = '';
+  if (!out.script) out.script = { hook: '', body: '', cta: '' };
+  if (!out.script.hook) out.script.hook = 'Stop scrolling—quick tip';
+  if (!out.script.body) out.script.body = 'Show result • Explain 1 step • Tease benefit';
+  if (!out.script.cta) out.script.cta = 'DM us to grab your spot';
+  out.videoScript = out.script;
+  out.instagram_caption = (out.instagram_caption || out.caption || '').trim();
+  out.tiktok_caption = (out.tiktok_caption || out.caption || '').trim();
+  out.linkedin_caption = (out.linkedin_caption || out.caption || '').trim();
+  out.strategy = normalizeStrategyForPost(out);
+  return out;
 }
-
-if (!isProduction) {
-  runRegenNormalizationSelfTest();
-}
-if (process.env.TOPICBIND_SELFTEST === '1') {
-  runTopicBindSelfTest();
-}
-
-function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', loggingContext = {}, options = {}) {
-  const allowFallbacks = options?.allowFallbacks !== false;
-  return normalizePost(post, idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
-}
-
-const buildDistributionPlanText = (post = {}) => toPlainString(post.distributionPlan || '');
-
-const buildStoryPromptExpanded = (post = {}) => {
-  const text = toPlainString(post.storyPromptExpanded);
-  return sanitizeStoryPromptPlus(post.niche || post.nicheStyle || '', text, post);
-};
-
-const enrichRegenPost = (post = {}, dayIndex = 0) => {
-  const enriched = { ...post };
-  enriched.distributionPlan = buildDistributionPlanText(post);
-  enriched.storyPromptExpanded = buildStoryPromptExpanded(post);
-  return enriched;
-};
-
 
 function getPresetGuidelines(nicheStyle = '') {
   const s = String(nicheStyle || '').toLowerCase();
@@ -6388,252 +2412,13 @@ function getPresetGuidelines(nicheStyle = '') {
   return null;
 }
 
-function extractFirstJsonObject(text = '') {
-  if (!text) return null;
-  const start = text.indexOf('{');
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < text.length; i += 1) {
-    const c = text[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (c === '\\') {
-        escape = true;
-        continue;
-      }
-      if (c === '"') inString = false;
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      continue;
-    }
-    if (c === '{') depth += 1;
-    if (c === '}') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
-function findFirstJsonSegment(text = '') {
-  const source = String(text || '');
-  let inString = false;
-  let escape = false;
-  for (let i = 0; i < source.length; i += 1) {
-    const char = source[i];
-    if (inString) {
-      if (escape) {
-        escape = false;
-      } else if (char === '\\') {
-        escape = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === '{' || char === '[') {
-      const segment = captureJsonSegment(source, i);
-      if (segment) return segment;
-    }
-  }
-  return null;
-}
-
-function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkEndDay, postsPerDay } = {}) {
-  const text = String(rawText || '').trim();
-  const candidates = [];
-  const addCandidate = (value) => {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return;
-    if (candidates.includes(trimmed)) return;
-    candidates.push(trimmed);
-  };
-  if (text && (text.startsWith('{') || text.startsWith('['))) {
-    addCandidate(text);
-  }
-  const firstSegment = findFirstJsonSegment(text);
-  if (firstSegment) addCandidate(firstSegment);
-  const postsIndex = text.indexOf('posts');
-  if (postsIndex !== -1) {
-    const arrayStart = text.indexOf('[', postsIndex);
-    if (arrayStart !== -1) {
-      const postsSegment = captureJsonSegment(text, arrayStart);
-      if (postsSegment) addCandidate(postsSegment);
-    }
-  }
-  for (const candidate of candidates) {
-    let parsed;
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {
-      continue;
-    }
-    let posts = null;
-    let shape = 'unknown';
-    if (Array.isArray(parsed)) {
-      posts = parsed;
-      shape = 'array';
-    } else if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.posts)) {
-        posts = parsed.posts;
-        shape = 'posts-wrapper';
-      } else if (parsed.post && typeof parsed.post === 'object') {
-        posts = [parsed.post];
-        shape = 'post-wrapper';
-      } else if (parsed.day != null) {
-        posts = [parsed];
-        shape = 'single-object';
-      }
-    }
-    if (!Array.isArray(posts)) continue;
-    const normalized = posts.filter((post) => post && typeof post === 'object').map((post) => {
-      const dayValue = Number(post.day);
-      const perDay = Number(postsPerDay);
-      const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-      let slotValue = explicitSlotIndex;
-      if (slotValue === null && Number.isFinite(Number(post.slot_index))) {
-        slotValue = Number(post.slot_index);
-      }
-      if (slotValue === null && Number.isFinite(Number(post.slot))) {
-        slotValue = Number(post.slot) - 1;
-      }
-      if (Number.isFinite(dayValue)) post.day = dayValue;
-      if (Number.isFinite(slotValue)) post.slotIndex = slotValue;
-      if (Number.isFinite(perDay) && perDay === 1 && (post.slotIndex == null || post.slotIndex === 1)) {
-        post.slotIndex = 0;
-      }
-      return post;
-    });
-    const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : null;
-    const dayEnd = Number.isFinite(Number(chunkEndDay)) ? Number(chunkEndDay) : null;
-    const slotMax = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) - 1 : null;
-    const filtered = normalized.filter((post) => {
-      const dayValue = Number(post.day);
-      const slotValue = Number(post.slotIndex);
-      if (Number.isFinite(dayValue) && dayStart !== null && dayEnd !== null) {
-        if (dayValue < dayStart || dayValue > dayEnd) return false;
-      }
-      if (Number.isFinite(slotValue) && slotMax !== null) {
-        if (slotValue < 0 || slotValue > slotMax) return false;
-      }
-      return true;
-    });
-    let selected = filtered;
-    if (Number.isFinite(Number(expectedPosts)) && filtered.length > expectedPosts) {
-      selected = filtered
-        .slice()
-        .sort((a, b) => {
-          const dayA = Number.isFinite(Number(a.day)) ? Number(a.day) : Number.POSITIVE_INFINITY;
-          const dayB = Number.isFinite(Number(b.day)) ? Number(b.day) : Number.POSITIVE_INFINITY;
-          if (dayA !== dayB) return dayA - dayB;
-          const slotA = Number.isFinite(Number(a.slotIndex)) ? Number(a.slotIndex) : Number.POSITIVE_INFINITY;
-          const slotB = Number.isFinite(Number(b.slotIndex)) ? Number(b.slotIndex) : Number.POSITIVE_INFINITY;
-          return slotA - slotB;
-        })
-        .slice(0, expectedPosts);
-    }
-    if (Number.isFinite(Number(expectedPosts)) && selected.length !== expectedPosts) continue;
-    return { posts: selected, shape };
-  }
-  return null;
-}
-
-async function generateTopicPlan({
-  nicheStyle,
-  brandContext,
-  totalPosts,
-  startDay,
-  postsPerDay,
-  days,
-  brandBrainEnabled,
-  requestId,
-  brandBrainDirective,
-  context,
-  pillarSchedule,
-}) {
-  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
-  const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
-  const pushWarning = (detail) => {
-    if (!context) return;
-    if (!Array.isArray(context.warnings)) context.warnings = [];
-    context.warnings.push({ code: 'TOPIC_PLAN_SKIPPED', detail });
-  };
-  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay, pillarSchedule);
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    required: ['topics'],
-    properties: {
-      topics: {
-        type: 'array',
-        minItems: totalPosts,
-        maxItems: totalPosts,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['slot', 'day', 'postIndex', 'title', 'angle', 'pillar'],
-          properties: {
-            slot: { type: 'integer', minimum: 0, maximum: Math.max(0, totalPosts - 1) },
-            day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Number(days) || 1) - 1 },
-            postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, Number(postsPerDay) - 1) },
-            title: { type: 'string', minLength: 4 },
-            angle: { type: 'string', minLength: 8 },
-            pillar: { type: 'string', enum: CALENDAR_PILLARS },
-          },
-        },
-      },
-    },
-  };
-  try {
-    JSON.stringify(schema);
-  } catch (err) {
-    pushWarning({ reason: 'schema_invalid', message: err?.message || err });
-    return null;
-  }
-  try {
-    assertJsonSchemaFiniteNumbers(schema, 'topicPlanSchema');
-  } catch (err) {
-    pushWarning({ reason: 'schema_invalid', message: err?.message || err });
-    return null;
-  }
-  const slotLines = assignedSlots.map(
-    (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex} | pillar: ${slot.pillar}`
-  );
-  const prompt = [
-    `You are a content calendar topic planner${cleanNiche}.`,
-    brandBlock.trim(),
-    requestLabel.trim(),
-    brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
-    'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
-    `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
-    'Each item must include: slot, day, postIndex, title, angle, pillar.',
-    'Titles are final and must be used verbatim in the calendar posts.',
-    'Angle must be 8–18 words.',
-    'Use the assigned pillar for each slot exactly as provided.',
-    'Assigned slots:',
-    ...slotLines,
-  ].filter(Boolean).join('\n');
+function callOpenAI(nicheStyle, brandContext, opts = {}) {
+  const prompt = buildPrompt(nicheStyle, brandContext, opts);
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 900,
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'calendar_topic_plan', strict: true, schema },
-    },
+    temperature: 0.5,
+    max_tokens: 4000,
   });
   const options = {
     hostname: 'api.openai.com',
@@ -6645,392 +2430,28 @@ async function generateTopicPlan({
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
   };
-  const extractContentText = (json) => {
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
-  let json = null;
-  try {
-    json = await openAIRequest(options, payload);
-  } catch (err) {
-    const details = extractOpenAiErrorDetails(err);
-    console.error('[OpenAI][TopicPlan] request failed', {
-      requestId: requestId || null,
-      mode: 'topicPlan',
-      model: 'gpt-4o-mini',
-          responseFormat: safeStringify({
-            type: 'json_schema',
-            json_schema: { name: 'calendar_topic_plan', strict: true },
-          }),
-      statusCode: err?.statusCode || err?.status || null,
-      ...details,
-    });
-    pushWarning({ reason: 'openai_error', details });
-    return null;
-  }
-  const content = extractContentText(json);
-  let parsed = null;
-  try {
-    parsed = content ? JSON.parse(content) : null;
-  } catch {
-    parsed = null;
-  }
-  const topics = Array.isArray(parsed?.topics) ? parsed.topics : null;
-  if (!topics) {
-    pushWarning({ reason: 'missing_topics' });
-    return null;
-  }
-  if (topics.length !== totalPosts) {
-    pushWarning({ reason: 'count_mismatch', expectedCount: totalPosts, actualCount: topics.length });
-    return null;
-  }
-  const titleSet = new Set();
-  const signatureSet = new Set();
-  const pillarSet = new Set();
-  for (const topic of topics) {
-    const title = String(topic?.title || '').trim();
-    if (!title) {
-      pushWarning({ reason: 'empty_title' });
-      return null;
-    }
-    const normalizedTitle = normalizeTitleText(title);
-    const signature = normalizeTitleSignature(title);
-    const pillar = String(topic?.pillar || '').trim();
-    if (titleSet.has(normalizedTitle)) {
-      pushWarning({ reason: 'duplicate_title', value: normalizedTitle });
-      return null;
-    }
-    if (signature && signatureSet.has(signature)) {
-      pushWarning({ reason: 'duplicate_signature', value: signature });
-      return null;
-    }
-    titleSet.add(normalizedTitle);
-    if (signature) signatureSet.add(signature);
-    if (pillar) pillarSet.add(pillar);
-  }
-  const uniquePillars = pillarSet.size;
-  if (totalPosts > 1 && uniquePillars === 1) {
-    pushWarning({ reason: 'pillar_collapsed' });
-    return null;
-  }
-  if (totalPosts >= CALENDAR_PILLARS.length && uniquePillars < CALENDAR_PILLARS.length) {
-    pushWarning({ reason: 'pillar_missing' });
-    return null;
-  }
-  return topics;
-}
-
-async function callOpenAI(nicheStyle, brandContext, opts = {}) {
-  const { loggingContext = {} } = opts;
-    const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
-  const requestedTokens =
-    Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
-      ? Number(opts.maxTokens)
-      : maxTokenCap;
-  const maxTokens = Math.min(requestedTokens, maxTokenCap);
-  const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
-  const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
-  const postsPerDay = 1;
-  const expectedChunkCount = chunkDays * postsPerDay;
-  const schema = buildCalendarSchemaObject(
-    expectedChunkCount,
-    chunkStartDay,
-    Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
-  );
-  try {
-    JSON.stringify(schema);
-    if (!schema || schema.type !== 'object' || !schema.properties || !schema.required) {
-      throw new Error('Invalid schema root shape');
-    }
-    assertJsonSchemaFiniteNumbers(schema, 'calendarChunkSchema');
-  } catch (err) {
-    const schemaErr = new Error('OpenAI schema validation failed');
-    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
-    schemaErr.statusCode = 400;
-    schemaErr.details = { message: err?.message || err, schemaKeys: Object.keys(schema || {}) };
-    throw schemaErr;
-  }
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const extractContentText = (json) => {
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
-  const buildRequestOptions = (payload) => ({
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  });
-  const attemptStart = Date.now();
-  const contextLabel = formatCalendarLogContext(loggingContext);
-  const label = contextLabel ? ` (${contextLabel})` : '';
-  const previewJson = (value = '') => {
-    if (!value) return '';
-    const snippet = String(value);
-    return snippet.length <= 500 ? snippet : `${snippet.slice(0, 500)}...`;
-  };
-  const parseOpenAiErrorPayload = (err) => {
-    const raw = String(err?.message || '');
-    const marker = raw.indexOf(':');
-    if (marker === -1) return null;
-    const payloadText = raw.slice(marker + 1).trim();
+  const fetchAndParse = async (attempt = 0) => {
+    const json = await openAIRequest(options, payload);
+    const content = json.choices?.[0]?.message?.content || '';
     try {
-      return JSON.parse(payloadText);
-    } catch {
-      return null;
+      const { data, attempts } = parseLLMArray(content, {
+        requireArray: true,
+        itemValidate: (p) => p && typeof p.day === 'number',
+      });
+      if (debugEnabled) console.log('[CALENDAR PARSE] attempts:', attempts);
+      return data;
+    } catch (e) {
+      if (attempt < 1) { // Single parse-level retry (fresh completion)
+        if (debugEnabled) console.warn('[CALENDAR PARSE] retry after failure:', e.message);
+        return fetchAndParse(attempt + 1);
+      }
+      throw e;
     }
   };
-  const isSchemaErrorPayload = (payload, err) => {
-    const message = payload?.error?.message || err?.message || '';
-    const code = payload?.error?.code || '';
-    return (
-      err?.statusCode === 400 &&
-      (String(message).includes('schema') ||
-        String(message).includes('response_format') ||
-        String(code).includes('schema'))
-    );
-  };
-  const attemptRequest = async (extraInstructions = '', useSchema = true) => {
-    const attemptTimestamp = Date.now();
-    const attemptOpts = {
-      ...opts,
-      days: chunkDays,
-      startDay: chunkStartDay,
-      postsPerDay,
-      extraInstructions,
-      isPro: Boolean(opts.isPro),
-      requestId: loggingContext?.requestId || '',
-    };
-    const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
-    const voiceLockApplied = Boolean(attemptOpts.voiceLock?.enabled);
-    const voiceLockPreset = attemptOpts.voiceLock?.preset
-      ? (VOICE_LOCK_PRESET_GUIDES[attemptOpts.voiceLock.preset]?.label || attemptOpts.voiceLock.preset)
-      : 'none';
-    const openAiRequestId = loggingContext?.requestId || 'unknown';
-    if (voiceLockApplied) {
-      console.log('[VoiceLock] applied=true preset="%s" requestId=%s', voiceLockPreset, openAiRequestId);
-    } else if (attemptOpts.voiceLock?.reason === 'unknown_preset') {
-      console.log('[VoiceLock] applied=false requestId=%s reason=unknown_preset', openAiRequestId);
-    } else {
-      console.log('[VoiceLock] applied=false requestId=%s', openAiRequestId);
-    }
-    if (loggingContext?.requestId) {
-      console.log('[Calendar][Prompt]', {
-        requestId: loggingContext.requestId,
-        chunkStartDay,
-        chunkDays,
-        promptChars: prompt.length,
-        planUsed: Boolean(opts.planUsed),
-      });
-    }
-    const responseFormat = null;
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0,
-      max_tokens: maxTokens,
-    });
-    const requestPromise = withOpenAiSlot(() =>
-      openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
-        const payloadJson = parseOpenAiErrorPayload(err);
-        const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
-        const details = extractOpenAiErrorDetails(err);
-        console.error('[OpenAI][CalendarChunk] request failed', {
-          requestId: loggingContext?.requestId || null,
-          mode,
-          model: 'gpt-4o-mini',
-          responseFormat: safeStringify(responseFormat),
-          statusCode: err?.statusCode || err?.status || null,
-          ...details,
-        });
-        if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
-          const openaiMessage = payloadJson?.error?.message || err?.message || '';
-          const schemaObject = extractSchemaObjectName(openaiMessage);
-          console.warn('[OpenAI][SchemaError] object=%s message=%s', schemaObject, openaiMessage);
-          const schemaErr = new Error(openaiMessage || 'OpenAI schema error');
-          schemaErr.code = 'OPENAI_SCHEMA_ERROR';
-          schemaErr.statusCode = err?.statusCode || 400;
-          schemaErr.details = {
-            error: payloadJson?.error || null,
-            response_format: { type: 'json_schema', json_schema: { name: 'calendar_batch', strict: true } },
-            schemaKeys: Object.keys(schema || {}),
-          };
-          schemaErr.openaiMessage = openaiMessage;
-          schemaErr.schemaObject = schemaObject;
-          schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
-          schemaErr.openaiDetails = details;
-          schemaErr.mode = mode;
-          throw schemaErr;
-        }
-        err.openaiDetails = details;
-        err.mode = mode;
-        throw err;
-      })
-    );
-    const timeoutPromise = new Promise((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        const timeoutErr = new Error('OpenAI request timed out');
-        timeoutErr.code = 'OPENAI_TIMEOUT';
-        reject(timeoutErr);
-      }, OPENAI_GENERATION_TIMEOUT_MS);
-      requestPromise.finally(() => clearTimeout(timeoutId));
-    });
-    const json = await Promise.race([requestPromise, timeoutPromise]);
-    const content = extractContentText(json);
-    if (debugEnabled) {
-      console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
-    }
-    return { content, latency: Date.now() - attemptTimestamp };
-  };
-
-  try {
-    const firstResponse = await attemptRequest('', true);
-    const parseStart = Date.now();
-    const rawText = firstResponse.content || '';
-    const logParseDebug = () => {
-      if (process.env.CALENDAR_PARSE_DEBUG !== '1') return;
-      console.warn('[Calendar][Parse][Debug]', {
-        requestId: loggingContext?.requestId || 'unknown',
-        chunkIndex: loggingContext?.chunkIndex ?? null,
-        chunkStartDay,
-        chunkDays,
-        rawHead: rawText.slice(0, 250),
-        rawTail: rawText.slice(-250),
-      });
-    };
-    const parseMs = Date.now() - parseStart;
-    const expectedStart = chunkStartDay;
-    const expectedEnd = chunkStartDay + chunkDays - 1;
-    const slotIndexMax = Math.max(0, postsPerDay - 1);
-    const parseResult = parsePostsFromModelText(rawText, {
-      expectedPosts: expectedChunkCount,
-      chunkStartDay: expectedStart,
-      chunkEndDay: expectedEnd,
-      postsPerDay,
-    });
-    if (!parseResult) {
-      const parseErr = new Error('missing_posts_parse_failed');
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      console.warn('[Calendar][Parse] failed', {
-        requestId: loggingContext?.requestId || 'unknown',
-        expectedCount: expectedChunkCount,
-        rawLength: rawText.length,
-        extracted: false,
-      });
-      logParseDebug();
-      throw parseErr;
-    }
-    let posts = parseResult.posts;
-    const dayValues = posts
-      ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day))
-      : [];
-    const minDay = dayValues.length ? Math.min(...dayValues) : null;
-    const maxDay = dayValues.length ? Math.max(...dayValues) : null;
-    console.log('[Calendar][Parse]', {
-      requestId: loggingContext?.requestId || 'unknown',
-      parsedType: parseResult.shape || 'unknown',
-      postsArray: Array.isArray(posts),
-      postCount: posts ? posts.length : 0,
-      expectedCount: expectedChunkCount,
-      minDay,
-      maxDay,
-      extracted: Boolean(posts),
-    });
-    if (!posts) {
-      const parseErr = new Error('missing_posts');
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      logParseDebug();
-      throw parseErr;
-    }
-    if (posts.length !== expectedChunkCount) {
-      const parseErr = new Error(`missing_posts_length_mismatch expected=${expectedChunkCount} actual=${posts.length}`);
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      logParseDebug();
-      throw parseErr;
-    }
-    if (minDay === null || maxDay === null || minDay < expectedStart || maxDay > expectedEnd) {
-      const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      logParseDebug();
-      throw parseErr;
-    }
-    const keyPattern = /^day-(\d+)-slot-(\d+)$/i;
-    const invalidKey = posts.find((post) => {
-      const keyValue = toPlainString(post?.post_key || post?.postKey || '');
-      const dayValue = Number(post?.day);
-      const slotValue = Number(post?.slotIndex);
-      if (!keyValue || !Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return true;
-      if (slotValue < 0 || slotValue > slotIndexMax) return true;
-      const match = keyValue.match(keyPattern);
-      if (!match) return true;
-      return Number(match[1]) !== dayValue || Number(match[2]) !== slotValue;
-    });
-    if (invalidKey) {
-      const parseErr = new Error('missing_posts_parse_failed');
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      logParseDebug();
-      throw parseErr;
-    }
-    return {
-      posts,
-      rawContent: rawText,
-      latency: firstResponse.latency,
-      parseMs,
-    };
-  } catch (err) {
-    if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
-      throw err;
-    }
-    console.warn(`[Calendar] callOpenAI failed${label}:`, err.message);
-    throw err;
-  }
+  return fetchAndParse(0);
 }
+
 function hasValidStrategy(post) {
   if (!post || typeof post !== 'object') return false;
   const strategy = post.strategy;
@@ -7056,7 +2477,15 @@ function hasValidStrategy(post) {
   );
 }
 
-
+async function callOpenAIWithStrategy(nicheStyle, brandContext, opts = {}, attempt = 0) {
+  const posts = await callOpenAI(nicheStyle, brandContext, opts);
+  if (Array.isArray(posts) && posts.some((post) => !hasValidStrategy(post))) {
+    if (attempt >= 1) return posts;
+    console.warn('[Calendar] Strategy block validation failed; regenerating once.');
+    return callOpenAIWithStrategy(nicheStyle, brandContext, opts, attempt + 1);
+  }
+  return posts;
+}
 
 function loadBrand(userId) {
   try {
@@ -7129,62 +2558,6 @@ async function upsertBrandBrainPreference(userId, text) {
       return null;
     }
     console.error('[BrandBrain] upsert preference failed', msg);
-    return null;
-  }
-}
-
-const BRAND_BRAIN_DEFAULT_SETTINGS = {
-  enabled: false,
-};
-
-function normalizeBrandBrainSettings(input = {}) {
-  return { enabled: Boolean(input?.enabled) };
-}
-
-async function fetchBrandBrainSettings(userId) {
-  if (!userId || !supabaseAdmin) return null;
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('profiles')
-      .select('profile_settings')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) return null;
-    const settings = data?.profile_settings || {};
-    const enabled = Boolean(settings?.brand_brain_enabled);
-    return normalizeBrandBrainSettings({ enabled });
-  } catch (err) {
-    console.error('[BrandBrain] settings fetch failed', err?.message || err);
-    return null;
-  }
-}
-
-async function upsertBrandBrainSettings(userId, settings) {
-  if (!userId || !supabaseAdmin) return null;
-  try {
-    const payload = normalizeBrandBrainSettings(settings);
-    const { data, error } = await supabaseAdmin
-      .from('profiles')
-      .select('profile_settings')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    const current = data?.profile_settings && typeof data.profile_settings === 'object'
-      ? data.profile_settings
-      : {};
-    const nextSettings = { ...current, brand_brain_enabled: payload.enabled };
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('profiles')
-      .update({ profile_settings: nextSettings, updated_at: new Date().toISOString() })
-      .eq('id', userId)
-      .select('profile_settings')
-      .maybeSingle();
-    if (updateError) throw updateError;
-    const enabled = Boolean(updated?.profile_settings?.brand_brain_enabled);
-    return normalizeBrandBrainSettings({ enabled });
-  } catch (err) {
-    console.error('[BrandBrain] settings upsert failed', err?.message || err);
     return null;
   }
 }
@@ -7422,8 +2795,6 @@ function isBrandKitPath(pathname) {
 
 const server = http.createServer((req, res) => {
   try {
-  const parsed = url.parse(req.url, true);
-  const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -7434,8 +2805,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
-  res.setHeader('Content-Security-Policy', baseCsp);
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.sandbox.getphyllo.com; frame-src 'self' https://connect.sandbox.getphyllo.com; frame-ancestors 'none';");
   // Cloudinary is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
@@ -7448,14 +2818,10 @@ const server = http.createServer((req, res) => {
   }
 
   // Short-circuit legacy Design Lab page when disabled
+  const parsed = url.parse(req.url, true);
   if (!ENABLE_DESIGN_LAB && parsed.pathname === '/design.html') {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not found');
-  }
-
-  if (parsed.pathname && (parsed.pathname.startsWith('/api/phyllo') || parsed.pathname.startsWith('/internal/phyllo'))) {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ error: 'not_found' }));
   }
 
   if (parsed.pathname === '/api/user/subscription' && req.method === 'GET') {
@@ -7543,38 +2909,6 @@ const server = http.createServer((req, res) => {
   }
 
   // Helper: serve static file with optional gzip if client supports
-  function stripCspMeta(html) {
-    return html.replace(/<meta[^>]*http-equiv=["']content-security-policy["'][^>]*>/gi, '');
-  }
-
-  function injectNonceIntoInlineScripts(html, nonce) {
-    return html.replace(/<script\b([^>]*)>/gi, (match, attrs) => {
-      if (/\snonce\s*=/i.test(attrs)) return match;
-      if (/\ssrc\s*=/i.test(attrs)) return match;
-      return `<script nonce="${nonce}"${attrs}>`;
-    });
-  }
-
-  function scanInlineScriptsWithoutNonce(html) {
-    const regex = /<script\b(?![^>]*\bnonce\s*=)(?![^>]*\bsrc\s*=)[^>]*>/ig;
-    let count = 0;
-    let snippet = null;
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-      count += 1;
-      if (!snippet) {
-        const start = Math.max(0, match.index - 100);
-        const end = Math.min(html.length, match.index + match[0].length + 100);
-        snippet = html.slice(start, end);
-      }
-    }
-    return { count, snippet };
-  }
-
-  function hasInlineHandlers(html) {
-    return /\son[a-z]+\s*=\s*["']/i.test(html);
-  }
-
   function serveFile(filePath, res) {
     try {
       const ext = path.extname(filePath).toLowerCase();
@@ -7587,64 +2921,10 @@ const server = http.createServer((req, res) => {
         '.png': 'image/png',
         '.ico': 'image/x-icon'
       };
-      let raw = fs.readFileSync(filePath);
+      const raw = fs.readFileSync(filePath);
       const accept = req.headers['accept-encoding'] || '';
       // Only compress text-like content
       const isText = /\.(html|css|js|json|txt)$/i.test(filePath);
-      const host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
-      const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
-      const isHttps = proto === 'https' || req.socket?.encrypted === true;
-      const isProdHost = host === 'usepromptly.app' || host === 'www.usepromptly.app';
-      const isProdRequest = isProdHost && isHttps;
-      if (ext === '.html' && !isProdRequest) {
-        console.info('Contentsquare disabled on dev host');
-      }
-      if (ext === '.html') {
-        const snippet = '<script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>';
-        let html = raw.toString('utf8');
-        html = stripCspMeta(html);
-        if (!isProdRequest) {
-          if (html.includes(snippet)) {
-            const newline = html.includes('\r\n') ? '\r\n' : '\n';
-            const lines = html.split(/\r?\n/);
-            html = lines.filter((line) => line.trim() !== snippet).join(newline);
-          }
-        } else if (!html.includes(snippet)) {
-          const lower = html.toLowerCase();
-          const headIndex = lower.indexOf('</head>');
-          if (headIndex !== -1) {
-            const newline = html.includes('\r\n') ? '\r\n' : '\n';
-            const before = html.slice(0, headIndex);
-            const after = html.slice(headIndex);
-            const lastNl = before.lastIndexOf('\n');
-            let indent = '';
-            if (lastNl !== -1) {
-              const line = before.slice(lastNl + 1);
-              indent = line.match(/^\s*/)?.[0] || '';
-            }
-            html = `${before}${newline}${indent}${snippet}${newline}${after}`;
-          }
-        }
-        html = injectNonceIntoInlineScripts(html, cspNonce);
-        if (!isProdRequest) {
-          const base = path.basename(filePath).toLowerCase();
-          if (base === 'terms.html' && !TERMS_CSP_LOGGED) {
-            const inlineScan = scanInlineScriptsWithoutNonce(html);
-            const inlineHandlers = hasInlineHandlers(html);
-            if (inlineScan.count > 0 || inlineHandlers) {
-              console.info('[CSP][NonceCheck]', {
-                file: base,
-                nonce: cspNonce,
-                missingNonceCount: inlineScan.count,
-                inlineHandlers,
-                snippet: inlineScan.count > 0 ? inlineScan.snippet : null,
-              });
-              TERMS_CSP_LOGGED = true;
-            }
-          }
-        }
-        raw = Buffer.from(html, 'utf8');
-      }
       // Override content-type for JSON-LD schema files to satisfy validators
       try {
         const base = path.basename(filePath);
@@ -7684,20 +2964,8 @@ const server = http.createServer((req, res) => {
   // ---------------------------------------------------------------------------
 
   // helper to generate calendar posts (reuse logic from /api/generate-calendar)
-  async function generateCalendarPosts(payload = {}, attempt = 1) {
-    const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
-    const loggingContext = context || {};
-    if (userId) loggingContext.userId = userId;
-    const tStart = Date.now();
-    console.log('[Calendar][Server][Perf] generateCalendarPosts start', {
-      nicheStyle,
-      userId: !!userId,
-      days,
-      startDay,
-      postsPerDay,
-      context: loggingContext,
-      attempt,
-    });
+  async function generateCalendarPosts(payload = {}) {
+    const { nicheStyle, userId, days, startDay, postsPerDay } = payload;
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -7711,759 +2979,33 @@ const server = http.createServer((req, res) => {
     const classification = categorizeNiche(nicheStyle);
     const brand = userId ? loadBrand(userId) : null;
     const brandContext = summarizeBrandForPrompt(brand);
-    const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
-    const isProUser = Boolean(payload?.isPro);
-    const brandBrainDirective = isProUser && brandBrainSettings?.enabled
-      ? buildBrandBrainDirective(brandBrainSettings)
-      : '';
-    const brandBrainEnabled = Boolean(brandBrainDirective);
-    const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
-    const targetAudienceConfig = resolveTargetAudienceConfig(payload, isProUser);
-    const requestId = String(loggingContext?.requestId || '');
-    if (requestId && !VOICE_LOCK_LOGGED_REQUESTS.has(requestId)) {
-      if (payload?.voiceLockEnabled && voiceLockConfig.reason !== 'disabled' && !voiceLockConfig.enabled) {
-        console.log('[VoiceLock][Skipped] requestId=%s reason=%s', requestId, voiceLockConfig.reason || 'disabled');
-      }
-      VOICE_LOCK_LOGGED_REQUESTS.add(requestId);
-      if (VOICE_LOCK_LOGGED_REQUESTS.size > 5000) VOICE_LOCK_LOGGED_REQUESTS.clear();
-    }
-    if (requestId && targetAudienceConfig.enabled && !TARGET_AUDIENCE_LOGGED_REQUESTS.has(requestId)) {
-      const presetLabel = TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset;
-      console.log('[TargetAudience] enabled=true preset=%s requestId=%s', presetLabel, requestId);
-      TARGET_AUDIENCE_LOGGED_REQUESTS.add(requestId);
-      if (TARGET_AUDIENCE_LOGGED_REQUESTS.size > 5000) TARGET_AUDIENCE_LOGGED_REQUESTS.clear();
-    }
-    console.log('[BrandBrain] generation mode', {
-      requestId: loggingContext?.requestId || 'unknown',
-      userId: userId || null,
-      enabled: Boolean(brandBrainDirective),
-      isPro: isProUser,
-    });
-    const callStart = Date.now();
-    const logContext = {
-      requestId: loggingContext?.requestId || 'unknown',
-      days,
-      startDay,
-      postsPerDay,
-    };
-    const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : null;
-    const requestedPostsPerDay = 1;
-    const forceSinglePostPerDayForModel = false;
-    const modelPostsPerDay = requestedPostsPerDay;
-    const perDay = modelPostsPerDay;
-    const targetCount = computePostCountTarget(days, modelPostsPerDay);
-    let expectedCount = null;
-    const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-    const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
-    const totalPosts = targetCount || (daysToGenerate * perDay);
-    const seedSource = `${requestId || 'req'}|${nicheStyle || ''}|${fallbackStart}`;
-    const baseSeed = seedFromString(seedSource);
-    const rand = makePrng(baseSeed);
-    const pillarSchedule = buildPillarSchedule(totalPosts, rand);
-    if (requestId && !CALENDAR_VARIETY_LOGGED_REQUESTS.has(requestId)) {
-      console.log('[Calendar][Variety] seed=%s requestId=%s firstTypes=%j', baseSeed, requestId, pillarSchedule.slice(0, 5));
-      CALENDAR_VARIETY_LOGGED_REQUESTS.add(requestId);
-      if (CALENDAR_VARIETY_LOGGED_REQUESTS.size > 5000) CALENDAR_VARIETY_LOGGED_REQUESTS.clear();
-    }
-    let topicPlan = null;
-    try {
-      topicPlan = await generateTopicPlan({
-        nicheStyle,
-        brandContext,
-        totalPosts,
-        startDay: fallbackStart,
-        postsPerDay: perDay,
-        days: daysToGenerate,
-        brandBrainEnabled,
-        requestId: loggingContext?.requestId || null,
-        brandBrainDirective,
-        context: loggingContext,
-        pillarSchedule,
-      });
-    } catch (err) {
-      console.warn('[Calendar] topic plan failed; continuing without plan', {
-        requestId: loggingContext?.requestId || 'unknown',
-        error: err?.message || err,
-      });
-      topicPlan = null;
-    }
-    const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
-    const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
-    const usePostChunks = !brandBrainEnabled && perDay > 1;
-    const blockFallbacks = forceSinglePostPerDayForModel;
-    const maxPostsPerChunk = 2;
-    const chunkMetrics = [];
-    let aggregatedRawPosts = [];
-    let remainingDays = daysToGenerate;
-    let processedDays = 0;
-    const chunkBaseTokens = 1600;
-    const chunkMinTokens = 1000;
-
-    async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
-      const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
-      const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planBlock = buildTopicPlanBlock(topicPlan, {
-        chunkStartDay,
-        chunkDays,
-      });
-      if (planBlock) {
-        const planTitles = planBlock
-          .split('\n')
-          .filter((line) => line.includes(' | title: '))
-          .map((line) => line.split(' | title: ')[1] || '')
-          .map((part) => part.split(' | angle: ')[0] || '')
-          .filter(Boolean);
-        if (planTitles.length) {
-          console.log('[Calendar][Plan][Title]', {
-            requestId: chunkContext?.requestId || 'unknown',
-            chunkIndex,
-            startDay: chunkStartDay,
-            titles: planTitles,
-          });
-        }
-      }
-      console.log('[Calendar][Server][Perf] callOpenAI start', {
-        requestId: chunkContext?.requestId || 'unknown',
-        chunkIndex,
-        startDay: chunkStartDay,
-        days: chunkDays,
-        postsPerDay: chunkPostsPerDay,
-        expectedPosts: chunkDays * chunkPostsPerDay,
-      });
-      const result = await callOpenAI(nicheStyle, brandContext, {
-        days: chunkDays,
-        startDay: chunkStartDay,
-        postsPerDay: chunkPostsPerDay,
-        loggingContext: chunkContext,
-        maxTokens: chunkMaxTokens,
-        reduceVerbosity: true,
-        extraInstructions: planBlock || '',
-        topicPlan,
-        brandBrainDirective,
-        voiceLock: voiceLockConfig,
-        targetAudience: targetAudienceConfig,
-        isPro: isProUser,
-        planUsed: Boolean(topicPlan && topicPlan.length),
-      });
-      const chunkPosts = Array.isArray(result.posts)
-        ? result.posts
-        : (Array.isArray(result?.posts?.posts) ? result.posts.posts : []);
-      chunkPosts.forEach((post) => canonicalizeCalendarPost(post, chunkPostsPerDay));
-      const requestedSpecMap = buildRequestedSpecMap({
-        startDay: chunkStartDay,
-        days: chunkDays,
-        postsPerDay: chunkPostsPerDay,
-        topicPlan,
-      });
-      const fallbackAvoidByKey = buildMustAvoidTokensByEntries(
-        chunkPosts.map((post) => ({
-          post_key: toPlainString(post?.post_key || post?.postKey || ''),
-          title: toPlainString(post?.title || post?.topic || ''),
-        })),
-        10
-      );
-      assertPostKeyMapping(chunkPosts, requestedSpecMap);
-      const topicBindingFailures = [];
-      chunkPosts.forEach((post) => {
-        normalizeHashtagsForTopicBinding(post);
-        const key = toPlainString(post?.post_key || post?.postKey || '');
-        const requestedSpec = requestedSpecMap.get(key) || {};
-        const fallbackMustAvoid = fallbackAvoidByKey.get(key) || [];
-        const binding = assertPostTopicBound(post, requestedSpec, fallbackMustAvoid, {
-          requestId: chunkContext?.requestId || 'unknown',
-        });
-        if (!binding) return;
-        if (binding.fatal) {
-          const err = new Error('INVALID_MODEL_JSON');
-          err.code = 'INVALID_MODEL_JSON';
-          err.statusCode = 422;
-          err.payload = {
-            post_key: toPlainString(requestedSpec.post_key || requestedSpec.postKey || post?.post_key || post?.postKey || ''),
-            day: Number.isFinite(Number(requestedSpec.day)) ? Number(requestedSpec.day) : (Number.isFinite(Number(post?.day)) ? Number(post.day) : null),
-            slotIndex: Number.isFinite(Number(requestedSpec.slotIndex))
-              ? Number(requestedSpec.slotIndex)
-              : (Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null),
-          };
-          throw err;
-        }
-        if (binding.ok === false) {
-          post.topicBindingFailed = true;
-          post.topicBindingFailedFields = Array.isArray(binding.failedFields) ? binding.failedFields.slice() : [];
-          topicBindingFailures.push({
-            post_key: toPlainString(requestedSpec.post_key || requestedSpec.postKey || post?.post_key || post?.postKey || ''),
-            title: toPlainString(post?.title || post?.topic || ''),
-            failedFields: post.topicBindingFailedFields,
-          });
-        }
-      });
-      if (topicBindingFailures.length) {
-        const requestId = chunkContext?.requestId || '';
-        const requestLabel = requestId || 'unknown';
-        if (!requestId || !TOPIC_BINDING_WARNING_LOGGED_REQUESTS.has(requestId)) {
-          console.warn('[TopicBinding] degraded_to_warning', {
-            requestId: requestLabel,
-            count: topicBindingFailures.length,
-            samples: topicBindingFailures.slice(0, 3),
-          });
-          if (requestId) {
-            TOPIC_BINDING_WARNING_LOGGED_REQUESTS.add(requestId);
-            if (TOPIC_BINDING_WARNING_LOGGED_REQUESTS.size > 5000) {
-              TOPIC_BINDING_WARNING_LOGGED_REQUESTS.clear();
-            }
-          }
-        }
-      }
-      console.log('[Calendar][Server][Perf] callOpenAI end', {
-        requestId: chunkContext?.requestId || 'unknown',
-        chunkIndex,
-        startDay: chunkStartDay,
-        days: chunkDays,
-        openMs: result.latency || 0,
-        parseMs: result.parseMs || 0,
-        rawLength: String(result.rawContent || '').length,
-        postCount: Array.isArray(result.posts) ? result.posts.length : 0,
-      });
-      return {
-        posts: chunkPosts,
-        rawLength: String(result.rawContent || '').length,
-        latency: result.latency || 0,
-        fallback: Boolean(result.fallback),
-      };
-    }
-
-    const openAiWallStart = Date.now();
-    if (usePostChunks) {
-      const chunkPlan = [];
-      for (let dayOffset = 0; dayOffset < daysToGenerate; dayOffset += 1) {
-        const day = fallbackStart + dayOffset;
-        let remaining = perDay;
-        while (remaining > 0) {
-          const chunkPostsPerDay = Math.min(remaining, maxPostsPerChunk);
-          chunkPlan.push({
-            chunkDays: 1,
-            chunkStartDay: day,
-            chunkPostsPerDay,
-            chunkIndex: chunkPlan.length,
-          });
-          remaining -= chunkPostsPerDay;
-        }
-      }
-      const chunkCount = chunkPlan.length;
-      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
-      if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
-        chunkConcurrency = 3;
-      }
-      const chunkResults = await mapWithConcurrency(
-        chunkPlan,
-        chunkConcurrency,
-        (plan) =>
-          fetchChunk(
-            plan.chunkDays,
-            plan.chunkStartDay,
-            plan.chunkIndex,
-            plan.chunkPostsPerDay
-          )
-      );
-      for (let i = 0; i < chunkPlan.length; i += 1) {
-        const plan = chunkPlan[i];
-        const chunkResult = chunkResults[i];
-        aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
-        chunkMetrics.push({
-          chunkIndex: plan.chunkIndex,
-          startDay: plan.chunkStartDay,
-          days: plan.chunkDays,
-          posts: plan.chunkPostsPerDay,
-          rawLength: chunkResult.rawLength,
-          duration: chunkResult.latency,
-          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-          chunkConcurrency,
-        });
-      }
-      expectedCount = targetCount;
-    } else {
-      const chunkPlan = [];
-      while (remainingDays > 0) {
-        const chunkDays = Math.min(remainingDays, chunkLimit);
-        const chunkStartDay = fallbackStart + processedDays;
-        const chunkIndex = chunkPlan.length;
-        chunkPlan.push({
-          chunkDays,
-          chunkStartDay,
-          chunkPostsPerDay: perDay,
-          chunkIndex,
-        });
-        remainingDays -= chunkDays;
-        processedDays += chunkDays;
-      }
-      const chunkCount = chunkPlan.length;
-      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
-      if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
-        chunkConcurrency = 3;
-      }
-      const chunkResults = await mapWithConcurrency(
-        chunkPlan,
-        chunkConcurrency,
-        (plan) => fetchChunk(plan.chunkDays, plan.chunkStartDay, plan.chunkIndex, plan.chunkPostsPerDay)
-      );
-      for (let i = 0; i < chunkPlan.length; i += 1) {
-        const plan = chunkPlan[i];
-        const chunkResult = chunkResults[i];
-        aggregatedRawPosts = aggregatedRawPosts.concat(chunkResult.posts || []);
-        chunkMetrics.push({
-          chunkIndex: plan.chunkIndex,
-          startDay: plan.chunkStartDay,
-          days: plan.chunkDays,
-          posts: perDay * plan.chunkDays,
-          rawLength: chunkResult.rawLength,
-          duration: chunkResult.latency,
-          timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-          chunkConcurrency,
-        });
-      }
-      expectedCount = processedDays ? (processedDays * perDay) : null;
-    }
-    const openAiWallEnd = Date.now();
-    console.log('[Calendar][Server][Chunks]', {
-      requestId: logContext.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      chunkConcurrency: chunkMetrics.length ? (chunkMetrics[0].chunkConcurrency || null) : null,
-      chunkCount: chunkMetrics.length,
-      timeoutMs: OPENAI_GENERATION_TIMEOUT_MS,
-      chunkDetails: chunkMetrics,
-    });
-    const rawLength = chunkMetrics.reduce((sum, chunk) => sum + (chunk.rawLength || 0), 0);
-
-    let rawPosts = aggregatedRawPosts.map((post) => {
-      if (!post || typeof post !== 'object') return post;
-      if (!Array.isArray(post.hashtags)) {
-        if (typeof post.hashtags === 'string') {
-          post.hashtags = post.hashtags
-            .split(/[#,\n]+/)
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-            .slice(0, 12);
-        } else {
-          post.hashtags = [];
-        }
-      }
-      return post;
-    });
-    if (expectedCount && rawPosts.length !== expectedCount) {
-      const err = new Error('Calendar response count mismatch');
-      err.code = 'OPENAI_SCHEMA_ERROR';
-      err.statusCode = 500;
-      err.details = {
-        expectedCount,
-        actualCount: rawPosts.length,
-      };
-      console.warn('[Calendar][Server][SchemaValidation] count mismatch', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay,
-        ...err.details,
-        responseLength: rawLength,
-      });
-      err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
-      throw err;
-    }
-    if (brandBrainEnabled) {
-      rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-    }
-    const missingFieldsReport = [];
-    const noncoreMissingReport = [];
-    rawPosts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
-      if (!missing.length) return;
-      const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
-      const noncoreMissing = missing.filter((field) => NONCORE_OPTIONAL_FIELDS.has(field));
-      const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-      const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-      const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-      if (noncoreMissing.length) {
-        noncoreMissingReport.push({
-          index: idx,
-          day,
-          slotIndex,
-          postsPerDay: perDay,
-          post_key: postKeyValue,
-          missing: noncoreMissing,
-        });
-      }
-      if (coreMissing.length) {
-        missingFieldsReport.push({
-          index: idx,
-          day,
-          slotIndex,
-          postsPerDay: perDay,
-          post_key: postKeyValue,
-          missing: coreMissing,
-        });
-      }
-    });
-    if (noncoreMissingReport.length) {
-      console.warn('[Calendar][Server][SchemaValidation] noncore empty fields', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay,
-        count: noncoreMissingReport.length,
-        detailSamples: noncoreMissingReport.slice(0, 2).map((entry) => ({
-          ...entry,
-          missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
-        })),
-      });
-    }
-    if (missingFieldsReport.length) {
-      if (brandBrainEnabled) {
-        const schema = buildCalendarSchemaObject(
-          expectedCount || rawPosts.length,
-          fallbackStart,
-          fallbackStart + daysToGenerate - 1
-        );
-        const repairPayload = {
-          posts: rawPosts.map((post) => post || {}),
-        };
-        const missingSummary = missingFieldsReport.map((entry) => ({
-          index: entry.index,
-          day: entry.day,
-          slotIndex: entry.slotIndex,
-          postsPerDay: entry.postsPerDay,
-          post_key: entry.post_key,
-          missing: entry.missing,
-        }));
-        const repairPrompt = [
-          'You are a JSON repair tool.',
-          'Return ONLY valid JSON. No markdown. No commentary.',
-          'You must keep the exact number of posts and the same order.',
-          'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, storyPrompt, storyPromptPlus, distributionPlan, engagementScripts.',
-          'hashtags must be an array of strings (8–12).',
-          'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
-          `Missing fields report: ${JSON.stringify(missingSummary)}`,
-          `Original JSON: ${JSON.stringify(repairPayload)}`,
-        ].join('\n');
-        try {
-          const payload = JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: repairPrompt }],
-            temperature: 0.2,
-            max_tokens: Math.max(chunkMinTokens, chunkBaseTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: 'calendar_batch_repair', strict: true, schema },
-            },
-          });
-          const options = {
-            hostname: 'api.openai.com',
-            path: '/v1/chat/completions',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payload),
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-            },
-          };
-          const completion = await openAIRequest(options, payload);
-          const extract = completion?.choices?.[0]?.message?.content;
-          const text = typeof extract === 'string'
-            ? extract
-            : Array.isArray(extract)
-              ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
-              : '';
-          const parsed = tryParsePosts(text, expectedCount || rawPosts.length);
-          if (parsed.posts) {
-            rawPosts = parsed.posts;
-            missingFieldsReport.length = 0;
-            rawPosts.forEach((post, idx) => {
-              const missing = validatePostCompleteness(post);
-              if (!missing.length) return;
-              const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
-              if (!coreMissing.length) return;
-              const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-              const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-              const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-              missingFieldsReport.push({
-                index: idx,
-                day,
-                slotIndex,
-                postsPerDay: perDay,
-                post_key: postKeyValue,
-                missing: coreMissing,
-              });
-            });
-          }
-        } catch (repairErr) {
-          console.warn('[BrandBrain][Repair] failed', {
-            requestId: loggingContext?.requestId || 'unknown',
-            error: repairErr?.message || repairErr,
-          });
-        }
-        if (missingFieldsReport.length) {
-          console.warn('[BrandBrain][SchemaValidation] missing required fields after repair', {
-            requestId: loggingContext?.requestId,
-            startDay,
-            days,
-            postsPerDay,
-            expectedCount,
-            actualCount: rawPosts.length,
-            missingFields: missingFieldsReport.length,
-            responseLength: rawLength,
-            detailSamples: missingFieldsReport.slice(0, 2).map((entry) => ({
-              ...entry,
-              missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
-            })),
-          });
-          rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-          const stillMissing = [];
-          rawPosts.forEach((post, idx) => {
-            const missing = validatePostCompleteness(post);
-            if (!missing.length) return;
-            const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
-            if (!coreMissing.length) return;
-            const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-            const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-            const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-            stillMissing.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing: coreMissing });
-          });
-          const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-          if (missingDay) {
-            const err = new Error('Brand Brain schema repair failed');
-            err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
-            err.statusCode = 500;
-            err.details = stillMissing;
-            throw err;
-          }
-          missingFieldsReport.length = 0;
-        }
-      } else {
-        const err = new Error('Calendar response missing required fields');
-        err.code = 'OPENAI_SCHEMA_ERROR';
-        err.statusCode = 500;
-        err.details = missingFieldsReport;
-        console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
-          requestId: loggingContext?.requestId,
-          startDay,
-          days,
-          postsPerDay,
-          expectedCount,
-          actualCount: rawPosts.length,
-          missingFields: missingFieldsReport.length,
-          responseLength: rawLength,
-          detailSamples: missingFieldsReport.slice(0, 2).map((entry) => ({
-            ...entry,
-            missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
-          })),
-        });
-        throw err;
-      }
-    }
-    if (brandBrainEnabled) {
-      const warningPostSets = new Map();
-      const fatalEntries = [];
-      rawPosts.forEach((post, idx) => {
-        const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-        if (!post || typeof post !== 'object') {
-          fatalEntries.push({ index: idx, day, reasons: [{ code: 'INVALID_POST' }] });
-          return;
-        }
-        normalizeHashtagsForBrandBrain(post, BRAND_BRAIN_HASHTAG_RANGE);
-        const validation = validateBrandBrainPost(post, nicheStyle);
-        if (validation.ok) return;
-        const fatalReasons = [];
-        const warningReasons = [];
-        validation.reasons.forEach((reason) => {
-          if (reason.code === 'MISSING_FIELD') {
-            fatalReasons.push(reason);
-          } else {
-            warningReasons.push(reason);
-          }
-        });
-        if (fatalReasons.length) {
-          fatalEntries.push({ index: idx, day, reasons: fatalReasons });
-        }
-        if (warningReasons.length) {
-          warningReasons.forEach((reason) => {
-            const code = String(reason.code || 'UNKNOWN');
-            if (!warningPostSets.has(code)) warningPostSets.set(code, new Set());
-            warningPostSets.get(code).add(idx);
-          });
-        }
-      });
-      if (warningPostSets.size) {
-        const requestId = loggingContext?.requestId || '';
-        const requestLabel = requestId || 'unknown';
-        if (!requestId || !BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.has(requestId)) {
-          const warningCounts = {};
-          const warnedPosts = new Set();
-          warningPostSets.forEach((set, code) => {
-            warningCounts[code] = set.size;
-            set.forEach((idx) => warnedPosts.add(idx));
-          });
-          console.warn('[BrandBrain][Validation][Warning]', {
-            requestId: requestLabel,
-            warningCounts,
-            postsWithWarnings: warnedPosts.size,
-          });
-          if (requestId) {
-            BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.add(requestId);
-            if (BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.size > 5000) {
-              BRAND_BRAIN_VALIDATION_WARNING_LOGGED_REQUESTS.clear();
-            }
-          }
-        }
-      }
-      if (fatalEntries.length) {
-        const err = new Error('Brand Brain validation failed');
-        err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-        err.statusCode = 500;
-        err.details = fatalEntries;
-        console.error('[BrandBrain][Validation] rejected posts', {
-          requestId: loggingContext?.requestId || 'unknown',
-          failures: fatalEntries.length,
-          samples: fatalEntries.slice(0, 2),
-        });
-        throw err;
-      }
-    }
-    console.log('[Calendar][Server][SchemaValidation]', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay,
-      expectedCount: expectedCount || rawPosts.length,
-      actualCount: rawPosts.length,
-      missingFieldsBefore: missingFieldsReport.length,
-      missingFieldsAfter: 0,
-      retryUsed: attempt > 1,
-      responseLength: rawLength,
-    });
-    if (!rawPosts.length) {
-      console.warn('[Calendar] No posts returned across chunks', logContext);
-    }
-    const openDuration = Date.now() - callStart;
-    const openAiLatency = chunkMetrics.reduce((max, chunk) => Math.max(max, chunk.duration || 0), 0);
-    const validationStart = Date.now();
-    const normalizedPosts = [];
-    const allowFallbacks = false;
-    for (let idx = 0; idx < rawPosts.length; idx += 1) {
-      const normalized = normalizePostWithOverrideFallback(
-        rawPosts[idx],
-        idx,
-        startDay,
-        undefined,
-        nicheStyle,
-        loggingContext,
-        { allowFallbacks }
-      );
-      if (normalized) normalizedPosts.push(normalized);
-    }
-    let posts = normalizedPosts;
-    if (Array.isArray(topicPlan) && topicPlan.length) {
-      topicPlan.forEach((item) => {
-        const planDay = Number(item?.day);
-        const slotIndex = Number.isFinite(Number(item?.postIndex)) ? Number(item.postIndex) : 0;
-        if (!Number.isFinite(planDay)) return;
-        item.__slotIndex = slotIndex;
-        item.__key = postKey(planDay, slotIndex);
-      });
-      assignPostKeys(posts, startDay, perDay);
-      const topicByKey = new Map(
-        topicPlan
-          .filter((item) => item && item.__key && item.title)
-          .map((item) => [item.__key, String(item.title).trim()])
-      );
-      let missingBinding = false;
-      const missingKeys = [];
-      posts.forEach((post) => {
-        if (!post || typeof post !== 'object') return;
-        const topic = topicByKey.get(post.__key);
-        if (!topic) {
-          missingBinding = true;
-          if (post.__key) missingKeys.push(post.__key);
-          return;
-        }
-        post.topic = topic;
-        post.title = topic;
-        if (normalizeTitleText(post.title) !== normalizeTitleText(topic)) {
-          missingBinding = true;
-          if (post.__key) missingKeys.push(post.__key);
-        }
-      });
-      if (missingBinding) {
-        const err = new Error('TopicBindFailed');
-        err.code = 'POST_KEY_MAPPING_FAILED';
-        err.statusCode = 422;
-        err.payload = { reason: 'topic_plan_binding_failed', missingPostKeys: missingKeys };
-        throw err;
-      }
-      const debugSample = posts
-        .slice(0, 3)
-        .map((post) => ({
-          day: post.day,
-          slot: post.__slotIndex,
-          topic: post.topic,
-          hook: String(post.hook || '').slice(0, 40),
-        }));
-      if (debugSample.length) {
-        console.log('[Calendar][TopicBind]', {
-          requestId: loggingContext?.requestId || 'unknown',
-          sample: debugSample,
+    let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay, postsPerDay });
+    const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
+    posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
+    const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
+    if (incomplete.length > 0) {
+      const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
+      if (Array.isArray(repaired) && repaired.length === incomplete.length) {
+        incomplete.forEach((entry, idx) => {
+          const fixed = repaired[idx] || {};
+          const merged = Object.assign({}, entry.p, fixed);
+          if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
+          if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
+          if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
+          if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
+          if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
+          if (!merged.engagementScripts) merged.engagementScripts = {};
+          if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
+          if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
+          if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
+          posts[entry.i] = merged;
         });
       }
     }
-    const normalizedMissing = [];
-    posts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
-      if (missing.length) {
-        normalizedMissing.push({ index: idx, missing });
-      }
-    });
-    console.log('[Calendar][Server][SchemaValidation] normalized missing fields', {
-      requestId: loggingContext?.requestId || 'unknown',
-      count: normalizedMissing.length,
-      samples: normalizedMissing.slice(0, 2),
-    });
-    if (brandBrainEnabled && normalizedMissing.length) {
-      posts = posts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-      const stillMissing = [];
-      posts.forEach((post, idx) => {
-        const missing = validatePostCompleteness(post);
-        if (missing.length) {
-          stillMissing.push({ index: idx, missing });
-        }
-      });
-      const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-      console.warn('[BrandBrain][SchemaValidation] normalized missing fields after fill', {
-        requestId: loggingContext?.requestId || 'unknown',
-        count: stillMissing.length,
-        samples: stillMissing.slice(0, 2),
-      });
-      if (missingDay) {
-        const err = new Error('Brand Brain normalization missing required fields');
-        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-        err.statusCode = 500;
-        err.details = stillMissing;
-        throw err;
-      }
-    }
-    if (!isPillarDistributionBalanced(posts)) {
-      posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
-      console.log('[Calendar] pillar schedule enforced', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay: perDay,
-      });
-    }
-    posts.forEach((post) => {
-      post.storyPrompt = sanitizeStoryPromptFromNiche(post.storyPrompt, nicheStyle);
-    });
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
-    posts = posts.map((normalized) => {
+    posts = posts.map((p, idx) => {
+      const normalized = normalizePost(p, idx, startDay);
       const isPromo =
         !!normalized.promoSlot ||
         (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
@@ -8483,137 +3025,13 @@ const server = http.createServer((req, res) => {
     });
     posts = ensureUniqueStrategyValues(posts);
     posts = ensureUniqueStrategyValues(posts);
-    posts = await sanitizeStrategyCopy(posts, nicheStyle, classification);
-    const helperType = typeof dedupePinnedComments;
-    if (helperType !== 'function') {
-      console.warn('[Calendar] dedupePinnedComments missing', {
-        requestId: loggingContext?.requestId || 'unknown',
-        helperType,
-      });
-    } else {
-      posts = await dedupePinnedComments(posts, classification, nicheStyle);
-    }
-    posts = posts.map((post) => {
-      if (!validateNicheLock(post, nicheStyle)) {
-        const fallback = buildStoryPromptPlusNicheFallback(nicheStyle);
-        post.storyPrompt = fallback;
-        post.storyPromptExpanded = fallback;
-        console.warn('[NicheLock] Story Prompt+ fallback applied', { niche: nicheStyle, day: post.day });
-      }
-      return post;
-    });
+    posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+    posts = await dedupePinnedComments(posts, classification, nicheStyle);
+    posts = await ensurePostingTimeTips(posts, classification, nicheStyle, brandContext);
     logDuplicateStrategyValues(posts);
-    const {
-      tracks: billboardEntries,
-      chartDateUsed,
-      source: audioSource,
-      filteredOut,
-    } = await getCachedHot100({
-      requestId: loggingContext?.requestId,
-      minCount: 20,
-    });
-    const audioStats = ensureSuggestedAudioForPosts(posts, {
-      audioEntries: billboardEntries,
-      requestId: loggingContext?.requestId,
-      chunkStartDay: startDay,
-      postsPerDay: perDay,
-    });
-    const fallbackAudioEntry = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-    let normalizedAudioCount = 0;
-    posts = posts.map((post) => {
-      if (!post || !isValidSuggestedAudio(post.suggestedAudio)) {
-        normalizedAudioCount += 1;
-        post.suggestedAudio = normalizeSuggestedAudioValue(post.suggestedAudio, fallbackAudioEntry);
-      }
-      return post;
-    });
-    if (normalizedAudioCount) {
-      console.log('[Calendar] normalized suggestedAudio shape', {
-        requestId: loggingContext?.requestId,
-        normalizedAudioCount,
-      });
+    if (posts.length) {
+      console.log('[FINAL_AUDIO]', posts.map((p) => p.audio));
     }
-    const audioSample = posts
-      .slice(0, 2)
-      .map((post) => ({
-        day: post.day,
-        audio: post?.suggestedAudio,
-      }))
-      .filter((entry) => entry.audio);
-    const postProcessingMs = Date.now() - validationStart;
-    const openAiTotalMs = chunkMetrics.reduce((sum, chunk) => sum + (chunk.duration || 0), 0);
-    const openAiWallMs = openAiWallEnd - openAiWallStart;
-    const preMs = openAiWallStart - tStart;
-    const postMs = Date.now() - openAiWallEnd;
-    console.log('[Calendar][Server][Perf] callOpenAI timings', {
-      openMs: openDuration,
-      latencyMs: openAiLatency,
-      parseMs: postProcessingMs,
-      postCount: posts.length,
-      rawLength,
-      context: loggingContext,
-      preMs,
-      openaiTotalMs: openAiTotalMs,
-      openaiWallMs: openAiWallMs,
-      postMs,
-    });
-    console.log('[Calendar] audio summary', {
-      requestId: loggingContext?.requestId,
-      totalPosts: audioStats.total,
-      missingAudio: audioStats.missingAudio,
-      source: audioSource,
-      chartDate: chartDateUsed,
-      holidayFilteredOut: Number(filteredOut) || 0,
-      sample: audioSample,
-    });
-    if (!isProduction) {
-      const holidayHits = posts.filter((post) => {
-        const value = post?.suggestedAudio || '';
-        const parsed = normalizeSuggestedAudioFromText(value);
-        return parsed?.title && isHolidayTrack(parsed.title, parsed.artist);
-      });
-      if (holidayHits.length) {
-        const sample = holidayHits.slice(0, 2).map((post) => ({
-          day: post.day,
-          audio: post?.suggestedAudio,
-        }));
-        throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
-      }
-    }
-    if (forceSinglePostPerDayForModel && requestedPostsPerDay > 1) {
-      const expanded = [];
-      posts.forEach((post) => {
-        for (let slotIndex = 0; slotIndex < requestedPostsPerDay; slotIndex += 1) {
-          if (!post || typeof post !== 'object') {
-            expanded.push(post);
-            continue;
-          }
-          const clone = { ...post };
-          if (Object.prototype.hasOwnProperty.call(clone, 'slot')) clone.slot = slotIndex + 1;
-          if (Object.prototype.hasOwnProperty.call(clone, 'slotIndex')) clone.slotIndex = slotIndex;
-          if (Object.prototype.hasOwnProperty.call(clone, 'postIndex')) clone.postIndex = slotIndex;
-          if (Object.prototype.hasOwnProperty.call(clone, 'perDayIndex')) clone.perDayIndex = slotIndex;
-          expanded.push(clone);
-        }
-      });
-      posts = expanded;
-    }
-    console.log('[Calendar][Server][Perf] generateCalendarPosts end', {
-      elapsedMs: Date.now() - tStart,
-      count: posts.length,
-      expectedCount: expectedCount || posts.length,
-      rawLength,
-      latencyMs: openAiLatency,
-      context: loggingContext,
-    });
-    posts.forEach((post) => {
-      if (!post || typeof post !== 'object') return;
-      delete post.__key;
-      delete post.__slotIndex;
-      if (Object.prototype.hasOwnProperty.call(post, 'topic')) {
-        delete post.topic;
-      }
-    });
     return posts;
   }
 
@@ -8623,8 +3041,6 @@ const server = http.createServer((req, res) => {
         const user = await requireSupabaseUser(req);
         req.user = user;
         const isPro = isUserPro(req);
-        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
-        const brandBrainEnabled = isPro && Boolean(brandBrainSettings?.enabled);
         if (isPro) {
           return sendJson(res, 200, {
             ok: true,
@@ -8662,8 +3078,6 @@ const server = http.createServer((req, res) => {
               ok: false,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
-              message: 'Upgrade required to regenerate the calendar.',
-              requestId,
             });
           }
         }
@@ -8752,60 +3166,11 @@ const server = http.createServer((req, res) => {
     (async () => {
       let body = null;
       const requestId = generateRequestId('regen');
-      const regenContext = { requestId, warnings: [] };
-      const requestStart = Date.now();
-      let clientAborted = false;
-      req.on('aborted', () => {
-        clientAborted = true;
-        console.warn('[Calendar][Regen][ClientAborted]', { requestId, elapsedMs: Date.now() - requestStart });
-      });
-      res.on('close', () => {
-        if (!res.headersSent) return;
-        console.warn('[Calendar][Regen][ResClosed]', {
-          requestId,
-          elapsedMs: Date.now() - requestStart,
-          headersSent: res.headersSent,
-          writableEnded: res.writableEnded,
-        });
-      });
-      res.on('finish', () => {
-        console.log('[Calendar][Regen][Response]', {
-          requestId,
-          statusCode: res.statusCode,
-          elapsedMs: Date.now() - requestStart,
-        });
-      });
       try {
         // Require auth for regen, but still allow body userId to pass brand
         const user = await requireSupabaseUser(req);
         req.user = user;
-        try {
-          const response = await supabaseAdmin
-            .from('profiles')
-            .select('tier')
-            .eq('id', user.id)
-            .single();
-          if (response?.data?.tier) {
-            const rawTier = String(response.data.tier).toLowerCase().trim();
-            const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
-            req.user.tier = mappedTier;
-            req.user.plan = mappedTier;
-          }
-        } catch (planErr) {
-          console.warn('[Calendar] failed to resolve tier', {
-            requestId,
-            userId: user.id,
-            error: planErr?.message || planErr,
-          });
-        }
         const isPro = isUserPro(req);
-        const tStart = Date.now();
-        console.log('[Calendar][Server][Perf] regen request received', {
-          requestId,
-          userId: user.id,
-          tier: req.user?.tier || req.user?.plan || 'free',
-          isPro,
-        });
         if (!isPro) {
           const usage = await getFeatureUsageCount(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
           if (usage >= 3) {
@@ -8817,236 +3182,33 @@ const server = http.createServer((req, res) => {
           }
         }
         body = await readJsonBody(req);
-        if (body && typeof body === 'object') {
-          body.userId = user.id;
-        }
-        const targetCalendarId = body?.calendarId ?? null;
-        if (clientAborted || req.aborted) return;
-        console.log('[Calendar][Server][Perf] regen generation start', {
-          requestId,
-          days: body?.days,
-          startDay: body?.startDay,
-          postsPerDay: body?.postsPerDay,
-        });
-        regenContext.batchIndex = body?.batchIndex;
-        regenContext.startDay = body?.startDay;
-        const requestedPostsPerDay = 1;
-        let posts;
-        if (clientAborted || req.aborted || res.writableEnded) return;
-        await acquireRegenSlot(requestId);
-        try {
-          const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
-          const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
-          const perDayChunkSize = safeDays >= 10 ? 1 : 2;
-          const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
-          const baseMs = 45000;
-          const perChunkBudgetMs = 15000;
-          const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
-          const minGuardMs = OPENAI_GENERATION_TIMEOUT_MS + 30000;
-          const timeoutGuardMs = Math.min(
-            240000,
-            Math.max(minGuardMs, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
-          );
-          let timeoutId;
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-              const err = new Error('REQUEST_TIMEOUT_GUARD');
-              err.code = 'REQUEST_TIMEOUT_GUARD';
-              err.statusCode = 504;
-              err.elapsedMs = Date.now() - requestStart;
-              reject(err);
-            }, timeoutGuardMs);
-          });
-          try {
-            posts = await Promise.race([
-              generateCalendarPosts({
-                ...(body || {}),
-                postsPerDay: requestedPostsPerDay,
-                context: regenContext,
-                isPro,
-              }),
-              timeoutPromise,
-            ]);
-          } finally {
-            if (timeoutId) clearTimeout(timeoutId);
-          }
-        } finally {
-          releaseRegenSlot();
-        }
-        if (clientAborted || req.aborted || res.writableEnded) return;
-        const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
-        console.log('[Calendar] regen audio counts', {
-          requestId,
-          assigned: posts.length - missingAudioCount,
-          missing: missingAudioCount,
-        });
+        const posts = await generateCalendarPosts(body || {});
         if (!isPro) {
           await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
         }
-        console.log('[Calendar][Server][Perf] regen response ready', {
-          requestId,
-          elapsedMs: Date.now() - tStart,
-          postCount: Array.isArray(posts) ? posts.length : 0,
-        });
-        const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
-        if (!Array.isArray(posts) || !posts.length) {
-          return sendJson(res, 500, {
-            error: 'REGENERATE_RETURNED_NO_POSTS',
-            message: 'Regeneration returned no posts.',
-            requestId,
-          });
-        }
-        const missingFieldsReport = [];
-        const ensuredPosts = posts.map((post, idx) => {
-          const dayValue = Number.isFinite(Number(post?.day))
-            ? Number(post.day)
-            : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
-          const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
-          if (ensured.missingFields.length) {
-            missingFieldsReport.push({ index: idx, day: dayValue, missing: ensured.missingFields });
-          }
-          return ensured.post;
-        });
-        if (missingFieldsReport.length) {
-          console.warn('[Calendar] regen missing required fields after guarantee', {
-            requestId,
-            missingFields: missingFieldsReport.length,
-            samples: missingFieldsReport.slice(0, 2),
-          });
-          return sendJson(res, 422, {
-            error: 'REGEN_INVALID_OUTPUT',
-            message: 'Regeneration did not return required fields.',
-            requestId,
-            missingFields: missingFieldsReport,
-          });
-        }
-        const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
-        if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
-        return sendJson(res, 200, responsePayload);
+        // Temporary audio log for verification
+        return sendJson(res, 200, { posts });
       } catch (err) {
-        if (clientAborted || req.aborted || res.writableEnded) return;
-        const errorContext = {
+        const context = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
           startDay: body?.startDay,
           nicheStyle: body?.nicheStyle,
         };
-        const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
-        const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
-        const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
-        const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
-        const logInfo = { requestId, context: errorContext };
-        if (isSchemaError) {
-          if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
-          if (err?.details) logInfo.schemaPayload = err.details;
-          if (err?.rawContent) logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
-        }
-        if (isSchemaError) {
-          console.error('[Calendar][SchemaError]', {
-            requestId,
-            message: err?.message || '',
-            code: err?.code || '',
-            statusCode: err?.statusCode || '',
-            errorPayload: err?.details?.error || null,
-            responseFormat: err?.details?.response_format || null,
-            schemaKeys: err?.details?.schemaKeys || null,
-            openaiDetails: err?.openaiDetails || null,
-            mode: err?.mode || null,
-          });
-        }
-        if (isInvalidJson && err?.rawContent) {
-          logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
-        }
-        logServerError('calendar_regenerate_error', err, logInfo);
+        logServerError('calendar_regenerate_error', err, { requestId, context });
         if (res.headersSent) return;
-        if (isTopicBinding || isPostKeyMapping) {
-          if (isTopicBinding) {
-            return sendJson(res, 422, {
-              error: 'TOPIC_BINDING_FAILED',
-              requestId,
-              post_key: err?.payload?.post_key,
-              failedFields: err?.payload?.failedFields,
-            });
-          }
-          return sendJson(res, 422, {
-            error: 'PostKeyMappingFailed',
-            ...(err?.payload || {}),
-            requestId,
-          });
-        }
-        const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
-        const openaiDetails = err?.openaiDetails || {};
-        const message = err?.message || 'Internal Server Error';
+        const status = err?.statusCode || 500;
         const payload = {
-          error: isSchemaError
-            ? 'openai_schema_error'
-            : (err?.code || (isInvalidJson ? 'invalid_model_json' : 'CALENDAR_REGENERATE_FAILED')),
-          message: isSchemaError ? 'openai_schema_error' : (isInvalidJson ? 'invalid_model_json' : message),
+          error: {
+            message: err?.message || 'Internal Server Error',
+            code: err?.code || 'CALENDAR_REGENERATE_FAILED',
+          },
           requestId,
-          context: errorContext,
-          details: isSchemaError
-            ? {
-              openaiType: openaiDetails.openaiType || null,
-              openaiMessage: openaiDetails.openaiMessage || null,
-              openaiParam: openaiDetails.openaiParam || null,
-            }
-            : undefined,
         };
-        return sendJson(res, status, payload);
-      }
-    })();
-    return;
-  }
-
-  if (parsed.pathname === '/api/generate-variants' && req.method === 'POST') {
-    (async () => {
-      try {
-        await requireSupabaseUser(req);
-        const payload = await readJsonBody(req);
-        let rawVariants = Array.isArray(payload?.variants) ? payload.variants : [];
-        if ((!rawVariants || !rawVariants.length) && Array.isArray(payload?.posts)) {
-          rawVariants = payload.posts
-            .map((post) => {
-              if (!post || typeof post !== 'object') return null;
-              const caption = toPlainString(post.caption || post.hook || post.title || '');
-              if (!caption) return null;
-              return {
-                day: post.day,
-                variants: {
-                  igCaption: caption,
-                  tiktokCaption: caption,
-                  linkedinCaption: caption,
-                },
-              };
-            })
-            .filter(Boolean);
+        if (!isProduction && err?.stack) {
+          payload.debugStack = err.stack;
         }
-        const MAX_VARIANTS = 30;
-        const MAX_TEXT = 320;
-        const trimmed = rawVariants.slice(0, MAX_VARIANTS).map((entry) => {
-          if (!entry || typeof entry !== 'object') return entry;
-          const next = { ...entry };
-          const maybeTrim = (value) =>
-            typeof value === 'string' && value.length > MAX_TEXT ? value.slice(0, MAX_TEXT) : value;
-          Object.keys(next).forEach((key) => {
-            next[key] = maybeTrim(next[key]);
-          });
-          return next;
-        });
-        const responsePayload = { variants: trimmed };
-        const payloadText = JSON.stringify(responsePayload);
-        console.log('[Calendar] generate-variants response size', {
-          bytes: Buffer.byteLength(payloadText),
-          count: trimmed.length,
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(payloadText);
-      } catch (err) {
-        const status = err?.statusCode || 401;
-        console.error('[Calendar] generate-variants error', { error: err?.message || err });
-        return sendJson(res, status, {
-          error: err?.message || 'generate_variants_failed',
-        });
+        return sendJson(res, status, payload);
       }
     })();
     return;
@@ -9058,20 +3220,70 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       const requestId = generateRequestId('generate');
       try {
-        const payload = JSON.parse(body || '{}');
-        const posts = await generateCalendarPosts({
-          ...payload,
-          postsPerDay: 1,
-          isPro: false,
-          context: {
-            requestId,
-            batchIndex: payload?.batchIndex,
-            startDay: payload?.startDay,
-          },
+        const { nicheStyle, userId, days, startDay } = JSON.parse(body || '{}');
+        if (!nicheStyle) {
+          return sendJson(res, 400, { error: 'nicheStyle required' });
+        }
+        if (!OPENAI_API_KEY) {
+          return sendJson(res, 500, { error: 'OPENAI_API_KEY not set' });
+        }
+        const classification = categorizeNiche(nicheStyle);
+        const brand = userId ? loadBrand(userId) : null;
+        const brandContext = summarizeBrandForPrompt(brand);
+        let posts = await callOpenAIWithStrategy(nicheStyle, brandContext, { days, startDay });
+        const incomplete = posts.map((p, i) => ({ p, i })).filter(({ p }) => !hasAllRequiredFields(p));
+        if (incomplete.length > 0) {
+          const repaired = await repairMissingFields(nicheStyle, brandContext, incomplete.map(x => x.p));
+          if (Array.isArray(repaired) && repaired.length === incomplete.length) {
+            incomplete.forEach((entry, idx) => {
+              const fixed = repaired[idx] || {};
+              const merged = Object.assign({}, entry.p, fixed);
+              if (typeof merged.promoSlot !== 'boolean') merged.promoSlot = !!merged.weeklyPromo;
+              if (merged.promoSlot && typeof merged.weeklyPromo !== 'string') merged.weeklyPromo = '';
+              if (!Array.isArray(merged.hashtags)) merged.hashtags = merged.hashtags ? String(merged.hashtags).split(/\s+|,\s*/).filter(Boolean) : [];
+              if (!Array.isArray(merged.repurpose)) merged.repurpose = merged.repurpose ? [merged.repurpose] : [];
+              if (!Array.isArray(merged.analytics)) merged.analytics = merged.analytics ? [merged.analytics] : [];
+              if (!merged.engagementScripts) merged.engagementScripts = {};
+              if (!merged.engagementScripts.commentReply && merged.engagementScript) merged.engagementScripts.commentReply = merged.engagementScript;
+              if (!merged.engagementScripts.dmReply) merged.engagementScripts.dmReply = '';
+              if (!merged.script) merged.script = { hook: '', body: '', cta: '' };
+              posts[entry.i] = merged;
+            });
+          }
+        }
+        // Ensure audio lines are valid and platform-specific after repairs
+        const audioSets = { usedTikTok: new Set(), usedInstagram: new Set() };
+        posts = await ensureAudioLines(nicheStyle, brandContext, posts, audioSets);
+        let promoCount = 0;
+        const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
+        posts = posts.map((p, idx) => {
+          const normalized = normalizePost(p, idx, startDay);
+          const isPromo =
+            !!normalized.promoSlot ||
+            (typeof normalized.weeklyPromo === 'string' && promoKeywords.test(normalized.weeklyPromo)) ||
+            (typeof normalized.cta === 'string' && promoKeywords.test(normalized.cta)) ||
+            (typeof normalized.idea === 'string' && promoKeywords.test(normalized.idea));
+          if (isPromo) {
+            promoCount += 1;
+            if (promoCount > 3) {
+              normalized.promoSlot = false;
+              normalized.weeklyPromo = '';
+              if (promoKeywords.test(normalized.idea || '')) {
+                normalized.idea = normalized.idea.replace(promoKeywords, '').trim() || 'Fresh content idea';
+              }
+            }
+          }
+          return normalized;
         });
+        posts = ensureUniqueStrategyValues(posts);
+        posts = await sanitizeStrategyCopy(posts, nicheStyle, classification, brandContext);
+        // Temporary audio log for verification
         return sendJson(res, 200, { posts });
       } catch (err) {
-        logServerError('calendar_generate_error', err, { requestId, bodyPreview: body.slice(0, 400) });
+        logServerError('calendar_generate_error', err, {
+          requestId,
+          bodyPreview: body.slice(0, 400),
+        });
         respondWithServerError(res, err, { requestId });
       }
     });
@@ -9583,110 +3795,158 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
-    (async () => {
-      const requestId = generateRequestId('regen-day');
+  if (parsed.pathname === '/api/generate-variants' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
       try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
-        const isPro = isUserPro(req);
-        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
-        const brandBrainEnabled = isPro && Boolean(brandBrainSettings?.enabled);
-        const body = await readJsonBody(req);
-        const { nicheStyle, day, post, userId } = body || {};
+        const { posts, nicheStyle, userId } = JSON.parse(body || '{}');
+        if (!Array.isArray(posts) || posts.length === 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'posts array required' }));
+        }
+        if (!OPENAI_API_KEY) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
+        }
+        const brand = userId ? loadBrand(userId) : null;
+        const brandContext = summarizeBrandForPrompt(brand);
+
+        // Keep batch small to avoid timeouts
+        const MAX = 15;
+        if (posts.length > MAX) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `too many posts; max ${MAX} per request` }));
+        }
+
+        const compactPosts = posts.map(p => ({
+          day: p.day,
+          caption: p.caption,
+          hashtags: Array.isArray(p.hashtags) ? p.hashtags.slice(0, 8) : p.hashtags,
+          cta: p.cta,
+          format: p.format,
+          pillar: p.pillar,
+        }));
+
+        const sys = `You transform captions into platform-specific variants. Be concise and keep JSON valid.`;
+        const rules = `Rules:
+- Respect brand tone if given.
+- Keep hashtags balanced (6â8) except LinkedIn (0â3).
+- IG: 2 short lines max; keep or improve hook; keep hashtags.
+- TikTok: punchy, 80â150 chars, 4â8 hashtags; fun tone.
+- LinkedIn: 2â3 sentences, professional, minimal hashtags (0â3), soft CTA.
+Return ONLY JSON array of objects: { day, variants: { igCaption, tiktokCaption, linkedinCaption } } in same order as input.`;
+        const prompt = `${brandContext ? `Brand Context:
+${brandContext}
+
+` : ''}${rules}
+
+Input posts (JSON):
+${JSON.stringify(compactPosts)}`;
+
+        const payload = JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.4,
+          max_tokens: 3500,
+        });
+        const options = {
+          hostname: 'api.openai.com',
+          path: '/v1/chat/completions',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+        };
+
+        const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
+        const fetchAndParse = async (attempt=0) => {
+          const json = await openAIRequest(options, payload);
+          const content = json.choices?.[0]?.message?.content || '';
+          try {
+            const { data, attempts } = parseLLMArray(content, {
+              requireArray: true,
+              itemValidate: (v) => v && typeof v.day === 'number' && v.variants && typeof v.variants === 'object'
+            });
+            if (debugEnabled) console.log('[VARIANTS PARSE] attempts:', attempts);
+            return data;
+          } catch (e) {
+            if (attempt < 1) {
+              if (debugEnabled) console.warn('[VARIANTS PARSE] retry after failure:', e.message);
+              return fetchAndParse(attempt+1);
+            }
+            throw e;
+          }
+        };
+        const parsed = await fetchAndParse(0);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ variants: parsed }));
+      } catch (err) {
+        console.error('Variants error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+    });
+    return;
+  }
+
+  if (parsed.pathname === '/api/regen-day' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', async () => {
+      try {
+        const { nicheStyle, day, post, userId } = JSON.parse(body || '{}');
         if (!nicheStyle || typeof day === 'undefined' || day === null) {
-          return sendJson(res, 400, { error: 'nicheStyle and day are required' });
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'nicheStyle and day are required' }));
         }
         if (!post || typeof post !== 'object') {
-          return sendJson(res, 400, { error: 'post payload required' });
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'post payload required' }));
         }
-        const dayNumber = Number(day);
-        const resolvedUserId = user?.id || userId || null;
-        const postsPerDay = 1;
-        const logContext = { requestId, userId: resolvedUserId, nicheStyle, day: dayNumber, postsPerDay };
-        console.log('[Calendar][Server] regen-day request', logContext);
-        const maxAttempts = 2;
-        let attempt = 0;
-        let normalized = null;
-        let missingFields = [];
-        let appliedFixes = [];
-        while (attempt < maxAttempts) {
-          attempt += 1;
-          let posts;
-          try {
-            posts = await generateCalendarPosts({
-              nicheStyle,
-              userId: resolvedUserId,
-              days: 1,
-              startDay: dayNumber,
-              postsPerDay,
-              context: { requestId, batchIndex: 0, startDay: dayNumber, attempt },
-              isPro,
-              voiceLockEnabled: body?.voiceLockEnabled,
-              voiceLockPreset: body?.voiceLockPreset,
-              voiceLockSample: body?.voiceLockSample,
-              targetAudience: body?.targetAudience,
-            });
-          } catch (genErr) {
-            throw genErr;
-          }
-          const candidate = Array.isArray(posts) && posts.length ? posts[0] : null;
-          if (!candidate) throw new Error('Calendar generator returned no posts');
-          const normalizedResult = ensureRegenRequiredFields(candidate, nicheStyle, dayNumber, {
-            allowFallbacks: false,
-          });
-          const hadSignature = isNonEmptyString(normalizedResult.post?.topic_signature);
-          const hadAngle = isNonEmptyString(normalizedResult.post?.angle);
-          normalized = ensureRegenDaySignatureAngle(normalizedResult.post, dayNumber);
-          appliedFixes = (normalizedResult.appliedFixes || []).slice();
-          if (!hadSignature) appliedFixes.push('topic_signature');
-          if (!hadAngle) appliedFixes.push('angle');
-          missingFields = validatePostCompleteness(normalized);
-          if (!missingFields.length) break;
-          console.warn('[Calendar] regen-day missing fields after normalization', {
-            requestId,
-            attempt,
-            missingFields,
-          });
+        if (!OPENAI_API_KEY) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
         }
-        if (!normalized) throw new Error('Regeneration failed to normalize output');
-        if (missingFields.length) {
-          return sendJson(res, 422, {
-            error: 'REGEN_INVALID_OUTPUT',
-            message: 'Regeneration did not return required fields.',
-            requestId,
-            missingFields,
-          });
+        const brand = userId ? loadBrand(userId) : null;
+        const brandContext = summarizeBrandForPrompt(brand);
+        const prompt = buildSingleDayPrompt(nicheStyle, day, post, brandContext);
+        const payload = JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.55,
+          max_tokens: 1600,
+        });
+        const options = {
+          hostname: 'api.openai.com',
+          path: '/v1/chat/completions',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+          },
+        };
+        const json = await openAIRequest(options, payload);
+        const content = json.choices?.[0]?.message?.content || '';
+        const { data } = parseLLMArray(content, { requireArray: true });
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error('Model returned no data');
         }
-        if (appliedFixes.length) {
-          console.log('[Calendar] regen-day normalized output', {
-            requestId,
-            appliedFixes,
-          });
-        }
-        const enriched = enrichRegenPost(normalized, dayNumber - 1);
-        return sendJson(res, 200, { post: enriched });
+        const normalized = normalizePost(data[0], 0, Number(day) || 1, Number(day));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ post: normalized }));
       } catch (err) {
         console.error('regen-day error:', err);
-        if (err?.code === 'TOPIC_BINDING_FAILED') {
-          return sendJson(res, 422, {
-            error: 'TOPIC_BINDING_FAILED',
-            requestId,
-            post_key: err?.payload?.post_key,
-            failedFields: err?.payload?.failedFields,
-          });
-        }
-        if (err?.code === 'POST_KEY_MAPPING_FAILED') {
-          return sendJson(res, 422, {
-            error: 'PostKeyMappingFailed',
-            ...(err?.payload || {}),
-            requestId,
-          });
-        }
-        const status = err.statusCode || 500;
-        return sendJson(res, status, { error: err.message || 'Failed to regenerate day' });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message || 'Failed to regenerate day' }));
       }
-    })();
+    });
     return;
   }
 
@@ -9697,53 +3957,64 @@ const server = http.createServer((req, res) => {
   })();
 
   if (parsed.pathname === '/api/phyllo/webhook' && req.method === 'POST') {
-    const chunks = [];
-    req.on('data', (chunk) => {
-      if (chunk) chunks.push(chunk);
-    });
-    req.on('end', () => {
-      const rawBody = Buffer.concat(chunks || []);
-      const signatureHeader =
-        req.headers['phyllo-signature'] ||
-        req.headers['x-phyllo-signature'] ||
-        req.headers['Phyllo-Signature'] ||
-        '';
-      if (!verifyPhylloWebhookSignature(rawBody, signatureHeader)) {
-        console.warn('[Phyllo] Webhook signature verification failed');
-        return sendJson(res, 401, { error: 'phyllo_webhook_invalid_signature' });
-      }
+    readJsonBody(req)
+      .then((body) => {
+        const eventType = body?.type || 'unknown';
+        console.log('[Phyllo] Webhook event received:', eventType, body);
 
-      let body;
-      try {
-        body = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
-      } catch (parseErr) {
-        console.error('[Phyllo] Webhook JSON parse error', parseErr);
-        return sendJson(res, 400, { error: 'phyllo_webhook_invalid_json' });
-      }
+        if (eventType === 'ACCOUNTS.CONNECTED' && supabaseAdmin) {
+          const account = body?.data?.account;
+          if (account && account.id) {
+            const phylloAccountId = account.id;
+            const phylloUserId = account.user_id;
+            const platform = account.work_platform_id;
+            const username = account.username || null;
+            const profileName = account.profile_name || null;
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ received: true }));
+            supabaseAdmin
+              .from('phyllo_users')
+              .select('promptly_user_id')
+              .eq('phyllo_user_id', phylloUserId)
+              .single()
+              .then(({ data: userRow }) => {
+                if (!userRow) {
+                  console.warn('[Phyllo] No promptly user mapping for phyllo_user_id', phylloUserId);
+                  return;
+                }
+                const promptlyUserId = userRow.promptly_user_id;
+                return supabaseAdmin
+                  .from('phyllo_accounts')
+                  .upsert({
+                    phyllo_account_id: phylloAccountId,
+                    phyllo_user_id: phylloUserId,
+                    promptly_user_id: promptlyUserId,
+                    work_platform_id: platform,
+                    username,
+                    profile_name: profileName,
+                  }, { onConflict: 'phyllo_account_id' })
+                  .then(({ error }) => {
+                    if (error) {
+                      console.error('[Phyllo] upsert phyllo_accounts error', error);
+                    } else {
+                      console.log('[Phyllo] phyllo_account stored', phylloAccountId);
+                    }
+                  });
+              })
+              .catch((err) => console.error('[Phyllo] lookup phyllo_users failed', err));
+          }
+        }
 
-      setImmediate(() => {
-        processPhylloWebhookEvent(body).catch((err) => {
-          console.error('[Phyllo] webhook processing error', err);
-        });
+        sendJson(res, 200, { received: true });
+      })
+      .catch((err) => {
+        console.error('[Phyllo] Webhook handler error:', err);
+        sendJson(res, 500, { error: 'phyllo_webhook_error' });
       });
-    });
-    req.on('error', (err) => {
-      console.error('[Phyllo] webhook request error', err);
-      sendJson(res, 500, { error: 'phyllo_webhook_error' });
-    });
     return;
   }
 
   if (parsed.pathname === '/api/phyllo/sdk-config' && req.method === 'GET') {
     (async () => {
-      await ensureAnalyticsRequestUser(req);
-      const promptlyUserId = req.user && req.user.id;
-      if (!promptlyUserId) {
-        return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-      }
       if (!process.env.PHYLLO_CLIENT_ID || !process.env.PHYLLO_CLIENT_SECRET) {
         console.error('[Phyllo] Missing PHYLLO_CLIENT_ID or PHYLLO_CLIENT_SECRET env vars');
         return sendJson(res, 200, {
@@ -9754,7 +4025,7 @@ const server = http.createServer((req, res) => {
       }
 
       try {
-        const externalId = String(promptlyUserId);
+        const externalId = 'sandbox-demo-user';
 
         // 1) try to find existing user
         let phylloUser = await getPhylloUserByExternalId(externalId);
@@ -9780,36 +4051,25 @@ const server = http.createServer((req, res) => {
           }
         }
 
-        const workPlatformIds = await getWorkPlatformIds();
         let sdk;
         try {
-          sdk = await createSdkToken({ userId: phylloUser.id, workPlatformIds });
+          sdk = await createSdkToken({ userId: phylloUser.id });
         } catch (err) {
           const status = err.response?.status;
           const data = err.response?.data;
-          let details = data || err.message;
-          if (status === 401) {
-            console.error('[Phyllo] createSdkToken auth misconfiguration (Basic Auth invalid)', details);
-            details = 'Basic Auth failed; verify PHYLLO_CLIENT_ID/PHYLLO_CLIENT_SECRET';
-          } else if (status === 400 && (data?.code === 'incorrect_user_id' || data?.error_code === 'incorrect_user_id')) {
-            console.error('[Phyllo] createSdkToken failed because the Phyllo user is missing; ensure getOrCreatePhylloUser ran first', data);
-            details = 'Phyllo user missing; ensure getOrCreatePhylloUser ran before requesting SDK token';
-          } else {
-            console.error('[Phyllo] createSdkToken failed', status, details);
-          }
+          console.error('[Phyllo] createSdkToken failed', status, data || err.message);
 
           return sendJson(res, 200, {
             ok: false,
             error: 'phyllo_create_sdk_token_failed',
             status,
-            details,
+            details: data || err.message,
           });
         }
 
         const token =
           (sdk && (sdk.token || sdk.sdk_token || sdk.access_token)) ||
           (sdk?.data && (sdk.data.token || sdk.data.sdk_token || sdk.data.access_token));
-        const phylloProducts = parsePhylloProducts();
 
         if (!token) {
           console.error('[Phyllo] SDK token missing in response:', sdk);
@@ -9824,8 +4084,7 @@ const server = http.createServer((req, res) => {
           ok: true,
           userId: phylloUser.id,
           token,
-          environment: PHYLLO_ENVIRONMENT,
-          products: phylloProducts,
+          environment: process.env.PHYLLO_ENVIRONMENT || 'sandbox',
           clientDisplayName: process.env.PHYLLO_CONNECT_CLIENT_DISPLAY_NAME || 'Promptly',
         });
       } catch (err) {
@@ -9840,32 +4099,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/phyllo/connect-config' && req.method === 'GET') {
-    (async () => {
-      try {
-        const user = await ensureAnalyticsRequestUser(req);
-        if (!user) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-        }
-        return sendJson(res, 410, {
-          ok: false,
-          error: 'deprecated_use_sdk_config',
-          message: 'Use /api/phyllo/sdk-config for Phyllo Connect initialization.',
-        });
-      } catch (err) {
-        console.error('[Phyllo] connect-config error', err);
-        return sendJson(res, 500, { ok: false, error: 'server_error' });
-      }
-    })();
-    return;
-  }
-
   // Mock analytics endpoints (no Supabase/OpenAI yet)
   if (parsed.pathname === '/api/phyllo/account-connected' && req.method === 'POST') {
     readJsonBody(req)
       .then(async (body) => {
         try {
-          await ensureAnalyticsRequestUser(req);
           const promptlyUserId = req.user && req.user.id;
           if (!promptlyUserId) {
             return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -9904,12 +4142,8 @@ const server = http.createServer((req, res) => {
             avatarUrl: profile.avatar_url || avatarUrl,
           });
           if (error) {
-            logServerError('phyllo_accounts_upsert_error', error, {
-              route: '/api/phyllo/account-connected',
-              userId: promptlyUserId,
-              query: 'phyllo_accounts_upsert',
-            });
-            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
+            console.error('[Phyllo] upsertPhylloAccount error', error);
+            return sendJson(res, 500, { ok: false, error: 'db_error' });
           }
           return sendJson(res, 200, { ok: true });
         } catch (err) {
@@ -9924,111 +4158,33 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/phyllo/accounts/connect' && req.method === 'POST') {
-    readJsonBody(req)
-      .then(async (body) => {
-        try {
-          const user = await ensureAnalyticsRequestUser(req);
-          if (!user) {
-            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-          }
-          const {
-            userId: phylloUserId,
-            accountId,
-            workPlatformId,
-            platform,
-            handle,
-            displayName,
-            avatarUrl,
-          } = body || {};
-          if (!phylloUserId || !accountId || !workPlatformId) {
-            return sendJson(res, 400, { ok: false, error: 'missing_fields' });
-          }
-          if (!supabaseAdmin || !upsertPhylloAccount) {
-            return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
-          }
-          const { error } = await upsertPhylloAccount({
-            userId: user.id,
-            phylloUserId,
-            platform: platform || 'unknown',
-            accountId,
-            workPlatformId,
-            handle,
-            displayName,
-            avatarUrl,
-          });
-          if (error) {
-            logServerError('phyllo_accounts_upsert_error', error, {
-              route: '/api/phyllo/accounts/connect',
-              userId: user.id,
-              query: 'phyllo_accounts_upsert',
-            });
-            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
-          }
-          return sendJson(res, 200, { ok: true });
-        } catch (err) {
-          console.error('[Phyllo] accounts/connect error', err);
-          return sendJson(res, 500, { ok: false, error: 'server_error' });
-        }
-      })
-      .catch((err) => {
-        console.error('[Phyllo] accounts/connect parse error', err);
-        sendJson(res, 500, { ok: false, error: 'parse_error' });
-      });
-    return;
-  }
-
-  if (parsed.pathname === '/api/phyllo/accounts/disconnect' && req.method === 'POST') {
-    readJsonBody(req)
-      .then(async (body) => {
-        try {
-          const user = await ensureAnalyticsRequestUser(req);
-          if (!user) {
-            return sendJson(res, 401, { ok: false, error: 'unauthorized' });
-          }
-          const { userId: phylloUserId, accountId } = body || {};
-          if (!phylloUserId || !accountId) {
-            return sendJson(res, 400, { ok: false, error: 'missing_fields' });
-          }
-          if (!supabaseAdmin) {
-            return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
-          }
-          const { error } = await supabaseAdmin
-            .from('phyllo_accounts')
-            .update({ status: 'disconnected' })
-            .eq('promptly_user_id', user.id)
-            .eq('phyllo_user_id', phylloUserId)
-            .eq('phyllo_account_id', accountId);
-          if (error) {
-            logServerError('phyllo_accounts_disconnect_error', error, {
-              route: '/api/phyllo/accounts/disconnect',
-              userId: user.id,
-              query: 'phyllo_accounts_update',
-            });
-            return sendJson(res, 500, { ok: false, error: 'db_error', error_code: 'db_error' });
-          }
-          return sendJson(res, 200, { ok: true });
-        } catch (err) {
-          console.error('[Phyllo] accounts/disconnect error', err);
-          return sendJson(res, 500, { ok: false, error: 'server_error' });
-        }
-      })
-      .catch((err) => {
-        console.error('[Phyllo] accounts/disconnect parse error', err);
-        sendJson(res, 500, { ok: false, error: 'parse_error' });
-      });
-    return;
-  }
-
   if (parsed.pathname === '/api/phyllo/accounts' && req.method === 'GET') {
-    handlePhylloAccounts(req, res);
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 200, { ok: true, data: [] });
+        }
+        const { data, error } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .eq('status', 'connected');
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+        return sendJson(res, 200, { ok: true, data: data || [] });
+      } catch (err) {
+        console.error('[Phyllo] fetch accounts error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/data' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const promptlyUserId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!promptlyUserId || !supabaseAdmin) {
@@ -10041,7 +4197,7 @@ const server = http.createServer((req, res) => {
         const { data: accounts, error: accErr } = await supabaseAdmin
           .from('phyllo_accounts')
           .select('*')
-          .eq('promptly_user_id', promptlyUserId)
+          .eq('user_id', promptlyUserId)
           .eq('status', 'connected');
 
         if (accErr) {
@@ -10079,235 +4235,121 @@ const server = http.createServer((req, res) => {
 
   if (parsed.pathname === '/api/phyllo/sync-posts' && req.method === 'POST') {
     (async () => {
-      const requestId = generateRequestId('phyllo_sync_posts');
       try {
-        const user = await ensureAnalyticsRequestUser(req);
-        if (!user || !supabaseAdmin) {
-          return sendJson(res, 401, {
-            ok: false,
-            error: 'unauthorized',
-            error_code: 'unauthorized',
-            requestId,
-          });
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
 
-        const missingPhyllo = getMissingPhylloEnvVars();
-        if (missingPhyllo.length) {
-          logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
-            requestId,
-            route: '/api/phyllo/sync-posts',
-            missing: missingPhyllo,
-          });
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'phyllo_env_missing',
-            error_code: 'phyllo_env_missing',
-            requestId,
-          });
+        const { data: accounts, error: accErr } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .eq('status', 'connected');
+
+        if (accErr) {
+          console.error('[Phyllo] load accounts error', accErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
         }
 
-        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
-          user.id,
-          requestId,
-          '/api/phyllo/sync-posts'
-        );
-        if (accountsError) {
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'phyllo_accounts_db_error',
-            error_code: 'phyllo_accounts_db_error',
-            requestId,
-          });
-        }
-        if (!accounts.length) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: 'no_connected_accounts',
-            error_code: 'no_connected_accounts',
-            requestId,
-          });
-        }
-        if (DEBUG_ANALYTICS) {
-          console.log('[Analytics][Debug] sync-posts accounts', {
-            requestId,
-            userId: user.id,
-            count: accounts.length,
-          });
-        }
-
-        const windowThresholdMs = 24 * 60 * 60 * 1000;
-        const refreshCutoff = new Date(Date.now() - windowThresholdMs);
-        const eligibleAccounts = accounts.filter((acc) => {
-          const lastUpdated = acc?.updated_at || acc?.connected_at;
-          if (!lastUpdated) return true;
-          const ts = new Date(lastUpdated);
-          if (!ts || Number.isNaN(ts.getTime())) return true;
-          return ts.getTime() < refreshCutoff.getTime();
-        });
-        if (!eligibleAccounts.length) {
-          return sendJson(res, 200, {
-            ok: true,
-            synced_accounts: 0,
-            posts_written: 0,
-            requestId,
-          });
+        if (!accounts || accounts.length === 0) {
+          return sendJson(res, 200, { ok: true, syncedPosts: 0 });
         }
 
         let totalSynced = 0;
-        let upstreamOk = true;
-        const analyticsSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const analyticsUntil = new Date();
 
-        for (const acc of eligibleAccounts) {
-          const accountId = acc.account_id || acc.phyllo_account_id;
-          if (!accountId) continue;
+      for (const acc of accounts) {
+        const postsResp = await getPhylloPosts(acc.account_id);
+        const posts = postsResp.data || [];
 
-          let postsResp;
-          try {
-            postsResp = await getPhylloPosts(accountId, { requestId, userId: user.id });
-          } catch (err) {
-            upstreamOk = false;
-            logServerError('phyllo_sync_posts_fetch_failed', err, {
-              requestId,
-              route: '/api/phyllo/sync-posts',
-              userId: user.id,
-              accountId,
-            });
-            continue;
-          }
-
-          const posts = postsResp?.data || [];
           for (const p of posts) {
-            try {
-              const { data: postRows, error: postErr } = await upsertPhylloPost({
-                phylloAccountId: accountId,
-                promptlyUserId: user.id,
-                phylloContentId: p.id,
-                platform: acc.platform || p.platform,
-                platformPostId: p.id,
-                title: p.title || null,
-                caption: p.caption || null,
-                url: p.url || null,
-                publishedAt: p.published_at || null,
-              });
+            const { data: postRows, error: postErr } = await upsertPhylloPost({
+              phylloAccountId: acc.id,
+              platform: acc.platform || p.platform,
+              platformPostId: p.id,
+              title: p.title || null,
+              caption: p.caption || null,
+              url: p.url || null,
+              publishedAt: p.published_at || null,
+            });
 
-              if (postErr) {
-                logServerError('phyllo_upsert_post_error', postErr, {
-                  requestId,
-                  route: '/api/phyllo/sync-posts',
-                });
-                continue;
-              }
-
-              let metricsResp;
-              try {
-                metricsResp = await getPhylloPostMetrics(p.id, { requestId, userId: user.id });
-              } catch (err) {
-                upstreamOk = false;
-                logServerError('phyllo_sync_post_metrics_failed', err, {
-                  requestId,
-                  route: '/api/phyllo/sync-posts',
-                  postId: p.id,
-                });
-                continue;
-              }
-
-              const m = metricsResp?.data || {};
-              const views = m.views || 0;
-              const likes = m.likes || 0;
-              const comments = m.comments || 0;
-              const shares = m.shares || 0;
-              const saves = m.saves || 0;
-              const watchTimeSeconds = m.watch_time_seconds || 0;
-              const retentionPct = m.retention_pct || null;
-
-              const { error: metricsErr } = await insertPhylloPostMetrics({
-                phylloContentId: p.id,
-                capturedAt: new Date().toISOString(),
-                views,
-                likes,
-                comments,
-                shares,
-                saves,
-                watchTimeSeconds,
-                retentionPct,
-              });
-
-              if (metricsErr) {
-                logServerError('phyllo_insert_metrics_error', metricsErr, {
-                  requestId,
-                  route: '/api/phyllo/sync-posts',
-                });
-                continue;
-              }
-
-              totalSynced += 1;
-            } catch (err) {
-              logServerError('phyllo_sync_post_error', err, {
-                requestId,
-                route: '/api/phyllo/sync-posts',
-                accountId,
-              });
-              upstreamOk = false;
+            if (postErr) {
+              console.error('[Phyllo] upsertPhylloPost error', postErr);
+              continue;
             }
-          }
 
-          try {
-            await supabaseAdmin
-              .from('phyllo_accounts')
-              .update({ updated_at: new Date().toISOString() })
-              .eq('phyllo_account_id', accountId);
-          } catch (err) {
-            console.warn('[Phyllo] failed to update refreshed timestamp', err);
-          }
+            const postRow = Array.isArray(postRows) ? postRows[0] : postRows;
+            if (!postRow || !postRow.id) continue;
 
-          await syncAccountMetricsForAnalytics(
-            {
-              ...acc,
-              phyllo_account_id: acc.phyllo_account_id || accountId,
-              promptly_user_id: acc.promptly_user_id || acc.user_id || user.id,
-            },
-            analyticsSince,
-            analyticsUntil
-          );
-          await wait(60);
-        }
+            const metricsResp = await getPhylloPostMetrics(p.id);
+            const m = metricsResp.data || {};
 
-        try {
-          await updateCachedAnalyticsForUser(user.id);
-        } catch (err) {
-          console.warn('[Phyllo] updateCachedAnalyticsForUser failed', err);
-        }
+            const views = m.views || 0;
+            const likes = m.likes || 0;
+            const comments = m.comments || 0;
+            const shares = m.shares || 0;
+            const saves = m.saves || 0;
+            const watchTimeSeconds = m.watch_time_seconds || 0;
+            const retentionPct = m.retention_pct || null;
 
-        if (!upstreamOk) {
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'upstream_failed',
-            error_code: 'upstream_failed',
-            synced_accounts: eligibleAccounts.length,
-            posts_written: totalSynced,
-            requestId,
-          });
-        }
-        return sendJson(res, 200, {
-          ok: true,
-          synced_accounts: eligibleAccounts.length,
-          posts_written: totalSynced,
-          requestId,
-        });
-      } catch (err) {
-        logServerError('phyllo_sync_posts_error', err, {
-          requestId,
-          route: '/api/phyllo/sync-posts',
-          userId: req.user?.id,
-        });
-        return sendJson(res, 502, {
-          ok: false,
-          error: 'phyllo_sync_posts_failed',
-          error_code: 'phyllo_sync_posts_failed',
-          requestId,
-        });
+            const { error: metricsErr } = await insertPhylloPostMetrics({
+              phylloPostId: postRow.id,
+              capturedAt: new Date().toISOString(),
+              views,
+              likes,
+              comments,
+              shares,
+              saves,
+              watchTimeSeconds,
+              retentionPct,
+            });
+
+            if (metricsErr) {
+              console.error('[Phyllo] insertPhylloPostMetrics error', metricsErr);
+              continue;
+            }
+
+            totalSynced += 1;
       }
+    }
+
+    // Demographics sync per account
+    for (const acc of accounts) {
+      try {
+        const demoResp = await getAudienceDemographics(acc.phyllo_user_id);
+        if (!demoResp) continue;
+        const payload = demoResp.data || demoResp;
+        const age_groups = payload.age_groups || payload.age || {};
+        const countries = payload.countries || payload.location || {};
+        const languages = payload.languages || payload.language || {};
+        const genders = payload.genders || payload.gender || {};
+
+        const { error: demoErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
+          user_id: promptlyUserId,
+          phyllo_user_id: acc.phyllo_user_id,
+          account_id: acc.account_id,
+          platform: acc.platform || acc.work_platform_id || 'unknown',
+          age_groups,
+          countries,
+          languages,
+          genders,
+          updated_at: new Date().toISOString(),
+        });
+        if (demoErr) {
+          console.error('[Phyllo] demographics upsert error', demoErr);
+        }
+      } catch (err) {
+        console.error('[Phyllo] demographics sync error', err);
+      }
+    }
+
+    await updateCachedAnalyticsForUser(promptlyUserId);
+
+    return sendJson(res, 200, { ok: true, syncedPosts: totalSynced });
+  } catch (err) {
+    console.error('[Phyllo] /api/phyllo/sync-posts error', err);
+    return sendJson(res, 500, { ok: false, error: 'server_error' });
+  }
     })();
     return;
   }
@@ -10315,14 +4357,13 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/phyllo/test-posts' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
 
         const { data: accounts } = await supabaseAdmin
           .from('phyllo_accounts')
           .select('*')
-          .eq('promptly_user_id', userId)
+          .eq('user_id', userId)
           .eq('status', 'connected');
 
         if (!accounts || accounts.length === 0) {
@@ -10330,7 +4371,7 @@ const server = http.createServer((req, res) => {
         }
 
         const first = accounts[0];
-        const posts = await getPhylloPosts(first.phyllo_account_id || first.account_id);
+        const posts = await getPhylloPosts(first.account_id);
 
         return sendJson(res, 200, { ok: true, data: posts.data || [] });
       } catch (err) {
@@ -10345,7 +4386,6 @@ const server = http.createServer((req, res) => {
     readJsonBody(req)
       .then(async (body) => {
         try {
-          await ensureAnalyticsRequestUser(req);
           const userId = req.user && req.user.id;
           const isPro = isUserPro(req);
           if (!userId) return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -10484,71 +4524,29 @@ Output format:
 
   if (parsed.pathname === '/api/analytics/insights' && req.method === 'GET') {
     (async () => {
-      const requestId = generateRequestId('analytics_insights');
       try {
-        const user = await ensureAnalyticsRequestUser(req);
+        const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
-        if (!user || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized', error_code: 'unauthorized', requestId });
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
         }
-
-        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
-          user.id,
-          requestId,
-          '/api/analytics/insights'
-        );
-        if (accountsError) {
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'phyllo_accounts_db_error',
-            error_code: 'phyllo_accounts_db_error',
-            requestId,
-          });
-        }
-        if (!accounts.length) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: 'no_connected_accounts',
-            error_code: 'no_connected_accounts',
-            requestId,
-          });
-        }
-
         const { data, error } = await supabaseAdmin
           .from('analytics_insights')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1);
         if (error) {
-          logServerError('analytics_insights_fetch_failed', error, {
-            requestId,
-            route: '/api/analytics/insights',
-            userId: user.id,
-          });
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'insights_fetch_failed',
-            error_code: 'insights_fetch_failed',
-            requestId,
-          });
+          return sendJson(res, 500, { ok: false, error: 'insights_fetch_failed' });
         }
         let insights = (data && data[0] && data[0].insights) || [];
         if (!isPro && Array.isArray(insights)) {
           insights = insights.slice(0, 2);
         }
-        return sendJson(res, 200, { ok: true, insights, requestId });
+        return sendJson(res, 200, { ok: true, insights });
       } catch (err) {
-        logServerError('analytics_insights_fetch_error', err, {
-          requestId,
-          route: '/api/analytics/insights',
-        });
-        return sendJson(res, 502, {
-          ok: false,
-          error: 'analytics_insights_failed',
-          error_code: 'analytics_insights_failed',
-          requestId,
-        });
+        console.error('[Analytics insights fetch] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
       }
     })();
     return;
@@ -10557,7 +4555,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/engagement' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -10596,14 +4593,36 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/alerts' && req.method === 'GET') {
-    handleAnalyticsAlerts(req, res);
+    (async () => {
+      try {
+        const promptlyUserId = req.user && req.user.id;
+        if (!promptlyUserId || !supabaseAdmin) {
+          return sendJson(res, 200, { ok: true, alerts: [] });
+        }
+        const days = getAnalyticsWindowDays(req);
+        const since = getSinceDate(days).toISOString();
+        const { data, error } = await supabaseAdmin
+          .from('analytics_alerts')
+          .select('*')
+          .eq('user_id', promptlyUserId)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'alerts_fetch_failed' });
+        }
+        return sendJson(res, 200, { ok: true, alerts: data || [] });
+      } catch (err) {
+        console.error('[Analytics alerts] fetch error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/report/latest' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -10651,7 +4670,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'POST') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -10694,7 +4712,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/top-posts' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -10731,29 +4748,222 @@ Output format:
   }
 
   if (parsed.pathname === '/api/analytics/heatmap' && req.method === 'GET') {
-    handleAnalyticsHeatmap(req, res);
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'heatmap_fetch_failed' });
+        }
+
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(((data && data.posts) || []), days);
+        const heatmap = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+
+        posts.forEach((p) => {
+          if (!p.published_at && !p.publishedAt) return;
+          const date = new Date(p.published_at || p.publishedAt);
+          const day = date.getDay();
+          const hour = date.getHours();
+          const score = (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+          if (day >= 0 && day < 7 && hour >= 0 && hour < 24) {
+            heatmap[day][hour] += score;
+          }
+        });
+
+        return sendJson(res, 200, { ok: true, heatmap });
+      } catch (err) {
+        console.error('[Analytics heatmap] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/full' && req.method === 'GET') {
-    handleAnalyticsFull(req, res);
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 200, {
+            ok: true,
+            overview: null,
+            posts: [],
+            demographics: {},
+            followers: [],
+            insights: [],
+            last_sync: null,
+          });
+        }
+
+        const { data: overviewRow, error: overviewErr } = await supabaseAdmin
+          .from('cached_analytics_overview')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const { data: postsRows, error: postsErr } = await supabaseAdmin
+          .from('cached_analytics_posts')
+          .select('*')
+          .eq('user_id', userId);
+
+        const { data: demoRow, error: demoErr } = await supabaseAdmin
+          .from('phyllo_demographics')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const { data: insightsRows, error: insightsErr } = await supabaseAdmin
+          .from('analytics_ai_insights')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        const { data: syncRow } = await supabaseAdmin
+          .from('analytics_sync_status')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (overviewErr || postsErr || demoErr || insightsErr) {
+          console.error('[Analytics full] fetch error', overviewErr || postsErr || demoErr || insightsErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
+        }
+
+        const overview =
+          overviewRow && Object.keys(overviewRow).length > 0
+            ? {
+                follower_growth: overviewRow.follower_growth ?? null,
+                avg_views: overviewRow.avg_views ?? null,
+                engagement_rate: overviewRow.engagement_rate ?? null,
+                retention: overviewRow.retention ?? null,
+              }
+            : null;
+
+        const days = getAnalyticsWindowDays(req);
+        const posts = filterPostsByWindow(postsRows || [], days);
+        const demographics = demoRow
+          ? {
+              age_groups: demoRow.age_groups || {},
+              genders: demoRow.genders || {},
+              countries: demoRow.countries || {},
+              languages: demoRow.languages || {},
+            }
+          : {
+              age_groups: {},
+              genders: {},
+              countries: {},
+              languages: {},
+            };
+
+        const insights = insightsRows || [];
+
+        const hasData =
+          (overview && Object.values(overview).some((v) => v != null)) ||
+          (posts && posts.length) ||
+          (demoRow && Object.keys(demographics.age_groups || {}).length) ||
+          (insights && insights.length);
+
+        if (!hasData) {
+          return sendJson(res, 404, { ok: false, error: 'no_analytics' });
+        }
+
+        // Add a range label hint so the client can display the window used
+        if (overview) {
+          overview.rangeLabel = `Last ${days} days`;
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          overview,
+          posts,
+          demographics,
+          insights,
+          last_sync: syncRow?.last_sync || null,
+        });
+      } catch (err) {
+        console.error('[Analytics full] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/followers' && req.method === 'GET') {
-    handleAnalyticsFollowers(req, res);
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 200, { ok: true, trends: [] });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'followers_fetch_failed' });
+        }
+
+        const trends = (data && data.followers) || [];
+        const days = getAnalyticsWindowDays(req);
+        const limited = filterSeriesByWindow(trends, days);
+        const sorted = limited.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        return sendJson(res, 200, { ok: true, trends: sorted });
+      } catch (err) {
+        console.error('[Analytics followers] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/demographics' && req.method === 'GET') {
-    handleAnalyticsDemographics(req, res);
+    (async () => {
+      try {
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 200, { ok: true, demographics: {} });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('cached_analytics')
+          .select('demographics')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          return sendJson(res, 500, { ok: false, error: 'demographics_fetch_failed' });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          demographics:
+            (data && data.demographics) || { age: {}, gender: {}, location: {}, language: {} },
+        });
+      } catch (err) {
+        console.error('[Analytics demographics] error', err);
+        return sendJson(res, 500, { ok: false, error: 'server_error' });
+      }
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/analytics/sync-status' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 200, {
@@ -10792,7 +5002,6 @@ Output format:
   if (parsed.pathname === '/api/phyllo/sync-audience' && req.method === 'POST') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const { user_id } = await parseJson(req);
         if (!user_id) {
           return sendJson(res, 400, { ok: false, error: 'missing_user_id' });
@@ -10810,7 +5019,6 @@ Output format:
   if (parsed.pathname === '/api/phyllo/sync-followers' && req.method === 'POST') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -10846,67 +5054,31 @@ Output format:
 
   if (parsed.pathname === '/api/phyllo/sync-demographics' && req.method === 'POST') {
     (async () => {
-      const requestId = generateRequestId('phyllo_sync_demographics');
       try {
-        const user = await ensureAnalyticsRequestUser(req);
-        if (!user || !supabaseAdmin) {
-          return sendJson(res, 401, { ok: false, error: 'unauthorized', requestId });
+        const userId = req.user && req.user.id;
+        if (!userId || !supabaseAdmin) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        // Load connected accounts
+        const { data: accounts, error: accErr } = await supabaseAdmin
+          .from('phyllo_accounts')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'connected');
+
+        if (accErr) {
+          console.error('[Phyllo] sync-demographics accounts error', accErr);
+          return sendJson(res, 500, { ok: false, error: 'db_error' });
         }
 
-        const missingPhyllo = getMissingPhylloEnvVars();
-        if (missingPhyllo.length) {
-          logServerError('phyllo_env_missing', new Error('Missing Phyllo environment variables'), {
-            requestId,
-            route: '/api/phyllo/sync-demographics',
-            missing: missingPhyllo,
-          });
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'phyllo_env_missing',
-            error_code: 'phyllo_env_missing',
-            requestId,
-          });
-        }
-
-        const { accounts, error: accountsError } = await getConnectedPhylloAccounts(
-          user.id,
-          requestId,
-          '/api/phyllo/sync-demographics'
-        );
-        if (accountsError) {
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'phyllo_accounts_db_error',
-            error_code: 'phyllo_accounts_db_error',
-            requestId,
-          });
-        }
-        if (!accounts.length) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: 'no_connected_accounts',
-            error_code: 'no_connected_accounts',
-            requestId,
-          });
-        }
-
-        let upstreamOk = true;
-        const audience = await getAudienceDemographics(accounts, { requestId, userId: user.id });
-        const platformMap = new Map();
-        if (Array.isArray(audience)) {
-          audience.forEach((row) => {
-            if (!row) return;
-            const key = String(row.platform || 'unknown').toLowerCase();
-            if (!platformMap.has(key)) platformMap.set(key, row.audience || row);
-          });
+        if (!accounts || !accounts.length) {
+          return sendJson(res, 200, { ok: true, demographics: {} });
         }
 
         for (const acc of accounts) {
           try {
-            const platformKey = String(acc.platform || acc.work_platform_id || 'unknown').toLowerCase();
-            const payload = Array.isArray(audience)
-              ? platformMap.get(platformKey) || {}
-              : audience || {};
+            const audience = await getAudienceDemographics(acc.phyllo_user_id || acc.creator_id ? [{ creator_id: acc.creator_id, platform: acc.platform, work_platform_id: acc.work_platform_id }] : []);
+            const payload = audience && audience[0] ? audience[0].audience || {} : {};
 
             const age_groups = payload.age || payload.age_groups || {};
             const countries = payload.location || payload.countries || {};
@@ -10914,9 +5086,9 @@ Output format:
             const genders = payload.gender || payload.genders || {};
 
             const { error: upsertErr } = await supabaseAdmin.from('phyllo_demographics').upsert({
-              user_id: user.id,
+              user_id: userId,
               phyllo_user_id: acc.phyllo_user_id,
-              account_id: acc.account_id || acc.phyllo_account_id,
+              account_id: acc.account_id,
               platform: acc.platform || acc.work_platform_id || 'unknown',
               age_groups,
               countries,
@@ -10926,46 +5098,17 @@ Output format:
             });
 
             if (upsertErr) {
-              logServerError('phyllo_demographics_upsert_error', upsertErr, {
-                requestId,
-                route: '/api/phyllo/sync-demographics',
-              });
+              console.error('[Phyllo] demographics upsert error', upsertErr);
             }
           } catch (err) {
-            upstreamOk = false;
-            logServerError('phyllo_sync_demographics_account_error', err, {
-              requestId,
-              route: '/api/phyllo/sync-demographics',
-            });
+            console.error('[Phyllo] sync-demographics per-account error', err);
           }
         }
 
-        if (!upstreamOk) {
-          return sendJson(res, 502, {
-            ok: false,
-            error: 'upstream_failed',
-            error_code: 'upstream_failed',
-            requestId,
-          });
-        }
-        return sendJson(res, 200, {
-          ok: true,
-          synced_accounts: accounts.length,
-          demographics_written: accounts.length,
-          requestId,
-        });
+        return sendJson(res, 200, { ok: true });
       } catch (err) {
-        logServerError('phyllo_sync_demographics_error', err, {
-          requestId,
-          route: '/api/phyllo/sync-demographics',
-          userId: req.user?.id,
-        });
-        return sendJson(res, 502, {
-          ok: false,
-          error: 'phyllo_sync_demographics_failed',
-          error_code: 'phyllo_sync_demographics_failed',
-          requestId,
-        });
+        console.error('[Phyllo] sync-demographics error', err);
+        return sendJson(res, 500, { ok: false, error: 'phyllo_sync_demographics_failed' });
       }
     })();
     return;
@@ -10974,7 +5117,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/sync-status/update' && req.method === 'POST') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         if (!userId || !supabaseAdmin) {
           return sendJson(res, 401, { ok: false, error: 'unauthorized' });
@@ -11001,7 +5143,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/experiments' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -11032,7 +5173,6 @@ Output format:
     if (parsed.pathname.endsWith('/complete')) {
       (async () => {
         try {
-          await ensureAnalyticsRequestUser(req);
           const userId = req.user && req.user.id;
           const isPro = isUserPro(req);
           if (!isPro) {
@@ -11099,7 +5239,6 @@ Output format:
   if (parsed.pathname.startsWith('/api/analytics/experiments/') && req.method === 'DELETE') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -11134,7 +5273,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/reports' && req.method === 'POST') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -11195,7 +5333,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/reports/latest' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = req.user && req.user.id;
         const isPro = isUserPro(req);
         if (!isPro) {
@@ -11228,7 +5365,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/accounts' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = (req.user && req.user.id) || null;
         if (!userId || !supabaseAdmin) return sendJson(res, 200, { ok: true, data: [] });
         const { data: accounts, error: accountsError } = await supabaseAdmin
@@ -11257,7 +5393,6 @@ Output format:
   if (parsed.pathname === '/api/analytics/overview' && req.method === 'GET') {
     (async () => {
       try {
-        await ensureAnalyticsRequestUser(req);
         const userId = (req.user && req.user.id) || null;
         if (!userId || !supabaseAdmin) {
           sendJson(res, 401, { error: 'unauthorized' });
@@ -11447,22 +5582,6 @@ Output format:
     return;
   }
 
-  if (parsed.pathname === '/internal/phyllo/webhook-config' && req.method === 'POST') {
-    (async () => {
-      try {
-        if (!isUserAdmin(req)) {
-          return sendJson(res, 403, { ok: false, error: 'forbidden' });
-        }
-        const payload = await configurePhylloWebhook();
-        return sendJson(res, 200, { ok: true, data: payload });
-      } catch (err) {
-        console.error('[Phyllo] webhook config failed', err);
-        return sendJson(res, 500, { ok: false, error: 'phyllo_webhook_config_failed', details: err.message });
-      }
-    })();
-    return;
-  }
-
   if (parsed.pathname === '/internal/phyllo/sync' && req.method === 'POST') {
     (async () => {
       const token = req.headers['x-internal-token'] || '';
@@ -11479,7 +5598,70 @@ Output format:
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const until = new Date();
         for (const acct of accounts || []) {
-          await syncAccountMetricsForAnalytics(acct, since, until);
+          try {
+            const contents = await fetchAccountContents({ accountId: acct.phyllo_account_id, since, until });
+            const engagement = await fetchAccountEngagement({ accountId: acct.phyllo_account_id, since, until });
+            const items = contents?.data || contents?.items || contents || [];
+            const metricsByDay = {};
+            for (const item of items) {
+              const contentId = item.id || item.content_id;
+              if (!contentId) continue;
+              const platform = item.platform || acct.work_platform_id || 'unknown';
+              const publishedAt = item.published_at || item.posted_at || item.created_at || null;
+              await supabaseAdmin.from('phyllo_posts').upsert({
+                phyllo_content_id: contentId,
+                phyllo_account_id: acct.phyllo_account_id,
+                promptly_user_id: acct.promptly_user_id,
+                platform,
+                title: item.title || item.caption || null,
+                caption: item.caption || null,
+                url: item.url || item.link || null,
+                published_at: publishedAt,
+              }, { onConflict: 'phyllo_content_id' });
+              const metrics = item.metrics || item.stats || item;
+              const views = Number(metrics.views || metrics.impressions || 0);
+              const likes = Number(metrics.likes || 0);
+              const comments = Number(metrics.comments || 0);
+              const shares = Number(metrics.shares || metrics.reposts || 0);
+              const saves = Number(metrics.saves || 0);
+              await supabaseAdmin.from('phyllo_post_metrics').insert({
+                phyllo_content_id: contentId,
+                collected_at: new Date().toISOString(),
+                views,
+                likes,
+                comments,
+                shares,
+                saves,
+              });
+              const dateKey = (publishedAt ? new Date(publishedAt) : new Date()).toISOString().slice(0, 10);
+              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0 };
+              metricsByDay[dateKey].views += views;
+              metricsByDay[dateKey].likes += likes;
+              metricsByDay[dateKey].comments += comments;
+              metricsByDay[dateKey].shares += shares;
+              metricsByDay[dateKey].saves += saves;
+            }
+            const engagementData = engagement?.data || engagement?.items || engagement || [];
+            engagementData.forEach((row) => {
+              const dateKey = row.date || row.day || row.collected_at;
+              if (!dateKey) return;
+              if (!metricsByDay[dateKey]) metricsByDay[dateKey] = {};
+              metricsByDay[dateKey].followers = Number(row.followers || metricsByDay[dateKey].followers || 0);
+              metricsByDay[dateKey].impressions = Number(row.impressions || metricsByDay[dateKey].impressions || 0);
+              metricsByDay[dateKey].engagement_rate = Number(row.engagement_rate || metricsByDay[dateKey].engagement_rate || 0);
+            });
+            for (const [dateKey, agg] of Object.entries(metricsByDay)) {
+              await supabaseAdmin.from('phyllo_account_daily').upsert({
+                phyllo_account_id: acct.phyllo_account_id,
+                date: dateKey,
+                followers: agg.followers || null,
+                impressions: agg.impressions || agg.views || null,
+                engagement_rate: agg.engagement_rate || null,
+              }, { onConflict: 'phyllo_account_id,date' });
+            }
+          } catch (err) {
+            console.error('[Phyllo Sync] account failed', acct.phyllo_account_id, err?.response?.data || err);
+          }
         }
         sendJson(res, 200, { ok: true, accounts: (accounts || []).length });
       } catch (err) {
@@ -11604,156 +5786,32 @@ Output format:
     return;
   }
 
-  if (isBrandKitPath(normalizedPath) && req.method === 'GET') {
-    (async () => {
-      try {
-        const user = await requireSupabaseUser(req);
-        if (!user || !user.id) {
-          return sendJson(res, 401, { error: 'unauthorized' });
-        }
-
-        let kit = null;
-        let source = 'file';
-
-        if (supabaseAdmin) {
-          try {
-            const { data, error } = await supabaseAdmin
-              .from('brand_brains')
-              .select('primary_color, secondary_color, accent_color, heading_font, body_font, logo_url, updated_at')
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (error) throw error;
-            if (data) {
-              kit = {
-                brand_name: '',
-                brand_color: data.primary_color || '',
-                primary_color: data.primary_color || '',
-                secondary_color: data.secondary_color || '',
-                accent_color: data.accent_color || '',
-                heading_font: data.heading_font || '',
-                body_font: data.body_font || '',
-                logo_url: data.logo_url || '',
-                updated_at: data.updated_at || null,
-              };
-              source = 'supabase';
-            }
-          } catch (err) {
-            const msg = String(err?.message || err);
-            if (!msg.includes('brand_brains') && !msg.includes('42P01') && !msg.includes('schema cache')) {
-              console.error('[BrandKit] fetch failed', err);
-              return sendJson(res, 500, { error: 'brandkit_fetch_failed' });
-            }
-          }
-        }
-
-        if (!kit) {
-          const brand = loadBrand(user.id);
-          if (brand?.kit) {
-            kit = {
-              ...brand.kit,
-              brand_name: brand?.name || '',
-              brand_color: brand.kit.primaryColor || '',
-              logo_url: brand.kit.logoDataUrl || brand.kit.logoUrl || '',
-              updated_at: brand.kit.updatedAt || brand.updatedAt || null,
-            };
-          }
-        }
-
-        return sendJson(res, 200, { ok: true, brandKit: kit || null, source });
-      } catch (err) {
-        console.error('[BrandKit] handler error', err);
-        return sendJson(res, 500, { error: 'brandkit_fetch_failed' });
-      }
-    })();
-    return;
-  }
-
-  if (isBrandKitPath(normalizedPath) && req.method === 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'method_not_allowed' }));
-    return;
-  }
-
-  if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'GET') {
-    (async () => {
-      try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
-        }
-        const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
-        return sendJson(res, 200, { ok: true, settings });
-      } catch (err) {
-        console.error('[BrandBrain] settings GET failed', err);
-        return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
-      }
-    })();
-    return;
-  }
-
-  if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'POST') {
-    (async () => {
-      try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
-        }
-        try {
-          const response = await supabaseAdmin
-            .from('profiles')
-            .select('tier')
-            .eq('id', user.id)
-            .single();
-          if (response?.data?.tier) {
-            const rawTier = String(response.data.tier).toLowerCase().trim();
-            const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
-            req.user.tier = mappedTier;
-            req.user.plan = mappedTier;
-          }
-        } catch (planErr) {
-          console.warn('[BrandBrain] failed to resolve tier', {
-            userId: user.id,
-            error: planErr?.message || planErr,
-          });
-        }
-        const isProUser = isUserPro(req);
-        const body = await readJsonBody(req);
-        const normalized = normalizeBrandBrainSettings(body || {});
-        if (normalized.enabled && !isProUser) {
-          return sendJson(res, 402, {
-            ok: false,
-            error: 'upgrade_required',
-            feature: 'brand_brain',
-          });
-        }
-        const saved = await upsertBrandBrainSettings(user.id, {
-          ...normalized,
-          enabled: normalized.enabled && isProUser,
-        });
-        return sendJson(res, 200, { ok: true, settings: saved || normalized });
-      } catch (err) {
-        console.error('[BrandBrain] settings POST failed', err);
-        return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_save_failed' });
-      }
-    })();
+  if (isBrandKitPath(normalizedPath) && (req.method === 'POST' || req.method === 'GET')) {
+    res.writeHead(410, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Brand Design has been removed.' }));
     return;
   }
 
   if (parsed.pathname === '/api/brand/ingest' && req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
+    (async () => {
       try {
-        const { userId, text } = JSON.parse(body || '{}');
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return sendJson(res, 402, {
+            ok: false,
+            error: 'upgrade_required',
+            message: 'Brand Brain is a Pro feature. Upgrade to unlock personalized content generation.',
+          });
+        }
+        const body = await readJsonBody(req);
+        const { userId, text } = body || {};
         if (!userId || !text) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'userId and text required' }));
+          return sendJson(res, 400, { error: 'userId and text required' });
         }
         if (!OPENAI_API_KEY) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'OPENAI_API_KEY not set' }));
+          return sendJson(res, 500, { error: 'OPENAI_API_KEY not set' });
         }
         const chunks = chunkText(text);
         const embeddings = await embedTextList(chunks);
@@ -11765,24 +5823,31 @@ Output format:
         } catch (err) {
           console.warn('[BrandBrain] preference upsert skipped', err?.message || err);
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, chunks: saved.chunks.length }));
+        return sendJson(res, 200, { ok: true, chunks: saved.chunks.length });
       } catch (err) {
         console.error('Brand ingest error:', err);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err) }));
+        return sendJson(res, 500, { error: String(err) });
       }
-    });
+    })();
     return;
   }
 
   if (parsed.pathname === '/api/brand/profile' && req.method === 'GET') {
     (async () => {
       try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const isPro = isUserPro(req);
+        if (!isPro) {
+          return sendJson(res, 402, {
+            ok: false,
+            error: 'upgrade_required',
+            message: 'Brand Brain is a Pro feature. Upgrade to unlock personalized content generation.',
+          });
+        }
         const userId = parsed.query.userId;
         if (!userId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'userId required' }));
+          return sendJson(res, 400, { error: 'userId required' });
         }
         // Prefer Supabase-backed preference, fall back to legacy file store
         const dbPref = await fetchBrandBrainPreference(userId);
@@ -11792,20 +5857,16 @@ Output format:
         const updatedAt = dbPref?.updatedAt || brand?.updatedAt || null;
         const chunksCount = Array.isArray(brand?.chunks) ? brand.chunks.length : 0;
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(
-          JSON.stringify({
-            ok: true,
-            hasProfile: !!text,
-            chunks: chunksCount,
-            text,
-            updatedAt,
-          })
-        );
+        return sendJson(res, 200, {
+          ok: true,
+          hasProfile: !!text,
+          chunks: chunksCount,
+          text,
+          updatedAt,
+        });
       } catch (err) {
         console.error('Brand profile error:', err);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: String(err) }));
+        return sendJson(res, 500, { error: String(err) });
       }
     })();
     return;
@@ -11847,10 +5908,6 @@ Output format:
       }
 
       const ext = path.extname(filePath).toLowerCase();
-      if (ext === '.html') {
-        res.setHeader('Cache-Control', 'no-store');
-        return serveFile(filePath, res);
-      }
       const mimeTypes = {
         '.html': 'text/html; charset=utf-8',
         '.css': 'text/css',
@@ -11866,7 +5923,8 @@ Output format:
 
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       const headers = { 'Content-Type': contentType };
-      if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
+      if (ext === '.html') headers['Cache-Control'] = 'no-store';
+      else if (ext === '.js' || ext === '.css') headers['Cache-Control'] = 'public, max-age=300';
       else headers['Cache-Control'] = 'public, max-age=86400';
       res.writeHead(200, headers);
       fs.createReadStream(filePath).pipe(res);
@@ -11906,81 +5964,68 @@ function serveFile(filePath, res) {
   fs.createReadStream(filePath).pipe(res);
 }
 
-if (process.env.CALENDAR_PARSE_SELFTEST === '1') {
-  const sampleA = 'Preamble\n```json\n{"posts":[{"day":1,"post_key":"day-1-slot-0"}]}\n```\n';
-  const sampleB = '[{"day":2,"post_key":"day-2-slot-0"}]\nTrailing note.';
-  const sampleC = '{"foo":"bar"}\n{"posts":[{"day":3,"post_key":"day-3-slot-0"}]}';
-  const resultA = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleA), 1, 1, 1, 1);
-  const resultB = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleB), 1, 2, 1, 1);
-  const resultC = parseFirstValidCalendarPayload(extractCalendarJsonCandidates(sampleC), 1, 3, 1, 1);
-  console.assert(resultA && Array.isArray(resultA.posts), 'CALENDAR_PARSE_SELFTEST A failed');
-  console.assert(resultB && Array.isArray(resultB.posts), 'CALENDAR_PARSE_SELFTEST B failed');
-  console.assert(resultC && Array.isArray(resultC.posts), 'CALENDAR_PARSE_SELFTEST C failed');
-}
-
 const PORT = process.env.PORT || 8000;
-
-if (require.main === module) {
-  // Daily analytics sync (06:00 America/Los_Angeles)
-  cron.schedule(
-    '0 6 * * *',
-    async () => {
-      console.log('[Cron] Daily analytics sync started');
-      try {
-        const { data: rows, error } = await supabaseAdmin
-          .from('phyllo_accounts')
-          .select('promptly_user_id')
-          .eq('status', 'connected');
-
-        if (error || !rows || !rows.length) {
-          console.error('[Cron] No accounts or error:', error);
-          return;
-        }
-
-        const userIds = [...new Set(rows.map((r) => r.promptly_user_id))];
-
-        for (const userId of userIds) {
-          try {
-            console.log('[Cron] Sync user', userId);
-            await syncFollowerMetrics(userId);
-            await syncDemographics(userId);
-            await updateCachedAnalyticsForUser(userId);
-            await supabaseAdmin.from('analytics_sync_status').upsert({
-              user_id: userId,
-              last_sync: new Date().toISOString(),
-              status: 'success',
-              message: 'Daily cron sync completed',
-            });
-          } catch (userErr) {
-            console.error('[Cron] Error syncing user', userId, userErr);
-            await supabaseAdmin.from('analytics_sync_status').upsert({
-              user_id: userId,
-              last_sync: new Date().toISOString(),
-              status: 'failed',
-              message: 'Daily cron sync failed',
-            });
-          }
-        }
-
-        console.log('[Cron] Daily analytics sync finished');
-      } catch (err) {
-        console.error('[Cron] Fatal error in daily analytics sync', err);
-      }
-    },
-    {
-      timezone: 'America/Los_Angeles',
-    }
-  );
-
-  server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
-
-  process.on('uncaughtException', (err) => console.error('Uncaught:', err));
-  process.on('unhandledRejection', (r) => console.error('Unhandled rejection:', r));
+// Run design asset pipeline on interval to progress renders (disabled when design lab is off).
+if (ENABLE_DESIGN_LAB) {
+  setInterval(() => {
+    advanceDesignAssetPipeline().catch((err) => {
+      console.error('[Pipeline] Tick error', err);
+    });
+  }, 20000);
 }
 
-module.exports = {
-  ensurePinnedFieldsValid,
-  dedupePinnedComments,
-  buildPrompt,
-  ensureSuggestedAudioForPosts,
-};
+// Daily analytics sync (06:00 America/Los_Angeles)
+cron.schedule(
+  '0 6 * * *',
+  async () => {
+    console.log('[Cron] Daily analytics sync started');
+    try {
+      const { data: rows, error } = await supabaseAdmin
+        .from('phyllo_accounts')
+        .select('user_id')
+        .eq('status', 'connected');
+
+      if (error || !rows || !rows.length) {
+        console.error('[Cron] No accounts or error:', error);
+        return;
+      }
+
+      const userIds = [...new Set(rows.map((r) => r.user_id))];
+
+      for (const userId of userIds) {
+        try {
+          console.log('[Cron] Sync user', userId);
+          await syncFollowerMetrics(userId);
+          await syncDemographics(userId);
+          await updateCachedAnalyticsForUser(userId);
+          await supabaseAdmin.from('analytics_sync_status').upsert({
+            user_id: userId,
+            last_sync: new Date().toISOString(),
+            status: 'success',
+            message: 'Daily cron sync completed',
+          });
+        } catch (userErr) {
+          console.error('[Cron] Error syncing user', userId, userErr);
+          await supabaseAdmin.from('analytics_sync_status').upsert({
+            user_id: userId,
+            last_sync: new Date().toISOString(),
+            status: 'failed',
+            message: 'Daily cron sync failed',
+          });
+        }
+      }
+
+      console.log('[Cron] Daily analytics sync finished');
+    } catch (err) {
+      console.error('[Cron] Fatal error in daily analytics sync', err);
+    }
+  },
+  {
+    timezone: 'America/Los_Angeles',
+  }
+);
+
+server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
+
+process.on('uncaughtException', (err) => console.error('Uncaught:', err));
+process.on('unhandledRejection', (r) => console.error('Unhandled rejection:', r));

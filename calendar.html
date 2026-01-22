@@ -6,17 +6,15 @@
   <title>Promptly</title>
   <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
   <link rel="canonical" href="https://usepromptly.app/" />
-  <meta property="og:title" content="Promptly · AI Content Studio" />
-  <meta property="og:description" content="Create a full month of strategic content in seconds." />
+  <meta property="og:title" content="Promptly • AI Content Studio" />
+  <meta property="og:description" content="Generate a complete 30‑day social content calendar in seconds. Strategy, captions, variants, exports." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://usepromptly.app/" />
-  <meta property="og:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
-  <meta property="og:image:width" content="512" />
-  <meta property="og:image:height" content="512" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Promptly · AI Content Studio" />
-  <meta name="twitter:description" content="Create a full month of strategic content in seconds." />
-  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
+  <meta property="og:image" content="https://usepromptly.app/assets/og-banner.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Promptly • AI Content Studio" />
+  <meta name="twitter:description" content="Generate a complete 30‑day social content calendar in seconds." />
+  <meta name="twitter:image" content="https://usepromptly.app/assets/og-banner.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,10 +28,21 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
-    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
   <body class="page-calendar">
     <div class="app-shell calendar-page">
+      <nav class="landing-nav" aria-label="Primary navigation">
+        <div class="landing-nav__brand"></div>
+        <div class="landing-nav__links">
+          <a href="#product">Product</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#pricing">Pricing</a>
+        </div>
+        <div class="landing-nav__actions">
+          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
+        </div>
+      </nav>
+
       <div id="app-experience" style="display:none;">
         <div class="app-layout">
           <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
@@ -59,9 +68,7 @@
               <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
             </div>
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-              <button id="brand-brain-btn" class="primary brand-brain-btn" data-analytics="modal_brandbrain_open">Brand Brain</button>
-              <button id="voice-lock-btn" class="primary brand-brain-btn" data-analytics="modal_voicelock_open">Voice Lock</button>
-              <button id="target-audience-btn" class="primary brand-brain-btn" data-analytics="modal_targetaudience_open">Target Audience</button>
+              <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
                 <div class="profile-wrapper">
                   <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
                   <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
@@ -96,7 +103,7 @@
                 aria-required="true"
                 required
               />
-              <button id="generate-calendar" class="secondary primary-large" data-analytics="calendar_generate">
+              <button id="generate-calendar" class="secondary primary-large">
                 <span class="spinner" aria-hidden="true" style="display:none"></span>
                 <span class="btn-text">Generate My 30-Day Calendar</span>
               </button>
@@ -488,14 +495,14 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-modal>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close>
             &times;
           </button>
         </div>
@@ -504,7 +511,7 @@
             <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
             <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
           </div>
-          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account">
             <div class="settings-group">
               <label>Email</label>
               <div class="settings-field-readonly mobile-email-row" data-email-row>
@@ -536,7 +543,7 @@
               </div>
             </div>
           </div>
-            <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
+            <div class="settings-panel mobile-account-content" data-settings-panel="profile">
               <form id="account-settings-form" class="settings-form">
               <div class="settings-group">
                 <label for="account-display-name">Display name</label>
@@ -552,16 +559,16 @@
               </div>
               <fieldset class="settings-group">
                 <legend class="settings-group__label">Interface preferences</legend>
-                <div class="settings-accessibility" data-interface-prefs>
-                  <label class="settings-toggle" data-pref-row>
+                <div class="settings-accessibility">
+                  <label class="settings-toggle">
                     <input type="checkbox" id="prefers-high-contrast" />
                     <span>High contrast surfaces</span>
                   </label>
-                  <label class="settings-toggle" data-pref-row>
+                  <label class="settings-toggle">
                     <input type="checkbox" id="prefers-large-type" />
                     <span>Larger typography</span>
                   </label>
-                  <label class="settings-toggle" data-pref-row>
+                  <label class="settings-toggle">
                     <input type="checkbox" id="prefers-reduced-motion" />
                     <span>Reduce motion &amp; animations</span>
                   </label>
@@ -576,107 +583,6 @@
               <button type="submit" form="account-settings-form" class="primary">Save preferences</button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Voice Lock Modal -->
-    <div id="voice-lock-modal" class="brand-brain-overlay" style="display:none">
-      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="voice-lock-modal-title">
-        <header class="brand-brain-header">
-          <div class="brand-brain-header-left">
-            <h3 id="voice-lock-modal-title">Voice Lock</h3>
-            <span class="brand-brain-badge">Pro</span>
-          </div>
-          <span id="voice-lock-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-        </header>
-        <p class="brand-brain-subtitle">Pin a writing voice for your next calendar generation.</p>
-
-        <div class="brand-brain-toggle-row" data-pro-lock="1">
-          <label class="brand-brain-switch">
-            <input type="checkbox" id="voice-lock-enabled" />
-            <span class="brand-brain-switch__slider"></span>
-          </label>
-          <div class="brand-brain-toggle-copy">
-            <div class="brand-brain-toggle-label">Enabled</div>
-            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-          </div>
-          <span class="brand-brain-locked-pill" id="voice-lock-locked-pill">Pro</span>
-        </div>
-        <div class="brand-brain-locked-copy" id="voice-lock-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
-
-        <div id="voice-lock-controls" class="brand-brain-section" data-pro-lock="1">
-          <label class="brand-brain-label" for="voice-lock-preset">Preset</label>
-          <div class="voice-lock-select-wrap" id="voice-lock-preset-wrap">
-            <select id="voice-lock-preset" class="voice-lock-select">
-              <option value="Direct">Direct</option>
-              <option value="Casual">Casual</option>
-              <option value="Punchy">Punchy</option>
-              <option value="Story-first">Story-first</option>
-              <option value="Contrarian">Contrarian</option>
-              <option value="No-AI-polish">No-AI-polish</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="brand-brain-footer">
-          <div class="brand-brain-save"></div>
-          <button type="button" id="voice-lock-close-btn" class="ghost" data-analytics="modal_close">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Target Audience Modal -->
-    <div id="target-audience-modal" class="brand-brain-overlay" style="display:none">
-      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title">
-        <header class="brand-brain-header">
-          <div class="brand-brain-header-left">
-            <h3 id="target-audience-modal-title">Target Audience</h3>
-            <span class="brand-brain-badge">Pro</span>
-          </div>
-          <span id="target-audience-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-        </header>
-        <p class="brand-brain-subtitle">Tailor copy for a specific audience segment.</p>
-
-        <div class="brand-brain-toggle-row" data-pro-lock="1">
-          <label class="brand-brain-switch">
-            <input type="checkbox" id="target-audience-enabled" />
-            <span class="brand-brain-switch__slider"></span>
-          </label>
-          <div class="brand-brain-toggle-copy">
-            <div class="brand-brain-toggle-label">Enabled</div>
-            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-          </div>
-          <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
-        </div>
-        <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
-
-        <div id="target-audience-controls" class="brand-brain-section" data-pro-lock="1">
-          <label class="brand-brain-label" for="target-audience-preset">Preset</label>
-          <div class="target-audience-select-wrap" id="target-audience-preset-wrap">
-            <select id="target-audience-preset" class="target-audience-select">
-              <option value="Students">Students</option>
-              <option value="Young Adults (18–25)">Young Adults (18–25)</option>
-              <option value="Early Career Professionals">Early Career Professionals</option>
-              <option value="Working Professionals">Working Professionals</option>
-              <option value="Parents / Families">Parents / Families</option>
-              <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
-              <option value="Creators">Creators</option>
-              <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
-              <option value="Beginners">Beginners</option>
-              <option value="Experienced / Advanced">Experienced / Advanced</option>
-            </select>
-          </div>
-          <div class="settings-actions__buttons">
-            <button type="button" class="primary" id="target-audience-save">Save</button>
-          </div>
-        </div>
-
-        <div class="brand-brain-footer">
-          <div class="brand-brain-save">
-            <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
-          </div>
-          <button type="button" id="target-audience-close-btn" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>
     </div>
@@ -819,8 +725,50 @@
             <span id="brand-brain-save-indicator"></span>
             <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
           </div>
-          <button id="brand-brain-close" class="ghost" data-analytics="modal_close">Close</button>
+          <button id="brand-brain-close" class="ghost">Close</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Upgrade Modal -->
+    <div id="upgrade-modal" class="modal" style="display: none;">
+      <div class="modal-content upgrade-modal">
+        <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
+        <div class="upgrade-header">
+          <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <h2>Upgrade to Promptly Pro</h2>
+          <p class="upgrade-subtitle">Unlock unlimited workflows, downloads, Brand Brain, and real analytics</p>
+        </div>
+        
+        <div class="pricing-cards">
+            <div class="pricing-card">
+              <div class="pricing-tier">Starter</div>
+              <div class="pricing-price">FREE<span></span></div>
+              <ul class="pricing-features">
+                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+                <li><span class="check">✓</span> Limited Saves and Exports</li>
+              </ul>
+            </div>
+          
+            <div class="pricing-card pricing-card-pro">
+              <div class="pricing-badge">Most Popular</div>
+              <div class="pricing-tier">Pro</div>
+              <div class="pricing-price">$19.99<span>/month</span></div>
+              <ul class="pricing-features">
+                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+                <li><span class="check">✓</span> Brand Brain unlocked</li>
+                <li><span class="check">✓</span> Regenerate a single post</li>
+                <li><span class="check">✓</span> Unlimited Saves and Exports</li>
+              </ul>
+            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
+              Upgrade to Pro
+            </button>
+          </div>
+        </div>
+        
+        <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
       </div>
     </div>
 
@@ -869,327 +817,150 @@
         padding-left: 12px !important;
       }
 
+      .page-calendar .calendar-card__caption {
+        width: 100%;
+        min-width: 0;
+        writing-mode: horizontal-tb;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+        letter-spacing: normal;
+        line-height: 1.5;
+      }
+
+      .page-calendar .calendar-card__caption-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+      }
+
+      .page-calendar .caption-copy-btn,
+      .page-calendar .detail-copy-btn {
+        margin-left: auto;
+        flex: 0 0 auto;
+      }
     }
   </style>
-  <style id="mobile-account-modal-layout-v4">
+  <style id="mobile-text-unstack-fix-v1">
     @media (max-width: 640px) {
-      body.modal-open {
-        overflow: hidden !important;
-        touch-action: none !important;
-      }
-      [data-account-overlay] {
-        position: fixed !important;
-        inset: 0 !important;
-        overflow: hidden !important;
-        z-index: 9999 !important;
-      }
-
-      [data-account-modal] {
-        position: fixed !important;
-        left: 50% !important;
-        top: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        width: 94vw !important;
-        max-width: 94vw !important;
-        height: 90vh !important;
-        max-height: 90vh !important;
-        margin: 0 !important;
-        padding: 14px !important;
-        overflow: hidden !important;
-        border-radius: 18px !important;
-        box-sizing: border-box !important;
-      }
-
-      [data-account-modal] * {
-        box-sizing: border-box !important;
-        min-width: 0 !important;
+      /* Global safety: nothing in calendar.html should render vertical text on mobile */
+      #calendarPage, body, .page, .app, main {
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
-        word-break: normal !important;
-        overflow-wrap: normal !important;
-        hyphens: none !important;
-        line-height: 1.2 !important;
       }
 
-      [data-account-modal-body],
-      [data-account-panel] {
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        left: auto !important;
-        right: auto !important;
-        transform: none !important;
-      }
-
-      [data-account-modal-body] {
-        max-height: none !important;
-        overflow: visible !important;
-      }
-
-      [data-account-close] {
-        position: absolute !important;
-        top: 12px !important;
-        right: 12px !important;
-        left: auto !important;
-        z-index: 50 !important;
-        width: 40px !important;
-        height: 40px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin: 0 !important;
-        pointer-events: auto !important;
-      }
-
-      [data-account-modal] .settings-modal__head {
-        padding-right: 52px !important;
-      }
-
-      [data-account-modal] h3 {
-        font-size: 19px !important;
-        line-height: 1.2 !important;
-        margin: 0 0 4px 0 !important;
-      }
-
-      [data-account-modal] .modal-sub {
-        font-size: 12.5px !important;
-        line-height: 1.25 !important;
-        margin: 0 0 6px 0 !important;
-      }
-
-      [data-account-tabs] {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 6px !important;
-        width: 100% !important;
-        margin: 6px 0 6px 0 !important;
-      }
-
-      [data-account-tab] {
-        width: 100% !important;
-        min-width: 0 !important;
-        padding: 6px 8px !important;
-        font-size: 13px !important;
-        line-height: 1.1 !important;
-        text-align: center !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-        border-radius: 10px !important;
-      }
-
-      [data-account-panel] {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-      }
-
-      [data-account-modal] .settings-group {
-        margin: 5px 0 !important;
-      }
-
-      [data-account-modal] label,
-      [data-account-modal] .field-hint {
-        font-size: 12.5px !important;
-      }
-
-      [data-account-modal] label {
-        display: block !important;
-      }
-
-      [data-account-modal] input,
-      [data-account-modal] select,
-      [data-account-modal] textarea {
-        width: 100% !important;
-        max-width: 100% !important;
-        font-size: 16px !important;
-        line-height: 1.2 !important;
-        padding: 6px 8px !important;
-        border-radius: 8px !important;
-      }
-
-      [data-account-modal] button {
-        font-size: 13px !important;
-        padding: 6px 8px !important;
-        min-height: 32px !important;
-      }
-
-      [data-interface-prefs] {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin: 6px 0 0 0 !important;
-        padding: 0 !important;
-        border: 1px solid rgba(255,255,255,0.10) !important;
-        border-radius: 10px !important;
-      }
-
-      [data-interface-prefs] [data-pref-row] {
-        display: flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        width: 100% !important;
-        padding: 6px 8px !important;
-      }
-
-      [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
-        flex: 0 0 auto !important;
-        width: 16px !important;
-        height: 16px !important;
-      }
-
-      [data-account-modal] .settings-actions__buttons {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap: 6px !important;
-        width: 100% !important;
-      }
-
-      [data-account-modal] .settings-actions__buttons button {
-        width: 100% !important;
-        min-width: 0 !important;
-        padding: 6px 8px !important;
-        border-radius: 999px !important;
-      }
-
-      [data-account-modal] [data-email-row] {
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        width: 100% !important;
-      }
-
-      [data-account-modal] [data-email-value] {
-        flex: 1 1 auto !important;
-        min-width: 0 !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
-      }
-
-      [data-account-modal] [data-email-copy] {
-        flex: 0 0 auto !important;
-        white-space: nowrap !important;
-      }
-
-      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 6px !important;
-        width: 100% !important;
-        overflow: visible !important;
-        min-width: 0 !important;
-      }
-
-      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
-        flex: 0 0 auto !important;
-        min-width: 0 !important;
-        min-height: 1em !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-        color: inherit !important;
-        position: relative !important;
-        z-index: 1 !important;
-      }
-
-      [data-account-modal] [data-account-panel][data-settings-panel="account"] #account-email-display,
-      [data-account-modal] [data-account-panel][data-settings-panel="account"] [aria-label="Password is hidden"] {
-        display: block !important;
-        font-size: 14px !important;
-        line-height: 1.2 !important;
-        font-weight: 500 !important;
-        color: var(--text-primary, #f5f6f8) !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        position: relative !important;
-        z-index: 2 !important;
-      }
-
-      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
-        flex: 0 0 auto !important;
-        white-space: nowrap !important;
-        align-self: flex-start !important;
-      }
-
+      /* ---- Fix content card caption letter-stacking ---- */
+      [data-content-caption],
+      .content-card .caption,
+      .contentCard .caption,
+      .content-card-caption,
+      .calendar-card-caption,
+      .post-caption,
+      .card-caption,
       .page-calendar .calendar-card__caption {
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
         white-space: normal !important;
         word-break: normal !important;
         overflow-wrap: break-word !important;
+        hyphens: auto !important;
+        line-break: auto !important;
         width: 100% !important;
         max-width: 100% !important;
-        min-width: 0 !important;
-      }
-    }
-  </style>
-  <style id="mobile-card-caption-fix">
-    @media (max-width: 640px) {
-      .page-calendar .calendar-card__caption-row {
-        display: grid !important;
-        grid-template-columns: 1fr auto !important;
-        align-items: flex-start !important;
-        gap: 0.5rem !important;
-        width: 100% !important;
         min-width: 0 !important;
       }
 
-      .page-calendar .calendar-card__caption {
-        flex: 1 1 auto !important;
+      .content-card, .contentCard, .calendar-card, .post-card, .card {
+        min-width: 0 !important;
+      }
+
+      /* ---- Fix Account/Profile tab label letter-stacking ---- */
+      [data-account-tabs],
+      .account-tabs,
+      .settings-tabs,
+      .modal-tabs {
+        display: flex !important;
+        gap: 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      [data-account-tab],
+      .account-tabs button,
+      .settings-tabs button,
+      .modal-tabs button {
+        flex: 1 1 0% !important;
         min-width: 0 !important;
         max-width: 100% !important;
-        width: 100% !important;
         writing-mode: horizontal-tb !important;
         text-orientation: mixed !important;
         white-space: normal !important;
         word-break: normal !important;
-        overflow-wrap: normal !important;
-        hyphens: none !important;
+        overflow-wrap: anywhere !important;
+        line-height: 1.15 !important;
+        text-align: center !important;
       }
 
-      .page-calendar .calendar-card__caption-row .caption-copy-btn,
-      .page-calendar .calendar-card__caption-row .detail-copy-btn {
-        flex: 0 0 auto !important;
-        justify-self: end !important;
+      /* Hard reset any accidental vertical/stacking rules inside the modal */
+      [data-account-modal-panel] *,
+      .account-modal * {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        letter-spacing: normal !important;
       }
-
-      .page-calendar .calendar-card__detail-row .detail-row__top {
-        display: grid !important;
-        grid-template-columns: 1fr auto !important;
+    }
+  </style>
+  <style id="mobile-account-email-fix-v2">
+    @media (max-width: 640px) {
+      /* Scope to the account modal only */
+      [data-account-modal] [data-email-row] {
+        display: flex !important;
         align-items: center !important;
+        gap: 10px !important;
         width: 100% !important;
+        max-width: 100% !important;
         min-width: 0 !important;
       }
 
-      .page-calendar .calendar-card__detail-row .detail-row__top strong {
+      /* Email text must be horizontal + single line */
+      [data-account-modal] [data-email-value] {
         flex: 1 1 auto !important;
         min-width: 0 !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        hyphens: none !important;
+        line-height: 1.2 !important;
       }
 
-      .page-calendar .calendar-card__detail-row .detail-row__top .detail-copy-btn {
-        margin-left: auto !important;
+      /* Copy button stays right, never stretches across the row */
+      [data-account-modal] [data-email-copy] {
         flex: 0 0 auto !important;
+        white-space: nowrap !important;
+        align-self: center !important;
       }
 
-      .page-calendar .calendar-card__caption-row .caption-copy-btn,
-      .page-calendar .calendar-card__caption-row .detail-copy-btn,
-      .page-calendar .calendar-card__detail-row .detail-copy-btn,
-      .page-calendar .calendar-card__caption-row [aria-label^="Copy"],
-      .page-calendar .calendar-card__detail-row .detail-row__top [aria-label^="Copy"] {
-        margin-left: auto !important;
-        justify-self: end !important;
-        flex: 0 0 auto !important;
-        position: static !important;
-        left: auto !important;
-        right: auto !important;
-        top: auto !important;
-        transform: none !important;
+      /* Neutralize per-letter wrapping rules inside the modal */
+      [data-account-modal] * {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        word-break: normal !important;
+      }
+
+      /* Allow normal paragraph wrapping elsewhere */
+      [data-account-modal] p,
+      [data-account-modal] .muted,
+      [data-account-modal] .helper,
+      [data-account-modal] .description {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        overflow-wrap: break-word !important;
       }
     }
   </style>
@@ -1198,47 +969,43 @@
   <script src="/sw-register.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script src="/js/landing.js" defer></script>
-  <!-- Upgrade Modal -->
-  <div id="upgrade-modal" class="modal" style="display: none;">
-    <div class="modal-content upgrade-modal">
-      <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal" data-analytics="modal_close">&times;</button>
-      <div class="upgrade-header">
-        <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <h2>Upgrade to Promptly Pro</h2>
-        <p class="upgrade-subtitle">Unlock Brand Brain, Voice Lock, Target Audience, and post regeneration.</p>
-      </div>
+  <script id="account-modal-mobile-js-v3">
+    (function () {
+      const root = document.querySelector('[data-account-modal-root]');
+      const panel = document.querySelector('[data-account-modal-panel]');
+      const closeBtn = document.querySelector('[data-account-modal-close]');
+      if (!root || !panel) return;
 
-      <div class="pricing-cards">
-          <div class="pricing-card">
-            <div class="pricing-tier">Starter</div>
-            <div class="pricing-price">FREE<span></span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-              <li><span class="check">✓</span> Limited Saves and Exports</li>
-            </ul>
-          </div>
+      function isVisible(el){
+        const cs = getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+      }
 
-          <div class="pricing-card pricing-card-pro">
-            <div class="pricing-badge">Most Popular</div>
-            <div class="pricing-tier">Pro</div>
-            <div class="pricing-price">$19.99<span>/month</span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-              <li><span class="check">✓</span> Brand Brain unlocked</li>
-              <li><span class="check">✓</span> Regenerate a single post</li>
-              <li><span class="check">✓</span> Unlimited Saves and Exports</li>
-            </ul>
-              <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;" data-analytics="upgrade_cta">
-                Upgrade to Pro
-              </button>
-        </div>
-      </div>
+      function syncLock(){
+        const open = isVisible(root);
+        document.documentElement.classList.toggle('modal-open', open);
+        document.body.classList.toggle('modal-open', open);
+        if (open) {
+          panel.scrollLeft = 0;
+          panel.scrollTop = Math.max(panel.scrollTop, 0);
+        }
+      }
 
-      <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
-    </div>
-  </div>
+      const obs = new MutationObserver(syncLock);
+      obs.observe(root, { attributes: true, attributeFilter: ['style', 'class', 'aria-hidden'] });
+      syncLock();
+
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof window.closeAccountModal === 'function') window.closeAccountModal();
+          else root.style.display = 'none';
+          syncLock();
+        }, { passive: false });
+      }
+    })();
+  </script>
 <div id="generate-asset-modal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1" style="display:none">
       <div class="modal__backdrop"></div>
       <div class="modal__dialog">
