@@ -1,4 +1,17 @@
 node_modules/
+.env
+.DS_Store
+dist/
+build/
+coverage/
+*.log
+
+# Optional IDE files
+.idea/
+.vscode/
+
+# Mac resource forks
+._*node_modules/
 .DS_Store
 *.log
 .env
