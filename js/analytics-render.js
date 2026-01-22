@@ -239,10 +239,11 @@ export function renderConnectedAccounts(accounts = []) {
 export function applyAnalyticsAccess(plan) {
   const isPro = plan === 'pro' || plan === 'teams';
 
-  toggleSection('insights-section', isPro, 'Upgrade to Promptly Pro to unlock AI Insights.');
+  // Make analytics visible to Free users; keep Experiments Pro-only.
+  toggleSection('insights-section', true, '');
+  toggleSection('alerts-section', true, '');
+  toggleSection('growth-report-section', true, '');
   toggleSection('experiments-section', isPro, 'Upgrade to run 7-day content experiments.');
-  toggleSection('alerts-section', isPro, 'Upgrade to see real-time performance alerts.');
-  toggleSection('growth-report-section', isPro, 'Upgrade to get weekly growth reports.');
 }
 
 function toggleSection(id, isVisible, upsellText) {

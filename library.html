@@ -3,12 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Promptly</title>
+  <title>Promptly</title>
+  <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
+  <link rel="canonical" href="https://usepromptly.app/" />
+  <meta property="og:title" content="Promptly · AI Content Studio" />
+  <meta property="og:description" content="Create a full month of strategic content in seconds." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://usepromptly.app/" />
+  <meta property="og:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Promptly · AI Content Studio" />
+  <meta name="twitter:description" content="Create a full month of strategic content in seconds." />
+  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600&family=Montserrat:wght@500;600&family=Poppins:wght@500;600&family=Bebas+Neue&family=Lora:wght@600&family=Merriweather:wght@600&family=Raleway:wght@500;600&family=Oswald:wght@500;600&family=Cinzel:wght@600&family=Josefin+Sans:wght@500;600&family=Abril+Fatface&family=League+Spartan:wght@500;600&family=Source+Sans+3:wght@400;500&family=Roboto:wght@400;500&family=Open+Sans:wght@400;600&family=Work+Sans:wght@400;500&family=Lato:wght@400;600&family=Nunito:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=PT+Serif:wght@400;600&family=Merriweather+Sans:wght@400;600&family=Karla:wght@400;600&family=Manrope:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
-    <link rel="stylesheet" href="styles.css" />
+  <link rel="mask-icon" href="assets/promptly-icon.svg" color="#7f5af0" />
+  <link rel="apple-touch-icon" href="assets/promptly-icon.svg" />
+  <meta name="theme-color" content="#0c0c0c" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
     <style>
       .library-container {
         padding: 2rem 0;
@@ -197,6 +217,12 @@
         background: rgba(86, 227, 150, 0.12);
       }
 
+      .sidebar-toggle {
+        position: fixed;
+        z-index: 9999;
+        pointer-events: auto;
+      }
+
       .calendar-card__range {
         font-size: 0.9rem;
         color: rgba(245, 246, 248, 0.8);
@@ -250,9 +276,19 @@
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
-  <body>
+  <body class="page-library" data-page="library">
     <div class="app-shell">
+      <nav class="landing-nav" aria-label="Primary navigation">
+        <div class="landing-nav__brand"></div>
+        <div class="landing-nav__links"></div>
+        <div class="landing-nav__actions">
+          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
+        </div>
+      </nav>
+
+      <div id="app-experience">
       <div class="app-layout">
         <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
           <span class="sidebar-toggle__bars" aria-hidden="true"></span>
@@ -260,23 +296,22 @@
         <aside class="app-sidebar" id="app-sidebar">
           <div class="sidebar-fixed-inner">
           <nav class="sidebar-nav" aria-label="Workspace navigation">
-            <a href="/" class="sidebar-link">
+            <a href="/calendar.html" class="sidebar-link">
               <span>Content Calendar</span>
             </a>
             <a href="/library.html" class="sidebar-link is-active" aria-current="page">
               <span>Library</span>
             </a>
-            <a href="/analytics.html" class="sidebar-link" data-nav="analytics">
-              <span>Analytics</span>
-            </a>
           </nav>
           </div>
         </aside>
         <div class="app-main">
-      <header class="hero">
-        <div class="hero-top" style="display: flex; align-items: center; justify-content: space-between;">
-          <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
-          
+      <header class="hero app-hero">
+        <div class="hero-top">
+          <div class="hero-top__left">
+            <img src="assets/promptly-logo.svg" alt="Promptly logo" class="logo" />
+            <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
+          </div>
           <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
             <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
             <div class="profile-wrapper">
@@ -301,7 +336,7 @@
         <p>Reopen, download, or continue refining any saved calendar. Everything you generate lives here.</p>
       </header>
 
-      <main>
+      <main id="app">
         <section class="library-container" aria-labelledby="library-saved-heading">
           <div class="library-header">
             <h2 id="library-saved-heading">Saved Calendars</h2>
@@ -350,69 +385,73 @@
       </footer>
         </div>
       </div>
+      <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+      </div>
     </div>
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay" style="display:none">
-      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only" id="account-close-btn" aria-label="Close profile settings">&times;</button>
+          <button class="ghost icon-only account-settings-close" id="accountSettingsClose" aria-label="Close profile settings" data-account-modal-close data-account-close>&times;</button>
         </div>
-        <div class="settings-tabs" role="tablist">
-          <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
-          <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
-        </div>
-        <div class="settings-panel active-panel" data-settings-panel="account">
-          <div class="settings-group">
-            <label>Email</label>
-            <div class="settings-field-readonly">
-              <span id="account-email-display">you@example.com</span>
-              <button type="button" id="account-email-copy" class="ghost">Copy</button>
-            </div>
+        <div class="account-settings-body" data-account-modal-body>
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
+            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
+            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
           </div>
-          <div class="settings-group">
-            <label>Password</label>
-            <div class="settings-field-readonly">
-              <span aria-label="Password is hidden">••••••••</span>
-              <button type="button" id="account-password-manage" class="ghost">Update password</button>
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
+            <div class="settings-group">
+              <label>Email</label>
+              <div class="settings-field-readonly mobile-email-row" data-email-row>
+                <span id="account-email-display" data-email-value>you@example.com</span>
+                <button type="button" id="account-email-copy" class="ghost" data-email-copy>Copy</button>
+              </div>
             </div>
-            <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
-          </div>
-          <div class="settings-group">
-            <label>Subscription</label>
-            <div class="settings-field-readonly">
-              <div class="settings-field-readonly__details">
-                <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
-                <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+            <div class="settings-group">
+              <label>Password</label>
+              <div class="settings-field-readonly">
+                <span aria-label="Password is hidden">••••••••</span>
+                <button type="button" id="account-password-manage" class="ghost">Update password</button>
+              </div>
+              <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+            </div>
+            <div class="settings-group">
+              <label>Subscription</label>
+              <div class="settings-field-readonly">
+                <div class="settings-field-readonly__details">
+                  <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
+                  <span class="field-hint" id="account-plan-limits"></span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Last login</label>
+              <div class="settings-field-readonly">
+                <span id="account-last-login">Not available</span>
               </div>
             </div>
           </div>
-          <div class="settings-group">
-            <label>Last login</label>
-            <div class="settings-field-readonly">
-              <span id="account-last-login">Not available</span>
-            </div>
-          </div>
-        </div>
-        <div class="settings-panel" data-settings-panel="profile">
-          <form id="account-settings-form" class="settings-form">
-            <div class="settings-group">
-              <label for="account-display-name">Display name</label>
-              <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
-            </div>
-            <div class="settings-group">
-              <label for="account-pronouns">Pronouns (optional)</label>
-              <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
-            </div>
-            <div class="settings-group">
-              <label for="account-role">Role or team</label>
-              <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
-            </div>
-            <fieldset class="settings-group">
+          <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
+            <form id="account-settings-form" class="settings-form">
+              <div class="settings-group">
+                <label for="account-display-name">Display name</label>
+                <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
+              </div>
+              <div class="settings-group">
+                <label for="account-pronouns">Pronouns (optional)</label>
+                <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
+              </div>
+              <div class="settings-group">
+                <label for="account-role">Role or team</label>
+                <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
+              </div>
+              <fieldset class="settings-group">
               <legend class="settings-group__label">Interface preferences</legend>
               <div class="settings-accessibility">
                 <label class="settings-toggle">
@@ -429,7 +468,7 @@
                 </label>
               </div>
             </fieldset>
-            <div class="settings-actions">
+            <div class="settings-actions" data-account-modal-actions>
               <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
               <div class="settings-actions__buttons">
                 <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
@@ -443,19 +482,112 @@
 
     <!-- Brand Brain Modal -->
     <div id="brand-modal" class="brand-brain-overlay" style="display:none">
-      <div class="brand-brain-card">
-        <div class="brand-modal__section">
-          <h3 class="brand-brain-title">Brand Brain</h3>
-          <p class="modal-sub brand-brain-subtitle">Add your brand voice, tone, guidelines, and examples. We'll use this to personalize all generated content.</p>
-          <textarea id="brand-text" rows="8" placeholder="Example: We're a wellness brand for busy professionals. Tone: Supportive and energizing..."></textarea>
-          <div class="modal-actions brand-brain-actions">
-            <button id="brand-cancel-btn" class="ghost">Close</button>
-            <button id="brand-save-btn" class="primary">Save Preferences</button>
+      <div class="brand-brain-panel" role="dialog" aria-modal="true">
+        <header class="brand-brain-header">
+          <div class="brand-brain-header-left">
+            <h3>Brand Brain</h3>
+            <span class="brand-brain-badge">Pro</span>
           </div>
-          <div id="brand-status" class="input-feedback" aria-live="polite"></div>
+          <span id="brand-brain-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">Optimize your monthly plan with growth and conversion strategy tailored to your audience.</p>
+
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="brand-brain-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Optimize calendar for growth + conversions</div>
+            <div class="brand-brain-toggle-subtext">Applies platform patterns and sales psychology to your monthly plan.</div>
+          </div>
+          <span class="brand-brain-locked-pill">Pro</span>
         </div>
-  </div>
-</div>
+        <div class="brand-brain-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
+
+        <fieldset class="brand-brain-section" data-pro-lock="1">
+          <legend>Strategy preset</legend>
+          <label class="brand-brain-radio">
+            <input type="radio" name="brand-brain-preset" value="direct_response" checked />
+            <span>Direct Response (conversion-first)</span>
+          </label>
+          <label class="brand-brain-radio">
+            <input type="radio" name="brand-brain-preset" value="authority_builder" />
+            <span>Authority Builder (trust-first)</span>
+          </label>
+          <label class="brand-brain-radio">
+            <input type="radio" name="brand-brain-preset" value="viral_hybrid" />
+            <span>Viral Hybrid (reach + conversion balance)</span>
+          </label>
+        </fieldset>
+
+        <div class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label" for="brand-brain-audience">Audience</label>
+          <input id="brand-brain-audience" type="text" placeholder="Who you serve (one line)" />
+          <label class="brand-brain-label" for="brand-brain-offer">Offer</label>
+          <input id="brand-brain-offer" type="text" placeholder="Core offer or outcome (one line)" />
+          <div class="brand-brain-grid">
+            <div>
+              <label class="brand-brain-label" for="brand-brain-cta">Primary CTA</label>
+              <select id="brand-brain-cta">
+                <option value="comment">Comment</option>
+                <option value="dm">DM</option>
+                <option value="link_in_bio">Link in bio</option>
+                <option value="save_share">Save/Share</option>
+                <option value="follow">Follow</option>
+              </select>
+            </div>
+            <div>
+              <label class="brand-brain-label" for="brand-brain-risk">Risk level</label>
+              <div class="brand-brain-risk-row">
+                <span>Conservative</span>
+                <input id="brand-brain-risk" type="range" min="0" max="100" value="45" />
+                <span>Aggressive</span>
+              </div>
+              <div class="brand-brain-risk-value">Risk: <span id="brand-brain-risk-value">45</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label">Content levers</label>
+          <div class="brand-brain-levers">
+            <label class="brand-brain-toggle">
+              <input type="checkbox" id="brand-brain-lever-hooks" checked />
+              <span>Stronger hooks</span>
+            </label>
+            <label class="brand-brain-toggle">
+              <input type="checkbox" id="brand-brain-lever-captions" checked />
+              <span>Shorter captions</span>
+            </label>
+            <label class="brand-brain-toggle">
+              <input type="checkbox" id="brand-brain-lever-loops" checked />
+              <span>Add engagement loops</span>
+            </label>
+            <label class="brand-brain-toggle">
+              <input type="checkbox" id="brand-brain-lever-retention" checked />
+              <span>Add retention beats</span>
+            </label>
+            <label class="brand-brain-toggle">
+              <input type="checkbox" id="brand-brain-lever-cta" checked />
+              <span>Add CTA variety</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="brand-brain-section brand-brain-rules">
+          <div class="brand-brain-rules-title">Rules preview</div>
+          <ul id="brand-brain-rules-list"></ul>
+        </div>
+
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save">
+            <span id="brand-brain-save-indicator"></span>
+            <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
+          </div>
+          <button id="brand-brain-close" class="ghost">Close</button>
+        </div>
+      </div>
     </div>
 
     <!-- Upgrade Modal (mirrored from index.html) -->
@@ -471,16 +603,11 @@
         </div>
         <div class="pricing-cards">
           <div class="pricing-card">
-            <div class="pricing-tier">Free</div>
-            <div class="pricing-price">$0<span>/month</span></div>
+            <div class="pricing-tier">Starter</div>
+            <div class="pricing-price">FREE<span></span></div>
             <ul class="pricing-features">
-              <li><span class="check">✓</span> 1 calendar per month</li>
-              <li><span class="check">✓</span> Instagram captions only</li>
-              <li><span class="check">✓</span> Copy text to clipboard</li>
-              <li><span class="cross">✗</span> Download ZIP files</li>
-              <li><span class="cross">✗</span> Brand Brain</li>
-              <li><span class="cross">✗</span> Save to library</li>
-              <li><span class="cross">✗</span> Platform variants</li>
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Limited Saves and Exports</li>
             </ul>
           </div>
           <div class="pricing-card pricing-card-pro">
@@ -488,13 +615,10 @@
             <div class="pricing-tier">Pro</div>
             <div class="pricing-price">$19.99<span>/month</span></div>
             <ul class="pricing-features">
-              <li><span class="check">✓</span> Unlimited calendars</li>
-              <li><span class="check">✓</span> All platform variants</li>
-              <li><span class="check">✓</span> Full download suite</li>
-              <li><span class="check">✓</span> Brand Brain AI</li>
-              <li><span class="check">✓</span> Unlimited library saves</li>
-              <li><span class="check">✓</span> Fast parallel generation</li>
-              <li><span class="check">✓</span> Priority support</li>
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Brand Brain unlocked</li>
+              <li><span class="check">✓</span> Regenerate a single post</li>
+              <li><span class="check">✓</span> Unlimited Saves and Exports</li>
             </ul>
             <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">Upgrade to Pro</button>
             <a id="upgrade-same-tab" href="https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en" class="ghost" style="margin-top: 0.75rem; display: inline-block; text-decoration: none;">Open checkout in this tab</a>
@@ -505,10 +629,17 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
-    <script type="module" src="./script.js"></script>
+  <script type="application/ld+json" src="/assets/schema-website.json"></script>
+  <script type="application/ld+json" src="/assets/schema-organization.json"></script>
+  <script type="application/ld+json" src="/assets/schema-product.json"></script>
+    <script type="module" src="./script.js?t=1764000000"></script>
+  <script type="module" src="./footer.js?t=1763412925"></script>
+  <script src="/sw-register.js" defer></script>
+  <script src="/pwa-install.js" defer></script>
+  <script src="/js/landing.js" defer></script>
     <script type="module" src="./library.js?t=1763412925"></script>
-    <script type="module" src="./footer.js?t=1763412925"></script>
-    <script src="/sw-register.js" defer></script>
-    <script src="/pwa-install.js" defer></script>
   </body>
 </html>
+
+
+

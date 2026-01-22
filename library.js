@@ -4,6 +4,8 @@ import { initTheme } from './theme.js';
 // Apply theme on page load
 initTheme();
 
+const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
+
 // JSZip loader
 let __zipLoaderPromise = null;
 
@@ -115,11 +117,8 @@ function buildPostHTML(post) {
       + `</div>`
     );
   }
-  if (isLibraryUserPro && post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
-  }
-  if (isLibraryUserPro && post.postingTimeTip) {
-    detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
+  if (isLibraryUserPro && post.audio) {
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
   }
   if (isLibraryUserPro && post.visualTemplate && post.visualTemplate.url) {
     detailBlocks.push(`<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`);
@@ -176,7 +175,7 @@ function buildPostHTML(post) {
     summary:hover{color:#9d7ff5}
     .calendar-card__details{padding-top:1rem;display:flex;flex-direction:column;gap:1rem}
     .calendar-card__details>div,.calendar-card__details>span{background:rgba(255,255,255,0.05);padding:0.75rem;border-radius:8px;font-size:0.9rem}
-    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__posting-tip,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:#c7d2fe}
+    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:#c7d2fe}
     .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#7f5af0;font-style:normal;font-weight:600}
     .calendar-card__visual a{color:#7f5af0;text-decoration:none;font-weight:600}
     .calendar-card__visual a:hover{text-decoration:underline}
@@ -307,6 +306,10 @@ const calendarSortSelect = document.getElementById('calendar-sort');
 const calendarFilterButtons = document.querySelectorAll('[data-calendar-filter]');
 const calendarEmptyState = document.getElementById('library-empty-state');
 const calendarEmptyCta = document.getElementById('calendar-empty-cta');
+const appLayout = document.querySelector('.app-layout');
+const appSidebar = document.getElementById('app-sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
 let currentUser = null;
 let isLibraryUserPro = false;
@@ -316,6 +319,80 @@ const calendarRawLookup = new Map();
 
 renderLibraryCalendars();
 
+function applySidebarState(collapsed) {
+  if (!appSidebar) return;
+  appSidebar.classList.toggle('collapsed', collapsed);
+  if (appLayout) appLayout.classList.toggle('sidebar-collapsed', collapsed);
+  if (sidebarToggle) sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  try {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch (_) {}
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.toggle('visible', !collapsed && isMobile);
+  }
+  document.body.classList.toggle('sidebar-open', !collapsed && isMobile);
+}
+
+function initSidebarToggle() {
+  if (!appSidebar || !sidebarToggle) return;
+  let collapsed = true;
+  try {
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (stored === null) {
+      collapsed = true;
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, '1');
+    } else {
+      collapsed = stored === '1';
+    }
+  } catch (_) {}
+  applySidebarState(collapsed);
+  sidebarToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    const next = !appLayout?.classList.contains('sidebar-collapsed');
+    applySidebarState(next);
+  });
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
+  }
+}
+
+function closeProfileMenu() {
+  if (profileMenu) profileMenu.style.display = 'none';
+  if (profileTrigger) profileTrigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProfileMenu() {
+  if (!profileMenu || !profileTrigger) return;
+  const isOpen = profileMenu.style.display === 'block';
+  if (isOpen) {
+    closeProfileMenu();
+  } else {
+    profileMenu.style.display = 'block';
+    profileTrigger.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function initProfileMenu() {
+  if (profileTrigger) {
+    profileTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleProfileMenu();
+    });
+  }
+  if (profileMenu) {
+    profileMenu.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+  }
+  document.addEventListener('click', (event) => {
+    if (!profileMenu || !profileTrigger) return;
+    if (profileTrigger.contains(event.target)) return;
+    closeProfileMenu();
+  });
+}
+
 // Global sign-out handler (now async with Supabase)
 window.handleSignOut = async function() {
   const { signOut } = await import('./user-store.js');
@@ -324,55 +401,73 @@ window.handleSignOut = async function() {
   window.location.href = '/auth.html';
 };
 
-// Initialize user and check auth
-(async () => {
-  currentUser = await getCurrentUser();
+async function hydrateLibraryUser() {
+  try {
+    currentUser = await getCurrentUser();
+  } catch (err) {
+    console.warn('[Library] failed to resolve user', err);
+  }
   if (!currentUser) {
     window.location.href = '/auth.html';
     return;
   }
-
   if (userEmailEl) userEmailEl.textContent = currentUser;
   if (profileInitial && currentUser) {
     const initial = currentUser.trim().charAt(0) || 'P';
     profileInitial.textContent = initial.toUpperCase();
   }
-  
-  // Show PRO badge if applicable
-  const userIsPro = await isPro(currentUser);
-  isLibraryUserPro = userIsPro;
-  if (userTierBadge && userIsPro) {
-    userTierBadge.textContent = 'PRO';
-    userTierBadge.style.display = 'inline-block';
-  }
-  if (manageBillingBtn) {
-    manageBillingBtn.style.display = userIsPro ? 'inline-block' : 'none';
-    if (userIsPro && !manageBillingBtn.dataset.bound) {
-      manageBillingBtn.dataset.bound = '1';
-      manageBillingBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        try {
-          const resp = await fetch('/api/billing/portal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
-          });
-          const data = await resp.json().catch(() => ({}));
-          if (resp.ok && data && data.url) {
-            window.location.href = data.url;
-          } else {
-            alert(data?.error || 'Billing portal is not configured yet.');
-          }
-        } catch (err) {
-          alert('Billing portal unavailable. Please try again later.');
-        }
-      });
+  try {
+    const userIsPro = await isPro(currentUser);
+    isLibraryUserPro = userIsPro;
+    if (userTierBadge && userIsPro) {
+      userTierBadge.textContent = 'PRO';
+      userTierBadge.style.display = 'inline-block';
     }
+    if (manageBillingBtn) {
+      manageBillingBtn.style.display = userIsPro ? 'inline-block' : 'none';
+      if (userIsPro && !manageBillingBtn.dataset.bound) {
+        manageBillingBtn.dataset.bound = '1';
+        manageBillingBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          try {
+            const resp = await fetch('/api/billing/portal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data && data.url) {
+              window.location.href = data.url;
+            } else {
+              alert(data?.error || 'Billing portal is not configured yet.');
+            }
+          } catch (_) {
+            alert('Billing portal unavailable. Please try again later.');
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[Library] tier lookup failed', err);
   }
-  
-  // Load calendars after user is confirmed
-  loadCalendars();
-})();
+  try {
+    loadCalendars();
+  } catch (err) {
+    console.warn('[Library] calendar load failed', err);
+  }
+}
+
+function initLibraryPage() {
+  initSidebarToggle();
+  initProfileMenu();
+  hydrateLibraryUser();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initLibraryPage);
+} else {
+  initLibraryPage();
+}
 
 // Upgrade modal handlers (library page)
 function showUpgradeModal() {
@@ -427,7 +522,7 @@ if (signOutBtn) {
 
 
 function startNewCalendarFlow() {
-  window.location.href = '/';
+  window.location.href = '/calendar.html';
 }
 
 if (newCalendarBtn) {
@@ -612,7 +707,7 @@ function handleCalendarAction(action = 'open', calendarId = '') {
 
   if (action === 'open') {
     sessionStorage.setItem('promptly_load_calendar', JSON.stringify(rawCalendar));
-    window.location.href = '/';
+    window.location.href = '/calendar.html';
   } else if (action === 'delete') {
     const confirmed = window.confirm('Delete this saved calendar? This cannot be undone.');
     if (!confirmed) return;

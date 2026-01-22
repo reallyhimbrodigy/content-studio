@@ -236,10 +236,17 @@
         cursor: pointer;
         width: 28px;
         height: 28px;
-        color: rgba(255, 255, 255, 0.6);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #050505 !important;
       }
-      .password-toggle:hover { color: rgba(255, 255, 255, 0.9); }
-      .password-toggle svg { width: 20px; height: 20px; }
+      .password-toggle:hover { color: #050505 !important; }
+      .password-toggle svg {
+        width: 20px;
+        height: 20px;
+        stroke: #050505 !important;
+      }
       .password-toggle .icon-eye-off { display: none; }
       .password-toggle[aria-pressed="true"] .icon-eye { display: none; }
       .password-toggle[aria-pressed="true"] .icon-eye-off { display: inline; }
@@ -367,6 +374,19 @@
       @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
       @media (max-width: 700px) {
+        body {
+          justify-content: flex-start;
+          align-items: stretch;
+        }
+
+        .auth-card {
+          order: 1;
+        }
+
+        .auth-brand {
+          order: 2;
+        }
+
         .auth-card,
         .auth-brand {
           border-radius: 24px;
@@ -374,17 +394,17 @@
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
   <body>
     <div class="auth-shell">
       <section class="auth-brand">
         <img src="assets/promptly-logo.svg" alt="Promptly" />
         <h1>Promptly</h1>
-        <p>Log in to manage every campaign from one streamlined dashboard.<br/>New here? Create your account in seconds.</p>
+        <p>Log in to your Promptly account.<br/>Get a full month of content planned with built-in strategy so your posts are made to perform.</p>
         <ul>
-          <li>No credit card required to create your first calendar</li>
-          <li>Save hours of planning with sequenced, ready-to-post calendars</li>
-          <li>Access download-ready posts for every major platform</li>
+          <li>Create an account in seconds.</li>
+          <li>Know what to post—and why it works.</li>
         </ul>
         <div class="auth-back-home">
           <a href="/?view=landing" class="auth-back-home__link" data-back-home>

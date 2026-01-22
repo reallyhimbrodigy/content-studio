@@ -26,6 +26,49 @@ function isAuthSessionMissingError(error) {
   return msg.includes('auth session missing');
 }
 
+function isAuthFetchError(error) {
+  if (!error) return false;
+  const name = String(error.name || '').toLowerCase();
+  const msg = String(error.message || '').toLowerCase();
+  return (
+    name.includes('authretryablefetcherror') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('err_socket_not_connected') ||
+    msg.includes('err_timed_out') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('fetch')
+  );
+}
+
+function isAuthAbortError(error) {
+  if (!error) return false;
+  const name = String(error.name || '').toLowerCase();
+  const msg = String(error.message || '').toLowerCase();
+  return name.includes('aborterror') || msg.includes('aborted');
+}
+
+let inflightAuthUserPromise = null; // Single-flight to prevent parallel auth fetches.
+let lastKnownUserTier = null; // Preserve tier when auth is temporarily unresolved.
+
+async function fetchAuthUserSingleFlight() {
+  if (inflightAuthUserPromise) return inflightAuthUserPromise;
+  inflightAuthUserPromise = (async () => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!session) return null; // Avoid unnecessary /auth/v1/user when clearly logged out.
+    if (session?.user) return session.user;
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    return user || null;
+  })();
+  try {
+    return await inflightAuthUserPromise;
+  } finally {
+    inflightAuthUserPromise = null;
+  }
+}
+
 function markProfileSettingsColumnMissing() {
   profileSettingsColumnMissing = true;
   try {
@@ -57,13 +100,17 @@ function isProfileSettingsColumnMissing(error) {
 
 export async function getCurrentUser() {
   try {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    if (session?.user?.email) return session.user.email;
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError) throw userError;
+    const user = await fetchAuthUserSingleFlight();
     return user?.email || null;
   } catch (error) {
+    if (isAuthAbortError(error)) {
+      console.warn('getCurrentUser aborted (unexpected):', error);
+      return null;
+    }
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUser network error:', error);
+      return null;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUser error:', error);
     }
@@ -73,10 +120,17 @@ export async function getCurrentUser() {
 
 export async function getCurrentUserDetails() {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw error;
+    const user = await fetchAuthUserSingleFlight();
     return user || null;
   } catch (error) {
+    if (isAuthAbortError(error)) {
+      console.warn('getCurrentUserDetails aborted (unexpected):', error);
+      return null;
+    }
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUserDetails network error:', error);
+      return null;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUserDetails error:', error);
     }
@@ -86,13 +140,26 @@ export async function getCurrentUserDetails() {
 
 export async function getCurrentUserId() {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return user?.id || null;
+    const user = await fetchAuthUserSingleFlight();
+    if (user?.id) {
+      return user.id;
+    }
+    console.info('getCurrentUserId no active session');
+    return null;
   } catch (error) {
+    if (isAuthAbortError(error)) {
+      console.warn('getCurrentUserId aborted by local signal (unexpected):', error);
+      throw error;
+    }
+    if (isAuthFetchError(error)) {
+      console.warn('getCurrentUserId network error:', error);
+      throw error;
+    }
     if (!isAuthSessionMissingError(error)) {
       console.error('getCurrentUserId error:', error);
+      throw error;
     }
+    console.info('getCurrentUserId no active session');
     return null;
   }
 }
@@ -202,9 +269,17 @@ export async function resetPassword(email) {
 
 export async function getUserTier(email) {
   try {
-    const userId = await getCurrentUserId();
-    console.log('getUserTier - userId:', userId);
-    if (!userId) return 'free';
+    let userId = null;
+    try {
+      userId = await getCurrentUserId();
+    } catch (error) {
+      console.warn('getUserTier auth unresolved, keeping last known tier:', error);
+      return lastKnownUserTier || 'unknown'; // Do not downgrade on auth fetch failure.
+    }
+    if (!userId) {
+      lastKnownUserTier = null;
+      return 'free';
+    }
     
     const { data, error } = await supabase
       .from('profiles')
@@ -215,11 +290,11 @@ export async function getUserTier(email) {
     console.log('getUserTier - data:', data, 'error:', error);
     if (error) throw error;
     const tier = data?.tier || 'free';
-    console.log('getUserTier - returning tier:', tier);
+    lastKnownUserTier = tier;
     return tier;
   } catch (error) {
     console.error('getUserTier error:', error);
-    return 'free';
+    return lastKnownUserTier || 'unknown';
   }
 }
 

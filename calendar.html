@@ -2,19 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Promptly</title>
   <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
   <link rel="canonical" href="https://usepromptly.app/" />
-  <meta property="og:title" content="Promptly • AI Content Studio" />
-  <meta property="og:description" content="Generate a complete 30‑day social content calendar in seconds. Strategy, captions, variants, exports." />
+  <meta property="og:title" content="Promptly · AI Content Studio" />
+  <meta property="og:description" content="Create a full month of strategic content in seconds." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://usepromptly.app/" />
-  <meta property="og:image" content="https://usepromptly.app/assets/og-banner.svg" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Promptly • AI Content Studio" />
-  <meta name="twitter:description" content="Generate a complete 30‑day social content calendar in seconds." />
-  <meta name="twitter:image" content="https://usepromptly.app/assets/og-banner.svg" />
+  <meta property="og:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Promptly · AI Content Studio" />
+  <meta name="twitter:description" content="Create a full month of strategic content in seconds." />
+  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -28,22 +30,11 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
-  <body>
-    <div class="app-shell">
-      <nav class="landing-nav" aria-label="Primary navigation">
-        <div class="landing-nav__brand"></div>
-        <div class="landing-nav__links">
-          <a href="#product">Product</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#pricing">Pricing</a>
-        </div>
-        <div class="landing-nav__actions">
-          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
-        </div>
-      </nav>
-
-  <div id="app-experience">
+  <body class="page-calendar">
+    <div class="app-shell calendar-page">
+      <div id="app-experience" style="display:none;">
         <div class="app-layout">
           <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="true">
             <span class="sidebar-toggle__bars" aria-hidden="true"></span>
@@ -57,9 +48,6 @@
                 <a href="/library.html" class="sidebar-link">
                   <span>Library</span>
                 </a>
-                <a href="/analytics.html" class="sidebar-link" data-nav="analytics">
-                  <span>Analytics</span>
-                </a>
               </nav>
             </div>
           </aside>
@@ -71,16 +59,9 @@
               <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
             </div>
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
-              <label class="post-frequency" for="post-frequency-select">
-                <span class="post-frequency__label">Posts/day</span>
-                <span class="post-frequency__value" id="post-frequency-display">1x</span>
-                <select id="post-frequency-select" aria-label="Posts per day">
-                  <option value="1">1x</option>
-                  <option value="2">2x</option>
-                  <option value="3">3x</option>
-                </select>
-              </label>
-              <button id="brand-brain-btn" class="primary brand-brain-btn">Brand Brain</button>
+              <button id="brand-brain-btn" class="primary brand-brain-btn" data-analytics="modal_brandbrain_open">Brand Brain</button>
+              <button id="voice-lock-btn" class="primary brand-brain-btn" data-analytics="modal_voicelock_open">Voice Lock</button>
+              <button id="target-audience-btn" class="primary brand-brain-btn" data-analytics="modal_targetaudience_open">Target Audience</button>
                 <div class="profile-wrapper">
                   <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
                   <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
@@ -115,7 +96,7 @@
                 aria-required="true"
                 required
               />
-              <button id="generate-calendar" class="secondary primary-large">
+              <button id="generate-calendar" class="secondary primary-large" data-analytics="calendar_generate">
                 <span class="spinner" aria-hidden="true" style="display:none"></span>
                 <span class="btn-text">Generate My 30-Day Calendar</span>
               </button>
@@ -127,29 +108,6 @@
               </div>
               <div id="niche-feedback" class="input-feedback" aria-live="polite" aria-atomic="true"></div>
               <div id="generation-errors" class="generation-errors" style="display:none" aria-live="polite" aria-atomic="false"></div>
-            </div>
-          </div>
-          <div class="hero__features">
-            <div class="feature-pill">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 1L10.5 6L16 7L12 11L13 16L8 13.5L3 16L4 11L0 7L5.5 6L8 1Z" fill="currentColor"/>
-              </svg>
-              <span>AI-powered strategy</span>
-            </div>
-            <div class="feature-pill">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                <path d="M8 4v4l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-              <span>30 days in 30 seconds</span>
-            </div>
-            <div class="feature-pill">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M14 8c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M14 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M10 2h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>Export & publish anywhere</span>
             </div>
           </div>
         </header>
@@ -447,6 +405,7 @@
       </footer>
           </div>
         </div>
+        <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
       </div>
     </div>
@@ -529,92 +488,195 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay" style="display:none">
-      <div class="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
           </div>
-          <button class="ghost icon-only" id="account-close-btn" aria-label="Close profile settings">
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
             &times;
           </button>
         </div>
-        <div class="settings-tabs" role="tablist">
-          <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true">Account</button>
-          <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false">Profile &amp; accessibility</button>
+        <div class="account-settings-body" data-account-modal-body>
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
+            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
+            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
+          </div>
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
+            <div class="settings-group">
+              <label>Email</label>
+              <div class="settings-field-readonly mobile-email-row" data-email-row>
+                <span id="account-email-display" data-email-value>you@example.com</span>
+                <button type="button" id="account-email-copy" class="ghost" data-email-copy>Copy</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Password</label>
+              <div class="settings-field-readonly">
+                <span aria-label="Password is hidden">••••••••</span>
+                <button type="button" id="account-password-manage" class="ghost">Update password</button>
+              </div>
+              <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+            </div>
+            <div class="settings-group">
+              <label>Subscription</label>
+              <div class="settings-field-readonly">
+                <div class="settings-field-readonly__details">
+                  <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
+                  <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Last login</label>
+              <div class="settings-field-readonly">
+                <span id="account-last-login">Not available</span>
+              </div>
+            </div>
+          </div>
+            <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
+              <form id="account-settings-form" class="settings-form">
+              <div class="settings-group">
+                <label for="account-display-name">Display name</label>
+                <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
+              </div>
+              <div class="settings-group">
+                <label for="account-pronouns">Pronouns (optional)</label>
+                <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
+              </div>
+              <div class="settings-group">
+                <label for="account-role">Role or team</label>
+                <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
+              </div>
+              <fieldset class="settings-group">
+                <legend class="settings-group__label">Interface preferences</legend>
+                <div class="settings-accessibility" data-interface-prefs>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-high-contrast" />
+                    <span>High contrast surfaces</span>
+                  </label>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-large-type" />
+                    <span>Larger typography</span>
+                  </label>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-reduced-motion" />
+                    <span>Reduce motion &amp; animations</span>
+                  </label>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+          <div class="settings-actions" data-account-modal-actions>
+            <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
+            <div class="settings-actions__buttons">
+              <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
+              <button type="submit" form="account-settings-form" class="primary">Save preferences</button>
+            </div>
+          </div>
         </div>
-        <div class="settings-panel active-panel" data-settings-panel="account">
-          <div class="settings-group">
-            <label>Email</label>
-            <div class="settings-field-readonly">
-              <span id="account-email-display">you@example.com</span>
-              <button type="button" id="account-email-copy" class="ghost">Copy</button>
-            </div>
+      </div>
+    </div>
+
+    <!-- Voice Lock Modal -->
+    <div id="voice-lock-modal" class="brand-brain-overlay" style="display:none">
+      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="voice-lock-modal-title">
+        <header class="brand-brain-header">
+          <div class="brand-brain-header-left">
+            <h3 id="voice-lock-modal-title">Voice Lock</h3>
+            <span class="brand-brain-badge">Pro</span>
           </div>
-          <div class="settings-group">
-            <label>Password</label>
-            <div class="settings-field-readonly">
-              <span aria-label="Password is hidden">••••••••</span>
-              <button type="button" id="account-password-manage" class="ghost">Update password</button>
-            </div>
-            <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+          <span id="voice-lock-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">Pin a writing voice for your next calendar generation.</p>
+
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="voice-lock-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Enabled</div>
+            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
           </div>
-          <div class="settings-group">
-            <label>Subscription</label>
-            <div class="settings-field-readonly">
-              <div class="settings-field-readonly__details">
-                <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
-                <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
-              </div>
-            </div>
-          </div>
-          <div class="settings-group">
-            <label>Last login</label>
-            <div class="settings-field-readonly">
-              <span id="account-last-login">Not available</span>
-            </div>
+          <span class="brand-brain-locked-pill" id="voice-lock-locked-pill">Pro</span>
+        </div>
+        <div class="brand-brain-locked-copy" id="voice-lock-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
+
+        <div id="voice-lock-controls" class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label" for="voice-lock-preset">Preset</label>
+          <div class="voice-lock-select-wrap" id="voice-lock-preset-wrap">
+            <select id="voice-lock-preset" class="voice-lock-select">
+              <option value="Direct">Direct</option>
+              <option value="Casual">Casual</option>
+              <option value="Punchy">Punchy</option>
+              <option value="Story-first">Story-first</option>
+              <option value="Contrarian">Contrarian</option>
+              <option value="No-AI-polish">No-AI-polish</option>
+            </select>
           </div>
         </div>
-        <div class="settings-panel" data-settings-panel="profile">
-          <form id="account-settings-form" class="settings-form">
-            <div class="settings-group">
-              <label for="account-display-name">Display name</label>
-              <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
-            </div>
-            <div class="settings-group">
-              <label for="account-pronouns">Pronouns (optional)</label>
-              <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
-            </div>
-            <div class="settings-group">
-              <label for="account-role">Role or team</label>
-              <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
-            </div>
-            <fieldset class="settings-group">
-              <legend class="settings-group__label">Interface preferences</legend>
-              <div class="settings-accessibility">
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-high-contrast" />
-                  <span>High contrast surfaces</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-large-type" />
-                  <span>Larger typography</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-reduced-motion" />
-                  <span>Reduce motion &amp; animations</span>
-                </label>
-              </div>
-            </fieldset>
-            <div class="settings-actions">
-              <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
-              <div class="settings-actions__buttons">
-                <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
-                <button type="submit" class="primary">Save preferences</button>
-              </div>
-            </div>
-          </form>
+
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save"></div>
+          <button type="button" id="voice-lock-close-btn" class="ghost" data-analytics="modal_close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Target Audience Modal -->
+    <div id="target-audience-modal" class="brand-brain-overlay" style="display:none">
+      <div class="brand-brain-panel" role="dialog" aria-modal="true" aria-labelledby="target-audience-modal-title">
+        <header class="brand-brain-header">
+          <div class="brand-brain-header-left">
+            <h3 id="target-audience-modal-title">Target Audience</h3>
+            <span class="brand-brain-badge">Pro</span>
+          </div>
+          <span id="target-audience-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">Tailor copy for a specific audience segment.</p>
+
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="target-audience-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Enabled</div>
+            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
+          </div>
+          <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
+        </div>
+        <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
+
+        <div id="target-audience-controls" class="brand-brain-section" data-pro-lock="1">
+          <label class="brand-brain-label" for="target-audience-preset">Preset</label>
+          <div class="target-audience-select-wrap" id="target-audience-preset-wrap">
+            <select id="target-audience-preset" class="target-audience-select">
+              <option value="Students">Students</option>
+              <option value="Young Adults (18–25)">Young Adults (18–25)</option>
+              <option value="Early Career Professionals">Early Career Professionals</option>
+              <option value="Working Professionals">Working Professionals</option>
+              <option value="Parents / Families">Parents / Families</option>
+              <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
+              <option value="Creators">Creators</option>
+              <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
+              <option value="Beginners">Beginners</option>
+              <option value="Experienced / Advanced">Experienced / Advanced</option>
+            </select>
+          </div>
+          <div class="settings-actions__buttons">
+            <button type="button" class="primary" id="target-audience-save">Save</button>
+          </div>
+        </div>
+
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save">
+            <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
+          </div>
+          <button type="button" id="target-audience-close-btn" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>
     </div>
@@ -729,69 +791,36 @@
 
     <!-- Brand Brain Modal -->
     <div id="brand-modal" class="brand-brain-overlay" style="display:none">
-      <div class="brand-brain-card">
-        <div class="brand-modal__section">
-          <h3 class="brand-brain-title">Brand Brain</h3>
-          <p class="modal-sub brand-brain-subtitle">Add your brand voice, tone, guidelines, and examples. We'll use this to personalize all generated content.</p>
-          <textarea id="brand-text" rows="8" placeholder="Example: We're a wellness brand for busy professionals. Tone: Supportive and energizing..."></textarea>
-          <div class="modal-actions brand-brain-actions">
-            <button id="brand-cancel-btn" class="ghost">Close</button>
-            <button id="brand-save-btn" class="primary">Save Preferences</button>
+      <div class="brand-brain-panel" role="dialog" aria-modal="true">
+        <header class="brand-brain-header">
+          <div class="brand-brain-header-left">
+            <h3>Brand Brain (Pro)</h3>
+            <span class="brand-brain-badge">Pro</span>
           </div>
-          <div id="brand-status" class="input-feedback" aria-live="polite"></div>
-        </div>
-  </div>
-</div>
-      </div>
-    </div>
+          <span id="brand-brain-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
+        </header>
+        <p class="brand-brain-subtitle">When enabled, Brand Brain applies sales psychology and platform distribution patterns to strengthen hooks, retention, saves, shares, and conversion intent across your calendar.</p>
 
-    <!-- Upgrade Modal -->
-    <div id="upgrade-modal" class="modal" style="display: none;">
-      <div class="modal-content upgrade-modal">
-        <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
-        <div class="upgrade-header">
-          <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          <h2>Upgrade to Promptly Pro</h2>
-          <p class="upgrade-subtitle">Unlock unlimited calendars, downloads, and advanced features</p>
-        </div>
-        
-        <div class="pricing-cards">
-          <div class="pricing-card">
-            <div class="pricing-tier">Free</div>
-            <div class="pricing-price">$0<span>/month</span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> 1 calendar per month</li>
-              <li><span class="check">✓</span> Instagram captions only</li>
-              <li><span class="check">✓</span> Copy text to clipboard</li>
-              <li><span class="cross">✗</span> Download ZIP files</li>
-              <li><span class="cross">✗</span> Brand Brain</li>
-              <li><span class="cross">✗</span> Save to library</li>
-              <li><span class="cross">✗</span> Platform variants</li>
-            </ul>
+        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <label class="brand-brain-switch">
+            <input type="checkbox" id="brand-brain-enabled" />
+            <span class="brand-brain-switch__slider"></span>
+          </label>
+          <div class="brand-brain-toggle-copy">
+            <div class="brand-brain-toggle-label">Enabled</div>
+            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
           </div>
-          
-          <div class="pricing-card pricing-card-pro">
-            <div class="pricing-badge">Most Popular</div>
-            <div class="pricing-tier">Pro</div>
-            <div class="pricing-price">$19.99<span>/month</span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> Unlimited calendars</li>
-              <li><span class="check">✓</span> All platform variants</li>
-              <li><span class="check">✓</span> Full download suite</li>
-              <li><span class="check">✓</span> Brand Brain AI</li>
-              <li><span class="check">✓</span> Unlimited library saves</li>
-              <li><span class="check">✓</span> Fast parallel generation</li>
-              <li><span class="check">✓</span> Priority support</li>
-            </ul>
-            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
-              Upgrade to Pro
-            </button>
-          </div>
+          <span class="brand-brain-locked-pill">Pro</span>
         </div>
-        
-        <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
+        <div class="brand-brain-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
+
+        <div class="brand-brain-footer">
+          <div class="brand-brain-save">
+            <span id="brand-brain-save-indicator"></span>
+            <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
+          </div>
+          <button id="brand-brain-close" class="ghost" data-analytics="modal_close">Close</button>
+        </div>
       </div>
     </div>
 
@@ -799,10 +828,417 @@
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
-    <script type="module" src="./script.js?t=1764000000"></script>
-    <script type="module" src="./footer.js?t=1763412925"></script>
-    <script src="/sw-register.js" defer></script>
-    <script src="/pwa-install.js" defer></script>
+  <style>
+    @media (max-width: 768px) {
+      .page-calendar #profile-menu {
+        left: auto;
+        right: 0;
+        transform: none;
+        padding: 12px 16px;
+        width: min(92vw, 320px);
+        max-width: calc(100vw - 24px);
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+
+      .page-calendar #profile-menu * {
+        box-sizing: border-box;
+      }
+
+      .page-calendar #profile-dropdown {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-left: 0 !important;
+        left: auto !important;
+        transform: none !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+      }
+
+      .page-calendar #profile-dropdown button,
+      .page-calendar #profile-dropdown a {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        text-align: left !important;
+        padding-left: 12px !important;
+      }
+
+    }
+  </style>
+  <style id="mobile-account-modal-layout-v4">
+    @media (max-width: 640px) {
+      body.modal-open {
+        overflow: hidden !important;
+        touch-action: none !important;
+      }
+      [data-account-overlay] {
+        position: fixed !important;
+        inset: 0 !important;
+        overflow: hidden !important;
+        z-index: 9999 !important;
+      }
+
+      [data-account-modal] {
+        position: fixed !important;
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 94vw !important;
+        max-width: 94vw !important;
+        height: 90vh !important;
+        max-height: 90vh !important;
+        margin: 0 !important;
+        padding: 14px !important;
+        overflow: hidden !important;
+        border-radius: 18px !important;
+        box-sizing: border-box !important;
+      }
+
+      [data-account-modal] * {
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        hyphens: none !important;
+        line-height: 1.2 !important;
+      }
+
+      [data-account-modal-body],
+      [data-account-panel] {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        left: auto !important;
+        right: auto !important;
+        transform: none !important;
+      }
+
+      [data-account-modal-body] {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+
+      [data-account-close] {
+        position: absolute !important;
+        top: 12px !important;
+        right: 12px !important;
+        left: auto !important;
+        z-index: 50 !important;
+        width: 40px !important;
+        height: 40px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 !important;
+        pointer-events: auto !important;
+      }
+
+      [data-account-modal] .settings-modal__head {
+        padding-right: 52px !important;
+      }
+
+      [data-account-modal] h3 {
+        font-size: 19px !important;
+        line-height: 1.2 !important;
+        margin: 0 0 4px 0 !important;
+      }
+
+      [data-account-modal] .modal-sub {
+        font-size: 12.5px !important;
+        line-height: 1.25 !important;
+        margin: 0 0 6px 0 !important;
+      }
+
+      [data-account-tabs] {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+        width: 100% !important;
+        margin: 6px 0 6px 0 !important;
+      }
+
+      [data-account-tab] {
+        width: 100% !important;
+        min-width: 0 !important;
+        padding: 6px 8px !important;
+        font-size: 13px !important;
+        line-height: 1.1 !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        border-radius: 10px !important;
+      }
+
+      [data-account-panel] {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+      }
+
+      [data-account-modal] .settings-group {
+        margin: 5px 0 !important;
+      }
+
+      [data-account-modal] label,
+      [data-account-modal] .field-hint {
+        font-size: 12.5px !important;
+      }
+
+      [data-account-modal] label {
+        display: block !important;
+      }
+
+      [data-account-modal] input,
+      [data-account-modal] select,
+      [data-account-modal] textarea {
+        width: 100% !important;
+        max-width: 100% !important;
+        font-size: 16px !important;
+        line-height: 1.2 !important;
+        padding: 6px 8px !important;
+        border-radius: 8px !important;
+      }
+
+      [data-account-modal] button {
+        font-size: 13px !important;
+        padding: 6px 8px !important;
+        min-height: 32px !important;
+      }
+
+      [data-interface-prefs] {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 6px 0 0 0 !important;
+        padding: 0 !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 10px !important;
+      }
+
+      [data-interface-prefs] [data-pref-row] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        width: 100% !important;
+        padding: 6px 8px !important;
+      }
+
+      [data-interface-prefs] [data-pref-row] input[type="checkbox"] {
+        flex: 0 0 auto !important;
+        width: 16px !important;
+        height: 16px !important;
+      }
+
+      [data-account-modal] .settings-actions__buttons {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+        width: 100% !important;
+      }
+
+      [data-account-modal] .settings-actions__buttons button {
+        width: 100% !important;
+        min-width: 0 !important;
+        padding: 6px 8px !important;
+        border-radius: 999px !important;
+      }
+
+      [data-account-modal] [data-email-row] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        width: 100% !important;
+      }
+
+      [data-account-modal] [data-email-value] {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+      [data-account-modal] [data-email-copy] {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 6px !important;
+        width: 100% !important;
+        overflow: visible !important;
+        min-width: 0 !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly span {
+        flex: 0 0 auto !important;
+        min-width: 0 !important;
+        min-height: 1em !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        color: inherit !important;
+        position: relative !important;
+        z-index: 1 !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] #account-email-display,
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] [aria-label="Password is hidden"] {
+        display: block !important;
+        font-size: 14px !important;
+        line-height: 1.2 !important;
+        font-weight: 500 !important;
+        color: var(--text-primary, #f5f6f8) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        position: relative !important;
+        z-index: 2 !important;
+      }
+
+      [data-account-modal] [data-account-panel][data-settings-panel="account"] .settings-field-readonly button {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+        align-self: flex-start !important;
+      }
+
+      .page-calendar .calendar-card__caption {
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+      }
+    }
+  </style>
+  <style id="mobile-card-caption-fix">
+    @media (max-width: 640px) {
+      .page-calendar .calendar-card__caption-row {
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
+        align-items: flex-start !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      .page-calendar .calendar-card__caption {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        writing-mode: horizontal-tb !important;
+        text-orientation: mixed !important;
+        white-space: normal !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        hyphens: none !important;
+      }
+
+      .page-calendar .calendar-card__caption-row .caption-copy-btn,
+      .page-calendar .calendar-card__caption-row .detail-copy-btn {
+        flex: 0 0 auto !important;
+        justify-self: end !important;
+      }
+
+      .page-calendar .calendar-card__detail-row .detail-row__top {
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
+        align-items: center !important;
+        width: 100% !important;
+        min-width: 0 !important;
+      }
+
+      .page-calendar .calendar-card__detail-row .detail-row__top strong {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+      }
+
+      .page-calendar .calendar-card__detail-row .detail-row__top .detail-copy-btn {
+        margin-left: auto !important;
+        flex: 0 0 auto !important;
+      }
+
+      .page-calendar .calendar-card__caption-row .caption-copy-btn,
+      .page-calendar .calendar-card__caption-row .detail-copy-btn,
+      .page-calendar .calendar-card__detail-row .detail-copy-btn,
+      .page-calendar .calendar-card__caption-row [aria-label^="Copy"],
+      .page-calendar .calendar-card__detail-row .detail-row__top [aria-label^="Copy"] {
+        margin-left: auto !important;
+        justify-self: end !important;
+        flex: 0 0 auto !important;
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        transform: none !important;
+      }
+    }
+  </style>
+  <script type="module" src="./script.js?t=1764000000"></script>
+  <script type="module" src="./footer.js?t=1763412925"></script>
+  <script src="/sw-register.js" defer></script>
+  <script src="/pwa-install.js" defer></script>
+  <script src="/js/landing.js" defer></script>
+  <!-- Upgrade Modal -->
+  <div id="upgrade-modal" class="modal" style="display: none;">
+    <div class="modal-content upgrade-modal">
+      <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal" data-analytics="modal_close">&times;</button>
+      <div class="upgrade-header">
+        <svg class="upgrade-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h2>Upgrade to Promptly Pro</h2>
+        <p class="upgrade-subtitle">Unlock Brand Brain, Voice Lock, Target Audience, and post regeneration.</p>
+      </div>
+
+      <div class="pricing-cards">
+          <div class="pricing-card">
+            <div class="pricing-tier">Starter</div>
+            <div class="pricing-price">FREE<span></span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Limited Saves and Exports</li>
+            </ul>
+          </div>
+
+          <div class="pricing-card pricing-card-pro">
+            <div class="pricing-badge">Most Popular</div>
+            <div class="pricing-tier">Pro</div>
+            <div class="pricing-price">$19.99<span>/month</span></div>
+            <ul class="pricing-features">
+              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> Brand Brain unlocked</li>
+              <li><span class="check">✓</span> Regenerate a single post</li>
+              <li><span class="check">✓</span> Unlimited Saves and Exports</li>
+            </ul>
+              <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;" data-analytics="upgrade_cta">
+                Upgrade to Pro
+              </button>
+        </div>
+      </div>
+
+      <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
+    </div>
+  </div>
 <div id="generate-asset-modal" class="modal modal--hidden" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1" style="display:none">
       <div class="modal__backdrop"></div>
       <div class="modal__dialog">

@@ -164,7 +164,7 @@ const posts = [
     day: 24,
     title: "Narrative Archetypes",
     description:
-      "Teach the three story archetypes that guarantee a binge-worthy series in your niche.",
+      "Teach the three story archetypes that increase the odds of a binge-worthy series in your niche.",
     pillar: "authority",
   },
   {

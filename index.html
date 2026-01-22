@@ -6,15 +6,17 @@
   <title>Promptly</title>
   <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
   <link rel="canonical" href="https://usepromptly.app/" />
-  <meta property="og:title" content="Promptly • AI Content Studio" />
-  <meta property="og:description" content="Generate a complete 30‑day social content calendar in seconds. Strategy, captions, variants, exports." />
+  <meta property="og:title" content="Promptly · AI Content Studio" />
+  <meta property="og:description" content="Create a full month of strategic content in seconds." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://usepromptly.app/" />
-  <meta property="og:image" content="https://usepromptly.app/assets/og-banner.svg" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Promptly • AI Content Studio" />
-  <meta name="twitter:description" content="Generate a complete 30‑day social content calendar in seconds." />
-  <meta name="twitter:image" content="https://usepromptly.app/assets/og-banner.svg" />
+  <meta property="og:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Promptly · AI Content Studio" />
+  <meta name="twitter:description" content="Create a full month of strategic content in seconds." />
+  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -28,8 +30,9 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
-  <body>
+  <body class="view-landing landing-page">
     <div class="app-shell">
       <nav class="landing-nav" aria-label="Primary navigation">
         <div class="landing-nav__brand"></div>
@@ -45,447 +48,386 @@
 
       <div id="landing-experience">
         <header class="hero landing-hero" id="home">
-          <div class="landing-hero__grid">
-            <div class="landing-hero__intro">
-              <p class="hero-pill">Content Made Simple</p>
-              <h1>Never wonder what to post again.</h1>
-              <p class="hero-tagline">
-                Promptly turns a single idea into a 30-day content calendar — complete with daily posts, scripts, and growth insights — so you stay consistent and actually grow.
-              </p>
+          <div class="landing-hero__wrap">
+            <div class="landing-hero__grid">
+              <div class="hero-copy">
+                <div class="landing-hero__intro landing-hero-content landing-hero-content--center">
+                  <p class="hero-pill">Content Made Easy</p>
+                  <h1>Never wonder what to post again.</h1>
+                  <p class="hero-tagline">
+                Promptly plans your entire month of content using built-in platform algorithms—so every post is created with a clear strategy to reach more people and perform better.
+                  </p>
               <div class="landing-hero__actions">
-                <a href="auth.html?mode=signup" class="primary primary-large">Generate My Content Calendar</a>
-                <a href="auth.html?mode=login" class="ghost primary-large">Log In</a>
+                  <a href="https://usepromptly.app/auth.html?mode=signup" class="primary primary-large" data-analytics="cta_signup">Generate My Content Calendar</a>
+                  <a href="auth.html?mode=login" class="ghost primary-large" data-analytics="cta_login">Log In</a>
               </div>
-              <div class="landing-badges">
-                <span class="landing-badge">30-day posting plan in seconds</span>
-                <span class="landing-badge">Platform-specific posts</span>
-                <span class="landing-badge">Ready to publish anywhere</span>
-              </div>
-              <div class="hero-proof">
-                <div class="hero-proof__item">
-                  <span class="hero-proof__value">4 hrs → 4 min</span>
-                  <span class="hero-proof__label">Time to plan a month of content</span>
-                </div>
-                <div class="hero-proof__item">
-                  <span class="hero-proof__value">+230%</span>
-                  <span class="hero-proof__label">Engagement from consistent posting</span>
-                </div>
-              </div>
-              <div class="landing-logos">
-                <span class="landing-logos__label">Built for creators who want consistency without burnout</span>
-                <div class="landing-logos__row">
-                  <span>Solo founders</span>
-                  <span>In-house marketers</span>
-                  <span>Agencies on retainer</span>
-                  <span>Creators growing audiences</span>
+                  <div class="landing-badges">
+                    <span class="landing-badge">Your month of content, handled</span>
+                    <span class="landing-badge">Optimized for every platform</span>
+                    <span class="landing-badge">Ready when you are</span>
+                  </div>
+                  <div class="hero-proof">
+                    <div class="hero-proof__item">
+                      <span class="hero-proof__value">4 hrs → 4 min</span>
+                      <span class="hero-proof__label">Time to plan a month of content</span>
+                    </div>
+                    <div class="hero-proof__item">
+                      <span class="hero-proof__value">+230%</span>
+                      <span class="hero-proof__label">Engagement from consistent posting</span>
+                    </div>
+                  </div>
+                  <div class="landing-logos">
+                    <span class="landing-logos__label">Built for creators who want consistency without burnout</span>
+                    <div class="landing-logos__row">
+                      <span>Solo founders</span>
+                      <span>In-house marketers</span>
+                      <span>Agencies on retainer</span>
+                      <span>Creators growing audiences</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          <div class="landing-samples__cards hero-panel__list landing-preview-cards">
-            <article class="calendar-card sample-card" data-pillar="Authority" data-day="01">
-              <div class="calendar-card__day">01</div>
-              <div class="calendar-card__entries">
-                <div class="calendar-card__entry" data-entry-index="0" data-day="01">
-                  <h3 class="calendar-card__title">Behind-the-scenes carousel</h3>
-                  <span class="calendar-card__type">Carousel</span>
-                  <div class="calendar-card__caption-row">
-                    <p class="calendar-card__caption">Walk through your storyboard process from messy brainstorm to polished hooks, then invite followers to DM “PLAN” for the swipe file.</p>
-                    <button type="button" class="detail-copy-btn caption-copy-btn" aria-label="Copy caption">
-                      <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                        <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                        <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <details>
-                    <summary>Details</summary>
-                    <div class="details-body">
-                      <div class="calendar-card__hashtags">#CreatorOps #ContentBehindScenes</div>
-                      <div class="calendar-card__format calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Format:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Format">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Instagram carousel</span>
+
+
+<div class="landing-samples__cards hero-panel__list landing-preview-cards">
+            <div id="sample-content-card" class="landing-preview-card sample-card index-sample-card">
+              <article class="calendar-card calendar-card--expanded" data-pillar="Education" data-day="1">
+                <div class="calendar-card__day">01</div>
+                <div class="calendar-card__entries">
+                  <div class="calendar-card__entry" data-entry-index="0" data-day="1">
+                    <div class="calendar-card__primary-meta"></div>
+                    <h3 class="calendar-card__title">Real Client Success Story: $200K Settlement</h3>
+                    <span class="calendar-card__type">Educational</span>
+                    <div class="calendar-card__hooks">
+                      <span class="calendar-card__hooks-label">Hook</span>
+                      <p class="calendar-card__hook-line">This client almost missed out on $200K!</p>
+                    </div>
+                    <div class="calendar-card__caption-row">
+                      <p class="calendar-card__caption">
+                        When John was injured in a car accident, he thought he could handle it alone. After a free consultation, we uncovered hidden damages and secured a $200K settlement. Don't leave money on the table! Want to hear how we did it?
+                      </p>
+                      <button type="button" class="detail-copy-btn" aria-label="Copy caption">
+                        <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                          <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                          <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="calendar-card__cta-action">
+                      <strong>CTA:</strong>
+                      <span>Comment 'SUCCESS' to learn more about our process or DM for a free case evaluation.</span>
+                    </div>
+                    <div class="calendar-card__execution-notes">
+                      <div class="calendar-card__execution-notes-title">
+                        <span class="calendar-card__format">Execution Notes:</span>
                       </div>
-                      <div class="calendar-card__cta calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>CTA:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy CTA">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">DM “PLAN” for the prompt stack</span>
-                      </div>
-                      <div class="calendar-card__story calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Story Prompt:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Story Prompt">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Snap each production phase, highlight a mistake, and end with the lesson learned.</span>
-                      </div>
-                      <div class="calendar-card__design calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Design Notes:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Design Notes">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Use sticky-note overlays + checklist icons across frames.</span>
-                      </div>
-                      <div class="calendar-card__repurpose calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Repurpose:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Repurpose">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Convert top frames into Reel scenes • Expand into newsletter tutorial.</span>
-                      </div>
-                      <div class="calendar-card__engagement calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Engagement:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Engagement">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Comment: Drop your current workflow bottleneck and I’ll send a fix. | DM: Personalized prompt stack on request.</span>
-                      </div>
-                      <div class="calendar-card__variants calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Platform Variants:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Platform Variants">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Instagram: Invite people to screenshot the checklist. | TikTok: Quick BTS montage + voiceover tip. | LinkedIn: Frame as “Process → Insight → CTA” in text post.</span>
-                      </div>
-                      <div class="calendar-card__audio calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Suggested audio:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Suggested audio">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Ambient synth pad underneath voiceover.</span>
-                      </div>
-                      <div class="calendar-card__followup calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Follow-up idea:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Follow-up idea">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Send DM template to everyone who comments “PLAN”.</span>
-                      </div>
-                      <div class="calendar-card__actions">
-                        <button class="calendar-card__action ghost" type="button">Copy Full</button>
-                        <button class="calendar-card__action pro-gradient-btn" type="button">Download</button>
-                        <button class="calendar-card__action pro-gradient-btn" type="button">Regenerate</button>
+                      <div class="calendar-card__execution-note">
+                        <strong>Format:</strong>
+                        <span>Reel</span>
                       </div>
                     </div>
-                  </details>
-                </div>
-              </div>
-            </article>
-
-            <article class="calendar-card sample-card" data-pillar="Demand" data-day="02">
-              <div class="calendar-card__day">02</div>
-              <div class="calendar-card__entries">
-                <div class="calendar-card__entry" data-entry-index="0" data-day="02">
-                  <h3 class="calendar-card__title">Launch-day teaser</h3>
-                  <span class="calendar-card__type">Video</span>
-                  <div class="calendar-card__caption-row">
-                    <p class="calendar-card__caption">Drop a countdown Reel with a comment magnet question to boost saves and replies.</p>
-                    <button type="button" class="detail-copy-btn caption-copy-btn" aria-label="Copy caption">
-                      <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                        <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                        <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                      </svg>
-                    </button>
+                    <details open>
+                      <summary>Details</summary>
+                      <div class="details-body">
+                        <div class="calendar-card__hashtags">#ClientSuccess #SettlementStory #InjuryLawyer #PersonalInjury #SuccessStory</div>
+                        <div class="calendar-card__format calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Format:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Format">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">Reel</span>
+                        </div>
+                        <div class="calendar-card__story calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Story Prompt:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Story Prompt">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">Would you trust a lawyer with your case?</span>
+                        </div>
+                        <div class="calendar-card__design calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Design Notes:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Design Notes">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">Use before-and-after visuals of John's case, highlight key numbers, and include a testimonial quote. Pause on the settlement figure for emphasis.</span>
+                        </div>
+                        <div class="calendar-card__engagement-loop calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Engagement Loop:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Engagement Loop">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">
+                            Comment: What part of John's story surprised you the most?
+                            <br />
+                            DM: Thanks for your interest! I'd love to help you achieve a similar success with your case.
+                            <br />
+                            Share a short Reel showing the before/after from this concept.
+                          </span>
+                        </div>
+                        <div class="calendar-card__video calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Reel Script:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Reel Script">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div class="detail-text calendar-card__video-script">
+                            <div><strong>Hook:</strong><span>This client almost missed out on $200K!</span></div>
+                            <div><strong>Body:</strong><span>When John was injured in a car accident, he thought he could handle it alone. After a free consultation, we uncovered hidden damages and secured a $200K settlement. Don't leave money on the table! Want to hear how we did it?</span></div>
+                            <div><strong>CTA:</strong><span>Comment 'SUCCESS' to learn more about our process or DM for a free case evaluation.</span></div>
+                          </div>
+                        </div>
+                        <div class="calendar-card__distribution calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Distribution Plan:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Distribution Plan">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">Posting at 11 AM to capture midday engagement. The focus is on shares as viewers will want to share success stories with friends in similar situations.</span>
+                        </div>
+                        <div class="calendar-card__audio suggested-audio calendar-card__detail-row">
+                          <div class="detail-row__top">
+                            <strong>Suggested audio:</strong>
+                            <button type="button" class="detail-copy-btn" aria-label="Copy Suggested audio">
+                              <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                                <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11" />
+                                <rect x="4" y="5.5" width="8" height="10" rx="2" />
+                              </svg>
+                            </button>
+                          </div>
+                          <span class="detail-text">Ordinary - Alex Warren</span>
+                        </div>
+                        <div class="calendar-card__actions">
+                          <a class="calendar-card__action ghost" href="https://usepromptly.app/auth.html?mode=signup">Copy Full</a>
+                          <a class="calendar-card__action pro-gradient-btn index-download-btn" href="https://usepromptly.app/auth.html?mode=signup">Download</a>
+                          <a class="calendar-card__action pro-gradient-btn" href="https://usepromptly.app/auth.html?mode=signup">Regenerate</a>
+                          <div class="calendar-card__regen-error" role="alert" hidden></div>
+                        </div>
+                      </div>
+                    </details>
                   </div>
-                  <details>
-                    <summary>Details</summary>
-                    <div class="details-body">
-                      <div class="calendar-card__hashtags">#LaunchReady #SocialSystem</div>
-                      <div class="calendar-card__format calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Format:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Format">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Countdown Reel</span>
-                      </div>
-                      <div class="calendar-card__cta calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>CTA:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy CTA">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">“Comment READY to get early access link.”</span>
-                      </div>
-                      <div class="calendar-card__story calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Story Prompt:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Story Prompt">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Show calendar view, sticky notes, and final hook.</span>
-                      </div>
-                      <div class="calendar-card__design calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Design Notes:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Design Notes">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Use animated timer overlay + punch-in text for hooks.</span>
-                      </div>
-                      <div class="calendar-card__repurpose calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Repurpose:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Repurpose">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Turn key frames into Stories sequence with polls.</span>
-                      </div>
-                      <div class="calendar-card__engagement calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Engagement:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Engagement">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Comment: “Dropping your early link — watch your DMs.” | DM: “Here’s the beta pass + first task to try.”</span>
-                      </div>
-                      <div class="calendar-card__video calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Reel Script:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Reel Script">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Hook: “3 days until the calendar that plans itself drops.” | Body: “Peek the exact cards, show the Brand Brain prompt, flash the regen feature.” | CTA: “Comment READY so I can DM the early access link.”</span>
-                      </div>
-                      <div class="calendar-card__variants calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Platform Variants:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Platform Variants">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Instagram: Reel + Stories countdown sticker. | TikTok: Split-screen reaction format showing prompts filling in. | LinkedIn: Text post with GIF of timeline.</span>
-                      </div>
-                      <div class="calendar-card__posting-tip calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Posting time tip:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Posting time tip">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">Pin to top of profile through launch window.</span>
-                      </div>
-                      <div class="calendar-card__weekly-promo calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Promo:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Promo">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">First 25 signups get free Brand Brain ingest.</span>
-                      </div>
-                      <div class="calendar-card__followup calendar-card__detail-row">
-                        <div class="detail-row__top">
-                          <strong>Follow-up idea:</strong>
-                          <button type="button" class="detail-copy-btn" aria-label="Copy Follow-up idea">
-                            <svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                              <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
-                              <rect x="4" y="5.5" width="8" height="10" rx="2"/>
-                            </svg>
-                          </button>
-                        </div>
-                        <span class="detail-text">DM automation to deliver beta survey once they watch.</span>
-                      </div>
-                      <div class="calendar-card__actions">
-                        <button class="calendar-card__action ghost" type="button">Copy Full</button>
-                        <button class="calendar-card__action pro-gradient-btn" type="button">Download</button>
-                        <button class="calendar-card__action pro-gradient-btn" type="button">Regenerate</button>
-                      </div>
-                    </div>
-                  </details>
                 </div>
-              </div>
-            </article>
-          </div>
-          <form class="landing-samples__form hero-panel__cta" action="/auth.html?mode=login">
-            <label for="landing-sample-input" class="input-label">Imagine this for your niche</label>
-            <input id="landing-sample-input" class="generate-input" type="text" placeholder="e.g., med spas, fintech founders, indie games" />
-            <button class="primary primary-large" type="submit">Generate calendar</button>
-          </form>
-        </header>
-
-        <section class="landing-value" id="product">
-        <div class="landing-value__intro">
-          <p class="section-eyebrow">Product</p>
-          <h2>From ideas to posts, Promptly gives you the system and context to stay on track.</h2>
-        </div>
-        <div class="landing-value__grid">
-          <article class="value-card">
-            <h3>Strategic sequencing</h3>
-            <p>Balanced pillars and narrative arcs mapped over 30 days so every drop builds toward your campaign objective.</p>
-          </article>
-          <article class="value-card">
-            <h3>Channel variants</h3>
-            <p>Auto-generated copy tuned for Reels, TikTok, newsletters, and more—already aligned to the master story.</p>
-          </article>
-          <article class="value-card">
-            <h3>Asset-ready exports</h3>
-            <p>Download folders, share docs, and task your team with prompts, hooks, and CTAs embedded in each card.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="landing-workflow" id="workflow">
-        <div class="landing-workflow__intro">
-          <p class="section-eyebrow">Workflow</p>
-          <h2>From intake to launch without leaving the page.</h2>
-          <p>Borrowing from the best production rooms, our workflow keeps strategists, writers, and founders centered on the same visual timeline.</p>
-        </div>
-        <ol class="workflow-steps">
-          <li>
-            <div class="workflow-step__number">01</div>
-            <div>
-              <p class="workflow-step__label">Calibrate your brand brain</p>
-              <p class="workflow-step__desc">Drop in voice notes, tone cues, and past wins. Promptly trains a private AI palette for your campaigns.</p>
-            </div>
-          </li>
-          <li>
-            <div class="workflow-step__number">02</div>
-            <div>
-              <p class="workflow-step__label">Generate the control room</p>
-              <p class="workflow-step__desc">Get a 30-day storyboard with channel-by-channel guidance, engagement hooks, and CTA logic.</p>
-            </div>
-          </li>
-          <li>
-            <div class="workflow-step__number">03</div>
-            <div>
-              <p class="workflow-step__label">Publish with confidence</p>
-              <p class="workflow-step__desc">Use Publish Hub to grab approvals, mark posts as shipped, and download everything in one click.</p>
-            </div>
-          </li>
-        </ol>
-      </section>
-
-        <section class="landing-pricing" id="pricing">
-        <div class="landing-pricing__card">
-          <p class="section-eyebrow">Pricing</p>
-          <h2>Start free. Upgrade when you need superpowers.</h2>
-          <p>Explore Promptly with one calendar on us, then unlock unlimited campaigns, downloads, and Brand Brain for $19.99/mo.</p>
-          <div class="landing-pricing__columns">
-            <div class="landing-pricing__column">
-              <p class="landing-pricing__price">$0</p>
-              <p class="landing-pricing__caption">per month · always-on free plan</p>
-              <h3>Always-free</h3>
-              <ul class="landing-pricing__features">
-                <li>1 calendar per month (30 posts)</li>
-                <li>Plan tab + Publish Hub access</li>
-                <li>Single caption + hashtag set</li>
-                <li>Export to CSV / DOCX</li>
-                <li>Basic story prompts + CTA guidance</li>
-                <li>Mark-as-posted tracking</li>
-              </ul>
-            </div>
-            <div class="landing-pricing__column">
-              <p class="landing-pricing__price">$19.99</p>
-              <p class="landing-pricing__caption">per month · Promptly Pro</p>
-              <h3>Promptly Pro includes everything above, plus:</h3>
-              <ul class="landing-pricing__features">
-                <li><strong>Unlimited calendars</strong> (generate new strategies whenever you need)</li>
-                <li><strong>Brand Brain</strong> to ingest tone notes, examples, and past wins</li>
-                <li><strong>Caption variations</strong> in 2–3 tones + platform-specific scripts</li>
-                <li><strong>Hashtag sets</strong> (broad + niche/local) per post</li>
-                <li><strong>Trending audio tips</strong> + posting-time guidance</li>
-                <li><strong>Adjustable posts/day</strong> (up to 3 drops per day inside one card)</li>
-                <li><strong>Expanded story prompts</strong> (polls, sliders, interactive moments)</li>
-                <li><strong>Follow-up content ideas</strong> and funnel-ready CTAs</li>
-                <li><strong>Downloadable folders</strong> per post (HTML + assets)</li>
-                <li><strong>Priority regen</strong> for individual days + variant tool</li>
-              </ul>
+              </article>
             </div>
           </div>
-          <p class="landing-pricing__note">Ready to dive in? Use the Get Started + Log In actions at the top of the page.</p>
+
+
+          <a class="landing-generate-cta" href="auth.html?mode=signup">
+            <span class="landing-generate-cta__label">Generate Calendar</span>
+          <span class="landing-generate-cta__input">e.g., med spa, real estate agent, fitness coach</span>
+          <span class="landing-generate-cta__action landing-primary-btn">Generate 30-Day Calendar</span>
+          </a>
+
+          <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+
+    <section id="product" class="product-section">
+      <div class="section-inner product-inner">
+        <div class="product-top">
+          <div class="product-copy">
+            <div class="section-kicker">PRODUCT</div>
+            <h2 class="product-headline">30 days of posts that drive engagement and leads.</h2>
+            <p class="product-subhead">
+              Promptly generates a 30-day content calendar with hooks, captions, CTAs, and scripts engineered with
+              sales psychology and platform patterns—so your posts convert, not just “perform.”
+            </p>
+            <ul class="product-metrics">
+              <li><strong>30-day calendar</strong> in minutes (not hours)</li>
+              <li><strong>Built-in persuasion</strong>: hooks, objections, CTAs, social proof</li>
+              <li><strong>Platform-aware</strong>: pacing, formats, comment loops, retention cues</li>
+            </ul>
+            <div class="product-pills">
+              <span class="pill">Hook frameworks</span>
+              <span class="pill">CTA + objection handling</span>
+              <span class="pill">Comment prompts</span>
+              <span class="pill">Reel script + structure</span>
+              <span class="pill">Distribution cues</span>
+            </div>
+          </div>
+
+          <div class="deliverable-card">
+            <div class="deliverable-title">What Promptly delivers (every day)</div>
+            <ul class="deliverable-list">
+              <li>Title/topic (non-duplicative)</li>
+              <li>Pillar (Education / Social Proof / Promotion / Lifestyle)</li>
+              <li>Hook</li>
+              <li>Caption (conversion-focused)</li>
+              <li>CTA (specific action)</li>
+              <li>Script outline (Reel/TikTok-ready)</li>
+              <li>Execution notes (format + timing)</li>
+              <li>Hashtags (optional)</li>
+            </ul>
+          </div>
         </div>
-        </section>
+
+        <div class="product-why">
+          <div class="why-card">
+            <div class="why-title">Sales psychology baked in</div>
+            <ul class="why-list">
+              <li>Hooks that create curiosity + stakes</li>
+              <li>CTAs tied to buyer intent</li>
+              <li>Social proof + objection reversal patterns</li>
+            </ul>
+          </div>
+          <div class="why-card">
+            <div class="why-title">Built for platform behavior</div>
+            <ul class="why-list">
+              <li>Formats chosen for retention (Reels, carousel, short-form)</li>
+              <li>Comment loops to increase signals</li>
+              <li>Posting/timing cues to maximize early engagement</li>
+            </ul>
+          </div>
+          <div class="why-card">
+            <div class="why-title">Calendar-first system</div>
+            <ul class="why-list">
+              <li>30 days planned so topics don’t repeat</li>
+              <li>Balanced pillars so you don’t only “teach”</li>
+              <li>Regenerate single posts without breaking the month</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="product-cta-bar">
+          <a class="btn primary product-cta" href="calendar.html">Generate my 30-day calendar</a>
+          <div class="product-cta-sub">No templates. No guessing. Just a month of ready-to-post content.</div>
+        </div>
       </div>
-      
+    </section>
+
+    <section class="landing-workflow" id="workflow">
+      <div class="wf-container">
+        <div class="wf-head">
+          <div class="wf-head-left">
+            <div class="section-kicker">WORKFLOW</div>
+            <h2 class="workflow-headline">Set it once. Get a month of high-performing content.</h2>
+            <p class="workflow-subhead">
+              Promptly turns a single niche into a 30-day content calendar—complete with hooks, captions, scripts, and CTAs designed to drive engagement and conversion.
+            </p>
           </div>
 
+          <aside class="wf-head-right">
+            <div class="workflow-preferences-card">
+              <div class="workflow-preferences-title">What you set</div>
+              <ul class="workflow-preferences-list">
+                <li>Your niche</li>
+                <li>Brand Brain on or off</li>
+              </ul>
+
+              <div class="workflow-preferences-note">
+                Promptly automatically generates the strategy, structure, and content for every post.
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="wf-steps-row">
+          <div class="workflow-steps wf-steps">
+            <div class="step-row wf-step">
+              <div class="step-badge wf-step-num">1</div>
+              <div class="step-body">
+                <div class="step-title wf-step-title">Set your niche</div>
+                <div class="step-desc wf-step-desc">Tell Promptly what you do so every post stays focused and relevant.</div>
+              </div>
+            </div>
+
+            <div class="step-row wf-step">
+              <div class="step-badge wf-step-num">2</div>
+              <div class="step-body">
+                <div class="step-title wf-step-title">Enable Brand Brain (optional)</div>
+                <div class="step-desc wf-step-desc">Turn on advanced sales psychology and social-algorithm logic to optimize for engagement and conversions.</div>
+              </div>
+            </div>
+
+            <div class="step-row wf-step">
+              <div class="step-badge wf-step-num">3</div>
+              <div class="step-body">
+                <div class="step-title wf-step-title">Generate your 30-day calendar</div>
+                <div class="step-desc wf-step-desc">Get 30 days of ready-to-post content—topics, hooks, captions, scripts, and CTAs—in minutes.</div>
+              </div>
+            </div>
+
+            <div class="step-row wf-step">
+              <div class="step-badge wf-step-num">4</div>
+              <div class="step-body">
+                <div class="step-title wf-step-title">Export & post</div>
+                <div class="step-desc wf-step-desc">Save to your library, download, and publish with confidence.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="workflow-cta-bar">
+          <a class="btn primary workflow-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
+          <div class="workflow-cta-sub">Start free. Create your first month in minutes.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" class="landing-section">
+      <div class="landing-section__inner">
+        <div class="landing-section__header">
+          <span class="landing-eyebrow">PRICING</span>
+          <h2>Simple pricing that scales with output</h2>
+          <p>Choose the plan that fits how consistent and dedicated you are.</p>
+        </div>
+        <div class="pricing-grid">
+          <article class="pricing-card">
+            <p class="pricing-card__name">Starter</p>
+            <p class="pricing-card__price">FREE<span></span></p>
+            <p class="pricing-card__subtitle">Best for casual posting</p>
+            <ul class="pricing-card__features">
+              <li>30-day Content Calendar generation</li>
+              <li>Limited Saves and Exports</li>
+            </ul>
+            <a class="pricing-card__cta" href="https://usepromptly.app/auth.html?mode=signup">Start free</a>
+          </article>
+          <article class="pricing-card pricing-card--featured is-featured">
+            <span class="pricing-pill">Most popular</span>
+            <p class="pricing-card__name">Pro</p>
+            <p class="pricing-card__price">$19.99<span>/month</span></p>
+            <p class="pricing-card__subtitle">Best for consistent publishing</p>
+            <ul class="pricing-card__features">
+              <li>30-day Content Calendar generation</li>
+              <li>Brand Brain unlocked</li>
+              <li>Regenerate a single post</li>
+              <li>Unlimited Saves and Exports</li>
+            </ul>
+            <button class="pricing-card__cta pricing-card__cta--primary" type="button" data-upgrade-trigger>Upgrade to Pro</button>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    </div>
     <!-- Upgrade Modal -->
     <div id="upgrade-modal" class="modal" style="display: none;">
       <div class="modal-content upgrade-modal">
@@ -495,40 +437,35 @@
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--accent-primary)" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <h2>Upgrade to Promptly Pro</h2>
-          <p class="upgrade-subtitle">Unlock unlimited calendars, downloads, and advanced features</p>
+          <p class="upgrade-subtitle">Unlock unlimited workflows, downloads, Brand Brain, and real analytics</p>
         </div>
+
         <div class="pricing-cards">
-          <div class="pricing-card">
-            <div class="pricing-tier">Free</div>
-            <div class="pricing-price">$0<span>/month</span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> 1 calendar per month</li>
-              <li><span class="check">✓</span> Instagram captions only</li>
-              <li><span class="check">✓</span> Copy text to clipboard</li>
-              <li><span class="cross">✗</span> Download ZIP files</li>
-              <li><span class="cross">✗</span> Brand Brain</li>
-              <li><span class="cross">✗</span> Save to library</li>
-              <li><span class="cross">✗</span> Platform variants</li>
-            </ul>
-          </div>
-          <div class="pricing-card pricing-card-pro">
-            <div class="pricing-badge">Most Popular</div>
-            <div class="pricing-tier">Pro</div>
-            <div class="pricing-price">$19.99<span>/month</span></div>
-            <ul class="pricing-features">
-              <li><span class="check">✓</span> Unlimited calendars</li>
-              <li><span class="check">✓</span> All platform variants</li>
-              <li><span class="check">✓</span> Full download suite</li>
-              <li><span class="check">✓</span> Brand Brain AI</li>
-              <li><span class="check">✓</span> Unlimited library saves</li>
-              <li><span class="check">✓</span> Fast parallel generation</li>
-              <li><span class="check">✓</span> Priority support</li>
-            </ul>
-            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">
+            <div class="pricing-card">
+              <div class="pricing-tier">Starter</div>
+              <div class="pricing-price">FREE<span></span></div>
+              <ul class="pricing-features">
+                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+                <li><span class="check">✓</span> Limited Saves and Exports</li>
+              </ul>
+            </div>
+
+            <div class="pricing-card pricing-card-pro">
+              <div class="pricing-badge">Most Popular</div>
+              <div class="pricing-tier">Pro</div>
+              <div class="pricing-price">$19.99<span>/month</span></div>
+              <ul class="pricing-features">
+                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+                <li><span class="check">✓</span> Brand Brain unlocked</li>
+                <li><span class="check">✓</span> Regenerate a single post</li>
+                <li><span class="check">✓</span> Unlimited Saves and Exports</li>
+              </ul>
+            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;" data-analytics="upgrade_cta">
               Upgrade to Pro
             </button>
+            </div>
           </div>
-        </div>
+
         <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
       </div>
     </div>
@@ -543,3 +480,5 @@
     <script src="/js/landing.js" defer></script>
   </body>
 </html>
+
+

@@ -29,7 +29,84 @@ function lockAnalyticsSection(sectionKey) {
   }
 }
 
+function setAnalyticsUnauthenticatedState() {
+  const el = document.querySelector('[data-analytics-section="auth"]');
+  if (el) {
+    el.classList.add('analytics-section-unauthenticated');
+  }
+}
+
 let analyticsIsPro = false;
+const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
+let hasConnectedAccounts = false;
+
+const supabaseUrlMeta = document.querySelector('meta[name="supabase-url"]');
+const supabaseAnonKeyMeta = document.querySelector('meta[name="supabase-anon-key"]');
+const SUPABASE_META_URL = supabaseUrlMeta?.getAttribute('content')?.trim() || '';
+const SUPABASE_META_ANON_KEY = supabaseAnonKeyMeta?.getAttribute('content')?.trim() || '';
+let supabaseClientInstance = null;
+let supabaseMissingLogged = false;
+
+function ensureSupabaseClient() {
+  if (supabaseClientInstance) return supabaseClientInstance;
+  if (!SUPABASE_META_URL || !SUPABASE_META_ANON_KEY) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Supabase credentials are missing; add meta tags for supabase-url and supabase-anon-key.');
+    }
+    return null;
+  }
+  if (typeof window === 'undefined' || !window.supabase) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Supabase SDK not loaded; include https://cdn.jsdelivr.net/npm/@supabase/supabase-js before analytics.js.');
+    }
+    return null;
+  }
+  try {
+    supabaseClientInstance = window.supabase.createClient(SUPABASE_META_URL, SUPABASE_META_ANON_KEY);
+    return supabaseClientInstance;
+  } catch (err) {
+    if (!supabaseMissingLogged) {
+      supabaseMissingLogged = true;
+      console.error('[Analytics] Failed to initialize Supabase client', err);
+    }
+    return null;
+  }
+}
+
+async function getAnalyticsAccessToken() {
+  const supabaseClient = ensureSupabaseClient();
+  if (!supabaseClient) return null;
+  try {
+    const { data } = await supabaseClient.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch (err) {
+    console.warn('[Analytics] Unable to read Supabase session', err);
+    return null;
+  }
+}
+
+async function fetchAuthenticated(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const token = await getAnalyticsAccessToken();
+  if (!token) {
+    return new Response(JSON.stringify({ ok: false, unauthorized: true }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  headers.set('Authorization', `Bearer ${token}`);
+  const finalOptions = {
+    credentials: 'same-origin',
+    ...options,
+    headers,
+  };
+  return fetch(url, finalOptions);
+}
 
 const DEMO_ANALYTICS = {
   overview: {
@@ -96,7 +173,17 @@ const DEMO_ANALYTICS = {
 };
 
 async function fetchAnalyticsJson(url, options) {
-  const res = await fetch(url, options || {});
+  const headers = new Headers(options?.headers || {});
+  const token = await getAnalyticsAccessToken();
+  if (!token) {
+    return { unauthorized: true, data: null };
+  }
+  headers.set('Authorization', `Bearer ${token}`);
+  const finalOptions = { ...(options || {}), headers };
+  if (!finalOptions.credentials) {
+    finalOptions.credentials = 'same-origin';
+  }
+  const res = await fetch(url, finalOptions);
 
   if (res.status === 401) {
     console.warn('[Analytics] unauthorized for', url);
@@ -104,12 +191,25 @@ async function fetchAnalyticsJson(url, options) {
   }
 
   if (!res.ok) {
-    console.warn('[Analytics] fetch failed', url, res.status);
-    return { error: true, data: null };
+    const requestId = res.headers.get('x-request-id');
+    let errorPayload = null;
+    try {
+      errorPayload = await res.json();
+    } catch (e) {
+      errorPayload = null;
+    }
+    console.warn('[Analytics] fetch failed', url, res.status, requestId);
+    if (errorPayload && requestId) {
+      errorPayload.requestId = errorPayload.requestId || requestId;
+    }
+    return { error: true, data: errorPayload, status: res.status };
   }
 
   try {
     const json = await res.json();
+    if (json && res.headers.get('x-request-id')) {
+      json.requestId = json.requestId || res.headers.get('x-request-id');
+    }
     return { data: json };
   } catch (e) {
     console.warn('[Analytics] invalid JSON for', url, e);
@@ -118,6 +218,7 @@ async function fetchAnalyticsJson(url, options) {
 }
 
 function shouldUseDemo(data) {
+  if (!DEMO_MODE) return false;
   if (!data || !data.overview) return true;
   const hasPosts = Array.isArray(data.posts) && data.posts.length > 0;
   const hasViews = data.overview.avgViewsPerPost && data.overview.avgViewsPerPost > 0;
@@ -164,6 +265,12 @@ function applyShareReportGating() {
   }
 }
 
+function setAnalyticsError(message) {
+  const el = document.getElementById('analytics-overview-subtitle');
+  if (!el) return;
+  el.textContent = message || '';
+}
+
 function openUpgradeCTA() {
   const fn = window.openUpgradeModal || window.showUpgradeModal;
   if (typeof fn === 'function') {
@@ -174,80 +281,140 @@ function openUpgradeCTA() {
 document.addEventListener('DOMContentLoaded', () => {
   const connectBtn = document.getElementById('connect-account');
 
+  const ANALYTICS_WORK_PLATFORM_IDS = [
+    'de55aeec-0dc8-4119-bf90-16b3d1f0c987', // TikTok
+    '9bb8913b-ddd9-430b-a66a-d74d846e6c66', // Instagram
+  ];
+  const ANALYTICS_PLATFORM_LABELS = ['TikTok', 'Instagram'];
+
   let phylloConnectInstance = null;
+  let tokenExpiredTimeout = null;
 
-  async function getPhylloInstance() {
-    if (phylloConnectInstance) return phylloConnectInstance;
-
-    const res = await fetch('/api/phyllo/sdk-config');
-    if (!res.ok) {
-      console.error('[Phyllo] sdk-config failed', res.status);
-      return null;
+  function showTokenExpiredNotice() {
+    const statusEl = document.getElementById('sync-status');
+    if (!statusEl) return;
+    statusEl.textContent = 'Phyllo session expired; reconnect to refresh analytics.';
+    if (tokenExpiredTimeout) {
+      clearTimeout(tokenExpiredTimeout);
     }
+    tokenExpiredTimeout = setTimeout(() => {
+      loadSyncStatus();
+      tokenExpiredTimeout = null;
+    }, 12000);
+  }
 
-    const cfg = await res.json();
-    if (!cfg || cfg.ok === false) {
-      console.error('[Phyllo] sdk-config error', cfg);
-      return null;
-    }
-
-    if (!window.PhylloConnect) {
-      console.error('[Phyllo] PhylloConnect not available');
-      return null;
-    }
-
-    const instance = window.PhylloConnect.initialize({
-      clientDisplayName: cfg.clientDisplayName,
-      environment: cfg.environment,
-      userId: cfg.userId,
-      token: cfg.token,
-      // no callbacks here
-    });
-
-    instance.on('accountConnected', function (accountId, workPlatformId, userId) {
-      console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
-
-      // Persist connection server-side (fire-and-forget)
-      fetch('/api/phyllo/account-connected', {
+  async function persistPhylloConnection(action, payload) {
+    try {
+      const res = await fetchAuthenticated(`/api/phyllo/accounts/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phylloUserId: userId,
-          accountId,
-          workPlatformId,
-          platform: 'unknown',
-          handle: null,
-          displayName: null,
-          avatarUrl: null,
-        }),
-      }).catch((err) => console.error('[Phyllo] failed to persist accountConnected', err));
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        console.error(`[Phyllo] ${action} failed`, res.status, detail);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error(`[Phyllo] ${action} error`, err);
+      return false;
+    }
+  }
+
+  function attachPhylloEvents(instance) {
+    instance.on('accountConnected', async (accountId, workPlatformId, userId) => {
+      console.log('[Phyllo] accountConnected', { accountId, workPlatformId, userId });
+      const saved = await persistPhylloConnection('connect', {
+        userId,
+        accountId,
+        workPlatformId,
+      });
+      if (saved) {
+        loadConnectedAccounts();
+        loadSyncStatus();
+      }
     });
 
-    instance.on('accountDisconnected', function (accountId, workPlatformId, userId) {
+    instance.on('accountDisconnected', async (accountId, workPlatformId, userId) => {
       console.log('[Phyllo] accountDisconnected', { accountId, workPlatformId, userId });
+      const saved = await persistPhylloConnection('disconnect', {
+        userId,
+        accountId,
+        workPlatformId,
+      });
+      if (saved) {
+        loadConnectedAccounts();
+      }
     });
 
-    instance.on('tokenExpired', function (userId) {
+    instance.on('tokenExpired', (userId) => {
       console.log('[Phyllo] tokenExpired for user', userId);
-      // later: refresh token via /api/phyllo/sdk-config
+      showTokenExpiredNotice();
     });
 
-    instance.on('exit', function (reason, userId) {
+    instance.on('exit', (reason, userId) => {
       console.log('[Phyllo] exit', { reason, userId });
     });
 
-    instance.on('connectionFailure', function (reason, workPlatformId, userId) {
+    instance.on('connectionFailure', (reason, workPlatformId, userId) => {
       console.log('[Phyllo] connectionFailure', { reason, workPlatformId, userId });
     });
-
-    phylloConnectInstance = instance;
-    return instance;
   }
+
+  async function fetchPhylloConfig() {
+    try {
+      const res = await fetchAuthenticated('/api/phyllo/sdk-config');
+      if (!res.ok) {
+        console.error('[Phyllo] sdk-config failed', res.status);
+        return null;
+      }
+      const parsed = await res.json();
+      if (!parsed || parsed.ok === false) {
+        console.error('[Phyllo] sdk-config error', parsed);
+        return null;
+      }
+      return {
+        clientDisplayName: parsed.clientDisplayName,
+        environment: parsed.environment,
+        userId: parsed.userId,
+        token: parsed.token,
+        products: parsed.products || [],
+      };
+    } catch (err) {
+      console.error('[Phyllo] sdk-config request failed', err);
+      return null;
+    }
+  }
+
+  let phylloConfigCache = null;
 
   async function openPhyllo() {
     try {
-      const instance = await getPhylloInstance();
-      if (!instance) return;
+      if (!window.PhylloConnect) {
+        console.error('[Phyllo] PhylloConnect SDK is not loaded');
+        return;
+      }
+      if (phylloConnectInstance) {
+        phylloConnectInstance.open();
+        return;
+      }
+      const config = phylloConfigCache || (await fetchPhylloConfig());
+      if (!config) return;
+      phylloConfigCache = config;
+      config.workPlatformIds = ANALYTICS_WORK_PLATFORM_IDS.slice();
+      config.origin = window.location.origin;
+      if (config.token) {
+        console.log('[Phyllo] connect config ready', {
+          environment: config.environment,
+          userId: config.userId,
+          workPlatformCount: config.workPlatformIds.length,
+          platforms: ANALYTICS_PLATFORM_LABELS,
+          tokenLength: config.token.length,
+        });
+      }
+      const instance = window.PhylloConnect.initialize(config);
+      attachPhylloEvents(instance);
+      phylloConnectInstance = instance;
       instance.open();
     } catch (err) {
       console.error('[Phyllo] connect error', err);
@@ -260,10 +427,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadInsights() {
     try {
-      const res = await fetch('/api/analytics/insights');
-      const json = await res.json();
-      if (!json.ok) throw new Error('insights fetch failed');
-      renderInsights(json.insights || [], analyticsIsPro);
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/insights');
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        renderInsights([], analyticsIsPro);
+        applyProButtonStyles();
+        return;
+      }
+      if (error) throw new Error('insights fetch failed');
+      renderInsights(data.insights || [], analyticsIsPro);
       applyProButtonStyles();
     } catch (err) {
       console.error('[Analytics] loadInsights error', err);
@@ -288,15 +460,48 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(({ data, unauthorized, error }) => {
         if (unauthorized) return;
         if (error || !data || data.ok === false) {
+          const errorCode = data?.error_code || data?.error || 'phyllo_accounts_failed';
+          setAnalyticsError(`Couldn’t load connected accounts (${errorCode}).`);
+          hasConnectedAccounts = false;
           renderConnectedAccounts([]);
+          updateConnectedAccountsStrip([]);
           return;
         }
-        renderConnectedAccounts(data.data || []);
+        const accounts = data.accounts || data.data || [];
+        hasConnectedAccounts = Boolean(data.connected) || accounts.length > 0;
+        renderConnectedAccounts(accounts);
+        updateConnectedAccountsStrip(accounts);
       })
       .catch((err) => {
         console.error('[Phyllo] loadConnectedAccounts error', err);
+        setAnalyticsError('Couldn’t load connected accounts.');
+        hasConnectedAccounts = false;
         renderConnectedAccounts([]);
+        updateConnectedAccountsStrip([]);
       });
+  }
+
+  function updateConnectedAccountsStrip(accounts = []) {
+    const strip = document.getElementById('connected-accounts');
+    if (!strip) return;
+    const list = Array.isArray(accounts) ? accounts : [];
+    const byPlatform = new Map();
+    list.forEach((acc) => {
+      const key = String(acc.platform || acc.work_platform_id || '').toLowerCase();
+      if (key) byPlatform.set(key, acc);
+    });
+    strip.querySelectorAll('.analytics-connected-card').forEach((card) => {
+      const platform = String(card.dataset.platform || '').toLowerCase();
+      const statusEl = card.querySelector('.analytics-connected-status');
+      if (!statusEl) return;
+      if (byPlatform.has(platform)) {
+        statusEl.textContent = 'Connected';
+        card.classList.add('is-connected');
+      } else {
+        statusEl.textContent = 'Not connected';
+        card.classList.remove('is-connected');
+      }
+    });
   }
 
   async function fetchInsights() {
@@ -325,12 +530,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/full');
       let analyticsData = data;
-      const useDemo = unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData);
+      const upstreamFailed = Boolean(analyticsData && analyticsData.upstream_ok === false);
+      const errorCode = error ? analyticsData?.error_code || analyticsData?.error : null;
+      const useDemo = DEMO_MODE && !hasConnectedAccounts &&
+        (unauthorized || error || !analyticsData || analyticsData.ok === false || shouldUseDemo(analyticsData));
       if (useDemo) {
         analyticsData = DEMO_ANALYTICS;
         renderDemoBadge(true);
+        setAnalyticsError('Demo mode: showing sample analytics.');
       } else {
         renderDemoBadge(false);
+        if (errorCode) {
+          setAnalyticsError(`Couldn’t load analytics (${errorCode}).`);
+        } else {
+          setAnalyticsError(upstreamFailed ? 'Couldn’t load analytics right now.' : '');
+        }
+        if (!analyticsData) analyticsData = {};
       }
 
       setOverviewRangeLabel(analyticsData);
@@ -344,15 +559,18 @@ document.addEventListener('DOMContentLoaded', () => {
       renderPlatformBreakdown(analyticsData.posts || []);
     } catch (err) {
       console.error('[Analytics] loadFullAnalytics error', err);
-      renderOverview({});
-      renderPosts([]);
-      renderDemographics({});
-      renderInsights([], analyticsIsPro);
-      applyProButtonStyles();
-      renderGrowthReport(null);
-      renderDemoBadge(false);
-      renderPlatformBreakdown([]);
-      setOverviewRangeLabel(null);
+      if (!DEMO_MODE) {
+        setAnalyticsError('Couldn’t load analytics right now.');
+        renderOverview({});
+        renderPosts([]);
+        renderDemographics({});
+        renderInsights([], analyticsIsPro);
+        applyProButtonStyles();
+        renderGrowthReport(null);
+        renderDemoBadge(false);
+        renderPlatformBreakdown([]);
+        setOverviewRangeLabel(null);
+      }
     }
   }
 
@@ -419,14 +637,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadHeatmap() {
     try {
-      const res = await fetch('/api/analytics/heatmap');
-      const json = await res.json();
-      if (json && json.error === 'upgrade_required') {
+      const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/heatmap');
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        return;
+      }
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('heatmap');
         return;
       }
-      if (!json.ok) throw new Error('heatmap_fetch_failed');
-      renderHeatmap(json.heatmap || []);
+      if (error || !data || data.ok === false) throw new Error('heatmap_fetch_failed');
+      renderHeatmap(data.heatmap || []);
     } catch (err) {
       console.error('[Analytics] loadHeatmap error', err);
       const grid = document.getElementById('heatmap-grid');
@@ -491,10 +712,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/experiments');
       if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
         renderExperiments([]);
         return;
       }
-      if (data && data.error === 'upgrade_required') {
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('experiments');
         return;
       }
@@ -582,8 +804,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadGrowthReport() {
     try {
       const { data, unauthorized, error } = await fetchAnalyticsJson('/api/analytics/reports/latest');
-      if (unauthorized) return;
-      if (data && data.error === 'upgrade_required') {
+      if (unauthorized) {
+        setAnalyticsUnauthenticatedState();
+        return;
+      }
+      if (data?.disabled && data.reason === 'upgrade_required') {
         lockAnalyticsSection('report');
         return;
       }
@@ -953,18 +1178,38 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.textContent = 'Refreshing...';
     }
     try {
-      await fetch('/api/phyllo/sync-posts', {
+      const syncPostsRes = await fetchAuthenticated('/api/phyllo/sync-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetch('/api/phyllo/sync-followers', {
+      if (!syncPostsRes.ok) {
+        const detail = await syncPostsRes.json().catch(() => ({}));
+        const code = detail?.error_code || detail?.error || 'sync_posts_failed';
+        setAnalyticsError(`Couldn’t sync posts (${code}).`);
+        throw new Error(code);
+      }
+
+      const syncFollowersRes = await fetchAuthenticated('/api/phyllo/sync-followers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      await fetch('/api/phyllo/sync-demographics', {
+      if (!syncFollowersRes.ok) {
+        const detail = await syncFollowersRes.json().catch(() => ({}));
+        const code = detail?.error_code || detail?.error || 'sync_followers_failed';
+        setAnalyticsError(`Couldn’t sync followers (${code}).`);
+        throw new Error(code);
+      }
+
+      const syncDemographicsRes = await fetchAuthenticated('/api/phyllo/sync-demographics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!syncDemographicsRes.ok) {
+        const detail = await syncDemographicsRes.json().catch(() => ({}));
+        const code = detail?.error_code || detail?.error || 'sync_demographics_failed';
+        setAnalyticsError(`Couldn’t sync demographics (${code}).`);
+        throw new Error(code);
+      }
 
       await loadSyncStatus();
       await loadFullAnalytics();
@@ -973,6 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadInsights();
     } catch (err) {
       console.error('[Analytics] refreshAllData error', err);
+      setAnalyticsError('Couldn’t refresh analytics data. Try again in a moment.');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -983,7 +1229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function handleAudienceSync() {
     try {
-      const res = await fetch('/api/phyllo/sync-audience', {
+    const res = await fetchAuthenticated('/api/phyllo/sync-audience', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: window.USER_ID }),
@@ -998,10 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateInsights() {
     const btn = document.getElementById('generate-insights-btn');
     const list = document.getElementById('insights-list');
-    if (!analyticsIsPro) {
-      openUpgradeCTA();
-      return;
-    }
+    // Allow Free users to generate insights; server will limit payload size for Free.
     try {
       if (btn) {
         btn.disabled = true;
@@ -1011,7 +1254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         list.textContent = 'Analyzing your posts...';
       }
 
-      const res = await fetch('/api/analytics/insights', {
+      const res = await fetchAuthenticated('/api/analytics/insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ posts: [] }),
@@ -1019,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error('insights_generate_failed');
 
-      const latest = await fetch('/api/analytics/insights');
+      const latest = await fetchAuthenticated('/api/analytics/insights');
       const latestJson = await latest.json();
       if (latestJson.ok) {
         renderInsights(latestJson.insights || [], analyticsIsPro);

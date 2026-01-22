@@ -10,6 +10,7 @@ import {
   saveProfilePreferences,
   supabase
 } from './user-store.js';
+import { initBrandBrainPanel } from './brand-brain.js';
 
 // Global scroll lock helpers
 window.__modalOpenCount = 0;
@@ -30,6 +31,17 @@ window.unlockBodyScroll = function () {
   }
 };
 
+const calendarGridRoot = document.getElementById("calendar-grid");
+const isCalendarPage = Boolean(calendarGridRoot);
+if (
+  !isCalendarPage &&
+  typeof process !== "undefined" &&
+  process.env &&
+  process.env.NODE_ENV !== "production"
+) {
+  console.info("[calendar script] calendar grid missing; skipping initialization.");
+}
+if (isCalendarPage) {
 const grid = document.getElementById("calendar-grid");
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
   const pillarFilterMenu = document.getElementById("pillar-filter-menu");
@@ -50,6 +62,7 @@ const grid = document.getElementById("calendar-grid");
   const accountCloseBtn = document.getElementById('account-close-btn');
   const accountCancelBtn = document.getElementById('account-cancel-btn');
   const accountForm = document.getElementById('account-settings-form');
+  const accountSaveBtn = accountForm?.querySelector('button[type="submit"]');
   const accountDisplayNameInput = document.getElementById('account-display-name');
   const accountPronounsInput = document.getElementById('account-pronouns');
   const accountRoleInput = document.getElementById('account-role');
@@ -89,6 +102,29 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const saveBtn = document.getElementById("save-calendar");
   const brandBtn = document.getElementById("brand-brain-btn");
   const brandModal = document.getElementById("brand-modal");
+  const voiceLockBtn = document.getElementById('voice-lock-btn');
+  const voiceLockModal = document.getElementById('voice-lock-modal');
+  const voiceLockCloseBtn = document.getElementById('voice-lock-close-btn');
+  const voiceLockStatusPill = document.getElementById('voice-lock-status-pill');
+  const voiceLockLockedCopy = document.getElementById('voice-lock-locked-copy');
+  const voiceLockLockedPill = document.getElementById('voice-lock-locked-pill');
+  const voiceLockToggle = document.getElementById('voice-lock-enabled');
+  const voiceLockControls = document.getElementById('voice-lock-controls');
+  const voiceLockPresetSelect = document.getElementById('voice-lock-preset');
+  const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
+  const targetAudienceBtn = document.getElementById('target-audience-btn');
+  const targetAudienceModal = document.getElementById('target-audience-modal');
+  const targetAudienceCloseBtn = document.getElementById('target-audience-close-btn');
+  const targetAudienceStatusPill = document.getElementById('target-audience-status-pill');
+  const targetAudienceLockedCopy = document.getElementById('target-audience-locked-copy');
+  const targetAudienceLockedPill = document.getElementById('target-audience-locked-pill');
+  const targetAudienceToggle = document.getElementById('target-audience-enabled');
+  const targetAudienceControls = document.getElementById('target-audience-controls');
+  const targetAudiencePresetSelect = document.getElementById('target-audience-preset');
+  const targetAudiencePresetWrap = document.getElementById('target-audience-preset-wrap');
+  const targetAudienceSaveBtn = document.getElementById('target-audience-save');
+  const targetAudienceResetBtn = document.getElementById('target-audience-reset');
+  const targetAudienceFeedback = document.getElementById('target-audience-feedback');
   const brandText = document.getElementById("brand-text");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
@@ -108,8 +144,16 @@ const appLayout = document.querySelector('.app-layout');
 const proNavLinks = document.querySelectorAll('.sidebar-link--pro');
 const appSidebar = document.getElementById('app-sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
+let sidebarBackdrop = document.getElementById('sidebar-backdrop');
+if (!sidebarBackdrop) {
+  sidebarBackdrop = document.createElement('div');
+  sidebarBackdrop.id = 'sidebar-backdrop';
+  sidebarBackdrop.className = 'sidebar-backdrop';
+  document.body.appendChild(sidebarBackdrop);
+}
 let fontPickers = [];
 let fontPickerListenersBound = false;
+const isMobileViewport = () => window.matchMedia('(max-width: 768px)').matches;
   const exportIcsBtn = document.getElementById('export-ics');
   const downloadZipBtn = document.getElementById('download-zip');
   const copyAllCaptionsBtn = document.getElementById('copy-all-captions');
@@ -296,14 +340,178 @@ if (forceLandingView) {
   appExperience.style.display = '';
 }
 
+const isProdHost = () => {
+  const host = window.location.hostname;
+  return window.location.protocol === 'https:' && (host === 'usepromptly.app' || host === 'www.usepromptly.app');
+};
+
+const analyticsState = {
+  enabled: isProdHost(),
+  pageviewsInitialized: false,
+  frustrationInitialized: false,
+  lastPath: '',
+  rageClicks: [],
+  lastRageEmit: 0,
+};
+
+const analyticsDebug =
+  analyticsState.enabled &&
+  new URLSearchParams(window.location.search || '').get('analytics_debug') === '1';
+
+const getAnalyticsPath = () => `${window.location.pathname}${window.location.search}${window.location.hash || ''}`;
+
+const getAnalyticsTargetSelector = (el) => {
+  if (!el || !el.tagName) return '';
+  if (el.dataset?.analytics) return `[data-analytics="${el.dataset.analytics}"]`;
+  if (el.id) return `#${el.id}`;
+  const className = typeof el.className === 'string' ? el.className.trim() : '';
+  if (className) {
+    const short = className.split(/\s+/).slice(0, 2).join('.');
+    return `${el.tagName.toLowerCase()}.${short}`;
+  }
+  return el.tagName.toLowerCase();
+};
+
+const isInteractiveElement = (el) => {
+  if (!el || el.nodeType !== 1) return false;
+  const selector = 'a,button,input,select,textarea,summary,[role="button"],[data-analytics],label';
+  if (el.matches(selector) || el.closest(selector)) return true;
+  if (typeof el.onclick === 'function') return true;
+  const tabindex = el.getAttribute?.('tabindex');
+  return tabindex === '0';
+};
+
+const emitAnalytics = (eventName, payload = {}) => {
+  if (!analyticsState.enabled) return;
+  const userTier =
+    typeof window.cachedUserIsPro === 'boolean' ? (window.cachedUserIsPro ? 'pro' : 'free') : undefined;
+  const userId = activeUserEmail || undefined;
+  const nicheStyleValue = nicheInput ? (nicheInput.value || '').trim() : '';
+  const detail = {
+    event: eventName,
+    path: getAnalyticsPath(),
+    title: document.title,
+    ...payload,
+    ts: Date.now(),
+  };
+  if (userTier && !detail.userTier) detail.userTier = userTier;
+  if (userId && !detail.userId) detail.userId = userId;
+  if (nicheStyleValue && !detail.nicheStyle) detail.nicheStyle = nicheStyleValue;
+  window.dispatchEvent(new CustomEvent('promptly_analytics', { detail }));
+  if (analyticsDebug) console.info('[PromptlyAnalytics]', eventName, detail);
+};
+
+window.emitPromptlyAnalytics = emitAnalytics;
+
+const initAnalyticsPageviews = () => {
+  if (!analyticsState.enabled || analyticsState.pageviewsInitialized) return;
+  analyticsState.pageviewsInitialized = true;
+  analyticsState.lastPath = getAnalyticsPath();
+  emitAnalytics('pageview', {
+    path: analyticsState.lastPath,
+    title: document.title,
+    referrer: document.referrer || '',
+  });
+  const handleRouteChange = () => {
+    const nextPath = getAnalyticsPath();
+    if (nextPath === analyticsState.lastPath) return;
+    const referrer = analyticsState.lastPath;
+    analyticsState.lastPath = nextPath;
+    emitAnalytics('virtual_pageview', {
+      path: nextPath,
+      title: document.title,
+      referrer,
+    });
+  };
+  const wrapHistory = (method) => {
+    if (!history[method] || history[method].__promptlyWrapped) return;
+    const original = history[method];
+    const wrapped = function (...args) {
+      const result = original.apply(this, args);
+      handleRouteChange();
+      return result;
+    };
+    wrapped.__promptlyWrapped = true;
+    history[method] = wrapped;
+  };
+  wrapHistory('pushState');
+  wrapHistory('replaceState');
+  window.addEventListener('popstate', handleRouteChange);
+  window.addEventListener('hashchange', handleRouteChange);
+};
+
+const initAnalyticsFrustrationSignals = () => {
+  if (!analyticsState.enabled || analyticsState.frustrationInitialized) return;
+  analyticsState.frustrationInitialized = true;
+  document.addEventListener('click', (event) => {
+    const now = Date.now();
+    const x = typeof event.clientX === 'number' ? event.clientX : 0;
+    const y = typeof event.clientY === 'number' ? event.clientY : 0;
+    analyticsState.rageClicks = analyticsState.rageClicks.filter((c) => now - c.ts <= 2000);
+    analyticsState.rageClicks.push({ ts: now, x, y });
+    const nearbyClicks = analyticsState.rageClicks.filter((c) => Math.hypot(c.x - x, c.y - y) <= 40);
+    if (nearbyClicks.length >= 5 && now - analyticsState.lastRageEmit > 2000) {
+      analyticsState.lastRageEmit = now;
+      analyticsState.rageClicks = [];
+      emitAnalytics('rage_click', {
+        x,
+        y,
+        targetSelector: getAnalyticsTargetSelector(event.target),
+      });
+    }
+
+    const target = event.target;
+    if (!isInteractiveElement(target)) {
+      const startHref = window.location.href;
+      const startActive = document.activeElement;
+      setTimeout(() => {
+        if (window.location.href !== startHref) return;
+        if (document.activeElement && document.activeElement !== startActive) return;
+        emitAnalytics('dead_click', {
+          targetTag: target?.tagName?.toLowerCase() || '',
+          targetSelector: getAnalyticsTargetSelector(target),
+        });
+      }, 350);
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    emitAnalytics('js_error', {
+      message: event.message || 'Script error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      stack: event.error?.stack || '',
+    });
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    emitAnalytics('js_error', {
+      message: reason?.message || String(reason || 'Unhandled rejection'),
+      stack: reason?.stack || '',
+      source: 'unhandledrejection',
+      lineno: 0,
+      colno: 0,
+    });
+  });
+};
+
+initAnalyticsPageviews();
+initAnalyticsFrustrationSignals();
+
   // Posted state per user+niche
 let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
 window.cachedUserIsPro = window.cachedUserIsPro ?? null;
 let currentPostFrequency = 1;
+let lastGenerationRequestId = null;
+let lastGenerationErrorStatus = null;
+let lastGenerationErrorCode = null;
 let pendingAssetGeneration = null;
 let lastGenerateAssetOpener = null;
+let lastVoiceLockFocusEl = null;
 let designAssets = [];
 const designAssetPollTimers = new Map();
 const MAX_DESIGN_POLL_ATTEMPTS = 20; // Stop polling after N attempts to avoid hammering the server if renders never finish.
@@ -316,7 +524,13 @@ let brandProfileLoaded = false;
 let currentBrandText = '';
 let brandBrainHydrated = false;
 const BRAND_BRAIN_LOCAL_PREFIX = 'promptly_brand_brain_';
+let brandKitRefreshWarned = false;
 const BRAND_KIT_LOCAL_PREFIX = 'promptly_brand_kit_';
+let brandKitConfigWarned = false;
+let brandKitServerWarned = false;
+let brandKitTableLogged = false;
+let bootstrapInFlight = false;
+let bootstrapQueuedAttempt = null;
 const selectedDesignAssetIds = new Set();
 let designFocusedAssetId = null;
 let draggedDesignAssetId = null;
@@ -351,14 +565,6 @@ function normalizeCardStrategy(rawStrategy = {}, context = {}) {
     }
   });
   const daySuffix = typeof context.day === 'number' ? ` (Day ${context.day})` : '';
-  const fallbackHooks = [
-    `Open with ${angleText} by showing how ${label} solves a major objection${daySuffix}.`,
-    `Frame ${objectiveText} by comparing ${label} to the common mistake every viewer makes${daySuffix}.`,
-    `Ask what ${label} could feel like once ${angleText} lands${daySuffix}.`,
-  ];
-  while (dedupedHooks.length < 3) {
-    dedupedHooks.push(fallbackHooks[dedupedHooks.length % fallbackHooks.length]);
-  }
   const pinnedRaw = String(strategy.pinned_comment || strategy.pinnedComment || '').trim();
   const pinnedFallback = `Comment "${label}" and I’ll drop the ${angleText.toLowerCase()} insight${daySuffix}.`;
   const pinned = pinnedRaw || pinnedFallback;
@@ -397,7 +603,7 @@ const PREFERRED_DELIVERABLES = [
 ];
 
 function sanitizePinnedKeyword(value) {
-  const normalized = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const normalized = String(value || '').toUpperCase().replace(/[^A-Z]/g, '');
   return normalized.length >= 3 && normalized.length <= 16 ? normalized : '';
 }
 
@@ -410,7 +616,7 @@ function extractKeywordFromComment(comment) {
 function normalizePinnedCommentString(raw) {
   const parts = extractPinnedCommentParts(raw);
   if (!parts.keyword) return String(raw || '').trim();
-  const deliverable = parts.deliverable || 'my guide';
+  const deliverable = ensureDeliverableHasMy(parts.deliverable || 'my guide');
   return `Comment "${parts.keyword}" and I'll send you ${deliverable}.`;
 }
 
@@ -436,21 +642,23 @@ function pickDeliverable(post) {
 
 function buildPinnedCommentLine(keyword, deliverable) {
   const safeKeyword = sanitizePinnedKeyword(keyword) || 'GUIDE';
-  const safeDeliverable = deliverable || 'my guide';
+  const safeDeliverable = ensureDeliverableHasMy(deliverable || 'my guide');
   return `Comment "${safeKeyword}" and I'll send you ${safeDeliverable}.`;
 }
 
 function ensureUniqueKeyword(keyword, usedSet, post) {
-  let base = sanitizePinnedKeyword(keyword) || deriveTitleKeywordCandidates(post)[0] || 'GUIDE';
-  let candidate = base;
-  const daySuffix = typeof post.day === 'number' ? String(post.day) : '';
+  const pool = getContextualKeywordPool(post?.strategy?.nicheStyle || post?.nicheStyle || '');
+  const fallback = pool[0] || 'ACCESS';
+  const sanitized = sanitizePinnedKeyword(keyword);
+  let candidate = sanitized || deriveTitleKeywordCandidates(post)[0] || fallback;
   let attempt = 0;
-  while (usedSet.has(candidate)) {
+  while (usedSet.has(candidate) && attempt < pool.length) {
+    candidate = pool[attempt % pool.length];
     attempt += 1;
-    candidate = `${base}${daySuffix || ''}${attempt || ''}`.slice(0, 16);
-    if (attempt > 5) break;
   }
-  if (PINNED_KEYWORD_STOPWORDS.has(candidate)) return `${base}${daySuffix || '' || '1'}`;
+  if (usedSet.has(candidate)) {
+    return fallback;
+  }
   return candidate;
 }
 
@@ -491,8 +699,38 @@ function preparePinnedCommentsForRender(posts = []) {
   });
 }
 
-const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z0-9]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
-const DEFAULT_PINNED_FALLBACK_TOKENS = ['MEAL','DRILLS','ROUTINE','FLOW','GUIDE','PLAN','PATH','SPARK','SHIFT','BOOST','WAVE'];
+const PINNED_COMMENT_REGEX = /^\s*(?:Comment\s+)?("?)([A-Za-z]+)\1\s+and\s+I(?:'|’)?ll\s+send you\s+(.+?)\.?\s*$/i;
+const CONTEXTUAL_KEYWORD_MAP = {
+  fitness: ['TRAIN','SWEAT','STRONG','FIGHT'],
+  basketball: ['HOOPS','DRILLS','BALL'],
+  business: ['SCALE','GROW','PROFIT'],
+  marketing: ['LEADS','SALES','LAUNCH'],
+  creator: ['CREATE','IMPACT','INSPIRE'],
+};
+const DEFAULT_PINNED_FALLBACK_TOKENS = ['ACCESS','START','UNLOCK','GUIDE','SPARK','SHIFT','BOOST','WAVE'];
+const BANNED_POSTING_AUDIENCE_KEYWORDS = [
+  'exec',
+  'executive',
+  'executives',
+  'founder',
+  'founders',
+  'ceo',
+  'ceos',
+  'investor',
+  'investors',
+  'enterprise',
+  'board',
+  'meetings',
+  'b2b',
+  'lifestyle',
+  'lifestyle audiences',
+];
+
+function isBusinessPostingAudience(text = '') {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return BANNED_POSTING_AUDIENCE_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
 
 function normalizePinnedSignature(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -506,13 +744,27 @@ function extractPinnedCommentParts(value) {
   return { keyword, deliverable };
 }
 
+function ensureDeliverableHasMy(deliverable) {
+  const normalized = String(deliverable || '').trim();
+  if (!normalized) return 'my guide';
+  if (/^my\b/i.test(normalized)) return normalized;
+  return `my ${normalized}`;
+ }
+
+function getContextualKeywordPool(nicheStyle) {
+  const normalized = String(nicheStyle || '').toLowerCase();
+  for (const [context, keywords] of Object.entries(CONTEXTUAL_KEYWORD_MAP)) {
+    if (normalized.includes(context)) {
+      return keywords.slice();
+    }
+  }
+  return DEFAULT_PINNED_FALLBACK_TOKENS.slice();
+}
+
 function derivePinnedFallbackTokens(nicheStyle) {
-  const tokens = (String(nicheStyle || '')
-    .toUpperCase()
-    .match(/[A-Z0-9]{3,12}/g) || [])
-    .filter((token) => !PINNED_KEYWORD_STOPWORDS.has(token));
-  const combined = [...new Set([...tokens, ...DEFAULT_PINNED_FALLBACK_TOKENS])];
-  return combined.length ? combined : DEFAULT_PINNED_FALLBACK_TOKENS.slice();
+  const pool = getContextualKeywordPool(nicheStyle);
+  const filtered = pool.filter((token) => !PINNED_KEYWORD_STOPWORDS.has(token));
+  return filtered.length ? filtered : pool.slice();
 }
 
 function ensureUniquePinnedComments(posts, nicheStyle) {
@@ -526,19 +778,19 @@ function ensureUniquePinnedComments(posts, nicheStyle) {
     const strategy = post.strategy || {};
     let pinned = normalizePinnedCommentString(String(strategy.pinned_comment || strategy.pinnedComment || ''));
     let parsed = extractPinnedCommentParts(pinned);
-    let deliverable = parsed.deliverable || defaultDeliverable;
+    const deliverableText = ensureDeliverableHasMy(parsed.deliverable || defaultDeliverable);
     let normalized = normalizePinnedSignature(pinned);
     if (!normalized) {
       const token = tokens[fallbackIndex % tokens.length];
       fallbackIndex += 1;
-      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      pinned = `Comment ${token} and I'll send you ${deliverableText}.`;
       normalized = normalizePinnedSignature(pinned);
     }
     let guard = 0;
     while (normalized && seen.has(normalized) && guard < tokens.length * 2) {
       const token = tokens[fallbackIndex % tokens.length];
       fallbackIndex += 1;
-      pinned = `Comment ${token} and I'll send you ${deliverable}.`;
+      pinned = `Comment ${token} and I'll send you ${deliverableText}.`;
       normalized = normalizePinnedSignature(pinned);
       guard += 1;
     }
@@ -576,52 +828,14 @@ function normalizeContentCard(card) {
   };
 }
 
-function cleanPinnedCommentLine(line) {
-  if (!line) return '';
-  let text = String(line).trim();
-  text = text.replace(/^(Pinned comment|Pin comment|Comment)\s*:?/i, '');
-  text = text.replace(/\bDay\s*\d+\b/gi, '');
-  text = text.replace(/\b(angle|objective)\b/gi, '');
-  text = text.replace(/by showing how/gi, '');
-  text = text.replace(/\(.*?\)/g, '');
-  text = text.replace(/^\s*[:-]+\s*/, '');
-  text = text.replace(/\s*[:-]+\s*$/, '');
-  text = text.replace(/\s+/g, ' ').trim();
-  return text;
-}
-
-function parsePinnedCommentLines(raw) {
-  if (!raw) return [];
-  return String(raw || '')
-    .split(/[\n•]+/)
-    .map(cleanPinnedCommentLine)
-    .filter(Boolean)
-    .slice(0, 2);
-}
-
-function ensurePinnedCommentDisplay(raw) {
-  if (!raw) return '';
-  const text = String(raw || '').trim();
-  if (!text) return '';
-  if (/^comment\s+/i.test(text)) {
-    return text.replace(/^comment\s+/i, 'Comment ');
-  }
-  return `Comment ${text}`;
-}
-
 function ensureReelScriptHook(entry) {
-  if (!entry || typeof entry !== 'object') return 'Stop scrolling quick tip';
+  if (!entry || typeof entry !== 'object') return '';
   if (!entry.videoScript || typeof entry.videoScript !== 'object') {
     entry.videoScript = {};
   }
   const script = entry.videoScript;
-  let hook = String(script.hook || '').trim();
-  if (!hook) {
-    const source = String(entry.idea || entry.title || entry.caption || '').trim();
-    hook = (source.split(/[.?!]/)[0] || '').trim();
-    if (!hook) hook = 'Stop scrolling quick tip';
-    script.hook = hook;
-  }
+  const hook = String(script.hook || '').trim();
+  script.hook = hook;
   entry.videoScript = script;
   return hook;
 }
@@ -912,7 +1126,7 @@ function buildAssetContextFromEntry(entry = {}, day) {
     linkedDay: day,
     title: entry?.idea || entry?.title || `Day ${String(day).padStart(2, '0')}`,
     subtitle: entry?.caption || entry?.description || '',
-    cta: entry?.cta || 'Learn more',
+    cta: entry?.cta || '',
     prompt: entry?.prompt || '',
     tone: entry?.tone || '',
     campaign: entry?.campaign || '',
@@ -1464,6 +1678,198 @@ async function deleteCalendarByIdIfPossible(calendarId) {
     console.warn('[Promptly] Backend calendar delete failed (non-blocking)', error?.message || error);
   }
 }
+
+function maybeRefreshBrandKit() {
+  if (typeof refreshBrandKitSafe === 'function') {
+    return refreshBrandKitSafe();
+  }
+  return Promise.resolve(null);
+}
+
+function summarizeBrandKitBrief(kit) {
+  if (!kit || typeof kit !== 'object') return '';
+  const lines = [];
+  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
+  if (palette.length) lines.push(`Palette: ${palette.join(', ')}`);
+  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
+  if (fonts.length) lines.push(`Typography: ${fonts.join(' / ')}`);
+  const voice = typeof kit.brandVoice === 'string' ? kit.brandVoice.trim() : '';
+  if (voice) lines.push(`Voice: ${voice}`);
+  return lines.join('\n');
+}
+
+function applyBrandKitToForm(kit) {
+  if (!kit || typeof kit !== 'object') {
+    if (brandPrimaryColorInput) brandPrimaryColorInput.value = '';
+    if (brandSecondaryColorInput) brandSecondaryColorInput.value = '';
+    if (brandAccentColorInput) brandAccentColorInput.value = '';
+    if (brandHeadingFontInput) brandHeadingFontInput.value = '';
+    if (brandBodyFontInput) brandBodyFontInput.value = '';
+    if (brandLogoPreview) brandLogoPreview.src = '';
+    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = '';
+    return;
+  }
+  if (brandPrimaryColorInput) brandPrimaryColorInput.value = kit.primaryColor || '';
+  if (brandSecondaryColorInput) brandSecondaryColorInput.value = kit.secondaryColor || '';
+  if (brandAccentColorInput) brandAccentColorInput.value = kit.accentColor || '';
+  if (brandHeadingFontInput) brandHeadingFontInput.value = kit.headingFont || '';
+  if (brandBodyFontInput) brandBodyFontInput.value = kit.bodyFont || '';
+  if (brandLogoPreview) {
+    brandLogoPreview.src = kit.logoDataUrl || kit.logoUrl || '';
+    brandLogoPreview.style.display = brandLogoPreview.src ? 'block' : '';
+  }
+  if (brandLogoPlaceholder) {
+    brandLogoPlaceholder.style.display = kit.logoDataUrl || kit.logoUrl ? 'none' : '';
+  }
+}
+
+async function refreshBrandKit({ force = false } = {}) {
+  try {
+    if (brandKitLoaded && !force) return { ok: true, kit: currentBrandKit };
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      currentBrandKit = null;
+      brandKitLoaded = false;
+      applyBrandKitToForm(null);
+      return { ok: true, kit: null };
+    }
+    try {
+      const kit = await loadBrandKitFromSupabase(userId);
+      currentBrandKit = kit || null;
+      brandKitLoaded = true;
+      applyBrandKitToForm(currentBrandKit);
+      if (!kit) {
+        return { ok: true, kit: null, code: 'not_configured' };
+      }
+      return { ok: true, kit };
+    } catch (err) {
+      console.warn('[BrandKit] refresh failed', err?.message || err);
+      return { ok: false, error: err?.message || 'refresh_failed' };
+    }
+  } catch (err) {
+    console.warn('[BrandKit] refresh error', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function loadBrandKitFromSupabase(userId) {
+  try {
+    if (!userId) return null;
+    if (!supabase?.from) return null;
+    if (!brandKitTableLogged) {
+      brandKitTableLogged = true;
+      console.debug('[BrandKit] loading from profiles.profile_settings');
+    }
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('profile_settings, updated_at')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) {
+      const msg = String(error?.message || error);
+      if (msg.includes('profiles') || msg.includes('profile_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
+        if (!brandKitConfigWarned) {
+          brandKitConfigWarned = true;
+          console.debug('[BrandKit] table missing; skipping.');
+        }
+        return null;
+      }
+      if (!brandKitServerWarned) {
+        brandKitServerWarned = true;
+        console.warn('[BrandKit] load failed', msg);
+      }
+      return null;
+    }
+    if (!data) return null;
+    const settings = data?.profile_settings || {};
+    const kit =
+      settings.brandKit ||
+      settings.brand_kit ||
+      settings.brandKitSettings ||
+      settings.brand_kit_settings ||
+      null;
+    if (!kit || typeof kit !== 'object') return null;
+    return {
+      brandName: kit.brandName || kit.brand_name || '',
+      primaryColor: kit.primaryColor || kit.primary_color || '',
+      secondaryColor: kit.secondaryColor || kit.secondary_color || '',
+      accentColor: kit.accentColor || kit.accent_color || '',
+      headingFont: kit.headingFont || kit.heading_font || '',
+      bodyFont: kit.bodyFont || kit.body_font || '',
+      logoDataUrl: kit.logoDataUrl || kit.logo_url || kit.logoUrl || '',
+      updatedAt: data.updated_at || null,
+    };
+  } catch (err) {
+    if (!brandKitServerWarned) {
+      brandKitServerWarned = true;
+      console.warn('[BrandKit] load failed', err?.message || err);
+    }
+    return null;
+  }
+}
+
+async function refreshBrandBrain() {
+  try {
+    const brandModal = document.getElementById('brand-modal');
+    const toggleInput = document.getElementById('brand-brain-enabled');
+    if (!brandModal || !toggleInput) return { ok: true, skipped: 'missing_dom' };
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      brandModal.dataset.locked = 'true';
+      return { ok: true, skipped: 'no_user' };
+    }
+    const userEmail = await getCurrentUser();
+    const userIsPro = userEmail ? await isPro(userEmail) : false;
+    brandModal.dataset.locked = userIsPro ? 'false' : 'true';
+    if (!userIsPro) return { ok: true, skipped: 'not_pro' };
+
+    const resp = await fetchWithAuth('/api/brand-brain/settings', { method: 'GET' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.ok === false) {
+      return { ok: false, error: data?.error || 'settings_fetch_failed' };
+    }
+    const settings = data?.settings || data?.data || {};
+    toggleInput.checked = Boolean(settings.enabled);
+    const statusPill = document.getElementById('brand-brain-status-pill');
+    if (statusPill) {
+      statusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
+      statusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
+    }
+    return { ok: true, settings };
+  } catch (err) {
+    console.warn('[BrandBrain] refresh failed', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function refreshBrandKitSafe() {
+  try {
+    const result = await refreshBrandKit();
+    if (result?.code === 'not_configured' && !brandKitConfigWarned) {
+      brandKitConfigWarned = true;
+      console.debug('[BrandKit] not configured; skipping.');
+    }
+    return result || { ok: true };
+  } catch (err) {
+    if (!brandKitServerWarned) {
+      brandKitServerWarned = true;
+      console.warn('[BrandKit] refresh failed', err?.message || err);
+    }
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+async function refreshBrandBrainSafe() {
+  try {
+    return await refreshBrandBrain();
+  } catch (err) {
+    console.warn('[BrandBrain] refresh failed', err?.message || err);
+    return { ok: false, error: err?.message || 'refresh_failed' };
+  }
+}
+
+window.refreshBrandKit = refreshBrandKit;
+window.refreshBrandBrain = refreshBrandBrain;
 
 function mergeDesignAsset(asset, options = {}) {
   if (!asset || !asset.id) return;
@@ -2029,6 +2435,22 @@ function applySidebarState(collapsed) {
   try {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
   } catch (_) {}
+  if (isMobileViewport()) {
+    if (!collapsed) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+  } else {
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.toggle('visible', !collapsed && isMobileViewport());
+  }
+  document.body.classList.toggle('sidebar-open', !collapsed && isMobileViewport());
 }
 
 function initSidebar() {
@@ -2048,6 +2470,14 @@ function initSidebar() {
     const next = !appLayout.classList.contains('sidebar-collapsed');
     applySidebarState(next);
   });
+}
+
+if (sidebarBackdrop) {
+  sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
+}
+
+if (sidebarBackdrop) {
+  sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
 }
 
 function inferAssetTypeFromAsset(asset = {}) {
@@ -2529,7 +2959,7 @@ function buildAssetDetailBrandPreview(asset = {}) {
   const bodyFont = `${theme.bodyFont || 'Source Sans Pro'}`;
   const headline = escapeHtml(asset.title || asset.caption || 'Ready-to-post hook');
   const caption = escapeHtml(asset.caption || 'Share one sharp insight or proof point here.');
-  const cta = escapeHtml(asset.cta || 'Add CTA');
+  const cta = escapeHtml(asset.cta || '');
   const notes = escapeHtml(asset.notes || 'Add creative direction notes or animation cues.');
   const logoMarkup = theme.logo
     ? `<span class="asset-detail__brand-logo"><img src="${escapeHtml(theme.logo)}" alt="Brand logo" loading="lazy" /></span>`
@@ -2723,13 +3153,37 @@ const POST_FREQUENCY_KEY = 'promptly_post_frequency';
 const PLAN_DETAILS = {
   pro: {
     label: 'Promptly Pro',
-    limits: 'Unlimited calendars · downloads & Brand Brain',
+    limits: '',
   },
   free: {
     label: 'Free plan',
-    limits: '1 calendar/month · single-platform exports',
+    limits: '',
   },
 };
+const VOICE_LOCK_PRESETS = ['Direct', 'Casual', 'Punchy', 'Story-first', 'Contrarian', 'No-AI-polish'];
+const VOICE_LOCK_DEFAULTS = {
+  enabled: false,
+  preset: 'Direct',
+};
+let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+const TARGET_AUDIENCE_PRESETS = [
+  'Students',
+  'Young Adults (18–25)',
+  'Early Career Professionals',
+  'Working Professionals',
+  'Parents / Families',
+  'Entrepreneurs / Founders',
+  'Creators',
+  'Freelancers / Solopreneurs',
+  'Beginners',
+  'Experienced / Advanced',
+];
+const TARGET_AUDIENCE_DEFAULTS = {
+  enabled: false,
+  preset: 'Students',
+};
+let targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+let lastTargetAudienceFocusEl = null;
 
 function getProfileSettingsStorageKey(email = '') {
   const normalized = (email || 'anon').toString().trim().toLowerCase();
@@ -2895,6 +3349,258 @@ function applyProfileSettings() {
   document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
 }
 
+function normalizeVoiceLockSettings(raw = {}) {
+  const preset = VOICE_LOCK_PRESETS.includes(raw.preset) ? raw.preset : VOICE_LOCK_DEFAULTS.preset;
+  return {
+    enabled: Boolean(raw.enabled),
+    preset,
+  };
+}
+
+function readVoiceLockSettingsFromProfile() {
+  const settings = profileSettings || {};
+  if (settings.voice_lock_mode && settings.voice_lock_mode !== 'preset') {
+    return { ...VOICE_LOCK_DEFAULTS, enabled: false };
+  }
+  return normalizeVoiceLockSettings({
+    enabled: settings.voice_lock_enabled,
+    preset: settings.voice_lock_preset,
+  });
+}
+
+function setVoiceLockControlsState(enabled) {
+  if (voiceLockControls) voiceLockControls.style.display = enabled ? '' : 'none';
+  const disabled = !enabled;
+  const inputs = [voiceLockPresetSelect].filter(Boolean);
+  inputs.forEach((input) => {
+    input.disabled = disabled;
+  });
+  if (voiceLockPresetWrap) {
+    voiceLockPresetWrap.style.display = enabled ? '' : 'none';
+  }
+}
+
+function setVoiceLockLockedState(locked) {
+  if (voiceLockModal) voiceLockModal.dataset.locked = locked ? 'true' : 'false';
+  if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
+  if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
+  if (locked) {
+    setVoiceLockControlsState(false);
+  } else {
+    setVoiceLockControlsState(voiceLockSettings.enabled);
+  }
+}
+
+function applyVoiceLockUI(settings) {
+  if (voiceLockToggle) voiceLockToggle.checked = settings.enabled;
+  if (voiceLockPresetSelect) voiceLockPresetSelect.value = settings.preset;
+  if (voiceLockStatusPill) {
+    voiceLockStatusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
+    voiceLockStatusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
+  }
+  setVoiceLockControlsState(settings.enabled);
+}
+
+function syncVoiceLockFromSettings() {
+  if (!voiceLockModal) return;
+  if (!window.cachedUserIsPro) {
+    voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+    applyVoiceLockUI(voiceLockSettings);
+    setVoiceLockLockedState(true);
+    return;
+  }
+  voiceLockSettings = readVoiceLockSettingsFromProfile();
+  applyVoiceLockUI(voiceLockSettings);
+  setVoiceLockLockedState(false);
+}
+
+function collectVoiceLockSettingsFromUI() {
+  return normalizeVoiceLockSettings({
+    enabled: voiceLockToggle?.checked,
+    preset: voiceLockPresetSelect?.value || VOICE_LOCK_DEFAULTS.preset,
+  });
+}
+
+async function persistVoiceLockSettings(nextSettings) {
+  if (!window.cachedUserIsPro) return;
+  const payload = {
+    voice_lock_enabled: nextSettings.enabled,
+    voice_lock_preset: nextSettings.preset,
+  };
+  updateProfileSettings(payload, { targetEmail: activeUserEmail || undefined });
+  if (!activeUserEmail) return;
+  try {
+    await saveProfilePreferences(profileSettings);
+  } catch (error) {
+    console.warn('Unable to save voice lock preferences', error);
+  }
+}
+
+function buildVoiceLockRequestPayload() {
+  if (!window.cachedUserIsPro || !voiceLockSettings?.enabled) return null;
+  const preset = String(voiceLockSettings.preset || '').trim();
+  return { voiceLockEnabled: true, voiceLockPreset: preset };
+}
+
+function normalizeTargetAudienceSettings(raw = {}) {
+  const preset = TARGET_AUDIENCE_PRESETS.includes(raw.preset) ? raw.preset : TARGET_AUDIENCE_DEFAULTS.preset;
+  return {
+    enabled: Boolean(raw.enabled),
+    preset,
+  };
+}
+
+function readTargetAudienceSettingsFromProfile() {
+  const settings = profileSettings || {};
+  return normalizeTargetAudienceSettings({
+    enabled: settings.target_audience_enabled,
+    preset: settings.target_audience_preset,
+    details: settings.target_audience_details,
+  });
+}
+
+function setTargetAudienceControlsState(enabled) {
+  if (targetAudienceControls) targetAudienceControls.style.display = enabled ? '' : 'none';
+  const disabled = !enabled;
+  const inputs = [targetAudiencePresetSelect].filter(Boolean);
+  inputs.forEach((input) => {
+    input.disabled = disabled;
+  });
+  if (targetAudiencePresetWrap) {
+    targetAudiencePresetWrap.style.display = enabled ? '' : 'none';
+  }
+}
+
+function setTargetAudienceLockedState(locked) {
+  if (targetAudienceModal) targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
+  if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
+  if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
+  if (locked) {
+    setTargetAudienceControlsState(false);
+  } else {
+    setTargetAudienceControlsState(targetAudienceSettings.enabled);
+  }
+}
+
+function applyTargetAudienceUI(settings) {
+  if (targetAudienceToggle) targetAudienceToggle.checked = settings.enabled;
+  if (targetAudiencePresetSelect) targetAudiencePresetSelect.value = settings.preset;
+  if (targetAudienceStatusPill) {
+    targetAudienceStatusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
+    targetAudienceStatusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
+  }
+  setTargetAudienceControlsState(settings.enabled);
+}
+
+function syncTargetAudienceFromSettings() {
+  if (!targetAudienceModal) return;
+  if (!window.cachedUserIsPro) {
+    targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+    applyTargetAudienceUI(targetAudienceSettings);
+    setTargetAudienceLockedState(true);
+    return;
+  }
+  targetAudienceSettings = readTargetAudienceSettingsFromProfile();
+  applyTargetAudienceUI(targetAudienceSettings);
+  setTargetAudienceLockedState(false);
+}
+
+function collectTargetAudienceSettingsFromUI() {
+  return normalizeTargetAudienceSettings({
+    enabled: targetAudienceToggle?.checked,
+    preset: targetAudiencePresetSelect?.value || TARGET_AUDIENCE_DEFAULTS.preset,
+  });
+}
+
+async function persistTargetAudienceSettings(nextSettings) {
+  if (!window.cachedUserIsPro) return;
+  const cleaned = { ...(profileSettings || {}) };
+  delete cleaned.target_audience_details;
+  cleaned.target_audience_enabled = nextSettings.enabled;
+  cleaned.target_audience_preset = nextSettings.preset;
+  updateProfileSettings(cleaned, { replace: true, targetEmail: activeUserEmail || undefined });
+  if (!activeUserEmail) return;
+  try {
+    await saveProfilePreferences(profileSettings);
+  } catch (error) {
+    console.warn('Unable to save target audience preferences', error);
+  }
+}
+
+function buildTargetAudienceRequestPayload() {
+  if (!window.cachedUserIsPro || !targetAudienceSettings?.enabled) return null;
+  const preset = String(targetAudienceSettings.preset || '').trim();
+  if (!preset) return null;
+  return {
+    targetAudience: {
+      enabled: true,
+      preset,
+    },
+  };
+}
+
+async function getAccountAuthUser() {
+  if (!supabase?.auth?.getUser) return null;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user || null;
+  } catch (error) {
+    console.warn('Unable to resolve auth user for account settings', error);
+    return null;
+  }
+}
+
+function setAccountModalLoadingState() {
+  if (accountEmailDisplay) accountEmailDisplay.textContent = 'Loading…';
+  if (accountLastLoginEl) accountLastLoginEl.textContent = 'Loading…';
+  if (accountSaveBtn) accountSaveBtn.disabled = true;
+}
+
+function setAccountModalLoggedOutState() {
+  activeUserEmail = '';
+  updateAccountOverviewEmail('');
+  updateAccountPlanInfo('none');
+  updateAccountLastLogin('');
+  if (accountSaveBtn) accountSaveBtn.disabled = false;
+}
+
+async function loadAccountModalData() {
+  setAccountModalLoadingState();
+  const user = await getAccountAuthUser();
+  if (!user) {
+    setAccountModalLoggedOutState();
+    return null;
+  }
+  const email = user.email || user.user_metadata?.email || '';
+  activeUserEmail = email;
+  if (accountEmailDisplay) {
+    accountEmailDisplay.textContent = email || 'Email unavailable';
+  }
+  if (userEmailEl && email) userEmailEl.textContent = email;
+  if (accountLastLoginEl && accountLastLoginEl.textContent === 'Loading…') {
+    accountLastLoginEl.textContent = '';
+  }
+  hydrateAccountForm();
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('profile_settings')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (error) throw error;
+    const settings = data?.profile_settings;
+    if (settings && typeof settings === 'object') {
+      updateProfileSettings(settings, { replace: true, targetEmail: email || activeUserEmail });
+      hydrateAccountForm();
+    }
+  } catch (error) {
+    console.warn('Unable to sync profile settings from Supabase', error);
+  }
+  if (accountSaveBtn) accountSaveBtn.disabled = false;
+  return user;
+}
+
 async function syncProfileSettingsFromSupabase() {
   if (!activeUserEmail) return;
   if (profileSettingsSyncPromise) return profileSettingsSyncPromise;
@@ -2943,7 +3649,13 @@ if (settingsTabButtons.length) {
 
 function updateAccountOverviewEmail(email) {
   if (accountEmailDisplay) {
-    accountEmailDisplay.textContent = email || 'Not signed in';
+    if (email) {
+      accountEmailDisplay.textContent = email;
+    } else if (activeUserEmail) {
+      accountEmailDisplay.textContent = 'Email unavailable';
+    } else {
+      accountEmailDisplay.textContent = 'Not signed in';
+    }
   }
 }
 
@@ -2992,7 +3704,7 @@ async function loadCalendarExportUsage() {
 function updateAccountLastLogin(timestamp) {
   if (!accountLastLoginEl) return;
   if (!timestamp) {
-    accountLastLoginEl.textContent = 'Not available';
+    accountLastLoginEl.textContent = activeUserEmail ? '' : 'Not available';
     return;
   }
   try {
@@ -3018,18 +3730,104 @@ function hydrateAccountForm() {
 
 function openAccountModal(initialTab = 'account') {
   if (!accountModal) return;
-  hydrateAccountForm();
   if (accountFeedback) {
     accountFeedback.textContent = '';
     accountFeedback.classList.remove('success');
   }
   setAccountSettingsTab(initialTab);
   accountModal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+  loadAccountModalData();
 }
 
 function closeAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+}
+
+function openVoiceLockModal() {
+  if (!voiceLockModal) return;
+  lastVoiceLockFocusEl = document.activeElement;
+  voiceLockModal.style.display = 'flex';
+  voiceLockModal.setAttribute('aria-hidden', 'false');
+  voiceLockModal.removeAttribute('inert');
+  voiceLockModal.setAttribute('tabindex', '-1');
+  document.body.classList.add('modal-open');
+  syncVoiceLockFromSettings();
+  emitAnalytics('voicelock_open');
+  const focusTarget = voiceLockCloseBtn || voiceLockToggle || voiceLockModal;
+  requestAnimationFrame(() => {
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  });
+}
+
+function closeVoiceLockModal() {
+  if (!voiceLockModal) return;
+  const active = document.activeElement;
+  if (active && voiceLockModal.contains(active)) {
+    if (voiceLockBtn && typeof voiceLockBtn.focus === 'function') {
+      voiceLockBtn.focus();
+    } else {
+      active.blur();
+      document.body.focus();
+    }
+  }
+  voiceLockModal.style.display = 'none';
+  voiceLockModal.setAttribute('aria-hidden', 'true');
+  voiceLockModal.setAttribute('inert', '');
+  document.body.classList.remove('modal-open');
+  const fallback = voiceLockBtn || brandBtn;
+  if (lastVoiceLockFocusEl && document.contains(lastVoiceLockFocusEl)) {
+    lastVoiceLockFocusEl.focus();
+  } else if (fallback && typeof fallback.focus === 'function') {
+    fallback.focus();
+  }
+}
+
+function openTargetAudienceModal() {
+  if (!targetAudienceModal) return;
+  lastTargetAudienceFocusEl = document.activeElement;
+  targetAudienceModal.style.display = 'flex';
+  targetAudienceModal.setAttribute('aria-hidden', 'false');
+  targetAudienceModal.removeAttribute('inert');
+  targetAudienceModal.setAttribute('tabindex', '-1');
+  if (appLayout) appLayout.setAttribute('inert', '');
+  document.body.classList.add('modal-open');
+  syncTargetAudienceFromSettings();
+  emitAnalytics('targetaudience_open');
+  const focusTarget = targetAudienceCloseBtn || targetAudienceToggle || targetAudienceModal;
+  requestAnimationFrame(() => {
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      focusTarget.focus();
+    }
+  });
+}
+
+function closeTargetAudienceModal() {
+  if (!targetAudienceModal) return;
+  const active = document.activeElement;
+  if (active && targetAudienceModal.contains(active)) {
+    if (targetAudienceBtn && typeof targetAudienceBtn.focus === 'function') {
+      targetAudienceBtn.focus();
+    } else {
+      active.blur();
+      document.body.focus();
+    }
+  }
+  targetAudienceModal.style.display = 'none';
+  targetAudienceModal.setAttribute('aria-hidden', 'true');
+  targetAudienceModal.setAttribute('inert', '');
+  if (appLayout) appLayout.removeAttribute('inert');
+  document.body.classList.remove('modal-open');
+  const fallback = targetAudienceBtn || voiceLockBtn || brandBtn;
+  if (lastTargetAudienceFocusEl && document.contains(lastTargetAudienceFocusEl)) {
+    lastTargetAudienceFocusEl.focus();
+  } else if (fallback && typeof fallback.focus === 'function') {
+    fallback.focus();
+  }
 }
 
 applyProfileSettings();
@@ -4229,6 +5027,12 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
 
 // Show/hide nav based on auth state
 async function bootstrapApp(attempt = 0) {
+  if (bootstrapInFlight) {
+    bootstrapQueuedAttempt = attempt;
+    return;
+  }
+  bootstrapInFlight = true;
+  try {
   const currentUser = await getCurrentUser();
   const publicNav = document.getElementById('public-nav');
   const userMenu = document.getElementById('user-menu');
@@ -4263,8 +5067,8 @@ async function bootstrapApp(attempt = 0) {
     if (hydratedCalendar) ensurePlatformVariantsForCurrentCalendar('hydrate');
     profileSettings = loadProfileSettings(currentUser);
     applyProfileSettings();
-    syncProfileSettingsFromSupabase();
-    refreshBrandKit();
+    const profileSync = syncProfileSettingsFromSupabase();
+    await refreshBrandKitSafe();
     if (publicNav) publicNav.style.display = 'none';
     if (userMenu) {
       userMenu.style.display = 'flex';
@@ -4293,6 +5097,14 @@ async function bootstrapApp(attempt = 0) {
     updatePostFrequencyUI();
     updateAccountPlanInfo(userIsPro);
     loadCalendarExportUsage();
+    syncVoiceLockFromSettings();
+    syncTargetAudienceFromSettings();
+    if (profileSync && typeof profileSync.then === 'function') {
+      profileSync.then(() => {
+        syncVoiceLockFromSettings();
+        syncTargetAudienceFromSettings();
+      });
+    }
     try {
       const userDetails = await getCurrentUserDetails();
       updateAccountLastLogin(userDetails?.last_sign_in_at || userDetails?.updated_at || userDetails?.created_at || '');
@@ -4345,6 +5157,9 @@ async function bootstrapApp(attempt = 0) {
       });
     }
 
+    if (userIsPro) {
+      await refreshBrandBrainSafe();
+    }
     if (forceAppAfterAuth) {
       try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
       forceAppAfterAuth = false;
@@ -4362,6 +5177,8 @@ async function bootstrapApp(attempt = 0) {
     updateAccountPlanInfo('none');
     if (calendarExportUsageEl) calendarExportUsageEl.textContent = '';
     updateAccountLastLogin('');
+    brandBrainHydrated = false;
+    currentBrandText = '';
     if (publicNav) {
       publicNav.style.display = 'flex';
       console.log('✓ Public nav displayed');
@@ -4371,6 +5188,8 @@ async function bootstrapApp(attempt = 0) {
     if (appExperience) appExperience.style.display = 'none';
     window.cachedUserIsPro = false;
     updatePostFrequencyUI();
+    syncVoiceLockFromSettings();
+    syncTargetAudienceFromSettings();
     if (landingNavLinks) landingNavLinks.style.display = 'flex';
     closeProfileMenu();
     rememberActiveUserEmail('');
@@ -4380,6 +5199,14 @@ async function bootstrapApp(attempt = 0) {
     persistDesignAssetsToStorage();
     renderDesignAssets();
     hydrateCalendarFromStorage(true);
+  }
+  } finally {
+    bootstrapInFlight = false;
+    if (bootstrapQueuedAttempt !== null) {
+      const queuedAttempt = bootstrapQueuedAttempt;
+      bootstrapQueuedAttempt = null;
+      bootstrapApp(queuedAttempt);
+    }
   }
 }
 
@@ -4455,6 +5282,28 @@ document.addEventListener('click', (event) => {
   if (profileTrigger.contains(target)) return;
   closeProfileMenu();
 });
+
+const isCalendarPagePath =
+  document.body?.classList.contains('page-calendar') ||
+  /calendar\.html/i.test(window.location.pathname || '');
+
+const runAccountModalMobileGuard = () => {
+  if (!isCalendarPagePath) return;
+  if (!window.matchMedia('(max-width: 640px)').matches) return;
+  const root = document.querySelector('[data-account-modal-root]');
+  if (!root) return;
+  const cs = getComputedStyle(root);
+  const open = cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+  if (!open) return;
+  root.style.display = 'none';
+  document.body.classList.remove('modal-open');
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', runAccountModalMobileGuard, { once: true });
+} else {
+  runAccountModalMobileGuard();
+}
 
 const postFrequencyContainer = document.querySelector('.post-frequency');
 if (postFrequencyContainer) {
@@ -4533,6 +5382,68 @@ if (accountCancelBtn) {
   });
 }
 
+if (voiceLockBtn) {
+  voiceLockBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    openVoiceLockModal();
+  });
+}
+
+if (targetAudienceBtn) {
+  targetAudienceBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    openTargetAudienceModal();
+  });
+}
+
+if (voiceLockModal) {
+  voiceLockModal.setAttribute('aria-hidden', 'true');
+  voiceLockModal.setAttribute('inert', '');
+  voiceLockModal.setAttribute('tabindex', '-1');
+}
+
+if (targetAudienceModal) {
+  targetAudienceModal.setAttribute('aria-hidden', 'true');
+  targetAudienceModal.setAttribute('inert', '');
+  targetAudienceModal.setAttribute('tabindex', '-1');
+}
+
+if (voiceLockCloseBtn) {
+  voiceLockCloseBtn.addEventListener('click', () => {
+    closeVoiceLockModal();
+  });
+}
+
+if (targetAudienceCloseBtn) {
+  targetAudienceCloseBtn.addEventListener('click', () => {
+    closeTargetAudienceModal();
+  });
+}
+
+if (accountModal) {
+  accountModal.addEventListener('click', (event) => {
+    if (event.target === accountModal) {
+      closeAccountModal();
+    }
+  });
+}
+
+if (voiceLockModal) {
+  voiceLockModal.addEventListener('click', (event) => {
+    if (event.target === voiceLockModal) {
+      closeVoiceLockModal();
+    }
+  });
+}
+
+if (targetAudienceModal) {
+  targetAudienceModal.addEventListener('click', (event) => {
+    if (event.target === targetAudienceModal) {
+      closeTargetAudienceModal();
+    }
+  });
+}
+
 if (accountModal) {
   accountModal.addEventListener('click', (event) => {
     if (event.target === accountModal) {
@@ -4598,9 +5509,117 @@ if (postFrequencySelect) {
   });
 }
 
+const handleVoiceLockChange = () => {
+  if (!window.cachedUserIsPro) {
+    if (voiceLockToggle) voiceLockToggle.checked = false;
+    voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
+    applyVoiceLockUI(voiceLockSettings);
+    setVoiceLockLockedState(true);
+    closeVoiceLockModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return;
+  }
+  const nextSettings = collectVoiceLockSettingsFromUI();
+  voiceLockSettings = nextSettings;
+  applyVoiceLockUI(nextSettings);
+  persistVoiceLockSettings(nextSettings);
+};
+
+const handleTargetAudienceToggleChange = () => {
+  if (!window.cachedUserIsPro) {
+    if (targetAudienceToggle) targetAudienceToggle.checked = false;
+    targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
+    applyTargetAudienceUI(targetAudienceSettings);
+    setTargetAudienceLockedState(true);
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return;
+  }
+  setTargetAudienceControlsState(!!targetAudienceToggle?.checked);
+  if (targetAudienceStatusPill) {
+    const enabled = !!targetAudienceToggle?.checked;
+    targetAudienceStatusPill.textContent = enabled ? 'Enabled' : 'Disabled';
+    targetAudienceStatusPill.dataset.state = enabled ? 'enabled' : 'disabled';
+  }
+};
+
+const handleTargetAudienceSave = async () => {
+  if (!window.cachedUserIsPro) {
+    syncTargetAudienceFromSettings();
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return;
+  }
+  if (targetAudienceFeedback) {
+    targetAudienceFeedback.textContent = 'Saving...';
+    targetAudienceFeedback.classList.remove('error');
+  }
+  const nextSettings = collectTargetAudienceSettingsFromUI();
+  targetAudienceSettings = nextSettings;
+  applyTargetAudienceUI(nextSettings);
+  await persistTargetAudienceSettings(nextSettings);
+  if (targetAudienceFeedback) {
+    targetAudienceFeedback.textContent = 'Saved';
+    setTimeout(() => {
+      if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
+    }, 1200);
+  }
+  closeTargetAudienceModal();
+};
+
+const handleTargetAudienceReset = async () => {
+  if (!window.cachedUserIsPro) {
+    syncTargetAudienceFromSettings();
+    closeTargetAudienceModal();
+    if (typeof showUpgradeModal === 'function') showUpgradeModal();
+    return;
+  }
+  const resetSettings = { ...TARGET_AUDIENCE_DEFAULTS, enabled: false };
+  targetAudienceSettings = resetSettings;
+  applyTargetAudienceUI(resetSettings);
+  await persistTargetAudienceSettings(resetSettings);
+  if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
+  closeTargetAudienceModal();
+};
+
+if (voiceLockToggle) {
+  voiceLockToggle.addEventListener('change', handleVoiceLockChange);
+}
+
+if (voiceLockPresetSelect) {
+  voiceLockPresetSelect.addEventListener('change', handleVoiceLockChange);
+}
+
+if (targetAudienceToggle) {
+  targetAudienceToggle.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudiencePresetSelect) {
+  targetAudiencePresetSelect.addEventListener('change', handleTargetAudienceToggleChange);
+}
+
+if (targetAudienceSaveBtn) {
+  targetAudienceSaveBtn.addEventListener('click', () => {
+    handleTargetAudienceSave();
+  });
+}
+
+if (targetAudienceResetBtn) {
+  targetAudienceResetBtn.addEventListener('click', () => {
+    handleTargetAudienceReset();
+  });
+}
+
 if (accountForm) {
   accountForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const authUser = await getAccountAuthUser();
+    const authEmail = authUser?.email || authUser?.user_metadata?.email || '';
+    if (authEmail) {
+      activeUserEmail = authEmail;
+      updateAccountOverviewEmail(authEmail);
+      if (userEmailEl) userEmailEl.textContent = authEmail;
+    }
     if (accountFeedback) {
       accountFeedback.textContent = activeUserEmail ? 'Saving preferences...' : 'Preferences saved locally.';
       accountFeedback.classList.remove('error');
@@ -4615,17 +5634,31 @@ if (accountForm) {
       largeType: !!prefersLargeTypeInput?.checked,
       reducedMotion: !!prefersReducedMotionInput?.checked
     };
-    const persistResult = updateProfileSettings(payload, { targetEmail: activeUserEmail });
+    const persistResult = updateProfileSettings(payload, { targetEmail: authEmail || activeUserEmail });
 
     let syncedToSupabase = false;
-    let shouldCloseModal = !activeUserEmail;
+    let shouldCloseModal = !authEmail;
     let localSaveNote = persistResult?.volatile ? ' Settings will reset when you close this tab.' : '';
 
-    if (activeUserEmail) {
+    if (authUser?.id) {
       try {
-        const savedRemote = await saveProfilePreferences(profileSettings);
-        updateProfileSettings(savedRemote, { replace: true, targetEmail: activeUserEmail });
+        const { data, error } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: authUser.id,
+              profile_settings: profileSettings,
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+          )
+          .select('profile_settings')
+          .single();
+        if (error) throw error;
+        const savedRemote = data?.profile_settings || profileSettings;
+        updateProfileSettings(savedRemote, { replace: true, targetEmail: authEmail || activeUserEmail });
         syncedToSupabase = true;
+        await loadAccountModalData();
         shouldCloseModal = true;
       } catch (error) {
         console.warn('Unable to sync profile settings to Supabase', error);
@@ -4687,17 +5720,62 @@ function setupLandingSampleActionRedirects() {
 
 setupLandingSampleActionRedirects();
 
+function syncUpgradeModalFeatures() {
+  if (!upgradeModal) return;
+  const modalFreeList = upgradeModal.querySelector('.pricing-card .pricing-features');
+  const modalProList = upgradeModal.querySelector('.pricing-card-pro .pricing-features');
+  const landingFeatureLists = document.querySelectorAll('.landing-pricing__column .landing-pricing__features');
+  if (!modalFreeList || !modalProList || landingFeatureLists.length < 2) return;
+  const [landingFreeList, landingProList] = landingFeatureLists;
+  const cloneItems = (source) => Array.from(source.querySelectorAll('li')).map((li) => li.cloneNode(true));
+  modalFreeList.innerHTML = '';
+  modalProList.innerHTML = '';
+  cloneItems(landingFreeList).forEach((node) => modalFreeList.appendChild(node));
+  cloneItems(landingProList).forEach((node) => modalProList.appendChild(node));
+}
+
+syncUpgradeModalFeatures();
+
 // Sign out handler is attached after auth check when user-menu is shown
 
 // Upgrade modal handlers
+const upgradeModalMount = {
+  parent: null,
+  next: null,
+};
+
+function mountUpgradeModalToBody() {
+  if (!upgradeModal) return;
+  if (!upgradeModalMount.parent) {
+    upgradeModalMount.parent = upgradeModal.parentNode;
+    upgradeModalMount.next = upgradeModal.nextSibling;
+  }
+  if (upgradeModal.parentNode !== document.body) {
+    document.body.appendChild(upgradeModal);
+  }
+}
+
+function restoreUpgradeModalMount() {
+  if (!upgradeModal || !upgradeModalMount.parent) return;
+  if (upgradeModal.parentNode === upgradeModalMount.parent) return;
+  if (upgradeModalMount.next && upgradeModalMount.next.parentNode === upgradeModalMount.parent) {
+    upgradeModalMount.parent.insertBefore(upgradeModal, upgradeModalMount.next);
+  } else {
+    upgradeModalMount.parent.appendChild(upgradeModal);
+  }
+}
+
 function showUpgradeModal() {
+  mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
+  emitAnalytics('upgrade_modal_open');
 }
 
 function hideUpgradeModal() {
   if (upgradeModal) upgradeModal.style.display = 'none';
   if (typeof window.unlockBodyScroll === 'function') window.unlockBodyScroll();
+  restoreUpgradeModalMount();
 }
 
 if (upgradeClose) {
@@ -4712,6 +5790,7 @@ if (upgradeModal) {
 
 if (upgradeBtn) {
   upgradeBtn.addEventListener('click', async () => {
+    emitAnalytics('upgrade_click');
     const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
     try {
       // Try in-app Checkout first
@@ -4742,263 +5821,16 @@ window.showUpgradeModal = showUpgradeModal;
 
 // Library tab handler
 
-// Brand Brain modal handlers
-function openBrandModal() {
-  // Use flex to take advantage of modal-overlay centering styles
-  if (brandModal) brandModal.style.display = 'flex';
-  // Explicitly lock page scroll while Brand Brain is open
-  document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
-  document.body.dataset.prevOverflow = document.body.style.overflow || '';
-  document.documentElement.style.overflow = 'hidden';
-  document.body.style.overflow = 'hidden';
-}
-function closeBrandModal() {
-  if (brandModal) brandModal.style.display = 'none';
-  // Restore previous overflow values to re-enable scroll
-  document.documentElement.style.overflow = document.documentElement.dataset.prevOverflow || '';
-  document.body.style.overflow = document.body.dataset.prevOverflow || '';
-}
-
-function updateBrandLogoPreview(src) {
-  if (!brandLogoPreview) return;
-  if (src) {
-    brandLogoPreview.src = src;
-    brandLogoPreview.style.display = 'block';
-    brandLogoPreview.dataset.logo = src;
-    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'none';
-  } else {
-    brandLogoPreview.removeAttribute('src');
-    brandLogoPreview.style.display = 'none';
-    if (brandLogoPreview.dataset) delete brandLogoPreview.dataset.logo;
-    if (brandLogoPlaceholder) brandLogoPlaceholder.style.display = 'block';
-  }
-}
-
-function applyBrandKitToForm(kit) {
-  const defaults = {
-    primaryColor: '#7f5af0',
-    secondaryColor: '#2cb1bc',
-    accentColor: '#ff7ac3',
-  };
-  // Brand Design inputs removed
-  // Brand Design controls removed
-  renderDesignLivePreview();
-}
-
-function serializeBrandKitForm() {
-  return {
-    primaryColor: '',
-    secondaryColor: '',
-    accentColor: '',
-    headingFont: '',
-    bodyFont: '',
-    logoDataUrl: '',
-  };
-}
-
-function updateFontPickerSelection(targetId, value) {
-  fontPickers.forEach((picker) => {
-    if (picker.dataset.target !== targetId) return;
-    const options = Array.from(picker.querySelectorAll('.font-picker__option'));
-    let activeOption = null;
-    options.forEach((btn) => {
-      const isMatch = (btn.dataset.font || '') === (value || '');
-      btn.classList.toggle('is-active', isMatch);
-      if (isMatch) activeOption = btn;
-    });
-    const label = picker.querySelector('.font-picker__label');
-    if (label) {
-      label.className = 'font-picker__label';
-      if (activeOption) {
-        label.textContent = activeOption.textContent.trim();
-        if (activeOption.dataset.previewClass) {
-          label.classList.add(activeOption.dataset.previewClass);
-        }
-      } else {
-        label.textContent = 'Default';
-      }
-    }
-  });
-}
-
-function summarizeBrandKitBrief(kit) {
-  if (!kit) return '';
-  const parts = [];
-  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
-  if (palette.length) parts.push(`Palette ${palette.join(', ')}`);
-  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
-  if (fonts.length) parts.push(`Fonts ${fonts.join(' / ')}`);
-  if (kit.logoDataUrl) parts.push('Reserve space for logo mark.');
-  return parts.join(' | ');
-}
-
-function brandBrainLocalKey(email = activeUserEmail) {
-  const normalized = (email || 'guest').toString().trim().toLowerCase();
-  return `${BRAND_BRAIN_LOCAL_PREFIX}${normalized || 'guest'}`;
-}
-
-function loadBrandBrainLocal(email = activeUserEmail) {
-  try {
-    return localStorage.getItem(brandBrainLocalKey(email)) || '';
-  } catch {
-    return '';
-  }
-}
-
-function persistBrandBrainLocal(text, email = activeUserEmail) {
-  try {
-    const key = brandBrainLocalKey(email);
-    if (!text) localStorage.removeItem(key);
-    else localStorage.setItem(key, text);
-  } catch (_) {}
-}
-
-function brandKitLocalKey(email = activeUserEmail) {
-  const normalized = (email || 'guest').toString().trim().toLowerCase();
-  return `${BRAND_KIT_LOCAL_PREFIX}${normalized || 'guest'}`;
-}
-
-function loadBrandKitLocal(email = activeUserEmail) {
-  try {
-    const raw = localStorage.getItem(brandKitLocalKey(email));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistBrandKitLocal(kit, email = activeUserEmail) {
-  try {
-    const key = brandKitLocalKey(email);
-    if (!kit) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, JSON.stringify(kit));
-    }
-  } catch (_) {}
-}
-
-async function refreshBrandBrain(force = false) {
-  if (brandBrainHydrated && !force) return currentBrandText;
-  const userId = activeUserEmail || (await getCurrentUser());
-  if (!userId) return '';
-  const localCopy = loadBrandBrainLocal(userId);
-  let latestText = '';
-  try {
-    const resp = await fetch(`/api/brand/profile?userId=${encodeURIComponent(userId)}`, {
-      cache: 'no-store',
-      redirect: 'manual',
-    });
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      latestText = data?.text || '';
-    } else {
-      console.warn('Brand profile request failed with status', resp.status);
-    }
-  } catch (err) {
-    console.warn('Unable to load Brand Brain profile:', err?.message || err);
-  }
-  if (!latestText) {
-    latestText = localCopy || '';
-  }
-  currentBrandText = latestText;
-  if (brandText) brandText.value = latestText;
-  persistBrandBrainLocal(currentBrandText, userId);
-  brandProfileLoaded = true;
-  brandBrainHydrated = true;
-  return currentBrandText;
-}
-
-async function refreshBrandKit(force = false) {
-  brandKitLoaded = true;
-  currentBrandKit = null;
-  return null;
-}
-
-async function handleBrandKitSave() {
-  // Brand Design removed; no-op
-  return;
-}
-
-function handleBrandLogoUpload(event) {
-  return;
-}
-
-function clearBrandLogoPreview() {
-  // Brand Design logo controls removed
-}
-
-// Brand Design controls removed entirely
-
-if (brandBtn && brandModal) {
-  brandBtn.addEventListener('click', async () => {
-    if (!window.cachedUserIsPro) {
-      if (typeof showUpgradeModal === 'function') showUpgradeModal();
-      return;
-    }
-    await Promise.all([refreshBrandKit(), refreshBrandBrain()]);
-    openBrandModal();
-  });
-}
-if (brandCancelBtn) {
-  brandCancelBtn.addEventListener('click', () => {
-    closeBrandModal();
-  });
-}
-if (brandSaveBtn) {
-  brandSaveBtn.addEventListener('click', async () => {
-    const userId = await getCurrentUser();
-    if (!userId) {
-      alert('Please sign in to save Brand Brain.');
-      return;
-    }
-    const text = brandText ? brandText.value.trim() : '';
-    if (!text) {
-      if (brandStatus) brandStatus.textContent = 'Please paste some brand text.';
-      return;
-    }
-    try {
-      brandSaveBtn.disabled = true;
-      brandSaveBtn.textContent = 'Saving...';
-      const resp = await fetch('/api/brand/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, text }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Failed to save brand');
-      if (brandStatus) {
-        brandStatus.textContent = `✓ Brand Brain updated (${data.chunks} chunks). Future generations will match your voice.`;
-        brandStatus.classList.add('success');
-      }
-      currentBrandText = text;
-      persistBrandBrainLocal(text, userId);
-      brandProfileLoaded = true;
-      brandBrainHydrated = true;
-      setTimeout(() => { closeBrandModal(); if (brandStatus) { brandStatus.textContent=''; brandStatus.classList.remove('success'); } }, 1500);
-    } catch (e) {
-      if (brandStatus) brandStatus.textContent = `Error: ${e.message}`;
-    } finally {
-      brandSaveBtn.disabled = false;
-      brandSaveBtn.textContent = 'Save to Brand Brain';
-    }
-  });
-}
-if (brandKitSaveBtn) {
-  brandKitSaveBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    handleBrandKitSave();
-  });
-}
-if (brandLogoInput) {
-  brandLogoInput.addEventListener('change', handleBrandLogoUpload);
-}
-if (brandLogoClearBtn) {
-  brandLogoClearBtn.addEventListener('click', (event) => {
-    event.preventDefault();
-    clearBrandLogoPreview();
-  });
-}
+// Brand Brain panel
+initBrandBrainPanel({
+  fetchWithAuth,
+  isPro,
+  getUserTier,
+  getCurrentUser,
+  getCurrentUserId,
+  showUpgradeModal,
+  emitAnalytics,
+});
 
 function handleCalendarCardExpansion(card, expanded) {
   const allCards = document.querySelectorAll('.calendar-card');
@@ -5077,7 +5909,6 @@ const createCard = (post) => {
       pillar,
       storyPrompt,
       designNotes,
-      postingTimeTip,
       repurpose,
       analytics,
       engagementScripts,
@@ -5087,17 +5918,27 @@ const createCard = (post) => {
       weeklyPromo,
     } = entry;
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
+    // No inline audio overrides; display server-provided post.audio only.
 
     if (!card.dataset.pillar && pillar) {
       card.dataset.pillar = pillar;
     }
 
+    const buildSuggestedAudioText = (audio) => {
+      if (!audio || typeof audio !== 'string') return '';
+      const cleaned = sanitizeSuggestedAudioText(audio);
+      const parts = cleaned.split(/\s+-\s+/);
+      if (parts.length >= 2) {
+        const title = parts.shift().trim();
+        const artist = parts.join(' - ').trim();
+        return title && artist ? `${title} - ${artist}` : '';
+      }
+      return '';
+    };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
-    const categoryText = (normalizedEntry.category || entry.category || pillar || '').toString();
-    const hasEducationalPillar = categoryText.toLowerCase().includes('educational');
-    const angleValue = normalizedEntry.angle || (hasEducationalPillar ? 'Authority-building framework' : 'Myth-busting education');
-    const objectiveValue = normalizedEntry.objective || 'Drive saves + profile visits (education -> authority)';
+    const angleValue = normalizedEntry.angle || 'Fresh creator angle';
+    const objectiveValue = normalizedEntry.objective || 'Share a clear takeaway that invites viewers in';
     const targetSavesValue =
       normalizedEntry.targetSaves ||
       entry.targetSaves ||
@@ -5106,8 +5947,6 @@ const createCard = (post) => {
       normalizedEntry.targetComments ||
       entry.targetComments ||
       '≥ 2% of views';
-    const pinnedValue = normalizedEntry.pinnedComment || 'Comment "MEAL" and I\'ll DM my pre-game checklist.';
-
     const addInfoRow = (label, value) => {
       if (!value) return;
       const row = document.createElement('div');
@@ -5120,51 +5959,29 @@ const createCard = (post) => {
       infoRows.appendChild(row);
     };
 
-    addInfoRow('Angle', angleValue);
-    addInfoRow('Objective', objectiveValue);
-    addInfoRow('Target saves', targetSavesValue);
-    addInfoRow('Target comments', targetCommentsValue);
 
-    const pinnedLines = parsePinnedCommentLines(normalizedEntry.pinnedComment);
-    const pinnedSource = normalizedEntry.pinnedComment || pinnedLines[0] || pinnedValue;
-    const pinnedDisplayText = ensurePinnedCommentDisplay(pinnedSource);
-    if (pinnedDisplayText) {
-      const pinnedBlock = document.createElement('div');
-      pinnedBlock.className = 'calendar-card__pinned-comment';
-      const pinnedLabelEl = document.createElement('span');
-      pinnedLabelEl.className = 'calendar-card__pinned-comment-label';
-      pinnedLabelEl.textContent = 'Pinned comment';
-      const primaryLine = document.createElement('p');
-      primaryLine.className = 'calendar-card__pinned-comment-primary';
-      primaryLine.textContent = pinnedDisplayText;
-      pinnedBlock.append(pinnedLabelEl, primaryLine);
-      const altText = ensurePinnedCommentDisplay(pinnedLines[1]);
-      if (altText) {
-        const altLine = document.createElement('p');
-        altLine.className = 'calendar-card__pinned-comment-alt';
-        altLine.textContent = `Alt: ${altText}`;
-        pinnedBlock.append(altLine);
-      }
-      entryEl.appendChild(pinnedBlock);
+    const hookText = ensureReelScriptHook(entry);
+    let hooksEl = null;
+    if (hookText) {
+      hooksEl = document.createElement('div');
+      hooksEl.className = 'calendar-card__hooks';
+      const hooksLabel = document.createElement('span');
+      hooksLabel.className = 'calendar-card__hooks-label';
+      hooksLabel.textContent = 'Hook';
+      const hookLine = document.createElement('p');
+      hookLine.className = 'calendar-card__hook-line';
+      hookLine.textContent = hookText;
+      hooksEl.append(hooksLabel, hookLine);
     }
-
-    const hooksEl = document.createElement('div');
-    hooksEl.className = 'calendar-card__hooks';
-    const hooksLabel = document.createElement('span');
-    hooksLabel.className = 'calendar-card__hooks-label';
-    hooksLabel.textContent = 'Hook';
-    const hookLine = document.createElement('p');
-    hookLine.className = 'calendar-card__hook-line';
-    hookLine.textContent = ensureReelScriptHook(entry);
-    hooksEl.append(hooksLabel, hookLine);
 
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';
-    ideaEl.textContent = idea || title || '';
+    ideaEl.textContent = title || '';
 
     const typeEl = document.createElement('span');
     typeEl.className = 'calendar-card__type';
-    typeEl.textContent = type ? type.charAt(0).toUpperCase() + type.slice(1) : '';
+    const pillarLabel = card.dataset.pillar;
+    typeEl.textContent = pillarLabel ? pillarLabel.charAt(0).toUpperCase() + pillarLabel.slice(1) : '';
 
     const captionRow = document.createElement('div');
     captionRow.className = 'calendar-card__caption-row';
@@ -5250,11 +6067,28 @@ const createCard = (post) => {
     if (tagArr.length) {
       const displayTags = tagArr.slice(0, 5).map((h) => (h.startsWith('#') ? h : `#${h}`));
       const remaining = tagArr.length - displayTags.length;
-      hashtagsEl.textContent = remaining > 0 ? `${displayTags.join(' ')} +${remaining} more` : displayTags.join(' ');
+      hashtagsEl.textContent = displayTags.join(' ');
     }
 
-    const createDetailRow = (label, value, className) => {
-      if (!value) return null;
+    const createDetailRow = (label, value, className, options = {}) => {
+      if (value === null || value === undefined || value === '') return null;
+      const { depth = 0, visited } = options;
+      if (depth > 3) return null;
+      let content = value;
+      let seen = visited;
+      if (typeof content === 'object') {
+        seen = seen || new WeakSet();
+        if (seen.has(content)) {
+          content = '[Circular data]';
+        } else {
+          seen.add(content);
+          try {
+            content = JSON.stringify(content, null, 2);
+          } catch (err) {
+            content = String(content);
+          }
+        }
+      }
       const row = document.createElement('div');
       row.className = `${className} calendar-card__detail-row`;
       const header = document.createElement('div');
@@ -5269,17 +6103,19 @@ const createCard = (post) => {
         <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
         <rect x="4" y="5.5" width="8" height="10" rx="2"/>
       </svg>`;
+      const textValue = typeof content === 'string' ? content : String(content);
       btn.addEventListener('click', async () => {
+        if (!textValue) return;
         try {
-        await navigator.clipboard.writeText(value);
-        btn.classList.add('copied');
-        setTimeout(() => btn.classList.remove('copied'), 800);
-      } catch (e) {}
+          await navigator.clipboard.writeText(textValue);
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 800);
+        } catch (e) {}
       });
       header.append(labelEl, btn);
       const textEl = document.createElement('span');
       textEl.className = 'detail-text';
-      textEl.textContent = value;
+      textEl.textContent = textValue;
       row.append(header, textEl);
       return row;
     };
@@ -5413,16 +6249,17 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
-    let engagementText = '';
+    const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio);
+    const audioRowText = suggestedAudioText || 'Audio missing for this post.';
+    // Audio completeness is summarized once per generation run.
+    const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
-      const parts = [];
-      if (engagementScripts.commentReply) parts.push(`Comment: ${engagementScripts.commentReply}`);
-      if (engagementScripts.dmReply) parts.push(`DM: ${engagementScripts.dmReply}`);
-      engagementText = parts.join(' | ');
+      if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
+      if (engagementScripts.dmReply) engagementParts.push(`DM: ${engagementScripts.dmReply}`);
     } else if (engagementScript) {
-      engagementText = engagementScript;
+      engagementParts.push(engagementScript);
     }
-    const engagementEl = engagementText || '';
+    const engagementEl = engagementParts.filter(Boolean).join('\n');
 
     const promoSlotEl = promoSlot
       ? (() => {
@@ -5447,15 +6284,13 @@ const createCard = (post) => {
     };
     const executionNoteLines = [];
     if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
-    if (postingTimeTip) executionNoteLines.push(createExecutionNoteLine('Posting time tip', postingTimeTip));
-    if (designNotes) executionNoteLines.push(createExecutionNoteLine('Design notes', designNotes));
     const executionNotesEl = executionNoteLines.length
       ? (() => {
           const container = document.createElement('div');
           container.className = 'calendar-card__execution-notes';
           const title = document.createElement('div');
           title.className = 'calendar-card__execution-notes-title';
-          title.textContent = 'Execution Notes';
+          title.innerHTML = `<span class="calendar-card__format">Execution Notes:</span>`;
           container.append(title, ...executionNoteLines);
           return container;
         })()
@@ -5500,9 +6335,7 @@ const createCard = (post) => {
       header.className = 'detail-row__top';
       const labelEl = document.createElement('strong');
       labelEl.textContent = `${label}:`;
-      header.append(labelEl);
-      const bodyWrap = document.createElement('div');
-      bodyWrap.className = 'detail-text calendar-card__video-script';
+      const scriptParts = [];
       const addLine = (prefix, text) => {
         const line = document.createElement('div');
         const strong = document.createElement('strong');
@@ -5512,11 +6345,33 @@ const createCard = (post) => {
         span.textContent = text || '';
         line.append(span);
         bodyWrap.append(line);
+        const trimmed = String(text || '').trim();
+        if (trimmed) scriptParts.push(`${prefix}: ${trimmed}`);
       };
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'detail-copy-btn';
+      copyBtn.setAttribute('aria-label', `Copy ${label}`);
+      copyBtn.innerHTML = `<svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
+        <rect x="4" y="5.5" width="8" height="10" rx="2"/>
+      </svg>`;
+      header.append(labelEl, copyBtn);
+      const bodyWrap = document.createElement('div');
+      bodyWrap.className = 'detail-text calendar-card__video-script';
       addLine('Hook', structured.hook || '');
       addLine('Body', structured.body || '');
       addLine('CTA', structured.cta || '');
       row.append(header, bodyWrap);
+      const copyText = scriptParts.join('\n');
+      copyBtn.addEventListener('click', async () => {
+        if (!copyText) return;
+        try {
+          await navigator.clipboard.writeText(copyText);
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 800);
+        } catch (e) {}
+      });
       return row;
     };
     const videoScriptEl = buildReelScript();
@@ -5589,7 +6444,7 @@ const createCard = (post) => {
     if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
       const scriptLines = [];
-      if (videoScript.hook) scriptLines.push(`Hook: ${videoScript.hook}`);
+      if (videoScript.hook) scriptLines.push(videoScript.hook);
       if (videoScript.body) scriptLines.push(`Body: ${videoScript.body}`);
       if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
@@ -5612,9 +6467,8 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (window.cachedUserIsPro && entry.suggestedAudio) fullTextParts.push(`Suggested Audio: ${entry.suggestedAudio}`);
-    if (window.cachedUserIsPro && entry.postingTimeTip) fullTextParts.push(`Posting Time Tip: ${entry.postingTimeTip}`);
-    if (window.cachedUserIsPro && entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
+    if (audioRowText) fullTextParts.push(`Suggested audio: ${audioRowText}`);
+    if (entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
@@ -5653,8 +6507,22 @@ const createCard = (post) => {
     if (btnCopyFull) actionsEl.append(btnCopyFull);
     if (btnDownloadDoc) actionsEl.appendChild(btnDownloadDoc);
     const regenBtn = makeBtn('Regenerate');
-    attachProAction(regenBtn, () => handleRegenerateDay(entry, entryDay, regenBtn));
+    regenBtn.dataset.action = 'regen-day';
+    regenBtn.dataset.day = String(entryDay);
+    regenBtn.dataset.entryIndex = String(idx);
+    regenBtn.dataset.analytics = 'calendar_regenerate';
+    if (entry?.calendar_day_id || entry?.calendarDayId || entry?.id) {
+      regenBtn.dataset.calendarDayId = String(entry.calendar_day_id || entry.calendarDayId || entry.id);
+    }
+    regenBtn._calendarEntry = entry;
+    regenBtn.classList.remove('ghost');
+    regenBtn.classList.add('pro-gradient-btn');
     actionsEl.appendChild(regenBtn);
+    const regenError = document.createElement('div');
+    regenError.className = 'calendar-card__regen-error';
+    regenError.setAttribute('role', 'alert');
+    regenError.hidden = true;
+    actionsEl.appendChild(regenError);
 
     if (entry.variants) {
       // variant captions still show in detail rows; copy buttons removed
@@ -5678,17 +6546,14 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
-    if (window.cachedUserIsPro && entry.postingTimeTip) {
-      proDetailNodes.push(createDetailRow('Posting time tip', entry.postingTimeTip, 'calendar-card__posting-tip'));
-    }
     const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
-    if (window.cachedUserIsPro && entry.suggestedAudio) {
-      hiddenDetailNodes.push(createDetailRow('Audio (optional)', entry.suggestedAudio, 'calendar-card__audio'));
+    if (audioRowText) {
+      hiddenDetailNodes.push(
+        createDetailRow('Suggested audio', audioRowText, 'calendar-card__audio suggested-audio')
+      );
     }
-    if (window.cachedUserIsPro && entry.storyPromptExpanded) {
-      hiddenDetailNodes.push(createDetailRow('Story prompt+', entry.storyPromptExpanded, 'calendar-card__story-extended'));
-    }
+    // Story prompt+ intentionally omitted from calendar UI.
 
     const details = document.createElement('details');
     const summary = document.createElement('summary');
@@ -5701,66 +6566,28 @@ const createCard = (post) => {
       storyPromptEl,
       designNotesEl,
       (() => {
-        const anyEngagement = engagementEl || followUpText;
-        if (!anyEngagement) return null;
-        const row = document.createElement('div');
-        row.className = 'calendar-card__engagement-loop calendar-card__detail-row';
-        const header = document.createElement('div');
-        header.className = 'detail-row__top';
-        const labelEl = document.createElement('strong');
-        labelEl.textContent = 'Engagement Loop:';
-        header.append(labelEl);
-        const body = document.createElement('div');
-        body.className = 'detail-text';
-        if (engagementEl) {
-          const part = document.createElement('div');
-          part.textContent = engagementEl;
-          body.appendChild(part);
-        }
-        if (followUpText) {
-          const part = document.createElement('div');
-          part.textContent = followUpText;
-          body.appendChild(part);
-        }
-        row.append(header, body);
-        return row;
+        const parts = [];
+        if (engagementEl) parts.push(engagementEl);
+        if (followUpText) parts.push(followUpText);
+        const value = parts.filter(Boolean).join('\n');
+        return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
       })(),
       promoSlotEl,
       weeklyPromoEl,
       videoScriptEl,
-      (() => {
-        const anyDistribution = repurposeEl || variantsEl;
-        if (!anyDistribution) return null;
-        const row = document.createElement('div');
-        row.className = 'calendar-card__distribution calendar-card__detail-row';
-        const header = document.createElement('div');
-        header.className = 'detail-row__top';
-        const labelEl = document.createElement('strong');
-        labelEl.textContent = 'Distribution Plan:';
-        header.append(labelEl);
-        const body = document.createElement('div');
-        body.className = 'detail-text';
-        if (repurposeEl) {
-          const part = document.createElement('div');
-          part.textContent = repurposeEl;
-          body.appendChild(part);
-        }
-        if (variantsEl) {
-          const part = document.createElement('div');
-          part.textContent = variantsEl;
-          body.appendChild(part);
-        }
-        row.append(header, body);
-        return row;
-      })(),
-      assetsEl,
-      ...proDetailNodes,
-      ...hiddenDetailNodes,
+      entry.distributionPlan ? createDetailRow('Distribution Plan', entry.distributionPlan, 'calendar-card__distribution') : null,
+    assetsEl,
+    ...proDetailNodes,
+    ...hiddenDetailNodes,
       actionsEl,
     ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
     details.append(summary, detailsBody);
 
-    entryEl.append(infoRows, hooksEl, ideaEl, typeEl, captionRow);
+    const pinnedBlock = entryEl._pinnedBlock;
+    entryEl.append(infoRows, ideaEl, typeEl);
+    if (pinnedBlock) entryEl.append(pinnedBlock);
+    if (hooksEl) entryEl.append(hooksEl);
+    entryEl.append(captionRow);
     if (collapsedCtaEl) entryEl.append(collapsedCtaEl);
     if (executionNotesEl) entryEl.append(executionNotesEl);
     entryEl.append(details);
@@ -5768,14 +6595,130 @@ const createCard = (post) => {
   }
 };
 
-async function handleRegenerateDay(entry, entryDay, triggerEl) {
+const isLocalDevHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+function resolveCalendarEntryByDayIndex(targetDay, entryIndex) {
+  if (!Array.isArray(currentCalendar) || !currentCalendar.length) return null;
+  const dayNumber = Number(targetDay);
+  const freq = Math.max(currentPostFrequency || 1, 1);
+  if (freq <= 1) {
+    if (Number.isFinite(dayNumber)) {
+      const match = currentCalendar.find((post) => Number(post.day) === dayNumber);
+      if (match) return match;
+    }
+    if (Number.isFinite(entryIndex) && currentCalendar[entryIndex]) return currentCalendar[entryIndex];
+    return null;
+  }
+  const grouped = new Map();
+  let fallbackIndex = 0;
+  currentCalendar.forEach((post) => {
+    const dayKey = typeof post.day === 'number' ? post.day : Math.floor(fallbackIndex / freq) + 1;
+    fallbackIndex += 1;
+    if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+    grouped.get(dayKey).push(post);
+  });
+  const entries = grouped.get(dayNumber);
+  if (!entries || !entries.length) return null;
+  const resolvedIndex = Number.isFinite(entryIndex) ? entryIndex : 0;
+  return entries[resolvedIndex] || entries[0];
+}
+
+function rebuildCalendarCardForDay(targetDay) {
+  if (!grid || !Array.isArray(currentCalendar)) return;
+  const dayNumber = Number(targetDay);
+  if (!Number.isFinite(dayNumber)) return;
+  const freq = Math.max(currentPostFrequency || 1, 1);
+  let postToRender = null;
+  if (freq <= 1) {
+    postToRender = currentCalendar.find((post) => Number(post.day) === dayNumber) || null;
+  } else {
+    const grouped = new Map();
+    let fallbackIndex = 0;
+    currentCalendar.forEach((post) => {
+      const dayKey = typeof post.day === 'number' ? post.day : Math.floor(fallbackIndex / freq) + 1;
+      fallbackIndex += 1;
+      if (!grouped.has(dayKey)) grouped.set(dayKey, []);
+      grouped.get(dayKey).push(post);
+    });
+    const entries = grouped.get(dayNumber);
+    if (entries && entries.length) {
+      postToRender = { ...entries[0], day: dayNumber, multiPosts: entries };
+    }
+  }
+  if (!postToRender) return;
+  const selector = `.calendar-card[data-day="${String(dayNumber)}"]`;
+  const existing = grid.querySelector(selector);
+  const nextCard = createCard(postToRender);
+  if (existing) {
+    existing.replaceWith(nextCard);
+  } else if (!grid.querySelector('.calendar-card')) {
+    grid.appendChild(nextCard);
+  }
+}
+
+function getRegenErrorEl(triggerEl) {
+  if (!triggerEl) return null;
+  const actions = triggerEl.closest('.calendar-card__actions');
+  if (!actions) return null;
+  return actions.querySelector('.calendar-card__regen-error');
+}
+
+function setRegenError(triggerEl, message) {
+  const errorEl = getRegenErrorEl(triggerEl);
+  if (!errorEl) return;
+  if (message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  } else {
+    errorEl.textContent = '';
+    errorEl.hidden = true;
+  }
+}
+
+// Delegate regen clicks so the handler survives card re-renders.
+if (grid) {
+  grid.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="regen-day"]');
+    if (!button || !grid.contains(button)) return;
+    if (button.disabled) return;
+    const day = Number(button.dataset.day);
+    const entryIndex = Number(button.dataset.entryIndex);
+    const calendarDayId = button.dataset.calendarDayId || null;
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day click', { day, calendarDayId, entryIndex });
+    }
+    try {
+      const currentUser = await getCurrentUser();
+      const currentUserId = await getCurrentUserId();
+      const userIsPro = await isPro(currentUser);
+      if (!userIsPro) {
+        showUpgradeModal();
+        return;
+      }
+      const entry = button._calendarEntry || resolveCalendarEntryByDayIndex(day, entryIndex);
+      // Test note: verify clicking regenerate after filter/frequency changes triggers a single request.
+      await handleRegenerateDay(entry, day, button, { currentUserEmail: currentUser, currentUserId });
+    } catch (err) {
+      console.error('[Calendar] Regen click handler failed', err);
+      setRegenError(button, 'Regenerate failed. Please try again.');
+    }
+  });
+}
+
+async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
   const targetDay = Number(typeof entryDay === 'number' ? entryDay : entry?.day);
   const button = triggerEl || null;
+  const { currentUserEmail: providedEmail, currentUserId: providedUserId } = options;
+  setRegenError(button, '');
   if (!targetDay || !entry) {
-    alert('Unable to determine which day to regenerate. Please try again.');
+    setRegenError(button, 'Unable to determine which day to regenerate. Please try again.');
     return;
   }
-  const nicheStyle = (currentNiche || nicheInput?.value || '').trim() || 'content creator';
+  const nicheStyle = (currentNiche || nicheInput?.value || '').trim();
+  if (!nicheStyle) {
+    setRegenError(button, 'Set your niche or content style before regenerating a day.');
+    return;
+  }
   const originalLabel = button ? button.textContent : '';
   const payloadPost = JSON.parse(JSON.stringify(entry || {}));
   delete payloadPost.multiPosts;
@@ -5784,17 +6727,28 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       button.disabled = true;
       button.textContent = 'Regenerating…';
     }
-    const currentUser = await getCurrentUser();
+    const currentUser = providedEmail || (await getCurrentUser());
+    const currentUserId = providedUserId || (await getCurrentUserId());
+    const postsPerDay = Math.max(currentPostFrequency || 1, 1);
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day request start', { day: targetDay, postsPerDay });
+    }
     let parsed = null;
     if (regenDaySupported) {
-      const resp = await fetch('/api/regen-day', {
+      const voiceLockPayload = buildVoiceLockRequestPayload();
+      const targetAudiencePayload = buildTargetAudienceRequestPayload();
+      const resp = await fetchWithAuth('/api/regen-day', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           day: targetDay,
           nicheStyle,
           post: payloadPost,
-          userId: currentUser || undefined,
+          userId: currentUserId || undefined,
+          calendarId: currentCalendarId || undefined,
+          calendarDayId: entry?.calendar_day_id || entry?.calendarDayId || entry?.id || undefined,
+          postsPerDay,
+          ...(voiceLockPayload || {}),
+          ...(targetAudiencePayload || {}),
         }),
       });
       if (resp.status === 404) {
@@ -5802,7 +6756,8 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       } else {
         parsed = await resp.json().catch(() => ({}));
         if (!resp.ok) {
-          throw new Error(parsed.error || 'Failed to regenerate this day');
+          const message = parsed?.message || parsed?.error?.message || parsed?.error || 'Failed to regenerate this day';
+          throw new Error(message);
         }
       }
     }
@@ -5816,7 +6771,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
       parsed = { post: fallback };
     }
     if (!parsed || !parsed.post) throw new Error('No post returned. Please try again.');
-    const newPost = parsed.post;
+    let newPost = parsed.post;
     let replaced = false;
     currentCalendar = currentCalendar.map((p) => {
       if (!replaced && p === entry) {
@@ -5832,13 +6787,17 @@ async function handleRegenerateDay(entry, entryDay, triggerEl) {
     if (!replaced) {
       currentCalendar = [...currentCalendar, newPost];
     }
-    renderCards(currentCalendar);
+    rebuildCalendarCardForDay(Number(newPost?.day) || targetDay);
     persistCurrentCalendarState();
     syncCalendarUIAfterDataChange();
     await ensurePlatformVariantsForCurrentCalendar('regen');
+    if (isLocalDevHost) {
+      console.debug('[Calendar] regen-day request complete', { day: targetDay });
+    }
   } catch (err) {
+    const message = err?.message || 'Failed to regenerate this day.';
     console.error('Regenerate day failed:', err);
-    alert(err.message || 'Failed to regenerate this day.');
+    setRegenError(button, `Regenerate failed: ${message}`);
   } finally {
     if (button) {
       button.disabled = false;
@@ -5939,6 +6898,8 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
     showUpgradeModal();
     throw new Error('upgrade_required');
   }
+  const voiceLockPayload = buildVoiceLockRequestPayload();
+  const targetAudiencePayload = buildTargetAudienceRequestPayload();
   const resp = await fetchWithAuth('/api/calendar/regenerate', {
     method: 'POST',
     body: JSON.stringify({
@@ -5946,6 +6907,8 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
       days: 1,
       startDay: day,
       userId: currentUser || undefined,
+      ...(voiceLockPayload || {}),
+      ...(targetAudiencePayload || {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
@@ -6434,96 +7397,12 @@ const slugify = (s = "") =>
     .replace(/(^-|-$)/g, "")
     .slice(0, 40);
 
-const proInteractivePrompts = [
-  'Add a poll asking “Facial or peel?” plus a slider for “Glow level”.',
-  'Use a quiz sticker to vote on favourite result + emoji slider for confidence level.',
-  'Turn the story into a “This or That” sequence with a DM me button.',
-  'Collect audience input with a “Ask me anything about today’s tip” box.',
-  'Use a countdown sticker leading into tomorrow’s teaser.'
-];
-
 const proFollowUpIdeas = [
   'Follow up with a testimonial carousel from a recent client.',
   'Share a short Reel showing the before/after from this concept.',
   'Post a static quote graphic summarizing key data from today’s drop.',
   'Go live to answer the top questions sparked by this post.',
   'Send a newsletter recap that embeds today’s main CTA.'
-];
-
-const AUDIO_CUE_POOL = [
-  { mood: 'Brisk pop surge', tempo: '130–150 bpm', energy: 'high-energy drive', genre: 'pop', search: 'sped up pop punchy beat' },
-  { mood: 'Smooth R&B shimmer', tempo: '90–110 bpm', energy: 'warm groove', genre: 'R&B', search: 'smoky rnb slow burn' },
-  { mood: 'Retro synth bounce', tempo: '120–135 bpm', energy: 'upbeat momentum', genre: 'synthwave', search: 'retro synth bounce' },
-  { mood: 'Moody neo-soul pulse', tempo: '80–95 bpm', energy: 'velvet depth', genre: 'neo-soul', search: 'neo soul velvet pulse' },
-  { mood: 'Bright indie clap', tempo: '115–130 bpm', energy: 'breezy optimism', genre: 'indie pop', search: 'sunny indie clap' },
-  { mood: 'Hard-hitting drill', tempo: '70–90 bpm', energy: 'gritty intensity', genre: 'drill', search: 'urban drill impact' },
-  { mood: 'Future bass shimmer', tempo: '140–150 bpm', energy: 'dreamy lift', genre: 'future bass', search: 'future bass shimmer' },
-  { mood: 'Laid-back lo-fi lounge', tempo: '70–85 bpm', energy: 'chill calm', genre: 'lo-fi', search: 'lofi lounge mist' },
-  { mood: 'Cinematic bass swell', tempo: '90–105 bpm', energy: 'majestic tension', genre: 'cinematic pop', search: 'cinematic bass swell' },
-  { mood: 'Hyper pop sprint', tempo: '150–170 bpm', energy: 'electric buzz', genre: 'hyperpop', search: 'hyperpop sprint shutter' },
-  { mood: 'Organic acoustic drive', tempo: '100–115 bpm', energy: 'earthy uplift', genre: 'acoustic pop', search: 'organic acoustic drive' },
-  { mood: 'Gospel choir lift', tempo: '100–120 bpm', energy: 'uplifting warmth', genre: 'gospel', search: 'gospel choir lift' },
-  { mood: 'Dark trap shimmer', tempo: '70–90 bpm', energy: 'brooding pulse', genre: 'trap', search: 'trap shimmer pulse' },
-  { mood: 'Playful funk jam', tempo: '110–125 bpm', energy: 'groovy bounce', genre: 'funk', search: 'funk jam bounce' },
-  { mood: 'Dreamy shoegaze haze', tempo: '90–100 bpm', energy: 'ethereal slow', genre: 'shoegaze', search: 'shoegaze haze swirl' },
-  { mood: 'Summer reggaeton sway', tempo: '100–115 bpm', energy: 'sunny heat', genre: 'reggaeton', search: 'summer reggaeton sway' },
-  { mood: 'Bold electro anthem', tempo: '128–138 bpm', energy: 'festival rush', genre: 'electro', search: 'electro anthem rush' },
-  { mood: 'Punchy pop-rock cut', tempo: '120–130 bpm', energy: 'confident pulse', genre: 'pop-rock', search: 'pop rock punch cut' },
-  { mood: 'Calm cinematic drift', tempo: '70–85 bpm', energy: 'soft glow', genre: 'ambient', search: 'calm cinematic drift' },
-  { mood: 'Animated world beat', tempo: '110–125 bpm', energy: 'percussive joy', genre: 'world', search: 'world beat joy' },
-];
-
-const createAudioSuggestionTracker = () => {
-  const usedSearches = new Set();
-  const poolLength = AUDIO_CUE_POOL.length;
-
-  const allocateCue = (seed) => {
-    for (let attempt = 0; attempt < poolLength; attempt++) {
-      const candidate = AUDIO_CUE_POOL[(seed + attempt) % poolLength];
-      if (!usedSearches.has(candidate.search) || attempt >= poolLength - 1) {
-        usedSearches.add(candidate.search);
-        return candidate;
-      }
-    }
-    const fallback = AUDIO_CUE_POOL[seed % poolLength];
-    usedSearches.add(fallback.search);
-    return fallback;
-  };
-
-  const formatCue = (cue) => {
-    const parts = [
-      cue.mood,
-      `${cue.genre} style`,
-      cue.energy,
-      cue.tempo,
-      `search: '${cue.search}'`,
-    ];
-    return parts.filter(Boolean).join(', ');
-  };
-
-  return {
-    reset() {
-      usedSearches.clear();
-    },
-    buildSuggestion(index) {
-      const tikTokCue = allocateCue(index * 2);
-      const igCue = allocateCue(index * 2 + 1);
-      return `TikTok: ${formatCue(tikTokCue)}; Instagram Reels: ${formatCue(igCue)}`;
-    },
-  };
-};
-
-const audioSuggestionTracker = createAudioSuggestionTracker();
-const resetAudioSuggestions = () => audioSuggestionTracker.reset();
-
-const proPostingTips = [
-
-const proPostingTips = [
-  'Post weekday afternoons to catch students between classes.',
-  'Aim for early morning drops to reach execs before meetings.',
-  'Share on Saturday evenings when lifestyle audiences scroll longer.',
-  'Publish mid-week around lunch for the best B2B engagement.',
-  'Queue it for Sunday nights when planning-minded followers tune in.'
 ];
 
 
@@ -6552,20 +7431,9 @@ const pickCycled = (items, index = 0, offset = 0) => {
 
 const enrichPostWithProFields = (post, index, nicheStyle = '') => {
   const baseCaption = (post.caption || post.idea || 'Share today’s win.').trim();
-  const nicheTag = buildNicheTag(nicheStyle);
-  const hashtagArray = Array.isArray(post.hashtags) ? post.hashtags.map(formatHashtag).filter(Boolean) : [];
-
-  const visualSlug = slugify(post.idea || nicheStyle || 'promptly').slice(0, 8) || 'promptly';
-  const interactive = pickCycled(proInteractivePrompts, index);
-
-    return {
-      ...post,
-      suggestedAudio: audioSuggestionTracker.buildSuggestion(index),
-    postingTimeTip: post.postingTimeTip || pickCycled(proPostingTips, index),
-    storyPromptExpanded: post.storyPrompt
-      ? `${post.storyPrompt} ${interactive}`
-      : interactive,
-    followUpIdea: pickCycled(proFollowUpIdeas, index)
+  return {
+    ...post,
+    followUpIdea: pickCycled(proFollowUpIdeas, index),
   };
 };
 
@@ -6573,9 +7441,7 @@ const stripProFields = (post) => {
   const clone = { ...post };
   delete clone.captionVariations;
   delete clone.hashtagSets;
-  delete clone.suggestedAudio;
   delete clone.visualTemplate;
-  delete clone.storyPromptExpanded;
   delete clone.followUpIdea;
   return clone;
 };
@@ -6643,6 +7509,7 @@ function showGeneratingState() {
   if (btnText) btnText.textContent = 'Creating calendar with AI...';
   if (progressBar) progressBar.style.display = 'flex';
   if (progressFill) progressFill.style.width = '0%';
+  // Keep preparing brief; we'll switch to live batch progress immediately upon dispatch
   if (progressText) progressText.textContent = 'Preparing your calendar...';
 }
 
@@ -6653,6 +7520,11 @@ function hideGeneratingState(originalText) {
   if (progressBar) progressBar.style.display = 'none';
   if (progressFill) progressFill.style.width = '0%';
 }
+
+let isGeneratingCalendar = false;
+let currentGenerationRunId = 0;
+let generationAbortController = null;
+let calendarRunCounter = 0;
 
 // Export usage lock state
 let calendarExportsLocked = false;
@@ -6729,13 +7601,7 @@ if (exportBtn) {
 // Export CSV button handler
 if (exportCsvBtn) {
   exportCsvBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock CSV export for Free tier
     await fetchLatestCalendarSnapshot();
 
     const niche = nicheInput ? nicheInput.value.trim() : '';
@@ -6763,13 +7629,7 @@ if (exportCsvBtn) {
 // Export ICS (calendar reminders)
 if (exportIcsBtn) {
   exportIcsBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock ICS export for Free tier
     await fetchLatestCalendarSnapshot();
 
     if (!currentCalendar || currentCalendar.length === 0) {
@@ -6791,13 +7651,7 @@ if (exportIcsBtn) {
 // ZIP export
 if (downloadZipBtn) {
   downloadZipBtn.addEventListener('click', async () => {
-    const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
-    // Gate: Pro feature
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    // Unlock ZIP export for Free tier
 
     await fetchLatestCalendarSnapshot();
     
@@ -6861,20 +7715,53 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
   }
   if (!resolvedIsPro) return posts;
 
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) {
+    console.debug('[Calendar] skipping generate-variants (no auth token)');
+    return posts;
+  }
   const chunkSize = 15;
+  let variantAuthWarningLogged = false;
   let merged = posts.map((post) => ({ ...post }));
   for (let i = 0; i < merged.length; i += chunkSize) {
     const chunk = merged.slice(i, i + chunkSize);
     if (!chunk.length) continue;
-    const resp = await fetch('/api/generate-variants', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        posts: chunk,
-        nicheStyle,
-        userId: resolvedUserId,
-      }),
+    const bodyString = JSON.stringify({
+      posts: chunk,
+      nicheStyle,
+      userId: resolvedUserId,
     });
+    let resp;
+    const retryDelays = [250, 750];
+    for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+      try {
+        resp = await fetch('/api/generate-variants', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: bodyString,
+        });
+        break;
+      } catch (err) {
+        const msg = String(err?.message || err);
+        const shouldRetry = err instanceof TypeError || msg.includes('QUIC') || msg.includes('ERR_QUIC_PROTOCOL_ERROR');
+        if (!shouldRetry || attempt >= retryDelays.length) {
+          throw err;
+        }
+        console.warn('[Calendar] retrying variants request', { attempt: attempt + 1, reason: msg });
+        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+      }
+    }
+    if (resp.status === 401) {
+      if (!variantAuthWarningLogged) {
+        variantAuthWarningLogged = true;
+        console.warn('[Calendar] generate-variants unauthorized, skipping platform sync');
+      }
+      return posts;
+    }
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
       const error = new Error(body.error || 'Variant generation failed');
@@ -6883,7 +7770,14 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
     }
     const variantEntries = Array.isArray(body.variants) ? body.variants : [];
     const byDay = new Map(variantEntries.map((entry) => [entry.day, entry.variants]));
-    merged = merged.map((post) => (byDay.has(post.day) ? { ...post, variants: byDay.get(post.day) } : post));
+    merged = merged.map((post) => {
+      if (!byDay.has(post.day)) return post;
+      const variants = byDay.get(post.day);
+      const mergedVariants = { ...post.variants, ...variants };
+      return { ...post, variants: mergedVariants, suggestedAudio: post.suggestedAudio };
+    });
+    const variantAudioCount = merged.filter(hasSuggestedAudio).length;
+    console.log('[Calendar] variants audio preserved', { variantAudioCount });
   }
 
   return merged;
@@ -7097,6 +7991,20 @@ function toCsv(headers, rows){
   return [headers.join(','), ...rows.map(r=>r.map(esc).join(','))].join('\n');
 }
 
+function formatSuggestedAudioDisplay(post = {}) {
+  const audio = post?.suggestedAudio;
+  if (!audio || typeof audio !== 'string') return '';
+  const cleaned = sanitizeSuggestedAudioText(audio);
+  const parts = cleaned.split(/\s+-\s+/);
+  if (parts.length >= 2) {
+    const title = parts.shift().trim();
+    const artist = parts.join(' - ').trim();
+    return title && artist ? `${title} - ${artist}` : '';
+  }
+  return '';
+}
+
+
 function suggestSchedule(posts){
   const base = new Date();
   base.setHours(0,0,0,0);
@@ -7137,9 +8045,9 @@ function escapeHtml(s){
 // Build a professional-looking standalone HTML for a single post
 function buildPostHTML(post){
   const day = post.day || '';
-  const title = post.idea || post.title || '';
+  const title = post.title || '';
   const pillar = post.pillar || '';
-  const type = post.type || '';
+  const type = pillar || '';
   const format = post.format || '';
   const caption = post.caption || '';
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
@@ -7164,7 +8072,7 @@ function buildPostHTML(post){
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     (engage.commentReply||engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply?`<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>`:''}${engage.dmReply?`<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
-    (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div><em>Hook:</em> ${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
+    (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div>${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
         + `${post.variants.igCaption?`<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>`:''}`
@@ -7237,15 +8145,13 @@ function buildPostHTML(post){
       + `</div>`
     );
   }
-  if (post.suggestedAudio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Suggested audio</strong><div>${escapeHtml(post.suggestedAudio)}</div></div>`);
-  }
-  if (post.postingTimeTip) {
-    detailBlocks.push(`<div class="calendar-card__posting-tip"><strong>Posting time tip</strong><div>${escapeHtml(post.postingTimeTip)}</div></div>`);
-  }
-  if (post.storyPromptExpanded) {
-    detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
-  }
+    if (post.suggestedAudio) {
+      const audioHtmlText = formatSuggestedAudioDisplay(post);
+      if (audioHtmlText) {
+        detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
+      }
+    }
+  // Story prompt+ intentionally omitted from calendar UI.
   if (post.followUpIdea) {
     detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
   }
@@ -7330,7 +8236,7 @@ function buildPostHTML(post){
     .calendar-card__format { display: inline-block; background: rgba(44, 177, 188, 0.13); color: #2cb1bc; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
     .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #7f5af0; font-size: 0.97rem; }
   .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__posting-tip, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
     .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
     .calendar-card__visual a:hover { text-decoration: underline; }
@@ -7463,444 +8369,252 @@ if (document.readyState === 'loading') {
 }
 
 const DEFAULT_IDEA_TEXT = 'Engaging post idea';
-const DEFAULT_CAPTION_TEXT = 'Quick tip that helps you today.\nSave this for later.';
-const DEFAULT_STORY_PROMPT_TEXT = "Share behind-the-scenes of today's work.";
+const DEFAULT_CAPTION_TEXT = '';
+const DEFAULT_STORY_PROMPT_TEXT = '';
 
 const POST_SLOT_ANGLES = [
   {
     name: 'Story spotlight',
-    buildIdea: (base) => `Story spotlight: ${base}`,
-    buildCaption: (base, cta) => `Story spotlight: ${base}. A real client walked in feeling stuck—we tweaked one move and the shift was wild. Ready for your own version? ${cta}`,
-    buildStoryPrompt: (base) => `Record a 30-second selfie story describing how ${base} played out for a real person. Highlight their before, the pivot, and the win.`,
-    designNotes: 'Use warm, candid footage plus on-screen captions that hit the turning point.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Story clip → Reel remix', 'Quote the testimonial in a carousel'],
     analytics: ['Saves', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `What happened when we doubled down on ${base}?`,
-      body: '1) Introduce the person\n2) Show the “aha” moment\n3) Reveal the result with a number.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Appreciate you checking out this story! Want the behind-the-scenes playbook for ${base.toLowerCase()}?`,
-      dmReply: `I can map out how ${base.toLowerCase()} would look for you—want me to send the cheatsheet?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
   {
     name: 'Proof drop',
-    buildIdea: (base) => `Proof drop: ${base}`,
-    buildCaption: (base, cta) => `Proof drop: ${base}. Screenshot a metric, testimonial, or before/after that shows the transformation. Spell out the levers you pulled and invite them to replicate it. ${cta}`,
-    buildStoryPrompt: (base) => `Film a voiceover scrolling through proof that ${base} works—circle the metric and narrate what changed.`,
-    designNotes: 'Bold numeric typography, tight crop on stats, branded highlight color.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Stat graphic → LinkedIn post', 'Metric → Email teaser'],
     analytics: ['Profile visits', 'Click-throughs'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Need receipts that ${base} delivers?`,
-      body: 'Walk through the numbers, then call out exactly what triggered the spike.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Wild, right? If you want to know how ${base.toLowerCase()} works in your setup, ask away.`,
-      dmReply: `Happy to unpack that proof point in DMs—want me to send the 3-step breakdown?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Myth bust',
-    buildIdea: (base) => `Myth busting: ${base}`,
-    buildCaption: (base, cta) => `Myth busting time: people still believe the wrong thing about ${base}. Call out the myth, stack your truth with one vivid example, and end with an empowering action step. ${cta}`,
-    buildStoryPrompt: (base) => `Record a quick myth-vs-truth reel pointing straight at the camera. Say “Myth:” then flip to “Here’s the truth about ${base}.”`,
-    designNotes: 'Split-screen or text overlay that literally says “Myth” and “Truth.”',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Myth vs Truth carousel', 'Save as FAQ highlight'],
     analytics: ['Comments', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Myth: ${base}. Truth: let me show you.`,
-      body: 'Call out the belief, explain why it fails, and gift them the new habit.',
-      cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Thanks for chiming in! Drop the next myth you hear all the time and I’ll break it down.',
-      dmReply: 'If you’re running into that myth in real time, shoot me the context—I’ll help you counter it.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Community question',
-    buildIdea: (base) => `Community question: ${base}`,
-    buildCaption: (base) => `Community question: ${base}. Give your own POV first, then explicitly ask followers to share their routines, wins, or hurdles. Spotlight a few in Stories to keep the loop going.`,
-    buildStoryPrompt: (base) => `Film yourself asking the question about ${base}, then stitch replies throughout the day.`,
-    designNotes: 'Use a simple text-on-gradient background or selfie clip with captions + poll stickers.',
+    buildIdea: (base) => base,
+    buildCaption: (base) => base,
+    designNotes: '',
     repurpose: ['Turn answers into a roundup post', 'Collect quotes for newsletter'],
     analytics: ['Comments', 'DMs'],
-    buildVideoScript: (base) => ({
-      hook: `Real talk: how are you approaching ${base}?`,
-      body: 'Share your stance, then ask them to weigh in with a specific emoji or keyword.',
-      cta: 'Drop your answer in the comments—best one gets a shoutout.',
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Love this perspective—mind if I feature it in Stories?',
-      dmReply: 'Got it! I’ll share a couple bonus tips that expand on your take.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Mini training',
-    buildIdea: (base) => `Mini training: ${base}`,
-    buildCaption: (base, cta) => `Mini training: ${base}. Lay out a 3-step checklist: the setup, the action, the win they should expect. Encourage followers to screenshot it, try it tonight, then tell you how it went. ${cta}`,
-    buildStoryPrompt: (base) => `Screen-record or slide through a whiteboard as you outline the 3 steps for ${base}.`,
-    designNotes: 'Use numbered typography, punchy verbs, and arrows that show progression.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Checklist → PDF lead magnet', 'Turn each step into a Story panel'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Here’s your 3-step plan for ${base}.`,
-      body: 'Step 1: set the stage. Step 2: show the action. Step 3: reveal the payoff.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Let me know when you run through those steps for ${base.toLowerCase()}—I’ll help troubleshoot.`,
-      dmReply: 'Shoot me your screenshot and I’ll personalize the next move.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Offer reminder',
-    buildIdea: (base) => `Offer reminder: ${base}`,
-    buildCaption: (base, cta) => `Offer reminder: tie ${base} back to the program, product, or slot you have open. Spell out exactly who it helps, what they get, and why this week is the best time to jump in. ${cta}`,
-    buildStoryPrompt: (base) => `Record a clip from your workspace or client area inviting them to claim the ${base}-style result.`,
-    designNotes: 'Show a behind-the-scenes moment plus bold CTA button on screen.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Turn into an email CTA', 'Use as pinned Story highlight'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Spots open for people who want ${base}.`,
-      body: 'Explain what’s included, sprinkle urgency, and mention proof.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Just sent over details for ${base.toLowerCase()}—want me to hold a slot for you?`,
-      dmReply: `Here’s the mini application for ${base.toLowerCase()}. I’ll keep an eye out for your name!`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
   {
     name: 'Trend radar',
-    buildIdea: (base) => `Trend radar: ${base}`,
-    buildCaption: (base, cta) => `Trend radar: ${base}. Flag what’s changing this month, spell out how it impacts your audience, and recommend a micro-shift they can make today. ${cta}`,
-    buildStoryPrompt: (base) => `Film a quick “trend desk” explainer: headline, why it matters, what you’re advising.`,
-    designNotes: 'News-style lower thirds, ticker-inspired typography, animated arrows.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Trend note → Newsletter opener', 'Trend clip → LinkedIn post'],
     analytics: ['Shares', 'Profile visits'],
-    buildVideoScript: (base, cta) => ({
-      hook: `If ${base} is on your radar, here’s what to watch:`,
-      body: '1) Name the shift\n2) Show who it affects\n3) Give them a move to make',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Appreciate you keeping tabs on ${base.toLowerCase()} too—what signals are you seeing?`,
-      dmReply: `Want a custom read on how ${base.toLowerCase()} will hit your brand? Shoot me your niche and I’ll riff.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Swipe file',
-    buildIdea: (base) => `Swipe file: ${base}`,
-    buildCaption: (base, cta) => `Swipe file drop: ${base}. Outline the exact template, line-by-line, and invite followers to screenshot + tag you when they try it. ${cta}`,
-    buildStoryPrompt: (base) => `Share a “copy this” walkthrough: point to each line of the swipe file while narrating how to personalize it.`,
-    designNotes: 'Use cursor highlights, note-style backgrounds, or Notion-style cards.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Swipe → PDF lead magnet', 'Swipe → Carousel frames'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Steal this ${base} swipe in 3 lines.`,
-      body: 'Line 1: pattern interrupt\nLine 2: promise\nLine 3: CTA',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Tag me when you plug this ${base.toLowerCase()} swipe into your content—I’ll amplify my favorites.`,
-      dmReply: `Send me your version and I’ll tweak the hook for you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Build in public',
-    buildIdea: (base) => `Build in public: ${base}`,
-    buildCaption: (base, cta) => `Build-in-public check-in: show where ${base} is today, what broke, and the one experiment you’re running next. Transparently sharing the messy middle builds trust. ${cta}`,
-    buildStoryPrompt: (base) => `Record a short vlog clip walking through the “in-progress” dashboard tied to ${base}.`,
-    designNotes: 'B-roll of dashboards/whiteboards, handwritten annotations, quick status labels.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Turn into blog progress log', 'Clip into YouTube Short'],
     analytics: ['Profile visits', 'DMs'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Building ${base} in public: here’s today’s update.`,
-      body: 'Current status → friction point → next micro-step.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `If you’re building ${base.toLowerCase()} too, let’s trade notes—what stage are you in?`,
-      dmReply: `Want to compare dashboards? I’ll send a Loom break-down.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Hot take',
-    buildIdea: (base) => `Hot take: ${base}`,
-    buildCaption: (base, cta) => `Hot take: ${base}. Lead with the spicy belief, back it with one data point or story, then give the “if you disagree, try this” olive branch. ${cta}`,
-    buildStoryPrompt: (base) => `Shoot a dramatic opener (zoom-in, clap, snap) before dropping the hot take about ${base}.`,
-    designNotes: 'Bold gradient background, motion blur text, reaction emojis.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Turn into Twitter thread', 'Use as debate poll in Stories'],
     analytics: ['Comments', 'Shares'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Hot take: you’re doing ${base} wrong.`,
-      body: 'Explain the belief, cite proof, offer alternative.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Spicy! Drop your counterpoint—I’ll pin the best argument.`,
-      dmReply: `Totally cool if you disagree. Want me to send the full breakdown behind this take?`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'FAQ clinic',
-    buildIdea: (base) => `FAQ clinic: ${base}`,
-    buildCaption: (base, cta) => `FAQ clinic: answer the question you see nonstop about ${base}. Give the short version, the nuance, and a quick diagnostic so people know what bucket they’re in. ${cta}`,
-    buildStoryPrompt: (base) => `Use question stickers to collect the FAQs about ${base}, then stitch your answers.`,
-    designNotes: 'Clean Q&A cards, subtle borders, typewriter question text.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Compile into FAQ highlight', 'Turn into blog Q&A'],
     analytics: ['Replies', 'Profile visits'],
-    buildVideoScript: (base, cta) => ({
-      hook: `${base}? Here’s the real answer.`,
-      body: 'State the question → bust assumptions → recommend next step.',
-      cta,
-    }),
-    buildEngagementScripts: (base) => ({
-      commentReply: `Got another ${base.toLowerCase()} question? Drop it and I’ll tackle it next.`,
-      dmReply: `I’ll send the long-form answer plus links—just say “FAQ me.”`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base) => ({}),
   },
   {
     name: 'Client spotlight',
-    buildIdea: (base) => `Client spotlight: ${base}`,
-    buildCaption: (base, cta) => `Client spotlight: highlight one person who implemented ${base} and narrate their before/after. Tag them if they’re cool with it and share the exact prompt you gave them. ${cta}`,
-    buildStoryPrompt: (base) => `Record a short montage of the client’s win with captions describing the ${base} approach.`,
-    designNotes: 'Use testimonial card overlays, signature colors, and a hero photo.',
+    buildIdea: (base) => base,
+    buildCaption: (base, cta) => base,
+    designNotes: '',
     repurpose: ['Turn into case study PDF', 'Send as sales follow-up asset'],
     analytics: ['Saves', 'Link clicks'],
-    buildVideoScript: (base, cta) => ({
-      hook: `Client spotlight: how ${base} changed their week.`,
-      body: 'Introduce the client → describe pain → show the win + data.',
-      cta,
-    }),
-    buildEngagementScripts: (base, cta) => ({
-      commentReply: `Want the same ${base.toLowerCase()} result? I’ll send you the starter checklist.`,
-      dmReply: `Happy to intro you to this client if you’re curious—tap me and I’ll connect you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (base, cta) => ({}),
   },
 ];
 
 const UNIQUE_TOPIC_BLUEPRINTS = [
   {
     name: 'Aftercare blueprint',
-    idea: (subject, helpers) => `Aftercare blueprint: 72 hours after ${subject}`,
-    caption: (subject, helpers) => `Glow insurance for ${subject}: here’s the 24-hour, 48-hour, and 72-hour checklist that keeps results locked in. Save it, tape it to your mirror, and tag us when you follow through. ${helpers.cta}`,
-    storyPrompt: (subject) => `Film your top three aftercare must-haves after ${subject} and label when to use them.`,
-    designNotes: 'Flat lay of products with annotated arrows and timestamps.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Turn into printable checklist', 'Add to automated SMS follow-up'],
     analytics: ['Saves', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Stop sabotaging ${subject} with weak aftercare.`,
-      body: 'Show the kit • explain why each step matters • highlight one common mistake.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Need me to text you this ${subject} aftercare plan? Drop “REMIND” below.`,
-      dmReply: `Send me a selfie after your ${subject} tomorrow and I’ll double-check healing for you.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Event countdown',
-    idea: (subject, helpers) => `${helpers.title} countdown: when to book before a big event`,
-    caption: (subject, helpers) => `VIP timeline alert: here’s exactly when to schedule ${subject} if you’re prepping for a wedding, shoot, or party. Screenshot the 5-day countdown and share it with your group chat. ${helpers.cta}`,
-    storyPrompt: () => 'Create a vertical timeline graphic and narrate each milestone.',
-    designNotes: 'Use timeline layout with dates and checkmarks.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Send to bridal leads', 'Turn into pinned Story highlight'],
     analytics: ['Saves', 'Shares'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Booking ${subject} before an event? Do this.`,
-      body: 'Day -7: prep • Day -3: treatment • Day -1: aftercare drill.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Tell me your event date and I’ll pop the ideal appointment windows in your DMs.',
-      dmReply: 'Drop the date + vibe and I’ll send a personalized countdown.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Ingredient face-off',
-    idea: (subject, helpers) => `Ingredient face-off inside ${subject}`,
-    caption: (subject, helpers) => `Two MVP ingredients power this ${subject}. Let’s compare what each one does, who it’s best for, and how to know when you need it. ${helpers.cta}`,
-    storyPrompt: () => 'Film a side-by-side reel labeling each ingredient’s benefit.',
-    designNotes: 'Split-screen ingredient cards with icons.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Turn into carousel explainer', 'Convert to email mini-lesson'],
     analytics: ['Saves', 'Comments'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Ingredient showdown inside your ${subject}.`,
-      body: 'Highlight ingredient A • highlight ingredient B • explain the combo magic.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Curious which ${subject} ingredient you need? Tell me your skin goal and I’ll answer.`,
-      dmReply: `Shoot me a photo of the products you already use—I’ll tell you if they pair with this ${subject}.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Membership spotlight',
-    idea: (subject, helpers) => `Membership perks for consistent ${subject}`,
-    caption: (subject, helpers) => `If you love ${subject}, the membership pays for itself. Here’s what weekly/biweekly visits unlock, the surprise perks, and the accountability you didn’t know you needed. ${helpers.cta}`,
-    storyPrompt: () => 'Record a walkthrough of the member portal or welcome kit.',
-    designNotes: 'Use card stack visuals with perk highlights.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Turn into sales page section', 'Include in onboarding email'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Membership math for ${subject}: let’s break it down.`,
-      body: 'Cost vs value, bonus perks, and who it’s perfect for.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Want me to run the numbers based on your routine? Drop “membership” and I’ll DM you.',
-      dmReply: 'I’ll send over the full perk stack plus current openings—just say the word.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Seasonal switch-up',
-    idea: (subject, helpers) => `Seasonal switch-up: how ${subject} changes`,
-    caption: (subject, helpers) => `Seasons change, so should your ${subject}. Here’s how we tweak exfoliation, hydration, and LED time when temps swing. ${helpers.cta}`,
-    storyPrompt: () => 'Film B-roll of seasonal props (sun hat vs cozy scarf) and overlay tips.',
-    designNotes: 'Use split seasonal palette with icons.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Update blog seasonal guide', 'Send as quarterly reminder'],
     analytics: ['Shares', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Your ${subject} in winter vs summer.`,
-      body: 'Call out the mistakes • show your tweak • invite them to book the seasonal plan.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `What climate are you in? I’ll tailor the ${subject} switch-up for you.`,
-      dmReply: `Send me your current routine—I’ll highlight what to pause until spring.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'At-home vs pro',
-    idea: (subject, helpers) => `At-home vs pro results with ${subject}`,
-    caption: (subject, helpers) => `DIY can be cute, but here’s what only a pro ${subject} delivers. Outline the at-home steps we still love, then show the pro-only benefits. ${helpers.cta}`,
-    storyPrompt: () => 'Split screen reel: home routine on one side, pro tools on the other.',
-    designNotes: 'Use checklists + “pro only” stamps.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Turn into lead magnet', 'Use as FAQ reply'],
     analytics: ['Saves', 'Profile visits'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Can you DIY ${subject}?`,
-      body: 'List what’s safe at home • list what’s better in-studio • call to action.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Curious if your at-home tools play nice with ${subject}? Tell me the brand.`,
-      dmReply: `Send me your cart screenshot and I’ll give a thumbs up/down.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Add-on stack',
-    idea: (subject, helpers) => `Add-on stack: level up your ${subject}`,
-    caption: (subject, helpers) => `Want your ${subject} to hit harder? Stack it with these two add-ons. Share the price, time, and who each combo is perfect for. ${helpers.cta}`,
-    storyPrompt: () => 'Record a “choose your own adventure” Stories poll with add-on combos.',
-    designNotes: 'Use flow-chart arrows showing combinations.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Bundle into sales deck', 'Upsell via email'],
     analytics: ['Upsells', 'Replies'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `The add-on stack that makes ${subject} unstoppable.`,
-      body: 'Add-on 1 reason • Add-on 2 reason • real client reaction.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: (subject) => ({
-      commentReply: `Tell me your goal and I’ll recommend the perfect ${subject} stack.`,
-      dmReply: `I’ll hold a spot for the combo you want—just drop your preferred day.`,
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: (subject) => ({}),
   },
   {
     name: 'Pricing clarity',
-    idea: (subject, helpers) => `Pricing clarity: where your ${subject} investment goes`,
-    caption: (subject, helpers) => `Here’s what you pay for with ${subject}: sterile tools, licensed pros, medical-grade serums, and the follow-up plan. Transparency builds trust, so let’s show the receipt. ${helpers.cta}`,
-    storyPrompt: () => 'Film a reel labeling each cost bucket on-screen.',
-    designNotes: 'Receipt-style typography with highlighted lines.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Embed on pricing page', 'Send during sales consults'],
     analytics: ['Profile visits', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Ever wonder why ${subject} costs what it does?`,
-      body: 'Line-item the investment • show what corners you refuse to cut.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Have a budget? Tell me and I’ll map what we can achieve inside it.',
-      dmReply: 'I’ll send financing + membership options—just DM “pricing.”',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Mistake audit',
-    idea: (subject, helpers) => `Mistakes we fix before ${subject}`,
-    caption: (subject, helpers) => `I see the same three mistakes right before ${subject}: wrong cleanser, skipping SPF, and sleeping on silk. Call them out, show how you correct them, and invite followers to audit themselves. ${helpers.cta}`,
-    storyPrompt: () => 'Create a carousel: “Did you do this?” → “Here’s the fix.”',
-    designNotes: 'Use bold red “fix this” banners.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Use as onboarding PDF', 'Share in welcome email'],
     analytics: ['Comments', 'Saves'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Don’t book ${subject} until you stop doing this.`,
-      body: 'Mistake • consequence • quick fix.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Confess your pre-appointment habits and I’ll doctor them up.',
-      dmReply: 'Send me your routine and I’ll flag what to pause before we treat you.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Audience pivot',
-    idea: (subject, helpers) => `${helpers.title} for first-timers`,
-    caption: (subject, helpers) => `Teens, men, and first-timers ask if ${subject} is “for them.” Answer with empathy: explain sensations, prep, and confidence boosts. ${helpers.cta}`,
-    storyPrompt: () => 'Interview a first-time client about how it actually felt.',
-    designNotes: 'Use approachable, friendly typography and candid photography.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Feature on FAQ page', 'Create pinned TikTok'],
     analytics: ['Follows', 'DMs'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `First ${subject}? Here’s what to expect.`,
-      body: 'Walk through arrival • treatment • aftercare.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'If it’s your first time, tell me your biggest worry—I’ll answer it publicly.',
-      dmReply: 'Drop me a “newbie” DM and I’ll voice-note the full rundown.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Tool + tech spotlight',
-    idea: (subject, helpers) => `Tool spotlight inside ${subject}`,
-    caption: (subject, helpers) => `Let’s geek out over the tech that powers ${subject}. Break down how the tool works, safety checks you run, and the sensation clients actually feel. ${helpers.cta}`,
-    storyPrompt: () => 'Film a close-up of the tool in action with narration.',
-    designNotes: 'Use blueprint lines, arrows, and specs.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Add to diagnostic landing page', 'Send as “meet the tech” email'],
     analytics: ['Profile visits', 'Shares'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `Meet the tech that makes ${subject} possible.`,
-      body: 'Show the interface • show calibration • show real-time results.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Got a gear question? I’m the nerd to ask.',
-      dmReply: 'I’ll send you the full spec sheet plus why we chose this model.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
   {
     name: 'Progress diary',
-    idea: (subject, helpers) => `Progress diary: 3 visits of ${subject}`,
-    caption: (subject, helpers) => `Document the journey: Visit 1 baseline, Visit 2 turning point, Visit 3 glow-up. People trust receipts, so show them the diary. ${helpers.cta}`,
-    storyPrompt: () => 'Compile voice memos or quick clips after each visit.',
-    designNotes: 'Scrapbook layout with Polaroid frames.',
+    idea: (subject, helpers) => subject,
+    caption: (subject, helpers) => subject,
+    designNotes: '',
     repurpose: ['Turn into blog case study', 'Use as nurture email arc'],
     analytics: ['Saves', 'Link clicks'],
-    buildVideoScript: (subject, helpers) => ({
-      hook: `What 3 ${subject} visits look like.`,
-      body: 'Baseline clip • mid-way clip • final reveal.',
-      cta: helpers.cta,
-    }),
-    buildEngagementScripts: () => ({
-      commentReply: 'Want me to document your journey too? Say “diary me.”',
-      dmReply: 'I’ll send the consent form + how we keep your footage cute.',
-    }),
+    buildVideoScript: () => ({}),
+    buildEngagementScripts: () => ({}),
   },
 ];
 const UNIQUE_SUFFIXES = [
@@ -7927,7 +8641,7 @@ function mergeUnique(list, additions) {
 function applySlotAngle(post, angle, slotNumber) {
   if (!angle) return;
   const baseIdea = (post.idea || DEFAULT_IDEA_TEXT).trim();
-  const cta = post.cta || 'DM us to book today';
+  const cta = post.cta || '';
   if (angle.buildIdea) post.idea = angle.buildIdea(baseIdea, slotNumber);
   if (angle.buildCaption) post.caption = angle.buildCaption(baseIdea, cta, post.caption);
   if (angle.buildStoryPrompt) post.storyPrompt = angle.buildStoryPrompt(baseIdea);
@@ -7939,7 +8653,7 @@ function applySlotAngle(post, angle, slotNumber) {
     post.videoScript = { ...(post.videoScript || {}), ...video };
   }
   const engagement = angle.buildEngagementScripts ? angle.buildEngagementScripts(baseIdea, cta) : null;
-  if (engagement) {
+  if (engagement && (engagement.commentReply || engagement.dmReply)) {
     post.engagementScripts = {
       commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
       dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
@@ -7967,7 +8681,7 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
   if (!blueprint) return;
   const normalized = (keyword || 'your service').replace(/\s+/g, ' ').trim();
   const helpers = {
-    cta: post.cta || 'DM us to book today',
+    cta: post.cta || '',
     slotNumber,
     title: toTitleCase(normalized),
   };
@@ -7984,7 +8698,7 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
     post.videoScript = { ...(post.videoScript || {}), ...video };
   }
   const engagement = blueprint.buildEngagementScripts ? blueprint.buildEngagementScripts(normalized, helpers) : null;
-  if (engagement) {
+  if (engagement && (engagement.commentReply || engagement.dmReply)) {
     post.engagementScripts = {
       commentReply: engagement.commentReply || (post.engagementScripts?.commentReply ?? ''),
       dmReply: engagement.dmReply || (post.engagementScripts?.dmReply ?? ''),
@@ -8088,104 +8802,286 @@ function ensureGlobalVariety(posts) {
   return posts;
 }
 
-// Normalize a post to guarantee all required fields exist
+// Normalize a post to ensure required fields exist
+function sanitizeSuggestedAudioText(value = '') {
+  return String(value || '')
+    .replace(/^(tiktok|instagram)\s*:\s*/i, '')
+    .replace(/\bhttps?:\/\/\S+/gi, '')
+    .replace(/@[A-Za-z0-9._-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isValidSuggestedAudio(audio = '') {
+  if (!audio || typeof audio !== 'string') return false;
+  return /.+\s-\s.+/.test(audio);
+}
+
+function normalizeSuggestedAudio(post = {}) {
+  const candidate = post.suggestedAudio || post.suggested_audio;
+  if (!candidate) return '';
+  if (typeof candidate !== 'string') return '';
+  const cleaned = sanitizeSuggestedAudioText(candidate);
+  const parts = cleaned.split(/\s+-\s+/);
+  if (parts.length >= 2) {
+    const title = parts.shift().trim();
+    const artist = parts.join(' - ').trim();
+    return title && artist ? `${title} - ${artist}` : '';
+  }
+  return '';
+}
+
+function hasSuggestedAudio(post) {
+  return isValidSuggestedAudio(post?.suggestedAudio);
+}
+
+function getSuggestedAudioTitle(post) {
+  const audio = normalizeSuggestedAudio(post);
+  return audio || '';
+}
+
 function normalizePost(p, idx = 0, startDay = 1) {
   const out = {
     day: typeof p.day === 'number' ? p.day : (startDay + idx),
     idea: p.idea || p.title || DEFAULT_IDEA_TEXT,
     type: p.type || 'educational',
     caption: p.caption || DEFAULT_CAPTION_TEXT,
-    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : ['marketing','content','tips','learn','growth','brand']),
-    format: p.format || 'Reel',
-    cta: p.cta || 'DM us to book today',
-    pillar: p.pillar || 'Education',
-    storyPrompt: p.storyPrompt || DEFAULT_STORY_PROMPT_TEXT,
-    designNotes: p.designNotes || 'Clean layout, bold headline, brand colors.',
+    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
+    format: p.format || '',
+    cta: p.cta || '',
+    pillar: p.pillar || '',
+    storyPrompt: p.storyPrompt || '',
+    designNotes: p.designNotes || '',
     repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
     analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
-    engagementScripts: p.engagementScripts || { commentReply: 'Appreciate you! Want our menu?', dmReply: 'Starts at $99. Want me to book you this week?' },
+    engagementScripts: p.engagementScripts || { commentReply: '', dmReply: '' },
     promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
     weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
-    videoScript: p.videoScript || { hook: 'Stop scrolling—quick tip', body: 'Show result • Explain 1 step • Tease benefit', cta: 'DM us to grab your spot' },
+    videoScript: p.videoScript || {},
     variants: p.variants || undefined,
+    distributionPlan: p.distributionPlan || '',
+    audio: p.audio || '',
+    suggestedAudio: normalizeSuggestedAudio(p),
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
   if (!out.engagementScripts.commentReply && p.engagementScript) out.engagementScripts.commentReply = p.engagementScript;
-  if (!out.engagementScripts.dmReply) out.engagementScripts.dmReply = out.engagementScripts.dmReply || '';
   // Ensure hashtags have # prefix for display purposes later
   out.hashtags = Array.isArray(out.hashtags) ? out.hashtags : [];
   return { ...p, ...out };
 }
 
 // OpenAI API integration (via backend proxy)
-async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
-  console.log(" generateCalendarWithAI called with:", nicheStyle);
-  
+function normalizeCalendarSignature(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 120);
+}
+
+async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
+  const runSignal = options.signal;
+  const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
+  const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
+  const tStart = performance.now();
+  console.log(`[Calendar][Perf] generateCalendarWithAI start (t=${Math.round(tStart)}ms) runId=${thisRunId}`, { nicheStyle, postsPerDay });
+
   try {
-    const currentUserEmail = await getCurrentUser();
-    const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
+    // Resolve user context concurrently; do not block batch dispatch
+    const currentUserEmailPromise = getCurrentUser();
+    const currentUserIdPromise = getCurrentUserId();
+    const userIsProPromise = (async () => {
+      const email = await currentUserEmailPromise;
+      try {
+        return email ? await isPro(email) : false;
+      } catch (_) {
+        return false;
+      }
+    })();
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
-    const batchSize = 5;
+    const batchSize = 10;
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
     const totalBatches = Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
+    const usedSignaturesForRun = [];
+    // Incremental render state
+    const partialByIndex = {};
+    let firstRenderDone = false;
+    let generatedCalendarId = null;
+    // Clear any previous calendar for a fresh incremental render
+    try {
+      currentCalendar = [];
+      renderCards(currentCalendar);
+    } catch (_) {}
+    // Switch to live generation progress immediately
+    {
+      const btn = document.getElementById('generate-calendar');
+      const textSpan = btn?.querySelector('.btn-text');
+      const pFill = document.getElementById('progress-fill');
+      const pText = document.getElementById('progress-text');
+      if (textSpan) textSpan.textContent = `Generating... (0/${totalPosts} posts)`;
+      if (pFill) pFill.style.width = `0%`;
+      if (pText) pText.textContent = `0 of ${totalPosts} posts created (0%)`;
+      console.log(`[Calendar][Perf] preparing cleared (t=${Math.round(performance.now())}ms)`);
+    }
     
-    // Helper to fetch one batch
+    if (runSignal?.aborted) throw new Error('generation_cancelled');
+    // Defer resolving userId until needed; don't gate first dispatch
+    let payloadUserId;
+    const payloadUserIdPromise = (async () => {
+      try {
+        const id = await currentUserIdPromise;
+        const email = await currentUserEmailPromise;
+        return id || email || undefined;
+      } catch (_) {
+        return undefined;
+      }
+    })();
+    let firstDispatchLogged = false;
     const fetchBatch = async (batchIndex) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
+      if (runSignal?.aborted || thisRunId !== currentGenerationRunId) {
+        throw new Error('generation_cancelled');
+      }
       const remaining = totalPosts - batchIndex * batchSize;
       const requestSize = Math.min(batchSize, remaining);
       const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
-      console.log(` Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`);
-      
+      // Resolve payload user id lazily; do not block early dispatch if it’s still pending
+      if (typeof payloadUserId === 'undefined') {
+        payloadUserId = await payloadUserIdPromise;
+      }
+      const payload = {
+        nicheStyle,
+        userId: payloadUserId,
+        days: requestSize,
+        startDay,
+        postsPerDay: normalizedFrequency,
+        usedSignatures: usedSignaturesForRun.slice(),
+      };
+      const voiceLockPayload = buildVoiceLockRequestPayload();
+      if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
+      const targetAudiencePayload = buildTargetAudienceRequestPayload();
+      if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
+      if (thisRunId !== currentGenerationRunId) {
+        throw new Error('generation_cancelled');
+      }
+      if (!firstDispatchLogged) {
+        console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
+        firstDispatchLogged = true;
+      }
+      console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
-        body: JSON.stringify({ 
-          nicheStyle, 
-          userId: getCurrentUser() || undefined, 
-          days: requestSize, 
-          startDay,
-          postsPerDay: normalizedFrequency
-        })
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: runSignal,
       });
-      
-      if (!response.ok) {
-        let detail = '';
+      const responseText = await response.text();
+      const parsedDetail = (() => {
         try {
-          detail = await response.text();
-        } catch (_) {}
-        const parsedDetail = (() => {
-          try {
-            return detail ? JSON.parse(detail) : null;
-          } catch {
-            return null;
-          }
-        })();
-        if (parsedDetail?.error === 'upgrade_required') {
-          if (parsedDetail?.feature === 'calendar_exports') {
-            lockCalendarExportButtons();
-          }
-          showUpgradeModal();
-          throw new Error('upgrade_required');
+          return responseText ? JSON.parse(responseText) : null;
+        } catch {
+          return null;
         }
-        const hint = parsedDetail?.error || detail || response.statusText;
-        throw new Error(`API error: ${hint}`);
+      })();
+      const ct = response.headers.get('content-type') || '';
+      const bodyIsHtml = /<!DOCTYPE/i.test(responseText.trim()) || ct.toLowerCase().includes('text/html') || responseText.trim().startsWith('<html');
+      if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
+        const data = parsedDetail || {};
+        let dataString = '';
+        try {
+          dataString = JSON.stringify(data);
+        } catch {
+          dataString = response.statusText || 'invalid_response';
+        }
+        const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
+        const preview = responseText.slice(0, 300);
+        lastGenerationErrorStatus = response.status;
+        lastGenerationRequestId = data?.requestId || data?.error?.requestId || null;
+        lastGenerationErrorCode = data?.error?.code || data?.code || null;
+        console.error('[Calendar] fetchBatch bad response', {
+          batchIndex,
+          status: response.status,
+          requestId: data?.requestId || data?.error?.requestId || null,
+          error: msg,
+        });
+        if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
+          lastGenerationErrorCode = data?.error?.code;
+          throw new Error('openai_schema_error');
+        }
+        throw new Error(msg);
       }
-      
-      const data = await response.json();
-      if (data?.error === 'upgrade_required') {
-        if (data?.feature === 'calendar_exports') {
+      if (firstDispatchLogged) {
+        console.log(`[Calendar][Perf] first batch response received (t=${Math.round(performance.now())}ms)`);
+        // Only log once
+        firstDispatchLogged = false;
+      }
+
+      const responsePayload = parsedDetail;
+      if (responsePayload?.error === 'upgrade_required') {
+        if (responsePayload?.feature === 'calendar_exports') {
           lockCalendarExportButtons();
         }
         showUpgradeModal();
+        lastGenerationErrorCode = 'upgrade_required';
         throw new Error('upgrade_required');
       }
-      let batchPosts = Array.isArray(data.posts) ? data.posts : [];
+
+      if (!responsePayload) {
+        console.error('[Calendar] fetchBatch invalid JSON response', {
+          batchIndex,
+          payload: responsePayload,
+          body: responseText,
+        });
+        throw new Error('API error: invalid_json');
+      }
+
+      const postsCandidate =
+        responsePayload.posts ??
+        responsePayload.data?.posts ??
+        responsePayload.result?.posts ??
+        responsePayload.items ??
+        responsePayload;
+      const calendarId = responsePayload.calendarId ?? responsePayload.id ?? responsePayload.calendar?.id ?? null;
+      const requestIdFromPayload = responsePayload.requestId;
+      if (requestIdFromPayload) lastGenerationRequestId = requestIdFromPayload;
+      if (!Array.isArray(postsCandidate)) {
+        console.error('[Calendar] fetchBatch invalid JSON response', {
+          batchIndex,
+          payload: responsePayload,
+          body: responseText,
+        });
+        throw new Error('API error: invalid_json');
+      }
+
+      postsCandidate.forEach((post) => {
+        const signature = normalizeCalendarSignature(post.title);
+        if (signature && !usedSignaturesForRun.includes(signature)) {
+          usedSignaturesForRun.push(signature);
+        }
+      });
+
+      if (!postsCandidate.length) {
+        const suffix = requestIdFromPayload ? ` (requestId=${requestIdFromPayload})` : '';
+        throw new Error(`API returned no posts${suffix}`);
+      }
+
+      if (responsePayload?.debugStack) {
+        console.log('[Calendar] fetchBatch debugStack:', responsePayload.debugStack);
+      }
+      let batchPosts = postsCandidate;
+      if (!generatedCalendarId && calendarId) {
+        generatedCalendarId = calendarId;
+      }
 
       // Update progress UI as each batch completes
       completedBatches++;
@@ -8201,43 +9097,101 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
       if (pFill) pFill.style.width = `${percent}%`;
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
 
-      if (userIsPro && batchPosts.length) {
-        try {
-          batchPosts = await generateVariantsForPosts(batchPosts, {
-            nicheStyle,
-            userId: currentUserEmail,
-            userIsPro: true,
-          });
-        } catch (variantErr) {
-          console.warn('Variant generation failed for batch', batchIndex + 1, variantErr);
+      const userIsPro = await userIsProPromise;
+      // Incremental render of this batch without changing final output strategy
+      try {
+        const baseIndex = batchIndex * batchSize;
+        const transformed = batchPosts.map((p, i) => {
+          const globalIndex = baseIndex + i;
+          const normalized = normalizePost(p, globalIndex, 1);
+          const dayIndex = Math.floor(globalIndex / normalizedFrequency) + 1;
+          const slot = (globalIndex % normalizedFrequency) + 1;
+          return { ...normalized, day: dayIndex, slot };
+        });
+        transformed.forEach((post, i) => {
+          const globalIndex = baseIndex + i;
+          partialByIndex[globalIndex] = post;
+        });
+        // Build a contiguous subset for rendering
+        const keys = Object.keys(partialByIndex).map((k) => Number(k)).sort((a, b) => a - b);
+        const subset = keys.map((k) => partialByIndex[k]);
+        currentCalendar = subset;
+        renderCards(currentCalendar);
+        if (!firstRenderDone && subset.length > 0) {
+          console.log(`[Calendar][Perf] first batch rendered (t=${Math.round(performance.now())}ms)`);
+          firstRenderDone = true;
         }
+      } catch (e) {
+        console.warn('Incremental render failed for batch', batchIndex + 1, e);
       }
 
-      console.log(` Batch ${batchIndex + 1} complete`);
-      return { batchIndex, posts: batchPosts };
+      console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
+      return { batchIndex, posts: batchPosts, calendarId };
     };
     
-    // Fire all 6 batches in parallel for maximum speed (~30 seconds)
-    console.log(" Requesting all batches in parallel...");
-    const batchPromises = Array.from({ length: totalBatches }, (_, i) => fetchBatch(i));
-    const results = await Promise.all(batchPromises);
-    
-    // Sort by batch index and flatten
-    let allPosts = results
+    const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
+    const maxConcurrent = 3;
+    const results = new Array(totalBatches);
+    let nextBatchIndex = 0;
+    const t0 = performance.now();
+    const worker = async () => {
+      while (nextBatchIndex < totalBatches) {
+        const batchIndex = nextBatchIndex;
+        nextBatchIndex += 1;
+        const result = await fetchBatch(batchIndex);
+        results[batchIndex] = { batchIndex, result };
+      }
+    };
+    const workerCount = Math.min(maxConcurrent, totalBatches);
+    const workers = Array.from({ length: workerCount }, () => worker());
+    await Promise.all(workers);
+    console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
+    const orderedResults = results
+      .filter(Boolean)
       .sort((a, b) => a.batchIndex - b.batchIndex)
-      .flatMap(r => r.posts);
+      .map((entry) => entry.result);
+    
+    orderedResults.forEach((result) => {
+      if (!generatedCalendarId && result?.calendarId) {
+        generatedCalendarId = result.calendarId;
+      }
+    });
 
-    // Normalize every post to guarantee required fields
+    // Sort by batch index and flatten
+    let allPosts = orderedResults.flatMap((r) => r.posts);
+
+    // Normalize every post to ensure required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
-    // Simple integrity check
-    const bad = normalized.filter(p => !p.videoScript || !p.caption || !p.hashtags || !Array.isArray(p.hashtags) || !p.storyPrompt || !p.designNotes || !p.engagementScripts);
-    if (bad.length) {
-      console.warn(`⚠️ Client normalization filled missing fields on ${bad.length} posts.`);
-    }
+    const preAudioCount = normalized.filter(hasSuggestedAudio).length;
+    console.log(`[Calendar] audio pre render run ${thisRunId}`, { preAudioCount });
     allPosts = normalized.map((post, idx) => {
       const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
       const slot = (idx % normalizedFrequency) + 1;
       return { ...post, day: dayIndex, slot };
+    });
+    const isDevMode =
+      typeof process === 'undefined' || !process.env || process.env.NODE_ENV !== 'production';
+    if (isDevMode) {
+      const missingAudio = allPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
+      if (missingAudio) {
+        console.warn('[Calendar] incomplete suggestedAudio', {
+          runId: thisRunId,
+          missingAudio,
+        });
+      }
+    }
+    const assignedAudioCount = allPosts.filter(hasSuggestedAudio).length;
+    const audioSample = allPosts
+      .filter(hasSuggestedAudio)
+      .slice(0, 2)
+      .map((post) => ({
+        day: post.day,
+        title: post.title,
+        audioTitle: getSuggestedAudioTitle(post),
+      }));
+    console.log(`[Calendar] audio assigned run ${thisRunId}`, {
+      assignedAudioCount,
+      sample: audioSample,
     });
 
     if (normalizedFrequency > 1) {
@@ -8246,15 +9200,39 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1) {
     allPosts = ensureGlobalVariety(allPosts);
     allPosts = ensureUniquePinnedComments(allPosts, nicheStyle);
 
+    if (runSignal?.aborted || currentGenerationRunId !== thisRunId) {
+      throw new Error('generation_cancelled');
+    }
+
+    const userIsPro = await userIsProPromise;
     if (userIsPro) {
-      resetAudioSuggestions();
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
     } else {
       allPosts = allPosts.map((post) => stripProFields(post));
     }
 
-    console.log(" All batches complete, total posts:", allPosts.length);
-    return allPosts;
+    if (!allPosts.length) {
+      throw new Error('Calendar generation returned 0 posts');
+    }
+
+    renderCards(allPosts);
+    requestAnimationFrame(() => {
+      const audioNodes = document.querySelectorAll('.suggested-audio');
+      const totalPosts = allPosts.length;
+      const validAudioCount = allPosts.filter(hasSuggestedAudio).length;
+      const fallbackAudioCount = 0;
+      console.log(`[Calendar] audio render summary run ${thisRunId}`, {
+        totalPosts,
+        validAudioCount,
+        missingAudio: totalPosts - validAudioCount,
+        fallbackAudioCount,
+        renderedAudioRows: audioNodes.length,
+      });
+      console.log(`[Calendar] DOM suggested audio nodes run ${thisRunId}`, { nodeCount: audioNodes.length });
+    });
+    console.log('[Calendar] rendered posts', allPosts.length);
+    console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);
+    return { posts: allPosts, calendarId: generatedCalendarId };
   } catch (err) {
     console.error(" generateCalendarWithAI error:", err);
     console.error(" Error details:", { message: err.message, stack: err.stack });
@@ -8321,95 +9299,135 @@ async function canGenerate() {
   return true;
 }
 
-if (generateBtn) {
-  generateBtn.addEventListener("click", async () => {
-    const niche = nicheInput ? nicheInput.value.trim() : "";
-    console.log(" Generate clicked, niche:", niche);
-    
-    const { ok, msg } = validateNiche(niche);
-    console.log(" Validation result:", { ok, msg });
-    
-    if (!ok) {
-      // show validation feedback and focus
-      console.log("❌ Validation failed:", msg);
-      if (feedbackEl) feedbackEl.textContent = msg;
-      if (nicheInput) {
-        nicheInput.classList.add("invalid");
-        nicheInput.focus();
-      }
+
+async function onGenerateCalendarClick() {
+  if (isGeneratingCalendar) {
+    console.warn('[Calendar] Generation already running');
+    return;
+  }
+  // Perf: button click timestamp
+  try {
+    const tClick = performance.now();
+    console.log(`[Calendar][Perf] button click (t=${Math.round(tClick)}ms)`);
+  } catch (_) {}
+  const niche = nicheInput ? nicheInput.value.trim() : "";
+  emitAnalytics('calendar_generate_click', { nicheStyle: niche });
+  console.log(" Generate clicked, niche:", niche);
+  const { ok, msg } = validateNiche(niche);
+  console.log(" Validation result:", { ok, msg });
+  if (!ok) {
+    console.log("❌ Validation failed:", msg);
+    if (feedbackEl) feedbackEl.textContent = msg;
+    if (nicheInput) {
+      nicheInput.classList.add("invalid");
+      nicheInput.focus();
+    }
+    return;
+  }
+  if (!(await canGenerate())) {
+    showUpgradeModal();
+    if (feedbackEl) {
+      feedbackEl.textContent = " You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
+      feedbackEl.style.color = 'var(--accent)';
+    }
+    return;
+  }
+  const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
+  const runId = ++calendarRunCounter;
+  lastGenerationRequestId = null;
+  lastGenerationErrorStatus = null;
+  lastGenerationErrorCode = null;
+  console.log('[Calendar] generate clicked runId=' + runId);
+  const controller = new AbortController();
+  if (generationAbortController) {
+    generationAbortController.abort();
+  }
+  generationAbortController = controller;
+  currentGenerationRunId = runId;
+  isGeneratingCalendar = true;
+  try {
+    console.log(" Starting AI generation for:", niche);
+    showGeneratingState();
+    if (feedbackEl) feedbackEl.textContent = "";
+    console.log(" Calling API with niche:", niche);
+    const postsPerDay = getPostFrequency();
+    currentPostFrequency = postsPerDay;
+    const { posts: aiGeneratedPosts, calendarId } = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
+    if (currentGenerationRunId !== runId) {
+      console.warn('[Calendar] Stale generation results ignored for run', runId);
       return;
     }
-
-    // Check generation limit for free users
-    if (!(await canGenerate())) {
-      showUpgradeModal();
-      if (feedbackEl) {
-        feedbackEl.textContent = " You've reached your free calendar limit for this month. Upgrade to Pro for unlimited calendars!";
-        feedbackEl.style.color = 'var(--accent)';
-      }
-      return;
+    console.log(" Received posts:", aiGeneratedPosts);
+    incrementGenerationCount();
+    currentCalendar = aiGeneratedPosts;
+    if (calendarId) {
+      setCurrentCalendarId(calendarId);
     }
-
-    const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
-    // proceed with AI generation and display
-    try {
-      console.log(" Starting AI generation for:", niche);
-      showGeneratingState();
-      if (feedbackEl) feedbackEl.textContent = "";
-      console.log(" Calling API with niche:", niche);
-
-      // Call OpenAI to generate calendar
-      const postsPerDay = getPostFrequency();
-      currentPostFrequency = postsPerDay;
-      const aiGeneratedPosts = await generateCalendarWithAI(niche, postsPerDay);
-      console.log(" Received posts:", aiGeneratedPosts);
-      
-      // Increment generation count for free users
-      incrementGenerationCount();
-      
-      // Store the calendar and render it
-      currentCalendar = aiGeneratedPosts;
-      setCurrentCalendarId(null);
-      currentNiche = niche;
-      renderCards(currentCalendar);
-      applyFilter("all");
-
-      hideGeneratingState(originalText);
-      activeTab = 'plan';
-      syncCalendarUIAfterDataChange({ scrollToCalendar: true });
-      persistCurrentCalendarState();
-      
-      if (feedbackEl) {
-        feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
-        feedbackEl.classList.add("success");
-        setTimeout(() => {
-          if (feedbackEl) {
-            feedbackEl.textContent = "";
-            feedbackEl.classList.remove("success");
-          }
-        }, 3000);
-      }
-    } catch (err) {
-      console.error("❌ Failed to generate calendar:", err);
-      console.error("❌ Error message:", err.message);
-      console.error("❌ Full error:", err);
-      hideGeneratingState('Try Again');
-      if (feedbackEl) {
-        feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
-        feedbackEl.classList.remove("success");
-      }
+    currentNiche = niche;
+    renderCards(currentCalendar);
+    applyFilter("all");
+    activeTab = 'plan';
+    syncCalendarUIAfterDataChange({ scrollToCalendar: true });
+    persistCurrentCalendarState();
+    console.log(`[Calendar] generate run ${runId} completed successfully`);
+    emitAnalytics('calendar_generate_success', {
+      requestId: lastGenerationRequestId || undefined,
+      nicheStyle: niche,
+    });
+    if (feedbackEl) {
+      feedbackEl.textContent = `✓ Calendar created for "${niche}" · ${getPostFrequency()} posts/day`;
+      feedbackEl.classList.add("success");
       setTimeout(() => {
-        hideGeneratingState(originalText);
-        if (feedbackEl) feedbackEl.textContent = "";
-      }, 4000);
-    } finally {
-      // ensure disabled state cleared (hideGeneratingState already handles it in happy/error flows)
-      if (generateBtn && !btnText) generateBtn.disabled = false;
+        if (feedbackEl) {
+          feedbackEl.textContent = "";
+          feedbackEl.classList.remove("success");
+        }
+      }, 3000);
     }
-  });
+  } catch (err) {
+    if (err.message === 'generation_cancelled') {
+      console.log('Calendar generation cancelled for run', runId);
+      return;
+    }
+    console.error("❌ Failed to generate calendar:", err);
+    console.error("❌ Error message:", err.message);
+    console.error("❌ Full error:", err);
+    emitAnalytics('calendar_generate_error', {
+      requestId: lastGenerationRequestId || undefined,
+      status: lastGenerationErrorStatus || undefined,
+      code: lastGenerationErrorCode || undefined,
+      error: err.message || 'Unknown error',
+      nicheStyle: niche,
+    });
+    if (feedbackEl) {
+      feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
+      feedbackEl.classList.remove("success");
+    }
+    setTimeout(() => {
+      if (feedbackEl) feedbackEl.textContent = "";
+    }, 4000);
+  } finally {
+    hideGeneratingState(originalText);
+    isGeneratingCalendar = false;
+    if (generationAbortController === controller) {
+      generationAbortController = null;
+    }
+  }
+}
+
+function bindGenerateCalendarButton() {
+  if (!generateBtn || generateBtn.dataset.calendarBound === '1') return;
+  generateBtn.addEventListener('click', onGenerateCalendarClick);
+  generateBtn.dataset.calendarBound = '1';
+}
+
+if (generateBtn) {
+  bindGenerateCalendarButton();
 } else if (calendarSection) {
   console.error("❌ Generate button not found - this is why Generate Calendar doesn't work");
 }
+
+document.addEventListener('DOMContentLoaded', bindGenerateCalendarButton);
 
 // Final diagnostic
 console.log("\n=== Event Listener Summary ===");
@@ -8956,7 +9974,7 @@ function renderPublishHub(){
     if (post.weeklyPromo) fullTextParts.push(`Promo: ${post.weeklyPromo}`);
     if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
       const scriptLines = [];
-      if (post.videoScript.hook) scriptLines.push(`Hook: ${post.videoScript.hook}`);
+      if (post.videoScript.hook) scriptLines.push(post.videoScript.hook);
       if (post.videoScript.body) scriptLines.push(`Body: ${post.videoScript.body}`);
       if (post.videoScript.cta) scriptLines.push(`CTA: ${post.videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
@@ -9251,3 +10269,414 @@ document.addEventListener('click', (event) => {
     }
   }
 });
+}
+
+function isLibraryPage() {
+  return (
+    document.body?.classList.contains('page-library') ||
+    document.body?.dataset?.page === 'library' ||
+    location.pathname.endsWith('/library.html') ||
+    location.pathname.includes('library.html')
+  );
+}
+
+if (isLibraryPage()) {
+  const libraryAccountModal = document.getElementById('account-modal');
+  const libraryAccountCloseBtn =
+    document.getElementById('accountSettingsClose') || document.getElementById('account-close-btn');
+  const librarySettingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+  const librarySettingsPanels = document.querySelectorAll('[data-settings-panel]');
+  const libraryProfileMenu = document.getElementById('profile-menu');
+  const libraryProfileTrigger = document.getElementById('profile-trigger');
+  const libraryAccountForm = document.getElementById('account-settings-form');
+  const libraryAccountSaveBtn = libraryAccountForm?.querySelector('button[type="submit"]');
+  const libraryAccountEmailDisplay = document.getElementById('account-email-display');
+  const libraryAccountLastLoginEl = document.getElementById('account-last-login');
+  const libraryAccountDisplayNameInput = document.getElementById('account-display-name');
+  const libraryAccountPronounsInput = document.getElementById('account-pronouns');
+  const libraryAccountRoleInput = document.getElementById('account-role');
+  const libraryPrefersHighContrastInput = document.getElementById('prefers-high-contrast');
+  const libraryPrefersLargeTypeInput = document.getElementById('prefers-large-type');
+  const libraryPrefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
+  const libraryAccountFeedback = document.getElementById('account-feedback');
+  const libraryUserEmailEl = document.getElementById('user-email');
+  const libraryAccountPlanStatusEl = document.getElementById('account-plan-status');
+  const libraryAccountPlanLimitsEl = document.getElementById('account-plan-limits');
+  const isLibraryMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+  const closeLibraryAccountModal = () => {
+    if (!libraryAccountModal) return;
+    libraryAccountModal.style.display = 'none';
+    libraryAccountModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+  };
+
+  const clearLibraryModalOpenState = () => {
+    const keys = [
+      'openAccountSettings',
+      'accountSettingsOpen',
+      'settingsModalOpen',
+      'activeSettingsTab',
+      'openAccountSettingsOnLoad'
+    ];
+    keys.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (_err) {}
+      try {
+        sessionStorage.removeItem(key);
+      } catch (_err) {}
+    });
+  };
+
+  const forceCloseAccountSettingsModal = () => {
+    closeLibraryAccountModal();
+    if (libraryAccountModal) {
+      libraryAccountModal.classList.remove('open', 'active', 'show');
+    }
+    document.body.classList.remove('no-scroll');
+  };
+
+  const sanitizeLibraryModalUrl = () => {
+    if (window.location.hash && /account|settings|profile|accessibility|security/i.test(window.location.hash)) {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+    try {
+      const url = new URL(window.location.href);
+      const keys = ['modal', 'tab', 'view', 'panel', 'settings', 'account', 'profile', 'accessibility', 'security'];
+      let changed = false;
+      keys.forEach((key) => {
+        if (url.searchParams.has(key)) {
+          url.searchParams.delete(key);
+          changed = true;
+        }
+      });
+      if (changed) {
+        const query = url.searchParams.toString();
+        history.replaceState(null, document.title, url.pathname + (query ? `?${query}` : '') + url.hash);
+      }
+    } catch (_err) {}
+  };
+
+  const runLibraryMobileSanitizer = () => {
+    if (!isLibraryPage()) return;
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    forceCloseAccountSettingsModal();
+    clearLibraryModalOpenState();
+    sanitizeLibraryModalUrl();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runLibraryMobileSanitizer, { once: true });
+  } else {
+    runLibraryMobileSanitizer();
+  }
+
+  window.addEventListener(
+    'pageshow',
+    () => {
+      runLibraryMobileSanitizer();
+    },
+    true
+  );
+
+  const closeLibraryProfileMenu = () => {
+    if (libraryProfileMenu) libraryProfileMenu.style.display = 'none';
+    if (libraryProfileTrigger) libraryProfileTrigger.setAttribute('aria-expanded', 'false');
+  };
+
+  const setLibraryAccountTab = (tab = 'account') => {
+    librarySettingsTabButtons.forEach((btn) => {
+      const isActive = (btn.dataset.settingsTab || 'account') === tab;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+      if (isActive) {
+        btn.removeAttribute('tabindex');
+      } else {
+        btn.setAttribute('tabindex', '-1');
+      }
+    });
+    librarySettingsPanels.forEach((panel) => {
+      const isActive = (panel.dataset.settingsPanel || 'account') === tab;
+      panel.classList.toggle('active-panel', isActive);
+    });
+  };
+
+  const setLibraryModalLoadingState = () => {
+    if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Loading…';
+    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Loading…';
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = true;
+  };
+
+  const setLibraryModalLoggedOutState = () => {
+    if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Not signed in';
+    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Not available';
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = false;
+  };
+
+  const applyLibraryPrefs = (settings = {}) => {
+    if (libraryAccountDisplayNameInput && typeof settings.displayName === 'string') {
+      libraryAccountDisplayNameInput.value = settings.displayName;
+    }
+    if (libraryAccountPronounsInput && typeof settings.pronouns === 'string') {
+      libraryAccountPronounsInput.value = settings.pronouns;
+    }
+    if (libraryAccountRoleInput && typeof settings.role === 'string') {
+      libraryAccountRoleInput.value = settings.role;
+    }
+    if (libraryPrefersHighContrastInput && 'highContrast' in settings) {
+      libraryPrefersHighContrastInput.checked = !!settings.highContrast;
+    }
+    if (libraryPrefersLargeTypeInput && 'largeType' in settings) {
+      libraryPrefersLargeTypeInput.checked = !!settings.largeType;
+    }
+    if (libraryPrefersReducedMotionInput && 'reducedMotion' in settings) {
+      libraryPrefersReducedMotionInput.checked = !!settings.reducedMotion;
+    }
+  };
+
+  const updateLibraryPlanInfo = (isProUser) => {
+    if (!libraryAccountPlanStatusEl && !libraryAccountPlanLimitsEl) return;
+    if (isProUser) {
+      if (libraryAccountPlanStatusEl) libraryAccountPlanStatusEl.textContent = 'Promptly Pro';
+      if (libraryAccountPlanLimitsEl) {
+        libraryAccountPlanLimitsEl.textContent = '';
+        libraryAccountPlanLimitsEl.style.display = 'none';
+      }
+      return;
+    }
+    if (libraryAccountPlanStatusEl) libraryAccountPlanStatusEl.textContent = 'Free plan';
+    if (libraryAccountPlanLimitsEl) {
+      libraryAccountPlanLimitsEl.textContent = '';
+      libraryAccountPlanLimitsEl.style.display = 'none';
+    }
+  };
+
+  const updateLibraryLastLogin = (timestamp) => {
+    if (!libraryAccountLastLoginEl) return;
+    if (!timestamp) {
+      libraryAccountLastLoginEl.textContent = '';
+      return;
+    }
+    try {
+      const date = new Date(timestamp);
+      libraryAccountLastLoginEl.textContent = isNaN(date.getTime())
+        ? ''
+        : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      libraryAccountLastLoginEl.textContent = '';
+    }
+  };
+
+  const loadLibraryAccountModalData = async () => {
+    setLibraryModalLoadingState();
+    if (!supabase?.auth?.getUser) {
+      setLibraryModalLoggedOutState();
+      return;
+    }
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      setLibraryModalLoggedOutState();
+      return;
+    }
+    const email = user.email || user.user_metadata?.email || '';
+    if (libraryAccountEmailDisplay) {
+      libraryAccountEmailDisplay.textContent = email || 'Email unavailable';
+    }
+    if (libraryUserEmailEl && email) libraryUserEmailEl.textContent = email;
+    if (libraryAccountLastLoginEl && libraryAccountLastLoginEl.textContent === 'Loading…') {
+      libraryAccountLastLoginEl.textContent = '';
+    }
+    try {
+      const proStatus = await isPro(email);
+      updateLibraryPlanInfo(!!proStatus);
+      const userDetails = await getCurrentUserDetails();
+      updateLibraryLastLogin(
+        userDetails?.last_sign_in_at ||
+          userDetails?.updated_at ||
+          userDetails?.created_at ||
+          ''
+      );
+    } catch (planError) {
+      console.warn('Unable to resolve plan details for library modal', planError);
+      updateLibraryPlanInfo(false);
+      updateLibraryLastLogin('');
+    }
+    try {
+      const { data, error: prefsError } = await supabase
+        .from('profiles')
+        .select('profile_settings')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (prefsError) throw prefsError;
+      const settings = data?.profile_settings;
+      if (settings && typeof settings === 'object') {
+        applyLibraryPrefs(settings);
+      }
+    } catch (prefsError) {
+      console.warn('Unable to sync profile settings from Supabase', prefsError);
+    }
+    if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = false;
+  };
+
+  const openLibraryAccountModal = (tab = 'account') => {
+    if (!libraryAccountModal) return;
+    if (libraryAccountModal.parentElement !== document.body) {
+      document.body.appendChild(libraryAccountModal);
+    }
+    setLibraryAccountTab(tab);
+    libraryAccountModal.style.display = 'flex';
+    libraryAccountModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    loadLibraryAccountModalData();
+  };
+
+  if (libraryAccountCloseBtn) {
+    libraryAccountCloseBtn.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeLibraryAccountModal();
+      },
+      { passive: false }
+    );
+  }
+
+  if (libraryAccountModal) {
+    libraryAccountModal.addEventListener('click', (event) => {
+      if (event.target === libraryAccountModal) {
+        closeLibraryAccountModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (!isLibraryPage()) return;
+    if (!window.matchMedia('(max-width: 768px)').matches) return;
+    if (event.key !== 'Escape') return;
+    if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
+    event.preventDefault();
+    closeLibraryAccountModal();
+  });
+
+  if (libraryAccountModal) {
+    libraryAccountModal.addEventListener(
+      'touchmove',
+      (event) => {
+        if (libraryAccountModal.style.display !== 'flex') return;
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+  }
+
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (!isLibraryPage()) return;
+      const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
+      if (!closeBtn) return;
+      if (!libraryAccountModal || libraryAccountModal.style.display !== 'flex') return;
+      event.preventDefault();
+      event.stopPropagation();
+      forceCloseAccountSettingsModal();
+    },
+    true
+  );
+
+  if (libraryAccountForm && !libraryAccountForm.dataset.bound) {
+    libraryAccountForm.dataset.bound = '1';
+    libraryAccountForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!supabase?.auth?.getUser) return;
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setLibraryModalLoggedOutState();
+        return;
+      }
+      if (libraryAccountFeedback) {
+        libraryAccountFeedback.textContent = 'Saving preferences...';
+        libraryAccountFeedback.classList.remove('error');
+        libraryAccountFeedback.classList.remove('success');
+      }
+      const payload = {
+        displayName: libraryAccountDisplayNameInput?.value.trim() || '',
+        pronouns: libraryAccountPronounsInput?.value.trim() || '',
+        role: libraryAccountRoleInput?.value.trim() || '',
+        highContrast: !!libraryPrefersHighContrastInput?.checked,
+        largeType: !!libraryPrefersLargeTypeInput?.checked,
+        reducedMotion: !!libraryPrefersReducedMotionInput?.checked
+      };
+      try {
+        const saved = await saveProfilePreferences(payload);
+        applyLibraryPrefs(saved);
+        if (libraryAccountFeedback) {
+          libraryAccountFeedback.textContent = 'Preferences saved.';
+          libraryAccountFeedback.classList.add('success');
+        }
+        closeLibraryAccountModal();
+        await loadLibraryAccountModalData();
+      } catch (saveError) {
+        console.warn('Unable to sync profile settings to Supabase', saveError);
+        if (libraryAccountFeedback) {
+          libraryAccountFeedback.textContent = 'Saved locally, but syncing failed. Try again soon.';
+          libraryAccountFeedback.classList.add('error');
+        }
+      }
+    });
+  }
+
+  if (librarySettingsTabButtons.length) {
+    librarySettingsTabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.settingsTab || 'account';
+        setLibraryAccountTab(tab);
+      });
+    });
+    setLibraryAccountTab('account');
+  }
+
+  let libraryPointerHandled = false;
+  const handleLibraryProfileAction = (event) => {
+    const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeLibraryProfileMenu();
+    if (target.id === 'account-overview-btn') {
+      openLibraryAccountModal('account');
+      return;
+    }
+    if (target.id === 'profile-settings-btn') {
+      openLibraryAccountModal('profile');
+      return;
+    }
+    if (target.id === 'password-settings-btn') {
+      window.location.href = 'reset-password.html';
+    }
+  };
+
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = event.target.closest('#account-overview-btn, #profile-settings-btn, #password-settings-btn');
+      if (!target) return;
+      libraryPointerHandled = true;
+      handleLibraryProfileAction(event);
+    },
+    true
+  );
+
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (libraryPointerHandled) {
+        libraryPointerHandled = false;
+        return;
+      }
+      handleLibraryProfileAction(event);
+    },
+    true
+  );
+}
