@@ -1,5 +1,5 @@
 /* Promptly Service Worker */
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CORE_CACHE = `promptly-core-${CACHE_VERSION}`;
 const CORE_ASSETS = [
   '/',
