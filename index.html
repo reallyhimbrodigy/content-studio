@@ -28,6 +28,56 @@
   <link rel="apple-touch-icon" href="assets/promptly-icon.svg" />
   <meta name="theme-color" content="#0c0c0c" />
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    .landing-hero .landing-hero-content--center {
+      max-width: 640px;
+      margin-inline: auto;
+    }
+    .landing-hero .hero-tagline {
+      max-width: 640px;
+    }
+    .landing-hero .landing-badges {
+      margin: 0.9rem 0 0.4rem;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .landing-hero .landing-badge {
+      font-size: 0.85rem;
+      opacity: 0.85;
+    }
+    .landing-hero .hero-micro {
+      margin: 0.75rem 0 1.1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      justify-content: center;
+      font-size: 0.85rem;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .landing-hero .hero-micro strong {
+      color: rgba(255, 255, 255, 0.85);
+      font-weight: 600;
+    }
+    .landing-hero .hero-proof {
+      margin-top: 1.5rem;
+      opacity: 0.72;
+    }
+    .landing-hero .hero-proof__value {
+      font-size: 1rem;
+    }
+    .landing-hero .hero-proof__label {
+      font-size: 0.78rem;
+    }
+    .landing-hero .landing-logos {
+      margin-top: 1rem;
+      opacity: 0.65;
+      font-size: 0.85rem;
+    }
+    .landing-hero .landing-logos__row span {
+      font-size: 0.85rem;
+    }
+  </style>
   <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
     <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
@@ -52,20 +102,25 @@
             <div class="landing-hero__grid">
               <div class="hero-copy">
                 <div class="landing-hero__intro landing-hero-content landing-hero-content--center">
-                  <p class="hero-pill">Content Made Easy</p>
-                  <h1>Never wonder what to post again.</h1>
+                  <p class="hero-pill">30-day content calendar</p>
+                  <h1>A 30-day content calendar with ad-ready video scripts.</h1>
                   <p class="hero-tagline">
-                Promptly plans your entire month of content using built-in platform algorithms—so every post is created with a clear strategy to reach more people and perform better.
+                Generate a month of posts for your niche—hooks, scripts, captions, CTAs, filming notes, and a distribution plan—so you stop guessing and start posting.
                   </p>
+                  <div class="landing-badges">
+                    <span class="landing-badge">30-day calendar</span>
+                    <span class="landing-badge">Hooks + scripts</span>
+                    <span class="landing-badge">Captions + CTAs</span>
+                    <span class="landing-badge">Distribution plan</span>
+                  </div>
+                  <div class="hero-micro">
+                    <span><strong>Built for:</strong> Creators, small businesses, founders, service pros</span>
+                    <span><strong>Not for:</strong> Prompt playgrounds or one-off captions</span>
+                  </div>
               <div class="landing-hero__actions">
                   <a href="https://usepromptly.app/auth.html?mode=signup" class="primary primary-large" data-analytics="cta_signup">Generate My Content Calendar</a>
                   <a href="auth.html?mode=login" class="ghost primary-large" data-analytics="cta_login">Log In</a>
               </div>
-                  <div class="landing-badges">
-                    <span class="landing-badge">Your month of content, handled</span>
-                    <span class="landing-badge">Optimized for every platform</span>
-                    <span class="landing-badge">Ready when you are</span>
-                  </div>
                   <div class="hero-proof">
                     <div class="hero-proof__item">
                       <span class="hero-proof__value">4 hrs → 4 min</span>
@@ -480,5 +535,4 @@
     <script src="/js/landing.js" defer></script>
   </body>
 </html>
-
 
