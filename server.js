@@ -26,16 +26,29 @@ try {
   console.log('[Assets] Cloudinary service unavailable; asset helpers disabled.');
 }
 const { getBrandBrainForUser } = require('./services/brand-brain');
-const {
-  getPhylloPosts,
-  getPhylloPostMetrics,
-  getUserPostMetrics,
-  getAudienceDemographics,
-  buildWeeklyReport,
-  syncAudience,
-  syncFollowerMetrics,
-  syncDemographics,
-} = require('./services/phyllo-metrics');
+let getPhylloPosts = async () => [];
+let getPhylloPostMetrics = async () => null;
+let getUserPostMetrics = async () => ({ posts: [], summary: {} });
+let getAudienceDemographics = async () => ({});
+let buildWeeklyReport = async () => ({ ok: false, reason: 'phyllo_disabled' });
+let syncAudience = async () => ({ ok: false, reason: 'phyllo_disabled' });
+let syncFollowerMetrics = async () => ({ ok: false, reason: 'phyllo_disabled' });
+let syncDemographics = async () => ({ ok: false, reason: 'phyllo_disabled' });
+try {
+  ({
+    getPhylloPosts,
+    getPhylloPostMetrics,
+    getUserPostMetrics,
+    getAudienceDemographics,
+    buildWeeklyReport,
+    syncAudience,
+    syncFollowerMetrics,
+    syncDemographics,
+  } = require('./services/phyllo-metrics'));
+  console.log('[Phyllo] metrics module loaded');
+} catch (err) {
+  console.log('[Phyllo] metrics disabled (module missing)');
+}
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const {
   getNonHolidayHot100,
