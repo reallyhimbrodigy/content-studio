@@ -14,6 +14,7 @@ import {
   renderPlatformBreakdown,
   applyAnalyticsAccess,
 } from './analytics-render.js';
+import { supabase } from '../supabase-client.js';
 
 function lockAnalyticsSection(sectionKey) {
   const el = document.querySelector(`[data-analytics-section="${sectionKey}"]`);
@@ -40,39 +41,13 @@ let analyticsIsPro = false;
 const DEMO_MODE = new URLSearchParams(window.location.search).get('demo') === '1';
 let hasConnectedAccounts = false;
 
-const supabaseUrlMeta = document.querySelector('meta[name="supabase-url"]');
-const supabaseAnonKeyMeta = document.querySelector('meta[name="supabase-anon-key"]');
-const SUPABASE_META_URL = supabaseUrlMeta?.getAttribute('content')?.trim() || '';
-const SUPABASE_META_ANON_KEY = supabaseAnonKeyMeta?.getAttribute('content')?.trim() || '';
 let supabaseClientInstance = null;
-let supabaseMissingLogged = false;
 
 function ensureSupabaseClient() {
-  if (supabaseClientInstance) return supabaseClientInstance;
-  if (!SUPABASE_META_URL || !SUPABASE_META_ANON_KEY) {
-    if (!supabaseMissingLogged) {
-      supabaseMissingLogged = true;
-      console.error('[Analytics] Supabase credentials are missing; add meta tags for supabase-url and supabase-anon-key.');
-    }
-    return null;
+  if (!supabaseClientInstance) {
+    supabaseClientInstance = supabase;
   }
-  if (typeof window === 'undefined' || !window.supabase) {
-    if (!supabaseMissingLogged) {
-      supabaseMissingLogged = true;
-      console.error('[Analytics] Supabase SDK not loaded; include https://cdn.jsdelivr.net/npm/@supabase/supabase-js before analytics.js.');
-    }
-    return null;
-  }
-  try {
-    supabaseClientInstance = window.supabase.createClient(SUPABASE_META_URL, SUPABASE_META_ANON_KEY);
-    return supabaseClientInstance;
-  } catch (err) {
-    if (!supabaseMissingLogged) {
-      supabaseMissingLogged = true;
-      console.error('[Analytics] Failed to initialize Supabase client', err);
-    }
-    return null;
-  }
+  return supabaseClientInstance;
 }
 
 async function getAnalyticsAccessToken() {

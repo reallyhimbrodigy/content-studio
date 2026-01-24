@@ -1,4 +1,4 @@
-import { getSupabaseClient } from './supabase-client.js';
+import { supabase } from './supabase-client.js';
 import { initTheme } from './theme.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,14 +37,6 @@ document.addEventListener('DOMContentLoaded', () => {
       resetFeedbackEl.className = 'auth-feedback error';
     }
     if (resetBtn) resetBtn.disabled = true;
-  }
-
-  let supabase;
-  try {
-    supabase = getSupabaseClient();
-  } catch (err) {
-    showInitError('Unable to load password reset. Please refresh the page.', err);
-    return;
   }
 
   initPasswordToggles();
