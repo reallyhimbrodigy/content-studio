@@ -1,4 +1,6 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import supabasePkg from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const { createClient } = supabasePkg;
 
 // Supabase client configuration
 export const SUPABASE_URL = 'https://ejxkzsfruykvgeouymfy.supabase.co';
