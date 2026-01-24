@@ -9956,9 +9956,26 @@ body:has(#account-modal.modal-overlay) .app-main {
 
 /* ===== Landing refresh (scoped) ===== */
 .landing {
-  background: radial-gradient(circle at 20% 15%, rgba(127, 90, 240, 0.18), transparent 55%),
-    radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.12), transparent 60%),
+  --landing-max-width: 1120px;
+  --landing-radius: 18px;
+  --landing-radius-lg: 20px;
+  --landing-border: rgba(255, 255, 255, 0.08);
+  --landing-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  --landing-card-bg: rgba(16, 18, 26, 0.65);
+  --landing-muted: rgba(245, 246, 248, 0.7);
+  --landing-subtle: rgba(245, 246, 248, 0.55);
+  --landing-accent: #7f5af0;
+  --landing-accent-2: #2cb1bc;
+  --landing-section-pad: clamp(64px, 7vw, 96px);
+  background: radial-gradient(circle at 20% 15%, rgba(127, 90, 240, 0.16), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(44, 177, 188, 0.1), transparent 60%),
     linear-gradient(135deg, #05040a 0%, #0c0f1f 60%, #06060f 100%);
+}
+
+.landing .container {
+  max-width: var(--landing-max-width);
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 .landing .app-shell {
@@ -9969,7 +9986,13 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .product-section,
 .landing .landing-workflow,
 .landing #pricing {
-  padding: clamp(64px, 7vw, 96px) 24px;
+  padding: var(--landing-section-pad) 24px;
+}
+
+.landing .landing-section + .landing-section,
+.landing .product-section + .landing-workflow,
+.landing .landing-workflow + .landing-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .landing .section-inner,
@@ -9977,7 +10000,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .wf-container,
 .landing .product-inner,
 .landing .landing-hero__wrap {
-  width: min(1120px, 100%);
+  width: min(var(--landing-max-width), 100%);
   margin-left: auto;
   margin-right: auto;
 }
@@ -9989,27 +10012,30 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .landing-nav__links a {
   font-size: 0.9rem;
   padding: 0.3rem 0.75rem;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .landing .landing-nav__links a:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.06);
 }
 
 .landing .landing-hero {
   padding: clamp(32px, 6vw, 64px) 24px;
   gap: clamp(1.5rem, 3vw, 2.5rem);
+  background: transparent;
 }
 
 .landing .landing-hero__intro h1 {
   letter-spacing: -0.02em;
+  line-height: 1.05;
   margin-bottom: 0.65rem;
 }
 
 .landing .hero-tagline {
   margin-top: 0.4rem;
+  color: var(--landing-muted);
 }
 
 .landing .landing-hero__actions {
@@ -10025,8 +10051,8 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .landing-badge,
 .landing .hero-pill,
 .landing .section-kicker {
-  font-size: 0.78rem;
-  padding: 0.3rem 0.7rem;
+  font-size: 0.76rem;
+  padding: 0.28rem 0.7rem;
   border-radius: 999px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -10036,8 +10062,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 }
 
 .landing .section-kicker {
-  border-radius: 999px;
-  padding: 0.3rem 0.65rem;
+  padding: 0.28rem 0.65rem;
   color: rgba(44, 177, 188, 0.9);
   border-color: rgba(44, 177, 188, 0.3);
   background: rgba(44, 177, 188, 0.08);
@@ -10056,7 +10081,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 
 .landing .hero-proof__label {
   font-size: 0.85rem;
-  color: rgba(245, 246, 248, 0.6);
+  color: var(--landing-subtle);
 }
 
 .landing .landing-logos,
@@ -10069,6 +10094,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .workflow-headline {
   text-transform: none;
   letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 
 .landing .product-subhead,
@@ -10083,10 +10109,10 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .workflow-preferences-card,
 .landing .wf-step,
 .landing .pricing-card {
-  background: rgba(16, 18, 26, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  background: var(--landing-card-bg);
+  border: 1px solid var(--landing-border);
+  border-radius: var(--landing-radius-lg);
+  box-shadow: var(--landing-shadow);
 }
 
 .landing .deliverable-card,
@@ -10100,6 +10126,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .workflow-cta-bar {
   padding: 1.1rem 1.25rem;
   background: rgba(18, 20, 30, 0.6);
+  border-radius: var(--landing-radius);
 }
 
 .landing .deliverable-list li,
@@ -10154,10 +10181,10 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .pricing-card__cta {
   padding: 0.9rem 1.7rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #7f5af0, #2cb1bc);
+  background: linear-gradient(135deg, var(--landing-accent), var(--landing-accent-2));
   color: #0a0b12;
   border: 1px solid transparent;
-  box-shadow: 0 10px 24px rgba(127, 90, 240, 0.18);
+  box-shadow: 0 8px 20px rgba(127, 90, 240, 0.16);
   transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
@@ -10170,7 +10197,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 .landing .pricing-card__cta:hover {
   transform: translateY(-1px);
   filter: brightness(1.05);
-  box-shadow: 0 14px 30px rgba(127, 90, 240, 0.22);
+  box-shadow: 0 12px 26px rgba(127, 90, 240, 0.25);
 }
 
 .landing .ghost,
