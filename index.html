@@ -84,20 +84,23 @@
   </head>
   <body class="view-landing landing-page landing is-landing">
     <div class="app-shell">
-      <nav class="landing-nav" aria-label="Primary navigation">
-        <div class="landing-nav__brand"></div>
-        <div class="landing-nav__links">
-          <a href="#product">Product</a>
-          <a href="#workflow">Workflow</a>
-          <a href="#pricing">Pricing</a>
-        </div>
-        <div class="landing-nav__actions">
-          <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
-        </div>
-      </nav>
+      <main class="lp">
+        <div class="lp-bg" aria-hidden="true"></div>
+        <div class="lp-container">
+          <nav class="landing-nav lp-nav" aria-label="Primary navigation">
+            <div class="landing-nav__brand"></div>
+            <div class="landing-nav__links">
+              <a href="#product">Product</a>
+              <a href="#workflow">Workflow</a>
+              <a href="#pricing">Pricing</a>
+            </div>
+            <div class="landing-nav__actions">
+              <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
+            </div>
+          </nav>
 
-      <div id="landing-experience">
-        <header class="hero landing-hero" id="home">
+          <div id="landing-experience">
+            <header class="hero landing-hero lp-hero" id="home">
           <div class="landing-hero__wrap">
             <div class="landing-hero__grid">
               <div class="hero-copy">
@@ -107,7 +110,7 @@
                   <p class="hero-tagline">
                     Promptly generates 30 days of posts with ready-to-film video scripts—so you never start from zero again.
                   </p>
-                  <div class="landing-badges">
+                  <div class="landing-badges lp-hero__tags">
                     <span class="landing-badge">30-day plan</span>
                     <span class="landing-badge">Video scripts</span>
                     <span class="landing-badge">Built-in strategy</span>
@@ -116,7 +119,7 @@
                   <div class="hero-micro">
                     <span>Built for creators + small businesses. Not a prompt playground.</span>
                   </div>
-              <div class="landing-hero__actions">
+              <div class="landing-hero__actions lp-ctaRow">
                   <a href="https://usepromptly.app/auth.html?mode=signup" class="primary primary-large" data-analytics="cta_signup">Generate my calendar</a>
                   <a href="auth.html?mode=login" class="ghost primary-large" data-analytics="cta_login">Log In</a>
               </div>
@@ -131,11 +134,11 @@
           </div>
 
           <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+        </header>
 
-
-    <section id="product" class="product-section">
+    <section id="product" class="product-section lp-section lp-section--product">
       <div class="section-inner product-inner">
-        <div class="product-top">
+        <div class="product-top lp-grid lp-grid--product">
           <div class="product-copy">
             <div class="section-kicker">PRODUCT</div>
             <h2 class="product-headline">Your content system for the next 30 days.</h2>
@@ -144,7 +147,7 @@
             </p>
           </div>
 
-          <div class="deliverable-card">
+          <div class="deliverable-card lp-card">
             <div class="deliverable-title">What you get per post</div>
             <ul class="deliverable-list">
               <li>Daily post topics</li>
@@ -158,7 +161,7 @@
         </div>
 
         <div class="product-why">
-          <div class="why-card">
+          <div class="why-card lp-card">
             <div class="why-title">Why it matters</div>
             <ul class="why-list">
               <li>No more blank page</li>
@@ -168,14 +171,14 @@
           </div>
         </div>
 
-        <div class="product-cta-bar">
+        <div class="product-cta-bar lp-ctaBand">
           <a class="btn primary product-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
           <div class="product-cta-sub">No templates. No guessing. Just a month of ready-to-post content.</div>
         </div>
       </div>
     </section>
 
-    <section class="landing-workflow" id="workflow">
+    <section class="landing-workflow lp-section lp-section--workflow" id="workflow">
       <div class="wf-container">
         <div class="wf-head">
           <div class="wf-head-left">
@@ -187,7 +190,7 @@
           </div>
 
           <aside class="wf-head-right">
-            <div class="workflow-preferences-card">
+            <div class="workflow-preferences-card lp-card">
               <div class="workflow-preferences-title">What you set</div>
               <ul class="workflow-preferences-list">
                 <li>Your niche</li>
@@ -202,8 +205,8 @@
         </div>
 
         <div class="wf-steps-row">
-          <div class="workflow-steps wf-steps">
-            <div class="step-row wf-step">
+          <div class="workflow-steps wf-steps lp-steps">
+            <div class="step-row wf-step lp-card">
               <div class="step-badge wf-step-num">1</div>
               <div class="step-body">
                 <div class="step-title wf-step-title">Set your niche</div>
@@ -211,7 +214,7 @@
               </div>
             </div>
 
-            <div class="step-row wf-step">
+            <div class="step-row wf-step lp-card">
               <div class="step-badge wf-step-num">2</div>
               <div class="step-body">
                 <div class="step-title wf-step-title">Enable Brand Brain (optional)</div>
@@ -219,7 +222,7 @@
               </div>
             </div>
 
-            <div class="step-row wf-step">
+            <div class="step-row wf-step lp-card">
               <div class="step-badge wf-step-num">3</div>
               <div class="step-body">
                 <div class="step-title wf-step-title">Generate your 30-day calendar</div>
@@ -227,7 +230,7 @@
               </div>
             </div>
 
-            <div class="step-row wf-step">
+            <div class="step-row wf-step lp-card">
               <div class="step-badge wf-step-num">4</div>
               <div class="step-body">
                 <div class="step-title wf-step-title">Export & post</div>
@@ -237,22 +240,22 @@
           </div>
         </div>
 
-        <div class="workflow-cta-bar">
+        <div class="workflow-cta-bar lp-ctaBand">
           <a class="btn primary workflow-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
           <div class="workflow-cta-sub">Start free. Create your first month in minutes.</div>
         </div>
       </div>
     </section>
 
-    <section id="pricing" class="landing-section">
+    <section id="pricing" class="landing-section lp-section lp-section--pricing">
       <div class="landing-section__inner">
         <div class="landing-section__header">
           <span class="landing-eyebrow">PRICING</span>
           <h2>Simple pricing that scales with output</h2>
           <p>Choose the plan that fits how consistent and dedicated you are.</p>
         </div>
-        <div class="pricing-grid">
-          <article class="pricing-card">
+        <div class="pricing-grid lp-pricing">
+          <article class="pricing-card lp-card">
             <p class="pricing-card__name">Starter</p>
             <p class="pricing-card__price">FREE<span></span></p>
             <p class="pricing-card__subtitle">Best for casual posting</p>
@@ -262,7 +265,7 @@
             </ul>
             <a class="pricing-card__cta" href="https://usepromptly.app/auth.html?mode=signup">Start free</a>
           </article>
-          <article class="pricing-card pricing-card--featured is-featured">
+          <article class="pricing-card pricing-card--featured is-featured lp-card">
             <span class="pricing-pill">Most popular</span>
             <p class="pricing-card__name">Pro</p>
             <p class="pricing-card__price">$19.99<span>/month</span></p>
@@ -279,6 +282,9 @@
       </div>
     </section>
 
+          </div>
+        </div>
+      </main>
     </div>
     <!-- Upgrade Modal -->
     <div id="upgrade-modal" class="modal" style="display: none;">
