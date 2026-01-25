@@ -94,6 +94,41 @@ function isProfileSettingsColumnMissing(error) {
   return false;
 }
 
+async function getSupabaseAccessToken() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return session?.access_token || null;
+}
+
+async function fetchJsonWithAuth(path, options = {}) {
+  const token = await getSupabaseAccessToken();
+  if (!token) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+  const headers = new Headers(options.headers || {});
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(path, { ...options, headers });
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (_err) {
+    data = {};
+  }
+  return { response, data };
+}
+
+function normalizeTierLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'free';
+  if (raw === 'paid' || raw === 'premium') return 'pro';
+  return raw;
+}
+
 // ============================================================================
 // Authentication
 // ============================================================================
@@ -269,49 +304,37 @@ export async function resetPassword(email) {
 
 export async function getUserTier(email) {
   try {
-    let userId = null;
-    try {
-      userId = await getCurrentUserId();
-    } catch (error) {
-      console.warn('getUserTier auth unresolved, keeping last known tier:', error);
-      return lastKnownUserTier || 'unknown'; // Do not downgrade on auth fetch failure.
+    const { response, data } = await fetchJsonWithAuth('/api/user/subscription', { method: 'GET' });
+    if (!response.ok || data?.ok === false) {
+      return lastKnownUserTier || 'free';
     }
-    if (!userId) {
-      lastKnownUserTier = null;
-      return 'free';
-    }
-    
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('tier')
-      .eq('id', userId)
-      .single();
-    
-    console.log('getUserTier - data:', data, 'error:', error);
-    if (error) throw error;
-    const tier = data?.tier || 'free';
+    const tier = normalizeTierLabel(data?.plan || data?.tier || 'free');
     lastKnownUserTier = tier;
     return tier;
   } catch (error) {
-    console.error('getUserTier error:', error);
-    return lastKnownUserTier || 'unknown';
+    if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
+      console.warn('getUserTier error:', error);
+    }
+    return lastKnownUserTier || 'free';
   }
 }
 
 export async function setUserTier(email, tier) {
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) throw new Error('No user logged in');
-    
-    const { error } = await supabase
-      .from('profiles')
-      .update({ tier, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-    
-    if (error) throw error;
+    const normalized = normalizeTierLabel(tier);
+    const { response, data } = await fetchJsonWithAuth('/api/user/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ tier: normalized }),
+    });
+    if (!response.ok || data?.ok === false) {
+      return { ok: false, msg: data?.error || 'Failed to update plan' };
+    }
+    lastKnownUserTier = normalizeTierLabel(data?.plan || data?.tier || normalized);
     return { ok: true };
   } catch (error) {
-    console.error('setUserTier error:', error);
+    if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
+      console.warn('setUserTier error:', error);
+    }
     return { ok: false, msg: error.message };
   }
 }
@@ -324,25 +347,20 @@ export async function isPro(email) {
 export async function getProfilePreferences() {
   if (profileSettingsColumnMissing) return {};
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) return {};
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      if (isProfileSettingsColumnMissing(error)) return {};
-      throw error;
+    const { response, data } = await fetchJsonWithAuth('/api/profile/settings', { method: 'GET' });
+    if (!response.ok || data?.ok === false) {
+      if (response.status === 401) return {};
+      return {};
     }
-    const settings = data?.profile_settings;
+    if (data?.missing) markProfileSettingsColumnMissing();
+    const settings = data?.settings;
     if (!settings || typeof settings !== 'object') return {};
     return settings;
   } catch (error) {
     if (!isProfileSettingsColumnMissing(error)) {
-      console.error('getProfilePreferences error:', error);
+      if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
+        console.warn('getProfilePreferences error:', error);
+      }
     }
     return {};
   }
@@ -353,33 +371,24 @@ export async function saveProfilePreferences(settings = {}) {
     return settings && typeof settings === 'object' ? settings : {};
   }
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) throw new Error('No user logged in');
-
     const safeSettings = settings && typeof settings === 'object' ? settings : {};
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert(
-        {
-          id: userId,
-          profile_settings: safeSettings,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'id' }
-      )
-      .select('profile_settings')
-      .single();
-
-    if (error) {
-      if (isProfileSettingsColumnMissing(error)) return safeSettings;
-      throw error;
+    const { response, data } = await fetchJsonWithAuth('/api/profile/settings', {
+      method: 'POST',
+      body: JSON.stringify({ patch: safeSettings }),
+    });
+    if (!response.ok || data?.ok === false) {
+      if (response.status === 401) return safeSettings;
+      throw new Error(data?.error || 'profile_settings_update_failed');
     }
-    return data?.profile_settings || safeSettings;
+    if (data?.missing) markProfileSettingsColumnMissing();
+    return data?.settings || safeSettings;
   } catch (error) {
     if (isProfileSettingsColumnMissing(error)) {
       return settings && typeof settings === 'object' ? settings : {};
     }
-    console.error('saveProfilePreferences error:', error);
+    if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
+      console.warn('saveProfilePreferences error:', error);
+    }
     throw error;
   }
 }

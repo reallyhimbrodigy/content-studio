@@ -7601,19 +7601,176 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('profiles')
-          .select('subscription_plan')
+          .select('subscription_plan, tier')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (error) {
           console.error('[Subscription] fetch error', error);
           return sendJson(res, 200, { ok: true, plan: 'free' });
         }
 
-        return sendJson(res, 200, { ok: true, plan: data?.subscription_plan || 'free' });
+        const rawPlan = data?.subscription_plan || data?.tier || 'free';
+        const normalized =
+          rawPlan === 'paid' || rawPlan === 'premium' ? 'pro' : rawPlan;
+        return sendJson(res, 200, { ok: true, plan: normalized, tier: normalized });
       } catch (err) {
         console.error('[Subscription] server error', err);
         return sendJson(res, 200, { ok: true, plan: 'free' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/user/subscription' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!user || !user.id) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        const body = await readJsonBody(req);
+        const rawTier = String(body?.tier || body?.plan || '')
+          .trim()
+          .toLowerCase();
+        if (!rawTier) {
+          return sendJson(res, 400, { ok: false, error: 'missing_tier' });
+        }
+        const normalized =
+          rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .upsert(
+            {
+              id: user.id,
+              tier: normalized,
+              subscription_plan: normalized,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          );
+
+        if (error) {
+          console.error('[Subscription] update error', error);
+          return sendJson(res, 500, { ok: false, error: 'update_failed' });
+        }
+
+        return sendJson(res, 200, { ok: true, plan: normalized, tier: normalized });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        console.error('[Subscription] update error', err);
+        return sendJson(res, status, { ok: false, error: 'update_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/profile/settings' && req.method === 'GET') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!user || !user.id) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .select('profile_settings')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          const msg = String(error?.message || '');
+          const code = String(error?.code || '');
+          if (code === '42703' || msg.toLowerCase().includes('profile_settings')) {
+            return sendJson(res, 200, { ok: true, settings: {}, missing: true });
+          }
+          console.error('[ProfileSettings] fetch error', error);
+          return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
+        }
+
+        const settings = data?.profile_settings && typeof data.profile_settings === 'object'
+          ? data.profile_settings
+          : {};
+        return sendJson(res, 200, { ok: true, settings });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        if (status !== 401) {
+          console.error('[ProfileSettings] handler error', err);
+        }
+        return sendJson(res, status, { ok: false, error: 'profile_settings_fetch_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/profile/settings' && req.method === 'POST') {
+    (async () => {
+      try {
+        const user = await requireSupabaseUser(req);
+        if (!user || !user.id) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' });
+        }
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        }
+        const body = await readJsonBody(req);
+        const patch = body?.patch || body?.settings || {};
+        const safePatch = patch && typeof patch === 'object' ? patch : {};
+
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .select('profile_settings')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          const msg = String(error?.message || '');
+          const code = String(error?.code || '');
+          if (code === '42703' || msg.toLowerCase().includes('profile_settings')) {
+            return sendJson(res, 200, { ok: true, settings: safePatch, missing: true });
+          }
+          console.error('[ProfileSettings] fetch error', error);
+          return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
+        }
+
+        const current = data?.profile_settings && typeof data.profile_settings === 'object'
+          ? data.profile_settings
+          : {};
+        const nextSettings = { ...current, ...safePatch };
+
+        const { data: updated, error: updateError } = await supabaseAdmin
+          .from('profiles')
+          .upsert(
+            {
+              id: user.id,
+              profile_settings: nextSettings,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          )
+          .select('profile_settings')
+          .maybeSingle();
+
+        if (updateError) {
+          console.error('[ProfileSettings] update error', updateError);
+          return sendJson(res, 500, { ok: false, error: 'profile_settings_update_failed' });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          settings: updated?.profile_settings || nextSettings,
+        });
+      } catch (err) {
+        const status = err.statusCode || 500;
+        if (status !== 401) {
+          console.error('[ProfileSettings] handler error', err);
+        }
+        return sendJson(res, status, { ok: false, error: 'profile_settings_update_failed' });
       }
     })();
     return;

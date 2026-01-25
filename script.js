@@ -1755,49 +1755,31 @@ async function refreshBrandKit({ force = false } = {}) {
 async function loadBrandKitFromSupabase(userId) {
   try {
     if (!userId) return null;
-    if (!supabase?.from) return null;
     if (!brandKitTableLogged) {
       brandKitTableLogged = true;
-      console.debug('[BrandKit] loading from profiles.profile_settings');
+      console.debug('[BrandKit] loading from /api/brand-kit');
     }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('profile_settings, updated_at')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) {
-      const msg = String(error?.message || error);
-      if (msg.includes('profiles') || msg.includes('profile_settings') || msg.includes('42P01') || msg.includes('schema cache')) {
-        if (!brandKitConfigWarned) {
-          brandKitConfigWarned = true;
-          console.debug('[BrandKit] table missing; skipping.');
-        }
-        return null;
-      }
+    const response = await fetchWithAuth('/api/brand-kit', { method: 'GET' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      const msg = String(payload?.error || response.statusText || 'brandkit_fetch_failed');
       if (!brandKitServerWarned) {
         brandKitServerWarned = true;
         console.warn('[BrandKit] load failed', msg);
       }
       return null;
     }
-    if (!data) return null;
-    const settings = data?.profile_settings || {};
-    const kit =
-      settings.brandKit ||
-      settings.brand_kit ||
-      settings.brandKitSettings ||
-      settings.brand_kit_settings ||
-      null;
+    const kit = payload?.brandKit || null;
     if (!kit || typeof kit !== 'object') return null;
     return {
       brandName: kit.brandName || kit.brand_name || '',
-      primaryColor: kit.primaryColor || kit.primary_color || '',
+      primaryColor: kit.primaryColor || kit.primary_color || kit.brand_color || kit.brandColor || '',
       secondaryColor: kit.secondaryColor || kit.secondary_color || '',
       accentColor: kit.accentColor || kit.accent_color || '',
       headingFont: kit.headingFont || kit.heading_font || '',
       bodyFont: kit.bodyFont || kit.body_font || '',
       logoDataUrl: kit.logoDataUrl || kit.logo_url || kit.logoUrl || '',
-      updatedAt: data.updated_at || null,
+      updatedAt: kit.updatedAt || kit.updated_at || null,
     };
   } catch (err) {
     if (!brandKitServerWarned) {
@@ -3583,13 +3565,7 @@ async function loadAccountModalData() {
   }
   hydrateAccountForm();
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('profile_settings')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (error) throw error;
-    const settings = data?.profile_settings;
+    const settings = await getProfilePreferences();
     if (settings && typeof settings === 'object') {
       updateProfileSettings(settings, { replace: true, targetEmail: email || activeUserEmail });
       hydrateAccountForm();
@@ -5642,31 +5618,13 @@ if (accountForm) {
 
     if (authUser?.id) {
       try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .upsert(
-            {
-              id: authUser.id,
-              profile_settings: profileSettings,
-              updated_at: new Date().toISOString()
-            },
-            { onConflict: 'id' }
-          )
-          .select('profile_settings')
-          .single();
-        if (error) throw error;
-        const savedRemote = data?.profile_settings || profileSettings;
+        const savedRemote = await saveProfilePreferences(profileSettings);
         updateProfileSettings(savedRemote, { replace: true, targetEmail: authEmail || activeUserEmail });
         syncedToSupabase = true;
         await loadAccountModalData();
         shouldCloseModal = true;
       } catch (error) {
-        const code = String(error?.code || '');
-        const msg = String(error?.message || '').toLowerCase();
-        const isRls = code === '42501' || msg.includes('row-level security');
-        if (!isRls) {
-          console.warn('Unable to sync profile settings to Supabase', error);
-        }
+        console.warn('Unable to sync profile settings to server', error);
         shouldCloseModal = false;
       }
     }
@@ -10508,13 +10466,7 @@ if (isLibraryPage()) {
       updateLibraryLastLogin('');
     }
     try {
-      const { data, error: prefsError } = await supabase
-        .from('profiles')
-        .select('profile_settings')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (prefsError) throw prefsError;
-      const settings = data?.profile_settings;
+      const settings = await getProfilePreferences();
       if (settings && typeof settings === 'object') {
         applyLibraryPrefs(settings);
       }

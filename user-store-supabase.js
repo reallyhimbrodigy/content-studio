@@ -1,6 +1,41 @@
 // Supabase-powered user & calendar storage (replaces localStorage)
 import { supabase } from './supabase-client.js';
 
+async function getSupabaseAccessToken() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return session?.access_token || null;
+}
+
+async function fetchJsonWithAuth(path, options = {}) {
+  const token = await getSupabaseAccessToken();
+  if (!token) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+  const headers = new Headers(options.headers || {});
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(path, { ...options, headers });
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (_err) {
+    data = {};
+  }
+  return { response, data };
+}
+
+function normalizeTierLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'free';
+  if (raw === 'paid' || raw === 'premium') return 'pro';
+  return raw;
+}
+
 // ============================================================================
 // Authentication
 // ============================================================================
@@ -75,17 +110,9 @@ export async function signOut() {
 
 export async function getUserTier(email) {
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) return 'free';
-    
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('tier')
-      .eq('id', userId)
-      .single();
-    
-    if (error) throw error;
-    return data?.tier || 'free';
+    const { response, data } = await fetchJsonWithAuth('/api/user/subscription', { method: 'GET' });
+    if (!response.ok || data?.ok === false) return 'free';
+    return normalizeTierLabel(data?.plan || data?.tier || 'free');
   } catch (error) {
     console.error('getUserTier error:', error);
     return 'free';
@@ -94,15 +121,14 @@ export async function getUserTier(email) {
 
 export async function setUserTier(email, tier) {
   try {
-    const userId = await getCurrentUserId();
-    if (!userId) throw new Error('No user logged in');
-    
-    const { error } = await supabase
-      .from('profiles')
-      .update({ tier, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-    
-    if (error) throw error;
+    const normalized = normalizeTierLabel(tier);
+    const { response, data } = await fetchJsonWithAuth('/api/user/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ tier: normalized }),
+    });
+    if (!response.ok || data?.ok === false) {
+      return { ok: false, msg: data?.error || 'Failed to update plan' };
+    }
     return { ok: true };
   } catch (error) {
     console.error('setUserTier error:', error);
