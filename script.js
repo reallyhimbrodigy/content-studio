@@ -5661,7 +5661,12 @@ if (accountForm) {
         await loadAccountModalData();
         shouldCloseModal = true;
       } catch (error) {
-        console.warn('Unable to sync profile settings to Supabase', error);
+        const code = String(error?.code || '');
+        const msg = String(error?.message || '').toLowerCase();
+        const isRls = code === '42501' || msg.includes('row-level security');
+        if (!isRls) {
+          console.warn('Unable to sync profile settings to Supabase', error);
+        }
         shouldCloseModal = false;
       }
     }
