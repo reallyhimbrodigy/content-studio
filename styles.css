@@ -1,12 +1,14 @@
 :root {
   color-scheme: dark;
-  --bg: #000000;
-  --panel: rgba(255, 255, 255, 0.06);
+  --bg: #0f1115;
+  --bg-elev: #141821;
+  --panel: var(--bg-elev);
   --panel2: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.14);
   --border2: rgba(255, 255, 255, 0.22);
   --text: #ffffff;
   --text2: rgba(255, 255, 255, 0.72);
+  --text-dim: rgba(255, 255, 255, 0.72);
   --text3: rgba(255, 255, 255, 0.52);
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
   --focus: 0 0 0 3px rgba(255, 255, 255, 0.22);
@@ -53,6 +55,22 @@ html,
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+main,
+.page,
+.app,
+.shell,
+.layout,
+.content-wrap,
+.app-shell,
+.app-layout,
+.app-main,
+.content-page,
+.page-container,
+.main-content,
+.page-content {
+  background: var(--bg);
 }
 
 p,
@@ -3369,7 +3387,8 @@ body {
 }
 
 .content-page__footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border);
+  background: var(--bg);
   padding-top: 1.5rem;
   display: flex;
   flex-wrap: wrap;
@@ -5342,11 +5361,17 @@ body.prefers-reduced-motion *::after {
   padding: clamp(2rem, 4vw, 3.5rem);
   border: 1px solid var(--card-border);
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(20, 20, 36, 0.85), rgba(8, 8, 16, 0.9));
+  background: var(--bg);
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   gap: clamp(2rem, 3vw, 2.5rem);
+}
+
+footer,
+.site-footer {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 
 .footer__inner {
@@ -5932,6 +5957,7 @@ body.modal-open {
   height: auto !important;
   padding: 48px !important;
   overflow: visible !important;
+  background: var(--bg);
 }
 
 .app-content,
@@ -10037,8 +10063,8 @@ body:has(#account-modal.modal-overlay) .app-main {
    LANDING (scoped)
    ========================= */
 :root{
-  --bg0: #000000;
-  --bg1: #000000;
+  --bg0: #0f1115;
+  --bg1: #0f1115;
   --panel: rgba(255, 255, 255, 0.06);
   --border: rgba(255, 255, 255, 0.14);
   --text: #ffffff;
