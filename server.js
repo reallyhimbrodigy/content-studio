@@ -508,6 +508,7 @@ function sendJson(res, statusCode, payload) {
 
 const isProduction = process.env.NODE_ENV === 'production';
 const DEBUG_ANALYTICS = process.env.DEBUG_ANALYTICS === 'true';
+const DEBUG_ENTITLEMENTS = process.env.DEBUG_ENTITLEMENTS === 'true';
 
 function generateRequestId(prefix = 'req') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -7543,6 +7544,42 @@ function saveCustomersMap(map) {
   }
 }
 
+async function stripeApiRequest({ method = 'GET', path: requestPath, body, secretKey }) {
+  return new Promise((resolve, reject) => {
+    const headers = {
+      'Authorization': `Bearer ${secretKey}`,
+    };
+    let payload = null;
+    if (body) {
+      payload = typeof body === 'string' ? body : JSON.stringify(body);
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+    const options = {
+      hostname: 'api.stripe.com',
+      path: requestPath,
+      method,
+      headers,
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(data || '{}');
+        } catch (_err) {
+          parsed = null;
+        }
+        resolve({ statusCode: res.statusCode || 0, data: parsed, raw: data });
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
 function describeBrandKitForPrompt(kit, { includeLogo } = {}) {
   if (!kit) return '';
   const lines = [];
@@ -7634,6 +7671,105 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname && (parsed.pathname.startsWith('/api/phyllo') || parsed.pathname.startsWith('/internal/phyllo'))) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'not_found' }));
+  }
+
+  if (parsed.pathname === '/api/entitlements' && req.method === 'GET') {
+    (async () => {
+      const requestId = generateRequestId('entitlements');
+      try {
+        const user = await requireSupabaseUser(req);
+        const emailRaw = user?.email || user?.user_metadata?.email || '';
+        const email = String(emailRaw || '').trim().toLowerCase();
+        const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+        if (!STRIPE_SECRET_KEY) {
+          console.warn('[Entitlements] Stripe not configured', { requestId });
+          return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
+        }
+        if (!email) {
+          return sendJson(res, 200, { tier: 'free', reason: 'missing_email', requestId });
+        }
+
+        const customers = loadCustomersMap();
+        let customerId = customers[email];
+        if (!customerId) {
+          const query = new URLSearchParams({ email, limit: '1' }).toString();
+          const customerResp = await stripeApiRequest({
+            method: 'GET',
+            path: `/v1/customers?${query}`,
+            secretKey: STRIPE_SECRET_KEY,
+          });
+          if (customerResp.statusCode < 200 || customerResp.statusCode >= 300) {
+            console.warn('[Entitlements] Stripe customer lookup failed', {
+              requestId,
+              statusCode: customerResp.statusCode,
+            });
+            return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
+          }
+          const found = Array.isArray(customerResp.data?.data) ? customerResp.data.data[0] : null;
+          if (found?.id) {
+            customerId = found.id;
+            customers[email] = customerId;
+            saveCustomersMap(customers);
+          }
+        }
+
+        if (!customerId) {
+          if (DEBUG_ENTITLEMENTS) {
+            console.log('[Entitlements] no customer found', {
+              requestId,
+              userId: user?.id,
+              email,
+            });
+          }
+          return sendJson(res, 200, { tier: 'free', reason: 'no_customer', requestId });
+        }
+
+        const subsQuery = new URLSearchParams({
+          customer: customerId,
+          status: 'all',
+          limit: '10',
+        }).toString();
+        const subsResp = await stripeApiRequest({
+          method: 'GET',
+          path: `/v1/subscriptions?${subsQuery}`,
+          secretKey: STRIPE_SECRET_KEY,
+        });
+        if (subsResp.statusCode < 200 || subsResp.statusCode >= 300) {
+          console.warn('[Entitlements] Stripe subscription lookup failed', {
+            requestId,
+            customerId,
+            statusCode: subsResp.statusCode,
+          });
+          return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
+        }
+        const subscriptions = Array.isArray(subsResp.data?.data) ? subsResp.data.data : [];
+        const statuses = subscriptions.map((sub) => sub?.status).filter(Boolean);
+        const isPro = statuses.some((status) => status === 'active' || status === 'trialing');
+
+        if (DEBUG_ENTITLEMENTS) {
+          console.log('[Entitlements] resolved', {
+            requestId,
+            userId: user?.id,
+            email,
+            customerId,
+            statuses,
+          });
+        }
+
+        return sendJson(res, 200, { tier: isPro ? 'pro' : 'free', requestId });
+      } catch (err) {
+        const status = err?.statusCode || 500;
+        if (status === 401) {
+          return sendJson(res, 401, { error: 'unauthorized', requestId });
+        }
+        console.warn('[Entitlements] failed to resolve entitlements', {
+          requestId,
+          error: err?.message || err,
+        });
+        return sendJson(res, 503, { error: 'ENTITLEMENTS_UNAVAILABLE', requestId });
+      }
+    })();
+    return;
   }
 
   if (parsed.pathname === '/api/user/subscription' && req.method === 'GET') {

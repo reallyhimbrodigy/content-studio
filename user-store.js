@@ -142,6 +142,8 @@ function normalizeTierLabel(value) {
   return raw;
 }
 
+let authTierSyncBound = false;
+
 // ============================================================================
 // Authentication
 // ============================================================================
@@ -333,11 +335,14 @@ export async function refreshUserTier({ force = false } = {}) {
   if (inflightTierPromise) return inflightTierPromise;
   inflightTierPromise = (async () => {
     try {
-      const { response, data } = await fetchJsonWithAuth('/api/user/subscription', { method: 'GET' });
+      const { response, data } = await fetchJsonWithAuth('/api/entitlements', { method: 'GET' });
       if (!response.ok || data?.ok === false) {
+        if (response.status === 503 && data?.error === 'ENTITLEMENTS_UNAVAILABLE') {
+          return { ok: false, unavailable: true, error: data?.error };
+        }
         return { ok: false, error: data?.error || 'tier_fetch_failed' };
       }
-      const tier = applyResolvedTier(data?.plan || data?.tier || 'free');
+      const tier = applyResolvedTier(data?.tier || 'free');
       return { ok: true, tier };
     } catch (error) {
       if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
@@ -375,8 +380,8 @@ export async function setUserTier(email, tier) {
     if (!response.ok || data?.ok === false) {
       return { ok: false, msg: data?.error || 'Failed to update plan' };
     }
-    applyResolvedTier(data?.plan || data?.tier || normalized);
-    return { ok: true };
+    const resolved = normalizeTierLabel(data?.plan || data?.tier || normalized);
+    return { ok: true, tier: resolved };
   } catch (error) {
     if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
       console.warn('setUserTier error:', error);
@@ -388,6 +393,19 @@ export async function setUserTier(email, tier) {
 export async function isPro(email) {
   const tier = await getUserTier(email);
   return tier === 'pro';
+}
+
+if (typeof window !== 'undefined' && supabase?.auth?.onAuthStateChange && !authTierSyncBound) {
+  authTierSyncBound = true;
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.access_token) {
+      refreshUserTier({ force: true });
+      return;
+    }
+    lastKnownUserTier = null;
+    userStore.tier = 'free';
+    userTierResolved = false;
+  });
 }
 
 export async function getProfilePreferences() {

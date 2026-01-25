@@ -14,26 +14,6 @@ import {
 import { initBrandBrainPanel } from './brand-brain.js';
 
 const isProTier = () => userStore.tier === 'pro';
-try {
-  if (typeof window !== 'undefined') {
-    if (typeof window.cachedUserIsPro === 'boolean' && window.cachedUserIsPro) {
-      userStore.tier = 'pro';
-    }
-    Object.defineProperty(window, 'cachedUserIsPro', {
-      configurable: true,
-      get() {
-        return userStore.tier === 'pro';
-      },
-      set(value) {
-        if (typeof value === 'boolean') {
-          userStore.tier = value ? 'pro' : 'free';
-        }
-      },
-    });
-  }
-} catch (_err) {
-  // Ignore inability to proxy cachedUserIsPro
-}
 
 // Global scroll lock helpers
 window.__modalOpenCount = 0;
