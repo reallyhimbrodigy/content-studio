@@ -3510,6 +3510,21 @@ button.button--danger:hover {
   border-color: rgba(255, 255, 255, 0.92) !important;
 }
 
+body.page-calendar #delete-calendar-button {
+  background: #ff3b30 !important;
+  border-color: #ff3b30 !important;
+  color: #000000 !important;
+}
+
+body.page-calendar #delete-calendar-button:hover,
+body.page-calendar #delete-calendar-button:focus,
+body.page-calendar #delete-calendar-button:active,
+body.page-calendar #delete-calendar-button:focus-visible {
+  background: #e1322a !important;
+  border-color: #e1322a !important;
+  color: #000000 !important;
+}
+
 button[data-action="calendar-generate-asset"] {
   opacity: 1 !important;
   pointer-events: auto !important;
@@ -4214,6 +4229,30 @@ a.ghost:hover {
 }
 .profile-menu-item.danger svg {
   opacity: 1; /* ensure icon is fully visible on red */
+}
+
+/* Destructive styling for profile dropdown (calendar + library only) */
+body.page-calendar .profile-menu-item.danger,
+body.page-library .profile-menu-item.danger {
+  background: #ff3b30;
+  color: #000000;
+  border: none;
+}
+body.page-calendar .profile-menu-item.danger:hover,
+body.page-library .profile-menu-item.danger:hover,
+body.page-calendar .profile-menu-item.danger:focus,
+body.page-library .profile-menu-item.danger:focus,
+body.page-calendar .profile-menu-item.danger:active,
+body.page-library .profile-menu-item.danger:active,
+body.page-calendar .profile-menu-item.danger:focus-visible,
+body.page-library .profile-menu-item.danger:focus-visible {
+  background: #e1322a;
+  color: #000000;
+}
+body.page-calendar .profile-menu-item.danger svg,
+body.page-library .profile-menu-item.danger svg {
+  color: #000000;
+  opacity: 1;
 }
 
 .profile-menu-item svg {
