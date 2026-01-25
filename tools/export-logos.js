@@ -10,18 +10,18 @@ const sharp = require('sharp');
 
     const tasks = [
       {
-        src: path.join(root, 'assets', 'promptly-logo.svg'),
+        src: path.join(root, 'assets', 'promptly-mark-white.png'),
         outputs: [
-          { w: 1024, h: 176, name: 'promptly-wordmark-1024x176.png' },
-          { w: 512, h: 88, name: 'promptly-wordmark-512x88.png' }
+          { w: 1024, h: 176, name: 'promptly-mark-1024x176.png' },
+          { w: 512, h: 88, name: 'promptly-mark-512x88.png' }
         ]
       },
       {
-        src: path.join(root, 'assets', 'promptly-icon.svg'),
+        src: path.join(root, 'assets', 'promptly-mark-white.png'),
         outputs: [
-          { w: 512, h: 512, name: 'promptly-icon-512.png' },
-          { w: 256, h: 256, name: 'promptly-icon-256.png' },
-          { w: 128, h: 128, name: 'promptly-icon-128.png' }
+          { w: 512, h: 512, name: 'promptly-mark-512.png' },
+          { w: 256, h: 256, name: 'promptly-mark-256.png' },
+          { w: 128, h: 128, name: 'promptly-mark-128.png' }
         ]
       }
     ];

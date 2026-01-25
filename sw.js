@@ -8,7 +8,7 @@ const CORE_ASSETS = [
   '/styles.css',
   '/script.js',
   '/assets/vendor/supabase.js',
-  '/assets/promptly-icon.svg',
+  '/assets/promptly-mark-white.png',
   '/offline.html'
 ];
 

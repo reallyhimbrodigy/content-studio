@@ -7621,7 +7621,7 @@ const server = http.createServer((req, res) => {
 
   // Serve favicon from SVG asset to avoid 404s
   if (parsed.pathname === '/favicon.ico') {
-    const fav = path.join(__dirname, 'assets', 'promptly-icon.svg');
+    const fav = path.join(__dirname, 'assets', 'promptly-mark-white.png');
     try {
       if (fs.existsSync(fav)) {
         return serveFile(fav, res);
@@ -7634,7 +7634,7 @@ const server = http.createServer((req, res) => {
 
   // Serve apple touch icon path if requested by iOS (fallback to SVG)
   if (parsed.pathname === '/apple-touch-icon.png') {
-    const apple = path.join(__dirname, 'assets', 'promptly-icon.svg');
+    const apple = path.join(__dirname, 'assets', 'promptly-mark-white.png');
     try {
       if (fs.existsSync(apple)) {
         return serveFile(apple, res);
