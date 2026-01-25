@@ -91,6 +91,7 @@ const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
   .split(',')
   .map((item) => String(item || '').trim())
   .filter(Boolean);
+let profileSettingsSchemaWarned = false;
 const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
 const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
 const PHYLLO_WORK_PLATFORM_LABELS = {
@@ -7553,6 +7554,16 @@ function isBrandKitPath(pathname) {
   );
 }
 
+function isProfileSettingsSchemaMissing(err) {
+  if (!err) return false;
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    code === '42703' ||
+    (msg.includes('profile_settings') && msg.includes('column') && msg.includes('does not exist'))
+  );
+}
+
 const server = http.createServer((req, res) => {
   try {
   const parsed = url.parse(req.url, true);
@@ -7684,10 +7695,12 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          const msg = String(error?.message || '');
-          const code = String(error?.code || '');
-          if (code === '42703' || msg.toLowerCase().includes('profile_settings')) {
-            return sendJson(res, 200, { ok: true, settings: {}, missing: true });
+          if (isProfileSettingsSchemaMissing(error)) {
+            if (!profileSettingsSchemaWarned) {
+              profileSettingsSchemaWarned = true;
+              console.warn('[ProfileSettings] schema missing: profiles.profile_settings');
+            }
+            return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
           console.error('[ProfileSettings] fetch error', error);
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
@@ -7729,10 +7742,12 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (error) {
-          const msg = String(error?.message || '');
-          const code = String(error?.code || '');
-          if (code === '42703' || msg.toLowerCase().includes('profile_settings')) {
-            return sendJson(res, 200, { ok: true, settings: safePatch, missing: true });
+          if (isProfileSettingsSchemaMissing(error)) {
+            if (!profileSettingsSchemaWarned) {
+              profileSettingsSchemaWarned = true;
+              console.warn('[ProfileSettings] schema missing: profiles.profile_settings');
+            }
+            return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
           }
           console.error('[ProfileSettings] fetch error', error);
           return sendJson(res, 500, { ok: false, error: 'profile_settings_fetch_failed' });
@@ -7757,6 +7772,13 @@ const server = http.createServer((req, res) => {
           .maybeSingle();
 
         if (updateError) {
+          if (isProfileSettingsSchemaMissing(updateError)) {
+            if (!profileSettingsSchemaWarned) {
+              profileSettingsSchemaWarned = true;
+              console.warn('[ProfileSettings] schema missing: profiles.profile_settings');
+            }
+            return sendJson(res, 503, { ok: false, error: 'PROFILE_SETTINGS_SCHEMA_MISSING' });
+          }
           console.error('[ProfileSettings] update error', updateError);
           return sendJson(res, 500, { ok: false, error: 'profile_settings_update_failed' });
         }

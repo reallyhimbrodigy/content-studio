@@ -2,9 +2,14 @@
 import { supabase } from './supabase-client.js';
 export { supabase };
 
+const DEBUG =
+  typeof window !== 'undefined' &&
+  ['localhost', '127.0.0.1'].includes(window.location?.hostname || '');
+
 const PROFILE_SETTINGS_COLUMN_FLAG_KEY = 'promptly_profile_settings_column_missing';
 const PROFILE_SETTINGS_COLUMN_FLAG_TTL = 12 * 60 * 60 * 1000; // 12 hours
 let profileSettingsColumnMissing = false;
+let profileSettingsSyncDisabled = false;
 try {
   const raw = localStorage.getItem(PROFILE_SETTINGS_COLUMN_FLAG_KEY);
   if (raw) {
@@ -88,7 +93,9 @@ function isProfileSettingsColumnMissing(error) {
   const msg = String(error.message || '').toLowerCase();
   if (code === '42703' || msg.includes('profile_settings')) {
     markProfileSettingsColumnMissing();
-    console.warn('Supabase profiles.profile_settings column is missing. Apply the latest schema migration to enable synced profile preferences.');
+    if (DEBUG) {
+      console.warn('Supabase profiles.profile_settings column is missing. Apply the latest schema migration to enable synced profile preferences.');
+    }
     return true;
   }
   return false;
@@ -345,14 +352,18 @@ export async function isPro(email) {
 }
 
 export async function getProfilePreferences() {
-  if (profileSettingsColumnMissing) return {};
+  if (profileSettingsColumnMissing || profileSettingsSyncDisabled) return {};
   try {
     const { response, data } = await fetchJsonWithAuth('/api/profile/settings', { method: 'GET' });
     if (!response.ok || data?.ok === false) {
       if (response.status === 401) return {};
+      if (response.status === 503 && data?.error === 'PROFILE_SETTINGS_SCHEMA_MISSING') {
+        profileSettingsSyncDisabled = true;
+        markProfileSettingsColumnMissing();
+        return {};
+      }
       return {};
     }
-    if (data?.missing) markProfileSettingsColumnMissing();
     const settings = data?.settings;
     if (!settings || typeof settings !== 'object') return {};
     return settings;
@@ -367,7 +378,7 @@ export async function getProfilePreferences() {
 }
 
 export async function saveProfilePreferences(settings = {}) {
-  if (profileSettingsColumnMissing) {
+  if (profileSettingsColumnMissing || profileSettingsSyncDisabled) {
     return settings && typeof settings === 'object' ? settings : {};
   }
   try {
@@ -378,9 +389,13 @@ export async function saveProfilePreferences(settings = {}) {
     });
     if (!response.ok || data?.ok === false) {
       if (response.status === 401) return safeSettings;
+      if (response.status === 503 && data?.error === 'PROFILE_SETTINGS_SCHEMA_MISSING') {
+        profileSettingsSyncDisabled = true;
+        markProfileSettingsColumnMissing();
+        return safeSettings;
+      }
       throw new Error(data?.error || 'profile_settings_update_failed');
     }
-    if (data?.missing) markProfileSettingsColumnMissing();
     return data?.settings || safeSettings;
   } catch (error) {
     if (isProfileSettingsColumnMissing(error)) {
