@@ -4,7 +4,7 @@ import {
   getCurrentUserDetails,
   signOut as storeSignOut,
   getUserTier,
-  refreshUserTier,
+  loadEntitlements,
   isPro,
   getProfilePreferences,
   saveProfilePreferences,
@@ -13,7 +13,20 @@ import {
 } from './user-store.js';
 import { initBrandBrainPanel } from './brand-brain.js';
 
-const isProTier = () => userStore.tier === 'pro';
+const isProTier = () => userStore.entitlementsReady && userStore.tier === 'pro';
+const requireProOrOpenUpgrade = (actionName = '') => {
+  if (!userStore.entitlementsReady) {
+    if (typeof userStore.loadEntitlements === 'function') {
+      userStore.loadEntitlements();
+    } else if (typeof loadEntitlements === 'function') {
+      loadEntitlements();
+    }
+    return { allowed: false, reason: 'ENTITLEMENTS_LOADING', actionName };
+  }
+  if (userStore.tier === 'pro') return { allowed: true };
+  showUpgradeModal();
+  return { allowed: false, reason: 'FREE_TIER', actionName };
+};
 
 // Global scroll lock helpers
 window.__modalOpenCount = 0;
@@ -1162,11 +1175,8 @@ async function beginGenerateAssetFlow(entry, entryDay, triggerButton) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = isProTier();
-    if (!userIsPro) {
-      showUpgradeModal();
-      return;
-    }
+    const gate = requireProOrOpenUpgrade('design_asset_generate');
+    if (!gate.allowed) return;
     const context = buildAssetContextFromEntry(entry, resolvedDay);
     openGenerateAssetModal(context);
   } finally {
@@ -3312,7 +3322,10 @@ function setPostFrequency(value) {
 
 function enforceFreeLocks(settings = {}) {
   const next = settings && typeof settings === 'object' ? { ...settings } : {};
-  if (!isProTier()) {
+  if (!userStore.entitlementsReady) {
+    return next;
+  }
+  if (userStore.tier !== 'pro') {
     next.brand_brain_enabled = false;
     next.voice_lock_enabled = false;
     next.target_audience_enabled = false;
@@ -3759,6 +3772,8 @@ function closeAccountModal() {
 
 function openVoiceLockModal() {
   if (!voiceLockModal) return;
+  const gate = requireProOrOpenUpgrade('voice_lock_open');
+  if (!gate.allowed) return;
   lastVoiceLockFocusEl = document.activeElement;
   voiceLockModal.style.display = 'flex';
   voiceLockModal.setAttribute('aria-hidden', 'false');
@@ -3801,6 +3816,8 @@ function closeVoiceLockModal() {
 
 function openTargetAudienceModal() {
   if (!targetAudienceModal) return;
+  const gate = requireProOrOpenUpgrade('target_audience_open');
+  if (!gate.allowed) return;
   lastTargetAudienceFocusEl = document.activeElement;
   targetAudienceModal.style.display = 'flex';
   targetAudienceModal.setAttribute('aria-hidden', 'false');
@@ -4597,11 +4614,8 @@ function clearDesignDragHighlights() {
   }
 
 async function requireProAccess() {
-    if (isProTier()) return true;
-    const user = await getCurrentUser();
-    if (!user) return false;
-    await refreshUserTier({ force: true });
-    return isProTier();
+    const gate = requireProOrOpenUpgrade('pro_access');
+    return gate.allowed;
   }
 
 async function startDesignModal(entry = null, entryDay = null) {
@@ -4724,6 +4738,10 @@ async function handleDesignFormSubmit(event) {
     if (!currentUserId) {
       showDesignError('Sign in required', 'Create a free account to generate AI assets.');
       window.location.href = '/auth.html?mode=signup';
+      return;
+    }
+    if (!userStore.entitlementsReady) {
+      requireProOrOpenUpgrade('design_asset_submit');
       return;
     }
     const userIsPro = isProTier();
@@ -5075,7 +5093,7 @@ async function bootstrapApp(attempt = 0) {
     const switchedUsers = previousStorageUser !== resolveStorageUserKey();
     const hydratedCalendar = hydrateCalendarFromStorage(switchedUsers);
     if (hydratedCalendar) ensurePlatformVariantsForCurrentCalendar('hydrate');
-    await refreshUserTier();
+    await loadEntitlements();
     profileSettings = enforceFreeLocks(loadProfileSettings(currentUser));
     updateProfileSettings(profileSettings, { replace: true, targetEmail: currentUser });
     const profileSync = syncProfileSettingsFromSupabase();
@@ -5197,6 +5215,7 @@ async function bootstrapApp(attempt = 0) {
     if (landingExperience) landingExperience.style.display = '';
     if (appExperience) appExperience.style.display = 'none';
     userStore.tier = 'free';
+    userStore.entitlementsReady = true;
     updatePostFrequencyUI();
     syncVoiceLockFromSettings();
     syncTargetAudienceFromSettings();
@@ -5495,11 +5514,12 @@ if (accountPasswordManageBtn) {
 
 if (postFrequencySelect) {
   const guardFreeChange = (event) => {
-    if (isProTier()) return false;
+    const gate = requireProOrOpenUpgrade('post_frequency');
+    if (gate.allowed) return false;
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return true;
     event?.preventDefault();
     postFrequencySelect.value = '1';
     postFrequencySelect.blur();
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return true;
   };
 
@@ -5520,13 +5540,14 @@ if (postFrequencySelect) {
 }
 
 const handleVoiceLockChange = () => {
-  if (!isProTier()) {
+  const gate = requireProOrOpenUpgrade('voice_lock_toggle');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     if (voiceLockToggle) voiceLockToggle.checked = false;
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
     setVoiceLockLockedState(true);
     closeVoiceLockModal();
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   const nextSettings = collectVoiceLockSettingsFromUI();
@@ -5536,13 +5557,14 @@ const handleVoiceLockChange = () => {
 };
 
 const handleTargetAudienceToggleChange = () => {
-  if (!isProTier()) {
+  const gate = requireProOrOpenUpgrade('target_audience_toggle');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     if (targetAudienceToggle) targetAudienceToggle.checked = false;
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
     setTargetAudienceLockedState(true);
     closeTargetAudienceModal();
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   setTargetAudienceControlsState(!!targetAudienceToggle?.checked);
@@ -5554,10 +5576,11 @@ const handleTargetAudienceToggleChange = () => {
 };
 
 const handleTargetAudienceSave = async () => {
-  if (!isProTier()) {
+  const gate = requireProOrOpenUpgrade('target_audience_save');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     syncTargetAudienceFromSettings();
     closeTargetAudienceModal();
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   if (targetAudienceFeedback) {
@@ -5578,10 +5601,11 @@ const handleTargetAudienceSave = async () => {
 };
 
 const handleTargetAudienceReset = async () => {
-  if (!isProTier()) {
+  const gate = requireProOrOpenUpgrade('target_audience_reset');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     syncTargetAudienceFromSettings();
     closeTargetAudienceModal();
-    if (typeof showUpgradeModal === 'function') showUpgradeModal();
     return;
   }
   const resetSettings = { ...TARGET_AUDIENCE_DEFAULTS, enabled: false };
@@ -5791,6 +5815,15 @@ function restoreUpgradeModalMount() {
 }
 
 function showUpgradeModal() {
+  if (userStore.entitlementsReady && userStore.tier === 'pro') return;
+  if (!userStore.entitlementsReady) {
+    if (typeof userStore.loadEntitlements === 'function') {
+      userStore.loadEntitlements();
+    } else if (typeof loadEntitlements === 'function') {
+      loadEntitlements();
+    }
+    return;
+  }
   mountUpgradeModalToBody();
   if (upgradeModal) upgradeModal.style.display = 'flex';
   if (typeof window.lockBodyScroll === 'function') window.lockBodyScroll();
@@ -5854,6 +5887,7 @@ initBrandBrainPanel({
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
+  requireProOrOpenUpgrade,
   emitAnalytics,
 });
 
@@ -6431,12 +6465,8 @@ const createCard = (post) => {
       button.classList.add('pro-gradient-btn');
       button.addEventListener('click', async (event) => {
         event.preventDefault();
-        const user = await getCurrentUser();
-        const userIsPro = isProTier();
-        if (!userIsPro) {
-          showUpgradeModal();
-          return;
-        }
+        const gate = requireProOrOpenUpgrade('calendar_pro_action');
+        if (!gate.allowed) return;
         try {
           await handler(event);
         } catch (err) {
@@ -6715,11 +6745,8 @@ if (grid) {
     try {
       const currentUser = await getCurrentUser();
       const currentUserId = await getCurrentUserId();
-      const userIsPro = isProTier();
-      if (!userIsPro) {
-        showUpgradeModal();
-        return;
-      }
+      const gate = requireProOrOpenUpgrade('regen_day');
+      if (!gate.allowed) return;
       const entry = button._calendarEntry || resolveCalendarEntryByDayIndex(day, entryIndex);
       // Test note: verify clicking regenerate after filter/frequency changes triggers a single request.
       await handleRegenerateDay(entry, day, button, { currentUserEmail: currentUser, currentUserId });
@@ -9482,7 +9509,6 @@ if (proNavLinks.length) {
       const allowed = await requireProAccess();
       if (!allowed) {
         event.preventDefault();
-        showUpgradeModal();
       }
     });
   });

@@ -54,12 +54,13 @@ function isAuthAbortError(error) {
 }
 
 let inflightAuthUserPromise = null; // Single-flight to prevent parallel auth fetches.
-let lastKnownUserTier = null; // Preserve tier when auth is temporarily unresolved.
-let inflightTierPromise = null;
+let inflightEntitlementsPromise = null;
 let userTierResolved = false;
 
 export const userStore = {
-  tier: 'free',
+  tier: 'unknown',
+  entitlementsReady: false,
+  loadEntitlements: null,
 };
 
 async function fetchAuthUserSingleFlight() {
@@ -295,9 +296,9 @@ export async function signOut() {
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    lastKnownUserTier = null;
     userStore.tier = 'free';
-    userTierResolved = false;
+    userStore.entitlementsReady = true;
+    userTierResolved = true;
   } catch (error) {
     console.error('signOut error:', error);
   }
@@ -323,21 +324,39 @@ export async function resetPassword(email) {
 function applyResolvedTier(tier) {
   const normalized = normalizeTierLabel(tier);
   userStore.tier = normalized;
-  lastKnownUserTier = normalized;
+  userStore.entitlementsReady = true;
   userTierResolved = true;
   return normalized;
 }
 
-export async function refreshUserTier({ force = false } = {}) {
-  if (userTierResolved && !force) {
+export async function loadEntitlements({ force = false } = {}) {
+  if (userStore.entitlementsReady && userTierResolved && !force) {
     return { ok: true, tier: userStore.tier, cached: true };
   }
-  if (inflightTierPromise) return inflightTierPromise;
-  inflightTierPromise = (async () => {
+  if (inflightEntitlementsPromise) return inflightEntitlementsPromise;
+  inflightEntitlementsPromise = (async () => {
+    userStore.entitlementsReady = false;
     try {
+      let token = null;
+      try {
+        token = await getSupabaseAccessToken();
+      } catch (_err) {
+        token = null;
+      }
+      if (!token) {
+        applyResolvedTier('free');
+        return { ok: true, tier: userStore.tier, unauthenticated: true };
+      }
       const { response, data } = await fetchJsonWithAuth('/api/entitlements', { method: 'GET' });
+      if (response.status === 401) {
+        applyResolvedTier('free');
+        return { ok: true, tier: userStore.tier, unauthenticated: true };
+      }
       if (!response.ok || data?.ok === false) {
         if (response.status === 503 && data?.error === 'ENTITLEMENTS_UNAVAILABLE') {
+          userStore.tier = 'unknown';
+          userStore.entitlementsReady = false;
+          userTierResolved = false;
           return { ok: false, unavailable: true, error: data?.error };
         }
         return { ok: false, error: data?.error || 'tier_fetch_failed' };
@@ -346,27 +365,26 @@ export async function refreshUserTier({ force = false } = {}) {
       return { ok: true, tier };
     } catch (error) {
       if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
-        console.warn('refreshUserTier error:', error);
+        console.warn('loadEntitlements error:', error);
       }
+      userStore.tier = 'unknown';
+      userStore.entitlementsReady = false;
+      userTierResolved = false;
       return { ok: false, error };
     } finally {
-      inflightTierPromise = null;
+      inflightEntitlementsPromise = null;
     }
   })();
-  return inflightTierPromise;
+  return inflightEntitlementsPromise;
 }
 
+userStore.loadEntitlements = loadEntitlements;
+
 export async function getUserTier(_email) {
-  if (lastKnownUserTier && userStore.tier !== lastKnownUserTier) {
-    userStore.tier = lastKnownUserTier;
-  }
-  if (userTierResolved) {
+  if (userStore.entitlementsReady && userTierResolved) {
     return userStore.tier;
   }
-  const result = await refreshUserTier();
-  if (result?.ok) {
-    return userStore.tier;
-  }
+  await loadEntitlements();
   return userStore.tier;
 }
 
@@ -391,20 +409,20 @@ export async function setUserTier(email, tier) {
 }
 
 export async function isPro(email) {
-  const tier = await getUserTier(email);
-  return tier === 'pro';
+  await getUserTier(email);
+  return userStore.entitlementsReady && userStore.tier === 'pro';
 }
 
 if (typeof window !== 'undefined' && supabase?.auth?.onAuthStateChange && !authTierSyncBound) {
   authTierSyncBound = true;
   supabase.auth.onAuthStateChange((_event, session) => {
     if (session?.access_token) {
-      refreshUserTier({ force: true });
+      loadEntitlements({ force: true });
       return;
     }
-    lastKnownUserTier = null;
     userStore.tier = 'free';
-    userTierResolved = false;
+    userStore.entitlementsReady = true;
+    userTierResolved = true;
   });
 }
 

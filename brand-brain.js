@@ -13,6 +13,7 @@ export function initBrandBrainPanel({
   getCurrentUser,
   getCurrentUserId,
   showUpgradeModal,
+  requireProOrOpenUpgrade,
   emitAnalytics,
 }) {
   const brandBtn = document.getElementById('brand-brain-btn');
@@ -70,6 +71,10 @@ let saveTimer = null;
   };
 
   const requirePro = async () => {
+    if (typeof requireProOrOpenUpgrade === 'function') {
+      const gate = requireProOrOpenUpgrade('brand_brain');
+      return !!gate.allowed;
+    }
     const pro = await resolveIsPro();
     if (!pro) {
       if (typeof showUpgradeModal === 'function') showUpgradeModal();
@@ -151,6 +156,10 @@ let saveTimer = null;
   };
 
   const openPanel = async () => {
+    if (typeof requireProOrOpenUpgrade === 'function') {
+      const gate = requireProOrOpenUpgrade('brand_brain_open');
+      if (!gate.allowed) return;
+    }
     brandModal.style.display = 'flex';
     document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
     document.body.dataset.prevOverflow = document.body.style.overflow || '';

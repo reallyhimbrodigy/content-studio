@@ -1,10 +1,23 @@
-import { getCurrentUser, isPro, supabase } from './user-store.js';
+import { getCurrentUser, isPro, loadEntitlements, supabase, userStore } from './user-store.js';
 import { initTheme } from './theme.js';
 
 // Apply theme on page load
 initTheme();
 
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
+const requireProOrOpenUpgrade = (actionName = '') => {
+  if (!userStore.entitlementsReady) {
+    if (typeof userStore.loadEntitlements === 'function') {
+      userStore.loadEntitlements();
+    } else if (typeof loadEntitlements === 'function') {
+      loadEntitlements();
+    }
+    return { allowed: false, reason: 'ENTITLEMENTS_LOADING', actionName };
+  }
+  if (userStore.tier === 'pro') return { allowed: true };
+  showUpgradeModal();
+  return { allowed: false, reason: 'FREE_TIER', actionName };
+};
 
 // JSZip loader
 let __zipLoaderPromise = null;
@@ -471,6 +484,15 @@ if (document.readyState === 'loading') {
 
 // Upgrade modal handlers (library page)
 function showUpgradeModal() {
+  if (userStore.entitlementsReady && userStore.tier === 'pro') return;
+  if (!userStore.entitlementsReady) {
+    if (typeof userStore.loadEntitlements === 'function') {
+      userStore.loadEntitlements();
+    } else if (typeof loadEntitlements === 'function') {
+      loadEntitlements();
+    }
+    return;
+  }
   if (upgradeModal) upgradeModal.style.display = 'flex';
 }
 function hideUpgradeModal() {
@@ -730,9 +752,13 @@ async function deleteSavedCalendar(calendarId) {
 }
 
 async function exportCalendarArchive(calendar) {
+  if (!userStore.entitlementsReady) {
+    requireProOrOpenUpgrade('library_export');
+    return;
+  }
   const userIsPro = await isPro(currentUser);
   if (!userIsPro) {
-    showUpgradeModal();
+    requireProOrOpenUpgrade('library_export');
     return;
   }
   const JSZipLib = await ensureZip().catch(() => null);
