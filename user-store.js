@@ -359,12 +359,15 @@ export async function saveProfilePreferences(settings = {}) {
     const safeSettings = settings && typeof settings === 'object' ? settings : {};
     const { data, error } = await supabase
       .from('profiles')
-      .update({
-        profile_settings: safeSettings,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-      .select('*')
+      .upsert(
+        {
+          id: userId,
+          profile_settings: safeSettings,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: 'id' }
+      )
+      .select('profile_settings')
       .single();
 
     if (error) {
