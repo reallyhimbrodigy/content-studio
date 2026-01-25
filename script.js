@@ -1054,7 +1054,7 @@ async function createDesignAssetFromCalendar(context, type) {
       context.brandColor ||
       context.brand?.primaryColor ||
       context.brand?.accentColor ||
-      '#7f5af0',
+      '#ffffff',
     background_image: context.backgroundImageUrl || null,
     logo: context.logoUrl || context.brand?.logoUrl || '',
     platform: context.platform || 'instagram',
@@ -2132,9 +2132,9 @@ function getBrandPaletteDefaults() {
   const heading = brandHeadingFontInput?.value || palette.headingFont || '';
   const body = brandBodyFontInput?.value || palette.bodyFont || '';
   return {
-    primaryColor: palette.primaryColor || '#7f5af0',
-    secondaryColor: palette.secondaryColor || '#2cb1bc',
-    accentColor: palette.accentColor || '#ff7ac3',
+    primaryColor: palette.primaryColor || '#ffffff',
+    secondaryColor: palette.secondaryColor || '#ffffff',
+    accentColor: palette.accentColor || '#ffffff',
     headingFont: heading || 'Inter Bold',
     bodyFont: body || 'Source Sans Pro',
   };
@@ -2834,7 +2834,7 @@ function deleteDesignAsset(asset, assetDay) {
 }
 
 function hexToRgba(hex, alpha = 1) {
-  if (!hex) return `rgba(127,90,240,${alpha})`;
+  if (!hex) return `rgba(255,255,255,${alpha})`;
   const normalized = hex.replace('#', '');
   const isShort = normalized.length === 3;
   if (![3, 6].includes(normalized.length)) return hex;
@@ -2848,29 +2848,29 @@ function hexToRgba(hex, alpha = 1) {
 function getPreviewTheme(tone = 'bold') {
   const palette = getBrandPaletteDefaults();
   const base = {
-    from: palette.primaryColor || '#7f5af0',
-    to: palette.accentColor || '#ff7ac3',
-    textColor: '#f5f6f8',
-    canvas: `linear-gradient(145deg, rgba(4,6,20,0.95), ${hexToRgba(palette.accentColor || '#ff7ac3', 0.2)})`,
+    from: palette.primaryColor || '#ffffff',
+    to: palette.accentColor || '#ffffff',
+    textColor: '#ffffff',
+    canvas: `#000000`,
   };
   const toneMap = {
     minimal: {
-      from: hexToRgba(palette.secondaryColor || '#9ca3af', 0.45),
-      to: 'rgba(8,12,20,0.9)',
-      textColor: '#e2e8f0',
-      canvas: `linear-gradient(140deg, rgba(4,6,18,0.96), ${hexToRgba(palette.secondaryColor || '#9ca3af', 0.25)})`,
+      from: hexToRgba(palette.secondaryColor || '#ffffff', 0.45),
+      to: 'rgba(0,0,0,0.9)',
+      textColor: '#ffffff',
+      canvas: `#000000`,
     },
     playful: {
-      from: palette.secondaryColor || '#2cb1bc',
-      to: palette.accentColor || '#ff7ac3',
-      textColor: '#181a27',
-      canvas: `linear-gradient(150deg, rgba(6,8,20,0.94), ${hexToRgba(palette.secondaryColor || '#2cb1bc', 0.25)})`,
+      from: palette.secondaryColor || '#ffffff',
+      to: palette.accentColor || '#ffffff',
+      textColor: '#ffffff',
+      canvas: `#000000`,
     },
     elegant: {
-      from: '#0f0c29',
-      to: palette.primaryColor || '#7f5af0',
-      textColor: '#f7f3e9',
-      canvas: `linear-gradient(150deg, rgba(6,6,14,0.97), ${hexToRgba(palette.primaryColor || '#7f5af0', 0.2)})`,
+      from: '#000000',
+      to: palette.primaryColor || '#ffffff',
+      textColor: '#ffffff',
+      canvas: `#000000`,
     },
   };
   const resolved = { ...base, ...(toneMap[tone] || {}) };
@@ -2892,7 +2892,7 @@ function buildPreviewLogo(theme) {
 function buildPreviewMarkup(type, tone) {
   const typeKey = normalizeAssetTypeKey(type);
   const theme = getPreviewTheme(tone);
-  const baseStyle = `background: linear-gradient(135deg, ${theme.from}, ${theme.to}); color: ${theme.textColor}; font-family: ${theme.headingFont}, 'Inter', sans-serif;`;
+  const baseStyle = `background: #ffffff;  color: ${theme.textColor}; font-family: ${theme.headingFont}, 'Inter', sans-serif;`;
   const secondaryStyle = `background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: ${theme.textColor}; font-family: ${theme.bodyFont}, 'Source Sans Pro', sans-serif;`;
   const logo = buildPreviewLogo(theme);
   const storySlides = ['Hook', 'Proof/Tip', 'CTA'];
@@ -2964,7 +2964,7 @@ function buildAssetDetailBrandPreview(asset = {}) {
   const logoMarkup = theme.logo
     ? `<span class="asset-detail__brand-logo"><img src="${escapeHtml(theme.logo)}" alt="Brand logo" loading="lazy" /></span>`
     : `<span class="asset-detail__brand-logo">Logo</span>`;
-  const gradient = `linear-gradient(135deg, ${theme.from}, ${theme.to})`;
+  const gradient = `#ffffff`;
   const subduedBg = 'rgba(255,255,255,0.05)';
   const slideWrapper = (label, text, accent = false, index = 0) => {
     const bg = accent ? gradient : subduedBg;
@@ -3079,7 +3079,7 @@ function renderAssetDetailPreview(asset, options = {}) {
   if (shouldUseBrandPreview) {
     const preview = buildAssetDetailBrandPreview(asset);
     assetDetailPreview.innerHTML = preview.html;
-    assetDetailPreview.style.background = preview.background || 'rgba(7,9,26,0.92)';
+    assetDetailPreview.style.background = preview.background || 'rgba(0,0,0,0.92)';
   } else {
     let html = `<div class="design-preview__graphic" style="width:100%;height:100%;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">No preview available</div>`;
     if (descriptor.kind === 'carousel' && descriptor.slides?.length) {
@@ -4007,7 +4007,7 @@ function updateDesignEditorBrandMeta(asset) {
       el.style.display = 'inline-flex';
       el.style.backgroundColor = next;
       el.style.borderColor = next;
-      el.style.color = '#050505';
+      el.style.color = '#ffffff';
       hasSwatch = true;
     } else {
       el.textContent = '';
@@ -8180,14 +8180,14 @@ function buildPostHTML(post){
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #0c0c0c;
-      --card: rgba(28, 28, 34, 0.84);
+      --bg: #000000;
+      --card: rgba(255, 255, 255, 0.06);
       --card-border: rgba(255, 255, 255, 0.08);
-      --text-primary: #f5f6f8;
-      --text-secondary: rgba(245, 246, 248, 0.72);
-      --accent: #7f5af0;
-      --accent-soft: rgba(127, 90, 240, 0.14);
-      --accent-strong: rgba(127, 90, 240, 0.32);
+      --text-primary: #ffffff;
+      --text-secondary: rgba(255, 255, 255, 0.72);
+      --accent: #ffffff;
+      --accent-soft: rgba(255, 255, 255, 0.14);
+      --accent-strong: rgba(255, 255, 255, 0.32);
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; }
@@ -8196,7 +8196,7 @@ function buildPostHTML(post){
       display: grid;
       place-items: center;
       padding: 24px;
-      background: radial-gradient(circle at top left, #171717, #050505 50%);
+      background: #000000;
       color: var(--text-primary);
       font: 16px/1.6 Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
     }
@@ -8230,21 +8230,21 @@ function buildPostHTML(post){
     }
     .calendar-card__day { font-size: 3rem; font-weight: 700; letter-spacing: -0.04em; color: rgba(255, 255, 255, 0.18); }
     .calendar-card__title { font-size: 1.15rem; margin: 0; }
-    .calendar-card__type { display: inline-block; background: rgba(127, 90, 240, 0.13); color: #7f5af0; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin-bottom: 0.5rem; margin-top: 0.25rem; }
+    .calendar-card__type { display: inline-block; background: rgba(255, 255, 255, 0.13); color: #ffffff; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin-bottom: 0.5rem; margin-top: 0.25rem; }
     .calendar-card__caption { margin: 0.5rem 0 0.25rem; color: var(--text-secondary); font-size: 1.01rem; line-height: 1.6; font-weight: 500; }
-    .calendar-card__hashtags { color: #2cb1bc; font-size: 0.97rem; margin: 0.25rem 0; font-weight: 600; }
-    .calendar-card__format { display: inline-block; background: rgba(44, 177, 188, 0.13); color: #2cb1bc; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
-    .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #7f5af0; font-size: 0.97rem; }
+    .calendar-card__hashtags { color: #ffffff; font-size: 0.97rem; margin: 0.25rem 0; font-weight: 600; }
+    .calendar-card__format { display: inline-block; background: rgba(255, 255, 255, 0.13); color: #ffffff; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
+    .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #ffffff; font-size: 0.97rem; }
   .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(245, 246, 248, 0.9); font-weight: 600; }
-    .calendar-card__visual a { color: #7f5af0; text-decoration: none; font-weight: 600; }
+    .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(255, 255, 255, 0.9); font-weight: 600; }
+    .calendar-card__visual a { color: #ffffff; text-decoration: none; font-weight: 600; }
     .calendar-card__visual a:hover { text-decoration: underline; }
     .calendar-card__assets { background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 8px; }
     .calendar-card__assets strong { display: block; margin-bottom: 0.35rem; }
     .calendar-card__asset-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-    .calendar-card__asset-chip { display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(127,90,240,0.35); padding: 0.2rem 0.85rem; font-size: 0.85rem; color: #7f5af0; text-decoration: none; }
-    .calendar-card__asset-chip:hover { border-color: rgba(127,90,240,0.7); }
+    .calendar-card__asset-chip { display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); padding: 0.2rem 0.85rem; font-size: 0.85rem; color: #ffffff; text-decoration: none; }
+    .calendar-card__asset-chip:hover { border-color: rgba(255, 255, 255, 0.7); }
     details { margin-top: 0.5rem; }
     details > summary { cursor: pointer; color: var(--text-primary); font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.4rem 0.6rem; width: fit-content; transition: all 0.2s ease; }
     details[open] > summary { background: var(--accent-soft); border-color: var(--accent-strong); }
@@ -10149,7 +10149,7 @@ const TEMPLATE_CATEGORY_MAP = {
   'story': 'Behind-the-Scenes',
 };
 
-function createTemplateThumbnail(text, palette = ['#7f5af0', '#2cb1bc']) {
+function createTemplateThumbnail(text, palette = ['#ffffff', '#ffffff']) {
   const [from, to] = palette;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320">
     <defs>
@@ -10172,7 +10172,7 @@ const BUILT_IN_TEMPLATES = [
     tone: 'elegant',
     notes: 'Centered quote overlay with drop shadow, quote icon, and author line.',
     previewText: '“Signature Quote”',
-    previewInlineUrl: createTemplateThumbnail('Quote Spark', ['#141726', '#5a4ff0']),
+    previewInlineUrl: createTemplateThumbnail('Quote Spark', ['#000000', '#000000']),
     category: 'Quotes & Tips',
     tags: ['quote', 'minimal'],
     recommendedFor: ['story'],
@@ -10184,7 +10184,7 @@ const BUILT_IN_TEMPLATES = [
     tone: 'playful',
     notes: 'Avatar + quote + star rating, gradient background, pill CTA.',
     previewText: 'Testimonial',
-    previewInlineUrl: createTemplateThumbnail('Testimonial', ['#ff8ba7', '#ffc3a0']),
+    previewInlineUrl: createTemplateThumbnail('Testimonial', ['#000000', '#000000']),
     category: 'Testimonials',
     tags: ['testimonial', 'bold'],
     recommendedFor: ['story'],
@@ -10196,7 +10196,7 @@ const BUILT_IN_TEMPLATES = [
     tone: 'bold',
     notes: 'Big numeric countdown, gradient border, button CTA.',
     previewText: 'Promo Banner',
-    previewInlineUrl: createTemplateThumbnail('Promo', ['#ff5f6d', '#ffc371']),
+    previewInlineUrl: createTemplateThumbnail('Promo', ['#000000', '#000000']),
     category: 'Promos',
     tags: ['promo', 'cta'],
     recommendedFor: ['story'],
@@ -10208,7 +10208,7 @@ const BUILT_IN_TEMPLATES = [
     tone: 'minimal',
     notes: 'Slide 1: hook. Slide 2: problem. Slide 3: process. Slide 4: result.',
     previewText: 'Case Study',
-    previewInlineUrl: createTemplateThumbnail('Case Study', ['#0f2027', '#203a43']),
+    previewInlineUrl: createTemplateThumbnail('Case Study', ['#000000', '#000000']),
     category: 'Case Studies',
     tags: ['carousel', 'case study'],
     recommendedFor: ['carousel'],
@@ -10220,7 +10220,7 @@ const BUILT_IN_TEMPLATES = [
     tone: 'playful',
     notes: 'Top hook text, photo slot, sticker CTA, bottom caption overlay.',
     previewText: 'Story BTS',
-    previewInlineUrl: createTemplateThumbnail('Story BTS', ['#f7971e', '#ffd200']),
+    previewInlineUrl: createTemplateThumbnail('Story BTS', ['#000000', '#000000']),
     category: 'Behind-the-Scenes',
     tags: ['story', 'bts'],
     recommendedFor: ['story'],

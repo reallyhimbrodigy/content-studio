@@ -24,9 +24,9 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-icon.svg" />
-  <link rel="mask-icon" href="assets/promptly-icon.svg" color="#7f5af0" />
+  <link rel="mask-icon" href="assets/promptly-icon.svg" color="#ffffff" />
   <link rel="apple-touch-icon" href="assets/promptly-icon.svg" />
-  <meta name="theme-color" content="#0c0c0c" />
+  <meta name="theme-color" content="#000000" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
     <style>
@@ -61,7 +61,7 @@
         flex-wrap: wrap;
         gap: 1rem;
         align-items: flex-end;
-        background: rgba(15, 16, 30, 0.6);
+        background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 18px;
         padding: 1rem;
@@ -83,7 +83,7 @@
         font-size: 0.75rem;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: rgba(245, 246, 248, 0.6);
+        color: rgba(255, 255, 255, 0.6);
       }
 
       .library-toolbar__field input,
@@ -93,12 +93,12 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.75rem 0.9rem;
         background: rgba(0, 0, 0, 0.2);
-        color: #f5f6f8;
+        color: #ffffff;
         font-size: 0.95rem;
       }
 
       .library-toolbar input::placeholder {
-        color: rgba(245, 246, 248, 0.5);
+        color: rgba(255, 255, 255, 0.5);
       }
 
       .library-filters {
@@ -113,16 +113,16 @@
         border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.5rem 1.1rem;
         background: rgba(255, 255, 255, 0.03);
-        color: #f5f6f8;
+        color: #ffffff;
         font-size: 0.85rem;
         cursor: pointer;
         transition: border-color 0.2s ease, background 0.2s ease;
       }
 
       .library-filter.is-active {
-        border-color: rgba(127, 90, 240, 0.8);
-        background: rgba(127, 90, 240, 0.15);
-        color: #d2c7ff;
+        border-color: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.08);
+        color: #ffffff;
       }
 
       .library-filter:disabled,
@@ -141,8 +141,8 @@
       }
 
       .calendar-card {
-        background: rgba(20, 20, 28, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 20px;
         padding: 1.5rem;
         display: flex;
@@ -155,7 +155,7 @@
 
       .calendar-card:hover,
       .calendar-card:focus-within {
-        border-color: rgba(127, 90, 240, 0.7);
+        border-color: rgba(255, 255, 255, 0.3);
         transform: translateY(-2px);
       }
 
@@ -167,7 +167,7 @@
       .calendar-card__meta,
       .calendar-card__metrics {
         font-size: 0.85rem;
-        color: rgba(245, 246, 248, 0.65);
+        color: rgba(255, 255, 255, 0.65);
         display: flex;
         justify-content: space-between;
         gap: 0.5rem;
@@ -188,7 +188,7 @@
         font-size: 0.75rem;
         letter-spacing: 0.05em;
         text-transform: uppercase;
-        color: rgba(245, 246, 248, 0.8);
+        color: rgba(255, 255, 255, 0.8);
       }
 
       .calendar-card__status {
@@ -202,19 +202,19 @@
 
       .calendar-card__status--draft {
         border-color: rgba(255, 255, 255, 0.25);
-        color: rgba(245, 246, 248, 0.8);
+        color: rgba(255, 255, 255, 0.8);
       }
 
       .calendar-card__status--scheduled {
-        border-color: rgba(247, 181, 99, 0.9);
-        color: rgba(247, 181, 99, 0.95);
-        background: rgba(247, 181, 99, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(255, 255, 255, 0.08);
       }
 
       .calendar-card__status--published {
-        border-color: rgba(86, 227, 150, 0.85);
-        color: rgba(86, 227, 150, 0.95);
-        background: rgba(86, 227, 150, 0.12);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(255, 255, 255, 0.08);
       }
 
       .sidebar-toggle {
@@ -225,7 +225,7 @@
 
       .calendar-card__range {
         font-size: 0.9rem;
-        color: rgba(245, 246, 248, 0.8);
+        color: rgba(255, 255, 255, 0.8);
         margin: 0;
       }
 
@@ -246,7 +246,7 @@
         border-radius: 20px;
         padding: 2.5rem 1.25rem;
         text-align: center;
-        color: rgba(245, 246, 248, 0.75);
+        color: rgba(255, 255, 255, 0.75);
         display: none;
         flex-direction: column;
         gap: 0.75rem;
@@ -261,18 +261,18 @@
         width: 56px;
         height: 56px;
         border-radius: 16px;
-        background: rgba(127, 90, 240, 0.15);
+        background: rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 1.75rem;
-        color: rgba(127, 90, 240, 0.95);
+        color: #ffffff;
       }
 
       .calendar-empty-results {
         text-align: center;
         padding: 2rem 1rem;
-        color: rgba(245, 246, 248, 0.7);
+        color: rgba(255, 255, 255, 0.7);
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
@@ -640,6 +640,3 @@
     <script type="module" src="./library.js?t=1763412925"></script>
   </body>
 </html>
-
-
-

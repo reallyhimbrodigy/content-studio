@@ -1551,7 +1551,7 @@ function buildPlacidPayload(data = {}) {
     title: safePlacidText(data.title, 120),
     subtitle: safePlacidText(data.subtitle, 360),
     cta: safePlacidText(data.cta, 80),
-    brand_color: data.brand_color || data.brand_primary_color || '#7f5af0',
+    brand_color: data.brand_color || data.brand_primary_color || '#ffffff',
     platform: data.platform || 'instagram',
     logo: data.logo || data.brand_logo_url || '',
     background_image: data.background_image || '',
@@ -1865,7 +1865,7 @@ async function handleDebugDesignTest(req, res) {
       title: 'Debug Title',
       subtitle: 'Debug Subtitle',
       cta: 'Tap to learn more',
-      brand_color: '#7f5af0',
+      brand_color: '#ffffff',
       platform: 'instagram',
     });
     const render = await createPlacidRender({
@@ -7427,7 +7427,7 @@ function sanitizeBrandKitInput(input = {}) {
       kit.primaryColor = '';
     } else {
       const normalized = normalizeHexColor(input.primaryColor);
-      if (!normalized) throw new Error('Primary color must be a hex code (e.g., #7f5af0).');
+      if (!normalized) throw new Error('Primary color must be a hex code (e.g., #ffffff).');
       kit.primaryColor = normalized;
     }
   }
@@ -9302,9 +9302,9 @@ const server = http.createServer((req, res) => {
         const brandProfile = userId ? loadBrand(userId) : null;
         const brandKit = brandProfile?.kit || null;
         const palette = {
-          primary: palettePayload.primaryColor || payloadPrimary || brandKit?.primaryColor || '#7f5af0',
-          secondary: palettePayload.secondaryColor || payloadSecondary || brandKit?.secondaryColor || '#2cb1bc',
-          accent: palettePayload.accentColor || payloadAccent || brandKit?.accentColor || '#ff7ac3',
+          primary: palettePayload.primaryColor || payloadPrimary || brandKit?.primaryColor || '#ffffff',
+          secondary: palettePayload.secondaryColor || payloadSecondary || brandKit?.secondaryColor || '#ffffff',
+          accent: palettePayload.accentColor || payloadAccent || brandKit?.accentColor || '#ffffff',
         };
         const fonts = {
           heading: fontsPayload.heading || payloadHeading || brandKit?.headingFont || 'Inter Bold',

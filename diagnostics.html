@@ -9,8 +9,8 @@
     * { box-sizing: border-box; }
     body {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
-      background: linear-gradient(160deg, rgba(127, 90, 240, 0.12), transparent 55%), rgba(20, 20, 28, 0.68);
-      color: #f5f6f8;
+      background: #000000;
+      color: #ffffff;
       min-height: 100vh;
       margin: 0;
       padding: 2rem;
@@ -22,19 +22,16 @@
     h1 {
       font-size: 2rem;
       margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: #ffffff;
     }
     .subtitle {
-      color: rgba(245, 246, 248, 0.64);
+      color: rgba(255, 255, 255, 0.64);
       margin-bottom: 2rem;
       font-size: 0.95rem;
     }
     .card {
-      background: rgba(28, 28, 34, 0.84);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 16px;
       padding: 2rem;
       margin-bottom: 2rem;
@@ -43,7 +40,7 @@
     .card h2 {
       margin-top: 0;
       font-size: 1.3rem;
-      color: rgba(245, 246, 248, 0.95);
+      color: rgba(255, 255, 255, 0.95);
     }
     .status {
       display: inline-block;
@@ -54,22 +51,22 @@
       margin-bottom: 1rem;
     }
     .status.ok {
-      background: rgba(50, 200, 100, 0.2);
-      color: rgba(100, 255, 150, 0.95);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
     }
     .status.pending {
-      background: rgba(200, 150, 50, 0.2);
-      color: rgba(255, 200, 100, 0.95);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
     }
     .status.error {
-      background: rgba(255, 100, 100, 0.2);
-      color: rgba(255, 150, 150, 0.95);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
     }
     .test-section {
       margin: 1.5rem 0;
       padding: 1rem;
-      background: rgba(255, 255, 255, 0.02);
-      border-left: 3px solid rgba(127, 90, 240, 0.4);
+      background: rgba(255, 255, 255, 0.04);
+      border-left: 3px solid rgba(255, 255, 255, 0.22);
       border-radius: 8px;
     }
     .test-result {
@@ -82,11 +79,11 @@
       content: "✓";
       margin-right: 0.75rem;
       font-weight: bold;
-      color: rgba(100, 255, 150, 0.95);
+      color: rgba(255, 255, 255, 0.85);
     }
     .test-result.error::before {
       content: "✗";
-      color: rgba(255, 150, 150, 0.95);
+      color: rgba(255, 255, 255, 0.85);
     }
     .btn-group {
       display: flex;
@@ -97,39 +94,40 @@
     a.btn {
       display: inline-block;
       padding: 0.75rem 1.5rem;
-      background: linear-gradient(135deg, #7f5af0, #2cb1bc);
-      color: #06060a;
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid #ffffff;
       text-decoration: none;
       border-radius: 999px;
       font-weight: 600;
       font-size: 0.95rem;
-      box-shadow: 0 14px 30px rgba(127, 90, 240, 0.2);
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: none;
+      transition: transform 0.2s ease, background 0.2s ease;
     }
     a.btn:hover {
       transform: translateY(-2px);
-      box-shadow: 0 18px 34px rgba(127, 90, 240, 0.28);
+      background: rgba(255, 255, 255, 0.92);
     }
     .code {
-      background: rgba(0, 0, 0, 0.3);
+      background: rgba(255, 255, 255, 0.06);
       padding: 1rem;
       border-radius: 8px;
       font-family: "Monaco", "Courier New", monospace;
       font-size: 0.85rem;
       overflow-x: auto;
-      color: rgba(200, 255, 150, 0.95);
+      color: #ffffff;
       margin: 0.75rem 0;
     }
     .instructions {
-      background: rgba(127, 90, 240, 0.1);
-      border: 1px solid rgba(127, 90, 240, 0.3);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       padding: 1.5rem;
       border-radius: 12px;
       margin-top: 1.5rem;
     }
     .instructions h3 {
       margin-top: 0;
-      color: rgba(200, 255, 150, 0.95);
+      color: #ffffff;
     }
     .instructions ol {
       margin: 1rem 0;
@@ -219,7 +217,7 @@
       <h2>🆘 Troubleshooting</h2>
       <div class="test-section">
         <strong>If buttons are unresponsive:</strong>
-        <div style="margin-top: 0.75rem; color: rgba(245, 246, 248, 0.8);">
+        <div style="margin-top: 0.75rem; color: rgba(255, 255, 255, 0.8);">
           <p>1. <strong>Clear your browser cache:</strong></p>
           <div class="code">Windows/Linux: Ctrl+Shift+Delete<br>Mac: Cmd+Shift+Delete</div>
           <p>2. Or use a <strong>private/incognito window</strong> (Ctrl/Cmd+Shift+N)</p>
@@ -228,7 +226,7 @@
       </div>
       <div class="test-section">
         <strong>If the server is not running:</strong>
-        <div style="margin-top: 0.75rem; color: rgba(245, 246, 248, 0.8);">
+        <div style="margin-top: 0.75rem; color: rgba(255, 255, 255, 0.8);">
           <p>In your terminal, run:</p>
           <div class="code">cd /Users/zaclibman/content-studio<br>npm start</div>
           <p>Then refresh this page.</p>
@@ -311,14 +309,14 @@
       if (allOk) {
         document.getElementById('status-check').innerHTML = `
           <span class="status ok">✅ All systems operational</span>
-          <p style="margin-top: 1rem; color: rgba(245, 246, 248, 0.8);">
+          <p style="margin-top: 1rem; color: rgba(255, 255, 255, 0.8);">
             Your app is ready to use. Click the <strong>"Open App"</strong> buttons above to get started.
           </p>
         `;
       } else {
         document.getElementById('status-check').innerHTML = `
           <span class="status error">⚠ Some systems are offline</span>
-          <p style="margin-top: 1rem; color: rgba(245, 246, 248, 0.8);">
+          <p style="margin-top: 1rem; color: rgba(255, 255, 255, 0.8);">
             Make sure the server is running with <code>npm start</code> and try refreshing this page.
           </p>
         `;
@@ -331,6 +329,4 @@
   <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>
-
-
 

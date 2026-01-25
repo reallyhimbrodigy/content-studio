@@ -163,31 +163,31 @@ function buildPostHTML(post) {
   <title>Day ${String(day).padStart(2, '0')} - ${escapeHtml(title)}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Inter',system-ui,sans-serif;background:#0a0e27;color:#e2e8f0;padding:2rem;line-height:1.6}
-    .calendar-card{background:#16213e;border-radius:18px;padding:1.5rem;border:1px solid rgba(255,255,255,0.1);max-width:600px;margin:0 auto;box-shadow:0 24px 36px rgba(0,0,0,0.25);position:relative}
-    .calendar-card::after{content:attr(data-pillar);position:absolute;top:1.25rem;right:1.25rem;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.25rem 0.75rem;border-radius:999px;background:rgba(127,90,240,0.15);color:#7f5af0}
-    .calendar-card__day{font-size:3rem;font-weight:700;color:#7f5af0;line-height:1;margin-bottom:0.5rem}
-    .calendar-card__title{font-size:1.25rem;font-weight:600;color:#e2e8f0;margin-bottom:0.5rem}
-    .calendar-card__type{display:inline-block;background:rgba(44,177,188,0.15);color:#2cb1bc;font-size:0.8rem;padding:0.25rem 0.75rem;border-radius:999px;margin-bottom:0.75rem}
-    .calendar-card__caption{color:#94a3b8;margin-bottom:1rem;white-space:pre-wrap}
+    body{font-family:'Inter',system-ui,sans-serif;background:#000000;color:#ffffff;padding:2rem;line-height:1.6}
+    .calendar-card{background:rgba(255,255,255,0.06);border-radius:18px;padding:1.5rem;border:1px solid rgba(255,255,255,0.14);max-width:600px;margin:0 auto;box-shadow:0 24px 36px rgba(0,0,0,0.25);position:relative}
+    .calendar-card::after{content:attr(data-pillar);position:absolute;top:1.25rem;right:1.25rem;font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;padding:0.25rem 0.75rem;border-radius:999px;background:rgba(255,255,255,0.08);color:#ffffff}
+    .calendar-card__day{font-size:3rem;font-weight:700;color:#ffffff;line-height:1;margin-bottom:0.5rem}
+    .calendar-card__title{font-size:1.25rem;font-weight:600;color:#ffffff;margin-bottom:0.5rem}
+    .calendar-card__type{display:inline-block;background:rgba(255,255,255,0.08);color:#ffffff;font-size:0.8rem;padding:0.25rem 0.75rem;border-radius:999px;margin-bottom:0.75rem}
+    .calendar-card__caption{color:rgba(255,255,255,0.72);margin-bottom:1rem;white-space:pre-wrap}
     details{margin-top:1rem}
-    summary{cursor:pointer;color:#7f5af0;font-weight:600;padding:0.5rem 0;user-select:none}
-    summary:hover{color:#9d7ff5}
+    summary{cursor:pointer;color:#ffffff;font-weight:600;padding:0.5rem 0;user-select:none}
+    summary:hover{color:#ffffff}
     .calendar-card__details{padding-top:1rem;display:flex;flex-direction:column;gap:1rem}
-    .calendar-card__details>div,.calendar-card__details>span{background:rgba(255,255,255,0.05);padding:0.75rem;border-radius:8px;font-size:0.9rem}
-    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:#c7d2fe}
-    .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#7f5af0;font-style:normal;font-weight:600}
-    .calendar-card__visual a{color:#7f5af0;text-decoration:none;font-weight:600}
+    .calendar-card__details>div,.calendar-card__details>span{background:rgba(255,255,255,0.06);padding:0.75rem;border-radius:8px;font-size:0.9rem}
+    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:rgba(255,255,255,0.72)}
+    .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#ffffff;font-style:normal;font-weight:600}
+    .calendar-card__visual a{color:#ffffff;text-decoration:none;font-weight:600}
     .calendar-card__visual a:hover{text-decoration:underline}
     .calendar-card__assets{background:rgba(255,255,255,0.04);padding:0.6rem;border-radius:8px}
     .calendar-card__assets strong{display:block;margin-bottom:0.35rem}
     .calendar-card__asset-chips{display:flex;flex-wrap:wrap;gap:0.35rem}
-    .calendar-card__asset-chip{display:inline-flex;align-items:center;border-radius:999px;border:1px solid rgba(127,90,240,0.35);padding:0.2rem 0.85rem;font-size:0.85rem;color:#7f5af0;text-decoration:none}
-    .calendar-card__asset-chip:hover{border-color:rgba(127,90,240,0.7)}
-    .calendar-card__hashtags{color:#2cb1bc;font-size:0.9rem}
-    .calendar-card__format,.calendar-card__cta{color:#94a3b8;font-size:0.85rem}
-    strong{color:#e2e8f0;display:block;margin-bottom:0.5rem}
-    em{color:#7f5af0;font-style:normal;font-weight:600}
+    .calendar-card__asset-chip{display:inline-flex;align-items:center;border-radius:999px;border:1px solid rgba(255,255,255,0.35);padding:0.2rem 0.85rem;font-size:0.85rem;color:#ffffff;text-decoration:none}
+    .calendar-card__asset-chip:hover{border-color:rgba(255,255,255,0.7)}
+    .calendar-card__hashtags{color:#ffffff;font-size:0.9rem}
+    .calendar-card__format,.calendar-card__cta{color:rgba(255,255,255,0.72);font-size:0.85rem}
+    strong{color:#ffffff;display:block;margin-bottom:0.5rem}
+    em{color:#ffffff;font-style:normal;font-weight:600}
   </style>
 </head>
 <body>${cardHTML}</body>

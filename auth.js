@@ -225,7 +225,12 @@ const emailInput = document.getElementById("email");
       return;
     }
     
-    const colors = ['#ff7878', '#ffb347', '#ffd93d', '#6bcf7f'];
+    const colors = [
+      'rgba(255, 255, 255, 0.45)',
+      'rgba(255, 255, 255, 0.6)',
+      'rgba(255, 255, 255, 0.75)',
+      'rgba(255, 255, 255, 0.95)'
+    ];
     const labels = ['Weak password', 'Fair password', 'Good password', 'Strong password'];
     
     for (let i = 0; i < strength; i++) {
@@ -233,7 +238,7 @@ const emailInput = document.getElementById("email");
     }
     
     strengthText.textContent = labels[strength - 1] || 'Too short';
-    strengthText.style.color = colors[strength - 1] || '#ff7878';
+    strengthText.style.color = colors[strength - 1] || 'rgba(255, 255, 255, 0.45)';
   };
 
   const applyModeUI = () => {
