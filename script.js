@@ -4,13 +4,36 @@ import {
   getCurrentUserDetails,
   signOut as storeSignOut,
   getUserTier,
-  setUserTier,
+  refreshUserTier,
   isPro,
   getProfilePreferences,
   saveProfilePreferences,
-  supabase
+  supabase,
+  userStore
 } from './user-store.js';
 import { initBrandBrainPanel } from './brand-brain.js';
+
+const isProTier = () => userStore.tier === 'pro';
+try {
+  if (typeof window !== 'undefined') {
+    if (typeof window.cachedUserIsPro === 'boolean' && window.cachedUserIsPro) {
+      userStore.tier = 'pro';
+    }
+    Object.defineProperty(window, 'cachedUserIsPro', {
+      configurable: true,
+      get() {
+        return userStore.tier === 'pro';
+      },
+      set(value) {
+        if (typeof value === 'boolean') {
+          userStore.tier = value ? 'pro' : 'free';
+        }
+      },
+    });
+  }
+} catch (_err) {
+  // Ignore inability to proxy cachedUserIsPro
+}
 
 // Global scroll lock helpers
 window.__modalOpenCount = 0;
@@ -383,8 +406,7 @@ const isInteractiveElement = (el) => {
 
 const emitAnalytics = (eventName, payload = {}) => {
   if (!analyticsState.enabled) return;
-  const userTier =
-    typeof window.cachedUserIsPro === 'boolean' ? (window.cachedUserIsPro ? 'pro' : 'free') : undefined;
+  const userTier = userStore.tier;
   const userId = activeUserEmail || undefined;
   const nicheStyleValue = nicheInput ? (nicheInput.value || '').trim() : '';
   const detail = {
@@ -504,7 +526,6 @@ initAnalyticsFrustrationSignals();
 let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
-window.cachedUserIsPro = window.cachedUserIsPro ?? null;
 let currentPostFrequency = 1;
 let lastGenerationRequestId = null;
 let lastGenerationErrorStatus = null;
@@ -1161,12 +1182,11 @@ async function beginGenerateAssetFlow(entry, entryDay, triggerButton) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = window.cachedUserIsPro || (await isPro(currentUserId));
+    const userIsPro = isProTier();
     if (!userIsPro) {
       showUpgradeModal();
       return;
     }
-    window.cachedUserIsPro = true;
     const context = buildAssetContextFromEntry(entry, resolvedDay);
     openGenerateAssetModal(context);
   } finally {
@@ -1800,10 +1820,22 @@ async function refreshBrandBrain() {
       brandModal.dataset.locked = 'true';
       return { ok: true, skipped: 'no_user' };
     }
-    const userEmail = await getCurrentUser();
-    const userIsPro = userEmail ? await isPro(userEmail) : false;
+    const userIsPro = isProTier();
     brandModal.dataset.locked = userIsPro ? 'false' : 'true';
-    if (!userIsPro) return { ok: true, skipped: 'not_pro' };
+    if (!userIsPro) {
+      toggleInput.checked = false;
+      toggleInput.disabled = true;
+      const statusPill = document.getElementById('brand-brain-status-pill');
+      if (statusPill) {
+        statusPill.textContent = 'Disabled';
+        statusPill.dataset.state = 'disabled';
+      }
+      updateProfileSettings(
+        { brand_brain_enabled: false },
+        { replace: false, targetEmail: activeUserEmail || undefined }
+      );
+      return { ok: true, skipped: 'not_pro' };
+    }
 
     const resp = await fetchWithAuth('/api/brand-brain/settings', { method: 'GET' });
     const data = await resp.json().catch(() => ({}));
@@ -1812,6 +1844,7 @@ async function refreshBrandBrain() {
     }
     const settings = data?.settings || data?.data || {};
     toggleInput.checked = Boolean(settings.enabled);
+    toggleInput.disabled = false;
     const statusPill = document.getElementById('brand-brain-status-pill');
     if (statusPill) {
       statusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
@@ -3276,7 +3309,7 @@ function persistProfileSettingsLocally(settings = {}, email = activeUserEmail) {
 }
 
 function getPostFrequency() {
-  if (!window.cachedUserIsPro) return 1;
+  if (!isProTier()) return 1;
   const stored = localStorage.getItem(POST_FREQUENCY_KEY);
   const parsed = parseInt(stored, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
@@ -3284,7 +3317,7 @@ function getPostFrequency() {
 }
 
 function setPostFrequency(value) {
-  if (!window.cachedUserIsPro) return;
+  if (!isProTier()) return;
   const normalized = Math.min(Math.max(parseInt(value, 10) || 1, 1), 6);
   try {
     localStorage.setItem(POST_FREQUENCY_KEY, String(normalized));
@@ -3297,16 +3330,27 @@ function setPostFrequency(value) {
   renderCards(currentCalendar);
 }
 
+function enforceFreeLocks(settings = {}) {
+  const next = settings && typeof settings === 'object' ? { ...settings } : {};
+  if (!isProTier()) {
+    next.brand_brain_enabled = false;
+    next.voice_lock_enabled = false;
+    next.target_audience_enabled = false;
+  }
+  return next;
+}
+
 function updateProfileSettings(partial = {}, options = {}) {
   const { replace = false, targetEmail } = options;
   const merged = replace
     ? { ...(partial || {}) }
     : { ...(profileSettings || {}), ...(partial || {}) };
-  const persistResult = persistProfileSettingsLocally(merged, targetEmail ?? activeUserEmail);
+  const enforced = enforceFreeLocks(merged);
+  const persistResult = persistProfileSettingsLocally(enforced, targetEmail ?? activeUserEmail);
   if (persistResult?.saved) {
     profileSettings = persistResult.saved;
   } else {
-    profileSettings = merged;
+    profileSettings = enforced;
   }
   applyProfileSettings();
   return persistResult || { ok: true, saved: profileSettings };
@@ -3366,6 +3410,7 @@ function setVoiceLockLockedState(locked) {
   if (voiceLockModal) voiceLockModal.dataset.locked = locked ? 'true' : 'false';
   if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
   if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
+  if (voiceLockToggle) voiceLockToggle.disabled = locked;
   if (locked) {
     setVoiceLockControlsState(false);
   } else {
@@ -3385,9 +3430,14 @@ function applyVoiceLockUI(settings) {
 
 function syncVoiceLockFromSettings() {
   if (!voiceLockModal) return;
-  if (!window.cachedUserIsPro) {
+  profileSettings = enforceFreeLocks(profileSettings);
+  if (!isProTier()) {
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
+    updateProfileSettings(
+      { voice_lock_enabled: false, voice_lock_preset: VOICE_LOCK_DEFAULTS.preset },
+      { replace: false, targetEmail: activeUserEmail || undefined }
+    );
     setVoiceLockLockedState(true);
     return;
   }
@@ -3404,7 +3454,7 @@ function collectVoiceLockSettingsFromUI() {
 }
 
 async function persistVoiceLockSettings(nextSettings) {
-  if (!window.cachedUserIsPro) return;
+  if (!isProTier()) return;
   const payload = {
     voice_lock_enabled: nextSettings.enabled,
     voice_lock_preset: nextSettings.preset,
@@ -3419,7 +3469,7 @@ async function persistVoiceLockSettings(nextSettings) {
 }
 
 function buildVoiceLockRequestPayload() {
-  if (!window.cachedUserIsPro || !voiceLockSettings?.enabled) return null;
+  if (!isProTier() || !voiceLockSettings?.enabled) return null;
   const preset = String(voiceLockSettings.preset || '').trim();
   return { voiceLockEnabled: true, voiceLockPreset: preset };
 }
@@ -3457,6 +3507,7 @@ function setTargetAudienceLockedState(locked) {
   if (targetAudienceModal) targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
   if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
   if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
+  if (targetAudienceToggle) targetAudienceToggle.disabled = locked;
   if (locked) {
     setTargetAudienceControlsState(false);
   } else {
@@ -3476,9 +3527,14 @@ function applyTargetAudienceUI(settings) {
 
 function syncTargetAudienceFromSettings() {
   if (!targetAudienceModal) return;
-  if (!window.cachedUserIsPro) {
+  profileSettings = enforceFreeLocks(profileSettings);
+  if (!isProTier()) {
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
+    updateProfileSettings(
+      { target_audience_enabled: false, target_audience_preset: TARGET_AUDIENCE_DEFAULTS.preset },
+      { replace: false, targetEmail: activeUserEmail || undefined }
+    );
     setTargetAudienceLockedState(true);
     return;
   }
@@ -3495,7 +3551,7 @@ function collectTargetAudienceSettingsFromUI() {
 }
 
 async function persistTargetAudienceSettings(nextSettings) {
-  if (!window.cachedUserIsPro) return;
+  if (!isProTier()) return;
   const cleaned = { ...(profileSettings || {}) };
   delete cleaned.target_audience_details;
   cleaned.target_audience_enabled = nextSettings.enabled;
@@ -3510,7 +3566,7 @@ async function persistTargetAudienceSettings(nextSettings) {
 }
 
 function buildTargetAudienceRequestPayload() {
-  if (!window.cachedUserIsPro || !targetAudienceSettings?.enabled) return null;
+  if (!isProTier() || !targetAudienceSettings?.enabled) return null;
   const preset = String(targetAudienceSettings.preset || '').trim();
   if (!preset) return null;
   return {
@@ -3642,7 +3698,7 @@ function updateAccountPlanInfo(state) {
   if (state === 'none') {
     plan = { label: 'Not signed in', limits: 'Sign in to manage your subscription.' };
   } else {
-    const isPro = !!state;
+    const isPro = state === 'pro' || state === true;
     plan = isPro ? PLAN_DETAILS.pro : PLAN_DETAILS.free;
   }
   if (accountPlanStatusEl) accountPlanStatusEl.textContent = plan.label;
@@ -3651,7 +3707,7 @@ function updateAccountPlanInfo(state) {
 
 async function loadCalendarExportUsage() {
   if (!calendarExportUsageEl) return;
-  if (window.cachedUserIsPro) {
+  if (isProTier()) {
     calendarExportUsageEl.textContent = '';
     calendarExportUsageEl.style.display = 'none';
     return;
@@ -3662,8 +3718,7 @@ async function loadCalendarExportUsage() {
     const json = await res.json().catch(() => ({}));
     if (!json || json.ok !== true) return;
 
-    const userIsPro = json.isPro || window.cachedUserIsPro;
-    if (userIsPro) {
+    if (isProTier()) {
       calendarExportUsageEl.textContent = '';
       calendarExportUsageEl.style.display = 'none';
       return;
@@ -3730,6 +3785,7 @@ function openVoiceLockModal() {
   voiceLockModal.removeAttribute('inert');
   voiceLockModal.setAttribute('tabindex', '-1');
   document.body.classList.add('modal-open');
+  profileSettings = enforceFreeLocks(profileSettings);
   syncVoiceLockFromSettings();
   emitAnalytics('voicelock_open');
   const focusTarget = voiceLockCloseBtn || voiceLockToggle || voiceLockModal;
@@ -3772,6 +3828,7 @@ function openTargetAudienceModal() {
   targetAudienceModal.setAttribute('tabindex', '-1');
   if (appLayout) appLayout.setAttribute('inert', '');
   document.body.classList.add('modal-open');
+  profileSettings = enforceFreeLocks(profileSettings);
   syncTargetAudienceFromSettings();
   emitAnalytics('targetaudience_open');
   const focusTarget = targetAudienceCloseBtn || targetAudienceToggle || targetAudienceModal;
@@ -3822,7 +3879,7 @@ applyProfileSettings();
 function updateTabs(){
     if (!calendarSection || !hub) return;
     const wantsDesign = activeTab === 'design';
-    if (wantsDesign && !window.cachedUserIsPro) activeTab = 'plan';
+    if (wantsDesign && !isProTier()) activeTab = 'plan';
     const hasCalendar = currentCalendar && currentCalendar.length > 0;
     // Toggle classes
     if (tabPlan) tabPlan.classList.toggle('active', activeTab==='plan');
@@ -4560,12 +4617,11 @@ function clearDesignDragHighlights() {
   }
 
 async function requireProAccess() {
-    if (window.cachedUserIsPro) return true;
+    if (isProTier()) return true;
     const user = await getCurrentUser();
     if (!user) return false;
-    const userIsPro = await isPro(user);
-    window.cachedUserIsPro = userIsPro;
-    return userIsPro;
+    await refreshUserTier({ force: true });
+    return isProTier();
   }
 
 async function startDesignModal(entry = null, entryDay = null) {
@@ -4574,8 +4630,7 @@ async function startDesignModal(entry = null, entryDay = null) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-  const userIsPro = window.cachedUserIsPro || (await isPro(userId));
-  if (userIsPro && !window.cachedUserIsPro) window.cachedUserIsPro = true;
+  const userIsPro = isProTier();
   const remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(userId);
   const resolvedDay = typeof entryDay === 'number' ? entryDay : (typeof entry?.day === 'number' ? entry.day : '');
   activeDesignContext = entry ? { entry, day: resolvedDay } : null;
@@ -4691,8 +4746,7 @@ async function handleDesignFormSubmit(event) {
       window.location.href = '/auth.html?mode=signup';
       return;
     }
-    const userIsPro = window.cachedUserIsPro || (await isPro(currentUserId));
-    if (userIsPro && !window.cachedUserIsPro) window.cachedUserIsPro = true;
+    const userIsPro = isProTier();
     let remainingQuota = userIsPro ? Infinity : getRemainingDesignQuota(currentUserId);
     if (!userIsPro && remainingQuota <= 0) {
       showDesignError('Monthly limit reached', 'Free plan includes 3 AI assets per month. Upgrade for unlimited designs.');
@@ -5041,8 +5095,9 @@ async function bootstrapApp(attempt = 0) {
     const switchedUsers = previousStorageUser !== resolveStorageUserKey();
     const hydratedCalendar = hydrateCalendarFromStorage(switchedUsers);
     if (hydratedCalendar) ensurePlatformVariantsForCurrentCalendar('hydrate');
-    profileSettings = loadProfileSettings(currentUser);
-    applyProfileSettings();
+    await refreshUserTier();
+    profileSettings = enforceFreeLocks(loadProfileSettings(currentUser));
+    updateProfileSettings(profileSettings, { replace: true, targetEmail: currentUser });
     const profileSync = syncProfileSettingsFromSupabase();
     await refreshBrandKitSafe();
     if (publicNav) publicNav.style.display = 'none';
@@ -5067,11 +5122,10 @@ async function bootstrapApp(attempt = 0) {
     }
     
     // Show Pro badge if applicable
-    const userIsPro = await isPro(currentUser);
+    const userIsPro = isProTier();
     console.log('User is Pro:', userIsPro);
-    window.cachedUserIsPro = userIsPro;
     updatePostFrequencyUI();
-    updateAccountPlanInfo(userIsPro);
+    updateAccountPlanInfo(userStore.tier);
     loadCalendarExportUsage();
     syncVoiceLockFromSettings();
     syncTargetAudienceFromSettings();
@@ -5147,7 +5201,7 @@ async function bootstrapApp(attempt = 0) {
     currentBrandKit = null;
     brandKitLoaded = false;
     applyBrandKitToForm(null);
-    profileSettings = loadProfileSettings();
+    profileSettings = enforceFreeLocks(loadProfileSettings());
     applyProfileSettings();
     updateAccountOverviewEmail('');
     updateAccountPlanInfo('none');
@@ -5162,7 +5216,7 @@ async function bootstrapApp(attempt = 0) {
     if (userMenu) userMenu.style.display = 'none';
     if (landingExperience) landingExperience.style.display = '';
     if (appExperience) appExperience.style.display = 'none';
-    window.cachedUserIsPro = false;
+    userStore.tier = 'free';
     updatePostFrequencyUI();
     syncVoiceLockFromSettings();
     syncTargetAudienceFromSettings();
@@ -5461,7 +5515,7 @@ if (accountPasswordManageBtn) {
 
 if (postFrequencySelect) {
   const guardFreeChange = (event) => {
-    if (window.cachedUserIsPro) return false;
+    if (isProTier()) return false;
     event?.preventDefault();
     postFrequencySelect.value = '1';
     postFrequencySelect.blur();
@@ -5486,7 +5540,7 @@ if (postFrequencySelect) {
 }
 
 const handleVoiceLockChange = () => {
-  if (!window.cachedUserIsPro) {
+  if (!isProTier()) {
     if (voiceLockToggle) voiceLockToggle.checked = false;
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
     applyVoiceLockUI(voiceLockSettings);
@@ -5502,7 +5556,7 @@ const handleVoiceLockChange = () => {
 };
 
 const handleTargetAudienceToggleChange = () => {
-  if (!window.cachedUserIsPro) {
+  if (!isProTier()) {
     if (targetAudienceToggle) targetAudienceToggle.checked = false;
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
     applyTargetAudienceUI(targetAudienceSettings);
@@ -5520,7 +5574,7 @@ const handleTargetAudienceToggleChange = () => {
 };
 
 const handleTargetAudienceSave = async () => {
-  if (!window.cachedUserIsPro) {
+  if (!isProTier()) {
     syncTargetAudienceFromSettings();
     closeTargetAudienceModal();
     if (typeof showUpgradeModal === 'function') showUpgradeModal();
@@ -5544,7 +5598,7 @@ const handleTargetAudienceSave = async () => {
 };
 
 const handleTargetAudienceReset = async () => {
-  if (!window.cachedUserIsPro) {
+  if (!isProTier()) {
     syncTargetAudienceFromSettings();
     closeTargetAudienceModal();
     if (typeof showUpgradeModal === 'function') showUpgradeModal();
@@ -6398,7 +6452,7 @@ const createCard = (post) => {
       button.addEventListener('click', async (event) => {
         event.preventDefault();
         const user = await getCurrentUser();
-        const userIsPro = await isPro(user);
+        const userIsPro = isProTier();
         if (!userIsPro) {
           showUpgradeModal();
           return;
@@ -6449,18 +6503,18 @@ const createCard = (post) => {
       if (entry.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${entry.variants.tiktokCaption}`);
       if (entry.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${entry.variants.linkedinCaption}`);
     }
-    if (window.cachedUserIsPro && entry.captionVariations) {
+    if (isProTier() && entry.captionVariations) {
       if (entry.captionVariations.casual) fullTextParts.push(`Casual Caption: ${entry.captionVariations.casual}`);
       if (entry.captionVariations.professional) fullTextParts.push(`Professional Caption: ${entry.captionVariations.professional}`);
       if (entry.captionVariations.witty) fullTextParts.push(`Witty Caption: ${entry.captionVariations.witty}`);
     }
-    if (window.cachedUserIsPro && entry.hashtagSets) {
+    if (isProTier() && entry.hashtagSets) {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (audioRowText) fullTextParts.push(`Suggested audio: ${audioRowText}`);
     if (entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
-    if (window.cachedUserIsPro && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
+    if (isProTier() && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
     btnCopyFull.addEventListener('click', async () => {
@@ -6520,7 +6574,7 @@ const createCard = (post) => {
     }
 
     const proDetailNodes = [];
-    if (window.cachedUserIsPro && entry.captionVariations) {
+    if (isProTier() && entry.captionVariations) {
       const parts = [];
       if (entry.captionVariations.casual) parts.push(`Casual: ${entry.captionVariations.casual}`);
       if (entry.captionVariations.professional) parts.push(`Professional: ${entry.captionVariations.professional}`);
@@ -6528,7 +6582,7 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Caption variations', text, 'calendar-card__caption-variations'));
     }
-    if (window.cachedUserIsPro && entry.hashtagSets) {
+    if (isProTier() && entry.hashtagSets) {
       const parts = [];
       const broad = Array.isArray(entry.hashtagSets.broad) ? entry.hashtagSets.broad.join(' ') : entry.hashtagSets.broad;
       const niche = Array.isArray(entry.hashtagSets.niche) ? entry.hashtagSets.niche.join(' ') : entry.hashtagSets.niche;
@@ -6681,7 +6735,7 @@ if (grid) {
     try {
       const currentUser = await getCurrentUser();
       const currentUserId = await getCurrentUserId();
-      const userIsPro = await isPro(currentUser);
+      const userIsPro = isProTier();
       if (!userIsPro) {
         showUpgradeModal();
         return;
@@ -7699,10 +7753,8 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
   let resolvedIsPro;
   if (typeof userIsPro === 'boolean') {
     resolvedIsPro = userIsPro;
-  } else if (typeof window.cachedUserIsPro === 'boolean') {
-    resolvedIsPro = window.cachedUserIsPro;
   } else {
-    resolvedIsPro = await isPro(resolvedUserId);
+    resolvedIsPro = isProTier();
   }
   if (!resolvedIsPro) return posts;
 
@@ -7779,7 +7831,7 @@ async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
   if (!Array.isArray(currentCalendar) || !currentCalendar.length) return;
   const userId = activeUserEmail || (await getCurrentUser());
   if (!userId) return;
-  const userIsPro = typeof window.cachedUserIsPro === 'boolean' ? window.cachedUserIsPro : await isPro(userId);
+  const userIsPro = isProTier();
   if (!userIsPro) return;
   const needsVariants = currentCalendar.some((post) => {
     const variants = post?.variants;
@@ -7867,7 +7919,7 @@ if (exportVariantsCsvBtn) {
 if (downloadVariantsZipBtn) {
   downloadVariantsZipBtn.addEventListener('click', async ()=>{
     const user = await getCurrentUser();
-    const userIsPro = await isPro(user);
+    const userIsPro = isProTier();
     if (!userIsPro) {
       showUpgradeModal();
       return;
@@ -8886,7 +8938,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const userIsProPromise = (async () => {
       const email = await currentUserEmailPromise;
       try {
-        return email ? await isPro(email) : false;
+        return isProTier();
       } catch (_) {
         return false;
       }
@@ -10479,7 +10531,7 @@ if (isLibraryPage()) {
       libraryAccountLastLoginEl.textContent = '';
     }
     try {
-      const proStatus = await isPro(email);
+      const proStatus = isProTier();
       updateLibraryPlanInfo(!!proStatus);
       const userDetails = await getCurrentUserDetails();
       updateLibraryLastLogin(
@@ -10594,7 +10646,7 @@ if (isLibraryPage()) {
         reducedMotion: !!libraryPrefersReducedMotionInput?.checked
       };
       try {
-        const saved = await saveProfilePreferences(payload);
+        const saved = await saveProfilePreferences(enforceFreeLocks(payload));
         applyLibraryPrefs(saved);
         if (libraryAccountFeedback) {
           libraryAccountFeedback.textContent = 'Preferences saved.';

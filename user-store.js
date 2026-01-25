@@ -55,6 +55,12 @@ function isAuthAbortError(error) {
 
 let inflightAuthUserPromise = null; // Single-flight to prevent parallel auth fetches.
 let lastKnownUserTier = null; // Preserve tier when auth is temporarily unresolved.
+let inflightTierPromise = null;
+let userTierResolved = false;
+
+export const userStore = {
+  tier: 'free',
+};
 
 async function fetchAuthUserSingleFlight() {
   if (inflightAuthUserPromise) return inflightAuthUserPromise;
@@ -287,6 +293,9 @@ export async function signOut() {
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    lastKnownUserTier = null;
+    userStore.tier = 'free';
+    userTierResolved = false;
   } catch (error) {
     console.error('signOut error:', error);
   }
@@ -309,21 +318,51 @@ export async function resetPassword(email) {
 // User Profile & Tier Management
 // ============================================================================
 
-export async function getUserTier(email) {
-  try {
-    const { response, data } = await fetchJsonWithAuth('/api/user/subscription', { method: 'GET' });
-    if (!response.ok || data?.ok === false) {
-      return lastKnownUserTier || 'free';
-    }
-    const tier = normalizeTierLabel(data?.plan || data?.tier || 'free');
-    lastKnownUserTier = tier;
-    return tier;
-  } catch (error) {
-    if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
-      console.warn('getUserTier error:', error);
-    }
-    return lastKnownUserTier || 'free';
+function applyResolvedTier(tier) {
+  const normalized = normalizeTierLabel(tier);
+  userStore.tier = normalized;
+  lastKnownUserTier = normalized;
+  userTierResolved = true;
+  return normalized;
+}
+
+export async function refreshUserTier({ force = false } = {}) {
+  if (userTierResolved && !force) {
+    return { ok: true, tier: userStore.tier, cached: true };
   }
+  if (inflightTierPromise) return inflightTierPromise;
+  inflightTierPromise = (async () => {
+    try {
+      const { response, data } = await fetchJsonWithAuth('/api/user/subscription', { method: 'GET' });
+      if (!response.ok || data?.ok === false) {
+        return { ok: false, error: data?.error || 'tier_fetch_failed' };
+      }
+      const tier = applyResolvedTier(data?.plan || data?.tier || 'free');
+      return { ok: true, tier };
+    } catch (error) {
+      if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {
+        console.warn('refreshUserTier error:', error);
+      }
+      return { ok: false, error };
+    } finally {
+      inflightTierPromise = null;
+    }
+  })();
+  return inflightTierPromise;
+}
+
+export async function getUserTier(_email) {
+  if (lastKnownUserTier && userStore.tier !== lastKnownUserTier) {
+    userStore.tier = lastKnownUserTier;
+  }
+  if (userTierResolved) {
+    return userStore.tier;
+  }
+  const result = await refreshUserTier();
+  if (result?.ok) {
+    return userStore.tier;
+  }
+  return userStore.tier;
 }
 
 export async function setUserTier(email, tier) {
@@ -336,7 +375,7 @@ export async function setUserTier(email, tier) {
     if (!response.ok || data?.ok === false) {
       return { ok: false, msg: data?.error || 'Failed to update plan' };
     }
-    lastKnownUserTier = normalizeTierLabel(data?.plan || data?.tier || normalized);
+    applyResolvedTier(data?.plan || data?.tier || normalized);
     return { ok: true };
   } catch (error) {
     if (!isAuthSessionMissingError(error) && !isAuthFetchError(error)) {

@@ -1088,6 +1088,40 @@ function isUserPro(req) {
   return false;
 }
 
+async function hydrateUserTier(req, context = 'Tier') {
+  if (!req?.user?.id || !supabaseAdmin) return null;
+  if (req.user.tier || req.user.plan) return req.user.tier || req.user.plan;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('subscription_plan, tier')
+      .eq('id', req.user.id)
+      .maybeSingle();
+    if (error) {
+      console.warn(`[${context}] failed to resolve tier`, {
+        userId: req.user.id,
+        error: error?.message || error,
+      });
+      return null;
+    }
+    if (data) {
+      const rawTier = String(data.subscription_plan || data.tier || '').toLowerCase().trim();
+      const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+      if (mappedTier) {
+        req.user.tier = mappedTier;
+        req.user.plan = mappedTier;
+        return mappedTier;
+      }
+    }
+  } catch (planErr) {
+    console.warn(`[${context}] failed to resolve tier`, {
+      userId: req.user.id,
+      error: planErr?.message || planErr,
+    });
+  }
+  return null;
+}
+
 function isUserAdmin(req) {
   return !!req?.user?.isAdmin;
 }
@@ -7687,6 +7721,8 @@ const server = http.createServer((req, res) => {
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
+        await hydrateUserTier(req, 'ProfileSettings');
+        const isProUser = isUserPro(req);
 
         const { data, error } = await supabaseAdmin
           .from('profiles')
@@ -7709,7 +7745,15 @@ const server = http.createServer((req, res) => {
         const settings = data?.profile_settings && typeof data.profile_settings === 'object'
           ? data.profile_settings
           : {};
-        return sendJson(res, 200, { ok: true, settings });
+        const sanitized = isProUser
+          ? settings
+          : {
+              ...settings,
+              brand_brain_enabled: false,
+              voice_lock_enabled: false,
+              target_audience_enabled: false,
+            };
+        return sendJson(res, 200, { ok: true, settings: sanitized });
       } catch (err) {
         const status = err.statusCode || 500;
         if (status !== 401) {
@@ -7731,9 +7775,16 @@ const server = http.createServer((req, res) => {
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
+        await hydrateUserTier(req, 'ProfileSettings');
+        const isProUser = isUserPro(req);
         const body = await readJsonBody(req);
         const patch = body?.patch || body?.settings || {};
         const safePatch = patch && typeof patch === 'object' ? patch : {};
+        if (!isProUser) {
+          safePatch.brand_brain_enabled = false;
+          safePatch.voice_lock_enabled = false;
+          safePatch.target_audience_enabled = false;
+        }
 
         const { data, error } = await supabaseAdmin
           .from('profiles')
@@ -7757,6 +7808,11 @@ const server = http.createServer((req, res) => {
           ? data.profile_settings
           : {};
         const nextSettings = { ...current, ...safePatch };
+        if (!isProUser) {
+          nextSettings.brand_brain_enabled = false;
+          nextSettings.voice_lock_enabled = false;
+          nextSettings.target_audience_enabled = false;
+        }
 
         const { data: updated, error: updateError } = await supabaseAdmin
           .from('profiles')
@@ -7783,9 +7839,18 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { ok: false, error: 'profile_settings_update_failed' });
         }
 
+        const updatedSettings = updated?.profile_settings || nextSettings;
+        const sanitized = isProUser
+          ? updatedSettings
+          : {
+              ...updatedSettings,
+              brand_brain_enabled: false,
+              voice_lock_enabled: false,
+              target_audience_enabled: false,
+            };
         return sendJson(res, 200, {
           ok: true,
-          settings: updated?.profile_settings || nextSettings,
+          settings: sanitized,
         });
       } catch (err) {
         const status = err.statusCode || 500;
@@ -11994,8 +12059,11 @@ Output format:
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
+        await hydrateUserTier(req, 'BrandBrain');
+        const isProUser = isUserPro(req);
         const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
-        return sendJson(res, 200, { ok: true, settings });
+        const sanitized = isProUser ? settings : { ...settings, enabled: false };
+        return sendJson(res, 200, { ok: true, settings: sanitized });
       } catch (err) {
         console.error('[BrandBrain] settings GET failed', err);
         return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
@@ -12012,24 +12080,7 @@ Output format:
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
-        try {
-          const response = await supabaseAdmin
-            .from('profiles')
-            .select('tier')
-            .eq('id', user.id)
-            .single();
-          if (response?.data?.tier) {
-            const rawTier = String(response.data.tier).toLowerCase().trim();
-            const mappedTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
-            req.user.tier = mappedTier;
-            req.user.plan = mappedTier;
-          }
-        } catch (planErr) {
-          console.warn('[BrandBrain] failed to resolve tier', {
-            userId: user.id,
-            error: planErr?.message || planErr,
-          });
-        }
+        await hydrateUserTier(req, 'BrandBrain');
         const isProUser = isUserPro(req);
         const body = await readJsonBody(req);
         const normalized = normalizeBrandBrainSettings(body || {});
