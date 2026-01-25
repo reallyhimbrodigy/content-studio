@@ -5698,11 +5698,24 @@ function syncUpgradeModalFeatures() {
     cloneItems(landingProList).forEach((node) => modalProList.appendChild(node));
   }
 
+  const normalizeFeatureText = (text) =>
+    String(text || '')
+      .replace(/✓/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
   const ensureProFeature = (label) => {
-    const exists = Array.from(modalProList.querySelectorAll('li')).some((li) =>
-      (li.textContent || '').trim().toLowerCase() === label.toLowerCase()
-    );
-    if (exists) return;
+    const target = normalizeFeatureText(label);
+    const matches = Array.from(modalProList.querySelectorAll('li')).filter((li) => {
+      const normalized = normalizeFeatureText(li.textContent || '');
+      return normalized === target || normalized.includes(target);
+    });
+    if (matches.length > 1) {
+      matches.slice(1).forEach((node) => node.remove());
+      return;
+    }
+    if (matches.length === 1) return;
     const li = document.createElement('li');
     li.innerHTML = `<span class="check">✓</span> ${label}`;
     modalProList.appendChild(li);
