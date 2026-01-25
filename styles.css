@@ -1,12 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg: #0f1115;
-  --bg-elev: #141821;
+  --app-bg: #0f1115;
+  --app-panel: #141821;
+  --app-border: rgba(255, 255, 255, 0.10);
+  --app-text: #ffffff;
+  --bg: var(--app-bg);
+  --bg-elev: var(--app-panel);
   --panel: var(--bg-elev);
   --panel2: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.14);
+  --border: var(--app-border);
   --border2: rgba(255, 255, 255, 0.22);
-  --text: #ffffff;
+  --text: var(--app-text);
   --text2: rgba(255, 255, 255, 0.72);
   --text-dim: rgba(255, 255, 255, 0.72);
   --text3: rgba(255, 255, 255, 0.52);
@@ -53,8 +57,8 @@
 
 html,
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--app-bg) !important;
+  color: var(--app-text);
 }
 
 main,
@@ -70,7 +74,7 @@ main,
 .page-container,
 .main-content,
 .page-content {
-  background: var(--bg);
+  background: var(--app-bg) !important;
 }
 
 p,
@@ -3387,8 +3391,8 @@ body {
 }
 
 .content-page__footer {
-  border-top: 1px solid var(--border);
-  background: var(--bg);
+  border-top: 1px solid var(--app-border);
+  background: var(--app-bg);
   padding-top: 1.5rem;
   display: flex;
   flex-wrap: wrap;
@@ -5361,7 +5365,7 @@ body.prefers-reduced-motion *::after {
   padding: clamp(2rem, 4vw, 3.5rem);
   border: 1px solid var(--card-border);
   border-radius: 28px;
-  background: var(--bg);
+  background: var(--app-bg);
   box-shadow: 0 30px 70px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
@@ -5370,8 +5374,8 @@ body.prefers-reduced-motion *::after {
 
 footer,
 .site-footer {
-  background: var(--bg);
-  border-top: 1px solid var(--border);
+  background: var(--app-bg) !important;
+  border-top: 1px solid var(--app-border);
 }
 
 .footer__inner {
@@ -5858,8 +5862,8 @@ body.modal-open {
 
 .modal-overlay .modal {
   width: min(560px, 90vw);
-  background: var(--surface);
-  border: 1px solid var(--card-border);
+  background: var(--app-bg) !important;
+  border: 1px solid var(--app-border);
   border-radius: 16px;
   padding: 1.5rem;
   box-shadow: 0 24px 60px rgba(0,0,0,0.5);
@@ -5881,7 +5885,7 @@ body.modal-open {
   padding: 28px;
   gap: 20px;
   border-radius: 18px;
-  background: var(--surface);
+  background: var(--app-bg) !important;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -5905,6 +5909,20 @@ body.modal-open {
 .modal-overlay,
 .modal-backdrop {
   overflow: visible !important;
+}
+
+.modal,
+.modal-content,
+.modal-card,
+.dialog,
+.dialog-content,
+.sheet,
+.sheet-content,
+.panel-modal {
+  background: var(--app-bg) !important;
+  color: var(--app-text);
+  border-color: var(--app-border);
+  opacity: 1 !important;
 }
 
 .account-settings-modal .modal-footer,
@@ -5946,6 +5964,9 @@ body.modal-open {
   gap: 20px;
   border-radius: 18px;
   box-sizing: border-box;
+  background: var(--app-bg) !important;
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
 }
 
 .account-page,
@@ -5987,6 +6008,8 @@ body.modal-open {
   height: auto;
   min-height: 0;
   overflow: visible;
+  background: var(--app-bg) !important;
+  color: var(--app-text);
 }
 
 .account-modal .modal-footer,
@@ -10082,7 +10105,7 @@ body:has(#account-modal.modal-overlay) .app-main {
 body.is-landing{
   --section: 96px;
   color: var(--text);
-  background: var(--bg);
+  background: var(--app-bg);
 }
 
 body.is-landing .app-shell{
