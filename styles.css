@@ -6727,15 +6727,28 @@ body.modal-open {
   align-items: center;
   justify-content: center;
   z-index: 12000;
-  padding: 1rem;
+  padding: 24px;
   width: 100vw;
   height: 100vh;
   margin: 0;
+  overflow: auto;
 }
 
-.modal-content.upgrade-modal {
+#upgrade-modal[style*="display: block"],
+#upgrade-modal[style*="display: flex"] {
+  display: flex !important;
+}
+
+#upgrade-modal .modal-content.upgrade-modal {
   position: relative;
-  margin: 0;
+  margin: auto;
+  transform: none !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  max-width: min(920px, calc(100vw - 48px));
+  width: 100%;
 }
 
 .modal-content {
@@ -6789,9 +6802,12 @@ body.modal-open {
   margin-bottom: 2rem;
 }
 
-.upgrade-icon {
-  margin: 0 auto 1rem;
+.upgrade-icon,
+.upgrade-logo {
+  margin: 0 auto 10px;
   display: block;
+  width: 32px;
+  height: 32px;
 }
 
 .upgrade-modal h2 {
@@ -6842,13 +6858,15 @@ body.modal-open {
   left: 50%;
   transform: translateX(-50%);
   background: var(--accent);
-  color: white;
+  color: #000 !important;
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  opacity: 1 !important;
+  filter: none !important;
 }
 
 .pricing-tier {

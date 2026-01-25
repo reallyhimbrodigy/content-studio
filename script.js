@@ -5688,13 +5688,28 @@ function syncUpgradeModalFeatures() {
   const modalFreeList = upgradeModal.querySelector('.pricing-card .pricing-features');
   const modalProList = upgradeModal.querySelector('.pricing-card-pro .pricing-features');
   const landingFeatureLists = document.querySelectorAll('.landing-pricing__column .landing-pricing__features');
-  if (!modalFreeList || !modalProList || landingFeatureLists.length < 2) return;
-  const [landingFreeList, landingProList] = landingFeatureLists;
-  const cloneItems = (source) => Array.from(source.querySelectorAll('li')).map((li) => li.cloneNode(true));
-  modalFreeList.innerHTML = '';
-  modalProList.innerHTML = '';
-  cloneItems(landingFreeList).forEach((node) => modalFreeList.appendChild(node));
-  cloneItems(landingProList).forEach((node) => modalProList.appendChild(node));
+  if (!modalFreeList || !modalProList) return;
+  if (landingFeatureLists.length >= 2) {
+    const [landingFreeList, landingProList] = landingFeatureLists;
+    const cloneItems = (source) => Array.from(source.querySelectorAll('li')).map((li) => li.cloneNode(true));
+    modalFreeList.innerHTML = '';
+    modalProList.innerHTML = '';
+    cloneItems(landingFreeList).forEach((node) => modalFreeList.appendChild(node));
+    cloneItems(landingProList).forEach((node) => modalProList.appendChild(node));
+  }
+
+  const ensureProFeature = (label) => {
+    const exists = Array.from(modalProList.querySelectorAll('li')).some((li) =>
+      (li.textContent || '').trim().toLowerCase() === label.toLowerCase()
+    );
+    if (exists) return;
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="check">✓</span> ${label}`;
+    modalProList.appendChild(li);
+  };
+
+  ensureProFeature('Target Audience unlocked');
+  ensureProFeature('Voice Lock unlocked');
 }
 
 syncUpgradeModalFeatures();
