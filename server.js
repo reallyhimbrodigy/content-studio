@@ -3252,6 +3252,79 @@ const TITLE_ANCHOR_ECHO_BLOCK = [
   '- If title implies testimonial/success story/case study, include that exact phrase in hook, caption, and reelScript hook.',
 ].join('\n');
 
+const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
+  'RULES FOR REGULAR CALENDAR POSTS:',
+  '- You MAY identify common mistakes, surface-level tactics, or general best practices.',
+  '- You MUST NOT reveal:',
+  '  - sequencing',
+  '  - psychological leverage',
+  '  - algorithm exploitation',
+  '  - conversion mechanics',
+  '  - insider framing',
+  '- Every post must intentionally stop short of explaining *why* something works.',
+  '- The content must feel helpful but incomplete.',
+  '- The viewer should finish the post feeling informed but still uncertain what to do first.',
+  '- Do NOT position the user as having an unfair advantage.',
+  '- Do NOT frame the post as a repeatable system.',
+  '- This content should educate and hook curiosity, not manufacture outcomes.',
+  '',
+  'Enforce:',
+  '- No belief collapse',
+  '- No hidden levers',
+  '- No "this is the order that works"',
+  '- No ad-mechanic framing',
+].join('\n');
+
+const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
+  'RULES FOR BRAND BRAIN POSTS (MANDATORY):',
+  'Every post MUST satisfy ALL of the following, or it is invalid:',
+  '',
+  '1) BELIEF COLLAPSE',
+  '- Open by directly attacking a specific false belief the viewer currently holds.',
+  '- The hook must imply the viewer is doing something wrong or missing something critical.',
+  '- Never open with inspiration, praise, or neutral statements.',
+  '',
+  '2) HIDDEN LEVER',
+  '- Introduce a non-obvious lever that most people overlook.',
+  '- This lever must NOT appear in the Regular Calendar.',
+  '- The lever must change outcomes, not motivation.',
+  '',
+  '3) SEQUENCING OVER INFORMATION',
+  '- Never list generic steps.',
+  '- Emphasize order, timing, framing, or contrast as the real advantage.',
+  '- Make it clear that doing the right thing in the wrong order fails.',
+  '',
+  '4) ALGORITHM-AWARE STRUCTURE',
+  '- The content must be designed to:',
+  '  - reward rewatching',
+  '  - delay resolution',
+  '  - create "you missed this" moments',
+  '- Hooks must challenge assumptions, not announce topics.',
+  '',
+  '5) AD-READY POSITIONING',
+  '- Write every post as if it will be run as a paid ad.',
+  '- The user must be able to copy this script and use it directly to acquire customers.',
+  '- The post must implicitly position the user as having insider knowledge.',
+  '',
+  '6) PROTECTIVE CTA',
+  '- CTAs must feel like mistake prevention or decision protection.',
+  '- Never use generic engagement CTAs.',
+  '- The CTA must imply that acting incorrectly has a cost.',
+  '',
+  '7) OUTCOME SIGNALING',
+  '- The post must imply that results are predictable when this structure is used.',
+  '- Avoid motivational language entirely.',
+  '',
+  'If ANY of these elements are missing, the post must be considered a failure.',
+].join('\n');
+
+const CALENDAR_HARD_SEPARATION_BLOCK = [
+  'CRITICAL:',
+  '- Regular Calendar posts must NEVER include belief collapse, hidden levers, or sequencing.',
+  '- Brand Brain posts must ALWAYS include belief collapse, hidden levers, and sequencing.',
+  '- There must be no stylistic or structural overlap that would allow a Regular post to be mistaken for Brand Brain.',
+].join('\n');
+
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
@@ -3323,6 +3396,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'Count hashtags tokens (array entries starting with "#").',
       'If not between 8 and 12, rewrite hashtags until it is within range.',
       '- Output JSON only.',
+      ...BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK.split('\n'),
+      ...CALENDAR_HARD_SEPARATION_BLOCK.split('\n'),
     ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
@@ -3364,6 +3439,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
         ].join('\\n')
       : '';
   const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
+  const regularCalendarContractBlock = !opts.brandBrainDirective
+    ? `${REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK}\n${CALENDAR_HARD_SEPARATION_BLOCK}`
+    : '';
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
@@ -3416,6 +3494,7 @@ Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} 
 SCOPE LOCK: only generate content for the provided day(s) in this chunk.
 ${postIdentityBlock}
 ${TOPIC_LOCK_CONTRACT_BLOCK}
+${regularCalendarContractBlock}
 TOPIC CAPSULE (required per post):
 - topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
 - mustUse: 5-10 phrases from the title/topic. mustAvoid: copy from Requested IDs for that post.
