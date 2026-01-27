@@ -1090,6 +1090,7 @@ function isUserPro(req) {
 }
 
 const PRO_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
+const PRO_PLAN_VALUES = new Set(['pro', 'teams']);
 
 function normalizePlanLabel(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -1114,7 +1115,7 @@ function resolveRequestId(req, prefix = 'req') {
 
 async function fetchSubscriptionEntitlement(userId) {
   if (!supabaseAdmin || !userId) {
-    return { status: null, plan: null, sourceTable: 'profiles' };
+    return { status: null, plan: null, sourceTable: 'profiles', row: null };
   }
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -1127,9 +1128,57 @@ async function fetchSubscriptionEntitlement(userId) {
     err.sourceTable = 'profiles';
     throw err;
   }
-  const plan = normalizePlanLabel(data?.subscription_plan || data?.tier || null);
-  const status = normalizeSubscriptionStatus(data?.subscription_status);
-  return { status, plan, sourceTable: 'profiles' };
+  if (!data) {
+    return { status: null, plan: null, sourceTable: 'profiles', row: null };
+  }
+  const plan = normalizePlanLabel(
+    data?.subscription_plan || data?.plan || data?.tier || data?.subscription_tier || null
+  );
+  const status = normalizeSubscriptionStatus(
+    data?.subscription_status || data?.stripe_subscription_status || data?.status || null
+  );
+  return { status, plan, sourceTable: 'profiles', row: data };
+}
+
+function resolveEntitlementDecision(entitlement) {
+  const row = entitlement?.row || null;
+  const hasStatusField = row
+    ? ['subscription_status', 'stripe_subscription_status', 'status'].some((field) =>
+        Object.prototype.hasOwnProperty.call(row, field)
+      )
+    : false;
+  const plan = entitlement?.plan || null;
+  const status = entitlement?.status || null;
+  const isProFlag = Boolean(row?.is_pro || row?.isPro || row?.pro || row?.paid);
+  const planQualifies = plan ? PRO_PLAN_VALUES.has(plan) : false;
+  const statusQualifies = status ? PRO_SUBSCRIPTION_STATUSES.has(status) : false;
+  if (isProFlag) {
+    return { isPro: true, reason: 'IS_PRO_FLAG', plan, status, hasStatusField };
+  }
+  if (planQualifies && statusQualifies) {
+    return { isPro: true, reason: 'PLAN_AND_STATUS', plan, status, hasStatusField };
+  }
+  if (planQualifies && !status) {
+    return { isPro: true, reason: 'STATUS_MISSING_ASSUME_PRO', plan, status, hasStatusField };
+  }
+  if (!row) {
+    return { isPro: false, reason: 'NO_ENTITLEMENT_ROW', plan, status, hasStatusField };
+  }
+  if (!planQualifies) {
+    return { isPro: false, reason: 'PLAN_NOT_PRO', plan, status, hasStatusField };
+  }
+  return { isPro: false, reason: 'STATUS_NOT_PRO', plan, status, hasStatusField };
+}
+
+async function assertProEntitled(userId) {
+  if (!supabaseAdmin) {
+    const err = new Error('supabase_not_configured');
+    err.statusCode = 500;
+    throw err;
+  }
+  const entitlement = await fetchSubscriptionEntitlement(userId);
+  const decision = resolveEntitlementDecision(entitlement);
+  return { ...decision, sourceTable: entitlement.sourceTable };
 }
 
 async function requirePro(req, { allowPastDue = false } = {}) {
@@ -12371,6 +12420,7 @@ Output format:
       let user = null;
       let entitlement = { status: null, plan: null, sourceTable: 'profiles' };
       let decision = 'unknown';
+      let decisionReason = null;
       let logged = false;
       const logDecision = () => {
         if (logged) return;
@@ -12378,7 +12428,9 @@ Output format:
         console.log('[BrandBrain][Settings][GET]', {
           requestId,
           userId: user?.id || null,
+          email: user?.email || null,
           decision,
+          reason: decisionReason,
           status: entitlement.status || null,
           plan: entitlement.plan || null,
           sourceTable: entitlement.sourceTable || null,
@@ -12395,6 +12447,15 @@ Output format:
             requestId,
           });
         }
+        const expectedSupabaseHost = String(process.env.EXPECTED_SUPABASE_HOST || '').trim();
+        const currentSupabaseUrl = String(process.env.SUPABASE_URL || '').trim();
+        if (expectedSupabaseHost && currentSupabaseUrl && !currentSupabaseUrl.includes(expectedSupabaseHost)) {
+          console.warn('[BrandBrain][Entitlements][EnvMismatch]', {
+            requestId,
+            expectedHost: expectedSupabaseHost,
+            currentUrl: currentSupabaseUrl,
+          });
+        }
         try {
           user = await requireSupabaseUser(req);
           req.user = user;
@@ -12403,15 +12464,26 @@ Output format:
           logDecision();
           return sendJson(res, 401, { error: 'AUTH_REQUIRED', requestId });
         }
-        entitlement = await fetchSubscriptionEntitlement(user.id);
-        const isPro = Boolean(entitlement.status && PRO_SUBSCRIPTION_STATUSES.has(entitlement.status));
-        decision = isPro ? 'pro' : 'not_pro';
+        const entitlementDecision = await assertProEntitled(user.id);
+        entitlement = {
+          status: entitlementDecision.status,
+          plan: entitlementDecision.plan,
+          sourceTable: entitlementDecision.sourceTable,
+        };
+        decision = entitlementDecision.isPro ? 'pro' : 'not_pro';
+        decisionReason = entitlementDecision.reason;
         logDecision();
-        if (!isPro) {
+        if (!entitlementDecision.isPro) {
+          console.warn(
+            `[BrandBrain][Entitlements][402] requestId=${requestId} ` +
+              `userId=${user?.id || 'unknown'} email=${user?.email || 'unknown'} ` +
+              `sourceTable=${entitlementDecision.sourceTable} plan=${entitlementDecision.plan || 'unknown'} ` +
+              `status=${entitlementDecision.status || 'unknown'} reason=${entitlementDecision.reason}`
+          );
           return sendJson(res, 402, {
             error: 'PAYMENT_REQUIRED',
             requestId,
-            details: { status: entitlement.status, plan: entitlement.plan },
+            details: { status: entitlementDecision.status, plan: entitlementDecision.plan },
           });
         }
         const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
@@ -12433,13 +12505,19 @@ Output format:
   if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'POST') {
     (async () => {
       try {
-        const { userId } = await requirePro(req);
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const entitlementDecision = await assertProEntitled(user.id);
+        if (!entitlementDecision.isPro) {
+          return sendJson(res, 402, {
+            error: 'PAYMENT_REQUIRED',
+            requestId: resolveRequestId(req, 'brandbrain_settings'),
+            details: { status: entitlementDecision.status, plan: entitlementDecision.plan },
+          });
         }
         const body = await readJsonBody(req);
         const normalized = normalizeBrandBrainSettings(body || {});
-        const saved = await upsertBrandBrainSettings(userId, normalized);
+        const saved = await upsertBrandBrainSettings(user.id, normalized);
         return sendJson(res, 200, { ok: true, settings: saved || normalized });
       } catch (err) {
         if (err?.statusCode === 401) {
