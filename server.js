@@ -1089,6 +1089,75 @@ function isUserPro(req) {
   return false;
 }
 
+const PRO_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
+
+function normalizePlanLabel(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'paid' || raw === 'premium') return 'pro';
+  return raw;
+}
+
+function normalizeSubscriptionStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw || null;
+}
+
+function resolveRequestId(req, prefix = 'req') {
+  if (!req) return generateRequestId(prefix);
+  if (req.requestId) return req.requestId;
+  const headerId = req.headers?.['x-request-id'] || req.headers?.['x-requestid'];
+  const value = headerId ? String(headerId) : generateRequestId(prefix);
+  req.requestId = value;
+  return value;
+}
+
+async function fetchSubscriptionEntitlement(userId) {
+  if (!supabaseAdmin || !userId) {
+    return { status: null, plan: null, sourceTable: 'profiles' };
+  }
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('subscription_status, subscription_plan, tier')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    const err = new Error(error?.message || 'entitlements_lookup_failed');
+    err.statusCode = 500;
+    err.sourceTable = 'profiles';
+    throw err;
+  }
+  const plan = normalizePlanLabel(data?.subscription_plan || data?.tier || null);
+  const status = normalizeSubscriptionStatus(data?.subscription_status);
+  return { status, plan, sourceTable: 'profiles' };
+}
+
+async function requirePro(req, { allowPastDue = false } = {}) {
+  const user = req?.user || (await requireSupabaseUser(req));
+  req.user = user;
+  if (!supabaseAdmin) {
+    const err = new Error('supabase_not_configured');
+    err.statusCode = 500;
+    throw err;
+  }
+  const requestId = resolveRequestId(req, 'pro');
+  const { status, plan, sourceTable } = await fetchSubscriptionEntitlement(user?.id);
+  const allowedStatuses = new Set(PRO_SUBSCRIPTION_STATUSES);
+  if (allowPastDue) allowedStatuses.add('past_due');
+  if (!status || !allowedStatuses.has(status)) {
+    console.warn(
+      `[ProGate][PaymentRequired] requestId=${requestId} userId=${user?.id || 'unknown'} ` +
+        `subscriptionStatus=${status || 'unknown'} plan=${plan || 'unknown'} sourceTable=${sourceTable}`
+    );
+    const err = new Error('PAYMENT_REQUIRED');
+    err.statusCode = 402;
+    err.payload = { error: 'PAYMENT_REQUIRED', details: { status, plan } };
+    err.requestId = requestId;
+    throw err;
+  }
+  return { userId: user.id, plan, status, requestId };
+}
+
 async function hydrateUserTier(req, context = 'Tier') {
   if (!req?.user?.id || !supabaseAdmin) return null;
   if (req.user.tier || req.user.plan) return req.user.tier || req.user.plan;
@@ -12291,17 +12360,19 @@ Output format:
   if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'GET') {
     (async () => {
       try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
+        const { userId } = await requirePro(req);
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
-        await hydrateUserTier(req, 'BrandBrain');
-        const isProUser = isUserPro(req);
-        const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
-        const sanitized = isProUser ? settings : { ...settings, enabled: false };
-        return sendJson(res, 200, { ok: true, settings: sanitized });
+        const settings = (await fetchBrandBrainSettings(userId)) || BRAND_BRAIN_DEFAULT_SETTINGS;
+        return sendJson(res, 200, { ok: true, settings });
       } catch (err) {
+        if (err?.statusCode === 401) {
+          return sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' });
+        }
+        if (err?.statusCode === 402) {
+          return sendJson(res, 402, err.payload || { error: 'PAYMENT_REQUIRED' });
+        }
         console.error('[BrandBrain] settings GET failed', err);
         return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
       }
@@ -12312,28 +12383,21 @@ Output format:
   if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'POST') {
     (async () => {
       try {
-        const user = await requireSupabaseUser(req);
-        req.user = user;
+        const { userId } = await requirePro(req);
         if (!supabaseAdmin) {
           return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
         }
-        await hydrateUserTier(req, 'BrandBrain');
-        const isProUser = isUserPro(req);
         const body = await readJsonBody(req);
         const normalized = normalizeBrandBrainSettings(body || {});
-        if (normalized.enabled && !isProUser) {
-          return sendJson(res, 402, {
-            ok: false,
-            error: 'upgrade_required',
-            feature: 'brand_brain',
-          });
-        }
-        const saved = await upsertBrandBrainSettings(user.id, {
-          ...normalized,
-          enabled: normalized.enabled && isProUser,
-        });
+        const saved = await upsertBrandBrainSettings(userId, normalized);
         return sendJson(res, 200, { ok: true, settings: saved || normalized });
       } catch (err) {
+        if (err?.statusCode === 401) {
+          return sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' });
+        }
+        if (err?.statusCode === 402) {
+          return sendJson(res, 402, err.payload || { error: 'PAYMENT_REQUIRED' });
+        }
         console.error('[BrandBrain] settings POST failed', err);
         return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_save_failed' });
       }
