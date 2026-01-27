@@ -1118,7 +1118,7 @@ async function fetchSubscriptionEntitlement(userId) {
   }
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('subscription_status, subscription_plan, tier')
+    .select('*')
     .eq('id', userId)
     .maybeSingle();
   if (error) {
@@ -7490,7 +7490,15 @@ async function fetchBrandBrainSettings(userId) {
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    const settings = data?.profile_settings || {};
+    let settings = data?.profile_settings;
+    if (typeof settings === 'string') {
+      try {
+        settings = JSON.parse(settings);
+      } catch (_err) {
+        settings = {};
+      }
+    }
+    if (!settings || typeof settings !== 'object') settings = {};
     const enabled = Boolean(settings?.brand_brain_enabled);
     return normalizeBrandBrainSettings({ enabled });
   } catch (err) {
@@ -12359,22 +12367,64 @@ Output format:
 
   if (parsed.pathname === '/api/brand-brain/settings' && req.method === 'GET') {
     (async () => {
+      const requestId = resolveRequestId(req, 'brandbrain_settings');
+      let user = null;
+      let entitlement = { status: null, plan: null, sourceTable: 'profiles' };
+      let decision = 'unknown';
+      let logged = false;
+      const logDecision = () => {
+        if (logged) return;
+        logged = true;
+        console.log('[BrandBrain][Settings][GET]', {
+          requestId,
+          userId: user?.id || null,
+          decision,
+          status: entitlement.status || null,
+          plan: entitlement.plan || null,
+          sourceTable: entitlement.sourceTable || null,
+        });
+      };
       try {
-        const { userId } = await requirePro(req);
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { ok: false, error: 'supabase_not_configured' });
+        const missingEnv = getMissingSupabaseEnvVars();
+        if (missingEnv.length) {
+          decision = 'server_misconfig';
+          logDecision();
+          return sendJson(res, 500, {
+            error: 'SERVER_MISCONFIG',
+            details: { missing: missingEnv },
+            requestId,
+          });
         }
-        const settings = (await fetchBrandBrainSettings(userId)) || BRAND_BRAIN_DEFAULT_SETTINGS;
+        try {
+          user = await requireSupabaseUser(req);
+          req.user = user;
+        } catch (_authErr) {
+          decision = 'auth_required';
+          logDecision();
+          return sendJson(res, 401, { error: 'AUTH_REQUIRED', requestId });
+        }
+        entitlement = await fetchSubscriptionEntitlement(user.id);
+        const isPro = Boolean(entitlement.status && PRO_SUBSCRIPTION_STATUSES.has(entitlement.status));
+        decision = isPro ? 'pro' : 'not_pro';
+        logDecision();
+        if (!isPro) {
+          return sendJson(res, 402, {
+            error: 'PAYMENT_REQUIRED',
+            requestId,
+            details: { status: entitlement.status, plan: entitlement.plan },
+          });
+        }
+        const settings = (await fetchBrandBrainSettings(user.id)) || BRAND_BRAIN_DEFAULT_SETTINGS;
         return sendJson(res, 200, { ok: true, settings });
       } catch (err) {
-        if (err?.statusCode === 401) {
-          return sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' });
-        }
-        if (err?.statusCode === 402) {
-          return sendJson(res, 402, err.payload || { error: 'PAYMENT_REQUIRED' });
-        }
-        console.error('[BrandBrain] settings GET failed', err);
-        return sendJson(res, 500, { ok: false, error: 'brand_brain_settings_fetch_failed' });
+        decision = decision === 'unknown' ? 'internal_error' : decision;
+        logDecision();
+        console.error('[BrandBrain] settings GET failed', {
+          requestId,
+          error: err?.message || err,
+          stack: err?.stack,
+        });
+        return sendJson(res, 500, { error: 'INTERNAL_ERROR', requestId });
       }
     })();
     return;
