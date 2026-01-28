@@ -3435,8 +3435,10 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   'OUTPUT CONSTRAINTS (REGULAR)',
   '- Return ONLY valid JSON matching schema. No markdown. No prose outside JSON.',
   '- Do not leave any required field empty.',
-  '- Every post object MUST include a non-empty `storyPrompt` field.',
-  '- `storyPrompt` should be a short on-screen question or prompt that directly relates to the post’s hook and drives comments or engagement.',
+  '- Each post object MUST include ALL required keys (non-empty): title, hook, caption, cta, topic_signature, angle, storyPrompt, designNotes, distributionPlan, day, hashtags, script{hook,body,cta}, reelScript{hook,body,cta}, engagementScripts{commentReply,dmReply}.',
+  '- If any required key would be missing (especially `storyPrompt`), you MUST still output it with a non-empty value. Missing required keys is a failure.',
+  '- `storyPrompt` must be 1-2 short sentences that ask a direct, niche-specific question or choice tied to the post’s hook, designed to drive comments.',
+  '- Before returning the final JSON, silently verify that every post includes `storyPrompt` and it is not blank.',
   '- Keep language natural and varied; do not reuse the same hook pattern across posts.',
 ].join('\n');
 
