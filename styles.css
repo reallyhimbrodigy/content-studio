@@ -9981,6 +9981,17 @@ body:has(#account-modal.modal-overlay) .app-main {
     text-overflow: ellipsis;
   }
 
+  .page-calendar .app-hero .user-menu {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .page-calendar .app-hero .user-menu .brand-brain-btn {
+    padding: 0 0.55rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+  }
+
   .profile-trigger {
     width: 36px;
     height: 36px;
