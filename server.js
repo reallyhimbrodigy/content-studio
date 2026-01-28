@@ -3435,6 +3435,8 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   'OUTPUT CONSTRAINTS (REGULAR)',
   '- Return ONLY valid JSON matching schema. No markdown. No prose outside JSON.',
   '- Do not leave any required field empty.',
+  '- Every post object MUST include a non-empty `storyPrompt` field.',
+  '- `storyPrompt` should be a short on-screen question or prompt that directly relates to the post’s hook and drives comments or engagement.',
   '- Keep language natural and varied; do not reuse the same hook pattern across posts.',
 ].join('\n');
 
