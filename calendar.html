@@ -35,7 +35,14 @@
       display: contents;
     }
 
-    @media (max-width: 520px) {
+    .page-calendar .user-tier-badge {
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      font-weight: 700;
+    }
+
+    @media (max-width: 480px) {
       .page-calendar .app-hero .hero-top {
         align-items: stretch;
         text-align: left;
@@ -60,6 +67,25 @@
         box-shadow: none;
       }
 
+      .page-calendar .sidebar-toggle__bars,
+      .page-calendar .sidebar-toggle__bars::before,
+      .page-calendar .sidebar-toggle__bars::after {
+        display: block;
+        width: 18px;
+        height: 2px;
+        border-radius: 2px;
+        background: #ffffff;
+        transform: none;
+      }
+
+      .page-calendar .sidebar-toggle__bars::before {
+        margin-bottom: 4px;
+      }
+
+      .page-calendar .sidebar-toggle__bars::after {
+        margin-top: 4px;
+      }
+
       .page-calendar .app-hero .hero-topbar {
         display: flex;
         align-items: center;
@@ -77,30 +103,33 @@
 
       .page-calendar .app-hero .hero-controls {
         display: flex;
+        flex-direction: row;
         align-items: center;
-        gap: 8px;
+        justify-content: center;
+        gap: 10px;
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
         flex-wrap: nowrap;
-        overflow: hidden;
+        overflow: visible;
         margin-bottom: 16px;
       }
 
       .page-calendar .app-hero .hero-controls .brand-brain-btn {
         flex: 1 1 0;
         min-width: 0;
+        max-width: calc((100% - 20px) / 3);
         height: 36px;
-        padding: 0 10px;
+        padding: 10px 10px;
         border-radius: 999px;
-        font-size: 12px;
-        letter-spacing: 0.06em;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        line-height: 1;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        color: rgba(255, 255, 255, 0.92);
+        text-align: center;
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid rgba(0, 0, 0, 0.15);
         box-shadow: none;
       }
 
@@ -109,6 +138,36 @@
         background: rgba(255, 255, 255, 0.92);
         color: rgba(0, 0, 0, 0.85);
         border-color: rgba(255, 255, 255, 0.92);
+      }
+    }
+
+    @media (min-width: 768px) {
+      .page-calendar .app-hero .user-menu {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .page-calendar .app-hero .hero-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .page-calendar .sidebar-toggle {
+        position: static;
+        margin-right: 12px;
+        box-shadow: none;
+        order: 1;
+      }
+
+      .page-calendar .app-hero .hero-controls {
+        order: 2;
+      }
+
+      .page-calendar .app-hero .hero-topbar .profile-wrapper {
+        order: 3;
+        margin-left: 12px;
       }
     }
   </style>
