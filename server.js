@@ -514,6 +514,15 @@ function generateRequestId(prefix = 'req') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function hashPromptPreview(text = '') {
+  try {
+    const crypto = require('crypto');
+    return crypto.createHash('sha256').update(String(text || '')).digest('hex').slice(0, 12);
+  } catch {
+    return null;
+  }
+}
+
 function logServerError(tag, err, info = {}) {
   const payload = {
     tag,
@@ -7149,7 +7158,8 @@ async function generateTopicPlan({
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-    const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
+  const modelName = 'gpt-4o-mini';
+  const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
       ? Number(opts.maxTokens)
@@ -7216,6 +7226,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const snippet = String(value);
     return snippet.length <= 500 ? snippet : `${snippet.slice(0, 500)}...`;
   };
+  let lastPromptMeta = null;
   const parseOpenAiErrorPayload = (err) => {
     const raw = String(err?.message || '');
     const marker = raw.indexOf(':');
@@ -7226,6 +7237,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     } catch {
       return null;
     }
+  };
+  const attachPromptMeta = (err) => {
+    if (!err || typeof err !== 'object') return;
+    err.promptMeta = lastPromptMeta;
+    err.model = modelName;
+    err.responseFormat = null;
+    err.mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
   };
   const isSchemaErrorPayload = (payload, err) => {
     const message = payload?.error?.message || err?.message || '';
@@ -7249,6 +7267,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       requestId: loggingContext?.requestId || '',
     };
     const prompt = buildPrompt(nicheStyle, brandContext, attemptOpts);
+    lastPromptMeta = {
+      chars: prompt.length,
+      hash: hashPromptPreview(prompt),
+    };
     const voiceLockApplied = Boolean(attemptOpts.voiceLock?.enabled);
     const voiceLockPreset = attemptOpts.voiceLock?.preset
       ? (VOICE_LOCK_PRESET_GUIDES[attemptOpts.voiceLock.preset]?.label || attemptOpts.voiceLock.preset)
@@ -7272,7 +7294,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     }
     const responseFormat = null;
     const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: modelName,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0,
       max_tokens: maxTokens,
@@ -7285,7 +7307,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         console.error('[OpenAI][CalendarChunk] request failed', {
           requestId: loggingContext?.requestId || null,
           mode,
-          model: 'gpt-4o-mini',
+          model: modelName,
           responseFormat: safeStringify(responseFormat),
           statusCode: err?.statusCode || err?.status || null,
           ...details,
@@ -7307,10 +7329,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
           schemaErr.openaiDetails = details;
           schemaErr.mode = mode;
+          schemaErr.promptMeta = lastPromptMeta;
+          schemaErr.model = modelName;
+          schemaErr.responseFormat = responseFormat;
           throw schemaErr;
         }
         err.openaiDetails = details;
         err.mode = mode;
+        err.promptMeta = lastPromptMeta;
+        err.model = modelName;
+        err.responseFormat = responseFormat;
         throw err;
       })
     );
@@ -7327,7 +7355,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
-    return { content, latency: Date.now() - attemptTimestamp };
+    return { content, latency: Date.now() - attemptTimestamp, promptMeta: lastPromptMeta };
   };
 
   try {
@@ -7360,6 +7388,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      attachPromptMeta(parseErr);
       console.warn('[Calendar][Parse] failed', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
@@ -7390,6 +7419,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      attachPromptMeta(parseErr);
       logParseDebug();
       throw parseErr;
     }
@@ -7398,6 +7428,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      attachPromptMeta(parseErr);
       logParseDebug();
       throw parseErr;
     }
@@ -7406,6 +7437,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      attachPromptMeta(parseErr);
       logParseDebug();
       throw parseErr;
     }
@@ -7425,6 +7457,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.rawContent = rawText;
+      attachPromptMeta(parseErr);
       logParseDebug();
       throw parseErr;
     }
@@ -7433,6 +7466,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       rawContent: rawText,
       latency: firstResponse.latency,
       parseMs,
+      promptMeta: firstResponse.promptMeta || null,
     };
   } catch (err) {
     if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
@@ -8480,6 +8514,9 @@ const server = http.createServer((req, res) => {
       ? buildBrandBrainDirective(brandBrainSettings)
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
+    const calendarMode = brandBrainEnabled ? 'brand_brain' : 'regular';
+    let lastPromptMeta = null;
+    let lastRawContent = '';
     const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
     const targetAudienceConfig = resolveTargetAudienceConfig(payload, isProUser);
     const requestId = String(loggingContext?.requestId || '');
@@ -8608,6 +8645,8 @@ const server = http.createServer((req, res) => {
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
       });
+      if (result?.promptMeta) lastPromptMeta = result.promptMeta;
+      if (result?.rawContent) lastRawContent = String(result.rawContent);
       const chunkPosts = Array.isArray(result.posts)
         ? result.posts
         : (Array.isArray(result?.posts?.posts) ? result.posts.posts : []);
@@ -8821,6 +8860,12 @@ const server = http.createServer((req, res) => {
         expectedCount,
         actualCount: rawPosts.length,
       };
+      err.promptMeta = lastPromptMeta;
+      err.rawContent = lastRawContent ? String(lastRawContent) : '';
+      err.model = 'gpt-4o-mini';
+      err.schemaName = 'calendar_batch';
+      err.responseFormat = null;
+      err.mode = calendarMode;
       console.warn('[Calendar][Server][SchemaValidation] count mismatch', {
         requestId: loggingContext?.requestId,
         startDay,
@@ -9006,6 +9051,12 @@ const server = http.createServer((req, res) => {
         err.code = 'OPENAI_SCHEMA_ERROR';
         err.statusCode = 500;
         err.details = missingFieldsReport;
+        err.promptMeta = lastPromptMeta;
+        err.rawContent = lastRawContent ? String(lastRawContent) : '';
+        err.model = 'gpt-4o-mini';
+        err.schemaName = 'calendar_batch';
+        err.responseFormat = null;
+        err.mode = calendarMode;
         console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
           requestId: loggingContext?.requestId,
           startDay,
@@ -9698,6 +9749,26 @@ const server = http.createServer((req, res) => {
         const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
         const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
         const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
+        const debugSchema = !isProduction || String(req.headers['x-debug'] || '') === '1';
+        if (isSchemaError && debugSchema) {
+          const promptMeta = err?.promptMeta || {};
+          const rawPreview = err?.rawContent ? String(err.rawContent).slice(0, 2000) : null;
+          const openaiDetails = err?.openaiDetails || {};
+          console.warn('[Calendar][SchemaError][Debug]', {
+            requestId,
+            mode: err?.mode || 'unknown',
+            schemaName: err?.schemaName || 'calendar_batch',
+            model: err?.model || 'gpt-4o-mini',
+            responseFormat: err?.responseFormat || null,
+            promptChars: promptMeta.chars || null,
+            promptHash: promptMeta.hash || null,
+            openaiMessage: openaiDetails.openaiMessage || err?.message || null,
+            openaiType: openaiDetails.openaiType || null,
+            openaiParam: openaiDetails.openaiParam || null,
+            schemaDetails: err?.details || null,
+            rawOutputPreview: rawPreview,
+          });
+        }
         const logInfo = { requestId, context: errorContext };
         if (isSchemaError) {
           if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
@@ -9737,7 +9808,15 @@ const server = http.createServer((req, res) => {
             requestId,
           });
         }
-        const status = isSchemaError || isInvalidJson ? 400 : (err?.statusCode || 500);
+        if (isSchemaError) {
+          return sendJson(res, 422, {
+            error: 'CALENDAR_SCHEMA_MISMATCH',
+            message: 'Calendar output did not meet required fields.',
+            requestId,
+            details: err?.details || null,
+          });
+        }
+        const status = isInvalidJson ? 400 : (err?.statusCode || 500);
         const openaiDetails = err?.openaiDetails || {};
         const message = err?.message || 'Internal Server Error';
         const payload = {
