@@ -5897,6 +5897,81 @@ const REQUIRED_POST_FIELDS = [
   'engagementScripts.dmReply',
 ];
 
+const REQUIRED_POST_FIELD_TYPES = {
+  title: 'string',
+  hook: 'string',
+  caption: 'string',
+  cta: 'string',
+  topic_signature: 'string',
+  angle: 'string',
+  storyPrompt: 'string',
+  designNotes: 'string',
+  distributionPlan: 'string',
+  day: 'number',
+  hashtags: 'array',
+  script: 'object',
+  'script.hook': 'string',
+  'script.body': 'string',
+  'script.cta': 'string',
+  reelScript: 'object',
+  'reelScript.hook': 'string',
+  'reelScript.body': 'string',
+  'reelScript.cta': 'string',
+  engagementScripts: 'object',
+  'engagementScripts.commentReply': 'string',
+  'engagementScripts.dmReply': 'string',
+};
+
+function getValueByPath(obj, path) {
+  const parts = String(path || '').split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function buildRequiredFieldDiagnostics(post = {}) {
+  const missing = [];
+  const empty = [];
+  const invalidTypes = [];
+  for (const key of REQUIRED_POST_FIELDS) {
+    const expected = REQUIRED_POST_FIELD_TYPES[key] || 'string';
+    const value = getValueByPath(post, key);
+    if (value === undefined || value === null) {
+      missing.push(key);
+      continue;
+    }
+    if (expected === 'array') {
+      if (!Array.isArray(value)) {
+        invalidTypes.push({ key, expected, got: Array.isArray(value) ? 'array' : typeof value });
+      }
+      continue;
+    }
+    if (expected === 'object') {
+      if (typeof value !== 'object' || Array.isArray(value)) {
+        invalidTypes.push({ key, expected, got: Array.isArray(value) ? 'array' : typeof value });
+      }
+      continue;
+    }
+    if (expected === 'number') {
+      if (!Number.isFinite(Number(value))) {
+        invalidTypes.push({ key, expected, got: typeof value });
+      }
+      continue;
+    }
+    if (typeof value !== 'string') {
+      invalidTypes.push({ key, expected, got: typeof value });
+      continue;
+    }
+    if (!value.trim()) {
+      empty.push(key);
+    }
+  }
+  return { missing, empty, invalidTypes };
+}
+
 const NONCORE_OPTIONAL_FIELDS = new Set([
   'engagementLoop',
   'engagementScripts',
@@ -8922,6 +8997,19 @@ const server = http.createServer((req, res) => {
       });
     }
     if (missingFieldsReport.length) {
+      const debugDiagnosticsEnabled = !!loggingContext?.debug;
+      const missingDiagnostics = debugDiagnosticsEnabled
+        ? missingFieldsReport.map((entry) => {
+          const post = rawPosts[entry.index] && typeof rawPosts[entry.index] === 'object' ? rawPosts[entry.index] : {};
+          const diagnostics = buildRequiredFieldDiagnostics(post);
+          return {
+            ...entry,
+            missing: diagnostics.missing.length ? diagnostics.missing : entry.missing,
+            empty: diagnostics.empty,
+            invalidTypes: diagnostics.invalidTypes,
+          };
+        })
+        : null;
       if (brandBrainEnabled) {
         const schema = buildCalendarSchemaObject(
           expectedCount || rawPosts.length,
@@ -9048,12 +9136,22 @@ const server = http.createServer((req, res) => {
         err.code = 'OPENAI_SCHEMA_ERROR';
         err.statusCode = 500;
         err.details = missingFieldsReport;
+        if (debugDiagnosticsEnabled && missingDiagnostics) {
+          err.details = {
+            expectedCount: expectedCount || rawPosts.length,
+            actualCount: rawPosts.length,
+            missingFields: missingFieldsReport,
+            diagnostics: missingDiagnostics,
+          };
+        }
         err.promptMeta = lastPromptMeta;
         err.rawContent = lastRawContent ? String(lastRawContent) : '';
         err.model = 'gpt-4o-mini';
         err.schemaName = 'calendar_batch';
         err.responseFormat = null;
         err.mode = calendarMode;
+        const rawPreview = debugDiagnosticsEnabled ? err.rawContent.slice(0, 2000) : null;
+        const rawTail = debugDiagnosticsEnabled ? err.rawContent.slice(-500) : null;
         console.warn('[Calendar][Server][SchemaValidation] missing required fields', {
           requestId: loggingContext?.requestId,
           startDay,
@@ -9067,6 +9165,11 @@ const server = http.createServer((req, res) => {
             ...entry,
             missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
           })),
+          debugSamples: debugDiagnosticsEnabled && missingDiagnostics
+            ? missingDiagnostics.slice(0, 2)
+            : null,
+          rawOutputPreview: rawPreview || undefined,
+          rawOutputTail: rawTail || undefined,
         });
         throw err;
       }
@@ -9610,6 +9713,8 @@ const server = http.createServer((req, res) => {
           });
         }
         const isPro = isUserPro(req);
+        const debugSchema = !isProduction || String(req.headers['x-debug'] || '') === '1';
+        regenContext.debug = debugSchema;
         const tStart = Date.now();
         console.log('[Calendar][Server][Perf] regen request received', {
           requestId,
@@ -9749,7 +9854,9 @@ const server = http.createServer((req, res) => {
         const debugSchema = !isProduction || String(req.headers['x-debug'] || '') === '1';
         if (isSchemaError && debugSchema) {
           const promptMeta = err?.promptMeta || {};
-          const rawPreview = err?.rawContent ? String(err.rawContent).slice(0, 2000) : null;
+          const rawText = err?.rawContent ? String(err.rawContent) : '';
+          const rawPreview = rawText ? rawText.slice(0, 2000) : null;
+          const rawTail = rawText ? rawText.slice(-500) : null;
           const openaiDetails = err?.openaiDetails || {};
           console.warn('[Calendar][SchemaError][Debug]', {
             requestId,
@@ -9764,6 +9871,7 @@ const server = http.createServer((req, res) => {
             openaiParam: openaiDetails.openaiParam || null,
             schemaDetails: err?.details || null,
             rawOutputPreview: rawPreview,
+            rawOutputTail: rawTail,
           });
         }
         const logInfo = { requestId, context: errorContext };
@@ -9806,11 +9914,24 @@ const server = http.createServer((req, res) => {
           });
         }
         if (isSchemaError) {
+          const rawText = err?.rawContent ? String(err.rawContent) : '';
+          const schemaDetails = debugSchema
+            ? {
+              schemaDetails: err?.details || null,
+              promptMeta: err?.promptMeta || null,
+              rawOutputPreview: rawText ? rawText.slice(0, 2000) : null,
+              rawOutputTail: rawText ? rawText.slice(-500) : null,
+              model: err?.model || null,
+              schemaName: err?.schemaName || null,
+              responseFormat: err?.responseFormat || null,
+              mode: err?.mode || null,
+            }
+            : (err?.details || null);
           return sendJson(res, 422, {
             error: 'CALENDAR_SCHEMA_MISMATCH',
             message: 'Calendar output did not meet required fields.',
             requestId,
-            details: err?.details || null,
+            details: schemaDetails,
           });
         }
         const status = isInvalidJson ? 400 : (err?.statusCode || 500);
