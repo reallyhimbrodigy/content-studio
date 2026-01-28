@@ -3403,6 +3403,12 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   'ROLE',
   'You are generating publish-ready TikTok/Instagram ad content for the provided niche and pillar. Output must be on-topic, niche-specific, and formatted exactly to the required JSON schema. No extra text.',
   '',
+  'MUST RULES (REGULAR)',
+  '- For EVERY post object: `storyPrompt` is REQUIRED and must be a non-empty string.',
+  '- `storyPrompt` must be directly tied to that post’s hook/topic and written as an on-screen audience prompt designed to trigger comments (question or A/B choice).',
+  '- Never omit `storyPrompt` for any reason. If you are unsure, output a best-effort niche-specific storyPrompt rather than leaving it out.',
+  '- Before returning the final JSON, silently verify that each post object contains `storyPrompt` and it is not blank.',
+  '',
   'GENERAL RULES (REGULAR)',
   '- This is the baseline tier. Provide strong execution but do NOT use decision-architecture or psychological teardown frameworks.',
   '- Do NOT use contradiction/belief-correction hooks or frames (forbidden: "think again", "you think...", "myth", "misconception", "you\'re missing this", "before/pivot", "the truth is").',
@@ -3439,6 +3445,8 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- If any required key would be missing (especially `storyPrompt`), you MUST still output it with a non-empty value. Missing required keys is a failure.',
   '- `storyPrompt` must be 1-2 short sentences that ask a direct, niche-specific question or choice tied to the post’s hook, designed to drive comments.',
   '- Before returning the final JSON, silently verify that every post includes `storyPrompt` and it is not blank.',
+  'POST OBJECT SHAPE (keys only, placeholders):',
+  '{"post_key":"<string>","day":<number>,"slotIndex":<number>,"title":"<string>","hook":"<string>","caption":"<string>","pillar":"<string>","topic_signature":"<string>","angle":"<string>","cta":"<string>","hashtags":["<string>"],"script":{"hook":"<string>","body":"<string>","cta":"<string>"},"reelScript":{"hook":"<string>","body":"<string>","cta":"<string>"},"designNotes":"<string>","storyPrompt":"<string>","storyPromptPlus":"<string>","distributionPlan":"<string>","engagementScripts":{"commentReply":"<string>","dmReply":"<string>"}}',
   '- Keep language natural and varied; do not reuse the same hook pattern across posts.',
 ].join('\n');
 
