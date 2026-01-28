@@ -2358,7 +2358,6 @@ function buildAutoNotes(entry = {}, preset = {}) {
   }
   if (entry.cta) parts.push(`CTA: ${entry.cta}`);
   if (entry.designNotes) parts.push(`Existing notes: ${entry.designNotes}`);
-  if (entry.storyPrompt) parts.push(`Story prompt: ${entry.storyPrompt}`);
   if (currentBrandKit) {
     const palette = [currentBrandKit.primaryColor, currentBrandKit.secondaryColor, currentBrandKit.accentColor].filter(Boolean).join(', ');
     if (palette) parts.push(`Brand palette: ${palette}`);
@@ -5966,7 +5965,6 @@ const createCard = (post) => {
       format,
       cta,
       pillar,
-      storyPrompt,
       designNotes,
       repurpose,
       analytics,
@@ -6299,9 +6297,6 @@ const createCard = (post) => {
 
     const formatEl = createDetailRow('Format', format, 'calendar-card__format');
 
-    const storyPromptText = storyPrompt || '';
-    const storyPromptEl = storyPromptText ? createDetailRow('Story Prompt', storyPromptText, 'calendar-card__story') : null;
-
     const designNotesText = designNotes || '';
     const designNotesEl = designNotesText ? createDetailRow('Design Notes', designNotesText, 'calendar-card__design') : null;
 
@@ -6492,7 +6487,6 @@ const createCard = (post) => {
     }
     if (format) fullTextParts.push(`Format: ${format}`);
     if (cta) fullTextParts.push(`CTA: ${cta}`);
-    if (storyPrompt) fullTextParts.push(`Story Prompt: ${storyPrompt}`);
     if (designNotes) fullTextParts.push(`Design Notes: ${designNotes}`);
     if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
     if (promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
@@ -6523,7 +6517,6 @@ const createCard = (post) => {
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (audioRowText) fullTextParts.push(`Suggested audio: ${audioRowText}`);
-    if (entry.storyPromptExpanded) fullTextParts.push(`Story Prompt+: ${entry.storyPromptExpanded}`);
     if (isProTier() && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
@@ -6608,8 +6601,6 @@ const createCard = (post) => {
         createDetailRow('Suggested audio', audioRowText, 'calendar-card__audio suggested-audio')
       );
     }
-    // Story prompt+ intentionally omitted from calendar UI.
-
     const details = document.createElement('details');
     const summary = document.createElement('summary');
     summary.textContent = 'Details';
@@ -6618,7 +6609,6 @@ const createCard = (post) => {
     [
       hashtagsEl,
       formatEl,
-      storyPromptEl,
       designNotesEl,
       (() => {
         const parts = [];
@@ -8102,7 +8092,6 @@ function buildPostHTML(post){
   const caption = post.caption || '';
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
   const cta = post.cta || '';
-  const storyPrompt = post.storyPrompt || '';
   const designNotes = post.designNotes || '';
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const weeklyPromo = post.weeklyPromo || '';
@@ -8117,7 +8106,6 @@ function buildPostHTML(post){
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
-    storyPrompt ? `<div class="calendar-card__story"><strong>Story Prompt:</strong> ${nl2br(storyPrompt)}</div>` : '',
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     (engage.commentReply||engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply?`<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>`:''}${engage.dmReply?`<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>`:''}</div>` : '',
@@ -8201,7 +8189,6 @@ function buildPostHTML(post){
         detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
       }
     }
-  // Story prompt+ intentionally omitted from calendar UI.
   if (post.followUpIdea) {
     detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
   }
@@ -8420,7 +8407,6 @@ if (document.readyState === 'loading') {
 
 const DEFAULT_IDEA_TEXT = 'Engaging post idea';
 const DEFAULT_CAPTION_TEXT = '';
-const DEFAULT_STORY_PROMPT_TEXT = '';
 
 const POST_SLOT_ANGLES = [
   {
@@ -8694,7 +8680,6 @@ function applySlotAngle(post, angle, slotNumber) {
   const cta = post.cta || '';
   if (angle.buildIdea) post.idea = angle.buildIdea(baseIdea, slotNumber);
   if (angle.buildCaption) post.caption = angle.buildCaption(baseIdea, cta, post.caption);
-  if (angle.buildStoryPrompt) post.storyPrompt = angle.buildStoryPrompt(baseIdea);
   if (angle.designNotes) post.designNotes = angle.designNotes;
   if (angle.repurpose) post.repurpose = mergeUnique(post.repurpose, angle.repurpose);
   if (angle.analytics) post.analytics = mergeUnique(post.analytics, angle.analytics);
@@ -8737,7 +8722,6 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
   };
   if (blueprint.idea) post.idea = blueprint.idea(normalized, helpers);
   if (blueprint.caption) post.caption = blueprint.caption(normalized, helpers);
-  if (blueprint.storyPrompt) post.storyPrompt = blueprint.storyPrompt(normalized, helpers);
   if (blueprint.designNotes) post.designNotes = blueprint.designNotes;
   if (blueprint.pillar) post.pillar = blueprint.pillar;
   if (blueprint.cta) post.cta = typeof blueprint.cta === 'function' ? blueprint.cta(normalized, helpers) : blueprint.cta;
@@ -8776,13 +8760,11 @@ function normalizeSignature(text = '') {
 function isGenericPost(post) {
   const idea = normalizeSignature(post.idea || '');
   const caption = normalizeSignature(post.caption || '');
-  const story = normalizeSignature(post.storyPrompt || '');
   return (
     !idea ||
     idea === normalizeSignature(DEFAULT_IDEA_TEXT) ||
     !caption ||
-    caption === normalizeSignature(DEFAULT_CAPTION_TEXT) ||
-    story === normalizeSignature(DEFAULT_STORY_PROMPT_TEXT)
+    caption === normalizeSignature(DEFAULT_CAPTION_TEXT)
   );
 }
 
@@ -8891,34 +8873,40 @@ function getSuggestedAudioTitle(post) {
 }
 
 function normalizePost(p, idx = 0, startDay = 1) {
+  const base = { ...(p || {}) };
+  Object.keys(base).forEach((key) => {
+    const normalizedKey = String(key || '').toLowerCase();
+    if (normalizedKey.includes('story') && normalizedKey.includes('prompt')) {
+      delete base[key];
+    }
+  });
   const out = {
-    day: typeof p.day === 'number' ? p.day : (startDay + idx),
-    idea: p.idea || p.title || DEFAULT_IDEA_TEXT,
-    type: p.type || 'educational',
-    caption: p.caption || DEFAULT_CAPTION_TEXT,
-    hashtags: Array.isArray(p.hashtags) ? p.hashtags : (p.hashtags ? String(p.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
-    format: p.format || '',
-    cta: p.cta || '',
-    pillar: p.pillar || '',
-    storyPrompt: p.storyPrompt || '',
-    designNotes: p.designNotes || '',
-    repurpose: Array.isArray(p.repurpose) && p.repurpose.length ? p.repurpose : (p.repurpose ? [p.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
-    analytics: Array.isArray(p.analytics) && p.analytics.length ? p.analytics : (p.analytics ? [p.analytics] : ['Reach','Saves']),
-    engagementScripts: p.engagementScripts || { commentReply: '', dmReply: '' },
-    promoSlot: typeof p.promoSlot === 'boolean' ? p.promoSlot : !!p.weeklyPromo,
-    weeklyPromo: typeof p.weeklyPromo === 'string' ? (p.promoSlot ? p.weeklyPromo : '') : '',
-    videoScript: p.videoScript || {},
-    variants: p.variants || undefined,
-    distributionPlan: p.distributionPlan || '',
-    audio: p.audio || '',
-    suggestedAudio: normalizeSuggestedAudio(p),
+    day: typeof base.day === 'number' ? base.day : (startDay + idx),
+    idea: base.idea || base.title || DEFAULT_IDEA_TEXT,
+    type: base.type || 'educational',
+    caption: base.caption || DEFAULT_CAPTION_TEXT,
+    hashtags: Array.isArray(base.hashtags) ? base.hashtags : (base.hashtags ? String(base.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
+    format: base.format || '',
+    cta: base.cta || '',
+    pillar: base.pillar || '',
+    designNotes: base.designNotes || '',
+    repurpose: Array.isArray(base.repurpose) && base.repurpose.length ? base.repurpose : (base.repurpose ? [base.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
+    analytics: Array.isArray(base.analytics) && base.analytics.length ? base.analytics : (base.analytics ? [base.analytics] : ['Reach','Saves']),
+    engagementScripts: base.engagementScripts || { commentReply: '', dmReply: '' },
+    promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
+    weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
+    videoScript: base.videoScript || {},
+    variants: base.variants || undefined,
+    distributionPlan: base.distributionPlan || '',
+    audio: base.audio || '',
+    suggestedAudio: normalizeSuggestedAudio(base),
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
-  if (!out.engagementScripts.commentReply && p.engagementScript) out.engagementScripts.commentReply = p.engagementScript;
+  if (!out.engagementScripts.commentReply && base.engagementScript) out.engagementScripts.commentReply = base.engagementScript;
   // Ensure hashtags have # prefix for display purposes later
   out.hashtags = Array.isArray(out.hashtags) ? out.hashtags : [];
-  return { ...p, ...out };
+  return { ...base, ...out };
 }
 
 // OpenAI API integration (via backend proxy)
@@ -10016,7 +10004,6 @@ function renderPublishHub(){
     if (tags) fullTextParts.push(`Hashtags: ${tags}`);
     if (post.format) fullTextParts.push(`Format: ${post.format}`);
     if (post.cta) fullTextParts.push(`CTA: ${post.cta}`);
-    if (post.storyPrompt) fullTextParts.push(`Story Prompt: ${post.storyPrompt}`);
     if (post.designNotes) fullTextParts.push(`Design Notes: ${post.designNotes}`);
     if (post.repurpose && Array.isArray(post.repurpose) && post.repurpose.length) fullTextParts.push(`Repurpose: ${post.repurpose.join(' • ')}`);
     if (post.promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);

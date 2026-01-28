@@ -74,7 +74,6 @@ function normalizePost(post, day) {
   if (!out.pillar) out.pillar = 'Education';
   if (!out.cta) out.cta = 'DM us for details';
   if (!out.format) out.format = 'Reel';
-  if (!out.storyPrompt) out.storyPrompt = 'Show behind-the-scenes of the process.';
   if (!out.designNotes) out.designNotes = 'Clean layout, bold headline.';
   if (!Array.isArray(out.repurpose) || !out.repurpose.length) {
     out.repurpose = ['Reel -> Carousel (3 slides)', 'Caption -> Story frames'];
@@ -96,7 +95,7 @@ function normalizePost(post, day) {
 
 function buildSingleDayPrompt(nicheStyle, day, post) {
   const snapshot = JSON.stringify(post || {}, null, 2);
-  return `You are a content strategist.\n\nRegenerate day ${day} for niche "${nicheStyle}". Keep the same JSON schema as the master calendar (day, idea, title if provided, type, caption, hashtags array, format, CTA, pillar, storyPrompt, designNotes, repurpose array, analytics array, engagementScripts object with commentReply/dmReply, promoSlot boolean, weeklyPromo string, videoScript {hook,body,cta}).\n\nCurrent post for reference (do NOT reuse text verbatim):\n${snapshot}\n\nReturn ONLY a JSON array with exactly one object for day ${day}.`;
+  return `You are a content strategist.\n\nRegenerate day ${day} for niche "${nicheStyle}". Keep the same JSON schema as the master calendar (day, idea, title if provided, type, caption, hashtags array, format, CTA, pillar, designNotes, repurpose array, analytics array, engagementScripts object with commentReply/dmReply, promoSlot boolean, weeklyPromo string, videoScript {hook,body,cta}). Do not add any extra keys beyond the schema.\n\nCurrent post for reference (do NOT reuse text verbatim):\n${snapshot}\n\nReturn ONLY a JSON array with exactly one object for day ${day}.`;
 }
 
 const server = http.createServer((req, res) => {

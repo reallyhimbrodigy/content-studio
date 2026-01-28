@@ -3,13 +3,6 @@
     "name": "Med Spa & Aesthetics",
     "patterns": ["med\\s*spa", "aesthetic", "skin\\s*clinic", "derma", "facial"],
     "presetGuidelines": [
-      "Story Prompts (Daily Engagement)",
-      "- Polls: \"Do you wash your face before bed? Yes / No\"",
-      "- Quizzes: \"Guess which treatment clears acne fastest?\"",
-      "- Q&A Stickers: \"Ask us anything about facials!\"",
-      "- Countdowns: \"2 days left for student discount\"",
-      "- Behind-the-scenes: Staff prepping rooms, mixing products.",
-      "",
       "Design Notes",
       "- Colors: Pastels + neutrals (soft pink, mint, beige) — youthful + calming.",
       "- Fonts: Clean sans-serif, modern.",

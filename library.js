@@ -76,7 +76,6 @@ function buildPostHTML(post) {
   const pillar = post.pillar || '';
   const format = post.format || '';
   const cta = post.cta || '';
-  const storyPrompt = post.storyPrompt || '';
   const designNotes = post.designNotes || '';
   const repurpose = Array.isArray(post.repurpose) ? post.repurpose : [];
   const analytics = Array.isArray(post.analytics) ? post.analytics : (post.analytics ? [post.analytics] : []);
@@ -95,7 +94,6 @@ function buildPostHTML(post) {
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
-    storyPrompt ? `<div class="calendar-card__story"><strong>Story Prompt:</strong> ${nl2br(storyPrompt)}</div>` : '',
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     analytics.length ? `<div class="calendar-card__analytics"><strong>Analytics:</strong> ${escapeHtml(analytics.join(', '))}</div>` : '',
@@ -135,9 +133,6 @@ function buildPostHTML(post) {
   }
   if (isLibraryUserPro && post.visualTemplate && post.visualTemplate.url) {
     detailBlocks.push(`<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`);
-  }
-  if (isLibraryUserPro && post.storyPromptExpanded) {
-    detailBlocks.push(`<div class="calendar-card__story-extended"><strong>Story prompt+</strong> ${escapeHtml(post.storyPromptExpanded)}</div>`);
   }
   if (isLibraryUserPro && post.followUpIdea) {
     detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);

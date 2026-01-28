@@ -8,8 +8,6 @@ const posts = Array.from({ length: 5 }, (_, idx) => ({
   script: { hook: 'Hook', body: 'Body', cta: 'CTA' },
   reelScript: { hook: 'Hook', body: 'Body', cta: 'CTA' },
   designNotes: 'Notes',
-  storyPrompt: 'Prompt',
-  storyPromptPlus: 'Prompt plus',
   engagementScripts: { commentReply: 'Comment', dmReply: 'DM' },
 }));
 

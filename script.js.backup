@@ -203,7 +203,7 @@ if (brandSaveBtn) {
 }
 
 const createCard = (post) => {
-  const { day, idea, type, caption, hashtags, format, cta, pillar, storyPrompt, designNotes, repurpose, analytics, engagementScript, promoSlot, videoScript, weeklyPromo } = post;
+  const { day, idea, type, caption, hashtags, format, cta, pillar, designNotes, repurpose, analytics, engagementScript, promoSlot, videoScript, weeklyPromo } = post;
   const card = document.createElement("article");
   card.className = "calendar-card";
   card.dataset.pillar = pillar || "";
@@ -240,11 +240,6 @@ const createCard = (post) => {
   const ctaEl = document.createElement("span");
   ctaEl.className = "calendar-card__cta";
   ctaEl.textContent = cta ? `CTA: ${cta}` : "";
-
-  // New MVP pack fields
-  const storyPromptEl = document.createElement("div");
-  storyPromptEl.className = "calendar-card__story";
-  if (storyPrompt) storyPromptEl.innerHTML = `<strong>Story Prompt:</strong> ${storyPrompt}`;
 
   const designNotesEl = document.createElement("div");
   designNotesEl.className = "calendar-card__design";
@@ -379,7 +374,7 @@ const createCard = (post) => {
   const detailsBody = document.createElement('div'); detailsBody.className = 'details-body';
   detailsBody.append(
     hashtagsEl, formatEl, ctaEl,
-    storyPromptEl, designNotesEl, repurposeEl, analyticsEl, engagementEl,
+    designNotesEl, repurposeEl, analyticsEl, engagementEl,
     promoSlotEl, weeklyPromoEl, videoScriptEl, variantsEl, actionsEl
   );
   details.append(summary, detailsBody);
@@ -840,7 +835,6 @@ function buildPostHTML(post){
   const caption = post.caption || '';
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
   const cta = post.cta || '';
-  const storyPrompt = post.storyPrompt || '';
   const designNotes = post.designNotes || '';
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const analytics = Array.isArray(post.analytics)? post.analytics : (post.analytics? [post.analytics] : []);
@@ -856,7 +850,6 @@ function buildPostHTML(post){
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
-    storyPrompt ? `<div class="calendar-card__story"><strong>Story Prompt:</strong> ${nl2br(storyPrompt)}</div>` : '',
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     analytics.length ? `<div class="calendar-card__analytics"><strong>Analytics:</strong> ${escapeHtml(analytics.join(', '))}</div>` : '',
