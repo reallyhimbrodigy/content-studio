@@ -10939,14 +10939,52 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   }
 }
 
+/* Calendar card restyle (scoped) */
 .page-calendar .calendar-card {
-  background: #0f0f0f;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
+  position: relative;
+  overflow: hidden;
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out;
 }
 
 .page-calendar .calendar-card::after {
   content: none;
+}
+
+.page-calendar .calendar-card__day {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: 4.2rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: rgba(255, 255, 255, 0.06);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.page-calendar .calendar-card__entries,
+.page-calendar .calendar-card__entry,
+.page-calendar .pc-card {
+  position: relative;
+  z-index: 1;
+}
+
+.page-calendar .calendar-card__entry {
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 0.75rem;
+}
+
+.page-calendar .calendar-card__entries--multi .calendar-card__entry + .calendar-card__entry {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .page-calendar .pc-card {
@@ -10968,17 +11006,25 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 600;
-  padding: 0.35rem 0.7rem;
+  padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.72);
   margin: 0;
 }
 
+.page-calendar .pc-chip--pillar {
+  background: #ffffff;
+  color: #000000;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
 .page-calendar .pc-chip--format {
+  background: transparent;
   border-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.58rem;
 }
 
 .page-calendar .pc-card-title .calendar-card__title {
@@ -10990,19 +11036,23 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 .page-calendar .pc-card-hook {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.35rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .page-calendar .pc-card-hook .calendar-card__hooks-label {
-  font-size: 0.62rem;
-  letter-spacing: 0.18em;
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .page-calendar .pc-card-hook .calendar-card__hook-line {
   margin: 0;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 1.02rem;
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -11012,13 +11062,15 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 
 .page-calendar .pc-card-cta {
   align-self: flex-start;
-  padding: 0.35rem 0.9rem;
+  padding: 0.4rem 1rem;
   border-radius: 999px;
   background: #ffffff;
   color: #000000;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.2;
+  max-width: min(100%, 360px);
+  transition: transform 140ms ease-out, filter 140ms ease-out;
 }
 
 .page-calendar .pc-card-cta strong {
@@ -11027,36 +11079,42 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 
 .page-calendar .pc-card-cta span {
   color: inherit;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-clamp: 2;
 }
 
 .page-calendar .pc-card-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
-.page-calendar .pc-card-actions .calendar-card__action {
-  font-size: 0.72rem;
-  padding: 0.25rem 0.55rem;
-  letter-spacing: 0.02em;
-  opacity: 0.65;
-}
-
+.page-calendar .pc-card-actions .calendar-card__action,
 .page-calendar .pc-card-actions .pro-gradient-btn {
-  background: transparent;
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+  letter-spacing: 0.02em;
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
   box-shadow: none;
-}
-
-.page-calendar .pc-card-actions .pro-gradient-btn:hover {
-  transform: none;
-  background: rgba(255, 255, 255, 0.08);
+  transition: opacity 140ms ease-out, transform 140ms ease-out, background 140ms ease-out;
 }
 
 .page-calendar .calendar-card__actions {
-  transition: opacity 0.2s ease;
+  transition: opacity 140ms ease-out;
+}
+
+.page-calendar .pc-card-actions .calendar-card__action:focus-visible,
+.page-calendar .pc-card-actions .pro-gradient-btn:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .page-calendar .calendar-card__actions.calendar-card__actions--alert {
@@ -11064,35 +11122,15 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   pointer-events: auto;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .page-calendar .calendar-card__actions {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .page-calendar .calendar-card:hover .calendar-card__actions,
-  .page-calendar .calendar-card:focus-within .calendar-card__actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-
-@media (hover: none) {
-  .page-calendar .calendar-card__actions {
-    opacity: 0.7;
-    pointer-events: auto;
-  }
-}
-
 .page-calendar .pc-accordions {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  margin-top: 0.4rem;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .page-calendar .pc-acc {
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.02);
   overflow: hidden;
@@ -11102,23 +11140,74 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.6rem;
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.65);
   border: 0;
-  padding: 1rem;
-  font-size: 0.7rem;
+  padding: 1rem 1.1rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   cursor: pointer;
+}
+
+.page-calendar .pc-acc-toggle::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  opacity: 0.6;
+  flex: 0 0 auto;
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="caption"]::before {
+  border-radius: 2px;
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="reel"]::before,
+.page-calendar .pc-acc-toggle[aria-controls*="video"]::before {
+  border: none;
+  background: rgba(255, 255, 255, 0.55);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  width: 9px;
+  height: 9px;
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="design"]::before {
+  transform: rotate(45deg);
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="engagement"]::before {
+  border-radius: 50%;
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="distribution"]::before {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.35);
+}
+
+.page-calendar .pc-acc-toggle[aria-controls*="details"]::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  border: none;
+}
+
+.page-calendar .pc-acc-toggle span {
+  margin-right: auto;
 }
 
 .page-calendar .pc-acc-toggle svg {
   width: 12px;
   height: 12px;
   opacity: 0.6;
-  transition: transform 0.2s ease;
+  transition: transform 140ms ease-out;
+  margin-left: auto;
 }
 
 .page-calendar .pc-acc.is-open .pc-acc-toggle svg {
@@ -11126,10 +11215,10 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 }
 
 .page-calendar .pc-acc-panel {
-  padding: 0.9rem 1rem 1rem;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 0.9rem 1.1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.05);
   display: grid;
-  gap: 0.6rem;
+  gap: 0.7rem;
 }
 
 .page-calendar .pc-acc-panel[hidden] {
@@ -11139,6 +11228,25 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 .page-calendar .pc-acc-panel .calendar-card__detail-row,
 .page-calendar .pc-acc-panel .calendar-card__caption-row {
   margin: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page-calendar .calendar-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.7);
+  }
+
+  .page-calendar .pc-card-cta:hover {
+    transform: translateY(-1px) scale(1.03);
+    filter: brightness(0.98);
+  }
+
+  .page-calendar .pc-card-actions .calendar-card__action:hover,
+  .page-calendar .pc-card-actions .pro-gradient-btn:hover {
+    opacity: 1;
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
+  }
 }
 
 .page-calendar .calendar.compact .pc-accordions {
