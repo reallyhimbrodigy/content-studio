@@ -10958,7 +10958,7 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   position: absolute;
   top: 14px;
   right: 16px;
-  font-size: 4.2rem;
+  font-size: 3.6rem;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -11031,6 +11031,8 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+  max-width: calc(100% - 72px);
+  overflow-wrap: anywhere;
 }
 
 .page-calendar .pc-card-hook {
@@ -11062,14 +11064,16 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 
 .page-calendar .pc-card-cta {
   align-self: flex-start;
-  padding: 0.4rem 1rem;
+  padding: 0.5rem 1rem;
   border-radius: 999px;
   background: #ffffff;
   color: #000000;
   font-size: 0.8rem;
   font-weight: 600;
-  line-height: 1.2;
-  max-width: min(100%, 360px);
+  line-height: 1.28;
+  max-width: 100%;
+  overflow: hidden;
+  word-break: break-word;
   transition: transform 140ms ease-out, filter 140ms ease-out;
 }
 
@@ -11131,7 +11135,7 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 
 .page-calendar .pc-acc {
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
   overflow: hidden;
 }
@@ -11141,61 +11145,46 @@ body.is-landing .lp-workflow .workflow-cta-bar{
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.6rem;
+  gap: 0.4rem;
   background: transparent;
   color: rgba(255, 255, 255, 0.65);
   border: 0;
-  padding: 1rem 1.1rem;
+  padding: 1.1rem 1.1rem;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.2em;
   cursor: pointer;
+  box-shadow: none;
 }
 
 .page-calendar .pc-acc-toggle::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 3px;
-  opacity: 0.6;
-  flex: 0 0 auto;
+  content: none !important;
+  display: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="caption"]::before {
-  border-radius: 2px;
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="reel"]::before,
 .page-calendar .pc-acc-toggle[aria-controls*="video"]::before {
-  border: none;
-  background: rgba(255, 255, 255, 0.55);
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
-  width: 9px;
-  height: 9px;
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="design"]::before {
-  transform: rotate(45deg);
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="engagement"]::before {
-  border-radius: 50%;
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="distribution"]::before {
-  width: 12px;
-  height: 8px;
-  border-radius: 2px;
-  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.35);
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle[aria-controls*="details"]::before {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.45);
-  border: none;
+  content: none !important;
 }
 
 .page-calendar .pc-acc-toggle span {
