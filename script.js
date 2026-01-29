@@ -5891,15 +5891,7 @@ initBrandBrainPanel({
 });
 
 function handleCalendarCardExpansion(card, expanded) {
-  const allCards = document.querySelectorAll('.calendar-card');
-  allCards.forEach((el) => {
-    if (el !== card) {
-      el.classList.remove('calendar-card--expanded');
-      el.querySelectorAll('details[open]').forEach((d) => {
-        d.open = false;
-      });
-    }
-  });
+  if (!card) return;
   card.classList.toggle('calendar-card--expanded', Boolean(expanded));
 }
 
@@ -5930,13 +5922,6 @@ const createCard = (post) => {
   if (entries.length > 1) entriesWrap.classList.add('calendar-card__entries--multi');
 
   entries.forEach((entry, idx) => entriesWrap.appendChild(buildEntry(entry, idx)));
-
-  const detailsList = card.querySelectorAll('details');
-  detailsList.forEach((detailsEl) => {
-    detailsEl.addEventListener('toggle', () => {
-      handleCalendarCardExpansion(card, detailsEl.open);
-    });
-  });
 
   card.append(dayEl, entriesWrap);
   return card;
@@ -6601,41 +6586,115 @@ const createCard = (post) => {
         createDetailRow('Suggested audio', audioRowText, 'calendar-card__audio suggested-audio')
       );
     }
-    const details = document.createElement('details');
-    const summary = document.createElement('summary');
-    summary.textContent = 'Details';
-    const detailsBody = document.createElement('div');
-    detailsBody.className = 'details-body';
-    [
-      hashtagsEl,
-      formatEl,
-      designNotesEl,
-      (() => {
-        const parts = [];
-        if (engagementEl) parts.push(engagementEl);
-        if (followUpText) parts.push(followUpText);
-        const value = parts.filter(Boolean).join('\n');
-        return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
-      })(),
-      promoSlotEl,
-      weeklyPromoEl,
-      videoScriptEl,
-      entry.distributionPlan ? createDetailRow('Distribution Plan', entry.distributionPlan, 'calendar-card__distribution') : null,
-    assetsEl,
-    ...proDetailNodes,
-    ...hiddenDetailNodes,
-      actionsEl,
-    ].filter(Boolean).forEach((node) => detailsBody.appendChild(node));
-    details.append(summary, detailsBody);
+    const engagementRow = (() => {
+      const parts = [];
+      if (engagementEl) parts.push(engagementEl);
+      if (followUpText) parts.push(followUpText);
+      const value = parts.filter(Boolean).join('\n');
+      return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
+    })();
+    const distributionPlanEl = entry.distributionPlan
+      ? createDetailRow('Distribution Plan', entry.distributionPlan, 'calendar-card__distribution')
+      : null;
 
     const pinnedBlock = entryEl._pinnedBlock;
-    entryEl.append(infoRows, ideaEl, typeEl);
-    if (pinnedBlock) entryEl.append(pinnedBlock);
-    if (hooksEl) entryEl.append(hooksEl);
-    entryEl.append(captionRow);
-    if (collapsedCtaEl) entryEl.append(collapsedCtaEl);
-    if (executionNotesEl) entryEl.append(executionNotesEl);
-    entryEl.append(details);
+    const cardBody = document.createElement('div');
+    cardBody.className = 'pc-card';
+    const topRow = document.createElement('div');
+    topRow.className = 'pc-card-top';
+    typeEl.classList.add('pc-chip', 'pc-chip--pillar');
+    if (typeEl.textContent.trim()) topRow.appendChild(typeEl);
+    if (format) {
+      const formatChip = document.createElement('span');
+      formatChip.className = 'pc-chip pc-chip--format';
+      formatChip.textContent = format;
+      topRow.appendChild(formatChip);
+    }
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'pc-card-title';
+    titleWrap.appendChild(ideaEl);
+    const hookWrap = document.createElement('div');
+    hookWrap.className = 'pc-card-hook';
+    if (hooksEl) hookWrap.appendChild(hooksEl);
+    if (collapsedCtaEl) collapsedCtaEl.classList.add('pc-card-cta');
+    actionsEl.classList.add('pc-card-actions');
+
+    const accordions = document.createElement('div');
+    accordions.className = 'pc-accordions';
+    const toNodeArray = (nodes) => {
+      if (!nodes) return [];
+      if (Array.isArray(nodes)) return nodes;
+      return [nodes];
+    };
+    const buildAccordion = (label, nodes) => {
+      const entries = toNodeArray(nodes).filter(Boolean).filter((node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        if (node === infoRows) return infoRows.children.length > 0;
+        return true;
+      });
+      if (!entries.length) return null;
+      const acc = document.createElement('div');
+      acc.className = 'pc-acc';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'pc-acc-toggle';
+      const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const panelId = `pc-acc-panel-${String(dayValue || 'day').padStart(2, '0')}-${idx}-${slug}`;
+      const toggleId = `pc-acc-toggle-${String(dayValue || 'day').padStart(2, '0')}-${idx}-${slug}`;
+      toggle.id = toggleId;
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-controls', panelId);
+      toggle.innerHTML = `<span>${label}</span><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const panel = document.createElement('div');
+      panel.className = 'pc-acc-panel';
+      panel.id = panelId;
+      panel.setAttribute('role', 'region');
+      panel.setAttribute('aria-hidden', 'true');
+      panel.setAttribute('aria-labelledby', toggleId);
+      panel.hidden = true;
+      entries.forEach((node) => panel.appendChild(node));
+      toggle.addEventListener('click', () => {
+        const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+        panel.hidden = isOpen;
+        panel.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
+        acc.classList.toggle('is-open', !isOpen);
+        const anyOpen = Boolean(card.querySelector('.pc-acc.is-open'));
+        handleCalendarCardExpansion(card, anyOpen);
+      });
+      acc.append(toggle, panel);
+      return acc;
+    };
+
+    const captionAcc = buildAccordion('Caption', [captionRow, hashtagsEl]);
+    const scriptAcc = buildAccordion(format === 'Reel' ? 'Reel Script' : 'Video Script', videoScriptEl);
+    const designAcc = buildAccordion('Design Notes', designNotesEl);
+    const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
+    const distributionAcc = buildAccordion('Distribution Plan', distributionPlanEl);
+    const detailsAcc = buildAccordion('Details', [
+      infoRows,
+      formatEl,
+      executionNotesEl,
+      promoSlotEl,
+      weeklyPromoEl,
+      assetsEl,
+      ...proDetailNodes,
+      ...hiddenDetailNodes,
+    ]);
+
+    [captionAcc, scriptAcc, designAcc, engagementAcc, distributionAcc, detailsAcc]
+      .filter(Boolean)
+      .forEach((acc) => accordions.appendChild(acc));
+
+    if (topRow.childNodes.length) cardBody.appendChild(topRow);
+    cardBody.appendChild(titleWrap);
+    if (pinnedBlock) cardBody.appendChild(pinnedBlock);
+    if (hooksEl) cardBody.appendChild(hookWrap);
+    if (collapsedCtaEl) cardBody.appendChild(collapsedCtaEl);
+    cardBody.appendChild(actionsEl);
+    if (accordions.childNodes.length) cardBody.appendChild(accordions);
+
+    entryEl.append(cardBody);
     return entryEl;
   }
 };
@@ -6711,12 +6770,15 @@ function getRegenErrorEl(triggerEl) {
 function setRegenError(triggerEl, message) {
   const errorEl = getRegenErrorEl(triggerEl);
   if (!errorEl) return;
+  const actionsEl = errorEl.closest('.calendar-card__actions');
   if (message) {
     errorEl.textContent = message;
     errorEl.hidden = false;
+    if (actionsEl) actionsEl.classList.add('calendar-card__actions--alert');
   } else {
     errorEl.textContent = '';
     errorEl.hidden = true;
+    if (actionsEl) actionsEl.classList.remove('calendar-card__actions--alert');
   }
 }
 
