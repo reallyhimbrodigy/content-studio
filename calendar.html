@@ -67,25 +67,6 @@
         box-shadow: none;
       }
 
-      .page-calendar .sidebar-toggle__bars,
-      .page-calendar .sidebar-toggle__bars::before,
-      .page-calendar .sidebar-toggle__bars::after {
-        display: block;
-        width: 18px;
-        height: 2px;
-        border-radius: 2px;
-        background: #ffffff;
-        transform: none;
-      }
-
-      .page-calendar .sidebar-toggle__bars::before {
-        margin-bottom: 4px;
-      }
-
-      .page-calendar .sidebar-toggle__bars::after {
-        margin-top: 4px;
-      }
-
       .page-calendar .app-hero .hero-topbar {
         display: flex;
         align-items: center;
@@ -141,6 +122,26 @@
       }
     }
 
+    @media (max-width: 768px) {
+      .page-calendar .sidebar-toggle__bars,
+      .page-calendar .sidebar-toggle__bars::before,
+      .page-calendar .sidebar-toggle__bars::after {
+        display: block;
+        width: 18px;
+        height: 2px;
+        border-radius: 2px;
+        background: #ffffff;
+      }
+
+      .page-calendar .sidebar-toggle__bars::before {
+        transform: translateY(-5px);
+      }
+
+      .page-calendar .sidebar-toggle__bars::after {
+        transform: translateY(5px);
+      }
+    }
+
     @media (min-width: 768px) {
       .page-calendar .app-hero .user-menu {
         display: flex;
@@ -168,6 +169,16 @@
       .page-calendar .app-hero .hero-topbar .profile-wrapper {
         order: 3;
         margin-left: 12px;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .page-calendar .sidebar-toggle {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        margin: 0;
+        box-shadow: 0 16px 28px rgba(0, 0, 0, 0.25);
       }
     }
   </style>
