@@ -6659,8 +6659,7 @@ const createCard = (post) => {
         panel.hidden = isOpen;
         panel.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
         acc.classList.toggle('is-open', !isOpen);
-        const anyOpen = Boolean(card.querySelector('.pc-acc.is-open'));
-        handleCalendarCardExpansion(card, anyOpen);
+        // Keep cards stable in the grid; avoid expanding layout on toggle.
       });
       acc.append(toggle, panel);
       return acc;
