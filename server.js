@@ -3278,35 +3278,35 @@ const CALENDAR_HARD_SEPARATION_BLOCK = [
 ].join('\n');
 
 const REGULAR_CONTENT_QUALITY_RULES_BLOCK = [
-  'REGULAR CONTENT RULES (EVERY post):',
-  '- Hook: 1 sentence. Must use one of: (a) contrast, (b) specific curiosity, (c) concrete stake. Ban generic openers: "Check out", "Curious about", "Ever wonder", "Hear from", "Discover", "Don\'t miss". No "game changer" unless justified by a concrete reason.',
-  '- Body: Deliver ONE clear takeaway and ONE Miami-specific anchor (neighborhood OR buyer/seller scenario OR listing feature OR local constraint). Include ONE real constraint/tradeoff (HOA rules, insurance, inspection, appraisal gap, property taxes, flood zone, condo reserves, bidding competition, timing, etc.). Do NOT invent precise statistics.',
-  '- CTA: single-step and explicit. Must be either:',
-  '  (1) Comment a keyword (e.g. "Comment \'TRUST\'"), or',
-  '  (2) DM a keyword (e.g. "DM \'LIST\'"), or',
-  '  (3) "Save this" / "Share this".',
-  '- Ban: "learn more", "check out the list", "schedule a tour now" without a keyword.',
-  '- No repetition: Do not repeat the hook sentence verbatim inside the caption/body.',
-  '- For Lifestyle posts, keep it tied to home choice (neighborhood fit, commute, costs, amenities) not generic tourism content.',
+  'REGULAR OUTPUT QUALITY (HARD RULES):',
+  '- Hooks: 1 sentence only. Must NOT start with: "Want to know", "Looking for", "This reveals", "Check out", "Curious", "You can\'t miss", "Discover". Must use ONE of: (a) contrast ("Most people think X; actually Y"), (b) specific curiosity with a Miami anchor, (c) concrete stake tied to buying/selling in Miami. No generic hype.',
+  '- Miami Anchor: Every post MUST include exactly ONE named Miami neighborhood OR named property type constraint (e.g., "Brickell condo", "Pinecrest schools", "Coral Gables", "Wynwood", "Downtown condo HOA", "flood zone/insurance", "condo reserves"). No tourism-only lifestyle.',
+  '- Constraint: Every post MUST include exactly ONE real tradeoff/friction (HOA rules, insurance, inspection, appraisal gap, property taxes, condo reserves, bidding war, timing, rental restrictions).',
+  '- Proof Object (required):',
+  '  * Social Proof: include one observable detail (e.g., "won against multiple offers", "negotiated seller credit after inspection", "avoided a condo reserves issue", "closed despite appraisal gap"). Do NOT invent precise stats.',
+  '  * Education: include one actionable heuristic (what to check first / what to decide first) tied to the Miami anchor + constraint.',
+  '  * Promotion: include one differentiator + one friction (fees/HOA/parking/reserves/insurance) and keep CTA as a DM keyword only.',
+  '  * Lifestyle: neighborhood fit + tradeoff + "who it\'s for" in one sentence.',
+  '- CTA: Must be ONE step only using a keyword:',
+  '  Either "DM \'KEYWORD\' ..." OR "Comment \'KEYWORD\' ...". No "learn more", no "schedule a tour" without a keyword.',
+  '- Avoid repetition: Do not repeat the Hook sentence verbatim in Caption or Body.',
 ].join('\n');
 
 const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = [
-  'BRAND BRAIN RULES (EVERY post):',
-  'The Reel Script BODY must naturally include ALL of the following, without labels, bullets, or explicit section headers:',
-  '1) Incorrect common belief in this niche + a replacement belief.',
-  '2) One non-obvious factor people ignore (constraint/tradeoff/timing/market nuance/financing/inspection/insurance/taxes/buyer psychology).',
-  '3) Decision-order correction: name what people decide first (wrong) and what they should decide first (right).',
-  '4) Second-order consequence if they don\'t change (time lost, negotiating power, opportunity cost, appraisal gap, insurance surprise, deal risk). No melodrama.',
-  '5) One conversion lever chosen per post (pick ONE: loss aversion, urgency, status, certainty). Express it through wording, do not name the lever.',
-  'Brand Brain guardrails:',
-  '- Hook diversity across a batch: do NOT use the same pattern more than once per batch. Specifically cap "Stop ___" / "Think ___? Think again" / "You\'re missing out" to max 1 occurrence EACH per batch.',
-  '- Do not use shaming/insults. No toxic teardown tone.',
-  '- Do not invent stats. If numbers appear, frame as examples, not claims.',
-].join('\n');
-
-const SOCIAL_PROOF_REQUIREMENT_BLOCK = [
-  'SOCIAL PROOF REQUIREMENT:',
-  '- Include: starting situation -> the constraint (one specific friction) -> what changed (one action/strategy) -> outcome (observable result). Avoid generic "client was happy" stories.',
+  'BRAND BRAIN DIFFERENTIATION (HARD RULES):',
+  '- Hook Diversity: In any batch, allow at most ONE hook that starts with "Stop". Also cap at most ONE of each pattern: "Think X? Think again", "You\'re missing out". Generate 4 distinct hook patterns across 4 pillars.',
+  '- Reel Script BODY must include ALL of these, naturally (no labels):',
+  '  (1) incorrect belief + replacement belief',
+  '  (2) one non-obvious factor (constraint/tradeoff)',
+  '  (3) decision-order correction using EXACT template:',
+  '      "Most people decide [WRONG FIRST DECISION]; decide [RIGHT FIRST DECISION] first."',
+  '  (4) second-order consequence if they don\'t change (practical, not melodrama)',
+  '  (5) choose EXACTLY ONE conversion lever per post and reflect it in wording:',
+  '      - Certainty: use "what to check", "how to verify", "steps", "framework"; ban urgency words.',
+  '      - Urgency: use "this week/now/before", "window", "move first"; ban "verify/steps/framework".',
+  '      - Loss aversion: use "avoid", "don\'t lose", "costs you"; ban urgency and framework language.',
+  '      - Status: use "savvy buyers", "insiders", "people who win"; ban urgency and heavy fear language.',
+  '  Do NOT mix levers.',
 ].join('\n');
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3412,13 +3412,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const regularCalendarContractBlock = !opts.brandBrainDirective
     ? `${REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK}\n${CALENDAR_HARD_SEPARATION_BLOCK}`
     : '';
-  const regularContentQualityBlock = REGULAR_CONTENT_QUALITY_RULES_BLOCK;
+  const regularContentQualityBlock = !opts.brandBrainDirective ? REGULAR_CONTENT_QUALITY_RULES_BLOCK : '';
   const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
-  const modeQualityBlock = [
-    regularContentQualityBlock,
-    brandBrainDifferentiationBlock,
-    SOCIAL_PROOF_REQUIREMENT_BLOCK,
-  ].filter(Boolean).join('\n');
+  const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
