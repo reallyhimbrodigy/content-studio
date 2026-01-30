@@ -3279,6 +3279,30 @@ const CALENDAR_HARD_SEPARATION_BLOCK = [
   '- The difference must be obvious without labeling.',
 ].join('\n');
 
+const REGULAR_CONTENT_QUALITY_RULES_BLOCK = [
+  'REGULAR CONTENT QUALITY RULES (applies to EVERY post):',
+  '- Hook must be scroll-stopping using one of: contrast, specific curiosity, or a concrete stake. Avoid generic openers like "Check out", "Curious about", "Ever wonder", "Don\'t miss".',
+  '- Body must deliver 1 clear point with 1 concrete Miami-specific example (neighborhood, buyer/seller scenario, listing feature, market dynamic). Do NOT invent precise statistics unless the user provided them.',
+  '- CTA must be single-step and low-friction (comment keyword OR DM OR "save/share"). No "learn more" as CTA.',
+  '- Keep tone helpful and informative. Do NOT use fear, teardown, shaming, or "you\'re making a mistake" language.',
+  '- Do not repeat the hook sentence verbatim in the caption or body. Avoid filler and hype phrases ("game changer", "must-see", "don\'t miss out") unless grounded in a concrete reason.',
+].join('\n');
+
+const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = [
+  'BRAND BRAIN DIFFERENTIATION RULES (applies to EVERY post):',
+  'The Reel Script MUST naturally include ALL of the following, without labels or explicit section headers:',
+  '1) A common belief in this niche that is incorrect (implied or stated), and a replacement belief that is more accurate.',
+  '2) One non-obvious factor people ignore (constraint, tradeoff, timing, neighborhood nuance, financing/inspection/insurance/taxes, buyer psychology, etc.).',
+  '3) A decision-order correction: explicitly state the wrong thing people decide first and what they should decide first instead.',
+  '4) A second-order consequence: what happens after the obvious outcome if they don\'t change (time lost, negotiating power, opportunity cost, insurance surprises, appraisal gap, etc.). No melodrama.',
+  '5) A specific conversion lever: choose ONE per post (loss aversion, urgency, status, certainty). It must be expressed through the script, not named.',
+  'Guardrails:',
+  '- Do NOT use generic "Stop ___" hooks as a default. Use them only when the content genuinely supports it. Prefer specific, surprising hooks.',
+  '- No vague claims or invented numbers. If you use numbers, they must be framed as examples ("for example, a buyer can face...") not factual stats.',
+  '- Brand Brain must feel meaningfully sharper than regular, but still credible and not toxic.',
+  '- Across the 4 pillars in a batch, vary the hook style. Do not reuse the same hook pattern ("Stop ___", "You\'re missing out...", "Think ___? Think again!") more than once per batch.',
+].join('\n');
+
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
@@ -3382,6 +3406,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const regularCalendarContractBlock = !opts.brandBrainDirective
     ? `${REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK}\n${CALENDAR_HARD_SEPARATION_BLOCK}`
     : '';
+  const regularContentQualityBlock = !opts.brandBrainDirective ? REGULAR_CONTENT_QUALITY_RULES_BLOCK : '';
+  const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
+  const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
@@ -3461,6 +3488,7 @@ RULES:
 - topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
 - Each post must include all required fields and non-empty values.
 - Generate each post fully before starting the next.
+${modeQualityBlock}
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
