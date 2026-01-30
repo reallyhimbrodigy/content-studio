@@ -3244,7 +3244,6 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- CTA: one clear action tied to the post intent.',
   '- Pillar must be exactly one of: Education, Social Proof, Promotion, Lifestyle.',
   '- Format must be "Reel" for every post.',
-  '- No storyPrompt. No extra keys beyond the schema.',
   '',
   'OUTPUT CONSTRAINTS (REGULAR)',
   '- Return ONLY valid JSON matching schema. No markdown. No prose outside JSON.',
@@ -3263,7 +3262,6 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- No "how-to", "3 tips", or step-by-step checklists. Imply the method; do not fully teach it.',
   '- Include a clear DM keyword + next-step follow-up in engagementScripts (commentReply + dmReply).',
   '- Format must be "Reel" for every post.',
-  '- No storyPrompt. No extra keys beyond the schema.',
   '',
   'OUTPUT CONSTRAINTS (BRAND BRAIN)',
   '- Return ONLY valid JSON matching schema. No markdown. No prose outside JSON.',
@@ -3280,27 +3278,35 @@ const CALENDAR_HARD_SEPARATION_BLOCK = [
 ].join('\n');
 
 const REGULAR_CONTENT_QUALITY_RULES_BLOCK = [
-  'REGULAR CONTENT QUALITY RULES (applies to EVERY post):',
-  '- Hook must be scroll-stopping using one of: contrast, specific curiosity, or a concrete stake. Avoid generic openers like "Check out", "Curious about", "Ever wonder", "Don\'t miss".',
-  '- Body must deliver 1 clear point with 1 concrete Miami-specific example (neighborhood, buyer/seller scenario, listing feature, market dynamic). Do NOT invent precise statistics unless the user provided them.',
-  '- CTA must be single-step and low-friction (comment keyword OR DM OR "save/share"). No "learn more" as CTA.',
-  '- Keep tone helpful and informative. Do NOT use fear, teardown, shaming, or "you\'re making a mistake" language.',
-  '- Do not repeat the hook sentence verbatim in the caption or body. Avoid filler and hype phrases ("game changer", "must-see", "don\'t miss out") unless grounded in a concrete reason.',
+  'REGULAR CONTENT RULES (EVERY post):',
+  '- Hook: 1 sentence. Must use one of: (a) contrast, (b) specific curiosity, (c) concrete stake. Ban generic openers: "Check out", "Curious about", "Ever wonder", "Hear from", "Discover", "Don\'t miss". No "game changer" unless justified by a concrete reason.',
+  '- Body: Deliver ONE clear takeaway and ONE Miami-specific anchor (neighborhood OR buyer/seller scenario OR listing feature OR local constraint). Include ONE real constraint/tradeoff (HOA rules, insurance, inspection, appraisal gap, property taxes, flood zone, condo reserves, bidding competition, timing, etc.). Do NOT invent precise statistics.',
+  '- CTA: single-step and explicit. Must be either:',
+  '  (1) Comment a keyword (e.g. "Comment \'TRUST\'"), or',
+  '  (2) DM a keyword (e.g. "DM \'LIST\'"), or',
+  '  (3) "Save this" / "Share this".',
+  '- Ban: "learn more", "check out the list", "schedule a tour now" without a keyword.',
+  '- No repetition: Do not repeat the hook sentence verbatim inside the caption/body.',
+  '- For Lifestyle posts, keep it tied to home choice (neighborhood fit, commute, costs, amenities) not generic tourism content.',
 ].join('\n');
 
 const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = [
-  'BRAND BRAIN DIFFERENTIATION RULES (applies to EVERY post):',
-  'The Reel Script MUST naturally include ALL of the following, without labels or explicit section headers:',
-  '1) A common belief in this niche that is incorrect (implied or stated), and a replacement belief that is more accurate.',
-  '2) One non-obvious factor people ignore (constraint, tradeoff, timing, neighborhood nuance, financing/inspection/insurance/taxes, buyer psychology, etc.).',
-  '3) A decision-order correction: explicitly state the wrong thing people decide first and what they should decide first instead.',
-  '4) A second-order consequence: what happens after the obvious outcome if they don\'t change (time lost, negotiating power, opportunity cost, insurance surprises, appraisal gap, etc.). No melodrama.',
-  '5) A specific conversion lever: choose ONE per post (loss aversion, urgency, status, certainty). It must be expressed through the script, not named.',
-  'Guardrails:',
-  '- Do NOT use generic "Stop ___" hooks as a default. Use them only when the content genuinely supports it. Prefer specific, surprising hooks.',
-  '- No vague claims or invented numbers. If you use numbers, they must be framed as examples ("for example, a buyer can face...") not factual stats.',
-  '- Brand Brain must feel meaningfully sharper than regular, but still credible and not toxic.',
-  '- Across the 4 pillars in a batch, vary the hook style. Do not reuse the same hook pattern ("Stop ___", "You\'re missing out...", "Think ___? Think again!") more than once per batch.',
+  'BRAND BRAIN RULES (EVERY post):',
+  'The Reel Script BODY must naturally include ALL of the following, without labels, bullets, or explicit section headers:',
+  '1) Incorrect common belief in this niche + a replacement belief.',
+  '2) One non-obvious factor people ignore (constraint/tradeoff/timing/market nuance/financing/inspection/insurance/taxes/buyer psychology).',
+  '3) Decision-order correction: name what people decide first (wrong) and what they should decide first (right).',
+  '4) Second-order consequence if they don\'t change (time lost, negotiating power, opportunity cost, appraisal gap, insurance surprise, deal risk). No melodrama.',
+  '5) One conversion lever chosen per post (pick ONE: loss aversion, urgency, status, certainty). Express it through wording, do not name the lever.',
+  'Brand Brain guardrails:',
+  '- Hook diversity across a batch: do NOT use the same pattern more than once per batch. Specifically cap "Stop ___" / "Think ___? Think again" / "You\'re missing out" to max 1 occurrence EACH per batch.',
+  '- Do not use shaming/insults. No toxic teardown tone.',
+  '- Do not invent stats. If numbers appear, frame as examples, not claims.',
+].join('\n');
+
+const SOCIAL_PROOF_REQUIREMENT_BLOCK = [
+  'SOCIAL PROOF REQUIREMENT:',
+  '- Include: starting situation -> the constraint (one specific friction) -> what changed (one action/strategy) -> outcome (observable result). Avoid generic "client was happy" stories.',
 ].join('\n');
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3406,9 +3412,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const regularCalendarContractBlock = !opts.brandBrainDirective
     ? `${REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK}\n${CALENDAR_HARD_SEPARATION_BLOCK}`
     : '';
-  const regularContentQualityBlock = !opts.brandBrainDirective ? REGULAR_CONTENT_QUALITY_RULES_BLOCK : '';
+  const regularContentQualityBlock = REGULAR_CONTENT_QUALITY_RULES_BLOCK;
   const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
-  const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
+  const modeQualityBlock = [
+    regularContentQualityBlock,
+    brandBrainDifferentiationBlock,
+    SOCIAL_PROOF_REQUIREMENT_BLOCK,
+  ].filter(Boolean).join('\n');
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
@@ -3421,7 +3431,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string (min 8 characters), except numeric fields defined as numbers or arrays defined as arrays.',
     '- Never omit a field. Never change field names. Never nest unexpected keys.',
     '- The ONLY allowed keys are those required by the schema; do not add any extra keys.',
-    '- Do not include storyPrompt or any additional fields.',
     '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
     '- NOTE: Output contract prevents parse failures (422 missing_posts_parse_failed).',
     'MUST RETURN JSON ONLY (STRICT)',
@@ -3488,7 +3497,6 @@ RULES:
 - topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
 - Each post must include all required fields and non-empty values.
 - Generate each post fully before starting the next.
-${modeQualityBlock}
 ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 `;
   const hardOutputContractBlock = [
@@ -3531,7 +3539,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     '5) designNotes includes 0-2s, 2-5s, 5-12s, 12-18s, 18-22s; engagementScripts include commentReply + dmReply; distributionPlan has TikTok/Instagram lines.',
     'If any check fails, fix it BEFORE outputting.',
   ].join('\n');
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${hardOutputContractBlock}`;
+  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${modeQualityBlock}\n${hardOutputContractBlock}`;
   return finalPrompt;
 }
 
