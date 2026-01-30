@@ -501,7 +501,9 @@ function wait(ms) {
 
 function sendJson(res, statusCode, payload) {
   const headers = { 'Content-Type': 'application/json' };
+  const existingRequestId = res.getHeader('x-request-id');
   if (payload && payload.requestId) headers['x-request-id'] = payload.requestId;
+  else if (existingRequestId) headers['x-request-id'] = existingRequestId;
   res.writeHead(statusCode, headers);
   res.end(JSON.stringify(payload));
 }
@@ -9274,7 +9276,9 @@ const server = http.createServer((req, res) => {
             return sendJson(res, 402, {
               ok: false,
               error: 'upgrade_required',
+              message: 'Upgrade required to regenerate the calendar.',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
+              requestId,
             });
           }
         }
@@ -9314,6 +9318,7 @@ const server = http.createServer((req, res) => {
     (async () => {
       let body = null;
       const requestId = generateRequestId('regen');
+      res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
       let clientAborted = false;
@@ -9489,92 +9494,98 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, responsePayload);
       } catch (err) {
         if (clientAborted || req.aborted || res.writableEnded) return;
+        const safeError = err instanceof Error ? err : new Error(String(err));
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
           startDay: body?.startDay,
           nicheStyle: body?.nicheStyle,
         };
-        const isSchemaError = err?.code === 'OPENAI_SCHEMA_ERROR';
-        const isInvalidJson = err?.code === 'INVALID_MODEL_JSON';
-        const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
-        const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
+        const isSchemaError = safeError?.code === 'OPENAI_SCHEMA_ERROR';
+        const isInvalidJson = safeError?.code === 'INVALID_MODEL_JSON';
+        const isTopicBinding = safeError?.code === 'TOPIC_BINDING_FAILED';
+        const isPostKeyMapping = safeError?.code === 'POST_KEY_MAPPING_FAILED';
         const debugSchema = !isProduction || String(req.headers['x-debug'] || '') === '1';
         if (isSchemaError && debugSchema) {
-          const promptMeta = err?.promptMeta || {};
-          const rawText = err?.rawContent ? String(err.rawContent) : '';
+          const promptMeta = safeError?.promptMeta || {};
+          const rawText = safeError?.rawContent ? String(safeError.rawContent) : '';
           const rawPreview = rawText ? rawText.slice(0, 2000) : null;
           const rawTail = rawText ? rawText.slice(-500) : null;
-          const openaiDetails = err?.openaiDetails || {};
+          const openaiDetails = safeError?.openaiDetails || {};
           console.warn('[Calendar][SchemaError][Debug]', {
             requestId,
-            mode: err?.mode || 'unknown',
-            schemaName: err?.schemaName || 'calendar_batch',
-            model: err?.model || 'gpt-4o-mini',
-            responseFormat: err?.responseFormat || null,
+            mode: safeError?.mode || 'unknown',
+            schemaName: safeError?.schemaName || 'calendar_batch',
+            model: safeError?.model || 'gpt-4o-mini',
+            responseFormat: safeError?.responseFormat || null,
             promptChars: promptMeta.chars || null,
             promptHash: promptMeta.hash || null,
-            openaiMessage: openaiDetails.openaiMessage || err?.message || null,
+            openaiMessage: openaiDetails.openaiMessage || safeError?.message || null,
             openaiType: openaiDetails.openaiType || null,
             openaiParam: openaiDetails.openaiParam || null,
-            schemaDetails: err?.details || null,
+            schemaDetails: safeError?.details || null,
             rawOutputPreview: rawPreview,
             rawOutputTail: rawTail,
           });
         }
         const logInfo = { requestId, context: errorContext };
+        logInfo.errorName = safeError?.name;
+        logInfo.errorCode = safeError?.code;
+        logInfo.errorStatus = safeError?.statusCode || safeError?.status || null;
         if (isSchemaError) {
-          if (err?.schemaSnippet) logInfo.schemaSnippet = err.schemaSnippet;
-          if (err?.details) logInfo.schemaPayload = err.details;
-          if (err?.rawContent) logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
+          if (safeError?.schemaSnippet) logInfo.schemaSnippet = safeError.schemaSnippet;
+          if (safeError?.details) logInfo.schemaPayload = safeError.details;
+          if (safeError?.rawContent) logInfo.rawContentPreview = String(safeError.rawContent).slice(0, 400);
         }
         if (isSchemaError) {
           console.error('[Calendar][SchemaError]', {
             requestId,
-            message: err?.message || '',
-            code: err?.code || '',
-            statusCode: err?.statusCode || '',
-            errorPayload: err?.details?.error || null,
-            responseFormat: err?.details?.response_format || null,
-            schemaKeys: err?.details?.schemaKeys || null,
-            openaiDetails: err?.openaiDetails || null,
-            mode: err?.mode || null,
+            message: safeError?.message || '',
+            code: safeError?.code || '',
+            statusCode: safeError?.statusCode || '',
+            errorPayload: safeError?.details?.error || null,
+            responseFormat: safeError?.details?.response_format || null,
+            schemaKeys: safeError?.details?.schemaKeys || null,
+            openaiDetails: safeError?.openaiDetails || null,
+            mode: safeError?.mode || null,
           });
         }
-        if (isInvalidJson && err?.rawContent) {
-          logInfo.rawContentPreview = String(err.rawContent).slice(0, 400);
+        if (isInvalidJson && safeError?.rawContent) {
+          logInfo.rawContentPreview = String(safeError.rawContent).slice(0, 400);
         }
-        logServerError('calendar_regenerate_error', err, logInfo);
+        logServerError('calendar_regenerate_error', safeError, logInfo);
         if (res.headersSent) return;
         if (isTopicBinding || isPostKeyMapping) {
           if (isTopicBinding) {
             return sendJson(res, 422, {
               error: 'TOPIC_BINDING_FAILED',
+              message: 'Topic binding failed for this post.',
               requestId,
-              post_key: err?.payload?.post_key,
-              failedFields: err?.payload?.failedFields,
+              post_key: safeError?.payload?.post_key,
+              failedFields: safeError?.payload?.failedFields,
             });
           }
           return sendJson(res, 422, {
             error: 'PostKeyMappingFailed',
-            ...(err?.payload || {}),
+            message: 'Post key mapping failed for this batch.',
+            ...(safeError?.payload || {}),
             requestId,
           });
         }
         if (isSchemaError) {
-          const rawText = err?.rawContent ? String(err.rawContent) : '';
+          const rawText = safeError?.rawContent ? String(safeError.rawContent) : '';
           const schemaDetails = debugSchema
             ? {
-              schemaDetails: err?.details || null,
-              promptMeta: err?.promptMeta || null,
+              schemaDetails: safeError?.details || null,
+              promptMeta: safeError?.promptMeta || null,
               rawOutputPreview: rawText ? rawText.slice(0, 2000) : null,
               rawOutputTail: rawText ? rawText.slice(-500) : null,
-              model: err?.model || null,
-              schemaName: err?.schemaName || null,
-              responseFormat: err?.responseFormat || null,
-              mode: err?.mode || null,
+              model: safeError?.model || null,
+              schemaName: safeError?.schemaName || null,
+              responseFormat: safeError?.responseFormat || null,
+              mode: safeError?.mode || null,
             }
-            : (err?.details || null);
+            : (safeError?.details || null);
           return sendJson(res, 422, {
             error: 'CALENDAR_SCHEMA_MISMATCH',
             message: 'Calendar output did not meet required fields.',
@@ -9582,25 +9593,23 @@ const server = http.createServer((req, res) => {
             details: schemaDetails,
           });
         }
-        const status = isInvalidJson ? 400 : (err?.statusCode || 500);
-        const openaiDetails = err?.openaiDetails || {};
-        const message = err?.message || 'Internal Server Error';
+        const upstreamStatus = safeError?.upstreamStatus || safeError?.statusCode || safeError?.status || null;
+        const status = isInvalidJson ? 400 : (Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : 500);
+        const safeStatus = status === 502 ? 500 : status;
+        const message = safeError?.message || 'Internal Server Error';
         const payload = {
-          error: isSchemaError
-            ? 'openai_schema_error'
-            : (err?.code || (isInvalidJson ? 'invalid_model_json' : 'CALENDAR_REGENERATE_FAILED')),
-          message: isSchemaError ? 'openai_schema_error' : (isInvalidJson ? 'invalid_model_json' : message),
+          error: 'REGENERATE_FAILED',
+          message,
           requestId,
-          context: errorContext,
-          details: isSchemaError
-            ? {
-              openaiType: openaiDetails.openaiType || null,
-              openaiMessage: openaiDetails.openaiMessage || null,
-              openaiParam: openaiDetails.openaiParam || null,
-            }
-            : undefined,
+          details: {
+            type: safeError?.code || safeError?.name || 'unknown_error',
+            upstreamStatus: upstreamStatus || null,
+            upstreamMessage: safeError?.openaiDetails?.openaiMessage || null,
+            code: safeError?.code || null,
+            where: 'calendar_regenerate',
+          },
         };
-        return sendJson(res, status, payload);
+        return sendJson(res, safeStatus, payload);
       }
     })();
     return;

@@ -9084,40 +9084,51 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         body: JSON.stringify(payload),
         signal: runSignal,
       });
+      const reqIdHeader = response.headers.get('x-request-id') || null;
       const responseText = await response.text();
-      const parsedDetail = (() => {
+      let parsedDetail = null;
+      let parseFailed = false;
+      if (responseText) {
         try {
-          return responseText ? JSON.parse(responseText) : null;
+          parsedDetail = JSON.parse(responseText);
         } catch {
-          return null;
+          parseFailed = true;
         }
-      })();
+      }
       const ct = response.headers.get('content-type') || '';
-      const bodyIsHtml = /<!DOCTYPE/i.test(responseText.trim()) || ct.toLowerCase().includes('text/html') || responseText.trim().startsWith('<html');
+      const trimmedBody = responseText.trim();
+      const bodyIsHtml = /<!DOCTYPE/i.test(trimmedBody) || ct.toLowerCase().includes('text/html') || trimmedBody.startsWith('<html');
       if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
-        const data = parsedDetail || {};
-        let dataString = '';
-        try {
-          dataString = JSON.stringify(data);
-        } catch {
-          dataString = response.statusText || 'invalid_response';
+        let data = parsedDetail || null;
+        if (!responseText) {
+          data = { message: 'empty_error_body' };
+        } else if (parseFailed) {
+          data = { message: 'non_json_error_body', raw: responseText.slice(0, 500) };
         }
-        const msg = data?.error?.message || data?.message || dataString || response.statusText || 'invalid_response';
-        const preview = responseText.slice(0, 300);
+        const msg = data?.error?.message || data?.message || response.statusText || `HTTP_${response.status}`;
+        const requestId = data?.requestId || data?.error?.requestId || reqIdHeader || null;
         lastGenerationErrorStatus = response.status;
-        lastGenerationRequestId = data?.requestId || data?.error?.requestId || null;
+        lastGenerationRequestId = requestId;
         lastGenerationErrorCode = data?.error?.code || data?.code || null;
         console.error('[Calendar] fetchBatch bad response', {
           batchIndex,
           status: response.status,
-          requestId: data?.requestId || data?.error?.requestId || null,
+          requestId,
           error: msg,
         });
         if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
           lastGenerationErrorCode = data?.error?.code;
-          throw new Error('openai_schema_error');
+          const schemaErr = new Error('openai_schema_error');
+          schemaErr.status = response.status;
+          schemaErr.requestId = requestId;
+          schemaErr.payload = data;
+          throw schemaErr;
         }
-        throw new Error(msg);
+        const err = new Error(msg);
+        err.status = response.status;
+        err.requestId = requestId;
+        err.payload = data;
+        throw err;
       }
       if (firstDispatchLogged) {
         console.log(`[Calendar][Perf] first batch response received (t=${Math.round(performance.now())}ms)`);
@@ -9132,6 +9143,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         }
         showUpgradeModal();
         lastGenerationErrorCode = 'upgrade_required';
+        const upgradeRequestId = responsePayload?.requestId || reqIdHeader;
+        if (upgradeRequestId) lastGenerationRequestId = upgradeRequestId;
         throw new Error('upgrade_required');
       }
 
@@ -9141,7 +9154,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           payload: responsePayload,
           body: responseText,
         });
-        throw new Error('API error: invalid_json');
+        if (reqIdHeader) lastGenerationRequestId = reqIdHeader;
+        const err = new Error('API error: invalid_json');
+        err.status = response.status;
+        err.requestId = reqIdHeader || null;
+        err.payload = null;
+        throw err;
       }
 
       const postsCandidate =
@@ -9151,7 +9169,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         responsePayload.items ??
         responsePayload;
       const calendarId = responsePayload.calendarId ?? responsePayload.id ?? responsePayload.calendar?.id ?? null;
-      const requestIdFromPayload = responsePayload.requestId;
+      const requestIdFromPayload = responsePayload.requestId || reqIdHeader;
       if (requestIdFromPayload) lastGenerationRequestId = requestIdFromPayload;
       if (!Array.isArray(postsCandidate)) {
         console.error('[Calendar] fetchBatch invalid JSON response', {
@@ -9159,7 +9177,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           payload: responsePayload,
           body: responseText,
         });
-        throw new Error('API error: invalid_json');
+        if (requestIdFromPayload || reqIdHeader) lastGenerationRequestId = requestIdFromPayload || reqIdHeader;
+        const err = new Error('API error: invalid_json');
+        err.status = response.status;
+        err.requestId = requestIdFromPayload || reqIdHeader || null;
+        err.payload = responsePayload || null;
+        throw err;
       }
 
       postsCandidate.forEach((post) => {
