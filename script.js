@@ -6353,7 +6353,7 @@ const createCard = (post) => {
       row.append(label, text);
       return row;
     };
-    const collapsedCtaEl = cta ? createPrimaryCtaRow(cta) : null;
+    const collapsedCtaEl = null;
 
     const buildReelScript = () => {
       const label = format === 'Reel' ? 'Reel Script' : 'Video Script';
