@@ -6003,8 +6003,16 @@ const createCard = (post) => {
 
 
     const hookText = ensureReelScriptHook(entry);
+    const normalizeCtaLine = (text) => String(text || '').replace(/^cta\s*[:\-]\s*/i, '').trim().toLowerCase();
+    const normalizedCtaLine = normalizeCtaLine(cta);
+    const hookDisplayText = hookText
+      .split(/\r?\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !normalizedCtaLine || normalizeCtaLine(line) !== normalizedCtaLine)
+      .join('\n');
     let hooksEl = null;
-    if (hookText) {
+    if (hookDisplayText) {
       hooksEl = document.createElement('div');
       hooksEl.className = 'calendar-card__hooks';
       const hooksLabel = document.createElement('span');
@@ -6012,7 +6020,7 @@ const createCard = (post) => {
       hooksLabel.textContent = 'Hook';
       const hookLine = document.createElement('p');
       hookLine.className = 'calendar-card__hook-line';
-      hookLine.textContent = hookText;
+      hookLine.textContent = hookDisplayText;
       hooksEl.append(hooksLabel, hookLine);
     }
 
