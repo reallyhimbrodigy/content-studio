@@ -3193,7 +3193,7 @@ const FIELD_REGROUNDING_BLOCK = [
 const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   'SHORT-FORM CONTRACT:',
   '- Output all required fields, non-empty.',
-  '- No fabricated facts: do not invent stats, dates/years, client stories, awards, sales numbers, exclusive listings, or real-world proof unless provided in input context.',
+  '- No fabricated facts: do not invent stats, dates/years, client stories, awards, sales numbers, exclusive offers, or real-world proof unless provided in input context.',
   '- Temporal grounding (internal): classify TIME_SENSITIVE vs EVERGREEN.',
   '- TIME_SENSITIVE may use CALENDAR CONTEXT for month/year/day; EVERGREEN forbids time words.',
   '- On-topic: Hook, Caption, Reel Script must include >= 2 exact words from Title/Topic; Reel Script first sentence must include them.',
@@ -3230,6 +3230,7 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- Include at least one specific, concrete detail per post (number, constraint, or scenario) without referencing outdated years or inventing real-world stats.',
   '- Do not assume niche-specific facts beyond the provided niche label.',
   '- ReelScript hook/body/cta must align to Hook/Caption/CTA without repeating verbatim; no off-topic drift.',
+  '- Hook, caption, reelScript, and CTA must not restate each other; each must add new information or perspective.',
 ].join('\n');
 
 const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
@@ -3278,6 +3279,7 @@ const REGULAR_CONTENT_QUALITY_RULES_BLOCK = [
   'FORBIDDEN LANGUAGE (HARD BLOCK):',
   '- No persuasion/positioning language or hype terms.',
   '- If any of the above language appears, rewrite the content until it is removed.',
+  '- Do not use belief reversal, myth busting, hidden constraints, consequence framing, or persuasion language.',
   'HOOK CONSTRAINT (REQUIRED STRUCTURE):',
   '- All hooks must promise information or visibility, not persuasion.',
   '- Avoid urgency or fear.',
@@ -3297,11 +3299,12 @@ const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = [
   'BRAND BRAIN PURPOSE (VERBATIM):',
   'REQUIRED 4-PART STRUCTURE (MANDATORY):',
   '- Challenged belief: a commonly held assumption in the niche.',
-  '- Why that belief fails in THIS market + a market-specific constraint.',
+  '- Why that belief fails in THIS category + a category-specific constraint.',
   '- Concrete consequence: what goes wrong if the belief is followed.',
   '- Alternative behavior: what to think about or check instead.',
   '- If any element is missing, rewrite until all four are present.',
   'Each post must explicitly include: (1) a false belief the audience holds, (2) one concrete hidden constraint in the niche, (3) a decision reversal (most people do X; do Y instead), and (4) a specific consequence of ignoring the constraint; keep all parts aligned to the post title and niche.',
+  '- Belief reversal and myth framing are required and allowed; "stop believing" phrasing is allowed.',
   'HOOK VARIETY RULE:',
   '- Do not reuse the same hook phrasing across posts.',
   'LIFESTYLE DISTINCTION RULE:',
