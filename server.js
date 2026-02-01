@@ -5783,12 +5783,16 @@ function buildRequiredFieldDiagnostics(post = {}) {
     if (expected === 'array') {
       if (!Array.isArray(value)) {
         invalidTypes.push({ key, expected, got: Array.isArray(value) ? 'array' : typeof value });
+      } else if (!value.length) {
+        empty.push(key);
       }
       continue;
     }
     if (expected === 'object') {
       if (typeof value !== 'object' || Array.isArray(value)) {
         invalidTypes.push({ key, expected, got: Array.isArray(value) ? 'array' : typeof value });
+      } else if (!Object.keys(value).length) {
+        empty.push(key);
       }
       continue;
     }
@@ -9001,8 +9005,10 @@ const server = http.createServer((req, res) => {
         const missingKeys = new Set();
         const emptyKeys = new Set();
         const typeMismatches = new Map();
+        const actualTopLevelKeys = new Set();
         fatalEntries.forEach((entry) => {
           const post = rawPosts[entry.index] && typeof rawPosts[entry.index] === 'object' ? rawPosts[entry.index] : {};
+          Object.keys(post).forEach((key) => actualTopLevelKeys.add(key));
           const diagnostics = buildRequiredFieldDiagnostics(post);
           diagnostics.missing.forEach((key) => missingKeys.add(key));
           diagnostics.empty.forEach((key) => emptyKeys.add(key));
@@ -9011,21 +9017,35 @@ const server = http.createServer((req, res) => {
             if (!typeMismatches.has(signature)) typeMismatches.set(signature, item);
           });
         });
-        const rawExcerpt = lastRawContent ? String(lastRawContent).slice(0, 500) : '';
+        let rawExcerpt = lastRawContent ? String(lastRawContent).slice(0, 500) : '';
+        if (!rawExcerpt) {
+          const sampleIndex = fatalEntries[0]?.index;
+          const samplePost = Number.isFinite(Number(sampleIndex)) ? rawPosts[sampleIndex] : null;
+          if (samplePost) {
+            try {
+              rawExcerpt = JSON.stringify(samplePost).slice(0, 500);
+            } catch (err) {
+              rawExcerpt = '';
+            }
+          }
+        }
         const err = new Error('Brand Brain validation failed');
         err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
         err.statusCode = 500;
         err.details = {
           missingKeys: Array.from(missingKeys),
           emptyKeys: Array.from(emptyKeys),
-          typeMismatches: Array.from(typeMismatches.values()),
+          actualTopLevelKeys: Array.from(actualTopLevelKeys).slice(0, 50),
           rawExcerpt,
         };
         console.error('[BrandBrain][Validation] rejected posts', {
           requestId: loggingContext?.requestId || 'unknown',
           failures: fatalEntries.length,
           samples: fatalEntries.slice(0, 2),
-          diagnostics: err.details,
+          diagnostics: {
+            ...err.details,
+            typeMismatches: Array.from(typeMismatches.values()),
+          },
         });
         throw err;
       }
@@ -9508,6 +9528,7 @@ const server = http.createServer((req, res) => {
               ok: false,
               error: 'upgrade_required',
               feature: CALENDAR_EXPORT_FEATURE_KEY,
+              requestId,
             });
           }
         }
@@ -9730,6 +9751,9 @@ const server = http.createServer((req, res) => {
         const status = isInvalidJson ? 400 : (Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : 500);
         const safeStatus = status === 502 ? 500 : status;
         const message = safeError?.message || 'Internal Server Error';
+        if (safeStatus >= 500) {
+          return sendJson(res, safeStatus, { error: message, requestId });
+        }
         const payload = {
           error: 'REGENERATE_FAILED',
           message,
