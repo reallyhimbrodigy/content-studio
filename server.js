@@ -3226,7 +3226,7 @@ const TITLE_ANCHOR_ECHO_BLOCK = [
 
 const LIFESTYLE_REDEFINITION_BLOCK = [
   'LIFESTYLE REDEFINITION (BOTH MODES):',
-  '- Lifestyle posts must be "decision-support lifestyle" tied to purchase/sale triggers or practical tradeoffs.',
+  '- Lifestyle posts must be "decision-support lifestyle" tied to decision triggers or practical tradeoffs.',
   '- Ban tourism framing and vibes-only lifestyle content.',
   '- Lifestyle must tie back to the niche\'s business outcome (leads, inquiries, bookings, sales).',
 ].join('\n');
@@ -3237,8 +3237,10 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- Include at least one specific, concrete detail per post (number, constraint, or scenario) without referencing outdated years or inventing real-world stats.',
   '- Do not assume niche-specific facts beyond the provided niche label.',
   '- ReelScript hook/body/cta must align to Hook/Caption/CTA without repeating verbatim; no off-topic drift.',
-  '- Hook, caption, body, and CTA may not reuse phrases or restate each other. Each section must introduce net-new information.',
-  '- The CTA may not summarize or restate earlier content.',
+  '- The Hook may not be repeated or paraphrased in Caption or Body.',
+  '- Caption may not summarize the Hook; Body may not restate Hook or Caption.',
+  '- CTA may not summarize or restate earlier content.',
+  '- If any section repeats another section, rewrite until all sections are distinct.',
   '- Hook: 1 sentence. No CTA language.',
   '- Caption: adds new information not in the Hook. 2–4 sentences max.',
   '- reelScript.hook must match the Hook verbatim.',
@@ -3295,6 +3297,7 @@ const REGULAR_CONTENT_QUALITY_RULES_BLOCK = [
   'It must be usable by any creator in the niche without implying a unique strategy or advantage.',
   'FORBIDDEN LANGUAGE (HARD BLOCK):',
   '- No persuasion/positioning language or hype terms.',
+  '- Avoid belief-attack, urgency, or aspirational/exclusive framing (including "stop believing", "don\'t miss", "act now", "dream/perfect/ideal", "smart choice", "why now", "unlock", "exclusive access") unless explicitly present in inputs.',
   '- No belief attacks. No contrarian framing. No "Stop believing..." language.',
   '- No urgency, fear, or pressure. No persuasion framing.',
   '- Do not mention any city/industry/profession unless explicitly present in the provided niche inputs; do not infer them.',
@@ -3330,6 +3333,7 @@ const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = [
   '- Alternative behavior: what to think about or check instead.',
   '- If any element is missing, vague, or implied instead of explicit, the post is invalid.',
   'Each post must explicitly include: a false belief, a specific hidden constraint, a concrete negative consequence, and a reframed, more accurate mental model; keep all parts aligned to the post title and niche.',
+  '- The post must read like a belief teardown with a causal chain; avoid generic edgy marketing.',
   '- Belief reversal and myth framing are required and allowed; "stop believing" phrasing is allowed.',
   '- Hook must be a belief-challenge or corrective frame tied to the niche.',
   '- Hidden constraint must be concrete and non-obvious; avoid generic constraint language.',
@@ -6021,7 +6025,7 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
 }
 
 function runTopicBindSelfTest() {
-  const title = 'Limited Time: 1% Listing Fee for New Clients!';
+  const title = 'Limited Time: 1% Service Fee for New Clients!';
   const requestedSpec = {
     post_key: 'day-1-slot-0',
     day: 1,
@@ -6034,13 +6038,13 @@ function runTopicBindSelfTest() {
     day: 1,
     slotIndex: 0,
     title,
-    hook: 'Discover how to list your home for just 1%.',
-    caption: 'List your home for 1% with our listing fee for new clients.',
-    script: { hook: 'List for 1%.', body: 'List your home for 1% with our listing fee.', cta: 'Ask for details.' },
-    hashtags: ['#Listing', '#1Percent', '#NewClients'],
+    hook: 'Get a 1% service fee for new clients.',
+    caption: 'New clients get a 1% service fee offer for a limited time.',
+    script: { hook: '1% service fee.', body: 'Get a 1% service fee when you join as a new client.', cta: 'Ask for details.' },
+    hashtags: ['#ServiceFee', '#1Percent', '#NewClients'],
     designNotes: 'Minimal layout with the 1% offer highlighted.',
-    engagementScripts: { commentReply: 'Happy to help with your listing.', dmReply: 'Share your timeline and we can help.' },
-    distributionPlan: 'Post to feed with the 1% listing offer, then share in stories.',
+    engagementScripts: { commentReply: 'Happy to help with the offer.', dmReply: 'Share your timeline and we can help.' },
+    distributionPlan: 'Post to feed with the 1% service fee offer, then share in stories.',
   };
   const passes = (() => {
     const result = assertPostTopicBound(basePost, requestedSpec, []);
@@ -6048,7 +6052,7 @@ function runTopicBindSelfTest() {
   })();
   console.assert(passes, '[TopicBinding][SelfTest] promo hook example should pass.');
   const fails = (() => {
-    const result = assertPostTopicBound({ ...basePost, hook: 'Explore neighborhood gems and investment tips.' }, requestedSpec, []);
+    const result = assertPostTopicBound({ ...basePost, hook: 'Explore unrelated tips and ideas.' }, requestedSpec, []);
     return result && result.ok === false;
   })();
   console.assert(fails, '[TopicBinding][SelfTest] off-topic promo hook should fail.');
@@ -6084,7 +6088,7 @@ function runTopicBindSelfTest() {
   })();
   console.assert(socialPass, '[TopicBinding][SelfTest] social proof script should pass.');
   const socialFail = (() => {
-    const result = assertPostTopicBound({ ...socialPost, script: { hook: 'Neighborhood tips.', body: 'Explore neighborhood gems today.', cta: 'Save this.' } }, socialSpec, []);
+    const result = assertPostTopicBound({ ...socialPost, script: { hook: 'Unrelated tips.', body: 'Explore unrelated ideas today.', cta: 'Save this.' } }, socialSpec, []);
     return result && result.ok === false;
   })();
   console.assert(socialFail, '[TopicBinding][SelfTest] off-topic social proof script should fail.');
@@ -6119,11 +6123,11 @@ function runTopicBindSelfTest() {
   })();
   console.assert(nowinPass, '[TopicBinding][SelfTest] no-win/no-fee hook should pass.');
   const nowinFail = (() => {
-    const result = assertPostTopicBound({ ...nowinPost, hook: 'Miami neighborhoods you’ll love.' }, nowinSpec, []);
+    const result = assertPostTopicBound({ ...nowinPost, hook: 'Unrelated tips you’ll love.' }, nowinSpec, []);
     return result && result.ok === false;
   })();
   console.assert(nowinFail, '[TopicBinding][SelfTest] off-topic no-win/no-fee hook should fail.');
-  const freeTitle = 'Exclusive Offer: Free Home Valuation for Miami Residents';
+  const freeTitle = 'Exclusive Offer: Free Valuation for New Clients';
   const freeFingerprint = deriveTopicFingerprint(freeTitle);
   const hasFreeToken = Array.isArray(freeFingerprint.offerTokens)
     && (freeFingerprint.offerTokens.includes('free_valuation') || freeFingerprint.offerTokens.includes('free_offer'));
@@ -6140,12 +6144,12 @@ function runTopicBindSelfTest() {
     day: 4,
     slotIndex: 0,
     title: freeTitle,
-    hook: 'Get your free home valuation today.',
-    caption: 'Get a free home valuation in Miami so you know your property\'s worth.',
-    script: { hook: 'Free home valuation.', body: 'We offer a free home valuation so you can price with confidence.', cta: 'Book yours.' },
+    hook: 'Get your free valuation today.',
+    caption: 'Get a free valuation so you know your project\'s worth.',
+    script: { hook: 'Free valuation.', body: 'We offer a free valuation so you can price with confidence.', cta: 'Book yours.' },
     hashtags: ['#FreeValuation'],
     designNotes: 'Highlight the free valuation offer.',
-    engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your address to start.' },
+    engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your details to start.' },
     distributionPlan: 'Post to feed with the free valuation highlight, then share in stories.',
   };
   const freePass = (() => {
@@ -6154,7 +6158,7 @@ function runTopicBindSelfTest() {
   })();
   console.assert(freePass, '[TopicBinding][SelfTest] free valuation caption should pass.');
   const freeFail = (() => {
-    const result = assertPostTopicBound({ ...freePost, caption: 'New neighborhood gems in Miami.' }, freeSpec, []);
+    const result = assertPostTopicBound({ ...freePost, caption: 'New unrelated tips today.' }, freeSpec, []);
     return result && result.ok === false;
   })();
   console.assert(freeFail, '[TopicBinding][SelfTest] off-topic free valuation caption should fail.');
