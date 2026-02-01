@@ -3477,6 +3477,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       '- engagementScripts must be neutral and informational; no contact or sales prompts.',
       '- No CTA or action language anywhere.',
       '- Do not omit required fields; cta, script.cta, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply must be non-empty neutral statements.',
+      `- Required keys (verbatim): ${REQUIRED_POST_FIELDS.join(', ')}.`,
+      '- Do not output any new top-level keys or rename existing keys.',
       '- DesignNotes: 5 timecoded lines (0-2s, 2-5s, 5-12s, 12-18s, 18-22s).',
       '- DistributionPlan: include BOTH "TikTok:" and "Instagram:" lines.',
       '- Output JSON only.',
@@ -8996,14 +8998,34 @@ const server = http.createServer((req, res) => {
         }
       }
       if (fatalEntries.length) {
+        const missingKeys = new Set();
+        const emptyKeys = new Set();
+        const typeMismatches = new Map();
+        fatalEntries.forEach((entry) => {
+          const post = rawPosts[entry.index] && typeof rawPosts[entry.index] === 'object' ? rawPosts[entry.index] : {};
+          const diagnostics = buildRequiredFieldDiagnostics(post);
+          diagnostics.missing.forEach((key) => missingKeys.add(key));
+          diagnostics.empty.forEach((key) => emptyKeys.add(key));
+          diagnostics.invalidTypes.forEach((item) => {
+            const signature = `${item.key}:${item.expected}:${item.got}`;
+            if (!typeMismatches.has(signature)) typeMismatches.set(signature, item);
+          });
+        });
+        const rawExcerpt = lastRawContent ? String(lastRawContent).slice(0, 500) : '';
         const err = new Error('Brand Brain validation failed');
         err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
         err.statusCode = 500;
-        err.details = fatalEntries;
+        err.details = {
+          missingKeys: Array.from(missingKeys),
+          emptyKeys: Array.from(emptyKeys),
+          typeMismatches: Array.from(typeMismatches.values()),
+          rawExcerpt,
+        };
         console.error('[BrandBrain][Validation] rejected posts', {
           requestId: loggingContext?.requestId || 'unknown',
           failures: fatalEntries.length,
           samples: fatalEntries.slice(0, 2),
+          diagnostics: err.details,
         });
         throw err;
       }
@@ -9695,6 +9717,13 @@ const server = http.createServer((req, res) => {
             message: 'Calendar output did not meet required fields.',
             requestId,
             details: schemaDetails,
+          });
+        }
+        if (safeError?.code === 'BRAND_BRAIN_VALIDATION_FAILED') {
+          return sendJson(res, 500, {
+            error: 'Brand Brain validation failed',
+            requestId,
+            details: safeError?.details || null,
           });
         }
         const upstreamStatus = safeError?.upstreamStatus || safeError?.statusCode || safeError?.status || null;
