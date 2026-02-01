@@ -6407,6 +6407,117 @@ function ensureRegenDaySignatureAngle(post = {}, dayNumber = 1) {
   return next;
 }
 
+function normalizeCapsuleTokens(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((token) => toPlainString(token)).filter(Boolean);
+}
+
+function hashTopicSignature(source) {
+  const cleaned = toPlainString(source);
+  if (!cleaned) return '';
+  const hashed = hashPromptPreview(cleaned);
+  if (hashed) return hashed;
+  const seeded = seedFromString(cleaned);
+  return seeded ? seeded.toString(16).slice(0, 12) : '';
+}
+
+function deriveTopicSignature(post = {}) {
+  const direct = toPlainString(post.topic_signature || post.topicSignature || '');
+  if (direct) return { value: direct, source: 'direct' };
+  const capsule = post.topicCapsule || post.topic_capsule;
+  if (capsule && typeof capsule === 'object') {
+    const summary = toPlainString(capsule.summary);
+    const audienceAngle = toPlainString(capsule.audienceAngle);
+    const mustUse = normalizeCapsuleTokens(capsule.mustUse).join('|');
+    const keyEntities = normalizeCapsuleTokens(capsule.keyEntities).join('|');
+    const joined = [summary, audienceAngle, mustUse, keyEntities].filter(Boolean).join('||');
+    if (joined) {
+      return { value: hashTopicSignature(joined), source: 'topicCapsule' };
+    }
+  }
+  const title = toPlainString(post.title);
+  const pillar = toPlainString(post.pillar);
+  const format = toPlainString(post.format);
+  const combined = [title, pillar, format].filter(Boolean).join('|');
+  if (combined) {
+    return { value: hashTopicSignature(combined), source: 'title' };
+  }
+  return { value: '', source: 'none' };
+}
+
+function deriveAngle(post = {}) {
+  const direct = toPlainString(post.angle || post.strategy?.angle || '');
+  if (direct) return { value: direct, source: 'direct' };
+  const capsule = post.topicCapsule || post.topic_capsule;
+  if (capsule && typeof capsule === 'object') {
+    const audienceAngle = toPlainString(capsule.audienceAngle);
+    if (audienceAngle) return { value: audienceAngle, source: 'topicCapsule.audienceAngle' };
+    const summary = toPlainString(capsule.summary);
+    if (summary) return { value: summary, source: 'topicCapsule.summary' };
+  }
+  const title = toPlainString(post.title);
+  if (title) return { value: title, source: 'title' };
+  return { value: '', source: 'none' };
+}
+
+function ensureBrandBrainSignatureAngle(post = {}, loggingContext = {}) {
+  const next = post;
+  const derived = [];
+  const failures = [];
+  if (!isNonEmptyString(next.topic_signature)) {
+    const signature = deriveTopicSignature(next);
+    if (signature.value) {
+      next.topic_signature = signature.value;
+      derived.push('topic_signature');
+    } else {
+      failures.push('topic_signature');
+    }
+  }
+  if (!isNonEmptyString(next.angle)) {
+    const angle = deriveAngle(next);
+    if (angle.value) {
+      next.angle = angle.value;
+      derived.push('angle');
+    } else {
+      failures.push('angle');
+    }
+  }
+  if (derived.length) {
+    console.warn('[BrandBrain][Derive] required fields', {
+      requestId: loggingContext?.requestId || 'unknown',
+      post_key: toPlainString(next.post_key || next.postKey || ''),
+      derived,
+    });
+  }
+  if (failures.length) {
+    const capsule = next.topicCapsule || next.topic_capsule;
+    const sources = {
+      title: Boolean(toPlainString(next.title)),
+      pillar: Boolean(toPlainString(next.pillar)),
+      format: Boolean(toPlainString(next.format)),
+      topicCapsule: capsule && typeof capsule === 'object',
+      topicCapsuleSummary: Boolean(toPlainString(capsule?.summary)),
+      topicCapsuleAudienceAngle: Boolean(toPlainString(capsule?.audienceAngle)),
+      topicCapsuleMustUseCount: Array.isArray(capsule?.mustUse) ? capsule.mustUse.length : 0,
+      topicCapsuleKeyEntitiesCount: Array.isArray(capsule?.keyEntities) ? capsule.keyEntities.length : 0,
+    };
+    const err = new Error('Brand Brain required fields could not be derived');
+    err.code = 'BRAND_BRAIN_REQUIRED_FIELDS_MISSING';
+    err.statusCode = 500;
+    err.details = {
+      post_key: toPlainString(next.post_key || next.postKey || ''),
+      missing: failures,
+      sources,
+    };
+    console.error('[BrandBrain][Derive] failed to derive required fields', {
+      requestId: loggingContext?.requestId || 'unknown',
+      ...err.details,
+    });
+    throw err;
+  }
+  return next;
+}
+
 function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
   const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
   const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
@@ -8722,7 +8833,11 @@ const server = http.createServer((req, res) => {
       throw err;
     }
     if (brandBrainEnabled) {
-      rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
+      rawPosts = rawPosts.map((post) => {
+        if (!post || typeof post !== 'object') return post;
+        const next = fillBrandBrainDefaults(post, nicheStyle);
+        return ensureBrandBrainSignatureAngle(next, loggingContext);
+      });
     }
     const missingFieldsReport = [];
     const noncoreMissingReport = [];
