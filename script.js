@@ -8159,16 +8159,13 @@ function escapeHtml(s){
 
 function stripLeadingSectionLabelLine(value, label) {
   if (typeof value !== 'string' || !value) return value;
-  const leadingMatch = value.match(/^\s*/);
-  const leading = leadingMatch ? leadingMatch[0] : '';
-  const body = value.slice(leading.length);
-  const prefix = `${label}:`.toLowerCase();
-  if (!body.toLowerCase().startsWith(prefix)) return value;
-  const lineEnd = body.indexOf('\n');
-  if (lineEnd === -1) return leading;
-  let remainder = body.slice(lineEnd + 1);
-  if (remainder.startsWith('\r')) remainder = remainder.slice(1);
-  return leading + remainder;
+  const section = String(label || '').trim();
+  if (!section) return value;
+  const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^(\\s*)${escaped}\\s*:\\s*[^\\r\\n]*(\\r?\\n)?`, 'i');
+  const match = value.match(pattern);
+  if (!match) return value;
+  return match[1] + value.slice(match[0].length);
 }
 
 function stripSectionLabelIfNeeded(value, label) {
