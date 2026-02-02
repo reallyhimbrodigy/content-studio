@@ -3555,6 +3555,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 ` : '';
   const brandBrainAddendum = opts.brandBrainDirective
     ? [
+      'KEY CONTRACT (BINDING):',
+      '- Output JSON only; match schema keys exactly; no unknown keys.',
+      '- topic_signature and angle are REQUIRED top-level keys, non-empty strings, exact spelling.',
+      '- Do not use alias keys for these (topicSignature, angleText).',
+      '- If topic_signature or angle would be missing/empty, rewrite once internally before output.',
       'BRAND BRAIN ADDENDUM (style only; schema locked):',
       '- Do not change title/topic or required fields.',
       '- Keep output belief-teardown and causal without changing the topic.',
@@ -8552,8 +8557,11 @@ const server = http.createServer((req, res) => {
     const brandContext = summarizeBrandForPrompt(brand);
     const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
     const isProUser = Boolean(payload?.isPro);
-    const brandBrainDirective = isProUser && brandBrainSettings?.enabled
-      ? buildBrandBrainDirective(brandBrainSettings)
+    const brandBrainOverride = Boolean(
+      payload?.brandBrainEnabled || payload?.brand_brain_enabled || payload?.calendarMode === 'brand_brain'
+    );
+    const brandBrainDirective = isProUser && (brandBrainSettings?.enabled || brandBrainOverride)
+      ? buildBrandBrainDirective({ ...(brandBrainSettings || {}), enabled: true })
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
     const calendarMode = brandBrainEnabled ? 'brand_brain' : 'regular';
