@@ -8172,8 +8172,7 @@ function stripLeadingSectionLabelLine(value, label) {
 }
 
 function stripSectionLabelIfNeeded(value, label) {
-  const targets = ['Reel Script', 'Design Notes', 'Engagement Loop', 'Distribution Plan'];
-  if (!targets.includes(label)) return value;
+  if (String(label || '').toLowerCase() === 'caption') return value;
   return stripLeadingSectionLabelLine(value, label);
 }
 
