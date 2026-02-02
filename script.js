@@ -6153,7 +6153,8 @@ const createCard = (post) => {
         <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
         <rect x="4" y="5.5" width="8" height="10" rx="2"/>
       </svg>`;
-      const textValue = typeof content === 'string' ? content : String(content);
+      let textValue = typeof content === 'string' ? content : String(content);
+      textValue = stripSectionLabelIfNeeded(textValue, label);
       btn.addEventListener('click', async () => {
         if (!textValue) return;
         try {
@@ -6288,7 +6289,10 @@ const createCard = (post) => {
       return container;
     };
 
-    const formatEl = createDetailRow('Format', format, 'calendar-card__format');
+    const formatLabel = typeof format === 'string' ? format.trim() : '';
+    const formatEl = formatLabel && formatLabel.toLowerCase() === 'reel'
+      ? null
+      : createDetailRow('Format', format, 'calendar-card__format');
 
     const designNotesText = designNotes || '';
     const designNotesEl = designNotesText ? createDetailRow('Design Notes', designNotesText, 'calendar-card__design') : null;
@@ -6330,15 +6334,14 @@ const createCard = (post) => {
       return row;
     };
     const executionNoteLines = [];
-    if (format) executionNoteLines.push(createExecutionNoteLine('Format', format));
+    if (formatLabel && formatLabel.toLowerCase() !== 'reel') {
+      executionNoteLines.push(createExecutionNoteLine('Format', formatLabel));
+    }
     const executionNotesEl = executionNoteLines.length
       ? (() => {
           const container = document.createElement('div');
           container.className = 'calendar-card__execution-notes';
-          const title = document.createElement('div');
-          title.className = 'calendar-card__execution-notes-title';
-          title.innerHTML = `<span class="calendar-card__format">Execution Notes:</span>`;
-          container.append(title, ...executionNoteLines);
+          container.append(...executionNoteLines);
           return container;
         })()
       : null;
@@ -6376,6 +6379,9 @@ const createCard = (post) => {
           structured.body = raw;
         }
       }
+      structured.hook = stripLeadingSectionLabelLine(structured.hook || '', label);
+      structured.body = stripLeadingSectionLabelLine(structured.body || '', label);
+      structured.cta = stripLeadingSectionLabelLine(structured.cta || '', label);
       const row = document.createElement('div');
       row.className = 'calendar-card__video calendar-card__detail-row';
       const header = document.createElement('div');
@@ -8151,6 +8157,26 @@ function escapeHtml(s){
     .replace(/'/g,'&#39;');
 }
 
+function stripLeadingSectionLabelLine(value, label) {
+  if (typeof value !== 'string' || !value) return value;
+  const leadingMatch = value.match(/^\s*/);
+  const leading = leadingMatch ? leadingMatch[0] : '';
+  const body = value.slice(leading.length);
+  const prefix = `${label}:`.toLowerCase();
+  if (!body.toLowerCase().startsWith(prefix)) return value;
+  const lineEnd = body.indexOf('\n');
+  if (lineEnd === -1) return leading;
+  let remainder = body.slice(lineEnd + 1);
+  if (remainder.startsWith('\r')) remainder = remainder.slice(1);
+  return leading + remainder;
+}
+
+function stripSectionLabelIfNeeded(value, label) {
+  const targets = ['Reel Script', 'Design Notes', 'Engagement Loop', 'Distribution Plan'];
+  if (!targets.includes(label)) return value;
+  return stripLeadingSectionLabelLine(value, label);
+}
+
 // Build a professional-looking standalone HTML for a single post
 function buildPostHTML(post){
   const day = post.day || '';
@@ -8161,7 +8187,7 @@ function buildPostHTML(post){
   const caption = post.caption || '';
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
   const cta = post.cta || '';
-  const designNotes = post.designNotes || '';
+  const designNotes = stripSectionLabelIfNeeded(post.designNotes || '', 'Design Notes') || '';
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const weeklyPromo = post.weeklyPromo || '';
   const promoSlot = !!post.promoSlot;
@@ -8171,15 +8197,22 @@ function buildPostHTML(post){
   const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
 
   // Build a single calendar card markup mirroring the in-app component
+  const formatLabel = String(format || '').trim();
+  const showFormat = formatLabel && formatLabel.toLowerCase() !== 'reel';
+  const cleanedHook = stripLeadingSectionLabelLine(vs.hook || '', 'Reel Script');
+  const cleanedBody = stripLeadingSectionLabelLine(vs.body || '', 'Reel Script');
+  const cleanedCta = stripLeadingSectionLabelLine(vs.cta || '', 'Reel Script');
+  const engagementComment = stripSectionLabelIfNeeded(engage.commentReply || '', 'Engagement Loop');
+  const engagementDm = stripSectionLabelIfNeeded(engage.dmReply || '', 'Engagement Loop');
   const detailBlocks = [
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
-    format ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
+    showFormat ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
     cta ? `<span class="calendar-card__cta">CTA: ${escapeHtml(cta)}</span>` : '',
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
-    (engage.commentReply||engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply?`<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>`:''}${engage.dmReply?`<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>`:''}</div>` : '',
+    (engagementComment||engagementDm) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engagementComment?`<div><em>Comment:</em> ${escapeHtml(engagementComment)}</div>`:''}${engagementDm?`<div><em>DM:</em> ${escapeHtml(engagementDm)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
-    (vs.hook||vs.body||vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook?`<div>${escapeHtml(vs.hook)}</div>`:''}${vs.body?`<div><em>Body:</em> ${nl2br(vs.body)}</div>`:''}${vs.cta?`<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>`:''}</div>` : '',
+    (cleanedHook||cleanedBody||cleanedCta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${cleanedHook?`<div>${escapeHtml(cleanedHook)}</div>`:''}${cleanedBody?`<div><em>Body:</em> ${nl2br(cleanedBody)}</div>`:''}${cleanedCta?`<div><em>CTA:</em> ${escapeHtml(cleanedCta)}</div>`:''}</div>` : '',
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
         + `${post.variants.igCaption?`<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>`:''}`
