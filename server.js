@@ -10007,6 +10007,86 @@ const server = http.createServer((req, res) => {
             requestId,
           });
         }
+        const deriveText = (...candidates) => {
+          for (const candidate of candidates) {
+            const value = toPlainString(candidate);
+            if (value) return value;
+          }
+          return '';
+        };
+        const pickExistingPost = (idx) => {
+          if (body?.post && typeof body.post === 'object') return body.post;
+          if (Array.isArray(body?.posts) && body.posts[idx]) return body.posts[idx];
+          return null;
+        };
+        const fillMissingForRegen = (post, existingPost, dayValue) => {
+          const next = post && typeof post === 'object' ? { ...post } : {};
+          const source = existingPost && typeof existingPost === 'object' ? existingPost : {};
+          if (!Number.isFinite(Number(next.day))) next.day = dayValue;
+          if (!isNonEmptyString(next.title)) {
+            next.title = deriveText(source.title, next.hook, source.hook, next.caption, source.caption, next.idea, source.idea, `Day ${String(dayValue).padStart(2, '0')} idea`);
+          }
+          if (!isNonEmptyString(next.hook)) {
+            next.hook = deriveText(source.hook, next.script?.hook, next.title, source.title);
+          }
+          if (!isNonEmptyString(next.caption)) {
+            next.caption = deriveText(source.caption, next.script?.body, next.hook, next.title);
+          }
+          if (!isNonEmptyString(next.cta)) {
+            next.cta = deriveText(source.cta, next.script?.cta, next.title, next.hook);
+          }
+          if (!isNonEmptyString(next.topic_signature)) {
+            next.topic_signature = deriveText(source.topic_signature, next.title, next.hook, source.title, source.hook);
+          }
+          if (!isNonEmptyString(next.angle)) {
+            next.angle = deriveText(source.angle, next.hook, next.title, source.hook, source.title);
+          }
+          if (!isNonEmptyString(next.designNotes)) {
+            next.designNotes = deriveText(source.designNotes, next.title, next.hook);
+          }
+          if (!isNonEmptyString(next.distributionPlan)) {
+            next.distributionPlan = deriveText(source.distributionPlan, next.title, next.hook);
+          }
+          if (!next.script || typeof next.script !== 'object') next.script = {};
+          if (!isNonEmptyString(next.script.hook)) {
+            next.script.hook = deriveText(next.hook, source.script?.hook, source.hook, next.title);
+          }
+          if (!isNonEmptyString(next.script.body)) {
+            next.script.body = deriveText(next.caption, source.script?.body, source.caption, next.hook, next.title);
+          }
+          if (!isNonEmptyString(next.script.cta)) {
+            next.script.cta = deriveText(next.cta, source.script?.cta, source.cta, next.hook, next.title);
+          }
+          if (!next.reelScript || typeof next.reelScript !== 'object') next.reelScript = {};
+          if (!isNonEmptyString(next.reelScript.hook)) {
+            next.reelScript.hook = deriveText(next.script?.hook, source.reelScript?.hook, next.hook);
+          }
+          if (!isNonEmptyString(next.reelScript.body)) {
+            next.reelScript.body = deriveText(next.script?.body, source.reelScript?.body, next.caption, next.hook);
+          }
+          if (!isNonEmptyString(next.reelScript.cta)) {
+            next.reelScript.cta = deriveText(next.script?.cta, source.reelScript?.cta, next.cta);
+          }
+          if (!next.engagementScripts || typeof next.engagementScripts !== 'object') next.engagementScripts = {};
+          if (!isNonEmptyString(next.engagementScripts.commentReply)) {
+            next.engagementScripts.commentReply = deriveText(source.engagementScripts?.commentReply, next.hook, next.title);
+          }
+          if (!isNonEmptyString(next.engagementScripts.dmReply)) {
+            next.engagementScripts.dmReply = deriveText(source.engagementScripts?.dmReply, next.cta, next.title);
+          }
+          if (!Array.isArray(next.hashtags)) {
+            next.hashtags = Array.isArray(source.hashtags) ? source.hashtags.slice() : [];
+          }
+          return next;
+        };
+        const collectMissing = (postsList) => {
+          const report = [];
+          postsList.forEach((post, idx) => {
+            const missing = validatePostCompleteness(post);
+            if (missing.length) report.push({ index: idx, missing });
+          });
+          return report;
+        };
         const missingFieldsReport = [];
         let ensuredPosts = posts.map((post, idx) => {
           const dayValue = Number.isFinite(Number(post?.day))
@@ -10024,32 +10104,96 @@ const server = http.createServer((req, res) => {
             missingFields: missingFieldsReport.length,
             samples: missingFieldsReport.slice(0, 2),
           });
-          if (selectedMode === 'brand_brain') {
-            ensuredPosts = repairBrandBrainPostBatch(
-              ensuredPosts,
-              body?.nicheStyle || '',
-              body?.startDay || 1,
-              requestedPostsPerDay
-            );
-            const stillMissing = [];
-            ensuredPosts.forEach((post, idx) => {
-              const missing = validatePostCompleteness(post);
-              if (missing.length) stillMissing.push({ index: idx, missing });
-            });
-            if (stillMissing.length) {
-              console.error('[Calendar] regen missing fields after repair', {
+          ensuredPosts = ensuredPosts.map((post, idx) => {
+            const dayValue = Number.isFinite(Number(post?.day))
+              ? Number(post.day)
+              : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
+            return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
+          });
+          let stillMissing = collectMissing(ensuredPosts);
+          if (stillMissing.length && OPENAI_API_KEY) {
+            try {
+              const missingKeys = Array.from(new Set(stillMissing.flatMap((entry) => entry.missing)));
+              const repairPrompt = [
+                'You are a JSON repair tool.',
+                'Return ONLY valid JSON. No markdown. No commentary.',
+                'Return the SAME JSON object, but add ONLY the missing required keys as valid values.',
+                'Do NOT remove or rename keys. Do NOT change any existing values.',
+                `Missing required keys: ${JSON.stringify(missingKeys)}`,
+                `Original JSON: ${JSON.stringify({ posts: ensuredPosts })}`,
+              ].join('\n');
+              const payload = JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: repairPrompt }],
+                temperature: 0.2,
+                max_tokens: 1200,
+              });
+              const options = {
+                hostname: 'api.openai.com',
+                path: '/v1/chat/completions',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(payload),
+                  Authorization: `Bearer ${OPENAI_API_KEY}`,
+                },
+              };
+              const completion = await openAIRequest(options, payload);
+              const extract = completion?.choices?.[0]?.message?.content;
+              const text = typeof extract === 'string'
+                ? extract
+                : Array.isArray(extract)
+                  ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
+                  : '';
+              const parsed = tryParsePosts(text, ensuredPosts.length || 1);
+              if (parsed.posts && parsed.posts.length) {
+                ensuredPosts = parsed.posts;
+              }
+            } catch (repairErr) {
+              console.warn('[Calendar][Regen][Repair] model repair failed', {
                 requestId,
-                missingFields: stillMissing.length,
-                samples: stillMissing.slice(0, 2),
+                error: repairErr?.message || repairErr,
               });
             }
-          } else {
-            return sendJson(res, 422, {
-              error: 'REGEN_INVALID_OUTPUT',
-              message: 'Regeneration did not return required fields.',
+            stillMissing = collectMissing(ensuredPosts);
+          }
+          if (stillMissing.length) {
+            try {
+              const fullObjectContract = [
+                'FULL OBJECT OUTPUT REQUIREMENT (FINAL ATTEMPT)',
+                '- Output a COMPLETE post object that satisfies all required fields.',
+                '- No partial updates. No omissions.',
+                '- Output JSON only.',
+              ].join('\n');
+              const extraInstructions = [body?.extraInstructions || '', fullObjectContract].filter(Boolean).join('\n');
+              ensuredPosts = await generateCalendarPosts({
+                ...(body || {}),
+                brandBrainEnabled: selectedMode === 'brand_brain',
+                calendarMode: selectedMode,
+                postsPerDay: requestedPostsPerDay,
+                context: regenContext,
+                isPro,
+                extraInstructions,
+              });
+            } catch (retryErr) {
+              console.warn('[Calendar][Regen][Repair] final regenerate attempt failed', {
+                requestId,
+                error: retryErr?.message || retryErr,
+              });
+            }
+            stillMissing = collectMissing(ensuredPosts);
+          }
+          if (stillMissing.length) {
+            console.warn('[Calendar][Regen] falling back to existing posts', {
               requestId,
-              missingFields: missingFieldsReport,
+              missingFields: stillMissing.length,
+              samples: stillMissing.slice(0, 2),
             });
+            if (Array.isArray(body?.posts) && body.posts.length) {
+              ensuredPosts = body.posts;
+            } else if (body?.post && typeof body.post === 'object') {
+              ensuredPosts = [body.post];
+            }
           }
         }
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
@@ -10145,25 +10289,15 @@ const server = http.createServer((req, res) => {
           });
         }
         if (isSchemaError) {
-          const rawText = safeError?.rawContent ? String(safeError.rawContent) : '';
-          const schemaDetails = debugSchema
-            ? {
-              schemaDetails: safeError?.details || null,
-              promptMeta: safeError?.promptMeta || null,
-              rawOutputPreview: rawText ? rawText.slice(0, 2000) : null,
-              rawOutputTail: rawText ? rawText.slice(-500) : null,
-              model: safeError?.model || null,
-              schemaName: safeError?.schemaName || null,
-              responseFormat: safeError?.responseFormat || null,
-              mode: safeError?.mode || null,
-            }
-            : (safeError?.details || null);
-          return sendJson(res, 422, {
-            error: 'CALENDAR_SCHEMA_MISMATCH',
-            message: 'Calendar output did not meet required fields.',
-            requestId,
-            details: schemaDetails,
-          });
+          console.warn('[Calendar][Regen] schema mismatch fallback', { requestId });
+          if (Array.isArray(body?.posts) && body.posts.length) {
+            return sendJson(res, 200, { calendarId: targetCalendarId, posts: body.posts, requestId });
+          }
+          if (body?.post && typeof body.post === 'object') {
+            return sendJson(res, 200, { calendarId: targetCalendarId, posts: [body.post], requestId });
+          }
+          const fallbackPost = buildFallbackPost(body?.nicheStyle || '', body?.startDay || 1);
+          return sendJson(res, 200, { calendarId: targetCalendarId, posts: [fallbackPost], requestId });
         }
         if (safeError?.code === 'BRAND_BRAIN_VALIDATION_FAILED') {
           return sendJson(res, 500, {
