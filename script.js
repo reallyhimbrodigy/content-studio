@@ -6155,6 +6155,9 @@ const createCard = (post) => {
       </svg>`;
       let textValue = typeof content === 'string' ? content : String(content);
       textValue = stripSectionLabelIfNeeded(textValue, label);
+      if (String(label || '').toLowerCase() !== 'caption') {
+        textValue = stripSectionPrefixOnce(textValue);
+      }
       btn.addEventListener('click', async () => {
         if (!textValue) return;
         try {
@@ -6382,6 +6385,9 @@ const createCard = (post) => {
       structured.hook = stripLeadingSectionLabelLine(structured.hook || '', label);
       structured.body = stripLeadingSectionLabelLine(structured.body || '', label);
       structured.cta = stripLeadingSectionLabelLine(structured.cta || '', label);
+      structured.hook = stripSectionPrefixOnce(structured.hook || '');
+      structured.body = stripSectionPrefixOnce(structured.body || '');
+      structured.cta = stripSectionPrefixOnce(structured.cta || '');
       const row = document.createElement('div');
       row.className = 'calendar-card__video calendar-card__detail-row';
       const header = document.createElement('div');
@@ -6680,7 +6686,7 @@ const createCard = (post) => {
         };
         panel.querySelectorAll('.detail-text, .calendar-card__info-row span').forEach((el) => {
           const original = el.textContent || '';
-          let cleaned = stripLeadingSectionLabelLine(original, 'Details');
+          let cleaned = stripSectionPrefixOnce(stripLeadingSectionLabelLine(original, 'Details'));
           cleaned = removeDetailsLines(cleaned);
           if (cleaned !== original) el.textContent = cleaned;
         });
@@ -8187,6 +8193,11 @@ function stripLeadingSectionLabelLine(value, label) {
 function stripSectionLabelIfNeeded(value, label) {
   if (String(label || '').toLowerCase() === 'caption') return value;
   return stripLeadingSectionLabelLine(value, label);
+}
+
+function stripSectionPrefixOnce(s) {
+  if (!s) return s;
+  return s.replace(/^\s*(reel script|design notes|engagement loop|distribution plan|details)\s*:\s*/i, '');
 }
 
 // Build a professional-looking standalone HTML for a single post
