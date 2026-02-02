@@ -59,6 +59,21 @@ if (
 }
 if (isCalendarPage) {
 const grid = document.getElementById("calendar-grid");
+  const scheduleCardCleanup = (() => {
+    let raf = null;
+    return (root = grid) => {
+      if (!root) return;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        cleanCardSectionBodies(root);
+      });
+    };
+  })();
+  const calendarCleanupObserver = new MutationObserver(() => scheduleCardCleanup(grid));
+  if (grid) {
+    calendarCleanupObserver.observe(grid, { childList: true, subtree: true, characterData: true });
+  }
   const pillarFilterBtn = document.getElementById("pillar-filter-btn");
   const pillarFilterMenu = document.getElementById("pillar-filter-menu");
   const pillarFilterLabel = document.getElementById("pillar-filter-label");
@@ -6156,7 +6171,7 @@ const createCard = (post) => {
       let textValue = typeof content === 'string' ? content : String(content);
       textValue = stripSectionLabelIfNeeded(textValue, label);
       if (String(label || '').toLowerCase() !== 'caption') {
-        textValue = stripLeadingSectionLabelOnce(textValue);
+        textValue = stripLeadingSectionLabelPrefix(textValue);
       }
       btn.addEventListener('click', async () => {
         if (!textValue) return;
@@ -6385,9 +6400,9 @@ const createCard = (post) => {
       structured.hook = stripLeadingSectionLabelLine(structured.hook || '', label);
       structured.body = stripLeadingSectionLabelLine(structured.body || '', label);
       structured.cta = stripLeadingSectionLabelLine(structured.cta || '', label);
-      structured.hook = stripLeadingSectionLabelOnce(structured.hook || '');
-      structured.body = stripLeadingSectionLabelOnce(structured.body || '');
-      structured.cta = stripLeadingSectionLabelOnce(structured.cta || '');
+      structured.hook = stripLeadingSectionLabelPrefix(structured.hook || '');
+      structured.body = stripLeadingSectionLabelPrefix(structured.body || '');
+      structured.cta = stripLeadingSectionLabelPrefix(structured.cta || '');
       const row = document.createElement('div');
       row.className = 'calendar-card__video calendar-card__detail-row';
       const header = document.createElement('div');
@@ -6674,22 +6689,7 @@ const createCard = (post) => {
       panel.hidden = true;
       entries.forEach((node) => panel.appendChild(node));
       if (label === 'Details') {
-        const removeDetailsLines = (text) => {
-          if (!text) return text;
-          return text
-            .split(/\r?\n/)
-            .filter((line) => {
-              const trimmed = line.trim();
-              return trimmed !== 'Execution Notes:' && trimmed !== 'Format:Reel';
-            })
-            .join('\n');
-        };
-        panel.querySelectorAll('.detail-text, .calendar-card__info-row span').forEach((el) => {
-          const original = el.textContent || '';
-          let cleaned = stripLeadingSectionLabelOnce(stripLeadingSectionLabelLine(original, 'Details'));
-          cleaned = removeDetailsLines(cleaned);
-          if (cleaned !== original) el.textContent = cleaned;
-        });
+        cleanCardSectionBodies(panel);
       }
       toggle.addEventListener('click', () => {
         const isOpen = toggle.getAttribute('aria-expanded') === 'true';
@@ -6698,6 +6698,7 @@ const createCard = (post) => {
         panel.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
         acc.classList.toggle('is-open', !isOpen);
         // Keep cards stable in the grid; avoid expanding layout on toggle.
+        if (!isOpen) scheduleCardCleanup(panel);
       });
       acc.append(toggle, panel);
       return acc;
@@ -7317,6 +7318,7 @@ const renderCards = (subset) => {
   const freq = Math.max(currentPostFrequency || 1, 1);
   if (freq <= 1) {
     subset.forEach((post) => grid.appendChild(createCard(post)));
+    scheduleCardCleanup(grid);
     return;
   }
   const grouped = new Map();
@@ -7333,6 +7335,7 @@ const renderCards = (subset) => {
       const merged = { ...posts[0], day: dayKey, multiPosts: posts };
       grid.appendChild(createCard(merged));
     });
+  scheduleCardCleanup(grid);
 };
 
 function updatePostFrequencyUI() {
@@ -8195,9 +8198,35 @@ function stripSectionLabelIfNeeded(value, label) {
   return stripLeadingSectionLabelLine(value, label);
 }
 
-function stripLeadingSectionLabelOnce(text) {
+function stripLeadingSectionLabelPrefix(text) {
   if (!text) return text;
   return text.replace(/^\s*(reel script|design notes|engagement loop|distribution plan|details)\s*:\s*/i, '');
+}
+
+function cleanCardSectionBodies(rootEl) {
+  try {
+    if (!rootEl) return;
+    const removeDetailsLines = (text) => {
+      if (!text) return text;
+      return text
+        .split(/\r?\n/)
+        .filter((line) => {
+          const trimmed = line.trim();
+          return trimmed !== 'Execution Notes:' && trimmed !== 'Format:Reel';
+        })
+        .join('\n');
+    };
+    const bodies = rootEl.querySelectorAll('.detail-text, .calendar-card__info-row span, .calendar-card__video-script span');
+    bodies.forEach((node) => {
+      const acc = node.closest('.pc-acc');
+      const label = acc?.querySelector('.pc-acc-toggle span')?.textContent?.trim().toLowerCase() || '';
+      if (label === 'caption') return;
+      const before = node.textContent || '';
+      let after = stripLeadingSectionLabelPrefix(before);
+      if (label === 'details') after = removeDetailsLines(after);
+      if (after !== before) node.textContent = after;
+    });
+  } catch (e) {}
 }
 
 // Build a professional-looking standalone HTML for a single post
