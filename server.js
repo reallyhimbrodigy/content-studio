@@ -8564,10 +8564,11 @@ const server = http.createServer((req, res) => {
     const brandContext = summarizeBrandForPrompt(brand);
     const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
     const isProUser = Boolean(payload?.isPro);
+    const forceRegular = String(payload?.calendarMode || '').toLowerCase() === 'regular';
     const brandBrainOverride = Boolean(
       payload?.brandBrainEnabled || payload?.brand_brain_enabled || payload?.calendarMode === 'brand_brain'
     );
-    const brandBrainDirective = isProUser && (brandBrainSettings?.enabled || brandBrainOverride)
+    const brandBrainDirective = isProUser && !forceRegular && (brandBrainSettings?.enabled || brandBrainOverride)
       ? buildBrandBrainDirective({ ...(brandBrainSettings || {}), enabled: true })
       : '';
     const brandBrainEnabled = Boolean(brandBrainDirective);
@@ -9753,29 +9754,37 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
-        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
-        const payloadBrandBrainEnabled = Boolean(
-          body?.brandBrainEnabled ||
-          body?.brand_brain_enabled ||
-          body?.calendarMode === 'brand_brain' ||
-          body?.post?.brandBrainEnabled ||
-          body?.post?.brand_brain_enabled ||
-          body?.post?.calendarMode === 'brand_brain' ||
-          body?.post?.mode === 'brand_brain'
-        );
-        const brandBrainSelected = Boolean(isPro && (brandBrainSettings?.enabled || payloadBrandBrainEnabled));
+        const targetCalendarId = body?.calendarId ?? null;
+        let calendarBrandBrainEnabled = null;
+        if (targetCalendarId && supabaseAdmin) {
+          const { data: calendarRow, error: calendarError } = await supabaseAdmin
+            .from('calendars')
+            .select('posts')
+            .eq('id', targetCalendarId)
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (!calendarError && calendarRow) {
+            const posts = Array.isArray(calendarRow.posts) ? calendarRow.posts : [];
+            const hasModeFlag = posts.some((post) => {
+              if (!post || typeof post !== 'object') return false;
+              return (
+                post?.calendarMode === 'brand_brain' ||
+                post?.mode === 'brand_brain' ||
+                post?.brandBrainEnabled === true ||
+                post?.brand_brain_enabled === true
+              );
+            });
+            calendarBrandBrainEnabled = Boolean(hasModeFlag);
+          }
+        }
+        const selectedMode = calendarBrandBrainEnabled === true ? 'brand_brain' : 'regular';
         const postKeyForLog = body?.post_key || body?.postKey || body?.post?.post_key || body?.post?.postKey || null;
-        console.log('[Calendar][Regen][BrandBrainSelect]', {
+        console.log('[Calendar][Regen][ModeSelect]', {
           requestId,
           post_key: postKeyForLog,
-          brandBrainSelected,
-          flags: {
-            isPro,
-            profileEnabled: Boolean(brandBrainSettings?.enabled),
-            payloadBrandBrainEnabled,
-          },
+          selectedMode,
+          calendarBrandBrainEnabled: Boolean(calendarBrandBrainEnabled),
         });
-        const targetCalendarId = body?.calendarId ?? null;
         if (clientAborted || req.aborted) return;
         console.log('[Calendar][Server][Perf] regen generation start', {
           requestId,
@@ -9816,8 +9825,7 @@ const server = http.createServer((req, res) => {
             posts = await Promise.race([
               generateCalendarPosts({
                 ...(body || {}),
-                brandBrainEnabled: payloadBrandBrainEnabled,
-                calendarMode: payloadBrandBrainEnabled ? 'brand_brain' : body?.calendarMode,
+                calendarMode: selectedMode,
                 postsPerDay: requestedPostsPerDay,
                 context: regenContext,
                 isPro,
