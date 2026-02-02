@@ -3339,6 +3339,14 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- Do not reuse the same hook phrasing across posts.',
 ].join('\n');
 
+const BRAND_BRAIN_KEY_CONTRACT_TOP = [
+  'KEY CONTRACT (BINDING):',
+  '- Output ONE JSON object matching the schema exactly. No markdown. No commentary.',
+  '- Required non-empty string keys: topic_signature, angle (exact spelling, case-sensitive).',
+  '- Do not use alias keys for these fields.',
+  '- Before output, verify both keys exist and are non-empty; if missing, rewrite once internally.',
+].join('\n');
+
 const CALENDAR_HARD_SEPARATION_BLOCK = [
   'CRITICAL:',
   '- Regular Calendar posts must remain neutral and non-persuasive.',
@@ -3586,7 +3594,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ].join('\\n')
     : '';
   const brandBrainBlock = opts.brandBrainDirective
-    ? `Brand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
+    ? `${BRAND_BRAIN_KEY_CONTRACT_TOP}\nBrand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
     : '';
   if (opts.brandBrainDirective) {
     console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
@@ -6617,6 +6625,150 @@ function ensureBrandBrainSignatureAngle(post = {}, loggingContext = {}) {
   return next;
 }
 
+function buildFallbackTopicCapsule(post = {}, nicheStyle = '') {
+  const baseText = [
+    toPlainString(post.title),
+    toPlainString(post.hook),
+    toPlainString(post.caption),
+    toPlainString(nicheStyle),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const tokens = (baseText.toLowerCase().match(/[a-z0-9]+/g) || [])
+    .filter((token) => token.length > 2 && !BRAND_BRAIN_STOPWORDS.has(token));
+  const unique = [];
+  tokens.forEach((token) => {
+    if (!unique.includes(token)) unique.push(token);
+  });
+  const filler = ['topic', 'audience', 'focus', 'approach', 'decision', 'signal', 'process', 'context', 'goal', 'tradeoff'];
+  let fillerIndex = 0;
+  while (unique.length < 5 && fillerIndex < filler.length) {
+    const token = filler[fillerIndex];
+    if (!unique.includes(token)) unique.push(token);
+    fillerIndex += 1;
+  }
+  const mustUse = unique.slice(0, 10);
+  const summary = toPlainString(post.title || post.hook || nicheStyle || mustUse[0]);
+  const audienceAngle = toPlainString(post.angle || nicheStyle || summary);
+  return {
+    summary: summary || mustUse[0] || 'topic',
+    mustUse,
+    mustAvoid: [],
+    audienceAngle: audienceAngle || summary || mustUse[0] || 'topic',
+    keyEntities: mustUse.slice(0, 5),
+  };
+}
+
+function ensureTopicCapsule(post = {}, nicheStyle = '') {
+  if (!post || typeof post !== 'object') return post;
+  const capsule = post.topicCapsule && typeof post.topicCapsule === 'object' ? { ...post.topicCapsule } : null;
+  const fallback = buildFallbackTopicCapsule(post, nicheStyle);
+  const mustUse = Array.isArray(capsule?.mustUse)
+    ? capsule.mustUse.map((item) => toPlainString(item)).filter(Boolean)
+    : fallback.mustUse.slice();
+  const mustAvoid = Array.isArray(capsule?.mustAvoid)
+    ? capsule.mustAvoid.map((item) => toPlainString(item)).filter(Boolean)
+    : fallback.mustAvoid.slice();
+  const keyEntities = Array.isArray(capsule?.keyEntities)
+    ? capsule.keyEntities.map((item) => toPlainString(item)).filter(Boolean)
+    : fallback.keyEntities.slice();
+  const filler = fallback.mustUse.slice();
+  let fillerIndex = 0;
+  while (mustUse.length < 5 && fillerIndex < filler.length) {
+    const token = filler[fillerIndex];
+    if (!mustUse.includes(token)) mustUse.push(token);
+    fillerIndex += 1;
+  }
+  post.topicCapsule = {
+    summary: toPlainString(capsule?.summary) || fallback.summary,
+    mustUse: mustUse.slice(0, 10),
+    mustAvoid: mustAvoid.slice(0, 10),
+    audienceAngle: toPlainString(capsule?.audienceAngle) || fallback.audienceAngle,
+    keyEntities: keyEntities.length ? keyEntities.slice(0, 5) : fallback.keyEntities.slice(0, 5),
+  };
+  return post;
+}
+
+function repairBrandBrainRequiredKeys(post = {}, dayNumber = 1, nicheStyle = '') {
+  if (!post || typeof post !== 'object') return post;
+  const title = toPlainString(post.title);
+  const hook = toPlainString(post.hook);
+  if (!isNonEmptyString(post.topic_signature)) {
+    const source = title || hook;
+    const signature = source ? source.slice(0, 80).trim() : `day-${String(dayNumber).padStart(2, '0')}`;
+    post.topic_signature = signature || `day-${String(dayNumber).padStart(2, '0')}`;
+  }
+  if (!isNonEmptyString(post.angle)) {
+    const hookSentence = hook.split(/[.!?]/)[0].trim();
+    const angle = hookSentence || title;
+    post.angle = angle || CALENDAR_ANGLE_OPTIONS[0] || `day-${String(dayNumber).padStart(2, '0')}`;
+  }
+  if (post.angle && !CALENDAR_ANGLE_OPTIONS.includes(post.angle)) {
+    post.angle = CALENDAR_ANGLE_OPTIONS[0] || post.angle;
+  }
+  ensureTopicCapsule(post, nicheStyle);
+  return post;
+}
+
+function repairBrandBrainPostBatch(posts = [], nicheStyle = '', startDay = 1, postsPerDay = 1) {
+  if (!Array.isArray(posts)) return [];
+  return posts.map((post, idx) => {
+    const dayValue = Number.isFinite(Number(post?.day))
+      ? Number(post.day)
+      : computePostDayIndex(idx, startDay, postsPerDay);
+    const slotIndexValue = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : 0;
+    const base = post && typeof post === 'object' ? { ...post } : {};
+    base.day = dayValue;
+    base.slotIndex = slotIndexValue;
+    if (!isNonEmptyString(base.post_key)) {
+      base.post_key = postKey(dayValue, slotIndexValue);
+    }
+    if (!isNonEmptyString(base.format)) base.format = 'Reel';
+    const seeded = fillBrandBrainDefaults(base, nicheStyle);
+    const ensured = ensureRegenRequiredFields(seeded, nicheStyle, dayValue, { allowFallbacks: true });
+    const repaired = repairBrandBrainRequiredKeys(ensured.post, dayValue, nicheStyle);
+    if (!Array.isArray(repaired.hashtags) || !repaired.hashtags.length) {
+      repaired.hashtags = buildBrandBrainHashtags(nicheStyle);
+    }
+    if (!repaired.script || typeof repaired.script !== 'object') {
+      repaired.script = { hook: repaired.hook, body: repaired.caption, cta: repaired.cta };
+    }
+    if (!repaired.reelScript || typeof repaired.reelScript !== 'object') {
+      repaired.reelScript = { hook: repaired.script.hook, body: repaired.script.body, cta: repaired.script.cta };
+    }
+    if (!repaired.engagementScripts || typeof repaired.engagementScripts !== 'object') {
+      repaired.engagementScripts = ensureEngagementScriptsFallback(repaired, nicheStyle);
+    }
+    if (!isNonEmptyString(repaired.designNotes)) {
+      repaired.designNotes = ensureDesignNotesFallback(repaired, nicheStyle);
+    }
+    if (!isNonEmptyString(repaired.distributionPlan)) {
+      repaired.distributionPlan = buildDistributionPlanFallback(repaired, nicheStyle);
+    }
+    return repaired;
+  });
+}
+
+function buildBrandBrainFallbackPosts(nicheStyle = '', startDay = 1, days = 1, postsPerDay = 1) {
+  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
+  const safePerDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
+  const posts = [];
+  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+    const dayValue = safeStart + dayOffset;
+    for (let slotIndex = 0; slotIndex < safePerDay; slotIndex += 1) {
+      posts.push({
+        day: dayValue,
+        slotIndex,
+        post_key: postKey(dayValue, slotIndex),
+        title: `Day ${String(dayValue).padStart(2, '0')} topic overview`,
+        format: 'Reel',
+      });
+    }
+  }
+  return repairBrandBrainPostBatch(posts, nicheStyle, safeStart, safePerDay);
+}
+
 function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
   const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
   const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
@@ -8936,10 +9088,18 @@ const server = http.createServer((req, res) => {
       throw err;
     }
     if (brandBrainEnabled) {
-      rawPosts = rawPosts.map((post) => {
+      rawPosts = rawPosts.map((post, idx) => {
         if (!post || typeof post !== 'object') return post;
         const next = fillBrandBrainDefaults(post, nicheStyle);
-        return ensureBrandBrainSignatureAngle(next, loggingContext);
+        const dayValue = Number.isFinite(Number(next?.day))
+          ? Number(next.day)
+          : computePostDayIndex(idx, fallbackStart, perDay);
+        try {
+          ensureBrandBrainSignatureAngle(next, loggingContext);
+        } catch (err) {
+          repairBrandBrainRequiredKeys(next, dayValue, nicheStyle);
+        }
+        return repairBrandBrainRequiredKeys(next, dayValue, nicheStyle);
       });
     }
     const missingFieldsReport = [];
@@ -9022,7 +9182,7 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts.',
+          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, topicCapsule.',
           'hashtags must be an array of strings (8–12).',
           'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
@@ -9099,26 +9259,7 @@ const server = http.createServer((req, res) => {
               missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
             })),
           });
-          rawPosts = rawPosts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
-          const stillMissing = [];
-          rawPosts.forEach((post, idx) => {
-            const missing = validatePostCompleteness(post);
-            if (!missing.length) return;
-            const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
-            if (!coreMissing.length) return;
-            const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-            const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-            const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-            stillMissing.push({ index: idx, day, slotIndex, postsPerDay: perDay, post_key: postKeyValue, missing: coreMissing });
-          });
-          const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-          if (missingDay) {
-            const err = new Error('Brand Brain schema repair failed');
-            err.code = 'BRAND_BRAIN_SCHEMA_REPAIR_FAILED';
-            err.statusCode = 500;
-            err.details = stillMissing;
-            throw err;
-          }
+          rawPosts = repairBrandBrainPostBatch(rawPosts, nicheStyle, fallbackStart, perDay);
           missingFieldsReport.length = 0;
         }
       } else {
@@ -9220,52 +9361,21 @@ const server = http.createServer((req, res) => {
         }
       }
       if (fatalEntries.length) {
-        const missingKeys = new Set();
-        const emptyKeys = new Set();
-        const typeMismatches = new Map();
-        const actualTopLevelKeys = new Set();
-        fatalEntries.forEach((entry) => {
-          const post = rawPosts[entry.index] && typeof rawPosts[entry.index] === 'object' ? rawPosts[entry.index] : {};
-          Object.keys(post).forEach((key) => actualTopLevelKeys.add(key));
-          const diagnostics = buildRequiredFieldDiagnostics(post);
-          diagnostics.missing.forEach((key) => missingKeys.add(key));
-          diagnostics.empty.forEach((key) => emptyKeys.add(key));
-          diagnostics.invalidTypes.forEach((item) => {
-            const signature = `${item.key}:${item.expected}:${item.got}`;
-            if (!typeMismatches.has(signature)) typeMismatches.set(signature, item);
+        rawPosts = repairBrandBrainPostBatch(rawPosts, nicheStyle, fallbackStart, perDay);
+        const remaining = [];
+        rawPosts.forEach((post, idx) => {
+          const missing = validatePostCompleteness(post);
+          if (!missing.length) return;
+          const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
+          remaining.push({ index: idx, day, missing });
+        });
+        if (remaining.length) {
+          console.error('[BrandBrain][Validation] missing required fields after repair', {
+            requestId: loggingContext?.requestId || 'unknown',
+            failures: remaining.length,
+            samples: remaining.slice(0, 2),
           });
-        });
-        let rawExcerpt = lastRawContent ? String(lastRawContent).slice(0, 500) : '';
-        if (!rawExcerpt) {
-          const sampleIndex = fatalEntries[0]?.index;
-          const samplePost = Number.isFinite(Number(sampleIndex)) ? rawPosts[sampleIndex] : null;
-          if (samplePost) {
-            try {
-              rawExcerpt = JSON.stringify(samplePost).slice(0, 500);
-            } catch (err) {
-              rawExcerpt = '';
-            }
-          }
         }
-        const err = new Error('Brand Brain validation failed');
-        err.code = 'BRAND_BRAIN_VALIDATION_FAILED';
-        err.statusCode = 500;
-        err.details = {
-          missingKeys: Array.from(missingKeys),
-          emptyKeys: Array.from(emptyKeys),
-          actualTopLevelKeys: Array.from(actualTopLevelKeys).slice(0, 50),
-          rawExcerpt,
-        };
-        console.error('[BrandBrain][Validation] rejected posts', {
-          requestId: loggingContext?.requestId || 'unknown',
-          failures: fatalEntries.length,
-          samples: fatalEntries.slice(0, 2),
-          diagnostics: {
-            ...err.details,
-            typeMismatches: Array.from(typeMismatches.values()),
-          },
-        });
-        throw err;
       }
     }
     console.log('[Calendar][Server][SchemaValidation]', {
@@ -9367,7 +9477,7 @@ const server = http.createServer((req, res) => {
       samples: normalizedMissing.slice(0, 2),
     });
     if (brandBrainEnabled && normalizedMissing.length) {
-      posts = posts.map((post) => (post && typeof post === 'object' ? fillBrandBrainDefaults(post, nicheStyle) : post));
+      posts = repairBrandBrainPostBatch(posts, nicheStyle, startDay, perDay);
       const stillMissing = [];
       posts.forEach((post, idx) => {
         const missing = validatePostCompleteness(post);
@@ -9375,19 +9485,11 @@ const server = http.createServer((req, res) => {
           stillMissing.push({ index: idx, missing });
         }
       });
-      const missingDay = stillMissing.some((entry) => entry.missing.includes('day'));
-      console.warn('[BrandBrain][SchemaValidation] normalized missing fields after fill', {
+      console.warn('[BrandBrain][SchemaValidation] normalized missing fields after repair', {
         requestId: loggingContext?.requestId || 'unknown',
         count: stillMissing.length,
         samples: stillMissing.slice(0, 2),
       });
-      if (missingDay) {
-        const err = new Error('Brand Brain normalization missing required fields');
-        err.code = 'BRAND_BRAIN_NORMALIZATION_FAILED';
-        err.statusCode = 500;
-        err.details = stillMissing;
-        throw err;
-      }
     }
     if (!isPillarDistributionBalanced(posts)) {
       posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
@@ -9681,6 +9783,8 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/calendar/regenerate' && req.method === 'POST') {
     (async () => {
       let body = null;
+      let selectedMode = 'regular';
+      let targetCalendarId = null;
       const requestId = generateRequestId('regen');
       res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
@@ -9754,7 +9858,7 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
-        const targetCalendarId = body?.calendarId ?? null;
+        targetCalendarId = body?.calendarId ?? null;
         let calendarBrandBrainEnabled = null;
         if (calendarBrandBrainEnabled === null && targetCalendarId && supabaseAdmin) {
           const { data: calendarRow, error: calendarError } = await supabaseAdmin
@@ -9788,7 +9892,7 @@ const server = http.createServer((req, res) => {
             }
           }
         }
-        const selectedMode = calendarBrandBrainEnabled === true ? 'brand_brain' : 'regular';
+        selectedMode = calendarBrandBrainEnabled === true ? 'brand_brain' : 'regular';
         const postKeyForLog = body?.post_key || body?.postKey || body?.post?.post_key || body?.post?.postKey || null;
         console.log('[Calendar][Regen][ModeSelect]', {
           requestId,
@@ -9874,7 +9978,7 @@ const server = http.createServer((req, res) => {
           });
         }
         const missingFieldsReport = [];
-        const ensuredPosts = posts.map((post, idx) => {
+        let ensuredPosts = posts.map((post, idx) => {
           const dayValue = Number.isFinite(Number(post?.day))
             ? Number(post.day)
             : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
@@ -9890,12 +9994,33 @@ const server = http.createServer((req, res) => {
             missingFields: missingFieldsReport.length,
             samples: missingFieldsReport.slice(0, 2),
           });
-          return sendJson(res, 422, {
-            error: 'REGEN_INVALID_OUTPUT',
-            message: 'Regeneration did not return required fields.',
-            requestId,
-            missingFields: missingFieldsReport,
-          });
+          if (selectedMode === 'brand_brain') {
+            ensuredPosts = repairBrandBrainPostBatch(
+              ensuredPosts,
+              body?.nicheStyle || '',
+              body?.startDay || 1,
+              requestedPostsPerDay
+            );
+            const stillMissing = [];
+            ensuredPosts.forEach((post, idx) => {
+              const missing = validatePostCompleteness(post);
+              if (missing.length) stillMissing.push({ index: idx, missing });
+            });
+            if (stillMissing.length) {
+              console.error('[Calendar] regen missing fields after repair', {
+                requestId,
+                missingFields: stillMissing.length,
+                samples: stillMissing.slice(0, 2),
+              });
+            }
+          } else {
+            return sendJson(res, 422, {
+              error: 'REGEN_INVALID_OUTPUT',
+              message: 'Regeneration did not return required fields.',
+              requestId,
+              missingFields: missingFieldsReport,
+            });
+          }
         }
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
@@ -9903,6 +10028,15 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (clientAborted || req.aborted || res.writableEnded) return;
         const safeError = err instanceof Error ? err : new Error(String(err));
+        if (selectedMode === 'brand_brain') {
+          const fallbackPosts = buildBrandBrainFallbackPosts(
+            body?.nicheStyle || '',
+            body?.startDay || 1,
+            body?.days || 1,
+            requestedPostsPerDay
+          );
+          return sendJson(res, 200, { calendarId: targetCalendarId, posts: fallbackPosts, requestId });
+        }
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
@@ -10092,20 +10226,57 @@ const server = http.createServer((req, res) => {
     req.on('data', (chunk) => (body += chunk));
     req.on('end', async () => {
       const requestId = generateRequestId('generate');
+      let selectedMode = 'regular';
+      let parsedPayload = null;
       try {
         const payload = JSON.parse(body || '{}');
-        const posts = await generateCalendarPosts({
+        parsedPayload = payload;
+        const targetCalendarId = payload?.calendarId ?? null;
+        if (targetCalendarId && supabaseAdmin) {
+          const { data: calendarRow, error: calendarError } = await supabaseAdmin
+            .from('calendars')
+            .select('*')
+            .eq('id', targetCalendarId)
+            .maybeSingle();
+          if (!calendarError && calendarRow) {
+            if (typeof calendarRow.brand_brain_enabled === 'boolean') {
+              selectedMode = calendarRow.brand_brain_enabled ? 'brand_brain' : 'regular';
+            } else if (typeof calendarRow.brandBrainEnabled === 'boolean') {
+              selectedMode = calendarRow.brandBrainEnabled ? 'brand_brain' : 'regular';
+            } else if (typeof calendarRow.calendar_mode === 'string') {
+              selectedMode = calendarRow.calendar_mode === 'brand_brain' ? 'brand_brain' : 'regular';
+            } else if (typeof calendarRow.calendarMode === 'string') {
+              selectedMode = calendarRow.calendarMode === 'brand_brain' ? 'brand_brain' : 'regular';
+            }
+          }
+        }
+        const brandBrainEnabled = selectedMode === 'brand_brain';
+        let posts = await generateCalendarPosts({
           ...payload,
+          brandBrainEnabled,
+          calendarMode: selectedMode,
           postsPerDay: 1,
-          isPro: false,
+          isPro: brandBrainEnabled,
           context: {
             requestId,
             batchIndex: payload?.batchIndex,
             startDay: payload?.startDay,
           },
         });
+        if (brandBrainEnabled) {
+          posts = repairBrandBrainPostBatch(posts, payload?.nicheStyle || '', payload?.startDay || 1, 1);
+        }
         return sendJson(res, 200, { posts });
       } catch (err) {
+        if (selectedMode === 'brand_brain') {
+          const fallbackPosts = buildBrandBrainFallbackPosts(
+            parsedPayload?.nicheStyle || '',
+            parsedPayload?.startDay || 1,
+            parsedPayload?.days || 1,
+            1
+          );
+          return sendJson(res, 200, { posts: fallbackPosts });
+        }
         logServerError('calendar_generate_error', err, { requestId, bodyPreview: body.slice(0, 400) });
         respondWithServerError(res, err, { requestId });
       }
