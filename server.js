@@ -9756,25 +9756,36 @@ const server = http.createServer((req, res) => {
         }
         const targetCalendarId = body?.calendarId ?? null;
         let calendarBrandBrainEnabled = null;
-        if (targetCalendarId && supabaseAdmin) {
+        if (calendarBrandBrainEnabled === null && targetCalendarId && supabaseAdmin) {
           const { data: calendarRow, error: calendarError } = await supabaseAdmin
             .from('calendars')
-            .select('posts')
+            .select('*')
             .eq('id', targetCalendarId)
             .eq('user_id', user.id)
             .maybeSingle();
           if (!calendarError && calendarRow) {
-            const posts = Array.isArray(calendarRow.posts) ? calendarRow.posts : [];
-            const hasModeFlag = posts.some((post) => {
-              if (!post || typeof post !== 'object') return false;
-              return (
-                post?.calendarMode === 'brand_brain' ||
-                post?.mode === 'brand_brain' ||
-                post?.brandBrainEnabled === true ||
-                post?.brand_brain_enabled === true
-              );
-            });
-            calendarBrandBrainEnabled = Boolean(hasModeFlag);
+            if (typeof calendarRow.brand_brain_enabled === 'boolean') {
+              calendarBrandBrainEnabled = calendarRow.brand_brain_enabled;
+            } else if (typeof calendarRow.brandBrainEnabled === 'boolean') {
+              calendarBrandBrainEnabled = calendarRow.brandBrainEnabled;
+            } else if (typeof calendarRow.calendar_mode === 'string') {
+              calendarBrandBrainEnabled = calendarRow.calendar_mode === 'brand_brain';
+            } else if (typeof calendarRow.calendarMode === 'string') {
+              calendarBrandBrainEnabled = calendarRow.calendarMode === 'brand_brain';
+            }
+            if (calendarBrandBrainEnabled === null) {
+              const posts = Array.isArray(calendarRow.posts) ? calendarRow.posts : [];
+              const hasModeFlag = posts.some((post) => {
+                if (!post || typeof post !== 'object') return false;
+                return (
+                  post?.calendarMode === 'brand_brain' ||
+                  post?.mode === 'brand_brain' ||
+                  post?.brandBrainEnabled === true ||
+                  post?.brand_brain_enabled === true
+                );
+              });
+              calendarBrandBrainEnabled = Boolean(hasModeFlag);
+            }
           }
         }
         const selectedMode = calendarBrandBrainEnabled === true ? 'brand_brain' : 'regular';
@@ -9825,6 +9836,7 @@ const server = http.createServer((req, res) => {
             posts = await Promise.race([
               generateCalendarPosts({
                 ...(body || {}),
+                brandBrainEnabled: selectedMode === 'brand_brain',
                 calendarMode: selectedMode,
                 postsPerDay: requestedPostsPerDay,
                 context: regenContext,
