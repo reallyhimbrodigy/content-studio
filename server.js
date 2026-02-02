@@ -2899,6 +2899,7 @@ function buildBrandBrainDirective(settings = {}) {
     '- engagementScripts must follow engagement loop rules; no sales or pressure prompts.',
     '- CTA must be a single tiny action aligned to the pillar; no urgency or exclusivity.',
     '- Do not omit required fields; cta, script.cta, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply must be non-empty and aligned to the pillar contract.',
+    '- KEY CONTRACT: topic_signature and angle must be present and non-empty; if missing or empty, rewrite once internally before output.',
     '- topic_signature and angle must be top-level keys spelled exactly "topic_signature" and "angle".',
     '- Do not use alternate keys such as topicSignature or angleText.',
     '- Keep output aligned to required schema keys only; no extras.',
