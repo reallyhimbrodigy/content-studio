@@ -6304,7 +6304,7 @@ const createCard = (post) => {
     const repurposeEl = repurposeText || '';
 
     const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio);
-    const audioRowText = suggestedAudioText || 'Audio missing for this post.';
+    const audioRowText = suggestedAudioText || '';
     // Audio completeness is summarized once per generation run.
     const engagementParts = [];
     if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
@@ -9339,17 +9339,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const slot = (idx % normalizedFrequency) + 1;
       return { ...post, day: dayIndex, slot };
     });
-    const isDevMode =
-      typeof process === 'undefined' || !process.env || process.env.NODE_ENV !== 'production';
-    if (isDevMode) {
-      const missingAudio = allPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
-      if (missingAudio) {
-        console.warn('[Calendar] incomplete suggestedAudio', {
-          runId: thisRunId,
-          missingAudio,
-        });
-      }
-    }
     const assignedAudioCount = allPosts.filter(hasSuggestedAudio).length;
     const audioSample = allPosts
       .filter(hasSuggestedAudio)
