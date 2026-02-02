@@ -3331,7 +3331,7 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- Hidden constraint must be a real limiting variable/condition (not "people overlook/forget").',
   '- Concrete consequence must be a specific second-order cost (time/money/risk/opportunity), not generic stress/fear.',
   '- Tiny action must be non-salesy and must NOT require DM/click/booking/contact.',
-  '- Key contract (schema stability): ensure required keys exist and are non-empty strings: topic_signature, angle (exact spelling, case-sensitive). Do NOT output alias keys for these fields.',
+  '- Key contract (schema stability): ensure required keys exist and are non-empty strings: topic_signature, angle (exact spelling, case-sensitive). Do NOT output alias keys like topicCapsule; map to topic_signature instead.',
   '- Anti-redundancy: Title/Hook/Caption/Reel Script must not repeat any identical 5+ word phrase.',
   '- Self-audit ONCE: If teardown chain labels are missing/incomplete OR topic_signature/angle missing/empty OR any rule above is violated, rewrite the entire JSON once internally, then output final JSON only. No explanation.',
   'DEPTH + SAFETY RULES (BINDING):',
