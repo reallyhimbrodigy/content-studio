@@ -2891,6 +2891,12 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
 function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   const lines = [
+    'KEY CONTRACT (BINDING)',
+    '- Output must be a single JSON object that matches the schema exactly. No markdown. No commentary.',
+    '- Required keys MUST be present and non-empty strings: topic_signature, angle (exact spelling, case-sensitive).',
+    '- Do NOT output alias keys for topic_signature or angle (e.g., topicSignature, angleText).',
+    '- Before final output, internally validate topic_signature and angle are present and non-empty.',
+    '- If either is missing/empty, rewrite the entire JSON ONCE internally, then output final JSON only.',
     'Brand Brain mode: belief teardown with causal reasoning; distinct from Regular.',
     '- Use contrarian or corrective angles to create tension.',
     '- Do not turn the post into a full how-to tutorial; keep any decision tool concise.',
@@ -9747,6 +9753,28 @@ const server = http.createServer((req, res) => {
         if (body && typeof body === 'object') {
           body.userId = user.id;
         }
+        const brandBrainSettings = user?.id ? await fetchBrandBrainSettings(user.id) : null;
+        const payloadBrandBrainEnabled = Boolean(
+          body?.brandBrainEnabled ||
+          body?.brand_brain_enabled ||
+          body?.calendarMode === 'brand_brain' ||
+          body?.post?.brandBrainEnabled ||
+          body?.post?.brand_brain_enabled ||
+          body?.post?.calendarMode === 'brand_brain' ||
+          body?.post?.mode === 'brand_brain'
+        );
+        const brandBrainSelected = Boolean(isPro && (brandBrainSettings?.enabled || payloadBrandBrainEnabled));
+        const postKeyForLog = body?.post_key || body?.postKey || body?.post?.post_key || body?.post?.postKey || null;
+        console.log('[Calendar][Regen][BrandBrainSelect]', {
+          requestId,
+          post_key: postKeyForLog,
+          brandBrainSelected,
+          flags: {
+            isPro,
+            profileEnabled: Boolean(brandBrainSettings?.enabled),
+            payloadBrandBrainEnabled,
+          },
+        });
         const targetCalendarId = body?.calendarId ?? null;
         if (clientAborted || req.aborted) return;
         console.log('[Calendar][Server][Perf] regen generation start', {
@@ -9788,6 +9816,8 @@ const server = http.createServer((req, res) => {
             posts = await Promise.race([
               generateCalendarPosts({
                 ...(body || {}),
+                brandBrainEnabled: payloadBrandBrainEnabled,
+                calendarMode: payloadBrandBrainEnabled ? 'brand_brain' : body?.calendarMode,
                 postsPerDay: requestedPostsPerDay,
                 context: regenContext,
                 isPro,
