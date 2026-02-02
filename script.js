@@ -6667,6 +6667,24 @@ const createCard = (post) => {
       panel.setAttribute('aria-labelledby', toggleId);
       panel.hidden = true;
       entries.forEach((node) => panel.appendChild(node));
+      if (label === 'Details') {
+        const removeDetailsLines = (text) => {
+          if (!text) return text;
+          return text
+            .split(/\r?\n/)
+            .filter((line) => {
+              const trimmed = line.trim();
+              return trimmed !== 'Execution Notes:' && trimmed !== 'Format:Reel';
+            })
+            .join('\n');
+        };
+        panel.querySelectorAll('.detail-text, .calendar-card__info-row span').forEach((el) => {
+          const original = el.textContent || '';
+          let cleaned = stripLeadingSectionLabelLine(original, 'Details');
+          cleaned = removeDetailsLines(cleaned);
+          if (cleaned !== original) el.textContent = cleaned;
+        });
+      }
       toggle.addEventListener('click', () => {
         const isOpen = toggle.getAttribute('aria-expanded') === 'true';
         toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
@@ -9134,13 +9152,20 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const trimmedBody = responseText.trim();
       const bodyIsHtml = /<!DOCTYPE/i.test(trimmedBody) || ct.toLowerCase().includes('text/html') || trimmedBody.startsWith('<html');
       if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
+        const status = response.status;
         let data = parsedDetail || null;
-        if (!responseText) {
-          data = { message: 'empty_error_body' };
-        } else if (parseFailed) {
-          data = { message: 'non_json_error_body', raw: responseText.slice(0, 500) };
+        if (!data) {
+          const preview = responseText ? responseText.slice(0, 200) : '';
+          const code =
+            status === 502 || status === 503
+              ? 'upstream_gateway_error'
+              : responseText
+                ? 'non_json_error_body'
+                : 'empty_error_body';
+          data = { code, status, raw: preview };
         }
-        const msg = data?.error?.message || data?.message || response.statusText || `HTTP_${response.status}`;
+        const fallbackMsg = data?.code ? `${data.code}: HTTP_${status}` : (response.statusText || `HTTP_${status}`);
+        const msg = data?.error?.message || data?.message || fallbackMsg;
         const requestId = data?.requestId || data?.error?.requestId || reqIdHeader || null;
         lastGenerationErrorStatus = response.status;
         lastGenerationRequestId = requestId;
@@ -9150,6 +9175,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           status: response.status,
           requestId,
           error: msg,
+          bodyPreview: data?.raw,
         });
         if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
           lastGenerationErrorCode = data?.error?.code;
@@ -9163,6 +9189,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         err.status = response.status;
         err.requestId = requestId;
         err.payload = data;
+        if (data?.code) err.code = data.code;
         throw err;
       }
       if (firstDispatchLogged) {
