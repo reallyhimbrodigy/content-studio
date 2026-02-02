@@ -8162,10 +8162,8 @@ function stripLeadingSectionLabelLine(value, label) {
   const section = String(label || '').trim();
   if (!section) return value;
   const escaped = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`^(\\s*)${escaped}\\s*:\\s*[^\\r\\n]*(\\r?\\n)?`, 'i');
-  const match = value.match(pattern);
-  if (!match) return value;
-  return match[1] + value.slice(match[0].length);
+  const pattern = new RegExp(`^(\\s*)${escaped}\\s*:\\s*`, 'i');
+  return value.replace(pattern, '$1');
 }
 
 function stripSectionLabelIfNeeded(value, label) {
