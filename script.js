@@ -520,6 +520,8 @@ let hubIndex = 0; // 0-based index into currentCalendar
 let activeTab = 'plan';
 let isCompact = false;
 let currentPostFrequency = 1;
+let expectedCalendarPostCount = null;
+let renderGateEnabled = false;
 let lastGenerationRequestId = null;
 let lastGenerationErrorStatus = null;
 let lastGenerationErrorCode = null;
@@ -7294,6 +7296,14 @@ function logStrategyDuplicates(posts) {
 }
 
 const renderCards = (subset) => {
+  if (renderGateEnabled && expectedCalendarPostCount && Array.isArray(subset)) {
+    if (subset.length !== expectedCalendarPostCount && subset.length !== 0) {
+      return;
+    }
+    if (subset.length && subset.some((post) => !hasRequiredPostFields(post) || isPlaceholderPost(post))) {
+      return;
+    }
+  }
   preparePinnedCommentsForRender(subset);
   logStrategyDuplicates(subset);
   if (!grid) return;
@@ -8514,8 +8524,55 @@ if (document.readyState === 'loading') {
   bindDeleteCalendarButton();
 }
 
-const DEFAULT_IDEA_TEXT = 'Engaging post idea';
+const DEFAULT_IDEA_TEXT = '';
 const DEFAULT_CAPTION_TEXT = '';
+const PLACEHOLDER_TEXT_RE = /\bplaceholder\b/i;
+const REQUIRED_POST_TEXT_FIELDS = [
+  'title',
+  'hook',
+  'caption',
+  'cta',
+  'designNotes',
+  'distributionPlan',
+  'topic_signature',
+  'angle',
+];
+
+function isNonEmptyText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasPlaceholderText(value) {
+  return typeof value === 'string' && PLACEHOLDER_TEXT_RE.test(value);
+}
+
+function isPlaceholderPost(post = {}) {
+  return ['idea', 'title', 'hook', 'caption'].some((key) => hasPlaceholderText(post?.[key]));
+}
+
+function hasRequiredPostFields(post = {}) {
+  if (!post || typeof post !== 'object') return false;
+  for (const key of REQUIRED_POST_TEXT_FIELDS) {
+    if (!isNonEmptyText(post[key])) return false;
+  }
+  if (!Array.isArray(post.hashtags)) return false;
+  if (!post.topicCapsule || typeof post.topicCapsule !== 'object') return false;
+  if (!isNonEmptyText(post.topicCapsule.summary)) return false;
+  if (!Array.isArray(post.topicCapsule.mustUse)) return false;
+  if (!Array.isArray(post.topicCapsule.mustAvoid)) return false;
+  if (!isNonEmptyText(post.topicCapsule.audienceAngle)) return false;
+  if (!Array.isArray(post.topicCapsule.keyEntities)) return false;
+  const script = post.script || post.videoScript;
+  if (!script || typeof script !== 'object') return false;
+  if (!isNonEmptyText(script.hook) || !isNonEmptyText(script.body) || !isNonEmptyText(script.cta)) return false;
+  const reelScript = post.reelScript || post.reel_script;
+  if (!reelScript || typeof reelScript !== 'object') return false;
+  if (!isNonEmptyText(reelScript.hook) || !isNonEmptyText(reelScript.body) || !isNonEmptyText(reelScript.cta)) return false;
+  const engagement = post.engagementScripts || post.engagement_scripts;
+  if (!engagement || typeof engagement !== 'object') return false;
+  if (!isNonEmptyText(engagement.commentReply) || !isNonEmptyText(engagement.dmReply)) return false;
+  return true;
+}
 
 const POST_SLOT_ANGLES = [
   {
@@ -9058,11 +9115,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const partialByIndex = {};
     let firstRenderDone = false;
     let generatedCalendarId = null;
-    // Clear any previous calendar for a fresh incremental render
-    try {
-      currentCalendar = [];
-      renderCards(currentCalendar);
-    } catch (_) {}
+    expectedCalendarPostCount = totalPosts;
+    renderGateEnabled = true;
     // Switch to live generation progress immediately
     {
       const btn = document.getElementById('generate-calendar');
@@ -9088,6 +9142,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
     })();
     let firstDispatchLogged = false;
+    const MAX_BATCH_RETRIES = 2;
     const fetchBatch = async (batchIndex) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
@@ -9267,55 +9322,59 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (pFill) pFill.style.width = `${percent}%`;
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
 
-      const userIsPro = await userIsProPromise;
-      // Incremental render of this batch without changing final output strategy
-      try {
-        const baseIndex = batchIndex * batchSize;
-        const transformed = batchPosts.map((p, i) => {
-          const globalIndex = baseIndex + i;
-          const normalized = normalizePost(p, globalIndex, 1);
-          const dayIndex = Math.floor(globalIndex / normalizedFrequency) + 1;
-          const slot = (globalIndex % normalizedFrequency) + 1;
-          return { ...normalized, day: dayIndex, slot };
-        });
-        transformed.forEach((post, i) => {
-          const globalIndex = baseIndex + i;
-          partialByIndex[globalIndex] = post;
-        });
-        // Build a contiguous subset for rendering
-        const keys = Object.keys(partialByIndex).map((k) => Number(k)).sort((a, b) => a - b);
-        const subset = keys.map((k) => partialByIndex[k]);
-        currentCalendar = subset;
-        renderCards(currentCalendar);
-        if (!firstRenderDone && subset.length > 0) {
-          console.log(`[Calendar][Perf] first batch rendered (t=${Math.round(performance.now())}ms)`);
-          firstRenderDone = true;
-        }
-      } catch (e) {
-        console.warn('Incremental render failed for batch', batchIndex + 1, e);
-      }
+      await userIsProPromise;
 
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts, calendarId };
+    };
+    const fetchBatchWithRetry = async (batchIndex) => {
+      let attempt = 0;
+      while (attempt <= MAX_BATCH_RETRIES) {
+        try {
+          return await fetchBatch(batchIndex);
+        } catch (err) {
+          if (err?.message === 'upgrade_required' || err?.message === 'generation_cancelled') throw err;
+          if (attempt >= MAX_BATCH_RETRIES) throw err;
+          const backoff = 400 * (attempt + 1);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          attempt += 1;
+        }
+      }
+      throw new Error('batch_retry_exhausted');
     };
     
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const maxConcurrent = 3;
     const results = new Array(totalBatches);
+    const batchFailures = [];
     let nextBatchIndex = 0;
     const t0 = performance.now();
     const worker = async () => {
       while (nextBatchIndex < totalBatches) {
         const batchIndex = nextBatchIndex;
         nextBatchIndex += 1;
-        const result = await fetchBatch(batchIndex);
-        results[batchIndex] = { batchIndex, result };
+        try {
+          const result = await fetchBatchWithRetry(batchIndex);
+          results[batchIndex] = { batchIndex, result };
+        } catch (err) {
+          if (err?.message === 'upgrade_required' || err?.message === 'generation_cancelled') {
+            throw err;
+          }
+          batchFailures.push({ batchIndex, error: err });
+          results[batchIndex] = null;
+        }
       }
     };
     const workerCount = Math.min(maxConcurrent, totalBatches);
     const workers = Array.from({ length: workerCount }, () => worker());
     await Promise.all(workers);
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
+    if (batchFailures.length) {
+      console.warn('[Calendar] batch failures detected', {
+        runId: thisRunId,
+        failedBatches: batchFailures.map((f) => f.batchIndex),
+      });
+    }
     const orderedResults = results
       .filter(Boolean)
       .sort((a, b) => a.batchIndex - b.batchIndex)
@@ -9330,6 +9389,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     // Sort by batch index and flatten
     let allPosts = orderedResults.flatMap((r) => r.posts);
 
+    const rawPostCount = allPosts.length;
     // Normalize every post to ensure required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
     const preAudioCount = normalized.filter(hasSuggestedAudio).length;
@@ -9363,6 +9423,34 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       throw new Error('generation_cancelled');
     }
 
+    const retryCount = Number(options.retryCount || 0);
+    const maxRunRetries = 2;
+    const hasFullCount = rawPostCount === totalPosts;
+    const hasMissingFields = allPosts.some((post) => !hasRequiredPostFields(post));
+    const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
+    if (!hasFullCount || hasMissingFields || hasPlaceholders) {
+      if (retryCount < maxRunRetries && !runSignal?.aborted) {
+        const backoff = 500 * (retryCount + 1);
+        console.warn('[Calendar] generation incomplete; retrying', {
+          runId: thisRunId,
+          retryCount,
+          hasFullCount,
+          hasMissingFields,
+          hasPlaceholders,
+        });
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        return generateCalendarWithAI(nicheStyle, postsPerDay, {
+          ...options,
+          retryCount: retryCount + 1,
+          runId: thisRunId,
+          signal: runSignal,
+        });
+      }
+      const err = new Error('generation_incomplete');
+      err.code = 'generation_incomplete';
+      throw err;
+    }
+
     const userIsPro = await userIsProPromise;
     if (userIsPro) {
       allPosts = allPosts.map((post, idx) => enrichPostWithProFields(post, idx, nicheStyle));
@@ -9375,6 +9463,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
 
     renderCards(allPosts);
+    renderGateEnabled = false;
+    expectedCalendarPostCount = null;
     requestAnimationFrame(() => {
       const audioNodes = document.querySelectorAll('.suggested-audio');
       const totalPosts = allPosts.length;
@@ -9548,6 +9638,10 @@ async function onGenerateCalendarClick() {
       console.log('Calendar generation cancelled for run', runId);
       return;
     }
+    if (err?.code === 'generation_incomplete' || err?.message === 'generation_incomplete') {
+      console.warn('[Calendar] generation incomplete after retries', { runId });
+      return;
+    }
     console.error("❌ Failed to generate calendar:", err);
     console.error("❌ Error message:", err.message);
     console.error("❌ Full error:", err);
@@ -9566,6 +9660,8 @@ async function onGenerateCalendarClick() {
       if (feedbackEl) feedbackEl.textContent = "";
     }, 4000);
   } finally {
+    renderGateEnabled = false;
+    expectedCalendarPostCount = null;
     hideGeneratingState(originalText);
     isGeneratingCalendar = false;
     if (generationAbortController === controller) {
