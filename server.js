@@ -3349,6 +3349,40 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '[/BRAND_BRAIN_MODE_INSTRUCTIONS]',
 ].join('\n');
 
+const COMPACT_REQUIRED_KEYS_LINE =
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+
+const COMPACT_LENGTH_LIMITS_BLOCK = [
+  'LENGTH CAPS:',
+  '- title <= 40 chars',
+  '- hook <= 80 chars',
+  '- caption <= 180 chars (max 2 sentences)',
+  '- hashtags: 6 max',
+  '- suggestedAudio: always present; "Original audio" allowed',
+  '- designNotes: exactly 3 bullets, each <= 50 chars',
+  '- engagementScripts.commentReply (engagementComment) <= 80 chars',
+  '- engagementScripts.dmReply (engagementDM) <= 80 chars',
+  '- distributionPlan: exactly 2 bullets, each <= 45 chars',
+  '- reelScript: EXACTLY 4 lines total:',
+  '  1) On-screen: <= 55 chars',
+  '  2) VO: <= 95 chars',
+  '  3) VO: <= 95 chars',
+  '  4) CTA: <= 65 chars',
+  '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
+].join('\n');
+
+const COMPACT_REGULAR_MODE_BLOCK = [
+  'MODE: Regular (neutral/informational).',
+  '- No belief/teardown labels or persuasion framing.',
+  '- DM allowed only in Promotion + Social Proof; otherwise engagementScripts.dmReply must be neutral share/save.',
+].join('\n');
+
+const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
+  'MODE: Brand Brain (belief teardown).',
+  '- Compress teardown chain inside VO lines using micro-labels: Belief/Feels/Constraint/Cost/Reframe/Tiny action.',
+  '- Keep within VO line caps; no urgency or motivational fluff.',
+].join('\n');
+
 const BRAND_BRAIN_KEY_CONTRACT_TOP = [
   'KEY CONTRACT (BINDING):',
   '- Output ONE JSON object matching the schema exactly. No markdown. No commentary.',
@@ -3397,6 +3431,20 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
       const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
       const titleSegment = title ? ` | title: ${title}` : '';
       lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
+  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
+  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const lines = ['POST KEYS (MUST MATCH):'];
+  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+    const day = safeStart + dayOffset;
+    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
+      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
     }
   }
   return lines.join('\n');
@@ -3472,7 +3520,24 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const regularContentQualityBlock = !opts.brandBrainDirective ? REGULAR_CONTENT_QUALITY_RULES_BLOCK : '';
   const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
   const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
-  const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
+  const postIdentityBlock = compactPrompt
+    ? buildCompactPostKeyBlock(startDay, days, postsPerDaySetting)
+    : buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
+  if (compactPrompt) {
+    const compactModeBlock = opts.brandBrainDirective ? COMPACT_BRAND_BRAIN_MODE_BLOCK : COMPACT_REGULAR_MODE_BLOCK;
+    const compactPromptText = [
+      'Return JSON only.',
+      nicheStyle ? `Niche: ${nicheStyle}` : null,
+      `Generate exactly ${totalPostsRequired} posts for these post_keys:`,
+      postIdentityBlock,
+      COMPACT_REQUIRED_KEYS_LINE,
+      '- All required keys must be present and non-empty strings.',
+      '- No placeholders: "placeholder", "tbd", "lorem", "coming soon".',
+      COMPACT_LENGTH_LIMITS_BLOCK,
+      compactModeBlock,
+    ].filter(Boolean).join('\n');
+    return compactPromptText;
+  }
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
     '- Return ONLY a single JSON object. No markdown. No backticks. No commentary. No headings.',
@@ -7293,6 +7358,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         chunkStartDay,
         chunkDays,
         promptChars: prompt.length,
+        maxTokens,
         planUsed: Boolean(opts.planUsed),
       });
     }
@@ -9752,7 +9818,7 @@ const server = http.createServer((req, res) => {
         };
         const REGEN_BATCH_COUNT = 3;
         const POSTS_PER_BATCH = 10;
-        const MODEL_TIMEOUT_MS = 18000;
+        const MODEL_TIMEOUT_MS = 28000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
         const MAX_OUTPUT_TOKENS_PER_POST = 200;
         const TOKEN_OVERHEAD = 200;
