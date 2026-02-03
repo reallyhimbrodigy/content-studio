@@ -9087,6 +9087,18 @@ function normalizeCalendarSignature(value = '') {
 
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
   const runSignal = options.signal;
+  const batchAbortController = new AbortController();
+  const batchSignal = batchAbortController.signal;
+  if (runSignal) {
+    if (runSignal.aborted) {
+      batchAbortController.abort();
+    } else {
+      runSignal.addEventListener('abort', () => batchAbortController.abort(), { once: true });
+    }
+  }
+  let abortScheduling = false;
+  let firstBatchError = null;
+  let batchErrorLogged = false;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
   const tStart = performance.now();
@@ -9129,7 +9141,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       console.log(`[Calendar][Perf] preparing cleared (t=${Math.round(performance.now())}ms)`);
     }
     
-    if (runSignal?.aborted) throw new Error('generation_cancelled');
+    if (batchSignal.aborted) throw new Error('generation_cancelled');
     // Defer resolving userId until needed; don't gate first dispatch
     let payloadUserId;
     const payloadUserIdPromise = (async () => {
@@ -9147,7 +9159,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         showUpgradeModal();
         throw new Error('upgrade_required');
       }
-      if (runSignal?.aborted || thisRunId !== currentGenerationRunId) {
+      if (batchSignal.aborted || thisRunId !== currentGenerationRunId || abortScheduling) {
         throw new Error('generation_cancelled');
       }
       const remaining = totalPosts - batchIndex * batchSize;
@@ -9169,7 +9181,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
       if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
-      if (thisRunId !== currentGenerationRunId) {
+      if (thisRunId !== currentGenerationRunId || abortScheduling || batchSignal.aborted) {
         throw new Error('generation_cancelled');
       }
       if (!firstDispatchLogged) {
@@ -9184,13 +9196,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-        signal: runSignal,
+        signal: batchSignal,
       });
       const reqIdHeader = response.headers.get('x-request-id') || null;
-      const responseText = await response.text();
       let parsedDetail = null;
       let parseFailed = false;
-      if (responseText) {
+      let responseText = '';
+      if (!response.ok) {
+        try {
+          parsedDetail = await response.clone().json();
+        } catch (_) {}
+      }
+      responseText = await response.text();
+      if (!parsedDetail && responseText) {
         try {
           parsedDetail = JSON.parse(responseText);
         } catch {
@@ -9203,21 +9221,28 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (!response.ok || bodyIsHtml || !ct.toLowerCase().includes('application/json')) {
         let data = parsedDetail || null;
         if (!responseText) {
-          data = { message: 'empty_error_body' };
+          data = { error: 'empty_error_body', message: 'empty_error_body', status: response.status };
         } else if (parseFailed) {
-          data = { message: 'non_json_error_body', raw: responseText.slice(0, 500) };
+          data = {
+            error: 'non_json_error_body',
+            message: responseText.slice(0, 500) || 'non_json_error_body',
+            status: response.status,
+          };
         }
         const msg = data?.error?.message || data?.message || response.statusText || `HTTP_${response.status}`;
         const requestId = data?.requestId || data?.error?.requestId || reqIdHeader || null;
         lastGenerationErrorStatus = response.status;
         lastGenerationRequestId = requestId;
         lastGenerationErrorCode = data?.error?.code || data?.code || null;
-        console.error('[Calendar] fetchBatch bad response', {
-          batchIndex,
-          status: response.status,
-          requestId,
-          error: msg,
-        });
+        if (!batchErrorLogged && !batchSignal.aborted) {
+          console.error('[Calendar] fetchBatch bad response', {
+            batchIndex,
+            status: response.status,
+            requestId,
+            error: msg,
+          });
+          batchErrorLogged = true;
+        }
         if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
           lastGenerationErrorCode = data?.error?.code;
           const schemaErr = new Error('openai_schema_error');
@@ -9333,15 +9358,31 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const t0 = performance.now();
     const worker = async () => {
       while (nextBatchIndex < totalBatches) {
+        if (abortScheduling || batchSignal.aborted) break;
         const batchIndex = nextBatchIndex;
         nextBatchIndex += 1;
-        const result = await fetchBatch(batchIndex);
-        results[batchIndex] = { batchIndex, result };
+        try {
+          const result = await fetchBatch(batchIndex);
+          results[batchIndex] = { batchIndex, result };
+        } catch (err) {
+          if (err?.message === 'generation_cancelled' || batchSignal.aborted || abortScheduling) {
+            break;
+          }
+          if (!firstBatchError) {
+            firstBatchError = err;
+            abortScheduling = true;
+            batchAbortController.abort();
+          }
+          break;
+        }
       }
     };
     const workerCount = Math.min(maxConcurrent, totalBatches);
     const workers = Array.from({ length: workerCount }, () => worker());
     await Promise.all(workers);
+    if (firstBatchError) {
+      throw firstBatchError;
+    }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
     const orderedResults = results
       .filter(Boolean)

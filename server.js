@@ -9703,10 +9703,13 @@ const server = http.createServer((req, res) => {
         })();
         const retryAuditBlock = [
           'PRE-FLIGHT (RETRY ONLY):',
-          '- Before output, verify every required key exists and is non-empty.',
-          '- Required keys include: topic_signature, angle, script, reelScript.',
-          '- Never output placeholders or the word "Placeholder".',
+          '- Before returning final JSON, verify every required field exists and is non-empty for every post.',
+          '- If any are missing, rewrite the entire JSON output so it passes validation.',
+          '- Do not include placeholders. Do not omit posts.',
         ].join('\n');
+        let lastMissingReport = [];
+        let lastMissingCounts = {};
+        let lastAttemptDetails = null;
         const deriveText = (...candidates) => {
           for (const candidate of candidates) {
             const value = toPlainString(candidate);
@@ -9811,10 +9814,9 @@ const server = http.createServer((req, res) => {
             const baseMs = 45000;
             const perChunkBudgetMs = 15000;
             const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
-            const minGuardMs = OPENAI_GENERATION_TIMEOUT_MS + 30000;
             const timeoutGuardMs = Math.min(
-              240000,
-              Math.max(minGuardMs, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
+              30000,
+              Math.max(10000, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
             );
             let timeoutId;
             const timeoutPromise = new Promise((_, reject) => {
@@ -9951,6 +9953,20 @@ const server = http.createServer((req, res) => {
             const stillMissing = collectMissing(attemptPosts);
             const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
             const countMismatch = expectedPostCount !== null && attemptPosts.length !== expectedPostCount;
+            lastMissingReport = stillMissing;
+            lastMissingCounts = {};
+            stillMissing.forEach((entry) => {
+              entry.missing.forEach((field) => {
+                lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
+              });
+            });
+            lastAttemptDetails = {
+              attemptIndex,
+              countMismatch,
+              expectedPostCount,
+              actualCount: attemptPosts.length,
+              hasPlaceholders,
+            };
             if (!stillMissing.length && !hasPlaceholders && !countMismatch) {
               ensuredPosts = attemptPosts;
               break;
@@ -9970,10 +9986,13 @@ const server = http.createServer((req, res) => {
         }
         if (clientAborted || req.aborted || res.writableEnded) return;
         if (!Array.isArray(ensuredPosts) || !ensuredPosts.length) {
-          return sendJson(res, 500, {
-            error: 'GENERATION_FAILED',
-            message: 'Unable to generate calendar. Please try again.',
+          return sendJson(res, 422, {
+            error: 'CALENDAR_SCHEMA_MISMATCH',
+            message: 'Calendar output did not meet required fields.',
             requestId,
+            details: lastMissingReport,
+            missingFieldsCounts: lastMissingCounts,
+            attempt: lastAttemptDetails,
           });
         }
         const missingAudioCount = ensuredPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
