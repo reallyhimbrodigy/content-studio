@@ -3269,133 +3269,84 @@ const QUALITY_ALIGNMENT_BLOCK = [
 
 const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '[REGULAR_MODE_INSTRUCTIONS]',
-  'You are generating a Regular (Neutral/Informational) content calendar. Execute templates. Do not use persuasion psychology.',
+  'COMMON RULES:',
+  '- Output JSON only. No markdown. No commentary.',
+  '- Generate exactly 30 posts.',
+  '- Every post must include every required key exactly as named by the schema. No extra keys.',
+  '- No placeholders. Do not use: "placeholder", "tbd", "lorem", "coming soon".',
+  '- Values must be non-empty strings.',
   '',
-  'Mode bans (apply across ALL text fields):',
-  '- Forbidden: belief attacks, teardown framing, reframes, "myth/misconception", urgency/pressure, motivational speech.',
-  '- Never use these labels: "Belief:", "Feels-true because:", "Hidden constraint:", "Concrete consequence:", "Reframe:", "Tiny action:".',
+  'LENGTH LIMITS:',
+  '- title: <= 48 chars',
+  '- hook: <= 90 chars',
+  '- caption: <= 2 sentences AND <= 220 chars',
+  '- hashtags: exactly 6 hashtags',
+  '- suggestedAudio: always present; use "Original audio" if unsure',
+  '- designNotes: exactly 4 bullets, each <= 60 chars',
+  '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
+  '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
+  '- distributionPlan: exactly 2 bullets, each <= 60 chars',
+  '- reelScript: EXACTLY 5 lines for a 15-20s video:',
+  '  1) On-screen (0-2s): <= 60 chars',
+  '  2) VO (2-6s): <= 90 chars',
+  '  3) VO (6-12s): <= 110 chars',
+  '  4) On-screen (12-16s): <= 70 chars',
+  '  5) CTA (16-20s): <= 70 chars',
+  '- Use reelScript.hook as line 1, reelScript.body as lines 2-4, reelScript.cta as line 5. Mirror the same lines in script.hook/body/cta.',
   '',
-  'Pillar routing (must be satisfied BEFORE writing):',
-  '- Education: definition -> 2-4 factors/steps -> practical takeaway. Not testimonials. Not offers/events/listings/services.',
-  '- Lifestyle: routine/moment -> practical tip -> light action. Not listicles ("top X ..."). Not offers/events/listings/services.',
-  '- Social Proof: challenge -> support -> outcome. Not a tutorial.',
-  '- Promotion: offer/event/service/listing -> who it is for -> next step. Not a tutorial.',
+  'SELF-CHECK:',
+  'Before returning, verify:',
+  '- count=30',
+  '- all required keys present and non-empty',
+  '- all length limits satisfied',
+  'If any fail, rewrite internally until all pass. Then return JSON only.',
   '',
-  'If the provided Idea does not structurally match the declared pillar:',
-  '- Rewrite the Idea internally to match the declared pillar.',
-  '- If it still cannot match, change the pillar internally and proceed.',
-  '- Never omit the post.',
-  '',
-  'Field ownership (keep each field single-purpose):',
-  '- Title: one clear idea.',
-  '- Hook: one sentence, different phrasing from Title.',
-  '- Caption: short summary + value, no extra sections.',
-  '- Reel Script: spoken content only (no headings, no "Reel Script:" prefix).',
-  '- Design Notes: visual beats only.',
-  '- Engagement: one comment prompt. DM allowed ONLY if pillar is Social Proof or Promotion.',
-  '- Distribution Plan: 1-2 short lines max.',
-  '',
-  'CTA gate (applies to CTA + Engagement DM + Follow-up):',
-  '- If pillar is Education or Lifestyle: DM / "I can send you" / guide/report/brochure is forbidden. Use "save/try/share/observe".',
-  '- If pillar is Social Proof or Promotion: DM is allowed.',
-  '',
-  'Anti-redundancy:',
-  '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
-  '',
-  'FIELD LENGTH LIMITS (HARD):',
-  '- Title: <= 8 words.',
-  '- Hook: <= 12 words.',
-  '- Caption: <= 40 words.',
-  '- cta: <= 6 words.',
-  '- script.hook / reelScript.hook: <= 10 words.',
-  '- script.body / reelScript.body: <= 60 words total.',
-  '- script.cta / reelScript.cta: <= 6 words.',
-  '- designNotes: 5 timecoded beats; <= 8 words after each timecode.',
-  '- engagementScripts.commentReply / dmReply: <= 12 words each.',
-  '- distributionPlan: 2 short lines, <= 10 words each.',
-  '- hashtags: 5–7 tags.',
-  '- suggestedAudio must be present; use "Original audio" if unsure.',
-  '- Forbidden placeholders anywhere: "placeholder", "tbd", "lorem", "coming soon".',
-  '- If any limit is exceeded, rewrite internally before output.',
-  '',
-  'Preflight:',
-  '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
-  '- Never output placeholders or the word "Placeholder".',
-  '',
-  'Self-audit (silent):',
-  '- Ensure every required key is present and non-empty.',
-  '- If any rule is violated or a required key is missing, rewrite ONCE internally, then output final JSON only.',
+  'REGULAR MODE DIFFERENCES:',
+  '- Tone: neutral, helpful, non-manipulative.',
+  '- No belief attacks, no teardown language, no urgency framing.',
+  '- DM allowed only in Promotion + Social Proof; for other pillars, engagementScripts.dmReply must be a neutral save/share line.',
   '[/REGULAR_MODE_INSTRUCTIONS]',
-  '',
 ].join('\n');
 
 const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '[BRAND_BRAIN_MODE_INSTRUCTIONS]',
-  'You are generating a Brand Brain (Belief Teardown) content calendar. The Reel Script BODY must contain explicit causal logic.',
+  'COMMON RULES:',
+  '- Output JSON only. No markdown. No commentary.',
+  '- Generate exactly 30 posts.',
+  '- Every post must include every required key exactly as named by the schema. No extra keys.',
+  '- No placeholders. Do not use: "placeholder", "tbd", "lorem", "coming soon".',
+  '- Values must be non-empty strings.',
   '',
-  'Hard separation:',
-  '- Do NOT sound like neutral education or lifestyle content.',
-  '- Do NOT write generic inspiration, blog advice, or soft persuasion.',
-  '- Do NOT use urgency/pressure. Do NOT be salesy.',
+  'LENGTH LIMITS:',
+  '- title: <= 48 chars',
+  '- hook: <= 90 chars',
+  '- caption: <= 2 sentences AND <= 220 chars',
+  '- hashtags: exactly 6 hashtags',
+  '- suggestedAudio: always present; use "Original audio" if unsure',
+  '- designNotes: exactly 4 bullets, each <= 60 chars',
+  '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
+  '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
+  '- distributionPlan: exactly 2 bullets, each <= 60 chars',
+  '- reelScript: EXACTLY 5 lines for a 15-20s video:',
+  '  1) On-screen (0-2s): <= 60 chars',
+  '  2) VO (2-6s): <= 90 chars',
+  '  3) VO (6-12s): <= 110 chars',
+  '  4) On-screen (12-16s): <= 70 chars',
+  '  5) CTA (16-20s): <= 70 chars',
+  '- Use reelScript.hook as line 1, reelScript.body as lines 2-4, reelScript.cta as line 5. Mirror the same lines in script.hook/body/cta.',
   '',
-  'Required keys:',
-  '- topic_signature and angle MUST be present and non-empty strings (exact spellings).',
-  '- Never output alias keys (e.g., topicCapsule). Use topic_signature.',
+  'SELF-CHECK:',
+  'Before returning, verify:',
+  '- count=30',
+  '- all required keys present and non-empty',
+  '- all length limits satisfied',
+  'If any fail, rewrite internally until all pass. Then return JSON only.',
   '',
-  'Idea eligibility gate (before writing):',
-  '- Testimonials, listings, generic lifestyle inspiration, or listicles are invalid unless rewritten into a belief teardown.',
-  '- If invalid, rewrite the Idea internally into a teardown-compatible belief before writing. Never omit the post.',
-  '',
-  'Teardown chain requirement (must appear inside Reel Script BODY, plain text, in this exact order):',
-  'Belief:',
-  'Feels-true because:',
-  'Hidden constraint:',
-  'Concrete consequence:',
-  'Reframe:',
-  'Tiny action:',
-  '',
-  'Teardown quality constraints:',
-  '- Hidden constraint = real limiting condition/variable (not "people forget/overlook").',
-  '- Concrete consequence = specific second-order cost (time/money/risk/opportunity), not generic stress.',
-  '- Tiny action = non-salesy and does NOT require DM/click/booking/contact.',
-  '',
-  'Field ownership (keep non-script fields minimal):',
-  '- Title/Hook/Caption: short, sharp, not neutral-informational.',
-  '- Reel Script: contains the teardown chain and nothing else.',
-  '- Design Notes: visual beats only.',
-  '- Engagement: one comment prompt. DM is allowed only if it fits without being salesy.',
-  '- Distribution Plan: 1-2 short lines max.',
-  '',
-  'Anti-redundancy:',
-  '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
-  '',
-  'FIELD LENGTH LIMITS (HARD):',
-  '- Title: <= 8 words.',
-  '- Hook: <= 12 words.',
-  '- Caption: <= 35 words.',
-  '- cta: <= 6 words.',
-  '- reelScript.body must contain the six labels; each labeled line <= 12 words.',
-  '- reelScript.hook / script.hook: <= 10 words.',
-  '- script.body: <= 50 words total.',
-  '- script.cta / reelScript.cta: <= 6 words.',
-  '- designNotes: 5 timecoded beats; <= 8 words after each timecode.',
-  '- engagementScripts.commentReply / dmReply: <= 12 words each.',
-  '- distributionPlan: 2 short lines, <= 10 words each.',
-  '- hashtags: 5–7 tags.',
-  '- suggestedAudio must be present; use "Original audio" if unsure.',
-  '- Forbidden placeholders anywhere: "placeholder", "tbd", "lorem", "coming soon".',
-  '- If any limit is exceeded, rewrite internally before output.',
-  '',
-  'Preflight:',
-  '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
-  '- Never output placeholders or the word "Placeholder".',
-  '',
-  'Self-audit (silent):',
-  '- Ensure topic_signature and angle exist and are non-empty.',
-  '- Ensure the teardown chain labels all exist in order.',
-  '- If any rule is violated or a required key is missing, rewrite ONCE internally, then output final JSON only.',
+  'BRAND BRAIN MODE DIFFERENCES:',
+  '- Must include teardown chain compressed inside reelScript lines 2-4 using micro-labels:',
+  '  "Belief:", "Feels true:", "Constraint:", "Cost:", "Reframe:", "Tiny action:"',
+  '- No motivational fluff. No generic advice blog tone.',
   '[/BRAND_BRAIN_MODE_INSTRUCTIONS]',
-  '',
 ].join('\n');
 
 const BRAND_BRAIN_KEY_CONTRACT_TOP = [
@@ -3530,7 +3481,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- The "posts" value must be an array containing EXACTLY ${totalPostsRequired} post objects. Do not return fewer or more.`,
     '- Do not include newline-delimited templates or partial phrases. Every string must be complete and finished.',
     '- Never end a string with an opening parenthesis, trailing comma, colon, dash, or unfinished clause.',
-    '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string (min 8 characters), except numeric fields defined as numbers or arrays defined as arrays.',
+    '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string, except numeric fields defined as numbers or arrays defined as arrays.',
     '- Never omit a field. Never change field names. Never nest unexpected keys.',
     '- The ONLY allowed keys are those required by the schema; do not add any extra keys.',
     '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
@@ -3541,8 +3492,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
     '- format must be "Reel" for every post.',
     '- reelScript must include hook/body/cta fields (do not collapse into one string).',
-    '- designNotes must include time ranges: 0-2s, 2-5s, 5-12s, 12-18s, 18-22s.',
-    '- distributionPlan must include BOTH "TikTok:" and "Instagram:" lines.',
+    '- designNotes must be exactly 4 bullet lines.',
+    '- distributionPlan must be exactly 2 bullet lines.',
     'NON-EMPTY REQUIREMENT',
     '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, pillar, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
     '- Empty string is invalid. Missing key is invalid. If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
@@ -3557,7 +3508,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- Confirm posts.length === ${totalPostsRequired}.`,
     '- Confirm every post includes all required fields with NON-EMPTY strings.',
     '- Confirm no field value is just whitespace.',
-    '- Confirm distributionPlan contains both "TikTok:" and "Instagram:" lines.',
+    '- Confirm designNotes has exactly 4 bullet lines.',
+    '- Confirm distributionPlan has exactly 2 bullet lines.',
   ].join('\n');
   const calendarContextBlock = [
     'CALENDAR CONTEXT (GROUNDING ONLY):',
@@ -3633,12 +3585,12 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     'COMPLETENESS RULES:',
     '- Every string must be a complete thought. Do not end with unfinished clauses.',
     '- Never end any value with an opening parenthesis "(", trailing comma, colon, dash, or dangling "and/or".',
-    '- designNotes MUST be fully written and timecoded; include 0-2s, 2-5s, 5-12s, 12-18s, 18-22s.',
+    '- designNotes MUST be exactly 4 bullet lines.',
     '- engagementScripts MUST never be blank; include commentReply and dmReply.',
-    '- distributionPlan MUST be fully written and complete for BOTH platforms (TikTok + Instagram).',
+    '- distributionPlan MUST be exactly 2 bullet lines.',
     'REQUIRED KEYS (DO NOT OMIT):',
     'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
-    'Each required key must be present and a non-empty string (min 8 characters) except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
+    'Each required key must be present and a non-empty string except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
     'Do not use partial phrases or unfinished templates; complete every string.',
     'Return ONLY JSON.',
   ].join('\n');
@@ -8626,26 +8578,28 @@ const server = http.createServer((req, res) => {
       if (CALENDAR_VARIETY_LOGGED_REQUESTS.size > 5000) CALENDAR_VARIETY_LOGGED_REQUESTS.clear();
     }
     let topicPlan = null;
-    try {
-      topicPlan = await generateTopicPlan({
-        nicheStyle,
-        brandContext,
-        totalPosts,
-        startDay: fallbackStart,
-        postsPerDay: perDay,
-        days: daysToGenerate,
-        brandBrainEnabled,
-        requestId: loggingContext?.requestId || null,
-        brandBrainDirective,
-        context: loggingContext,
-        pillarSchedule,
-      });
-    } catch (err) {
-      console.warn('[Calendar] topic plan failed; continuing without plan', {
-        requestId: loggingContext?.requestId || 'unknown',
-        error: err?.message || err,
-      });
-      topicPlan = null;
+    if (!payload?.skipTopicPlan) {
+      try {
+        topicPlan = await generateTopicPlan({
+          nicheStyle,
+          brandContext,
+          totalPosts,
+          startDay: fallbackStart,
+          postsPerDay: perDay,
+          days: daysToGenerate,
+          brandBrainEnabled,
+          requestId: loggingContext?.requestId || null,
+          brandBrainDirective,
+          context: loggingContext,
+          pillarSchedule,
+        });
+      } catch (err) {
+        console.warn('[Calendar] topic plan failed; continuing without plan', {
+          requestId: loggingContext?.requestId || 'unknown',
+          error: err?.message || err,
+        });
+        topicPlan = null;
+      }
     }
     const singleRequestMode = Boolean(payload?.singleRequest);
     const perDayChunkSize = singleRequestMode ? daysToGenerate : (daysToGenerate >= 10 ? 1 : 2);
@@ -9642,20 +9596,6 @@ const server = http.createServer((req, res) => {
       res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
-      const REGEN_TOTAL_BUDGET_MS = 55000;
-      const budgetStart = Date.now();
-      const checkBudget = (phase) => {
-        if (Date.now() - budgetStart <= REGEN_TOTAL_BUDGET_MS) return false;
-        if (!res.headersSent) {
-          sendJson(res, 503, {
-            error: 'REGEN_BUDGET_EXCEEDED',
-            message: 'Regeneration exceeded time budget',
-            requestId,
-            phase,
-          });
-        }
-        return true;
-      };
       let clientAborted = false;
       req.on('aborted', () => {
         clientAborted = true;
@@ -9805,10 +9745,10 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const REGEN_MODEL_TIMEOUT_MS = 25000;
-        const TOKENS_PER_POST_REGULAR = 200;
-        const TOKENS_PER_POST_BRAND = 220;
-        const TOKEN_OVERHEAD = 400;
+        const REGEN_MODEL_TIMEOUT_MS = 28000;
+        const TOKENS_PER_POST_REGULAR = 180;
+        const TOKENS_PER_POST_BRAND = 200;
+        const TOKEN_OVERHEAD = 200;
         let ensuredPosts = null;
         let totalModelMs = 0;
         let totalValidateMs = 0;
@@ -9837,6 +9777,7 @@ const server = http.createServer((req, res) => {
                 isPro,
                 compactPrompt: true,
                 singleRequest: true,
+                skipTopicPlan: true,
                 temperature: 0.6,
                 maxTokens,
               }),

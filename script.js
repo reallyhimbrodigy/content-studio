@@ -9363,10 +9363,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     };
     const orderedResults = [];
     const t0 = performance.now();
-    // Sequential batch loop (no Promise.all).
-    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
-      if (abortScheduling || batchSignal.aborted) break;
-      const result = await fetchBatch(batchIndex);
+    if (!abortScheduling && !batchSignal.aborted) {
+      const result = await fetchBatch(0);
       orderedResults.push(result);
     }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
