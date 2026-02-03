@@ -3302,6 +3302,10 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   'Anti-redundancy:',
   '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
   '',
+  'Preflight:',
+  '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
+  '- Never output placeholders or the word "Placeholder".',
+  '',
   'Self-audit (silent):',
   '- Ensure every required key is present and non-empty.',
   '- If any rule is violated or a required key is missing, rewrite ONCE internally, then output final JSON only.',
@@ -3353,6 +3357,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '',
   'Anti-redundancy:',
   '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
+  '',
+  'Preflight:',
+  '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
+  '- Never output placeholders or the word "Placeholder".',
   '',
   'Self-audit (silent):',
   '- Ensure topic_signature and angle exist and are non-empty.',
@@ -4343,15 +4351,6 @@ function tryParsePosts(content = '', expectedCount = null) {
     return { posts: null, reason: 'count_mismatch', parsed: posts };
   }
   return { posts, reason: null };
-}
-
-function buildFallbackChunkPosts(nicheStyle, startDay, postsPerDay, totalCount) {
-  const fallback = [];
-  for (let idx = 0; idx < totalCount; idx += 1) {
-    const day = computePostDayIndex(idx, startDay, postsPerDay);
-    fallback.push(buildFallbackPost(nicheStyle, day));
-  }
-  return fallback;
 }
 
 function selectBillboardEntry(list = [], indexSeed = 0) {
@@ -6600,26 +6599,6 @@ function repairBrandBrainPostBatch(posts = [], nicheStyle = '', startDay = 1, po
   });
 }
 
-function buildBrandBrainFallbackPosts(nicheStyle = '', startDay = 1, days = 1, postsPerDay = 1) {
-  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
-  const safePerDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
-  const posts = [];
-  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-    const dayValue = safeStart + dayOffset;
-    for (let slotIndex = 0; slotIndex < safePerDay; slotIndex += 1) {
-      posts.push({
-        day: dayValue,
-        slotIndex,
-        post_key: postKey(dayValue, slotIndex),
-        title: `Day ${String(dayValue).padStart(2, '0')} topic overview`,
-        format: 'Reel',
-      });
-    }
-  }
-  return repairBrandBrainPostBatch(posts, nicheStyle, safeStart, safePerDay);
-}
-
 function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
   const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
   const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
@@ -6657,53 +6636,6 @@ function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
   const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
   return baseStart + Math.floor(index / perDay);
-}
-
-function buildFallbackPost(nicheStyle = '', day = 1) {
-  const normalizedNiche = toPlainString(nicheStyle || 'this niche').trim();
-  const sanitizedNiche = normalizedNiche || 'this niche';
-  const idea = `Placeholder idea about ${sanitizedNiche}`;
-  const baseHashtag = sanitizedNiche.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'niche';
-  return {
-    day,
-    idea,
-    title: idea,
-    type: 'lifestyle',
-    hook: `Share a quick tip about ${sanitizedNiche}.`,
-    caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
-    hashtags: [`#${baseHashtag}`],
-    format: 'Reel',
-    formatIntent: '',
-    cta: 'Let me know what you think.',
-    pillar: 'Lifestyle',
-    designNotes: 'Neutral background with subtle motion.',
-    repurpose: [],
-    analytics: [],
-    engagementScripts: { commentReply: 'Thanks! What would you try next?', dmReply: 'Happy to share more details.' },
-    promoSlot: false,
-    weeklyPromo: '',
-    script: { hook: 'Quick hook', body: 'Explain the idea fast.', cta: 'Ask for feedback.' },
-    instagram_caption: '',
-    tiktok_caption: '',
-    linkedin_caption: '',
-    audio: '',
-    strategy: {
-      angle: `Placeholder angle for ${sanitizedNiche}`,
-      objective: 'engagement',
-      target_saves_pct: 3,
-      target_comments_pct: 2,
-      pinned_keyword: 'IDEA',
-      pinned_deliverable: 'Checklist',
-      hook_options: ['Hook 1', 'Hook 2', 'Hook 3'],
-      pinned_comment: `Tell me what you think.`,
-    },
-    distributionPlan: buildDistributionPlanFallback({
-      idea,
-      title: idea,
-      caption: `Walk through why ${sanitizedNiche} matters and how to approach it.`,
-      cta: 'Let me know what you think.',
-    }),
-  };
 }
 
 const DISTRIBUTION_PLAN_ALIASES = [
@@ -9761,73 +9693,20 @@ const server = http.createServer((req, res) => {
         regenContext.batchIndex = body?.batchIndex;
         regenContext.startDay = body?.startDay;
         const requestedPostsPerDay = 1;
-        let posts;
-        if (clientAborted || req.aborted || res.writableEnded) return;
-        await acquireRegenSlot(requestId);
-        try {
-          const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
-          const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
-          const perDayChunkSize = safeDays >= 10 ? 1 : 2;
-          const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
-          const baseMs = 45000;
-          const perChunkBudgetMs = 15000;
-          const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
-          const minGuardMs = OPENAI_GENERATION_TIMEOUT_MS + 30000;
-          const timeoutGuardMs = Math.min(
-            240000,
-            Math.max(minGuardMs, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
-          );
-          let timeoutId;
-          const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-              const err = new Error('REQUEST_TIMEOUT_GUARD');
-              err.code = 'REQUEST_TIMEOUT_GUARD';
-              err.statusCode = 504;
-              err.elapsedMs = Date.now() - requestStart;
-              reject(err);
-            }, timeoutGuardMs);
-          });
-          try {
-            posts = await Promise.race([
-              generateCalendarPosts({
-                ...(body || {}),
-                brandBrainEnabled: selectedMode === 'brand_brain',
-                calendarMode: selectedMode,
-                postsPerDay: requestedPostsPerDay,
-                context: regenContext,
-                isPro,
-              }),
-              timeoutPromise,
-            ]);
-          } finally {
-            if (timeoutId) clearTimeout(timeoutId);
-          }
-        } finally {
-          releaseRegenSlot();
-        }
-        if (clientAborted || req.aborted || res.writableEnded) return;
-        const missingAudioCount = posts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
-        console.log('[Calendar] regen audio counts', {
-          requestId,
-          assigned: posts.length - missingAudioCount,
-          missing: missingAudioCount,
-        });
-        if (!isPro) {
-          await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
-        }
-        console.log('[Calendar][Server][Perf] regen response ready', {
-          requestId,
-          elapsedMs: Date.now() - tStart,
-          postCount: Array.isArray(posts) ? posts.length : 0,
-        });
-        const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
-        if (!Array.isArray(posts) || !posts.length) {
-          return sendJson(res, 500, {
-            error: 'REGENERATE_RETURNED_NO_POSTS',
-            message: 'Regeneration returned no posts.',
-            requestId,
-          });
-        }
+        const expectedPostCount = (() => {
+          const computed = computePostCountTarget(body?.days, requestedPostsPerDay);
+          if (Number.isFinite(computed) && computed > 0) return computed;
+          if (Array.isArray(body?.posts) && body.posts.length) return body.posts.length;
+          if (body?.post && typeof body.post === 'object') return 1;
+          const fallbackDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : null;
+          return fallbackDays;
+        })();
+        const retryAuditBlock = [
+          'PRE-FLIGHT (RETRY ONLY):',
+          '- Before output, verify every required key exists and is non-empty.',
+          '- Required keys include: topic_signature, angle, script, reelScript.',
+          '- Never output placeholders or the word "Placeholder".',
+        ].join('\n');
         const deriveText = (...candidates) => {
           for (const candidate of candidates) {
             const value = toPlainString(candidate);
@@ -9900,138 +9779,224 @@ const server = http.createServer((req, res) => {
           }
           return next;
         };
+        const hasPlaceholderInPost = (post) => {
+          if (!post || typeof post !== 'object') return false;
+          try {
+            return /\bplaceholder\b/i.test(JSON.stringify(post));
+          } catch {
+            return false;
+          }
+        };
         const collectMissing = (postsList) => {
           const report = [];
+          if (!Array.isArray(postsList)) return report;
           postsList.forEach((post, idx) => {
             const missing = validatePostCompleteness(post);
             if (missing.length) report.push({ index: idx, missing });
           });
           return report;
         };
-        const missingFieldsReport = [];
-        let ensuredPosts = posts.map((post, idx) => {
-          const dayValue = Number.isFinite(Number(post?.day))
-            ? Number(post.day)
-            : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
-          const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
-          if (ensured.missingFields.length) {
-            missingFieldsReport.push({ index: idx, day: dayValue, missing: ensured.missingFields });
-          }
-          return ensured.post;
-        });
-        if (missingFieldsReport.length) {
-          console.warn('[Calendar] regen missing required fields after guarantee', {
-            requestId,
-            missingFields: missingFieldsReport.length,
-            samples: missingFieldsReport.slice(0, 2),
-          });
-          ensuredPosts = ensuredPosts.map((post, idx) => {
-            const dayValue = Number.isFinite(Number(post?.day))
-              ? Number(post.day)
-              : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
-            return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
-          });
-          let stillMissing = collectMissing(ensuredPosts);
-          if (stillMissing.length && OPENAI_API_KEY) {
-            try {
-              const missingKeys = Array.from(new Set(stillMissing.flatMap((entry) => entry.missing)));
-              const repairPrompt = [
-                'You are a JSON repair tool.',
-                'Return ONLY valid JSON. No markdown. No commentary.',
-                'Return the SAME JSON object, but add ONLY the missing required keys as valid values.',
-                'Do NOT remove or rename keys. Do NOT change any existing values.',
-                `Missing required keys: ${JSON.stringify(missingKeys)}`,
-                `Original JSON: ${JSON.stringify({ posts: ensuredPosts })}`,
-              ].join('\n');
-              const payload = JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: repairPrompt }],
-                temperature: 0.2,
-                max_tokens: 1200,
-              });
-              const options = {
-                hostname: 'api.openai.com',
-                path: '/v1/chat/completions',
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Content-Length': Buffer.byteLength(payload),
-                  Authorization: `Bearer ${OPENAI_API_KEY}`,
-                },
-              };
-              const completion = await openAIRequest(options, payload);
-              const extract = completion?.choices?.[0]?.message?.content;
-              const text = typeof extract === 'string'
-                ? extract
-                : Array.isArray(extract)
-                  ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
-                  : '';
-              const parsed = tryParsePosts(text, ensuredPosts.length || 1);
-              if (parsed.posts && parsed.posts.length) {
-                ensuredPosts = parsed.posts;
-              }
-            } catch (repairErr) {
-              console.warn('[Calendar][Regen][Repair] model repair failed', {
-                requestId,
-                error: repairErr?.message || repairErr,
-              });
-            }
-            stillMissing = collectMissing(ensuredPosts);
-          }
-          if (stillMissing.length) {
-            try {
-              const fullObjectContract = [
-                'FULL OBJECT OUTPUT REQUIREMENT (FINAL ATTEMPT)',
-                '- Output a COMPLETE post object that satisfies all required fields.',
-                '- No partial updates. No omissions.',
-                '- Output JSON only.',
-              ].join('\n');
-              const extraInstructions = [body?.extraInstructions || '', fullObjectContract].filter(Boolean).join('\n');
-              ensuredPosts = await generateCalendarPosts({
-                ...(body || {}),
-                brandBrainEnabled: selectedMode === 'brand_brain',
-                calendarMode: selectedMode,
-                postsPerDay: requestedPostsPerDay,
-                context: regenContext,
-                isPro,
-                extraInstructions,
-              });
-            } catch (retryErr) {
-              console.warn('[Calendar][Regen][Repair] final regenerate attempt failed', {
-                requestId,
-                error: retryErr?.message || retryErr,
-              });
-            }
-            stillMissing = collectMissing(ensuredPosts);
-          }
-          if (stillMissing.length) {
-            console.warn('[Calendar][Regen] falling back to existing posts', {
-              requestId,
-              missingFields: stillMissing.length,
-              samples: stillMissing.slice(0, 2),
+        const regenMaxAttempts = 3;
+        let ensuredPosts = null;
+        let posts = null;
+        if (clientAborted || req.aborted || res.writableEnded) return;
+        await acquireRegenSlot(requestId);
+        try {
+          for (let attemptIndex = 1; attemptIndex <= regenMaxAttempts; attemptIndex += 1) {
+            if (clientAborted || req.aborted || res.writableEnded) return;
+            const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
+            const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
+            const perDayChunkSize = safeDays >= 10 ? 1 : 2;
+            const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
+            const baseMs = 45000;
+            const perChunkBudgetMs = 15000;
+            const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
+            const minGuardMs = OPENAI_GENERATION_TIMEOUT_MS + 30000;
+            const timeoutGuardMs = Math.min(
+              240000,
+              Math.max(minGuardMs, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
+            );
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                const err = new Error('REQUEST_TIMEOUT_GUARD');
+                err.code = 'REQUEST_TIMEOUT_GUARD';
+                err.statusCode = 504;
+                err.elapsedMs = Date.now() - requestStart;
+                reject(err);
+              }, timeoutGuardMs);
             });
-            if (Array.isArray(body?.posts) && body.posts.length) {
-              ensuredPosts = body.posts;
-            } else if (body?.post && typeof body.post === 'object') {
-              ensuredPosts = [body.post];
+            const attemptExtraInstructions = attemptIndex > 1
+              ? [body?.extraInstructions || '', retryAuditBlock].filter(Boolean).join('\n')
+              : body?.extraInstructions;
+            try {
+              posts = await Promise.race([
+                generateCalendarPosts({
+                  ...(body || {}),
+                  brandBrainEnabled: selectedMode === 'brand_brain',
+                  calendarMode: selectedMode,
+                  postsPerDay: requestedPostsPerDay,
+                  context: regenContext,
+                  isPro,
+                  extraInstructions: attemptExtraInstructions,
+                }),
+                timeoutPromise,
+              ]);
+            } finally {
+              if (timeoutId) clearTimeout(timeoutId);
             }
+            if (!Array.isArray(posts) || !posts.length) {
+              console.warn('[Calendar][Regen] empty batch', { requestId, attemptIndex });
+              continue;
+            }
+            const missingFieldsReport = [];
+            let attemptPosts = posts.map((post, idx) => {
+              const dayValue = Number.isFinite(Number(post?.day))
+                ? Number(post.day)
+                : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
+              const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
+              if (ensured.missingFields.length) {
+                missingFieldsReport.push({ index: idx, day: dayValue, missing: ensured.missingFields });
+              }
+              return ensured.post;
+            });
+            if (missingFieldsReport.length) {
+              console.warn('[Calendar] regen missing required fields after guarantee', {
+                requestId,
+                missingFields: missingFieldsReport.length,
+                samples: missingFieldsReport.slice(0, 2),
+              });
+              attemptPosts = attemptPosts.map((post, idx) => {
+                const dayValue = Number.isFinite(Number(post?.day))
+                  ? Number(post.day)
+                  : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
+                return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
+              });
+              let stillMissing = collectMissing(attemptPosts);
+              if (stillMissing.length && OPENAI_API_KEY) {
+                try {
+                  const missingKeys = Array.from(new Set(stillMissing.flatMap((entry) => entry.missing)));
+                  const repairPrompt = [
+                    'You are a JSON repair tool.',
+                    'Return ONLY valid JSON. No markdown. No commentary.',
+                    'Return the SAME JSON object, but add ONLY the missing required keys as valid values.',
+                    'Do NOT remove or rename keys. Do NOT change any existing values.',
+                    `Missing required keys: ${JSON.stringify(missingKeys)}`,
+                    `Original JSON: ${JSON.stringify({ posts: attemptPosts })}`,
+                  ].join('\n');
+                  const payload = JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{ role: 'user', content: repairPrompt }],
+                    temperature: 0.2,
+                    max_tokens: 1200,
+                  });
+                  const options = {
+                    hostname: 'api.openai.com',
+                    path: '/v1/chat/completions',
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(payload),
+                      Authorization: `Bearer ${OPENAI_API_KEY}`,
+                    },
+                  };
+                  const completion = await openAIRequest(options, payload);
+                  const extract = completion?.choices?.[0]?.message?.content;
+                  const text = typeof extract === 'string'
+                    ? extract
+                    : Array.isArray(extract)
+                      ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
+                      : '';
+                  const parsed = tryParsePosts(text, attemptPosts.length || 1);
+                  if (parsed.posts && parsed.posts.length) {
+                    attemptPosts = parsed.posts;
+                  }
+                } catch (repairErr) {
+                  console.warn('[Calendar][Regen][Repair] model repair failed', {
+                    requestId,
+                    error: repairErr?.message || repairErr,
+                  });
+                }
+                stillMissing = collectMissing(attemptPosts);
+              }
+              if (stillMissing.length) {
+                try {
+                  const fullObjectContract = [
+                    'FULL OBJECT OUTPUT REQUIREMENT (FINAL ATTEMPT)',
+                    '- Output a COMPLETE post object that satisfies all required fields.',
+                    '- No partial updates. No omissions.',
+                    '- Output JSON only.',
+                  ].join('\n');
+                  const extraInstructions = [body?.extraInstructions || '', fullObjectContract].filter(Boolean).join('\n');
+                  const retryPosts = await generateCalendarPosts({
+                    ...(body || {}),
+                    brandBrainEnabled: selectedMode === 'brand_brain',
+                    calendarMode: selectedMode,
+                    postsPerDay: requestedPostsPerDay,
+                    context: regenContext,
+                    isPro,
+                    extraInstructions,
+                  });
+                  if (Array.isArray(retryPosts) && retryPosts.length) {
+                    attemptPosts = retryPosts;
+                  }
+                } catch (retryErr) {
+                  console.warn('[Calendar][Regen][Repair] final regenerate attempt failed', {
+                    requestId,
+                    error: retryErr?.message || retryErr,
+                  });
+                }
+              }
+            }
+            const stillMissing = collectMissing(attemptPosts);
+            const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
+            const countMismatch = expectedPostCount !== null && attemptPosts.length !== expectedPostCount;
+            if (!stillMissing.length && !hasPlaceholders && !countMismatch) {
+              ensuredPosts = attemptPosts;
+              break;
+            }
+            console.warn('[Calendar][Regen] attempt incomplete', {
+              requestId,
+              attemptIndex,
+              countMismatch,
+              expectedPostCount,
+              actualCount: attemptPosts.length,
+              missingCount: stillMissing.length,
+              hasPlaceholders,
+            });
           }
+        } finally {
+          releaseRegenSlot();
         }
+        if (clientAborted || req.aborted || res.writableEnded) return;
+        if (!Array.isArray(ensuredPosts) || !ensuredPosts.length) {
+          return sendJson(res, 500, {
+            error: 'GENERATION_FAILED',
+            message: 'Unable to generate calendar. Please try again.',
+            requestId,
+          });
+        }
+        const missingAudioCount = ensuredPosts.filter((post) => !isValidSuggestedAudio(post?.suggestedAudio)).length;
+        console.log('[Calendar] regen audio counts', {
+          requestId,
+          assigned: ensuredPosts.length - missingAudioCount,
+          missing: missingAudioCount,
+        });
+        if (!isPro) {
+          await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+        }
+        console.log('[Calendar][Server][Perf] regen response ready', {
+          requestId,
+          elapsedMs: Date.now() - tStart,
+          postCount: Array.isArray(ensuredPosts) ? ensuredPosts.length : 0,
+        });
+        const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
         return sendJson(res, 200, responsePayload);
       } catch (err) {
         if (clientAborted || req.aborted || res.writableEnded) return;
         const safeError = err instanceof Error ? err : new Error(String(err));
-        if (selectedMode === 'brand_brain') {
-          const fallbackPosts = buildBrandBrainFallbackPosts(
-            body?.nicheStyle || '',
-            body?.startDay || 1,
-            body?.days || 1,
-            requestedPostsPerDay
-          );
-          return sendJson(res, 200, { calendarId: targetCalendarId, posts: fallbackPosts, requestId });
-        }
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
@@ -10110,15 +10075,12 @@ const server = http.createServer((req, res) => {
           });
         }
         if (isSchemaError) {
-          console.warn('[Calendar][Regen] schema mismatch fallback', { requestId });
-          if (Array.isArray(body?.posts) && body.posts.length) {
-            return sendJson(res, 200, { calendarId: targetCalendarId, posts: body.posts, requestId });
-          }
-          if (body?.post && typeof body.post === 'object') {
-            return sendJson(res, 200, { calendarId: targetCalendarId, posts: [body.post], requestId });
-          }
-          const fallbackPost = buildFallbackPost(body?.nicheStyle || '', body?.startDay || 1);
-          return sendJson(res, 200, { calendarId: targetCalendarId, posts: [fallbackPost], requestId });
+          return sendJson(res, 422, {
+            error: 'CALENDAR_SCHEMA_MISMATCH',
+            message: 'Calendar output did not meet required fields.',
+            requestId,
+            details: safeError?.details || null,
+          });
         }
         if (safeError?.code === 'BRAND_BRAIN_VALIDATION_FAILED') {
           return sendJson(res, 500, {
@@ -10253,15 +10215,6 @@ const server = http.createServer((req, res) => {
         }
         return sendJson(res, 200, { posts });
       } catch (err) {
-        if (selectedMode === 'brand_brain') {
-          const fallbackPosts = buildBrandBrainFallbackPosts(
-            parsedPayload?.nicheStyle || '',
-            parsedPayload?.startDay || 1,
-            parsedPayload?.days || 1,
-            1
-          );
-          return sendJson(res, 200, { posts: fallbackPosts });
-        }
         logServerError('calendar_generate_error', err, { requestId, bodyPreview: body.slice(0, 400) });
         respondWithServerError(res, err, { requestId });
       }

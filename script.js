@@ -9142,7 +9142,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
     })();
     let firstDispatchLogged = false;
-    const MAX_BATCH_RETRIES = 2;
     const fetchBatch = async (batchIndex) => {
       if (calendarExportsLocked) {
         showUpgradeModal();
@@ -9327,54 +9326,23 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts, calendarId };
     };
-    const fetchBatchWithRetry = async (batchIndex) => {
-      let attempt = 0;
-      while (attempt <= MAX_BATCH_RETRIES) {
-        try {
-          return await fetchBatch(batchIndex);
-        } catch (err) {
-          if (err?.message === 'upgrade_required' || err?.message === 'generation_cancelled') throw err;
-          if (attempt >= MAX_BATCH_RETRIES) throw err;
-          const backoff = 400 * (attempt + 1);
-          await new Promise((resolve) => setTimeout(resolve, backoff));
-          attempt += 1;
-        }
-      }
-      throw new Error('batch_retry_exhausted');
-    };
-    
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
     const maxConcurrent = 3;
     const results = new Array(totalBatches);
-    const batchFailures = [];
     let nextBatchIndex = 0;
     const t0 = performance.now();
     const worker = async () => {
       while (nextBatchIndex < totalBatches) {
         const batchIndex = nextBatchIndex;
         nextBatchIndex += 1;
-        try {
-          const result = await fetchBatchWithRetry(batchIndex);
-          results[batchIndex] = { batchIndex, result };
-        } catch (err) {
-          if (err?.message === 'upgrade_required' || err?.message === 'generation_cancelled') {
-            throw err;
-          }
-          batchFailures.push({ batchIndex, error: err });
-          results[batchIndex] = null;
-        }
+        const result = await fetchBatch(batchIndex);
+        results[batchIndex] = { batchIndex, result };
       }
     };
     const workerCount = Math.min(maxConcurrent, totalBatches);
     const workers = Array.from({ length: workerCount }, () => worker());
     await Promise.all(workers);
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
-    if (batchFailures.length) {
-      console.warn('[Calendar] batch failures detected', {
-        runId: thisRunId,
-        failedBatches: batchFailures.map((f) => f.batchIndex),
-      });
-    }
     const orderedResults = results
       .filter(Boolean)
       .sort((a, b) => a.batchIndex - b.batchIndex)
@@ -9423,29 +9391,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       throw new Error('generation_cancelled');
     }
 
-    const retryCount = Number(options.retryCount || 0);
-    const maxRunRetries = 2;
     const hasFullCount = rawPostCount === totalPosts;
     const hasMissingFields = allPosts.some((post) => !hasRequiredPostFields(post));
     const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
     if (!hasFullCount || hasMissingFields || hasPlaceholders) {
-      if (retryCount < maxRunRetries && !runSignal?.aborted) {
-        const backoff = 500 * (retryCount + 1);
-        console.warn('[Calendar] generation incomplete; retrying', {
-          runId: thisRunId,
-          retryCount,
-          hasFullCount,
-          hasMissingFields,
-          hasPlaceholders,
-        });
-        await new Promise((resolve) => setTimeout(resolve, backoff));
-        return generateCalendarWithAI(nicheStyle, postsPerDay, {
-          ...options,
-          retryCount: retryCount + 1,
-          runId: thisRunId,
-          signal: runSignal,
-        });
-      }
       const err = new Error('generation_incomplete');
       err.code = 'generation_incomplete';
       throw err;
@@ -9639,7 +9588,10 @@ async function onGenerateCalendarClick() {
       return;
     }
     if (err?.code === 'generation_incomplete' || err?.message === 'generation_incomplete') {
-      console.warn('[Calendar] generation incomplete after retries', { runId });
+      if (feedbackEl) {
+        feedbackEl.textContent = 'Unable to generate calendar. Please try again.';
+        feedbackEl.classList.remove("success");
+      }
       return;
     }
     console.error("❌ Failed to generate calendar:", err);
@@ -9653,7 +9605,7 @@ async function onGenerateCalendarClick() {
       nicheStyle: niche,
     });
     if (feedbackEl) {
-      feedbackEl.textContent = `Error: ${err.message || 'Unknown error'}`;
+      feedbackEl.textContent = 'Unable to generate calendar. Please try again.';
       feedbackEl.classList.remove("success");
     }
     setTimeout(() => {
