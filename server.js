@@ -7337,6 +7337,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   };
   const attemptRequest = async (extraInstructions = '', useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
+    const attemptNumber = Number.isFinite(Number(overrides.attempt)) ? Number(overrides.attempt) : 1;
     const attemptMaxTokens = Number.isFinite(Number(overrides.maxTokens)) ? Number(overrides.maxTokens) : maxTokens;
     const attemptTemperature = Number.isFinite(Number(overrides.temperature)) ? Number(overrides.temperature) : temperature;
     const attemptModel = overrides.model || modelName;
@@ -7393,6 +7394,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         const payloadJson = parseOpenAiErrorPayload(err);
         const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
         const details = extractOpenAiErrorDetails(err);
+        err.attempt = attemptNumber;
         console.error('[OpenAI][CalendarChunk] request failed', {
           requestId: loggingContext?.requestId || null,
           mode,
@@ -7418,6 +7420,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
           schemaErr.openaiDetails = details;
           schemaErr.mode = mode;
+          schemaErr.attempt = attemptNumber;
           schemaErr.promptMeta = lastPromptMeta;
           schemaErr.model = attemptModel;
           schemaErr.responseFormat = responseFormat;
@@ -7435,6 +7438,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       const timeoutId = setTimeout(() => {
         const timeoutErr = new Error('OpenAI request timed out');
         timeoutErr.code = 'OPENAI_TIMEOUT';
+        timeoutErr.attempt = attemptNumber;
         reject(timeoutErr);
       }, attemptTimeoutMs);
       requestPromise.finally(() => clearTimeout(timeoutId));
@@ -7472,8 +7476,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         model: modelName,
         maxTokens: fallbackMaxTokens,
         timeoutMs: requestTimeoutMs,
+        attempt: 2,
       });
       firstResponse = await attemptRequest('', true, {
+        attempt: 2,
         maxTokens: fallbackMaxTokens,
         temperature: fallbackTemperature,
       });
@@ -10041,9 +10047,9 @@ const server = http.createServer((req, res) => {
         };
         const REGEN_BATCH_COUNT = 3;
         const POSTS_PER_BATCH = 10;
-        const MODEL_TIMEOUT_MS = 22000;
+        const MODEL_TIMEOUT_MS = 30000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_OUTPUT_TOKENS_PER_POST = 140;
+        const MAX_OUTPUT_TOKENS_PER_POST = 130;
         const TOKEN_OVERHEAD = 200;
         let ensuredPosts = [];
         let totalModelMs = 0;
@@ -10079,7 +10085,7 @@ const server = http.createServer((req, res) => {
                 error: 'MODEL_TIMEOUT',
                 message: 'Model timeout',
                 requestId,
-                details: { phase: 'plan' },
+                details: { phase: 'plan', attempt: err?.attempt || null },
               });
             }
             return sendJson(res, 422, {
@@ -10189,7 +10195,7 @@ const server = http.createServer((req, res) => {
                   error: 'MODEL_TIMEOUT',
                   message: 'Model timeout',
                   requestId,
-                  details: { batchIndex: batch.batchIndex },
+                  details: { batchIndex: batch.batchIndex, attempt: err?.attempt || null },
                 });
               }
               throw err;

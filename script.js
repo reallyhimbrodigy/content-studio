@@ -9361,10 +9361,22 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     };
     const orderedResults = [];
     const t0 = performance.now();
-    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
-      if (abortScheduling || batchSignal.aborted) break;
-      const result = await fetchBatch(batchIndex);
-      orderedResults.push(result);
+    const batchDescriptors = Array.from({ length: totalBatches }, (_, batchIndex) => ({
+      batchIndex,
+      startDay: 1 + batchIndex * CHUNK_DAYS,
+      days: Math.min(CHUNK_DAYS, totalDays - batchIndex * CHUNK_DAYS),
+    }));
+    console.log(`[Calendar] Dispatching ${batchDescriptors.length} concurrent batches`);
+    try {
+      const results = await Promise.all(batchDescriptors.map((batch) => fetchBatch(batch.batchIndex)));
+      results.forEach((result) => orderedResults.push(result));
+      console.log('[Calendar] All batches resolved');
+    } catch (err) {
+      if (!batchSignal.aborted) {
+        abortScheduling = true;
+        batchAbortController.abort();
+      }
+      throw err;
     }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
     
