@@ -8574,6 +8574,41 @@ function hasRequiredPostFields(post = {}) {
   return true;
 }
 
+function getFieldValue(post = {}, keys = []) {
+  for (const key of keys) {
+    if (post && Object.prototype.hasOwnProperty.call(post, key) && post[key] != null) {
+      return post[key];
+    }
+  }
+  return undefined;
+}
+
+function validateRenderablePost(post = {}) {
+  const missing = [];
+  if (!post || typeof post !== 'object') return { ok: false, missing: ['post'] };
+  const title = getFieldValue(post, ['title', 'topic']);
+  if (!isNonEmptyText(title)) missing.push('title');
+  const pillar = getFieldValue(post, ['pillar', 'contentPillar', 'category', 'type']);
+  if (!isNonEmptyText(pillar)) missing.push('pillar');
+  const format = getFieldValue(post, ['format', 'postFormat']);
+  if (!isNonEmptyText(format)) missing.push('format');
+  const hook = getFieldValue(post, ['hook', 'headline']);
+  if (!isNonEmptyText(hook)) missing.push('hook');
+  const caption = getFieldValue(post, ['caption', 'copy', 'caption_full']);
+  if (!isNonEmptyText(caption)) missing.push('caption');
+  const hashtags = getFieldValue(post, ['hashtags', 'tags']);
+  if (!(Array.isArray(hashtags) || typeof hashtags === 'string')) missing.push('hashtags');
+  const designNotes = getFieldValue(post, ['designNotes', 'design_notes', 'design']);
+  if (typeof designNotes !== 'string') missing.push('designNotes');
+  const postKey = getFieldValue(post, ['post_key', 'postKey']);
+  const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : null;
+  const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+  const slot = Number.isFinite(Number(post?.slot)) ? Number(post.slot) - 1 : null;
+  const resolvedSlot = slotIndex !== null ? slotIndex : slot;
+  if (!isNonEmptyText(postKey) && (day === null || resolvedSlot === null)) missing.push('identity');
+  return { ok: missing.length === 0, missing };
+}
+
 const POST_SLOT_ANGLES = [
   {
     name: 'Story spotlight',
@@ -9375,7 +9410,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       await userIsProPromise;
 
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
-      return { batchIndex, posts: batchPosts, calendarId };
+      return { batchIndex, posts: batchPosts, calendarId, requestId: requestIdFromPayload || reqIdHeader || null };
     };
     const orderedResults = [];
     const t0 = performance.now();
@@ -9455,7 +9490,20 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
 
     const hasFullCount = rawPostCount === totalPosts;
-    const hasMissingFields = allPosts.some((post) => !hasRequiredPostFields(post));
+    const renderFailures = allPosts
+      .map((post, index) => {
+        const check = validateRenderablePost(post);
+        if (check.ok) return null;
+        return {
+          index,
+          post_key: post?.post_key || post?.postKey || null,
+          day: post?.day ?? null,
+          slot: post?.slotIndex ?? post?.slot ?? null,
+          missing: check.missing,
+        };
+      })
+      .filter(Boolean);
+    const hasMissingFields = renderFailures.length > 0;
     const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
     const postKeys = allPosts.map((post) => post?.post_key || post?.postKey || '').filter(Boolean);
     const uniquePostKeys = postKeys.length ? new Set(postKeys).size : null;
@@ -9482,6 +9530,16 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
             : hasMissingFields
               ? 'missing_required_fields'
               : 'placeholder_detected';
+      const requestIds = orderedResults.map((result) => result?.requestId).filter(Boolean);
+      const uniqueRequestIds = requestIds.length ? Array.from(new Set(requestIds)) : [];
+      if (hasMissingFields) {
+        console.error('[Calendar] missing_required_fields sample', {
+          runId: thisRunId,
+          runToken,
+          sample: renderFailures.slice(0, 3),
+          requestIds: uniqueRequestIds,
+        });
+      }
       const err = new Error('generation_incomplete');
       err.code = 'generation_incomplete';
       err.details = {
@@ -9492,6 +9550,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         reason,
         uniquePostKeys,
         uniqueSlotPairs,
+        requestIds: uniqueRequestIds,
       };
       throw err;
     }
