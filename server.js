@@ -3390,7 +3390,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
 const COMPACT_REGULAR_MODE_BLOCK = [
   'MODE: Regular (neutral/practical).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
-  '- If possible, include decision_question and decision_angle; keep them specific to the title/topic and not generic.',
+  '- Include decision_question and decision_angle; keep them specific to the title/topic and not generic.',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
   '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
@@ -3401,7 +3401,7 @@ const COMPACT_REGULAR_MODE_BLOCK = [
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   'MODE: Brand Brain (belief teardown).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
-  '- If possible, include decision_question and decision_angle; treat the decision_question with a contrarian/reframing lens.',
+  '- Include decision_question and decision_angle; treat the decision_question with a contrarian/reframing lens.',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
   '- Treat decision_context by reframing the assumption and surfacing a hidden tradeoff/constraint with second-order consequences.',
@@ -7640,6 +7640,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const requiredKeys = new Set(Array.isArray(schema.required) ? schema.required : []);
   const missingRequired = propertyKeys.filter((key) => !requiredKeys.has(key));
   if (missingRequired.length) {
+    console.error('[Calendar][Schema][Preflight] required missing keys', {
+      schemaName: useSinglePost ? 'calendar_post' : 'calendar_batch',
+      missingRequired,
+    });
     const schemaErr = new Error('OpenAI schema invalid');
     schemaErr.code = 'OPENAI_SCHEMA_INVALID';
     schemaErr.statusCode = 422;
