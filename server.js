@@ -5427,13 +5427,39 @@ function shuffleArray(list = [], rand) {
   return arr;
 }
 
-function buildPillarSchedule(totalSlots, rand) {
-  const schedule = [];
-  while (schedule.length < totalSlots) {
-    schedule.push(...CALENDAR_PILLARS);
+function computePillarTargets(totalSlots) {
+  const total = Math.max(0, Number.isFinite(Number(totalSlots)) ? Number(totalSlots) : 0);
+  const base = CALENDAR_PILLARS.length ? Math.floor(total / CALENDAR_PILLARS.length) : 0;
+  const rem = CALENDAR_PILLARS.length ? total % CALENDAR_PILLARS.length : 0;
+  const targets = {};
+  CALENDAR_PILLARS.forEach((pillar, idx) => {
+    targets[pillar] = base + (idx < rem ? 1 : 0);
+  });
+  return targets;
+}
+
+function buildPillarSchedule(totalSlots) {
+  const total = Math.max(0, Number.isFinite(Number(totalSlots)) ? Number(totalSlots) : 0);
+  const targets = computePillarTargets(total);
+  const remaining = { ...targets };
+  const sequence = [];
+  let prev = null;
+  while (sequence.length < total) {
+    let candidates = CALENDAR_PILLARS.filter((pillar) => remaining[pillar] > 0 && pillar !== prev);
+    if (!candidates.length) {
+      candidates = CALENDAR_PILLARS.filter((pillar) => remaining[pillar] > 0);
+    }
+    candidates.sort((a, b) => {
+      const diff = remaining[b] - remaining[a];
+      if (diff !== 0) return diff;
+      return CALENDAR_PILLARS.indexOf(a) - CALENDAR_PILLARS.indexOf(b);
+    });
+    const pick = candidates[0];
+    sequence.push(pick);
+    remaining[pick] -= 1;
+    prev = pick;
   }
-  schedule.length = totalSlots;
-  return shuffleArray(schedule, rand);
+  return sequence;
 }
 
 function postKey(day, slotIndex) {
@@ -10375,6 +10401,22 @@ const server = http.createServer((req, res) => {
               slots.push({ day, slotIndex, post_key: postKey(day, slotIndex) });
             }
           }
+          const pillarTargets = computePillarTargets(slots.length);
+          const pillarSchedule = buildPillarSchedule(slots.length);
+          const scheduleByKey = new Map();
+          slots.forEach((slot, idx) => {
+            scheduleByKey.set(slot.post_key, pillarSchedule[idx]);
+          });
+          planItems.forEach((item) => {
+            const key = toPlainString(item?.post_key || '');
+            const scheduled = scheduleByKey.get(key);
+            if (scheduled) item.pillar = scheduled;
+          });
+          topicPlan.forEach((entry) => {
+            const key = postKey(entry.day, entry.postIndex);
+            const scheduled = scheduleByKey.get(key);
+            if (scheduled) entry.pillar = scheduled;
+          });
           const MAX_CONCURRENCY = 3;
           const tasks = slots.map((slot, index) => async () => {
             if (Date.now() - requestStart > REGEN_TOTAL_TIMEOUT_MS) {
@@ -10469,6 +10511,8 @@ const server = http.createServer((req, res) => {
               throw failErr;
             }
             const post = singlePosts[0];
+            const scheduledPillar = scheduleByKey.get(slot.post_key);
+            if (scheduledPillar) post.pillar = scheduledPillar;
             const validateStart = Date.now();
             const missing = validatePostCompleteness(post);
             totalValidateMs += Date.now() - validateStart;
@@ -10526,6 +10570,32 @@ const server = http.createServer((req, res) => {
             const slotB = Number(b?.slotIndex) || 0;
             return slotA - slotB;
           });
+          const actualCounts = {};
+          ensuredPosts.forEach((post) => {
+            const pillar = toPlainString(post?.pillar || '');
+            if (!pillar) return;
+            actualCounts[pillar] = (actualCounts[pillar] || 0) + 1;
+          });
+          const sampleSequence = ensuredPosts.slice(0, 12).map((post) => post?.pillar || '').filter(Boolean);
+          console.log('[Calendar][Pillars]', {
+            requestId,
+            targets: pillarTargets,
+            actual: actualCounts,
+            sampleSequence,
+          });
+          const pillarMismatch = CALENDAR_PILLARS.some((pillar) => {
+            const target = pillarTargets[pillar] || 0;
+            const actual = actualCounts[pillar] || 0;
+            return actual !== target;
+          });
+          if (pillarMismatch) {
+            return sendJson(res, 422, {
+              error: 'PILLAR_SCHEDULE_VIOLATION',
+              message: 'Pillar schedule mismatch.',
+              requestId,
+              details: { targets: pillarTargets, actual: actualCounts },
+            });
+          }
         } finally {
           releaseRegenSlot();
         }
