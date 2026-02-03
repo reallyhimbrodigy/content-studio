@@ -3358,8 +3358,8 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- hook <= 80 chars',
   '- caption <= 180 chars (max 2 sentences)',
   '- hashtags: 6 max',
-  '- suggestedAudio: always present; "Original audio" allowed',
-  '- designNotes: exactly 3 bullets, each <= 50 chars',
+  '- suggestedAudio: single short string; "Original audio" allowed',
+  '- designNotes: <= 4 bullets, each <= 50 chars',
   '- engagementScripts.commentReply (engagementComment) <= 80 chars',
   '- engagementScripts.dmReply (engagementDM) <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
@@ -3368,6 +3368,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '  2) VO: <= 95 chars',
   '  3) VO: <= 95 chars',
   '  4) CTA: <= 65 chars',
+  '- reelScript total <= 60 words',
   '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
 ].join('\n');
 
@@ -7489,7 +7490,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       firstResponse = await attemptRequest('', true);
     } catch (err) {
       if (!shouldFailover(err)) throw err;
-      const fallbackMaxTokens = Math.max(200, Math.floor(maxTokens * 0.85));
+      const fallbackMaxTokens = maxTokens;
       const fallbackTemperature = 0;
       console.warn('[OpenAI][CalendarChunk][Failover]', {
         requestId: loggingContext?.requestId || null,
@@ -7519,6 +7520,26 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       });
     };
     const parseMs = Date.now() - parseStart;
+    const trimmedRaw = rawText.trim();
+    if (trimmedRaw) {
+      const lastChar = trimmedRaw[trimmedRaw.length - 1];
+      if (lastChar !== '}' && lastChar !== ']') {
+        const parseErr = new Error('missing_posts_parse_failed');
+        parseErr.code = 'PARSE_FAILED';
+        parseErr.statusCode = 422;
+        parseErr.rawContent = rawText;
+        parseErr.reason = 'TRUNCATED_OUTPUT';
+        attachPromptMeta(parseErr);
+        console.warn('[Calendar][Parse] truncated', {
+          requestId: loggingContext?.requestId || 'unknown',
+          expectedCount: expectedChunkCount,
+          rawLength: rawText.length,
+          lastChar,
+        });
+        logParseDebug();
+        throw parseErr;
+      }
+    }
     const expectedStart = chunkStartDay;
     const expectedEnd = chunkStartDay + chunkDays - 1;
     const slotIndexMax = Math.max(0, postsPerDay - 1);
@@ -10068,12 +10089,11 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const REGEN_BATCH_COUNT = 3;
-        const POSTS_PER_BATCH = 10;
+        const POSTS_PER_BATCH = 5;
         const MODEL_TIMEOUT_MS = 30000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_OUTPUT_TOKENS_PER_POST = 180;
-        const TOKEN_OVERHEAD = 200;
+        const MAX_TOKENS_PER_BATCH_REGULAR = 1200;
+        const MAX_TOKENS_PER_BATCH_BRAND = 1400;
         let ensuredPosts = [];
         let totalModelMs = 0;
         let totalValidateMs = 0;
@@ -10158,7 +10178,8 @@ const server = http.createServer((req, res) => {
             }
           }
           const batches = [];
-          for (let batchIndex = 0; batchIndex < REGEN_BATCH_COUNT; batchIndex += 1) {
+          const batchCount = Math.ceil(targetCount / POSTS_PER_BATCH);
+          for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
             const start = batchIndex * POSTS_PER_BATCH;
             const batchSlots = slots.slice(start, start + POSTS_PER_BATCH);
             if (batchSlots.length) {
@@ -10183,7 +10204,9 @@ const server = http.createServer((req, res) => {
               '- Set topic_signature exactly equal to title.',
               '- Do not change pillar, title, or angle.',
             ].join('\n');
-            const maxTokens = (MAX_OUTPUT_TOKENS_PER_POST * batch.slots.length) + TOKEN_OVERHEAD;
+            const maxTokens = selectedMode === 'brand_brain'
+              ? MAX_TOKENS_PER_BATCH_BRAND
+              : MAX_TOKENS_PER_BATCH_REGULAR;
             const modelStart = Date.now();
             let batchPosts = null;
             try {
