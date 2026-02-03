@@ -3380,6 +3380,8 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
 const COMPACT_REGULAR_MODE_BLOCK = [
   'MODE: Regular (neutral/practical).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
+  '- Each post must resolve its decision_context; no two posts may share it.',
   '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
   '- No belief/teardown framing.',
   '- DM allowed only in Promotion + Social Proof; otherwise engagementScripts.dmReply must be neutral share/save.',
@@ -3388,6 +3390,9 @@ const COMPACT_REGULAR_MODE_BLOCK = [
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   'MODE: Brand Brain (belief teardown).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
+  '- Each post must resolve its decision_context; no two posts may share it.',
+  '- Treat decision_context by reframing the assumption and surfacing a hidden tradeoff/constraint with second-order consequences.',
   '- Use at most 2 persuasion moves in VO lines (pick from: Belief/Constraint/Consequence/Identity) and label them compactly.',
   '- Keep within VO line caps; no urgency or motivational fluff.',
 ].join('\n');
