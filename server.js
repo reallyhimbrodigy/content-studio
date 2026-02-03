@@ -2413,6 +2413,10 @@ function openAIRequest(options, payload) {
   });
 }
 
+function openAIResponsesRequest(options, payload) {
+  return openAIRequest(options, payload);
+}
+
 function stripJsonFences(raw = '') {
   return String(raw || '')
     .replace(/```(?:json)?\s*/gi, '')
@@ -3356,10 +3360,10 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
   '- title <= 40 chars',
   '- hook <= 80 chars',
-  '- caption <= 1-2 sentences',
+  '- caption <= 140 chars (1-2 sentences)',
   '- hashtags: exactly 6 tags',
   '- suggestedAudio: single short string (no prefix); "Original audio" allowed',
-  '- designNotes: exactly 4 beats, 3-5 words each',
+  '- designNotes: exactly 4 beats, each <= 20 chars',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
@@ -3368,8 +3372,8 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '  2) VO: <= 95 chars',
   '  3) VO: <= 95 chars',
   '  4) CTA: <= 65 chars',
-  '- reelScript total <= 45 words',
-  '- script total <= 45 words',
+  '- reelScript total <= 35 words',
+  '- script total <= 35 words',
   '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
 ].join('\n');
 
@@ -7277,9 +7281,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     if (typeof messageContent?.value === 'string') return messageContent.value;
     return '';
   };
-  const buildRequestOptions = (payload) => ({
+  const buildRequestOptions = (payload, useResponsesApi = false) => ({
     hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
+    path: useResponsesApi ? '/v1/responses' : '/v1/chat/completions',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -7323,6 +7327,21 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         String(message).includes('response_format') ||
         String(code).includes('schema'))
     );
+  };
+  const extractStructuredOutput = (responseJson) => {
+    if (!responseJson || typeof responseJson !== 'object') return null;
+    if (responseJson.output_parsed && typeof responseJson.output_parsed === 'object') return responseJson.output_parsed;
+    const output = Array.isArray(responseJson.output) ? responseJson.output : [];
+    for (const item of output) {
+      const content = Array.isArray(item?.content) ? item.content : [];
+      for (const chunk of content) {
+        if (chunk && typeof chunk === 'object') {
+          if (chunk.json && typeof chunk.json === 'object') return chunk.json;
+          if (chunk.parsed && typeof chunk.parsed === 'object') return chunk.parsed;
+        }
+      }
+    }
+    return null;
   };
   const attemptRequest = async (extraInstructions = '', useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
@@ -7372,15 +7391,26 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       type: 'json_schema',
       json_schema: { name: useSinglePost ? 'calendar_post' : 'calendar_batch', strict: true, schema },
     };
-    const payload = JSON.stringify({
-      model: attemptModel,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: attemptTemperature,
-      max_tokens: attemptMaxTokens,
-      response_format: responseFormat,
-    });
+    const payload = useSinglePost
+      ? JSON.stringify({
+          model: attemptModel,
+          input: [{ role: 'user', content: prompt }],
+          temperature: attemptTemperature,
+          max_output_tokens: attemptMaxTokens,
+          response_format: responseFormat,
+        })
+      : JSON.stringify({
+          model: attemptModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: attemptTemperature,
+          max_tokens: attemptMaxTokens,
+          response_format: responseFormat,
+        });
     const requestPromise = withOpenAiSlot(() =>
-      openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
+      (useSinglePost
+        ? openAIResponsesRequest(buildRequestOptions(payload, true), payload)
+        : openAIRequest(buildRequestOptions(payload, false), payload)
+      ).catch((err) => {
         const payloadJson = parseOpenAiErrorPayload(err);
         const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
         const details = extractOpenAiErrorDetails(err);
@@ -7434,11 +7464,20 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
-    const content = extractContentText(json);
+    const parsedOutput = useSinglePost ? extractStructuredOutput(json) : null;
+    const content = useSinglePost ? '' : extractContentText(json);
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
-    return { content, latency: Date.now() - attemptTimestamp, promptMeta: lastPromptMeta };
+    return {
+      content,
+      parsedOutput,
+      latency: Date.now() - attemptTimestamp,
+      promptMeta: lastPromptMeta,
+      responseId: json?.id || null,
+      responseModel: json?.model || attemptModel,
+      rawTextLength: typeof json?.output_text === 'string' ? json.output_text.length : null,
+    };
   };
 
   const shouldFailover = (err) => {
@@ -7476,6 +7515,34 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       });
     }
     const parseStart = Date.now();
+    if (useSinglePost) {
+      const parsedPost = firstResponse.parsedOutput;
+      if (!parsedPost || typeof parsedPost !== 'object') {
+        const parseErr = new Error('missing_posts_parse_failed');
+        parseErr.code = 'PARSE_FAILED';
+        parseErr.statusCode = 422;
+        parseErr.reason = 'PARSE_FAILED';
+        parseErr.responseId = firstResponse.responseId || null;
+        parseErr.responseModel = firstResponse.responseModel || modelName;
+        parseErr.usedStructuredOutput = true;
+        parseErr.rawTextLength = firstResponse.rawTextLength || null;
+        console.warn('[Calendar][Parse] structured_output_failed', {
+          requestId: loggingContext?.requestId || 'unknown',
+          responseId: parseErr.responseId,
+          model: parseErr.responseModel,
+          usedStructuredOutput: true,
+          rawTextLength: parseErr.rawTextLength,
+        });
+        throw parseErr;
+      }
+      return {
+        posts: [parsedPost],
+        rawContent: '',
+        latency: firstResponse.latency,
+        parseMs: 0,
+        promptMeta: firstResponse.promptMeta || null,
+      };
+    }
     const rawText = firstResponse.content || '';
     const logParseDebug = () => {
       if (process.env.CALENDAR_PARSE_DEBUG !== '1') return;
@@ -7490,7 +7557,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     };
     const parseMs = Date.now() - parseStart;
     const trimmedRaw = rawText.trim();
-    if (trimmedRaw) {
+    if (!useSinglePost && trimmedRaw) {
       const lastChar = trimmedRaw[trimmedRaw.length - 1];
       if (lastChar !== '}' && lastChar !== ']') {
         const parseErr = new Error('missing_posts_parse_failed');
@@ -10044,10 +10111,10 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const MODEL_TIMEOUT_MS = 30000;
+        const MODEL_TIMEOUT_MS = 60000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_TOKENS_PER_BATCH_REGULAR = 350;
-        const MAX_TOKENS_PER_BATCH_BRAND = 450;
+        const MAX_TOKENS_PER_BATCH_REGULAR = 220;
+        const MAX_TOKENS_PER_BATCH_BRAND = 280;
         let ensuredPosts = [];
         let totalModelMs = 0;
         let totalValidateMs = 0;
@@ -10131,7 +10198,7 @@ const server = http.createServer((req, res) => {
               slots.push({ day, slotIndex, post_key: postKey(day, slotIndex) });
             }
           }
-          const MAX_CONCURRENCY = 6;
+          const MAX_CONCURRENCY = 3;
           const tasks = slots.map((slot, index) => async () => {
             if (Date.now() - requestStart > REGEN_TOTAL_TIMEOUT_MS) {
               const timeoutErr = new Error('Model timeout');
