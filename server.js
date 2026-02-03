@@ -3536,7 +3536,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       COMPACT_LENGTH_LIMITS_BLOCK,
       compactModeBlock,
     ].filter(Boolean).join('\n');
-    return compactPromptText;
+    const compactExtra = extraInstructions ? `\n${extraInstructions.trim()}` : '';
+    return compactPromptText + compactExtra;
   }
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
@@ -8554,6 +8555,159 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
+  async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay }) {
+    if (!nicheStyle) {
+      const err = new Error('nicheStyle required');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!OPENAI_API_KEY) {
+      const err = new Error('OPENAI_API_KEY not set');
+      err.statusCode = 500;
+      throw err;
+    }
+    const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
+    const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
+    const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+    const expectedCount = safeDays * perDay;
+    const postKeys = [];
+    for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+      const day = safeStart + dayOffset;
+      for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
+        postKeys.push(postKey(day, slotIndex));
+      }
+    }
+    const planPrompt = [
+      'Return JSON only.',
+      `Niche: ${nicheStyle}`,
+      `Generate exactly ${expectedCount} items for these post_keys:`,
+      postKeys.join(', '),
+      'Each item must include: post_key, pillar, topic_signature, angle.',
+      `pillar must be one of: ${CALENDAR_PILLARS.join(', ')}.`,
+      `angle must be one of: ${CALENDAR_ANGLE_OPTIONS.join(', ')}.`,
+      'topic_signature: 4-7 words, no locations or named entities unless provided in the niche.',
+      'No placeholders. No empty strings.',
+      'Do not include any other keys.',
+    ].join('\n');
+    const planSchema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['plan'],
+      properties: {
+        plan: {
+          type: 'array',
+          minItems: expectedCount,
+          maxItems: expectedCount,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['post_key', 'pillar', 'topic_signature', 'angle'],
+            properties: {
+              post_key: { type: 'string', minLength: 1 },
+              pillar: { type: 'string', enum: CALENDAR_PILLARS },
+              topic_signature: { type: 'string', minLength: 1 },
+              angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
+            },
+          },
+        },
+      },
+    };
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: planPrompt }],
+      temperature: 0.4,
+      max_tokens: 1200,
+      response_format: { type: 'json_schema', json_schema: { name: 'calendar_plan', strict: true, schema: planSchema } },
+    });
+    const buildRequestOptions = (payloadText) => ({
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payloadText),
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    });
+    const extractContentText = (json) => {
+      const messageContent = json?.choices?.[0]?.message?.content;
+      if (!messageContent) return '';
+      if (typeof messageContent === 'string') return messageContent;
+      if (Array.isArray(messageContent)) {
+        return messageContent
+          .map((item) => {
+            if (typeof item === 'string') return item;
+            if (typeof item?.text === 'string') return item.text;
+            if (typeof item?.value === 'string') return item.value;
+            if (typeof item?.content === 'string') return item.content;
+            return '';
+          })
+          .filter(Boolean)
+          .join('');
+      }
+      if (typeof messageContent?.text === 'string') return messageContent.text;
+      if (typeof messageContent?.value === 'string') return messageContent.value;
+      return '';
+    };
+    const planStart = Date.now();
+    const response = await withTimeout(
+      withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
+      12000,
+      { requestId, phase: 'plan' }
+    );
+    const content = extractContentText(response);
+    let parsed = null;
+    try {
+      parsed = typeof content === 'string' ? JSON.parse(content) : content;
+    } catch {
+      const err = new Error('PLAN_PARSE_FAILED');
+      err.code = 'PLAN_PARSE_FAILED';
+      err.statusCode = 422;
+      throw err;
+    }
+    const plan = Array.isArray(parsed?.plan) ? parsed.plan : null;
+    if (!plan) {
+      const err = new Error('PLAN_MISSING');
+      err.code = 'PLAN_MISSING';
+      err.statusCode = 422;
+      throw err;
+    }
+    const seen = new Set();
+    const keySet = new Set(postKeys);
+    const details = [];
+    plan.forEach((item, index) => {
+      const missing = [];
+      const key = toPlainString(item?.post_key || '');
+      if (!key) missing.push('post_key');
+      if (key && !keySet.has(key)) missing.push('post_key_invalid');
+      if (key && seen.has(key)) missing.push('post_key_duplicate');
+      if (key) seen.add(key);
+      const pillar = toPlainString(item?.pillar || '');
+      if (!pillar || !CALENDAR_PILLARS.includes(pillar)) missing.push('pillar');
+      const topicSignature = toPlainString(item?.topic_signature || '');
+      if (!topicSignature) missing.push('topic_signature');
+      const angle = toPlainString(item?.angle || '');
+      if (!angle || !CALENDAR_ANGLE_OPTIONS.includes(angle)) missing.push('angle');
+      if (missing.length) details.push({ index, missing });
+    });
+    if (plan.length !== expectedCount || seen.size !== expectedCount || details.length) {
+      const err = new Error('PLAN_SCHEMA_MISMATCH');
+      err.code = 'PLAN_SCHEMA_MISMATCH';
+      err.statusCode = 422;
+      err.details = details;
+      err.payload = { expectedCount, actualCount: plan.length };
+      throw err;
+    }
+    console.log('[Calendar][Plan]', {
+      requestId,
+      mode,
+      promptChars: planPrompt.length,
+      elapsedMs: Date.now() - planStart,
+      planCount: plan.length,
+    });
+    return { plan };
+  }
+
   // helper to generate calendar posts (reuse logic from /api/generate-calendar)
   async function generateCalendarPosts(payload = {}, attempt = 1) {
     const { nicheStyle, userId, days, startDay, postsPerDay, context } = payload;
@@ -8643,8 +8797,8 @@ const server = http.createServer((req, res) => {
       CALENDAR_VARIETY_LOGGED_REQUESTS.add(requestId);
       if (CALENDAR_VARIETY_LOGGED_REQUESTS.size > 5000) CALENDAR_VARIETY_LOGGED_REQUESTS.clear();
     }
-    let topicPlan = null;
-    if (!payload?.skipTopicPlan) {
+    let topicPlan = Array.isArray(payload?.topicPlan) ? payload.topicPlan : null;
+    if (!payload?.skipTopicPlan && !topicPlan) {
       try {
         topicPlan = await generateTopicPlan({
           nicheStyle,
@@ -8691,6 +8845,7 @@ const server = http.createServer((req, res) => {
         chunkStartDay,
         chunkDays,
       });
+      const extraInstructionsBlock = [planBlock, payload?.extraInstructions].filter(Boolean).join('\n');
       if (planBlock) {
         const planTitles = planBlock
           .split('\n')
@@ -8724,7 +8879,7 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         compactPrompt: Boolean(payload?.compactPrompt),
         temperature: Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined,
-        extraInstructions: planBlock || '',
+        extraInstructions: extraInstructionsBlock,
         topicPlan,
         brandBrainDirective,
         voiceLock: voiceLockConfig,
@@ -9833,6 +9988,64 @@ const server = http.createServer((req, res) => {
           const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
           const baseStartDay = Number.isFinite(Number(body?.startDay)) ? Number(body.startDay) : 1;
           targetCount = safeDays * requestedPostsPerDay;
+          let planResult = null;
+          try {
+            planResult = await generateCalendarPlan({
+              requestId,
+              mode: selectedMode,
+              nicheStyle: body?.nicheStyle || body?.niche || body?.niche_style || '',
+              days: safeDays,
+              startDay: baseStartDay,
+              postsPerDay: requestedPostsPerDay,
+            });
+          } catch (err) {
+            if (err?.code === 'MODEL_TIMEOUT') {
+              return sendJson(res, 503, {
+                error: 'MODEL_TIMEOUT',
+                message: 'Model timeout',
+                requestId,
+                details: { phase: 'plan' },
+              });
+            }
+            return sendJson(res, 422, {
+              error: 'CALENDAR_SCHEMA_MISMATCH',
+              message: 'Calendar output did not meet required fields.',
+              requestId,
+              details: err?.details || [{ missing: ['plan'] }],
+            });
+          }
+          const planItems = Array.isArray(planResult?.plan) ? planResult.plan : [];
+          const parseKey = (value = '') => {
+            const match = String(value).match(/^day-(\d+)-slot-(\d+)$/i);
+            if (!match) return null;
+            return { day: Number(match[1]), slotIndex: Number(match[2]) };
+          };
+          const planByKey = new Map();
+          const topicPlan = [];
+          planItems.forEach((item) => {
+            const key = toPlainString(item?.post_key || '');
+            if (!key || planByKey.has(key)) return;
+            const parsed = parseKey(key);
+            if (!parsed) return;
+            planByKey.set(key, item);
+            topicPlan.push({
+              day: parsed.day,
+              postIndex: parsed.slotIndex,
+              title: toPlainString(item?.topic_signature || ''),
+              pillar: toPlainString(item?.pillar || ''),
+              angle: toPlainString(item?.angle || ''),
+            });
+          });
+          if (planByKey.size !== targetCount) {
+            return sendJson(res, 422, {
+              error: 'CALENDAR_SCHEMA_MISMATCH',
+              message: 'Calendar output did not meet required fields.',
+              requestId,
+              details: [{ missing: ['plan'] }],
+              missingFieldsCounts: { plan: 1 },
+              attempt: { targetCount, actualCount: planByKey.size },
+            });
+          }
           const slots = [];
           for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
             const day = baseStartDay + dayOffset;
@@ -9859,6 +10072,13 @@ const server = http.createServer((req, res) => {
             }
             const batchStartDay = batch.slots[0].day;
             const batchDays = batch.slots.length;
+            const planBlock = [
+              'WRITE MODE (USE PLAN EXACTLY):',
+              '- You are writing only. Do not plan.',
+              '- Use assigned post_key, pillar, title, and angle exactly as given in the plan.',
+              '- Set topic_signature exactly equal to title.',
+              '- Do not change pillar, title, or angle.',
+            ].join('\n');
             const maxTokens = (MAX_OUTPUT_TOKENS_PER_POST * batch.slots.length) + TOKEN_OVERHEAD;
             const modelStart = Date.now();
             let batchPosts = null;
@@ -9876,6 +10096,8 @@ const server = http.createServer((req, res) => {
                   compactPrompt: true,
                   singleRequest: true,
                   skipTopicPlan: true,
+                  topicPlan,
+                  extraInstructions: planBlock,
                   temperature: 0.6,
                   maxTokens,
                 }),
