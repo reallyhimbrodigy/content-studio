@@ -7450,14 +7450,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       type: 'json_schema',
       json_schema: { name: useSinglePost ? 'calendar_post' : 'calendar_batch', strict: true, schema },
     };
-    const responseTextFormat = {
-      type: 'json_schema',
-      json_schema: {
-        name: responseFormat.json_schema.name,
-        strict: responseFormat.json_schema.strict,
-        schema: responseFormat.json_schema.schema,
-      },
-    };
+    const toTextFormat = (format) => ({
+      name: format?.json_schema?.name,
+      type: format?.type,
+      strict: format?.json_schema?.strict,
+      schema: format?.json_schema?.schema,
+    });
+    const responseTextFormat = toTextFormat(responseFormat);
     const payload = useSinglePost
       ? JSON.stringify({
           model: attemptModel,
@@ -7479,7 +7478,19 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         model: attemptModel,
         hasResponseFormat: !useSinglePost,
         hasTextFormat: Boolean(useSinglePost),
+        textFormatName: responseTextFormat?.name || null,
+        formatType: responseTextFormat?.type || null,
       });
+    }
+    if (useSinglePost && !responseTextFormat?.name) {
+      const err = new Error('OpenAI payload missing text.format.name');
+      err.code = 'OPENAI_PAYLOAD_INVALID';
+      err.statusCode = 500;
+      err.details = {
+        hasTextFormat: Boolean(responseTextFormat),
+        textFormatKeys: responseTextFormat ? Object.keys(responseTextFormat) : [],
+      };
+      throw err;
     }
     const requestPromise = withOpenAiSlot(() =>
       (useSinglePost
@@ -10426,16 +10437,24 @@ const server = http.createServer((req, res) => {
           });
           const results = new Array(tasks.length);
           let nextIndex = 0;
+          let firstError = null;
           const worker = async () => {
             while (true) {
+              if (firstError) return;
               const current = nextIndex;
               nextIndex += 1;
               if (current >= tasks.length) return;
-              results[current] = await tasks[current]();
+              try {
+                results[current] = await tasks[current]();
+              } catch (err) {
+                if (!firstError) firstError = err;
+                return;
+              }
             }
           };
           const workers = Array.from({ length: Math.min(MAX_CONCURRENCY, tasks.length) }, () => worker());
           await Promise.all(workers);
+          if (firstError) throw firstError;
           ensuredPosts = results;
           if (ensuredPosts.length !== slots.length) {
             lastMissingCounts = { post_count: Math.abs(slots.length - ensuredPosts.length) };
