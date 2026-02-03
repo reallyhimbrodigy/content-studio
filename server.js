@@ -3462,6 +3462,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   }
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   const compactPrompt = Boolean(opts.compactPrompt);
+  const minimalPrompt = Boolean(opts.minimalPrompt);
   const nonBrandBrainMultiPostBlock =
     !opts.brandBrainDirective && postsPerDaySetting > 1
       ? [
@@ -3499,6 +3500,22 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
   const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
+  if (minimalPrompt) {
+    const minimalContextLines = [];
+    if (nicheStyle) minimalContextLines.push(`Niche: ${nicheStyle}`);
+    if (brandContext) minimalContextLines.push(`Brand context: ${brandContext.trim()}`);
+    const minimalInstructionLines = [
+      'OUTPUT (STRICT):',
+      'Return ONLY JSON: {"posts":[...]}',
+      `Required keys (verbatim): ${REQUIRED_POST_FIELDS.join(', ')}`,
+      'All string values must be non-empty.',
+      'No placeholders or "TBD".',
+      `Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel}.`,
+      extraInstructions.trim(),
+    ].filter(Boolean);
+    const minimalContextBlock = minimalContextLines.length ? `${minimalContextLines.join('\n')}\n` : '';
+    return `${minimalContextBlock}${minimalInstructionLines.join('\n')}`;
+  }
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
     '- Return ONLY a single JSON object. No markdown. No backticks. No commentary. No headings.',
@@ -9619,7 +9636,7 @@ const server = http.createServer((req, res) => {
       res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
-      const REGEN_TOTAL_BUDGET_MS = 28000;
+      const REGEN_TOTAL_BUDGET_MS = 55000;
       const budgetStart = Date.now();
       const checkBudget = (phase) => {
         if (Date.now() - budgetStart <= REGEN_TOTAL_BUDGET_MS) return false;
@@ -9860,40 +9877,100 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const CHUNK_POSTS = 5;
+        const CHUNK_POSTS_INITIAL = 3;
+        const CHUNK_POSTS_FAST = 4;
+        const CHUNK_FAST_MS = 8000;
+        const CHUNK_SLOW_MS = 12000;
         const MAX_ATTEMPTS_PER_CHUNK = 2;
-        const MODEL_CALL_TIMEOUT_MS = 9000;
+        const MODEL_CALL_TIMEOUT_MS = 18000;
+        const TOKENS_PER_POST_REGULAR = 160;
+        const TOKENS_PER_POST_BRAND = 200;
+        const TOKEN_OVERHEAD = 200;
         const requiredKeys = requiredFieldsForMode(selectedMode);
+        const chunkTimings = [];
+        const chunkSizes = [];
+        let splitTriggered = false;
+        let dynamicChunkSize = CHUNK_POSTS_INITIAL;
         let ensuredPosts = null;
         let totalModelMs = 0;
         let totalValidateMs = 0;
         let modelCalls = 0;
         let maxModelCallMs = 0;
+        const teardownLabelRequirement = selectedMode === 'brand_brain'
+          ? 'Reel Script BODY must include labels in this exact order: Belief:, Feels-true because:, Hidden constraint:, Concrete consequence:, Reframe:, Tiny action:.'
+          : '';
+        const buildCompactSuffix = (chunkDays, chunkPostKeys) => [
+          'Return JSON only.',
+          `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
+          `Required keys: ${requiredKeys.join(', ')}`,
+          'All string fields must be non-empty.',
+          'No placeholders or "TBD".',
+        ].join('\n');
+        const buildMinimalSuffix = (chunkDays, chunkPostKeys) => [
+          'Return JSON only.',
+          `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
+          `Required keys: ${requiredKeys.join(', ')}`,
+          'All string fields must be non-empty.',
+          'No placeholders or "TBD".',
+          teardownLabelRequirement,
+        ].filter(Boolean).join('\n');
+        const normalizeChunkPosts = (chunkResult, chunkStartDay, chunkDays) => {
+          if (!Array.isArray(chunkResult) || !chunkResult.length) {
+            return {
+              posts: [],
+              missing: [{ index: 0, missing: requiredKeys.slice() }],
+              hasPlaceholders: false,
+              countMismatch: true,
+            };
+          }
+          const validateStart = Date.now();
+          let attemptPosts = chunkResult.map((post, idx) => {
+            const dayValue = Number.isFinite(Number(post?.day))
+              ? Number(post.day)
+              : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
+            const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
+            return ensured.post;
+          });
+          totalValidateMs += Date.now() - validateStart;
+          attemptPosts = attemptPosts.map((post, idx) => {
+            const dayValue = Number.isFinite(Number(post?.day))
+              ? Number(post.day)
+              : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
+            return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
+          });
+          const missing = collectMissing(attemptPosts);
+          const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
+          const countMismatch = attemptPosts.length !== chunkDays;
+          return { posts: attemptPosts, missing, hasPlaceholders, countMismatch };
+        };
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
           const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
           const baseStartDay = Number.isFinite(Number(body?.startDay)) ? Number(body.startDay) : 1;
           const targetCount = safeDays * requestedPostsPerDay;
-          const chunkCount = Math.ceil(safeDays / CHUNK_POSTS);
           const allPosts = [];
-          for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+          let processedDays = 0;
+          let chunkIndex = 0;
+          while (processedDays < safeDays) {
             if (checkBudget('before_chunk')) return;
-            const chunkStartDay = baseStartDay + (chunkIndex * CHUNK_POSTS);
-            const chunkDays = Math.min(CHUNK_POSTS, safeDays - (chunkIndex * CHUNK_POSTS));
+            const chunkSize = chunkIndex === 0 ? CHUNK_POSTS_INITIAL : dynamicChunkSize;
+            const chunkStartDay = baseStartDay + processedDays;
+            const chunkDays = Math.min(chunkSize, safeDays - processedDays);
             const chunkPostKeys = Array.from({ length: chunkDays }, (_, offset) => postKey(chunkStartDay + offset, 0));
+            const chunkStartedAt = Date.now();
             let chunkPosts = null;
             let chunkMissingReport = [];
-            for (let attemptIndex = 1; attemptIndex <= MAX_ATTEMPTS_PER_CHUNK; attemptIndex += 1) {
-              const compactSuffix = [
-                'Return JSON only.',
-                `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
-                `Required keys: ${requiredKeys.join(', ')}`,
-                'No placeholders or "TBD".',
-              ].join('\n');
-              const attemptSuffix = attemptIndex > 1
-                ? [compactSuffix, retryAuditBlock].join('\n')
-                : compactSuffix;
+            const maxAttempts = chunkIndex === 0 ? 1 : MAX_ATTEMPTS_PER_CHUNK;
+            let chunkTimedOut = false;
+            const tokensPerPost = selectedMode === 'brand_brain' ? TOKENS_PER_POST_BRAND : TOKENS_PER_POST_REGULAR;
+            const chunkMaxTokens = (tokensPerPost * chunkDays) + TOKEN_OVERHEAD;
+            for (let attemptIndex = 1; attemptIndex <= maxAttempts; attemptIndex += 1) {
+              const compactSuffix = buildCompactSuffix(chunkDays, chunkPostKeys);
+              const minimalSuffix = buildMinimalSuffix(chunkDays, chunkPostKeys);
+              const attemptSuffix = chunkIndex === 0
+                ? minimalSuffix
+                : (attemptIndex > 1 ? [compactSuffix, retryAuditBlock].join('\n') : compactSuffix);
               const modelStart = Date.now();
               let chunkResult = null;
               try {
@@ -9904,19 +9981,25 @@ const server = http.createServer((req, res) => {
                     calendarMode: selectedMode,
                     days: chunkDays,
                     startDay: chunkStartDay,
-                  postsPerDay: requestedPostsPerDay,
-                  context: regenContext,
-                  isPro,
-                  compactPrompt: true,
-                  temperature: 0.6,
-                  extraInstructions: attemptSuffix,
-                }),
+                    postsPerDay: requestedPostsPerDay,
+                    context: regenContext,
+                    isPro,
+                    compactPrompt: true,
+                    minimalPrompt: chunkIndex === 0,
+                    temperature: 0.6,
+                    maxTokens: chunkMaxTokens,
+                    extraInstructions: attemptSuffix,
+                  }),
                   MODEL_CALL_TIMEOUT_MS,
                   { chunkIndex, attemptIndex }
                 );
               } catch (err) {
                 if (err?.code === 'MODEL_TIMEOUT') {
                   console.warn('[Calendar][Regen] chunk timeout', { requestId, chunkIndex, attemptIndex });
+                  if (chunkIndex === 0) {
+                    chunkTimedOut = true;
+                    break;
+                  }
                   if (attemptIndex >= MAX_ATTEMPTS_PER_CHUNK) {
                     return sendJson(res, 503, {
                       error: 'MODEL_TIMEOUT',
@@ -9933,39 +10016,21 @@ const server = http.createServer((req, res) => {
               const callMs = Date.now() - modelStart;
               totalModelMs += callMs;
               maxModelCallMs = Math.max(maxModelCallMs, callMs);
-              if (!Array.isArray(chunkResult) || !chunkResult.length) {
-                chunkMissingReport = [{ index: 0, missing: requiredKeys.slice() }];
-                continue;
-              }
-              const validateStart = Date.now();
-              let attemptPosts = chunkResult.map((post, idx) => {
-                const dayValue = Number.isFinite(Number(post?.day))
-                  ? Number(post.day)
-                  : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
-                const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
-                return ensured.post;
-              });
-              totalValidateMs += Date.now() - validateStart;
-              attemptPosts = attemptPosts.map((post, idx) => {
-                const dayValue = Number.isFinite(Number(post?.day))
-                  ? Number(post.day)
-                  : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
-                return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
-              });
-              const missing = collectMissing(attemptPosts);
-              const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
-              const countMismatch = attemptPosts.length !== chunkDays;
-              chunkMissingReport = missing;
-              if (!missing.length && !hasPlaceholders && !countMismatch) {
-                chunkPosts = attemptPosts;
+              const normalized = normalizeChunkPosts(chunkResult, chunkStartDay, chunkDays);
+              chunkMissingReport = normalized.missing;
+              if (!normalized.missing.length && !normalized.hasPlaceholders && !normalized.countMismatch) {
+                chunkPosts = normalized.posts;
                 break;
               }
-              if (attemptIndex === 1 && missing.length && OPENAI_API_KEY) {
+              if (chunkIndex === 0) {
+                break;
+              }
+              if (attemptIndex === 1 && normalized.missing.length && OPENAI_API_KEY) {
                 if (checkBudget('before_chunk_repair')) return;
                 try {
-                  const missingSummary = missing.map((entry, idx) => ({
+                  const missingSummary = normalized.missing.map((entry, idx) => ({
                     index: idx,
-                    post_key: attemptPosts[idx]?.post_key || attemptPosts[idx]?.postKey || '',
+                    post_key: normalized.posts[idx]?.post_key || normalized.posts[idx]?.postKey || '',
                     missing: entry.missing,
                   }));
                   const repairPrompt = [
@@ -9974,7 +10039,7 @@ const server = http.createServer((req, res) => {
                     'Return ONLY the corrected posts for the listed post_key values.',
                     'Do NOT remove or rename keys. Do NOT change any existing values.',
                     `Missing fields report: ${JSON.stringify(missingSummary)}`,
-                    `Original JSON: ${JSON.stringify({ posts: attemptPosts })}`,
+                    `Original JSON: ${JSON.stringify({ posts: normalized.posts })}`,
                   ].join('\n');
                   const payload = JSON.stringify({
                     model: 'gpt-4o-mini',
@@ -10003,8 +10068,16 @@ const server = http.createServer((req, res) => {
                       ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
                       : '';
                   const parsed = tryParsePosts(text, chunkDays);
-                  if (parsed.posts && parsed.posts.length) {
-                    attemptPosts = parsed.posts;
+                  const repaired = parsed.posts && parsed.posts.length
+                    ? normalizeChunkPosts(parsed.posts, chunkStartDay, chunkDays)
+                    : null;
+                  if (repaired) {
+                    const postMissing = repaired.missing;
+                    const hasPostPlaceholders = repaired.posts.some((post) => hasPlaceholderInPost(post));
+                    if (!postMissing.length && !hasPostPlaceholders && repaired.posts.length === chunkDays) {
+                      chunkPosts = repaired.posts;
+                      break;
+                    }
                   }
                 } catch (repairErr) {
                   console.warn('[Calendar][Regen][Repair] chunk repair failed', {
@@ -10013,13 +10086,74 @@ const server = http.createServer((req, res) => {
                     error: repairErr?.message || repairErr,
                   });
                 }
-                const postMissing = collectMissing(attemptPosts);
-                const hasPostPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
-                if (!postMissing.length && !hasPostPlaceholders && attemptPosts.length === chunkDays) {
-                  chunkPosts = attemptPosts;
-                  break;
-                }
               }
+            }
+            if (!chunkPosts && chunkIndex === 0 && (chunkMissingReport.length || chunkTimedOut)) {
+              splitTriggered = true;
+              const splitPosts = [];
+              for (let offset = 0; offset < chunkDays; offset += 1) {
+                if (checkBudget('before_chunk_split')) return;
+                const dayValue = chunkStartDay + offset;
+                const postKeyValue = postKey(dayValue, 0);
+                const splitSuffix = buildMinimalSuffix(1, [postKeyValue]);
+                const splitMaxTokens = (tokensPerPost * 1) + TOKEN_OVERHEAD;
+                let splitResult = null;
+                const splitStart = Date.now();
+                try {
+                  splitResult = await withTimeout(
+                    generateCalendarPosts({
+                      ...(body || {}),
+                      brandBrainEnabled: selectedMode === 'brand_brain',
+                      calendarMode: selectedMode,
+                      days: 1,
+                      startDay: dayValue,
+                      postsPerDay: requestedPostsPerDay,
+                      context: regenContext,
+                      isPro,
+                      compactPrompt: true,
+                      minimalPrompt: true,
+                      temperature: 0.6,
+                      maxTokens: splitMaxTokens,
+                      extraInstructions: splitSuffix,
+                    }),
+                    MODEL_CALL_TIMEOUT_MS,
+                    { chunkIndex, attemptIndex: 1, post_key: postKeyValue }
+                  );
+                } catch (err) {
+                  if (err?.code === 'MODEL_TIMEOUT') {
+                    return sendJson(res, 503, {
+                      error: 'MODEL_TIMEOUT',
+                      message: 'Model timeout',
+                      requestId,
+                      details: { chunkIndex, post_key: postKeyValue, attempt: 1 },
+                    });
+                  }
+                  throw err;
+                }
+                modelCalls += 1;
+                const callMs = Date.now() - splitStart;
+                totalModelMs += callMs;
+                maxModelCallMs = Math.max(maxModelCallMs, callMs);
+                const normalizedSplit = normalizeChunkPosts(splitResult, dayValue, 1);
+                if (normalizedSplit.missing.length || normalizedSplit.hasPlaceholders || normalizedSplit.countMismatch) {
+                  chunkMissingReport = normalizedSplit.missing;
+                  return sendJson(res, 422, {
+                    error: 'CALENDAR_SCHEMA_MISMATCH',
+                    message: 'Calendar output did not meet required fields.',
+                    requestId,
+                    details: chunkMissingReport,
+                    missingFieldsCounts: chunkMissingReport.reduce((acc, entry) => {
+                      entry.missing.forEach((field) => {
+                        acc[field] = (acc[field] || 0) + 1;
+                      });
+                      return acc;
+                    }, {}),
+                    attempt: { chunkIndex, post_key: postKeyValue },
+                  });
+                }
+                splitPosts.push(...normalizedSplit.posts);
+              }
+              chunkPosts = splitPosts;
             }
             if (!chunkPosts) {
               chunkMissingReport = chunkMissingReport || [];
@@ -10040,6 +10174,23 @@ const server = http.createServer((req, res) => {
               });
             }
             allPosts.push(...chunkPosts);
+            const chunkElapsed = Date.now() - chunkStartedAt;
+            chunkTimings.push({
+              chunkIndex,
+              startDay: chunkStartDay,
+              posts: chunkDays,
+              ms: chunkElapsed,
+              split: chunkIndex === 0 && splitTriggered,
+            });
+            chunkSizes.push(chunkDays);
+            if (chunkIndex === 0 && chunkElapsed < CHUNK_FAST_MS) {
+              dynamicChunkSize = CHUNK_POSTS_FAST;
+            }
+            if (chunkElapsed > CHUNK_SLOW_MS) {
+              dynamicChunkSize = CHUNK_POSTS_INITIAL;
+            }
+            processedDays += chunkDays;
+            chunkIndex += 1;
           }
           ensuredPosts = allPosts;
           if (ensuredPosts.length !== targetCount) {
@@ -10089,6 +10240,9 @@ const server = http.createServer((req, res) => {
           max_model_call_ms: maxModelCallMs,
           mode: selectedMode,
           targetCount,
+          chunk_timings: chunkTimings,
+          chunk_sizes: chunkSizes,
+          split_on_failure: splitTriggered,
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
