@@ -3302,6 +3302,22 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   'Anti-redundancy:',
   '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
   '',
+  'FIELD LENGTH LIMITS (HARD):',
+  '- Title: <= 8 words.',
+  '- Hook: <= 12 words.',
+  '- Caption: <= 40 words.',
+  '- cta: <= 6 words.',
+  '- script.hook / reelScript.hook: <= 10 words.',
+  '- script.body / reelScript.body: <= 60 words total.',
+  '- script.cta / reelScript.cta: <= 6 words.',
+  '- designNotes: 5 timecoded beats; <= 8 words after each timecode.',
+  '- engagementScripts.commentReply / dmReply: <= 12 words each.',
+  '- distributionPlan: 2 short lines, <= 10 words each.',
+  '- hashtags: 5–7 tags.',
+  '- suggestedAudio must be present; use "Original audio" if unsure.',
+  '- Forbidden placeholders anywhere: "placeholder", "tbd", "lorem", "coming soon".',
+  '- If any limit is exceeded, rewrite internally before output.',
+  '',
   'Preflight:',
   '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
   '- Never output placeholders or the word "Placeholder".',
@@ -3311,11 +3327,6 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- If any rule is violated or a required key is missing, rewrite ONCE internally, then output final JSON only.',
   '[/REGULAR_MODE_INSTRUCTIONS]',
   '',
-  'Token budget guidance (keep outputs short):',
-  '- Caption: <= 55 words',
-  '- Reel Script: Hook line + 3 short body lines + CTA line',
-  '- Design Notes: 4-6 beats',
-  '- Distribution Plan: 2 lines',
 ].join('\n');
 
 const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
@@ -3358,6 +3369,23 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   'Anti-redundancy:',
   '- Do not repeat any identical 5+ word phrase across Title, Hook, Caption, Reel Script.',
   '',
+  'FIELD LENGTH LIMITS (HARD):',
+  '- Title: <= 8 words.',
+  '- Hook: <= 12 words.',
+  '- Caption: <= 35 words.',
+  '- cta: <= 6 words.',
+  '- reelScript.body must contain the six labels; each labeled line <= 12 words.',
+  '- reelScript.hook / script.hook: <= 10 words.',
+  '- script.body: <= 50 words total.',
+  '- script.cta / reelScript.cta: <= 6 words.',
+  '- designNotes: 5 timecoded beats; <= 8 words after each timecode.',
+  '- engagementScripts.commentReply / dmReply: <= 12 words each.',
+  '- distributionPlan: 2 short lines, <= 10 words each.',
+  '- hashtags: 5–7 tags.',
+  '- suggestedAudio must be present; use "Original audio" if unsure.',
+  '- Forbidden placeholders anywhere: "placeholder", "tbd", "lorem", "coming soon".',
+  '- If any limit is exceeded, rewrite internally before output.',
+  '',
   'Preflight:',
   '- Verify every required key is present and non-empty, including: topic_signature, angle, script, reelScript.',
   '- Never output placeholders or the word "Placeholder".',
@@ -3368,11 +3396,6 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- If any rule is violated or a required key is missing, rewrite ONCE internally, then output final JSON only.',
   '[/BRAND_BRAIN_MODE_INSTRUCTIONS]',
   '',
-  'Token budget guidance (keep outputs short):',
-  '- Caption: <= 45 words',
-  '- Reel Script: 6 labeled lines (one per label) + optional 1-line CTA',
-  '- Design Notes: 4-6 beats',
-  '- Distribution Plan: 2 lines',
 ].join('\n');
 
 const BRAND_BRAIN_KEY_CONTRACT_TOP = [
@@ -3462,7 +3485,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   }
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
   const compactPrompt = Boolean(opts.compactPrompt);
-  const minimalPrompt = Boolean(opts.minimalPrompt);
   const nonBrandBrainMultiPostBlock =
     !opts.brandBrainDirective && postsPerDaySetting > 1
       ? [
@@ -3500,22 +3522,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
   const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
   const postIdentityBlock = buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
-  if (minimalPrompt) {
-    const minimalContextLines = [];
-    if (nicheStyle) minimalContextLines.push(`Niche: ${nicheStyle}`);
-    if (brandContext) minimalContextLines.push(`Brand context: ${brandContext.trim()}`);
-    const minimalInstructionLines = [
-      'OUTPUT (STRICT):',
-      'Return ONLY JSON: {"posts":[...]}',
-      `Required keys (verbatim): ${REQUIRED_POST_FIELDS.join(', ')}`,
-      'All string values must be non-empty.',
-      'No placeholders or "TBD".',
-      `Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel}.`,
-      extraInstructions.trim(),
-    ].filter(Boolean);
-    const minimalContextBlock = minimalContextLines.length ? `${minimalContextLines.join('\n')}\n` : '';
-    return `${minimalContextBlock}${minimalInstructionLines.join('\n')}`;
-  }
   const outputContractBlock = [
     'OUTPUT CONTRACT (MANDATORY)',
     '- Return ONLY a single JSON object. No markdown. No backticks. No commentary. No headings.',
@@ -9779,87 +9785,9 @@ const server = http.createServer((req, res) => {
           const fallbackDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : null;
           return fallbackDays;
         })();
-        const retryAuditBlock = [
-          'PRE-FLIGHT (RETRY ONLY):',
-          '- Before returning final JSON, verify every required field exists and is non-empty for every post.',
-          '- If any are missing, rewrite the entire JSON output so it passes validation.',
-          '- Do not include placeholders. Do not omit posts.',
-        ].join('\n');
         let lastMissingReport = [];
         let lastMissingCounts = {};
         let lastAttemptDetails = null;
-        const deriveText = (...candidates) => {
-          for (const candidate of candidates) {
-            const value = toPlainString(candidate);
-            if (value) return value;
-          }
-          return '';
-        };
-        const pickExistingPost = (idx) => {
-          if (body?.post && typeof body.post === 'object') return body.post;
-          if (Array.isArray(body?.posts) && body.posts[idx]) return body.posts[idx];
-          return null;
-        };
-        const fillMissingForRegen = (post, existingPost, dayValue) => {
-          const next = post && typeof post === 'object' ? { ...post } : {};
-          const source = existingPost && typeof existingPost === 'object' ? existingPost : {};
-          if (!Number.isFinite(Number(next.day))) next.day = dayValue;
-          if (!isNonEmptyString(next.title)) {
-            next.title = deriveText(source.title, next.hook, source.hook, next.caption, source.caption, next.idea, source.idea, `Day ${String(dayValue).padStart(2, '0')} idea`);
-          }
-          if (!isNonEmptyString(next.hook)) {
-            next.hook = deriveText(source.hook, next.script?.hook, next.title, source.title);
-          }
-          if (!isNonEmptyString(next.caption)) {
-            next.caption = deriveText(source.caption, next.script?.body, next.hook, next.title);
-          }
-          if (!isNonEmptyString(next.cta)) {
-            next.cta = deriveText(source.cta, next.script?.cta, next.title, next.hook);
-          }
-          if (!isNonEmptyString(next.topic_signature)) {
-            next.topic_signature = deriveText(source.topic_signature, next.title, next.hook, source.title, source.hook);
-          }
-          if (!isNonEmptyString(next.angle)) {
-            next.angle = deriveText(source.angle, next.hook, next.title, source.hook, source.title);
-          }
-          if (!isNonEmptyString(next.designNotes)) {
-            next.designNotes = deriveText(source.designNotes, next.title, next.hook);
-          }
-          if (!isNonEmptyString(next.distributionPlan)) {
-            next.distributionPlan = deriveText(source.distributionPlan, next.title, next.hook);
-          }
-          if (!next.script || typeof next.script !== 'object') next.script = {};
-          if (!isNonEmptyString(next.script.hook)) {
-            next.script.hook = deriveText(next.hook, source.script?.hook, source.hook, next.title);
-          }
-          if (!isNonEmptyString(next.script.body)) {
-            next.script.body = deriveText(next.caption, source.script?.body, source.caption, next.hook, next.title);
-          }
-          if (!isNonEmptyString(next.script.cta)) {
-            next.script.cta = deriveText(next.cta, source.script?.cta, source.cta, next.hook, next.title);
-          }
-          if (!next.reelScript || typeof next.reelScript !== 'object') next.reelScript = {};
-          if (!isNonEmptyString(next.reelScript.hook)) {
-            next.reelScript.hook = deriveText(next.script?.hook, source.reelScript?.hook, next.hook);
-          }
-          if (!isNonEmptyString(next.reelScript.body)) {
-            next.reelScript.body = deriveText(next.script?.body, source.reelScript?.body, next.caption, next.hook);
-          }
-          if (!isNonEmptyString(next.reelScript.cta)) {
-            next.reelScript.cta = deriveText(next.script?.cta, source.reelScript?.cta, next.cta);
-          }
-          if (!next.engagementScripts || typeof next.engagementScripts !== 'object') next.engagementScripts = {};
-          if (!isNonEmptyString(next.engagementScripts.commentReply)) {
-            next.engagementScripts.commentReply = deriveText(source.engagementScripts?.commentReply, next.hook, next.title);
-          }
-          if (!isNonEmptyString(next.engagementScripts.dmReply)) {
-            next.engagementScripts.dmReply = deriveText(source.engagementScripts?.dmReply, next.cta, next.title);
-          }
-          if (!Array.isArray(next.hashtags)) {
-            next.hashtags = Array.isArray(source.hashtags) ? source.hashtags.slice() : [];
-          }
-          return next;
-        };
         const hasPlaceholderInPost = (post) => {
           if (!post || typeof post !== 'object') return false;
           try {
@@ -9877,332 +9805,94 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const CHUNK_POSTS_INITIAL = 3;
-        const CHUNK_POSTS_FAST = 4;
-        const CHUNK_FAST_MS = 8000;
-        const CHUNK_SLOW_MS = 12000;
-        const MAX_ATTEMPTS_PER_CHUNK = 2;
-        const MODEL_CALL_TIMEOUT_MS = 18000;
-        const TOKENS_PER_POST_REGULAR = 160;
-        const TOKENS_PER_POST_BRAND = 200;
-        const TOKEN_OVERHEAD = 200;
-        const requiredKeys = requiredFieldsForMode(selectedMode);
-        const chunkTimings = [];
-        const chunkSizes = [];
-        let splitTriggered = false;
-        let dynamicChunkSize = CHUNK_POSTS_INITIAL;
+        const REGEN_MODEL_TIMEOUT_MS = 25000;
+        const TOKENS_PER_POST_REGULAR = 200;
+        const TOKENS_PER_POST_BRAND = 220;
+        const TOKEN_OVERHEAD = 400;
         let ensuredPosts = null;
         let totalModelMs = 0;
         let totalValidateMs = 0;
         let modelCalls = 0;
         let maxModelCallMs = 0;
-        const teardownLabelRequirement = selectedMode === 'brand_brain'
-          ? 'Reel Script BODY must include labels in this exact order: Belief:, Feels-true because:, Hidden constraint:, Concrete consequence:, Reframe:, Tiny action:.'
-          : '';
-        const buildCompactSuffix = (chunkDays, chunkPostKeys) => [
-          'Return JSON only.',
-          `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
-          `Required keys: ${requiredKeys.join(', ')}`,
-          'All string fields must be non-empty.',
-          'No placeholders or "TBD".',
-        ].join('\n');
-        const buildMinimalSuffix = (chunkDays, chunkPostKeys) => [
-          'Return JSON only.',
-          `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
-          `Required keys: ${requiredKeys.join(', ')}`,
-          'All string fields must be non-empty.',
-          'No placeholders or "TBD".',
-          teardownLabelRequirement,
-        ].filter(Boolean).join('\n');
-        const normalizeChunkPosts = (chunkResult, chunkStartDay, chunkDays) => {
-          if (!Array.isArray(chunkResult) || !chunkResult.length) {
-            return {
-              posts: [],
-              missing: [{ index: 0, missing: requiredKeys.slice() }],
-              hasPlaceholders: false,
-              countMismatch: true,
-            };
-          }
-          const validateStart = Date.now();
-          let attemptPosts = chunkResult.map((post, idx) => {
-            const dayValue = Number.isFinite(Number(post?.day))
-              ? Number(post.day)
-              : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
-            const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
-            return ensured.post;
-          });
-          totalValidateMs += Date.now() - validateStart;
-          attemptPosts = attemptPosts.map((post, idx) => {
-            const dayValue = Number.isFinite(Number(post?.day))
-              ? Number(post.day)
-              : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
-            return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
-          });
-          const missing = collectMissing(attemptPosts);
-          const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
-          const countMismatch = attemptPosts.length !== chunkDays;
-          return { posts: attemptPosts, missing, hasPlaceholders, countMismatch };
-        };
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
           const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
           const baseStartDay = Number.isFinite(Number(body?.startDay)) ? Number(body.startDay) : 1;
           const targetCount = safeDays * requestedPostsPerDay;
-          const allPosts = [];
-          let processedDays = 0;
-          let chunkIndex = 0;
-          while (processedDays < safeDays) {
-            if (checkBudget('before_chunk')) return;
-            const chunkSize = chunkIndex === 0 ? CHUNK_POSTS_INITIAL : dynamicChunkSize;
-            const chunkStartDay = baseStartDay + processedDays;
-            const chunkDays = Math.min(chunkSize, safeDays - processedDays);
-            const chunkPostKeys = Array.from({ length: chunkDays }, (_, offset) => postKey(chunkStartDay + offset, 0));
-            const chunkStartedAt = Date.now();
-            let chunkPosts = null;
-            let chunkMissingReport = [];
-            const maxAttempts = chunkIndex === 0 ? 1 : MAX_ATTEMPTS_PER_CHUNK;
-            let chunkTimedOut = false;
-            const tokensPerPost = selectedMode === 'brand_brain' ? TOKENS_PER_POST_BRAND : TOKENS_PER_POST_REGULAR;
-            const chunkMaxTokens = (tokensPerPost * chunkDays) + TOKEN_OVERHEAD;
-            for (let attemptIndex = 1; attemptIndex <= maxAttempts; attemptIndex += 1) {
-              const compactSuffix = buildCompactSuffix(chunkDays, chunkPostKeys);
-              const minimalSuffix = buildMinimalSuffix(chunkDays, chunkPostKeys);
-              const attemptSuffix = chunkIndex === 0
-                ? minimalSuffix
-                : (attemptIndex > 1 ? [compactSuffix, retryAuditBlock].join('\n') : compactSuffix);
-              const modelStart = Date.now();
-              let chunkResult = null;
-              try {
-                chunkResult = await withTimeout(
-                  generateCalendarPosts({
-                    ...(body || {}),
-                    brandBrainEnabled: selectedMode === 'brand_brain',
-                    calendarMode: selectedMode,
-                    days: chunkDays,
-                    startDay: chunkStartDay,
-                    postsPerDay: requestedPostsPerDay,
-                    context: regenContext,
-                    isPro,
-                    compactPrompt: true,
-                    minimalPrompt: chunkIndex === 0,
-                    temperature: 0.6,
-                    maxTokens: chunkMaxTokens,
-                    extraInstructions: attemptSuffix,
-                  }),
-                  MODEL_CALL_TIMEOUT_MS,
-                  { chunkIndex, attemptIndex }
-                );
-              } catch (err) {
-                if (err?.code === 'MODEL_TIMEOUT') {
-                  console.warn('[Calendar][Regen] chunk timeout', { requestId, chunkIndex, attemptIndex });
-                  if (chunkIndex === 0) {
-                    chunkTimedOut = true;
-                    break;
-                  }
-                  if (attemptIndex >= MAX_ATTEMPTS_PER_CHUNK) {
-                    return sendJson(res, 503, {
-                      error: 'MODEL_TIMEOUT',
-                      message: 'Model timeout',
-                      requestId,
-                      details: { chunkIndex, attempt: attemptIndex },
-                    });
-                  }
-                  continue;
-                }
-                throw err;
-              }
-              modelCalls += 1;
-              const callMs = Date.now() - modelStart;
-              totalModelMs += callMs;
-              maxModelCallMs = Math.max(maxModelCallMs, callMs);
-              const normalized = normalizeChunkPosts(chunkResult, chunkStartDay, chunkDays);
-              chunkMissingReport = normalized.missing;
-              if (!normalized.missing.length && !normalized.hasPlaceholders && !normalized.countMismatch) {
-                chunkPosts = normalized.posts;
-                break;
-              }
-              if (chunkIndex === 0) {
-                break;
-              }
-              if (attemptIndex === 1 && normalized.missing.length && OPENAI_API_KEY) {
-                if (checkBudget('before_chunk_repair')) return;
-                try {
-                  const missingSummary = normalized.missing.map((entry, idx) => ({
-                    index: idx,
-                    post_key: normalized.posts[idx]?.post_key || normalized.posts[idx]?.postKey || '',
-                    missing: entry.missing,
-                  }));
-                  const repairPrompt = [
-                    'You are a JSON repair tool.',
-                    'Return ONLY valid JSON. No markdown. No commentary.',
-                    'Return ONLY the corrected posts for the listed post_key values.',
-                    'Do NOT remove or rename keys. Do NOT change any existing values.',
-                    `Missing fields report: ${JSON.stringify(missingSummary)}`,
-                    `Original JSON: ${JSON.stringify({ posts: normalized.posts })}`,
-                  ].join('\n');
-                  const payload = JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [{ role: 'user', content: repairPrompt }],
-                    temperature: 0.2,
-                    max_tokens: 1200,
-                  });
-                  const options = {
-                    hostname: 'api.openai.com',
-                    path: '/v1/chat/completions',
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Content-Length': Buffer.byteLength(payload),
-                      Authorization: `Bearer ${OPENAI_API_KEY}`,
-                    },
-                  };
-                  const completion = await withTimeout(openAIRequest(options, payload), MODEL_CALL_TIMEOUT_MS, {
-                    chunkIndex,
-                    attemptIndex,
-                  });
-                  const extract = completion?.choices?.[0]?.message?.content;
-                  const text = typeof extract === 'string'
-                    ? extract
-                    : Array.isArray(extract)
-                      ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
-                      : '';
-                  const parsed = tryParsePosts(text, chunkDays);
-                  const repaired = parsed.posts && parsed.posts.length
-                    ? normalizeChunkPosts(parsed.posts, chunkStartDay, chunkDays)
-                    : null;
-                  if (repaired) {
-                    const postMissing = repaired.missing;
-                    const hasPostPlaceholders = repaired.posts.some((post) => hasPlaceholderInPost(post));
-                    if (!postMissing.length && !hasPostPlaceholders && repaired.posts.length === chunkDays) {
-                      chunkPosts = repaired.posts;
-                      break;
-                    }
-                  }
-                } catch (repairErr) {
-                  console.warn('[Calendar][Regen][Repair] chunk repair failed', {
-                    requestId,
-                    chunkIndex,
-                    error: repairErr?.message || repairErr,
-                  });
-                }
-              }
-            }
-            if (!chunkPosts && chunkIndex === 0 && (chunkMissingReport.length || chunkTimedOut)) {
-              splitTriggered = true;
-              const splitPosts = [];
-              for (let offset = 0; offset < chunkDays; offset += 1) {
-                if (checkBudget('before_chunk_split')) return;
-                const dayValue = chunkStartDay + offset;
-                const postKeyValue = postKey(dayValue, 0);
-                const splitSuffix = buildMinimalSuffix(1, [postKeyValue]);
-                const splitMaxTokens = (tokensPerPost * 1) + TOKEN_OVERHEAD;
-                let splitResult = null;
-                const splitStart = Date.now();
-                try {
-                  splitResult = await withTimeout(
-                    generateCalendarPosts({
-                      ...(body || {}),
-                      brandBrainEnabled: selectedMode === 'brand_brain',
-                      calendarMode: selectedMode,
-                      days: 1,
-                      startDay: dayValue,
-                      postsPerDay: requestedPostsPerDay,
-                      context: regenContext,
-                      isPro,
-                      compactPrompt: true,
-                      minimalPrompt: true,
-                      temperature: 0.6,
-                      maxTokens: splitMaxTokens,
-                      extraInstructions: splitSuffix,
-                    }),
-                    MODEL_CALL_TIMEOUT_MS,
-                    { chunkIndex, attemptIndex: 1, post_key: postKeyValue }
-                  );
-                } catch (err) {
-                  if (err?.code === 'MODEL_TIMEOUT') {
-                    return sendJson(res, 503, {
-                      error: 'MODEL_TIMEOUT',
-                      message: 'Model timeout',
-                      requestId,
-                      details: { chunkIndex, post_key: postKeyValue, attempt: 1 },
-                    });
-                  }
-                  throw err;
-                }
-                modelCalls += 1;
-                const callMs = Date.now() - splitStart;
-                totalModelMs += callMs;
-                maxModelCallMs = Math.max(maxModelCallMs, callMs);
-                const normalizedSplit = normalizeChunkPosts(splitResult, dayValue, 1);
-                if (normalizedSplit.missing.length || normalizedSplit.hasPlaceholders || normalizedSplit.countMismatch) {
-                  chunkMissingReport = normalizedSplit.missing;
-                  return sendJson(res, 422, {
-                    error: 'CALENDAR_SCHEMA_MISMATCH',
-                    message: 'Calendar output did not meet required fields.',
-                    requestId,
-                    details: chunkMissingReport,
-                    missingFieldsCounts: chunkMissingReport.reduce((acc, entry) => {
-                      entry.missing.forEach((field) => {
-                        acc[field] = (acc[field] || 0) + 1;
-                      });
-                      return acc;
-                    }, {}),
-                    attempt: { chunkIndex, post_key: postKeyValue },
-                  });
-                }
-                splitPosts.push(...normalizedSplit.posts);
-              }
-              chunkPosts = splitPosts;
-            }
-            if (!chunkPosts) {
-              chunkMissingReport = chunkMissingReport || [];
-              lastMissingReport = chunkMissingReport;
-              lastMissingCounts = {};
-              chunkMissingReport.forEach((entry) => {
-                entry.missing.forEach((field) => {
-                  lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
-                });
-              });
-              return sendJson(res, 422, {
-                error: 'CALENDAR_SCHEMA_MISMATCH',
-                message: 'Calendar output did not meet required fields.',
+          const tokensPerPost = selectedMode === 'brand_brain' ? TOKENS_PER_POST_BRAND : TOKENS_PER_POST_REGULAR;
+          const maxTokens = (targetCount * tokensPerPost) + TOKEN_OVERHEAD;
+          const modelStart = Date.now();
+          let modelPosts = null;
+          try {
+            modelPosts = await withTimeout(
+              generateCalendarPosts({
+                ...(body || {}),
+                brandBrainEnabled: selectedMode === 'brand_brain',
+                calendarMode: selectedMode,
+                days: safeDays,
+                startDay: baseStartDay,
+                postsPerDay: requestedPostsPerDay,
+                context: regenContext,
+                isPro,
+                compactPrompt: true,
+                singleRequest: true,
+                temperature: 0.6,
+                maxTokens,
+              }),
+              REGEN_MODEL_TIMEOUT_MS,
+              { requestId }
+            );
+          } catch (err) {
+            if (err?.code === 'MODEL_TIMEOUT') {
+              return sendJson(res, 503, {
+                error: 'MODEL_TIMEOUT',
+                message: 'Model timeout',
                 requestId,
-                details: chunkMissingReport,
-                missingFieldsCounts: lastMissingCounts,
-                attempt: { chunkIndex },
               });
             }
-            allPosts.push(...chunkPosts);
-            const chunkElapsed = Date.now() - chunkStartedAt;
-            chunkTimings.push({
-              chunkIndex,
-              startDay: chunkStartDay,
-              posts: chunkDays,
-              ms: chunkElapsed,
-              split: chunkIndex === 0 && splitTriggered,
-            });
-            chunkSizes.push(chunkDays);
-            if (chunkIndex === 0 && chunkElapsed < CHUNK_FAST_MS) {
-              dynamicChunkSize = CHUNK_POSTS_FAST;
-            }
-            if (chunkElapsed > CHUNK_SLOW_MS) {
-              dynamicChunkSize = CHUNK_POSTS_INITIAL;
-            }
-            processedDays += chunkDays;
-            chunkIndex += 1;
+            throw err;
           }
-          ensuredPosts = allPosts;
-          if (ensuredPosts.length !== targetCount) {
+          modelCalls += 1;
+          const callMs = Date.now() - modelStart;
+          totalModelMs += callMs;
+          maxModelCallMs = Math.max(maxModelCallMs, callMs);
+          if (!Array.isArray(modelPosts) || !modelPosts.length) {
             return sendJson(res, 422, {
               error: 'CALENDAR_SCHEMA_MISMATCH',
               message: 'Calendar output did not meet required fields.',
               requestId,
-              details: [{ missing: ['post_count'] }],
-              missingFieldsCounts: { post_count: targetCount - ensuredPosts.length },
-              attempt: { targetCount, actualCount: ensuredPosts.length },
+              details: [{ missing: ['posts'] }],
+              missingFieldsCounts: { posts: 1 },
+              attempt: { targetCount, actualCount: Array.isArray(modelPosts) ? modelPosts.length : 0 },
             });
           }
+          const validateStart = Date.now();
+          const missing = collectMissing(modelPosts);
+          totalValidateMs += Date.now() - validateStart;
+          const hasPlaceholders = modelPosts.some((post) => hasPlaceholderInPost(post));
+          const countMismatch = modelPosts.length !== targetCount;
+          if (missing.length || hasPlaceholders || countMismatch) {
+            lastMissingReport = missing;
+            lastMissingCounts = {};
+            missing.forEach((entry) => {
+              entry.missing.forEach((field) => {
+                lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
+              });
+            });
+            if (countMismatch) {
+              lastMissingCounts.post_count = (lastMissingCounts.post_count || 0) + Math.abs(targetCount - modelPosts.length);
+            }
+            return sendJson(res, 422, {
+              error: 'CALENDAR_SCHEMA_MISMATCH',
+              message: 'Calendar output did not meet required fields.',
+              requestId,
+              details: missing.length ? missing : [{ missing: ['post_count'] }],
+              missingFieldsCounts: lastMissingCounts,
+              attempt: { targetCount, actualCount: modelPosts.length },
+            });
+          }
+          ensuredPosts = modelPosts;
         } finally {
           releaseRegenSlot();
         }
@@ -10240,9 +9930,6 @@ const server = http.createServer((req, res) => {
           max_model_call_ms: maxModelCallMs,
           mode: selectedMode,
           targetCount,
-          chunk_timings: chunkTimings,
-          chunk_sizes: chunkSizes,
-          split_on_failure: splitTriggered,
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };

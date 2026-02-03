@@ -97,7 +97,6 @@ const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const postFrequencyDisplay = document.getElementById('post-frequency-display');
 const postFrequencySelect = document.getElementById('post-frequency-select');
 const DESIGN_FEATURES_ENABLED = false;
-const USE_SINGLE_REGENERATE_REQUEST = true;
 
 if (!DESIGN_FEATURES_ENABLED) {
   const generateAssetModal = document.getElementById('generate-asset-modal');
@@ -9119,9 +9118,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const singleRequestMode = USE_SINGLE_REGENERATE_REQUEST && normalizedFrequency === 1 && totalDays === 30;
-    const batchSize = singleRequestMode ? totalDays : 10;
-    const totalBatches = singleRequestMode ? 1 : Math.ceil(totalPosts / batchSize);
+    const singleRequestMode = true;
+    const batchSize = totalPosts;
+    const totalBatches = 1;
     let completedBatches = 0;
     const usedSignaturesForRun = [];
     // Incremental render state
@@ -9190,7 +9189,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
         firstDispatchLogged = true;
       }
-      console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${startDay + batchSize - 1})`, payload);
+      const logEndDay = startDay + requestSize - 1;
+      console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${logEndDay})`, payload);
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
         headers: {
