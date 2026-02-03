@@ -3356,19 +3356,19 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
   '- title <= 40 chars',
   '- hook <= 80 chars',
-  '- caption <= 180 chars (max 2 sentences)',
-  '- hashtags: 6 max',
-  '- suggestedAudio: single short string; "Original audio" allowed',
-  '- designNotes: <= 4 bullets, each <= 50 chars',
-  '- engagementScripts.commentReply (engagementComment) <= 80 chars',
-  '- engagementScripts.dmReply (engagementDM) <= 80 chars',
+  '- caption <= 2 sentences',
+  '- hashtags: max 8 tags',
+  '- suggestedAudio: single short string (no prefix); "Original audio" allowed',
+  '- designNotes: <= 4 beats, each <= 50 chars',
+  '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
+  '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
   '- reelScript: EXACTLY 4 lines total:',
   '  1) On-screen: <= 55 chars',
   '  2) VO: <= 95 chars',
   '  3) VO: <= 95 chars',
   '  4) CTA: <= 65 chars',
-  '- reelScript total <= 60 words',
+  '- reelScript total <= 55 words',
   '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
 ].join('\n');
 
@@ -6951,122 +6951,80 @@ function findFirstJsonSegment(text = '') {
 
 function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkEndDay, postsPerDay } = {}) {
   const text = String(rawText || '').trim();
-  const extractJsonCandidate = (value = '') => {
-    const source = String(value || '').trim();
-    if (!source) return null;
-    let cleaned = source.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
-    const firstIndex = cleaned.search(/[\{\[]/);
-    if (firstIndex === -1) return null;
-    const lastIndex = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-    if (lastIndex === -1 || lastIndex < firstIndex) return null;
-    return cleaned.slice(firstIndex, lastIndex + 1);
-  };
-  const candidates = [];
-  const addCandidate = (value) => {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) return;
-    if (candidates.includes(trimmed)) return;
-    candidates.push(trimmed);
-  };
-  if (text && (text.startsWith('{') || text.startsWith('['))) {
-    addCandidate(text);
+  if (!text) return null;
+  const cleaned = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return null;
   }
-  const normalizedCandidate = extractJsonCandidate(text);
-  if (normalizedCandidate) addCandidate(normalizedCandidate);
-  const firstSegment = findFirstJsonSegment(text);
-  if (firstSegment) addCandidate(firstSegment);
-  const postsIndex = text.indexOf('posts');
-  if (postsIndex !== -1) {
-    const arrayStart = text.indexOf('[', postsIndex);
-    if (arrayStart !== -1) {
-      const postsSegment = captureJsonSegment(text, arrayStart);
-      if (postsSegment) addCandidate(postsSegment);
+  let posts = null;
+  let shape = 'unknown';
+  if (Array.isArray(parsed)) {
+    posts = parsed;
+    shape = 'array';
+  } else if (parsed && typeof parsed === 'object') {
+    if (Array.isArray(parsed.posts)) {
+      posts = parsed.posts;
+      shape = 'posts-wrapper';
+    } else if (parsed.post && typeof parsed.post === 'object') {
+      posts = [parsed.post];
+      shape = 'post-wrapper';
+    } else if (parsed.day != null) {
+      posts = [parsed];
+      shape = 'single-object';
     }
   }
-  for (const candidate of candidates) {
-    let parsed;
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {
-      const repaired = sanitizeJsonContent(candidate);
-      if (repaired && repaired !== candidate) {
-        try {
-          parsed = JSON.parse(repaired);
-        } catch {
-          continue;
-        }
-      } else {
-        continue;
-      }
+  if (!Array.isArray(posts)) return null;
+  const normalized = posts.filter((post) => post && typeof post === 'object').map((post) => {
+    const dayValue = Number(post.day);
+    const perDay = Number(postsPerDay);
+    const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
+    let slotValue = explicitSlotIndex;
+    if (slotValue === null && Number.isFinite(Number(post.slot_index))) {
+      slotValue = Number(post.slot_index);
     }
-    let posts = null;
-    let shape = 'unknown';
-    if (Array.isArray(parsed)) {
-      posts = parsed;
-      shape = 'array';
-    } else if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.posts)) {
-        posts = parsed.posts;
-        shape = 'posts-wrapper';
-      } else if (parsed.post && typeof parsed.post === 'object') {
-        posts = [parsed.post];
-        shape = 'post-wrapper';
-      } else if (parsed.day != null) {
-        posts = [parsed];
-        shape = 'single-object';
-      }
+    if (slotValue === null && Number.isFinite(Number(post.slot))) {
+      slotValue = Number(post.slot) - 1;
     }
-    if (!Array.isArray(posts)) continue;
-    const normalized = posts.filter((post) => post && typeof post === 'object').map((post) => {
-      const dayValue = Number(post.day);
-      const perDay = Number(postsPerDay);
-      const explicitSlotIndex = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-      let slotValue = explicitSlotIndex;
-      if (slotValue === null && Number.isFinite(Number(post.slot_index))) {
-        slotValue = Number(post.slot_index);
-      }
-      if (slotValue === null && Number.isFinite(Number(post.slot))) {
-        slotValue = Number(post.slot) - 1;
-      }
-      if (Number.isFinite(dayValue)) post.day = dayValue;
-      if (Number.isFinite(slotValue)) post.slotIndex = slotValue;
-      if (Number.isFinite(perDay) && perDay === 1 && (post.slotIndex == null || post.slotIndex === 1)) {
-        post.slotIndex = 0;
-      }
-      return post;
-    });
-    const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : null;
-    const dayEnd = Number.isFinite(Number(chunkEndDay)) ? Number(chunkEndDay) : null;
-    const slotMax = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) - 1 : null;
-    const filtered = normalized.filter((post) => {
-      const dayValue = Number(post.day);
-      const slotValue = Number(post.slotIndex);
-      if (Number.isFinite(dayValue) && dayStart !== null && dayEnd !== null) {
-        if (dayValue < dayStart || dayValue > dayEnd) return false;
-      }
-      if (Number.isFinite(slotValue) && slotMax !== null) {
-        if (slotValue < 0 || slotValue > slotMax) return false;
-      }
-      return true;
-    });
-    let selected = filtered;
-    if (Number.isFinite(Number(expectedPosts)) && filtered.length > expectedPosts) {
-      selected = filtered
-        .slice()
-        .sort((a, b) => {
-          const dayA = Number.isFinite(Number(a.day)) ? Number(a.day) : Number.POSITIVE_INFINITY;
-          const dayB = Number.isFinite(Number(b.day)) ? Number(b.day) : Number.POSITIVE_INFINITY;
-          if (dayA !== dayB) return dayA - dayB;
-          const slotA = Number.isFinite(Number(a.slotIndex)) ? Number(a.slotIndex) : Number.POSITIVE_INFINITY;
-          const slotB = Number.isFinite(Number(b.slotIndex)) ? Number(b.slotIndex) : Number.POSITIVE_INFINITY;
-          return slotA - slotB;
-        })
-        .slice(0, expectedPosts);
+    if (Number.isFinite(dayValue)) post.day = dayValue;
+    if (Number.isFinite(slotValue)) post.slotIndex = slotValue;
+    if (Number.isFinite(perDay) && perDay === 1 && (post.slotIndex == null || post.slotIndex === 1)) {
+      post.slotIndex = 0;
     }
-    if (Number.isFinite(Number(expectedPosts)) && selected.length !== expectedPosts) continue;
-    return { posts: selected, shape };
+    return post;
+  });
+  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : null;
+  const dayEnd = Number.isFinite(Number(chunkEndDay)) ? Number(chunkEndDay) : null;
+  const slotMax = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) - 1 : null;
+  const filtered = normalized.filter((post) => {
+    const dayValue = Number(post.day);
+    const slotValue = Number(post.slotIndex);
+    if (Number.isFinite(dayValue) && dayStart !== null && dayEnd !== null) {
+      if (dayValue < dayStart || dayValue > dayEnd) return false;
+    }
+    if (Number.isFinite(slotValue) && slotMax !== null) {
+      if (slotValue < 0 || slotValue > slotMax) return false;
+    }
+    return true;
+  });
+  let selected = filtered;
+  if (Number.isFinite(Number(expectedPosts)) && filtered.length > expectedPosts) {
+    selected = filtered
+      .slice()
+      .sort((a, b) => {
+        const dayA = Number.isFinite(Number(a.day)) ? Number(a.day) : Number.POSITIVE_INFINITY;
+        const dayB = Number.isFinite(Number(b.day)) ? Number(b.day) : Number.POSITIVE_INFINITY;
+        if (dayA !== dayB) return dayA - dayB;
+        const slotA = Number.isFinite(Number(a.slotIndex)) ? Number(a.slotIndex) : Number.POSITIVE_INFINITY;
+        const slotB = Number.isFinite(Number(b.slotIndex)) ? Number(b.slotIndex) : Number.POSITIVE_INFINITY;
+        return slotA - slotB;
+      })
+      .slice(0, expectedPosts);
   }
-  return null;
+  if (Number.isFinite(Number(expectedPosts)) && selected.length !== expectedPosts) return null;
+  return { posts: selected, shape };
 }
 
 async function generateTopicPlan({
@@ -10089,11 +10047,11 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const POSTS_PER_BATCH = 5;
+        const POSTS_PER_BATCH = 3;
         const MODEL_TIMEOUT_MS = 30000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_TOKENS_PER_BATCH_REGULAR = 1200;
-        const MAX_TOKENS_PER_BATCH_BRAND = 1400;
+        const MAX_TOKENS_PER_BATCH_REGULAR = 700;
+        const MAX_TOKENS_PER_BATCH_BRAND = 900;
         let ensuredPosts = [];
         let totalModelMs = 0;
         let totalValidateMs = 0;
@@ -10224,7 +10182,7 @@ const server = http.createServer((req, res) => {
                 skipTopicPlan: true,
                 topicPlan,
                 extraInstructions: planBlock,
-                temperature: 0.6,
+                temperature: 0.2,
                 maxTokens,
                 requestTimeoutMs: MODEL_TIMEOUT_MS,
               });
