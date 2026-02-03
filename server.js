@@ -3356,10 +3356,10 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
   '- title <= 40 chars',
   '- hook <= 80 chars',
-  '- caption <= 2 sentences',
-  '- hashtags: max 8 tags',
+  '- caption <= 1-2 sentences',
+  '- hashtags: exactly 6 tags',
   '- suggestedAudio: single short string (no prefix); "Original audio" allowed',
-  '- designNotes: <= 4 beats, each <= 50 chars',
+  '- designNotes: exactly 4 beats, 3-5 words each',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
@@ -3368,7 +3368,8 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '  2) VO: <= 95 chars',
   '  3) VO: <= 95 chars',
   '  4) CTA: <= 65 chars',
-  '- reelScript total <= 55 words',
+  '- reelScript total <= 45 words',
+  '- script total <= 45 words',
   '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
 ].join('\n');
 
@@ -3526,12 +3527,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   if (compactPrompt) {
     const compactModeBlock = opts.brandBrainDirective ? COMPACT_BRAND_BRAIN_MODE_BLOCK : COMPACT_REGULAR_MODE_BLOCK;
+    const singlePostLine = opts.singlePost ? '- Return ONLY a single post object (no posts array).' : null;
     const compactPromptText = [
       'Return JSON only.',
       nicheStyle ? `Niche: ${nicheStyle}` : null,
       `Generate exactly ${totalPostsRequired} posts for these post_keys:`,
       postIdentityBlock,
       COMPACT_REQUIRED_KEYS_LINE,
+      singlePostLine,
       '- All required keys must be present and non-empty strings.',
       '- No placeholders: "placeholder", "tbd", "lorem", "coming soon".',
       COMPACT_LENGTH_LIMITS_BLOCK,
@@ -7228,12 +7231,18 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = 1;
-  const expectedChunkCount = chunkDays * postsPerDay;
-  const schema = buildCalendarSchemaObject(
-    expectedChunkCount,
-    chunkStartDay,
-    Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
-  );
+  const useSinglePost = Boolean(opts.singlePost);
+  const expectedChunkCount = useSinglePost ? 1 : chunkDays * postsPerDay;
+  const schema = useSinglePost
+    ? buildCalendarPostSchema(
+        chunkStartDay,
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+      )
+    : buildCalendarSchemaObject(
+        expectedChunkCount,
+        chunkStartDay,
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+      );
   try {
     JSON.stringify(schema);
     if (!schema || schema.type !== 'object' || !schema.properties || !schema.required) {
@@ -7327,6 +7336,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       days: chunkDays,
       startDay: chunkStartDay,
       postsPerDay,
+      singlePost: useSinglePost,
       extraInstructions,
       isPro: Boolean(opts.isPro),
       requestId: loggingContext?.requestId || '',
@@ -7360,7 +7370,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     }
     const responseFormat = {
       type: 'json_schema',
-      json_schema: { name: 'calendar_batch', strict: true, schema },
+      json_schema: { name: useSinglePost ? 'calendar_post' : 'calendar_batch', strict: true, schema },
     };
     const payload = JSON.stringify({
       model: attemptModel,
@@ -7442,12 +7452,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       msg.includes('timeout')
     );
   };
+  const allowFailover = opts.allowFailover !== false;
   try {
     let firstResponse = null;
     try {
       firstResponse = await attemptRequest('', true);
     } catch (err) {
-      if (!shouldFailover(err)) throw err;
+      if (!allowFailover || !shouldFailover(err)) throw err;
       const fallbackMaxTokens = maxTokens;
       const fallbackTemperature = 0;
       console.warn('[OpenAI][CalendarChunk][Failover]', {
@@ -8710,23 +8721,8 @@ const server = http.createServer((req, res) => {
       );
     };
     let response = null;
-    let planTokensUsed = planMaxTokens;
-    try {
-      response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.4 });
-    } catch (err) {
-      const status = err?.statusCode || err?.status || null;
-      const msg = String(err?.message || '').toLowerCase();
-      const isTimeout = err?.code === 'MODEL_TIMEOUT' || err?.code === 'OPENAI_TIMEOUT' || status === 503 || msg.includes('timeout');
-      if (!isTimeout) throw err;
-      const fallbackTokens = Math.max(600, Math.floor(planMaxTokens * 0.75));
-      console.warn('[Calendar][Plan][Failover]', {
-        requestId,
-        reason: err?.code || err?.message || 'timeout',
-        maxTokens: fallbackTokens,
-      });
-      planTokensUsed = fallbackTokens;
-      response = await runPlanRequest({ maxTokens: fallbackTokens, temperature: 0 });
-    }
+    const planTokensUsed = planMaxTokens;
+    response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.4 });
     const content = extractContentText(response);
     let parsed = null;
     try {
@@ -8962,6 +8958,7 @@ const server = http.createServer((req, res) => {
         targetAudience: targetAudienceConfig,
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
+        singlePost: Boolean(payload?.singlePost),
       });
       if (result?.promptMeta) lastPromptMeta = result.promptMeta;
       if (result?.rawContent) lastRawContent = String(result.rawContent);
@@ -10047,11 +10044,10 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const POSTS_PER_BATCH = 3;
         const MODEL_TIMEOUT_MS = 30000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_TOKENS_PER_BATCH_REGULAR = 700;
-        const MAX_TOKENS_PER_BATCH_BRAND = 900;
+        const MAX_TOKENS_PER_BATCH_REGULAR = 350;
+        const MAX_TOKENS_PER_BATCH_BRAND = 450;
         let ensuredPosts = [];
         let totalModelMs = 0;
         let totalValidateMs = 0;
@@ -10135,29 +10131,27 @@ const server = http.createServer((req, res) => {
               slots.push({ day, slotIndex, post_key: postKey(day, slotIndex) });
             }
           }
-          const batches = [];
-          const batchCount = Math.ceil(targetCount / POSTS_PER_BATCH);
-          for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
-            const start = batchIndex * POSTS_PER_BATCH;
-            const batchSlots = slots.slice(start, start + POSTS_PER_BATCH);
-            if (batchSlots.length) {
-              batches.push({ batchIndex, slots: batchSlots });
-            }
-          }
-          for (const batch of batches) {
+          const MAX_CONCURRENCY = 6;
+          const tasks = slots.map((slot, index) => async () => {
             if (Date.now() - requestStart > REGEN_TOTAL_TIMEOUT_MS) {
-              return sendJson(res, 503, {
-                error: 'MODEL_TIMEOUT',
-                message: 'Model timeout',
-                requestId,
-                details: { batchIndex: batch.batchIndex },
-              });
+              const timeoutErr = new Error('Model timeout');
+              timeoutErr.code = 'MODEL_TIMEOUT';
+              timeoutErr.details = { post_key: slot.post_key, day: slot.day };
+              throw timeoutErr;
             }
-            const batchStartDay = batch.slots[0].day;
-            const batchDays = batch.slots.length;
+            const planItem = planByKey.get(slot.post_key);
+            if (!planItem) {
+              const missingErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              missingErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              missingErr.statusCode = 422;
+              missingErr.details = { post_key: slot.post_key, day: slot.day, reason: 'SCHEMA_MISMATCH' };
+              throw missingErr;
+            }
             const planBlock = [
               'WRITE MODE (USE PLAN EXACTLY):',
               '- You are writing only. Do not plan.',
+              '- Return ONLY a single post object (no posts array).',
+              `- post_key must be "${slot.post_key}", day ${slot.day}, slotIndex ${slot.slotIndex}.`,
               '- Use assigned post_key, pillar, title, and angle exactly as given in the plan.',
               '- Set topic_signature exactly equal to title.',
               '- Do not change pillar, title, or angle.',
@@ -10166,25 +10160,34 @@ const server = http.createServer((req, res) => {
               ? MAX_TOKENS_PER_BATCH_BRAND
               : MAX_TOKENS_PER_BATCH_REGULAR;
             const modelStart = Date.now();
-            let batchPosts = null;
+            let singlePosts = null;
             try {
-              batchPosts = await generateCalendarPosts({
+              const singlePlan = [{
+                day: slot.day,
+                postIndex: slot.slotIndex,
+                title: toPlainString(planItem?.topic_signature || ''),
+                pillar: toPlainString(planItem?.pillar || ''),
+                angle: toPlainString(planItem?.angle || ''),
+              }];
+              singlePosts = await generateCalendarPosts({
                 ...(body || {}),
                 brandBrainEnabled: selectedMode === 'brand_brain',
                 calendarMode: selectedMode,
-                days: batchDays,
-                startDay: batchStartDay,
+                days: 1,
+                startDay: slot.day,
                 postsPerDay: requestedPostsPerDay,
-                context: { ...regenContext, batchIndex: batch.batchIndex, startDay: batchStartDay },
+                context: { ...regenContext, batchIndex: index, startDay: slot.day },
                 isPro,
                 compactPrompt: true,
                 singleRequest: true,
                 skipTopicPlan: true,
-                topicPlan,
+                topicPlan: singlePlan,
                 extraInstructions: planBlock,
                 temperature: 0.2,
                 maxTokens,
                 requestTimeoutMs: MODEL_TIMEOUT_MS,
+                singlePost: true,
+                allowFailover: false,
               });
             } catch (err) {
               const status = err?.statusCode || err?.status || null;
@@ -10195,78 +10198,63 @@ const server = http.createServer((req, res) => {
                 status === 503 ||
                 msg.includes('timeout');
               if (timeoutLike) {
-                return sendJson(res, 503, {
-                  error: 'MODEL_TIMEOUT',
-                  message: 'Model timeout',
-                  requestId,
-                  details: { batchIndex: batch.batchIndex, attempt: err?.attempt || null },
-                });
+                const timeoutErr = new Error('MODEL_TIMEOUT');
+                timeoutErr.code = 'MODEL_TIMEOUT';
+                timeoutErr.details = { post_key: slot.post_key, day: slot.day };
+                throw timeoutErr;
               }
-              throw err;
+              const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              failErr.statusCode = 422;
+              failErr.details = {
+                post_key: slot.post_key,
+                day: slot.day,
+                reason: err?.code === 'PARSE_FAILED' ? 'PARSE_FAILED' : 'SCHEMA_MISMATCH',
+              };
+              throw failErr;
             }
             modelCalls += 1;
             const callMs = Date.now() - modelStart;
             totalModelMs += callMs;
             maxModelCallMs = Math.max(maxModelCallMs, callMs);
-            console.log('[Calendar][Regen][Stage]', {
-              requestId,
-              stage: 'write',
-              batchIndex: batch.batchIndex,
-              elapsedMs: callMs,
-              maxTokens,
-              timeoutMs: MODEL_TIMEOUT_MS,
-              mode: selectedMode,
-            });
-            if (!Array.isArray(batchPosts) || !batchPosts.length) {
-              return sendJson(res, 422, {
-                error: 'CALENDAR_SCHEMA_MISMATCH',
-                message: 'Calendar output did not meet required fields.',
-                requestId,
-                details: [{ missing: ['posts'] }],
-                missingFieldsCounts: { posts: 1 },
-                attempt: { targetCount, actualCount: Array.isArray(batchPosts) ? batchPosts.length : 0, batchIndex: batch.batchIndex },
-              });
+            if (!Array.isArray(singlePosts) || singlePosts.length !== 1) {
+              const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              failErr.statusCode = 422;
+              failErr.details = { post_key: slot.post_key, day: slot.day, reason: 'SCHEMA_MISMATCH' };
+              throw failErr;
             }
+            const post = singlePosts[0];
             const validateStart = Date.now();
-            const missing = collectMissing(batchPosts).map((entry) => ({
-              ...entry,
-              post_key: batchPosts?.[entry.index]?.post_key || batchPosts?.[entry.index]?.postKey || batch.slots?.[entry.index]?.post_key || null,
-            }));
+            const missing = validatePostCompleteness(post);
             totalValidateMs += Date.now() - validateStart;
-            console.log('[Calendar][Regen][Stage]', {
-              requestId,
-              stage: 'validate',
-              batchIndex: batch.batchIndex,
-              elapsedMs: Date.now() - validateStart,
-            });
-            const hasPlaceholders = batchPosts.some((post) => hasPlaceholderInPost(post));
-            const countMismatch = batchPosts.length !== batch.slots.length;
-            if (missing.length || hasPlaceholders || countMismatch) {
-              lastMissingReport = missing;
-              lastMissingCounts = {};
-              missing.forEach((entry) => {
-                entry.missing.forEach((field) => {
-                  lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
-                });
-              });
-              if (countMismatch) {
-                lastMissingCounts.post_count = (lastMissingCounts.post_count || 0) + Math.abs(batch.slots.length - batchPosts.length);
-              }
-              return sendJson(res, 422, {
-                error: 'CALENDAR_SCHEMA_MISMATCH',
-                message: 'Calendar output did not meet required fields.',
-                requestId,
-                details: missing.length ? missing : [{ missing: ['post_count'] }],
-                missingFieldsCounts: lastMissingCounts,
-                attempt: {
-                  targetCount: batch.slots.length,
-                  actualCount: batchPosts.length,
-                  batchIndex: batch.batchIndex,
-                },
-              });
+            if (missing.length || hasPlaceholderInPost(post)) {
+              const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              failErr.statusCode = 422;
+              failErr.details = {
+                post_key: slot.post_key,
+                day: slot.day,
+                reason: 'SCHEMA_MISMATCH',
+                missing,
+              };
+              throw failErr;
             }
-            ensuredPosts = ensuredPosts.concat(batchPosts);
-          }
+            return post;
+          });
+          const results = new Array(tasks.length);
+          let nextIndex = 0;
+          const worker = async () => {
+            while (true) {
+              const current = nextIndex;
+              nextIndex += 1;
+              if (current >= tasks.length) return;
+              results[current] = await tasks[current]();
+            }
+          };
+          const workers = Array.from({ length: Math.min(MAX_CONCURRENCY, tasks.length) }, () => worker());
+          await Promise.all(workers);
+          ensuredPosts = results;
           if (ensuredPosts.length !== slots.length) {
             lastMissingCounts = { post_count: Math.abs(slots.length - ensuredPosts.length) };
             return sendJson(res, 422, {
@@ -10343,6 +10331,14 @@ const server = http.createServer((req, res) => {
             error: 'MODEL_TIMEOUT',
             message: 'Model timeout',
             requestId,
+          });
+        }
+        if (safeError?.code === 'CALENDAR_POST_GENERATION_FAILED') {
+          return sendJson(res, 422, {
+            error: 'CALENDAR_POST_GENERATION_FAILED',
+            message: 'Calendar post generation failed.',
+            requestId,
+            details: safeError?.details || null,
           });
         }
         const errorContext = {
