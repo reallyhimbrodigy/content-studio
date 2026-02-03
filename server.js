@@ -6950,6 +6950,16 @@ function findFirstJsonSegment(text = '') {
 
 function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkEndDay, postsPerDay } = {}) {
   const text = String(rawText || '').trim();
+  const extractJsonCandidate = (value = '') => {
+    const source = String(value || '').trim();
+    if (!source) return null;
+    let cleaned = source.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
+    const firstIndex = cleaned.search(/[\{\[]/);
+    if (firstIndex === -1) return null;
+    const lastIndex = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+    if (lastIndex === -1 || lastIndex < firstIndex) return null;
+    return cleaned.slice(firstIndex, lastIndex + 1);
+  };
   const candidates = [];
   const addCandidate = (value) => {
     const trimmed = String(value || '').trim();
@@ -6960,6 +6970,8 @@ function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkE
   if (text && (text.startsWith('{') || text.startsWith('['))) {
     addCandidate(text);
   }
+  const normalizedCandidate = extractJsonCandidate(text);
+  if (normalizedCandidate) addCandidate(normalizedCandidate);
   const firstSegment = findFirstJsonSegment(text);
   if (firstSegment) addCandidate(firstSegment);
   const postsIndex = text.indexOf('posts');
@@ -6975,7 +6987,16 @@ function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkE
     try {
       parsed = JSON.parse(candidate);
     } catch {
-      continue;
+      const repaired = sanitizeJsonContent(candidate);
+      if (repaired && repaired !== candidate) {
+        try {
+          parsed = JSON.parse(repaired);
+        } catch {
+          continue;
+        }
+      } else {
+        continue;
+      }
     }
     let posts = null;
     let shape = 'unknown';
@@ -7468,7 +7489,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       firstResponse = await attemptRequest('', true);
     } catch (err) {
       if (!shouldFailover(err)) throw err;
-      const fallbackMaxTokens = Math.max(200, Math.floor(maxTokens * 0.75));
+      const fallbackMaxTokens = Math.max(200, Math.floor(maxTokens * 0.85));
       const fallbackTemperature = 0;
       console.warn('[OpenAI][CalendarChunk][Failover]', {
         requestId: loggingContext?.requestId || null,
@@ -7518,6 +7539,8 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         expectedCount: expectedChunkCount,
         rawLength: rawText.length,
         extracted: false,
+        rawHead: rawText.slice(0, 120),
+        rawTail: rawText.slice(-120),
       });
       logParseDebug();
       throw parseErr;
@@ -10049,7 +10072,7 @@ const server = http.createServer((req, res) => {
         const POSTS_PER_BATCH = 10;
         const MODEL_TIMEOUT_MS = 30000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_OUTPUT_TOKENS_PER_POST = 130;
+        const MAX_OUTPUT_TOKENS_PER_POST = 180;
         const TOKEN_OVERHEAD = 200;
         let ensuredPosts = [];
         let totalModelMs = 0;
