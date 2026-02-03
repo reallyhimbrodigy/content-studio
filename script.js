@@ -9098,7 +9098,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
   }
   let abortScheduling = false;
-  let firstBatchError = null;
   let batchErrorLogged = false;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
@@ -9252,12 +9251,20 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           schemaErr.status = response.status;
           schemaErr.requestId = requestId;
           schemaErr.payload = data;
+          if (!batchSignal.aborted) {
+            abortScheduling = true;
+            batchAbortController.abort();
+          }
           throw schemaErr;
         }
         const err = new Error(msg);
         err.status = response.status;
         err.requestId = requestId;
         err.payload = data;
+        if (!batchSignal.aborted) {
+          abortScheduling = true;
+          batchAbortController.abort();
+        }
         throw err;
       }
       if (firstDispatchLogged) {
@@ -9354,43 +9361,14 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
       return { batchIndex, posts: batchPosts, calendarId };
     };
-    const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
-    const maxConcurrent = singleRequestMode ? 1 : 3;
-    const results = new Array(totalBatches);
-    let nextBatchIndex = 0;
+    const orderedResults = [];
     const t0 = performance.now();
-    const worker = async () => {
-      while (nextBatchIndex < totalBatches) {
-        if (abortScheduling || batchSignal.aborted) break;
-        const batchIndex = nextBatchIndex;
-        nextBatchIndex += 1;
-        try {
-          const result = await fetchBatch(batchIndex);
-          results[batchIndex] = { batchIndex, result };
-        } catch (err) {
-          if (err?.message === 'generation_cancelled' || batchSignal.aborted || abortScheduling) {
-            break;
-          }
-          if (!firstBatchError) {
-            firstBatchError = err;
-            abortScheduling = true;
-            batchAbortController.abort();
-          }
-          break;
-        }
-      }
-    };
-    const workerCount = Math.min(maxConcurrent, totalBatches);
-    const workers = Array.from({ length: workerCount }, () => worker());
-    await Promise.all(workers);
-    if (firstBatchError) {
-      throw firstBatchError;
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
+      if (abortScheduling || batchSignal.aborted) break;
+      const result = await fetchBatch(batchIndex);
+      orderedResults.push(result);
     }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
-    const orderedResults = results
-      .filter(Boolean)
-      .sort((a, b) => a.batchIndex - b.batchIndex)
-      .map((entry) => entry.result);
     
     orderedResults.forEach((result) => {
       if (!generatedCalendarId && result?.calendarId) {

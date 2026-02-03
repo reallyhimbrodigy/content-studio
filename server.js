@@ -6658,6 +6658,25 @@ function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
   return baseStart + Math.floor(index / perDay);
 }
 
+function requiredFieldsForMode() {
+  return Array.isArray(REQUIRED_POST_FIELDS) ? REQUIRED_POST_FIELDS.slice() : [];
+}
+
+function withTimeout(promise, ms, meta = {}) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const err = new Error('MODEL_TIMEOUT');
+      err.code = 'MODEL_TIMEOUT';
+      err.meta = meta;
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 const DISTRIBUTION_PLAN_ALIASES = [
   'distributionPlan',
   'distribution_plan',
@@ -7174,6 +7193,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       ? Number(opts.maxTokens)
       : maxTokenCap;
   const maxTokens = Math.min(requestedTokens, maxTokenCap);
+  const temperature = Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0;
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = 1;
@@ -7308,7 +7328,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const payload = JSON.stringify({
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0,
+      temperature,
       max_tokens: maxTokens,
       response_format: responseFormat,
     });
@@ -8656,6 +8676,7 @@ const server = http.createServer((req, res) => {
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
         compactPrompt: Boolean(payload?.compactPrompt),
+        temperature: Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined,
         extraInstructions: planBlock || '',
         topicPlan,
         brandBrainDirective,
@@ -9598,13 +9619,13 @@ const server = http.createServer((req, res) => {
       res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
-      const REGEN_BUDGET_MS = 25000;
+      const REGEN_TOTAL_BUDGET_MS = 28000;
       const budgetStart = Date.now();
       const checkBudget = (phase) => {
-        if (Date.now() - budgetStart <= REGEN_BUDGET_MS) return false;
+        if (Date.now() - budgetStart <= REGEN_TOTAL_BUDGET_MS) return false;
         if (!res.headersSent) {
           sendJson(res, 503, {
-            error: 'REGEN_TIMEOUT_BUDGET',
+            error: 'REGEN_BUDGET_EXCEEDED',
             message: 'Regeneration exceeded time budget',
             requestId,
             phase,
@@ -9839,103 +9860,120 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const regenMaxAttempts = 2;
+        const CHUNK_POSTS = 5;
+        const MAX_ATTEMPTS_PER_CHUNK = 2;
+        const MODEL_CALL_TIMEOUT_MS = 9000;
+        const requiredKeys = requiredFieldsForMode(selectedMode);
         let ensuredPosts = null;
-        let posts = null;
         let totalModelMs = 0;
         let totalValidateMs = 0;
+        let modelCalls = 0;
+        let maxModelCallMs = 0;
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
-          for (let attemptIndex = 1; attemptIndex <= regenMaxAttempts; attemptIndex += 1) {
-            if (checkBudget('before_attempt')) return;
-            if (clientAborted || req.aborted || res.writableEnded) return;
-            const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
-            const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
-            const singleRequestMode = Boolean(body?.singleRequest) || (safeDays >= 30 && requestedPostsPerDay === 1);
-            const perDayChunkSize = singleRequestMode ? safeDays : (safeDays >= 10 ? 1 : 2);
-            const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
-            const baseMs = 45000;
-            const perChunkBudgetMs = 15000;
-            const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
-            const timeoutGuardMs = Math.min(
-              12000,
-              Math.max(8000, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
-            );
-            let timeoutId;
-            const timeoutPromise = new Promise((_, reject) => {
-              timeoutId = setTimeout(() => {
-                const err = new Error('MODEL_TIMEOUT');
-                err.code = 'MODEL_TIMEOUT';
-                err.statusCode = 503;
-                err.elapsedMs = Date.now() - requestStart;
-                reject(err);
-              }, timeoutGuardMs);
-            });
-            const attemptExtraInstructions = attemptIndex > 1
-              ? [body?.extraInstructions || '', retryAuditBlock].filter(Boolean).join('\n')
-              : body?.extraInstructions;
-            try {
+          const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
+          const baseStartDay = Number.isFinite(Number(body?.startDay)) ? Number(body.startDay) : 1;
+          const targetCount = safeDays * requestedPostsPerDay;
+          const chunkCount = Math.ceil(safeDays / CHUNK_POSTS);
+          const allPosts = [];
+          for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+            if (checkBudget('before_chunk')) return;
+            const chunkStartDay = baseStartDay + (chunkIndex * CHUNK_POSTS);
+            const chunkDays = Math.min(CHUNK_POSTS, safeDays - (chunkIndex * CHUNK_POSTS));
+            const chunkPostKeys = Array.from({ length: chunkDays }, (_, offset) => postKey(chunkStartDay + offset, 0));
+            let chunkPosts = null;
+            let chunkMissingReport = [];
+            for (let attemptIndex = 1; attemptIndex <= MAX_ATTEMPTS_PER_CHUNK; attemptIndex += 1) {
+              const compactSuffix = [
+                'Return JSON only.',
+                `Return exactly ${chunkDays} posts for these post_key values: ${chunkPostKeys.join(', ')}`,
+                `Required keys: ${requiredKeys.join(', ')}`,
+                'No placeholders or "TBD".',
+              ].join('\n');
+              const attemptSuffix = attemptIndex > 1
+                ? [compactSuffix, retryAuditBlock].join('\n')
+                : compactSuffix;
               const modelStart = Date.now();
-              posts = await Promise.race([
-                generateCalendarPosts({
-                  ...(body || {}),
-                  brandBrainEnabled: selectedMode === 'brand_brain',
-                  calendarMode: selectedMode,
+              let chunkResult = null;
+              try {
+                chunkResult = await withTimeout(
+                  generateCalendarPosts({
+                    ...(body || {}),
+                    brandBrainEnabled: selectedMode === 'brand_brain',
+                    calendarMode: selectedMode,
+                    days: chunkDays,
+                    startDay: chunkStartDay,
                   postsPerDay: requestedPostsPerDay,
                   context: regenContext,
                   isPro,
-                  singleRequest: singleRequestMode,
-                  compactPrompt: singleRequestMode,
-                  extraInstructions: attemptExtraInstructions,
+                  compactPrompt: true,
+                  temperature: 0.6,
+                  extraInstructions: attemptSuffix,
                 }),
-                timeoutPromise,
-              ]);
-              totalModelMs += Date.now() - modelStart;
-            } finally {
-              if (timeoutId) clearTimeout(timeoutId);
-            }
-            if (checkBudget('after_model')) return;
-            if (!Array.isArray(posts) || !posts.length) {
-              console.warn('[Calendar][Regen] empty batch', { requestId, attemptIndex });
-              continue;
-            }
-            const missingFieldsReport = [];
-            const validateStart = Date.now();
-            let attemptPosts = posts.map((post, idx) => {
-              const dayValue = Number.isFinite(Number(post?.day))
-                ? Number(post.day)
-                : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
-              const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
-              if (ensured.missingFields.length) {
-                missingFieldsReport.push({ index: idx, day: dayValue, missing: ensured.missingFields });
+                  MODEL_CALL_TIMEOUT_MS,
+                  { chunkIndex, attemptIndex }
+                );
+              } catch (err) {
+                if (err?.code === 'MODEL_TIMEOUT') {
+                  console.warn('[Calendar][Regen] chunk timeout', { requestId, chunkIndex, attemptIndex });
+                  if (attemptIndex >= MAX_ATTEMPTS_PER_CHUNK) {
+                    return sendJson(res, 503, {
+                      error: 'MODEL_TIMEOUT',
+                      message: 'Model timeout',
+                      requestId,
+                      details: { chunkIndex, attempt: attemptIndex },
+                    });
+                  }
+                  continue;
+                }
+                throw err;
               }
-              return ensured.post;
-            });
-            totalValidateMs += Date.now() - validateStart;
-            if (missingFieldsReport.length) {
-              console.warn('[Calendar] regen missing required fields after guarantee', {
-                requestId,
-                missingFields: missingFieldsReport.length,
-                samples: missingFieldsReport.slice(0, 2),
+              modelCalls += 1;
+              const callMs = Date.now() - modelStart;
+              totalModelMs += callMs;
+              maxModelCallMs = Math.max(maxModelCallMs, callMs);
+              if (!Array.isArray(chunkResult) || !chunkResult.length) {
+                chunkMissingReport = [{ index: 0, missing: requiredKeys.slice() }];
+                continue;
+              }
+              const validateStart = Date.now();
+              let attemptPosts = chunkResult.map((post, idx) => {
+                const dayValue = Number.isFinite(Number(post?.day))
+                  ? Number(post.day)
+                  : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
+                const ensured = guaranteeRequiredFields(post, body?.nicheStyle || '', dayValue);
+                return ensured.post;
               });
+              totalValidateMs += Date.now() - validateStart;
               attemptPosts = attemptPosts.map((post, idx) => {
                 const dayValue = Number.isFinite(Number(post?.day))
                   ? Number(post.day)
-                  : computePostDayIndex(idx, body?.startDay || 1, requestedPostsPerDay);
+                  : computePostDayIndex(idx, chunkStartDay, requestedPostsPerDay);
                 return fillMissingForRegen(post, pickExistingPost(idx), dayValue);
               });
-              let stillMissing = collectMissing(attemptPosts);
-              if (stillMissing.length && OPENAI_API_KEY) {
-                if (checkBudget('before_repair')) return;
+              const missing = collectMissing(attemptPosts);
+              const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
+              const countMismatch = attemptPosts.length !== chunkDays;
+              chunkMissingReport = missing;
+              if (!missing.length && !hasPlaceholders && !countMismatch) {
+                chunkPosts = attemptPosts;
+                break;
+              }
+              if (attemptIndex === 1 && missing.length && OPENAI_API_KEY) {
+                if (checkBudget('before_chunk_repair')) return;
                 try {
-                  const missingKeys = Array.from(new Set(stillMissing.flatMap((entry) => entry.missing)));
+                  const missingSummary = missing.map((entry, idx) => ({
+                    index: idx,
+                    post_key: attemptPosts[idx]?.post_key || attemptPosts[idx]?.postKey || '',
+                    missing: entry.missing,
+                  }));
                   const repairPrompt = [
                     'You are a JSON repair tool.',
                     'Return ONLY valid JSON. No markdown. No commentary.',
-                    'Return the SAME JSON object, but add ONLY the missing required keys as valid values.',
+                    'Return ONLY the corrected posts for the listed post_key values.',
                     'Do NOT remove or rename keys. Do NOT change any existing values.',
-                    `Missing required keys: ${JSON.stringify(missingKeys)}`,
+                    `Missing fields report: ${JSON.stringify(missingSummary)}`,
                     `Original JSON: ${JSON.stringify({ posts: attemptPosts })}`,
                   ].join('\n');
                   const payload = JSON.stringify({
@@ -9954,84 +9992,64 @@ const server = http.createServer((req, res) => {
                       Authorization: `Bearer ${OPENAI_API_KEY}`,
                     },
                   };
-                  const completion = await openAIRequest(options, payload);
+                  const completion = await withTimeout(openAIRequest(options, payload), MODEL_CALL_TIMEOUT_MS, {
+                    chunkIndex,
+                    attemptIndex,
+                  });
                   const extract = completion?.choices?.[0]?.message?.content;
                   const text = typeof extract === 'string'
                     ? extract
                     : Array.isArray(extract)
                       ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
                       : '';
-                  const parsed = tryParsePosts(text, attemptPosts.length || 1);
+                  const parsed = tryParsePosts(text, chunkDays);
                   if (parsed.posts && parsed.posts.length) {
                     attemptPosts = parsed.posts;
                   }
                 } catch (repairErr) {
-                  console.warn('[Calendar][Regen][Repair] model repair failed', {
+                  console.warn('[Calendar][Regen][Repair] chunk repair failed', {
                     requestId,
+                    chunkIndex,
                     error: repairErr?.message || repairErr,
                   });
                 }
-                stillMissing = collectMissing(attemptPosts);
-              }
-              if (stillMissing.length) {
-                if (checkBudget('before_regen_retry')) return;
-                try {
-                  const fullObjectContract = [
-                    'FULL OBJECT OUTPUT REQUIREMENT (FINAL ATTEMPT)',
-                    '- Output a COMPLETE post object that satisfies all required fields.',
-                    '- No partial updates. No omissions.',
-                    '- Output JSON only.',
-                  ].join('\n');
-                  const extraInstructions = [body?.extraInstructions || '', fullObjectContract].filter(Boolean).join('\n');
-                  const retryPosts = await generateCalendarPosts({
-                    ...(body || {}),
-                    brandBrainEnabled: selectedMode === 'brand_brain',
-                    calendarMode: selectedMode,
-                    postsPerDay: requestedPostsPerDay,
-                    context: regenContext,
-                    isPro,
-                    extraInstructions,
-                  });
-                  if (Array.isArray(retryPosts) && retryPosts.length) {
-                    attemptPosts = retryPosts;
-                  }
-                } catch (retryErr) {
-                  console.warn('[Calendar][Regen][Repair] final regenerate attempt failed', {
-                    requestId,
-                    error: retryErr?.message || retryErr,
-                  });
+                const postMissing = collectMissing(attemptPosts);
+                const hasPostPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
+                if (!postMissing.length && !hasPostPlaceholders && attemptPosts.length === chunkDays) {
+                  chunkPosts = attemptPosts;
+                  break;
                 }
               }
             }
-            const stillMissing = collectMissing(attemptPosts);
-            const hasPlaceholders = attemptPosts.some((post) => hasPlaceholderInPost(post));
-            const countMismatch = expectedPostCount !== null && attemptPosts.length !== expectedPostCount;
-            lastMissingReport = stillMissing;
-            lastMissingCounts = {};
-            stillMissing.forEach((entry) => {
-              entry.missing.forEach((field) => {
-                lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
+            if (!chunkPosts) {
+              chunkMissingReport = chunkMissingReport || [];
+              lastMissingReport = chunkMissingReport;
+              lastMissingCounts = {};
+              chunkMissingReport.forEach((entry) => {
+                entry.missing.forEach((field) => {
+                  lastMissingCounts[field] = (lastMissingCounts[field] || 0) + 1;
+                });
               });
-            });
-            lastAttemptDetails = {
-              attemptIndex,
-              countMismatch,
-              expectedPostCount,
-              actualCount: attemptPosts.length,
-              hasPlaceholders,
-            };
-            if (!stillMissing.length && !hasPlaceholders && !countMismatch) {
-              ensuredPosts = attemptPosts;
-              break;
+              return sendJson(res, 422, {
+                error: 'CALENDAR_SCHEMA_MISMATCH',
+                message: 'Calendar output did not meet required fields.',
+                requestId,
+                details: chunkMissingReport,
+                missingFieldsCounts: lastMissingCounts,
+                attempt: { chunkIndex },
+              });
             }
-            console.warn('[Calendar][Regen] attempt incomplete', {
+            allPosts.push(...chunkPosts);
+          }
+          ensuredPosts = allPosts;
+          if (ensuredPosts.length !== targetCount) {
+            return sendJson(res, 422, {
+              error: 'CALENDAR_SCHEMA_MISMATCH',
+              message: 'Calendar output did not meet required fields.',
               requestId,
-              attemptIndex,
-              countMismatch,
-              expectedPostCount,
-              actualCount: attemptPosts.length,
-              missingCount: stillMissing.length,
-              hasPlaceholders,
+              details: [{ missing: ['post_count'] }],
+              missingFieldsCounts: { post_count: targetCount - ensuredPosts.length },
+              attempt: { targetCount, actualCount: ensuredPosts.length },
             });
           }
         } finally {
@@ -10067,6 +10085,10 @@ const server = http.createServer((req, res) => {
           t_total_ms: Date.now() - tStart,
           t_model_ms: totalModelMs,
           t_validate_ms: totalValidateMs,
+          model_calls_count: modelCalls,
+          max_model_call_ms: maxModelCallMs,
+          mode: selectedMode,
+          targetCount,
         });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
@@ -10075,9 +10097,9 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (clientAborted || req.aborted || res.writableEnded) return;
         const safeError = err instanceof Error ? err : new Error(String(err));
-        if (safeError?.code === 'REGEN_TIMEOUT_BUDGET') {
+        if (safeError?.code === 'REGEN_TIMEOUT_BUDGET' || safeError?.code === 'REGEN_BUDGET_EXCEEDED') {
           return sendJson(res, 503, {
-            error: 'REGEN_TIMEOUT_BUDGET',
+            error: 'REGEN_BUDGET_EXCEEDED',
             message: 'Regeneration exceeded time budget',
             requestId,
           });
