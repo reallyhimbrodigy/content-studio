@@ -7131,6 +7131,19 @@ async function generateTopicPlan({
     },
   };
   const extractContentText = (json) => {
+    if (typeof json?.output_text === 'string') return json.output_text;
+    if (Array.isArray(json?.output)) {
+      const outputText = json.output
+        .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+        .map((chunk) => {
+          if (chunk?.type === 'output_text' && typeof chunk?.text === 'string') return chunk.text;
+          if (typeof chunk?.text === 'string') return chunk.text;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+      if (outputText) return outputText;
+    }
     const messageContent = json?.choices?.[0]?.message?.content;
     if (!messageContent) return '';
     if (typeof messageContent === 'string') return messageContent;
@@ -7391,13 +7404,19 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       type: 'json_schema',
       json_schema: { name: useSinglePost ? 'calendar_post' : 'calendar_batch', strict: true, schema },
     };
+    const responseTextFormat = {
+      type: 'json_schema',
+      name: responseFormat.json_schema.name,
+      strict: responseFormat.json_schema.strict,
+      schema: responseFormat.json_schema.schema,
+    };
     const payload = useSinglePost
       ? JSON.stringify({
           model: attemptModel,
           input: [{ role: 'user', content: prompt }],
           temperature: attemptTemperature,
           max_output_tokens: attemptMaxTokens,
-          response_format: responseFormat,
+          text: { format: responseTextFormat },
         })
       : JSON.stringify({
           model: attemptModel,
@@ -7406,6 +7425,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           max_tokens: attemptMaxTokens,
           response_format: responseFormat,
         });
+    if (loggingContext?.requestId) {
+      console.log('[OpenAI][CalendarChunk][Payload]', {
+        requestId: loggingContext.requestId,
+        model: attemptModel,
+        hasResponseFormat: !useSinglePost,
+        hasTextFormat: Boolean(useSinglePost),
+      });
+    }
     const requestPromise = withOpenAiSlot(() =>
       (useSinglePost
         ? openAIResponsesRequest(buildRequestOptions(payload, true), payload)
@@ -7465,7 +7492,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
     const parsedOutput = useSinglePost ? extractStructuredOutput(json) : null;
-    const content = useSinglePost ? '' : extractContentText(json);
+    const content = useSinglePost ? extractContentText(json) : extractContentText(json);
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
@@ -7517,31 +7544,32 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const parseStart = Date.now();
     if (useSinglePost) {
       const parsedPost = firstResponse.parsedOutput;
-      if (!parsedPost || typeof parsedPost !== 'object') {
-        const parseErr = new Error('missing_posts_parse_failed');
-        parseErr.code = 'PARSE_FAILED';
-        parseErr.statusCode = 422;
-        parseErr.reason = 'PARSE_FAILED';
-        parseErr.responseId = firstResponse.responseId || null;
-        parseErr.responseModel = firstResponse.responseModel || modelName;
-        parseErr.usedStructuredOutput = true;
-        parseErr.rawTextLength = firstResponse.rawTextLength || null;
-        console.warn('[Calendar][Parse] structured_output_failed', {
-          requestId: loggingContext?.requestId || 'unknown',
-          responseId: parseErr.responseId,
-          model: parseErr.responseModel,
-          usedStructuredOutput: true,
-          rawTextLength: parseErr.rawTextLength,
-        });
-        throw parseErr;
+      if (parsedPost && typeof parsedPost === 'object') {
+        return {
+          posts: [parsedPost],
+          rawContent: '',
+          latency: firstResponse.latency,
+          parseMs: 0,
+          promptMeta: firstResponse.promptMeta || null,
+        };
       }
-      return {
-        posts: [parsedPost],
-        rawContent: '',
-        latency: firstResponse.latency,
-        parseMs: 0,
-        promptMeta: firstResponse.promptMeta || null,
-      };
+      const rawText = firstResponse.content || '';
+      const parseErr = new Error('missing_posts_parse_failed');
+      parseErr.code = 'PARSE_FAILED';
+      parseErr.statusCode = 422;
+      parseErr.reason = 'PARSE_FAILED';
+      parseErr.responseId = firstResponse.responseId || null;
+      parseErr.responseModel = firstResponse.responseModel || modelName;
+      parseErr.usedStructuredOutput = Boolean(parsedPost);
+      parseErr.rawTextLength = firstResponse.rawTextLength || (rawText ? rawText.length : null);
+      console.warn('[Calendar][Parse] structured_output_failed', {
+        requestId: loggingContext?.requestId || 'unknown',
+        responseId: parseErr.responseId,
+        model: parseErr.responseModel,
+        usedStructuredOutput: Boolean(parsedPost),
+        rawTextLength: parseErr.rawTextLength,
+      });
+      throw parseErr;
     }
     const rawText = firstResponse.content || '';
     const logParseDebug = () => {
