@@ -9086,6 +9086,7 @@ function normalizeCalendarSignature(value = '') {
 }
 
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
+  const CLIENT_REGEN_TIMEOUT_MS = 130000;
   const runSignal = options.signal;
   const batchAbortController = new AbortController();
   const batchSignal = batchAbortController.signal;
@@ -9102,6 +9103,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
   const tStart = performance.now();
   console.log(`[Calendar][Perf] generateCalendarWithAI start (t=${Math.round(tStart)}ms) runId=${thisRunId}`, { nicheStyle, postsPerDay });
+  let clientTimedOut = false;
+  const timeoutId = setTimeout(() => {
+    clientTimedOut = true;
+    batchAbortController.abort();
+  }, CLIENT_REGEN_TIMEOUT_MS);
 
   try {
     // Resolve user context concurrently; do not block batch dispatch
@@ -9159,7 +9165,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         throw new Error('upgrade_required');
       }
       if (batchSignal.aborted || thisRunId !== currentGenerationRunId || abortScheduling) {
-        throw new Error('generation_cancelled');
+        const err = new Error(clientTimedOut ? 'client_timeout' : 'generation_cancelled');
+        err.code = clientTimedOut ? 'client_timeout' : 'generation_cancelled';
+        err.elapsedMs = Math.round(performance.now() - tStart);
+        throw err;
       }
       const startDay = 1 + batchIndex * CHUNK_DAYS;
       const requestDays = Math.min(CHUNK_DAYS, totalDays - batchIndex * CHUNK_DAYS);
@@ -9181,7 +9190,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
       if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
       if (thisRunId !== currentGenerationRunId || abortScheduling || batchSignal.aborted) {
-        throw new Error('generation_cancelled');
+        const err = new Error(clientTimedOut ? 'client_timeout' : 'generation_cancelled');
+        err.code = clientTimedOut ? 'client_timeout' : 'generation_cancelled';
+        err.elapsedMs = Math.round(performance.now() - tStart);
+        throw err;
       }
       if (!firstDispatchLogged) {
         console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
@@ -9376,6 +9388,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         abortScheduling = true;
         batchAbortController.abort();
       }
+      if (clientTimedOut) {
+        const timeoutErr = new Error('client_timeout');
+        timeoutErr.code = 'client_timeout';
+        timeoutErr.elapsedMs = Math.round(performance.now() - tStart);
+        throw timeoutErr;
+      }
       throw err;
     }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
@@ -9429,6 +9447,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     if (!hasFullCount || hasMissingFields || hasPlaceholders) {
       const err = new Error('generation_incomplete');
       err.code = 'generation_incomplete';
+      err.details = {
+        expectedCount: totalPosts,
+        actualCount: rawPostCount,
+        elapsedMs: Math.round(performance.now() - tStart),
+        aborted: batchSignal.aborted || clientTimedOut,
+      };
       throw err;
     }
 
@@ -9464,9 +9488,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);
     return { posts: allPosts, calendarId: generatedCalendarId };
   } catch (err) {
+    if (err?.code === 'client_timeout') {
+      console.error('[Calendar] generation client_timeout', {
+        elapsedMs: err.elapsedMs || Math.round(performance.now() - tStart),
+      });
+    }
+    if (err?.code === 'generation_incomplete' || err?.message === 'generation_incomplete') {
+      console.error('[Calendar] generation_incomplete', err.details || {});
+    }
     console.error(" generateCalendarWithAI error:", err);
     console.error(" Error details:", { message: err.message, stack: err.stack });
     throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 function downloadCalendarAsJSON(calendar, nicheStyle) {
@@ -9617,6 +9651,13 @@ async function onGenerateCalendarClick() {
   } catch (err) {
     if (err.message === 'generation_cancelled') {
       console.log('Calendar generation cancelled for run', runId);
+      return;
+    }
+    if (err?.code === 'client_timeout') {
+      if (feedbackEl) {
+        feedbackEl.textContent = 'Generation is taking longer than expected. Please try again.';
+        feedbackEl.classList.remove("success");
+      }
       return;
     }
     if (err?.code === 'generation_incomplete' || err?.message === 'generation_incomplete') {
