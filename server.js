@@ -3378,14 +3378,17 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
 ].join('\n');
 
 const COMPACT_REGULAR_MODE_BLOCK = [
-  'MODE: Regular (neutral/informational).',
-  '- No belief/teardown labels or persuasion framing.',
+  'MODE: Regular (neutral/practical).',
+  '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
+  '- No belief/teardown framing.',
   '- DM allowed only in Promotion + Social Proof; otherwise engagementScripts.dmReply must be neutral share/save.',
 ].join('\n');
 
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   'MODE: Brand Brain (belief teardown).',
-  '- Compress teardown chain inside VO lines using micro-labels: Belief/Feels/Constraint/Cost/Reframe/Tiny action.',
+  '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Use at most 2 persuasion moves in VO lines (pick from: Belief/Constraint/Consequence/Identity) and label them compactly.',
   '- Keep within VO line caps; no urgency or motivational fluff.',
 ].join('\n');
 
