@@ -97,6 +97,7 @@ const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const postFrequencyDisplay = document.getElementById('post-frequency-display');
 const postFrequencySelect = document.getElementById('post-frequency-select');
 const DESIGN_FEATURES_ENABLED = false;
+const USE_SINGLE_REGENERATE_REQUEST = true;
 
 if (!DESIGN_FEATURES_ENABLED) {
   const generateAssetModal = document.getElementById('generate-asset-modal');
@@ -9117,10 +9118,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
     })();
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
-    const batchSize = 10;
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const totalBatches = Math.ceil(totalPosts / batchSize);
+    const singleRequestMode = USE_SINGLE_REGENERATE_REQUEST && normalizedFrequency === 1 && totalDays === 30;
+    const batchSize = singleRequestMode ? totalDays : 10;
+    const totalBatches = singleRequestMode ? 1 : Math.ceil(totalPosts / batchSize);
     let completedBatches = 0;
     const usedSignaturesForRun = [];
     // Incremental render state
@@ -9163,8 +9165,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         throw new Error('generation_cancelled');
       }
       const remaining = totalPosts - batchIndex * batchSize;
-      const requestSize = Math.min(batchSize, remaining);
-      const startDay = Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
+      const requestSize = singleRequestMode ? totalDays : Math.min(batchSize, remaining);
+      const startDay = singleRequestMode ? 1 : Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
       // Resolve payload user id lazily; do not block early dispatch if it’s still pending
       if (typeof payloadUserId === 'undefined') {
         payloadUserId = await payloadUserIdPromise;
@@ -9176,6 +9178,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         startDay,
         postsPerDay: normalizedFrequency,
         usedSignatures: usedSignaturesForRun.slice(),
+        singleRequest: singleRequestMode,
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
@@ -9352,7 +9355,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       return { batchIndex, posts: batchPosts, calendarId };
     };
     const batchIndexes = Array.from({ length: totalBatches }, (_, i) => i);
-    const maxConcurrent = 3;
+    const maxConcurrent = singleRequestMode ? 1 : 3;
     const results = new Array(totalBatches);
     let nextBatchIndex = 0;
     const t0 = performance.now();

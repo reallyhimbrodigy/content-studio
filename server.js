@@ -3461,6 +3461,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
   }
   const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
+  const compactPrompt = Boolean(opts.compactPrompt);
   const nonBrandBrainMultiPostBlock =
     !opts.brandBrainDirective && postsPerDaySetting > 1
       ? [
@@ -3546,7 +3547,26 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 You are a thoughtful calendar writer${cleanNiche}.
 ${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBlock}
 `;
-const schemaBlock = `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
+const compactSchemaBlock = `REQUIRED FIELDS (STRICT):
+For EACH post object, EVERY key in the schema MUST be present and MUST be non-empty.
+- Missing key = invalid.
+- Empty string "" = invalid.
+- Whitespace-only = invalid.
+- Truncated/incomplete phrase = invalid.
+Output will be rejected if any post violates this.
+Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
+SCOPE LOCK: only generate content for the provided day(s) in this chunk.
+${postIdentityBlock}
+${regularCalendarContractBlock}
+RULES:
+- format must be "Reel" for every post.
+- Each post must include all required fields and non-empty values.
+- Generate each post fully before starting the next.
+${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
+`;
+const schemaBlock = compactPrompt
+  ? compactSchemaBlock
+  : `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
 ${TITLE_ANCHOR_ECHO_BLOCK}
 ${LIFESTYLE_REDEFINITION_BLOCK}
 ${QUALITY_ALIGNMENT_BLOCK}
@@ -7148,7 +7168,7 @@ async function generateTopicPlan({
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
   const modelName = 'gpt-4o-mini';
-  const maxTokenCap = opts.reduceVerbosity ? 2600 : 3200;
+  const maxTokenCap = opts.compactPrompt ? 6000 : (opts.reduceVerbosity ? 2600 : 3200);
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
       ? Number(opts.maxTokens)
@@ -7281,12 +7301,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         planUsed: Boolean(opts.planUsed),
       });
     }
-    const responseFormat = null;
+    const responseFormat = {
+      type: 'json_schema',
+      json_schema: { name: 'calendar_batch', strict: true, schema },
+    };
     const payload = JSON.stringify({
       model: modelName,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0,
       max_tokens: maxTokens,
+      response_format: responseFormat,
     });
     const requestPromise = withOpenAiSlot(() =>
       openAIRequest(buildRequestOptions(payload), payload).catch((err) => {
@@ -8580,7 +8604,8 @@ const server = http.createServer((req, res) => {
       });
       topicPlan = null;
     }
-    const perDayChunkSize = daysToGenerate >= 10 ? 1 : 2;
+    const singleRequestMode = Boolean(payload?.singleRequest);
+    const perDayChunkSize = singleRequestMode ? daysToGenerate : (daysToGenerate >= 10 ? 1 : 2);
     const chunkLimit = perDay === 1 ? perDayChunkSize : Math.max(1, OPENAI_CHUNK_MAX_DAYS);
     const usePostChunks = !brandBrainEnabled && perDay > 1;
     const blockFallbacks = forceSinglePostPerDayForModel;
@@ -8589,8 +8614,8 @@ const server = http.createServer((req, res) => {
     let aggregatedRawPosts = [];
     let remainingDays = daysToGenerate;
     let processedDays = 0;
-    const chunkBaseTokens = 1600;
-    const chunkMinTokens = 1000;
+    const chunkBaseTokens = singleRequestMode ? 4200 : 1600;
+    const chunkMinTokens = singleRequestMode ? 2800 : 1000;
 
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
@@ -8630,6 +8655,7 @@ const server = http.createServer((req, res) => {
         loggingContext: chunkContext,
         maxTokens: chunkMaxTokens,
         reduceVerbosity: true,
+        compactPrompt: Boolean(payload?.compactPrompt),
         extraInstructions: planBlock || '',
         topicPlan,
         brandBrainDirective,
@@ -9572,6 +9598,20 @@ const server = http.createServer((req, res) => {
       res.setHeader('x-request-id', requestId);
       const regenContext = { requestId, warnings: [] };
       const requestStart = Date.now();
+      const REGEN_BUDGET_MS = 25000;
+      const budgetStart = Date.now();
+      const checkBudget = (phase) => {
+        if (Date.now() - budgetStart <= REGEN_BUDGET_MS) return false;
+        if (!res.headersSent) {
+          sendJson(res, 503, {
+            error: 'REGEN_TIMEOUT_BUDGET',
+            message: 'Regeneration exceeded time budget',
+            requestId,
+            phase,
+          });
+        }
+        return true;
+      };
       let clientAborted = false;
       req.on('aborted', () => {
         clientAborted = true;
@@ -9799,31 +9839,35 @@ const server = http.createServer((req, res) => {
           });
           return report;
         };
-        const regenMaxAttempts = 3;
+        const regenMaxAttempts = 2;
         let ensuredPosts = null;
         let posts = null;
+        let totalModelMs = 0;
+        let totalValidateMs = 0;
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
           for (let attemptIndex = 1; attemptIndex <= regenMaxAttempts; attemptIndex += 1) {
+            if (checkBudget('before_attempt')) return;
             if (clientAborted || req.aborted || res.writableEnded) return;
             const configuredGuardMs = Number(process.env.REQUEST_TIMEOUT_GUARD_MS);
             const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
-            const perDayChunkSize = safeDays >= 10 ? 1 : 2;
+            const singleRequestMode = Boolean(body?.singleRequest) || (safeDays >= 30 && requestedPostsPerDay === 1);
+            const perDayChunkSize = singleRequestMode ? safeDays : (safeDays >= 10 ? 1 : 2);
             const expectedChunks = Math.max(1, Math.ceil(safeDays / perDayChunkSize));
             const baseMs = 45000;
             const perChunkBudgetMs = 15000;
             const computedMs = baseMs + (expectedChunks * perChunkBudgetMs);
             const timeoutGuardMs = Math.min(
-              30000,
-              Math.max(10000, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
+              12000,
+              Math.max(8000, computedMs, Number.isFinite(configuredGuardMs) ? configuredGuardMs : 0)
             );
             let timeoutId;
             const timeoutPromise = new Promise((_, reject) => {
               timeoutId = setTimeout(() => {
-                const err = new Error('REQUEST_TIMEOUT_GUARD');
-                err.code = 'REQUEST_TIMEOUT_GUARD';
-                err.statusCode = 504;
+                const err = new Error('MODEL_TIMEOUT');
+                err.code = 'MODEL_TIMEOUT';
+                err.statusCode = 503;
                 err.elapsedMs = Date.now() - requestStart;
                 reject(err);
               }, timeoutGuardMs);
@@ -9832,6 +9876,7 @@ const server = http.createServer((req, res) => {
               ? [body?.extraInstructions || '', retryAuditBlock].filter(Boolean).join('\n')
               : body?.extraInstructions;
             try {
+              const modelStart = Date.now();
               posts = await Promise.race([
                 generateCalendarPosts({
                   ...(body || {}),
@@ -9840,18 +9885,23 @@ const server = http.createServer((req, res) => {
                   postsPerDay: requestedPostsPerDay,
                   context: regenContext,
                   isPro,
+                  singleRequest: singleRequestMode,
+                  compactPrompt: singleRequestMode,
                   extraInstructions: attemptExtraInstructions,
                 }),
                 timeoutPromise,
               ]);
+              totalModelMs += Date.now() - modelStart;
             } finally {
               if (timeoutId) clearTimeout(timeoutId);
             }
+            if (checkBudget('after_model')) return;
             if (!Array.isArray(posts) || !posts.length) {
               console.warn('[Calendar][Regen] empty batch', { requestId, attemptIndex });
               continue;
             }
             const missingFieldsReport = [];
+            const validateStart = Date.now();
             let attemptPosts = posts.map((post, idx) => {
               const dayValue = Number.isFinite(Number(post?.day))
                 ? Number(post.day)
@@ -9862,6 +9912,7 @@ const server = http.createServer((req, res) => {
               }
               return ensured.post;
             });
+            totalValidateMs += Date.now() - validateStart;
             if (missingFieldsReport.length) {
               console.warn('[Calendar] regen missing required fields after guarantee', {
                 requestId,
@@ -9876,6 +9927,7 @@ const server = http.createServer((req, res) => {
               });
               let stillMissing = collectMissing(attemptPosts);
               if (stillMissing.length && OPENAI_API_KEY) {
+                if (checkBudget('before_repair')) return;
                 try {
                   const missingKeys = Array.from(new Set(stillMissing.flatMap((entry) => entry.missing)));
                   const repairPrompt = [
@@ -9922,6 +9974,7 @@ const server = http.createServer((req, res) => {
                 stillMissing = collectMissing(attemptPosts);
               }
               if (stillMissing.length) {
+                if (checkBudget('before_regen_retry')) return;
                 try {
                   const fullObjectContract = [
                     'FULL OBJECT OUTPUT REQUIREMENT (FINAL ATTEMPT)',
@@ -10009,6 +10062,12 @@ const server = http.createServer((req, res) => {
           elapsedMs: Date.now() - tStart,
           postCount: Array.isArray(ensuredPosts) ? ensuredPosts.length : 0,
         });
+        console.log('[Calendar][Regen][Timing]', {
+          requestId,
+          t_total_ms: Date.now() - tStart,
+          t_model_ms: totalModelMs,
+          t_validate_ms: totalValidateMs,
+        });
         const payloadWarnings = Array.isArray(regenContext.warnings) ? regenContext.warnings : [];
         const responsePayload = { calendarId: targetCalendarId, posts: ensuredPosts, requestId };
         if (payloadWarnings.length) responsePayload.warnings = payloadWarnings;
@@ -10016,6 +10075,20 @@ const server = http.createServer((req, res) => {
       } catch (err) {
         if (clientAborted || req.aborted || res.writableEnded) return;
         const safeError = err instanceof Error ? err : new Error(String(err));
+        if (safeError?.code === 'REGEN_TIMEOUT_BUDGET') {
+          return sendJson(res, 503, {
+            error: 'REGEN_TIMEOUT_BUDGET',
+            message: 'Regeneration exceeded time budget',
+            requestId,
+          });
+        }
+        if (safeError?.code === 'MODEL_TIMEOUT') {
+          return sendJson(res, 503, {
+            error: 'MODEL_TIMEOUT',
+            message: 'Model timeout',
+            requestId,
+          });
+        }
         const errorContext = {
           postsPerDay: body?.postsPerDay,
           days: body?.days,
