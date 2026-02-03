@@ -9118,9 +9118,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const singleRequestMode = true;
-    const batchSize = totalPosts;
-    const totalBatches = 1;
+    const CHUNK_DAYS = 10;
+    const totalBatches = Math.ceil(totalDays / CHUNK_DAYS);
     let completedBatches = 0;
     const usedSignaturesForRun = [];
     // Incremental render state
@@ -9162,9 +9161,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (batchSignal.aborted || thisRunId !== currentGenerationRunId || abortScheduling) {
         throw new Error('generation_cancelled');
       }
-      const remaining = totalPosts - batchIndex * batchSize;
-      const requestSize = singleRequestMode ? totalDays : Math.min(batchSize, remaining);
-      const startDay = singleRequestMode ? 1 : Math.floor((batchIndex * batchSize) / normalizedFrequency) + 1;
+      const startDay = 1 + batchIndex * CHUNK_DAYS;
+      const requestDays = Math.min(CHUNK_DAYS, totalDays - batchIndex * CHUNK_DAYS);
+      const batchSize = requestDays * normalizedFrequency;
       // Resolve payload user id lazily; do not block early dispatch if it’s still pending
       if (typeof payloadUserId === 'undefined') {
         payloadUserId = await payloadUserIdPromise;
@@ -9172,11 +9171,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       const payload = {
         nicheStyle,
         userId: payloadUserId,
-        days: requestSize,
+        days: requestDays,
         startDay,
         postsPerDay: normalizedFrequency,
         usedSignatures: usedSignaturesForRun.slice(),
-        singleRequest: singleRequestMode,
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
@@ -9189,7 +9187,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
         firstDispatchLogged = true;
       }
-      const logEndDay = startDay + requestSize - 1;
+      const logEndDay = startDay + requestDays - 1;
       console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${logEndDay})`, payload);
       const response = await fetchWithAuth('/api/calendar/regenerate', {
         method: 'POST',
@@ -9363,8 +9361,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     };
     const orderedResults = [];
     const t0 = performance.now();
-    if (!abortScheduling && !batchSignal.aborted) {
-      const result = await fetchBatch(0);
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
+      if (abortScheduling || batchSignal.aborted) break;
+      const result = await fetchBatch(batchIndex);
       orderedResults.push(result);
     }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
