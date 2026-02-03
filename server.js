@@ -4359,13 +4359,22 @@ function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pill
   return slots;
 }
 
-function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } = {}) {
+function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, compact = false } = {}) {
   const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
   const dayEnd = dayStart + Math.max(1, Number(chunkDays) || 1) - 1;
   const assigned = Array.isArray(topics)
     ? topics.filter((item) => item.day >= dayStart && item.day <= dayEnd)
     : [];
   if (!assigned.length) return '';
+  if (compact) {
+    const lines = [
+      'ASSIGNED TOPIC PLAN (read-only):',
+      ...assigned.map((item) =>
+        `post_key ${postKey(item.day, item.postIndex)} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
+      ),
+    ];
+    return lines.join('\n');
+  }
   const lines = [
     'ASSIGNED TOPIC PLAN (read-only):',
     'Each post object MUST include: post_key, day, slotIndex, title.',
@@ -4375,7 +4384,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1 } =
     ),
     'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
     'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
-    'All sections must be about the title. If any section drifts, rewrite it to match the title before returning JSON.',
+    'All sections must be about the title.',
   ];
   return lines.join('\n');
 }
@@ -7227,7 +7236,7 @@ async function generateTopicPlan({
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-  const modelName = 'gpt-4o-mini';
+  const modelName = opts.model || 'gpt-4o-mini';
   const maxTokenCap = opts.compactPrompt ? 6000 : (opts.reduceVerbosity ? 2600 : 3200);
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
@@ -7235,6 +7244,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       : maxTokenCap;
   const maxTokens = Math.min(requestedTokens, maxTokenCap);
   const temperature = Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0;
+  const requestTimeoutMs = Number.isFinite(Number(opts.requestTimeoutMs)) ? Number(opts.requestTimeoutMs) : OPENAI_GENERATION_TIMEOUT_MS;
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = 1;
@@ -7325,8 +7335,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         String(code).includes('schema'))
     );
   };
-  const attemptRequest = async (extraInstructions = '', useSchema = true) => {
+  const attemptRequest = async (extraInstructions = '', useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
+    const attemptMaxTokens = Number.isFinite(Number(overrides.maxTokens)) ? Number(overrides.maxTokens) : maxTokens;
+    const attemptTemperature = Number.isFinite(Number(overrides.temperature)) ? Number(overrides.temperature) : temperature;
+    const attemptModel = overrides.model || modelName;
+    const attemptTimeoutMs = Number.isFinite(Number(overrides.timeoutMs)) ? Number(overrides.timeoutMs) : requestTimeoutMs;
     const attemptOpts = {
       ...opts,
       days: chunkDays,
@@ -7359,7 +7373,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         chunkStartDay,
         chunkDays,
         promptChars: prompt.length,
-        maxTokens,
+        maxTokens: attemptMaxTokens,
         planUsed: Boolean(opts.planUsed),
       });
     }
@@ -7368,10 +7382,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       json_schema: { name: 'calendar_batch', strict: true, schema },
     };
     const payload = JSON.stringify({
-      model: modelName,
+      model: attemptModel,
       messages: [{ role: 'user', content: prompt }],
-      temperature,
-      max_tokens: maxTokens,
+      temperature: attemptTemperature,
+      max_tokens: attemptMaxTokens,
       response_format: responseFormat,
     });
     const requestPromise = withOpenAiSlot(() =>
@@ -7382,7 +7396,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         console.error('[OpenAI][CalendarChunk] request failed', {
           requestId: loggingContext?.requestId || null,
           mode,
-          model: modelName,
+          model: attemptModel,
           responseFormat: safeStringify(responseFormat),
           statusCode: err?.statusCode || err?.status || null,
           ...details,
@@ -7405,14 +7419,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           schemaErr.openaiDetails = details;
           schemaErr.mode = mode;
           schemaErr.promptMeta = lastPromptMeta;
-          schemaErr.model = modelName;
+          schemaErr.model = attemptModel;
           schemaErr.responseFormat = responseFormat;
           throw schemaErr;
         }
         err.openaiDetails = details;
         err.mode = mode;
         err.promptMeta = lastPromptMeta;
-        err.model = modelName;
+        err.model = attemptModel;
         err.responseFormat = responseFormat;
         throw err;
       })
@@ -7422,7 +7436,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         const timeoutErr = new Error('OpenAI request timed out');
         timeoutErr.code = 'OPENAI_TIMEOUT';
         reject(timeoutErr);
-      }, OPENAI_GENERATION_TIMEOUT_MS);
+      }, attemptTimeoutMs);
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
@@ -7433,8 +7447,37 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return { content, latency: Date.now() - attemptTimestamp, promptMeta: lastPromptMeta };
   };
 
+  const shouldFailover = (err) => {
+    const msg = String(err?.message || '').toLowerCase();
+    const status = err?.statusCode || err?.status || err?.upstreamStatus || null;
+    return (
+      err?.code === 'OPENAI_TIMEOUT' ||
+      err?.code === 'MODEL_TIMEOUT' ||
+      status === 503 ||
+      msg.includes('model timeout') ||
+      msg.includes('timeout')
+    );
+  };
   try {
-    const firstResponse = await attemptRequest('', true);
+    let firstResponse = null;
+    try {
+      firstResponse = await attemptRequest('', true);
+    } catch (err) {
+      if (!shouldFailover(err)) throw err;
+      const fallbackMaxTokens = Math.max(200, Math.floor(maxTokens * 0.75));
+      const fallbackTemperature = 0;
+      console.warn('[OpenAI][CalendarChunk][Failover]', {
+        requestId: loggingContext?.requestId || null,
+        reason: err?.code || err?.message || 'timeout',
+        model: modelName,
+        maxTokens: fallbackMaxTokens,
+        timeoutMs: requestTimeoutMs,
+      });
+      firstResponse = await attemptRequest('', true, {
+        maxTokens: fallbackMaxTokens,
+        temperature: fallbackTemperature,
+      });
+    }
     const parseStart = Date.now();
     const rawText = firstResponse.content || '';
     const logParseDebug = () => {
@@ -8612,13 +8655,6 @@ const server = http.createServer((req, res) => {
         },
       },
     };
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: planPrompt }],
-      temperature: 0.4,
-      max_tokens: 1200,
-      response_format: { type: 'json_schema', json_schema: { name: 'calendar_plan', strict: true, schema: planSchema } },
-    });
     const buildRequestOptions = (payloadText) => ({
       hostname: 'api.openai.com',
       path: '/v1/chat/completions',
@@ -8650,11 +8686,39 @@ const server = http.createServer((req, res) => {
       return '';
     };
     const planStart = Date.now();
-    const response = await withTimeout(
-      withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
-      12000,
-      { requestId, phase: 'plan' }
-    );
+    const planMaxTokens = 900;
+    const runPlanRequest = async ({ maxTokens, temperature }) => {
+      const payload = JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: planPrompt }],
+        temperature,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_schema', json_schema: { name: 'calendar_plan', strict: true, schema: planSchema } },
+      });
+      return withTimeout(
+        withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
+        15000,
+        { requestId, phase: 'plan' }
+      );
+    };
+    let response = null;
+    let planTokensUsed = planMaxTokens;
+    try {
+      response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.4 });
+    } catch (err) {
+      const status = err?.statusCode || err?.status || null;
+      const msg = String(err?.message || '').toLowerCase();
+      const isTimeout = err?.code === 'MODEL_TIMEOUT' || err?.code === 'OPENAI_TIMEOUT' || status === 503 || msg.includes('timeout');
+      if (!isTimeout) throw err;
+      const fallbackTokens = Math.max(600, Math.floor(planMaxTokens * 0.75));
+      console.warn('[Calendar][Plan][Failover]', {
+        requestId,
+        reason: err?.code || err?.message || 'timeout',
+        maxTokens: fallbackTokens,
+      });
+      planTokensUsed = fallbackTokens;
+      response = await runPlanRequest({ maxTokens: fallbackTokens, temperature: 0 });
+    }
     const content = extractContentText(response);
     let parsed = null;
     try {
@@ -8704,6 +8768,8 @@ const server = http.createServer((req, res) => {
       promptChars: planPrompt.length,
       elapsedMs: Date.now() - planStart,
       planCount: plan.length,
+      maxTokens: planTokensUsed,
+      timeoutMs: 15000,
     });
     return { plan };
   }
@@ -8844,6 +8910,7 @@ const server = http.createServer((req, res) => {
       const planBlock = buildTopicPlanBlock(topicPlan, {
         chunkStartDay,
         chunkDays,
+        compact: Boolean(payload?.compactPrompt),
       });
       const extraInstructionsBlock = [planBlock, payload?.extraInstructions].filter(Boolean).join('\n');
       if (planBlock) {
@@ -8876,6 +8943,7 @@ const server = http.createServer((req, res) => {
         postsPerDay: chunkPostsPerDay,
         loggingContext: chunkContext,
         maxTokens: chunkMaxTokens,
+        requestTimeoutMs: payload?.requestTimeoutMs,
         reduceVerbosity: true,
         compactPrompt: Boolean(payload?.compactPrompt),
         temperature: Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined,
@@ -9973,9 +10041,9 @@ const server = http.createServer((req, res) => {
         };
         const REGEN_BATCH_COUNT = 3;
         const POSTS_PER_BATCH = 10;
-        const MODEL_TIMEOUT_MS = 28000;
+        const MODEL_TIMEOUT_MS = 22000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_OUTPUT_TOKENS_PER_POST = 200;
+        const MAX_OUTPUT_TOKENS_PER_POST = 140;
         const TOKEN_OVERHEAD = 200;
         let ensuredPosts = [];
         let totalModelMs = 0;
@@ -9999,7 +10067,14 @@ const server = http.createServer((req, res) => {
               postsPerDay: requestedPostsPerDay,
             });
           } catch (err) {
-            if (err?.code === 'MODEL_TIMEOUT') {
+            const status = err?.statusCode || err?.status || null;
+            const msg = String(err?.message || '').toLowerCase();
+            const timeoutLike =
+              err?.code === 'MODEL_TIMEOUT' ||
+              err?.code === 'OPENAI_TIMEOUT' ||
+              status === 503 ||
+              msg.includes('timeout');
+            if (timeoutLike) {
               return sendJson(res, 503, {
                 error: 'MODEL_TIMEOUT',
                 message: 'Model timeout',
@@ -10083,29 +10158,33 @@ const server = http.createServer((req, res) => {
             const modelStart = Date.now();
             let batchPosts = null;
             try {
-              batchPosts = await withTimeout(
-                generateCalendarPosts({
-                  ...(body || {}),
-                  brandBrainEnabled: selectedMode === 'brand_brain',
-                  calendarMode: selectedMode,
-                  days: batchDays,
-                  startDay: batchStartDay,
-                  postsPerDay: requestedPostsPerDay,
-                  context: { ...regenContext, batchIndex: batch.batchIndex, startDay: batchStartDay },
-                  isPro,
-                  compactPrompt: true,
-                  singleRequest: true,
-                  skipTopicPlan: true,
-                  topicPlan,
-                  extraInstructions: planBlock,
-                  temperature: 0.6,
-                  maxTokens,
-                }),
-                MODEL_TIMEOUT_MS,
-                { requestId, batchIndex: batch.batchIndex }
-              );
+              batchPosts = await generateCalendarPosts({
+                ...(body || {}),
+                brandBrainEnabled: selectedMode === 'brand_brain',
+                calendarMode: selectedMode,
+                days: batchDays,
+                startDay: batchStartDay,
+                postsPerDay: requestedPostsPerDay,
+                context: { ...regenContext, batchIndex: batch.batchIndex, startDay: batchStartDay },
+                isPro,
+                compactPrompt: true,
+                singleRequest: true,
+                skipTopicPlan: true,
+                topicPlan,
+                extraInstructions: planBlock,
+                temperature: 0.6,
+                maxTokens,
+                requestTimeoutMs: MODEL_TIMEOUT_MS,
+              });
             } catch (err) {
-              if (err?.code === 'MODEL_TIMEOUT') {
+              const status = err?.statusCode || err?.status || null;
+              const msg = String(err?.message || '').toLowerCase();
+              const timeoutLike =
+                err?.code === 'MODEL_TIMEOUT' ||
+                err?.code === 'OPENAI_TIMEOUT' ||
+                status === 503 ||
+                msg.includes('timeout');
+              if (timeoutLike) {
                 return sendJson(res, 503, {
                   error: 'MODEL_TIMEOUT',
                   message: 'Model timeout',
@@ -10119,6 +10198,15 @@ const server = http.createServer((req, res) => {
             const callMs = Date.now() - modelStart;
             totalModelMs += callMs;
             maxModelCallMs = Math.max(maxModelCallMs, callMs);
+            console.log('[Calendar][Regen][Stage]', {
+              requestId,
+              stage: 'write',
+              batchIndex: batch.batchIndex,
+              elapsedMs: callMs,
+              maxTokens,
+              timeoutMs: MODEL_TIMEOUT_MS,
+              mode: selectedMode,
+            });
             if (!Array.isArray(batchPosts) || !batchPosts.length) {
               return sendJson(res, 422, {
                 error: 'CALENDAR_SCHEMA_MISMATCH',
@@ -10135,6 +10223,12 @@ const server = http.createServer((req, res) => {
               post_key: batchPosts?.[entry.index]?.post_key || batchPosts?.[entry.index]?.postKey || batch.slots?.[entry.index]?.post_key || null,
             }));
             totalValidateMs += Date.now() - validateStart;
+            console.log('[Calendar][Regen][Stage]', {
+              requestId,
+              stage: 'validate',
+              batchIndex: batch.batchIndex,
+              elapsedMs: Date.now() - validateStart,
+            });
             const hasPlaceholders = batchPosts.some((post) => hasPlaceholderInPost(post));
             const countMismatch = batchPosts.length !== batch.slots.length;
             if (missing.length || hasPlaceholders || countMismatch) {
