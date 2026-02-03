@@ -7034,6 +7034,52 @@ function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkE
   return { posts: selected, shape };
 }
 
+function safeJsonParse(raw = '') {
+  if (!raw) return null;
+  let text = String(raw).trim();
+  if (!text) return null;
+  text = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
+  const firstBrace = text.indexOf('{');
+  if (firstBrace > 0) text = text.slice(firstBrace);
+  const lastBrace = text.lastIndexOf('}');
+  if (lastBrace !== -1 && lastBrace < text.length - 1) text = text.slice(0, lastBrace + 1);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function looksTruncatedJson(raw = '') {
+  const text = String(raw || '').trim();
+  if (!text) return false;
+  const lastChar = text[text.length - 1];
+  if (lastChar !== '}' && lastChar !== ']') return true;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') depth -= 1;
+  }
+  return depth !== 0;
+}
+
 async function generateTopicPlan({
   nicheStyle,
   brandContext,
@@ -7406,9 +7452,11 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     };
     const responseTextFormat = {
       type: 'json_schema',
-      name: responseFormat.json_schema.name,
-      strict: responseFormat.json_schema.strict,
-      schema: responseFormat.json_schema.schema,
+      json_schema: {
+        name: responseFormat.json_schema.name,
+        strict: responseFormat.json_schema.strict,
+        schema: responseFormat.json_schema.schema,
+      },
     };
     const payload = useSinglePost
       ? JSON.stringify({
@@ -7543,30 +7591,69 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     }
     const parseStart = Date.now();
     if (useSinglePost) {
-      const parsedPost = firstResponse.parsedOutput;
-      if (parsedPost && typeof parsedPost === 'object') {
+      const rawText = firstResponse.content || '';
+      let parsed = safeJsonParse(rawText);
+      if (parsed?.post && typeof parsed.post === 'object') parsed = parsed.post;
+      if (Array.isArray(parsed?.posts) && parsed.posts.length === 1) parsed = parsed.posts[0];
+      if (parsed && typeof parsed === 'object') {
         return {
-          posts: [parsedPost],
-          rawContent: '',
+          posts: [parsed],
+          rawContent: rawText,
           latency: firstResponse.latency,
           parseMs: 0,
           promptMeta: firstResponse.promptMeta || null,
         };
       }
-      const rawText = firstResponse.content || '';
+      const rawTrimmed = String(rawText || '').trim();
+      const lastChar = rawTrimmed ? rawTrimmed[rawTrimmed.length - 1] : '';
+      const isTruncated = looksTruncatedJson(rawText);
+      console.warn('[Calendar][Parse] failed', {
+        requestId: loggingContext?.requestId || 'unknown',
+        expectedCount: expectedChunkCount,
+        rawLength: rawText.length,
+        lastChar,
+        prefix: rawText.slice(0, 120),
+        suffix: rawText.slice(-120),
+      });
+      if (isTruncated) {
+        console.warn('[Calendar][Parse] retrying_after_truncation', {
+          requestId: loggingContext?.requestId || 'unknown',
+          startDay: chunkStartDay,
+          expectedCount: expectedChunkCount,
+          attempt: 2,
+        });
+        const retryMaxTokens = Math.max(1200, Math.floor(maxTokens * 1.5));
+        const retryResponse = await attemptRequest('', true, {
+          attempt: 2,
+          maxTokens: retryMaxTokens,
+        });
+        const retryRawText = retryResponse.content || '';
+        let retryParsed = safeJsonParse(retryRawText);
+        if (retryParsed?.post && typeof retryParsed.post === 'object') retryParsed = retryParsed.post;
+        if (Array.isArray(retryParsed?.posts) && retryParsed.posts.length === 1) retryParsed = retryParsed.posts[0];
+        if (retryParsed && typeof retryParsed === 'object') {
+          return {
+            posts: [retryParsed],
+            rawContent: retryRawText,
+            latency: retryResponse.latency,
+            parseMs: 0,
+            promptMeta: retryResponse.promptMeta || null,
+          };
+        }
+      }
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.reason = 'PARSE_FAILED';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
-      parseErr.usedStructuredOutput = Boolean(parsedPost);
+      parseErr.usedStructuredOutput = false;
       parseErr.rawTextLength = firstResponse.rawTextLength || (rawText ? rawText.length : null);
       console.warn('[Calendar][Parse] structured_output_failed', {
         requestId: loggingContext?.requestId || 'unknown',
         responseId: parseErr.responseId,
         model: parseErr.responseModel,
-        usedStructuredOutput: Boolean(parsedPost),
+        usedStructuredOutput: false,
         rawTextLength: parseErr.rawTextLength,
       });
       throw parseErr;
@@ -10141,8 +10228,8 @@ const server = http.createServer((req, res) => {
         };
         const MODEL_TIMEOUT_MS = 60000;
         const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_TOKENS_PER_BATCH_REGULAR = 220;
-        const MAX_TOKENS_PER_BATCH_BRAND = 280;
+        const MAX_TOKENS_PER_BATCH_REGULAR = 900;
+        const MAX_TOKENS_PER_BATCH_BRAND = 1100;
         let ensuredPosts = [];
         let totalModelMs = 0;
         let totalValidateMs = 0;
