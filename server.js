@@ -7080,6 +7080,73 @@ function looksTruncatedJson(raw = '') {
   return depth !== 0;
 }
 
+function extractCalendarOutput(resp) {
+  const responseId = resp?.id || null;
+  const model = resp?.model || null;
+  const presentFields = resp && typeof resp === 'object' ? Object.keys(resp) : [];
+  const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  const looksLikePost = (value) => {
+    if (!isPlainObject(value)) return false;
+    if (typeof value.post_key !== 'string') return false;
+    if (!('day' in value)) return false;
+    if (typeof value.title !== 'string') return false;
+    if (typeof value.pillar !== 'string') return false;
+    return true;
+  };
+  let json = null;
+  let text = null;
+  const directCandidates = [
+    resp?.output_parsed,
+    resp?.parsed,
+  ];
+  for (const candidate of directCandidates) {
+    if (isPlainObject(candidate)) {
+      json = candidate;
+      break;
+    }
+  }
+  if (!json && Array.isArray(resp?.output)) {
+    for (const item of resp.output) {
+      if (isPlainObject(item?.parsed)) {
+        json = item.parsed;
+        break;
+      }
+      const content = Array.isArray(item?.content) ? item.content : [];
+      for (const chunk of content) {
+        if (isPlainObject(chunk?.json)) {
+          json = chunk.json;
+          break;
+        }
+        if (isPlainObject(chunk?.parsed)) {
+          json = chunk.parsed;
+          break;
+        }
+      }
+      if (json) break;
+    }
+  }
+  if (!json) {
+    if (typeof resp?.output_text === 'string') {
+      text = resp.output_text;
+    } else if (Array.isArray(resp?.output)) {
+      const outputText = resp.output
+        .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+        .map((chunk) => {
+          if (chunk?.type === 'output_text' && typeof chunk?.text === 'string') return chunk.text;
+          if (chunk?.type === 'text' && typeof chunk?.text === 'string') return chunk.text;
+          if (typeof chunk?.text === 'string') return chunk.text;
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+      if (outputText) text = outputText;
+    }
+  }
+  const kind = json ? 'structured' : text ? 'text' : 'none';
+  const jsonIsPostLike = json && (looksLikePost(json) || (Array.isArray(json?.posts) && json.posts.length >= 1));
+  return { kind, json: jsonIsPostLike ? json : json, text, responseId, model, presentFields };
+}
+
 async function generateTopicPlan({
   nicheStyle,
   brandContext,
@@ -7550,8 +7617,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
-    const parsedOutput = useSinglePost ? extractStructuredOutput(json) : null;
-    const content = useSinglePost ? extractContentText(json) : extractContentText(json);
+    const extracted = extractCalendarOutput(json);
+    const parsedOutput = extracted.json || null;
+    const content = extracted.text || '';
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
@@ -7560,9 +7628,11 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parsedOutput,
       latency: Date.now() - attemptTimestamp,
       promptMeta: lastPromptMeta,
-      responseId: json?.id || null,
-      responseModel: json?.model || attemptModel,
-      rawTextLength: typeof json?.output_text === 'string' ? json.output_text.length : null,
+      responseId: extracted.responseId || json?.id || null,
+      responseModel: extracted.model || json?.model || attemptModel,
+      rawTextLength: typeof content === 'string' ? content.length : null,
+      responseKeys: extracted.presentFields || [],
+      extractedKind: extracted.kind || null,
     };
   };
 
@@ -7603,7 +7673,8 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const parseStart = Date.now();
     if (useSinglePost) {
       const rawText = firstResponse.content || '';
-      let parsed = safeJsonParse(rawText);
+      let parsed = firstResponse.parsedOutput;
+      if (!parsed && rawText) parsed = safeJsonParse(rawText);
       if (parsed?.post && typeof parsed.post === 'object') parsed = parsed.post;
       if (Array.isArray(parsed?.posts) && parsed.posts.length === 1) parsed = parsed.posts[0];
       if (parsed && typeof parsed === 'object') {
@@ -7617,7 +7688,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       }
       const rawTrimmed = String(rawText || '').trim();
       const lastChar = rawTrimmed ? rawTrimmed[rawTrimmed.length - 1] : '';
-      const isTruncated = looksTruncatedJson(rawText);
       console.warn('[Calendar][Parse] failed', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
@@ -7625,46 +7695,27 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         lastChar,
         prefix: rawText.slice(0, 120),
         suffix: rawText.slice(-120),
+        responseId: firstResponse.responseId || null,
+        model: firstResponse.responseModel || modelName,
+        presentFields: firstResponse.responseKeys || [],
+        hasOutputText: typeof rawText === 'string' && rawText.length > 0,
+        hasOutputArray: false,
+        extractedKind: firstResponse.extractedKind || null,
+        extractedTextLength: rawText.length || 0,
       });
-      if (isTruncated) {
-        console.warn('[Calendar][Parse] retrying_after_truncation', {
-          requestId: loggingContext?.requestId || 'unknown',
-          startDay: chunkStartDay,
-          expectedCount: expectedChunkCount,
-          attempt: 2,
-        });
-        const retryMaxTokens = Math.max(1200, Math.floor(maxTokens * 1.5));
-        const retryResponse = await attemptRequest('', true, {
-          attempt: 2,
-          maxTokens: retryMaxTokens,
-        });
-        const retryRawText = retryResponse.content || '';
-        let retryParsed = safeJsonParse(retryRawText);
-        if (retryParsed?.post && typeof retryParsed.post === 'object') retryParsed = retryParsed.post;
-        if (Array.isArray(retryParsed?.posts) && retryParsed.posts.length === 1) retryParsed = retryParsed.posts[0];
-        if (retryParsed && typeof retryParsed === 'object') {
-          return {
-            posts: [retryParsed],
-            rawContent: retryRawText,
-            latency: retryResponse.latency,
-            parseMs: 0,
-            promptMeta: retryResponse.promptMeta || null,
-          };
-        }
-      }
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
       parseErr.reason = 'PARSE_FAILED';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
-      parseErr.usedStructuredOutput = false;
-      parseErr.rawTextLength = firstResponse.rawTextLength || (rawText ? rawText.length : null);
+      parseErr.usedStructuredOutput = Boolean(firstResponse.parsedOutput) || Boolean(rawText);
+      parseErr.rawTextLength = rawText ? rawText.length : null;
       console.warn('[Calendar][Parse] structured_output_failed', {
         requestId: loggingContext?.requestId || 'unknown',
         responseId: parseErr.responseId,
         model: parseErr.responseModel,
-        usedStructuredOutput: false,
+        usedStructuredOutput: parseErr.usedStructuredOutput,
         rawTextLength: parseErr.rawTextLength,
       });
       throw parseErr;
