@@ -9088,6 +9088,8 @@ function normalizeCalendarSignature(value = '') {
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
   const CLIENT_REGEN_TIMEOUT_MS = 130000;
   const runSignal = options.signal;
+  const runToken = options.runToken || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.__calendarGenActiveRunId = runToken;
   const batchAbortController = new AbortController();
   const batchSignal = batchAbortController.signal;
   if (runSignal) {
@@ -9101,6 +9103,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
   let batchErrorLogged = false;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
+  const isActiveRun = () => window.__calendarGenActiveRunId === runToken && currentGenerationRunId === thisRunId;
   const tStart = performance.now();
   console.log(`[Calendar][Perf] generateCalendarWithAI start (t=${Math.round(tStart)}ms) runId=${thisRunId}`, { nicheStyle, postsPerDay });
   let clientTimedOut = false;
@@ -9160,6 +9163,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     })();
     let firstDispatchLogged = false;
     const fetchBatch = async (batchIndex) => {
+      if (!isActiveRun()) {
+        return { batchIndex, posts: [], cancelled: true };
+      }
       if (calendarExportsLocked) {
         showUpgradeModal();
         throw new Error('upgrade_required');
@@ -9396,6 +9402,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
       throw err;
     }
+    if (!isActiveRun()) {
+      return { posts: [], calendarId: generatedCalendarId, cancelled: true };
+    }
     console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
     
     orderedResults.forEach((result) => {
@@ -9405,6 +9414,10 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     });
 
     // Sort by batch index and flatten
+    const cancelledResults = orderedResults.some((result) => result?.cancelled);
+    if (cancelledResults || !isActiveRun()) {
+      return { posts: [], calendarId: generatedCalendarId, cancelled: true };
+    }
     let allPosts = orderedResults.flatMap((r) => r.posts);
 
     const rawPostCount = allPosts.length;
@@ -9444,7 +9457,31 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const hasFullCount = rawPostCount === totalPosts;
     const hasMissingFields = allPosts.some((post) => !hasRequiredPostFields(post));
     const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
-    if (!hasFullCount || hasMissingFields || hasPlaceholders) {
+    const postKeys = allPosts.map((post) => post?.post_key || post?.postKey || '').filter(Boolean);
+    const uniquePostKeys = postKeys.length ? new Set(postKeys).size : null;
+    const slotPairs = allPosts
+      .map((post) => {
+        const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : null;
+        const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+        const slot = Number.isFinite(Number(post?.slot)) ? Number(post.slot) - 1 : null;
+        const resolvedSlot = slotIndex !== null ? slotIndex : slot;
+        if (day === null || resolvedSlot === null) return null;
+        return `${day}:${resolvedSlot}`;
+      })
+      .filter(Boolean);
+    const uniqueSlotPairs = slotPairs.length ? new Set(slotPairs).size : null;
+    const hasDuplicatePostKeys = uniquePostKeys !== null && uniquePostKeys !== totalPosts;
+    const hasDuplicateSlots = uniqueSlotPairs !== null && uniqueSlotPairs !== totalPosts;
+    if (!hasFullCount || hasMissingFields || hasPlaceholders || hasDuplicatePostKeys || hasDuplicateSlots) {
+      const reason = !hasFullCount
+        ? 'count_mismatch'
+        : hasDuplicatePostKeys
+          ? 'duplicate_post_keys'
+          : hasDuplicateSlots
+            ? 'duplicate_slots'
+            : hasMissingFields
+              ? 'missing_required_fields'
+              : 'placeholder_detected';
       const err = new Error('generation_incomplete');
       err.code = 'generation_incomplete';
       err.details = {
@@ -9452,6 +9489,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         actualCount: rawPostCount,
         elapsedMs: Math.round(performance.now() - tStart),
         aborted: batchSignal.aborted || clientTimedOut,
+        reason,
+        uniquePostKeys,
+        uniqueSlotPairs,
       };
       throw err;
     }
@@ -9598,6 +9638,8 @@ async function onGenerateCalendarClick() {
   }
   const originalText = btnText ? btnText.textContent : (generateBtn ? generateBtn.textContent : 'Generate Calendar');
   const runId = ++calendarRunCounter;
+  const runToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.__calendarGenActiveRunId = runToken;
   lastGenerationRequestId = null;
   lastGenerationErrorStatus = null;
   lastGenerationErrorCode = null;
@@ -9609,6 +9651,7 @@ async function onGenerateCalendarClick() {
   generationAbortController = controller;
   currentGenerationRunId = runId;
   isGeneratingCalendar = true;
+  if (generateBtn) generateBtn.disabled = true;
   try {
     console.log(" Starting AI generation for:", niche);
     showGeneratingState();
@@ -9616,7 +9659,7 @@ async function onGenerateCalendarClick() {
     console.log(" Calling API with niche:", niche);
     const postsPerDay = getPostFrequency();
     currentPostFrequency = postsPerDay;
-    const { posts: aiGeneratedPosts, calendarId } = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId });
+    const { posts: aiGeneratedPosts, calendarId } = await generateCalendarWithAI(niche, postsPerDay, { signal: controller.signal, runId, runToken });
     if (currentGenerationRunId !== runId) {
       console.warn('[Calendar] Stale generation results ignored for run', runId);
       return;
@@ -9688,9 +9731,13 @@ async function onGenerateCalendarClick() {
     renderGateEnabled = false;
     expectedCalendarPostCount = null;
     hideGeneratingState(originalText);
-    isGeneratingCalendar = false;
-    if (generationAbortController === controller) {
-      generationAbortController = null;
+    if (window.__calendarGenActiveRunId === runToken) {
+      window.__calendarGenActiveRunId = null;
+      isGeneratingCalendar = false;
+      if (generateBtn) generateBtn.disabled = false;
+      if (generationAbortController === controller) {
+        generationAbortController = null;
+      }
     }
   }
 }
