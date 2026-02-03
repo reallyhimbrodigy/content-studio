@@ -2794,7 +2794,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'format', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
+    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'format', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle', 'decision_question', 'decision_angle'],
     properties: {
       post_key: { type: 'string', minLength: 1 },
       day: {
@@ -2837,6 +2837,8 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       format: { type: 'string', minLength: 1 },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
+      decision_question: { type: 'string', minLength: 35 },
+      decision_angle: { type: 'string', minLength: 3 },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
@@ -3354,7 +3356,7 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle, decision_question, decision_angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -3380,6 +3382,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
 const COMPACT_REGULAR_MODE_BLOCK = [
   'MODE: Regular (neutral/practical).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Include unique decision_question (buyer decision question) and decision_angle (3-8 words); content must resolve decision_question.',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
   '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
@@ -3390,6 +3393,7 @@ const COMPACT_REGULAR_MODE_BLOCK = [
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   'MODE: Brand Brain (belief teardown).',
   '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
+  '- Include unique decision_question and decision_angle; treat the same decision_question with a contrarian/reframing lens (hidden tradeoff + second-order consequence).',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
   '- Treat decision_context by reframing the assumption and surfacing a hidden tradeoff/constraint with second-order consequences.',
@@ -5786,6 +5790,8 @@ const REQUIRED_POST_FIELDS = [
   'cta',
   'topic_signature',
   'angle',
+  'decision_question',
+  'decision_angle',
   'designNotes',
   'distributionPlan',
   'day',
@@ -5811,6 +5817,8 @@ const REQUIRED_POST_FIELD_TYPES = {
   format: 'string',
   topic_signature: 'string',
   angle: 'string',
+  decision_question: 'string',
+  decision_angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
   day: 'number',
@@ -5897,6 +5905,19 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function normalizeDecisionAnchor(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const DECISION_ANCHOR_BLOCKLIST = new Set([
+  'miami',
+  'market trends',
+  'top neighborhoods',
+]);
+
 function validatePostCompleteness(post = {}) {
   const missing = [];
   const checkString = (value, key) => {
@@ -5910,6 +5931,8 @@ function validatePostCompleteness(post = {}) {
   checkString(post.cta, 'cta');
   checkString(post.topic_signature, 'topic_signature');
   checkString(post.angle, 'angle');
+  checkString(post.decision_question, 'decision_question');
+  checkString(post.decision_angle, 'decision_angle');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
@@ -5946,7 +5969,46 @@ function validatePostCompleteness(post = {}) {
     checkString(engagement.dmReply, 'engagementScripts.dmReply');
   }
 
+  if (isNonEmptyString(post.decision_question)) {
+    const dq = String(post.decision_question);
+    if (dq.length < 35 || !dq.includes('?')) missing.push('decision_question');
+    const normalized = normalizeDecisionAnchor(dq);
+    if (DECISION_ANCHOR_BLOCKLIST.has(normalized)) missing.push('decision_question');
+  }
+  if (isNonEmptyString(post.decision_angle)) {
+    const da = String(post.decision_angle);
+    const wordCount = da.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount < 3) missing.push('decision_angle');
+    const normalized = normalizeDecisionAnchor(da);
+    if (DECISION_ANCHOR_BLOCKLIST.has(normalized)) missing.push('decision_angle');
+  }
+
   return missing;
+}
+
+function validateDecisionAnchorUniqueness(posts = []) {
+  const questionMap = new Map();
+  const angleMap = new Map();
+  const duplicates = { decision_question: [], decision_angle: [] };
+  posts.forEach((post, index) => {
+    const dq = normalizeDecisionAnchor(post?.decision_question || '');
+    const da = normalizeDecisionAnchor(post?.decision_angle || '');
+    if (dq) {
+      if (questionMap.has(dq)) {
+        duplicates.decision_question.push({ index, post_key: post?.post_key || null });
+      } else {
+        questionMap.set(dq, index);
+      }
+    }
+    if (da) {
+      if (angleMap.has(da)) {
+        duplicates.decision_angle.push({ index, post_key: post?.post_key || null });
+      } else {
+        angleMap.set(da, index);
+      }
+    }
+  });
+  return duplicates;
 }
 
 function resolveRequestedSpec(requestedSpec = {}) {
@@ -10019,6 +10081,19 @@ const server = http.createServer((req, res) => {
       latencyMs: openAiLatency,
       context: loggingContext,
     });
+    const decisionDupes = validateDecisionAnchorUniqueness(posts);
+    if (decisionDupes.decision_question.length || decisionDupes.decision_angle.length) {
+      const err = new Error('DECISION_ANCHOR_NOT_UNIQUE');
+      err.code = 'DECISION_ANCHOR_NOT_UNIQUE';
+      err.statusCode = 422;
+      err.details = decisionDupes;
+      console.log('[Calendar][DecisionAnchors] not_unique', {
+        requestId: loggingContext?.requestId || 'unknown',
+        decision_question: decisionDupes.decision_question.length,
+        decision_angle: decisionDupes.decision_angle.length,
+      });
+      throw err;
+    }
     posts.forEach((post) => {
       if (!post || typeof post !== 'object') return;
       delete post.__key;
@@ -10602,6 +10677,20 @@ const server = http.createServer((req, res) => {
               message: 'Pillar schedule mismatch.',
               requestId,
               details: { targets: pillarTargets, actual: actualCounts },
+            });
+          }
+          const decisionDupes = validateDecisionAnchorUniqueness(ensuredPosts);
+          if (decisionDupes.decision_question.length || decisionDupes.decision_angle.length) {
+            console.log('[Calendar][DecisionAnchors] not_unique', {
+              requestId,
+              decision_question: decisionDupes.decision_question.length,
+              decision_angle: decisionDupes.decision_angle.length,
+            });
+            return sendJson(res, 422, {
+              error: 'DECISION_ANCHOR_NOT_UNIQUE',
+              message: 'Decision anchors must be unique.',
+              requestId,
+              details: decisionDupes,
             });
           }
         } finally {
