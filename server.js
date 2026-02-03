@@ -538,9 +538,17 @@ function logServerError(tag, err, info = {}) {
 function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
   const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
+  const isOpenAISchemaInvalid = err?.code === 'OPENAI_SCHEMA_INVALID';
   const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
   const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
   const requestIdValue = requestId || generateRequestId('server_error');
+  if (isOpenAISchemaInvalid) {
+    return sendJson(res, 422, {
+      error: 'OPENAI_SCHEMA_INVALID',
+      requestId: requestIdValue,
+      details: err?.details || null,
+    });
+  }
   if (isTopicBinding) {
     const payload = {
       error: 'TOPIC_BINDING_FAILED',
@@ -2794,7 +2802,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'format', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle'],
+    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'format', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle', 'decision_question', 'decision_angle'],
     properties: {
       post_key: { type: 'string', minLength: 1 },
       day: {
@@ -2837,6 +2845,8 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       format: { type: 'string', minLength: 1 },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
+      decision_question: { type: 'string', minLength: 1 },
+      decision_angle: { type: 'string', minLength: 1 },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
@@ -3354,7 +3364,7 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle, decision_question, decision_angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -5788,6 +5798,8 @@ const REQUIRED_POST_FIELDS = [
   'cta',
   'topic_signature',
   'angle',
+  'decision_question',
+  'decision_angle',
   'designNotes',
   'distributionPlan',
   'day',
@@ -5813,6 +5825,8 @@ const REQUIRED_POST_FIELD_TYPES = {
   format: 'string',
   topic_signature: 'string',
   angle: 'string',
+  decision_question: 'string',
+  decision_angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
   day: 'number',
@@ -5912,6 +5926,166 @@ const DECISION_ANCHOR_BLOCKLIST = new Set([
   'top neighborhoods',
 ]);
 
+const PLACEHOLDER_BLACKLIST = new Set([
+  'miami',
+  'n/a',
+  'tbd',
+  'placeholder',
+  '-',
+  '',
+]);
+
+const PILLAR_TOKENS = {
+  education: ['how to', 'checklist', 'steps', 'framework', 'do this', 'avoid'],
+  social_proof: ['client', 'closed', 'under contract', 'sold', 'testimonial', 'case study', 'before/after'],
+  promotion: ['dm', 'comment', 'book', 'call', 'text', 'get the list', 'send', 'download'],
+  lifestyle: ['vibe', 'lifestyle', 'walkable', 'nightlife', 'family', 'schools', 'commute', 'culture'],
+};
+
+function normalizeSignatureText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildPostSignature(post = {}) {
+  const topicSig = toPlainString(post?.topic_signature || '');
+  const title = toPlainString(post?.title || '');
+  const caption = toPlainString(post?.caption || '').slice(0, 120);
+  const basis = topicSig || `${title} ${caption}`.trim();
+  return normalizeSignatureText(basis);
+}
+
+function hasNumberedTopThree(text = '') {
+  const value = String(text || '');
+  const has1 = /\b1[.)]/.test(value);
+  const has2 = /\b2[.)]/.test(value);
+  const has3 = /\b3[.)]/.test(value);
+  return has1 && has2 && has3;
+}
+
+function hasCommaListThree(text = '') {
+  const parts = String(text || '')
+    .split(/,|\band\b/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 2);
+  const unique = new Set(parts.map((part) => part.toLowerCase()));
+  return unique.size >= 3;
+}
+
+function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
+  const mode = String(ctx?.mode || '').toLowerCase() || 'regular';
+  const nicheValue = normalizeSignatureText(ctx?.nicheStyle || '');
+  const result = { ok: true };
+  if (!post || typeof post !== 'object') {
+    return { ok: false, reason: 'INVALID_POST' };
+  }
+  const fieldsToCheck = ['title', 'hook', 'caption', 'cta', 'designNotes'];
+  for (const field of fieldsToCheck) {
+    const value = toPlainString(post?.[field] || '');
+    const trimmed = value.trim();
+    if (trimmed.length < 20) {
+      return { ok: false, reason: 'FIELD_TOO_SHORT', field, snippet: trimmed.slice(0, 80) };
+    }
+    const normalized = normalizeSignatureText(trimmed);
+    if (PLACEHOLDER_BLACKLIST.has(normalized) || (nicheValue && normalized === nicheValue)) {
+      return { ok: false, reason: 'PLACEHOLDER', field, snippet: trimmed.slice(0, 80) };
+    }
+  }
+
+  const title = toPlainString(post?.title || '');
+  const topicSummary = toPlainString(post?.topicCapsule?.summary || '');
+  const triggerText = `${title} ${topicSummary}`.toLowerCase();
+  if (/top\s*3/.test(triggerText)) {
+    const bodyText = [
+      toPlainString(post?.caption || ''),
+      toPlainString(post?.script?.body || ''),
+      toPlainString(post?.reelScript?.body || post?.script?.body || ''),
+    ].join(' ');
+    if (!hasNumberedTopThree(bodyText) && !hasCommaListThree(bodyText)) {
+      return { ok: false, reason: 'PROMISE_NOT_FULFILLED', field: 'title', snippet: title.slice(0, 80) };
+    }
+  }
+
+  const repurpose = post?.repurpose;
+  if (Array.isArray(repurpose) && repurpose.length > 3) {
+    return { ok: false, reason: 'REPURPOSE_SPAM', field: 'repurpose' };
+  }
+  if (typeof repurpose === 'string') {
+    const separators = (repurpose.match(/•|->|→/g) || []).length;
+    if (separators > 2) {
+      return { ok: false, reason: 'REPURPOSE_SPAM', field: 'repurpose' };
+    }
+  }
+
+  const combined = [
+    toPlainString(post?.caption || ''),
+    toPlainString(post?.script?.body || ''),
+    toPlainString(post?.reelScript?.body || post?.script?.body || ''),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const pillar = String(post?.pillar || '').toLowerCase();
+  if (pillar.includes('education')) {
+    if (!PILLAR_TOKENS.education.some((token) => combined.includes(token))) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    }
+  } else if (pillar.includes('social')) {
+    if (!PILLAR_TOKENS.social_proof.some((token) => combined.includes(token))) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    }
+  } else if (pillar.includes('promotion')) {
+    const ctaLower = toPlainString(post?.cta || '').toLowerCase();
+    if (!PILLAR_TOKENS.promotion.some((token) => ctaLower.includes(token))) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'cta' };
+    }
+  } else if (pillar.includes('lifestyle')) {
+    if (!PILLAR_TOKENS.lifestyle.some((token) => combined.includes(token))) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    }
+  }
+
+  if (mode === 'brand_brain') {
+    if (!isNonEmptyString(post?.decision_question) || !isNonEmptyString(post?.decision_angle)) {
+      return { ok: false, reason: 'MODE_CONSTRAINT_FAILED', field: 'decision_question' };
+    }
+  }
+
+  const signature = buildPostSignature(post);
+  if (signature) {
+    const signatureMap = state.signatureMap || new Map();
+    if (!state.signatureMap) state.signatureMap = signatureMap;
+    if (signatureMap.has(signature)) {
+      const conflict = signatureMap.get(signature);
+      return { ok: false, reason: 'TOPIC_DUPLICATE', extra: { conflict } };
+    }
+    signatureMap.set(signature, {
+      post_key: ctx?.post_key || null,
+      day: ctx?.day ?? null,
+      slotIndex: ctx?.slotIndex ?? null,
+    });
+  }
+
+  return result;
+}
+
+function logCalendarPostReject(reason, ctx = {}) {
+  console.log('[Calendar][ValidatePost][Reject]', {
+    requestId: ctx?.requestId || null,
+    mode: ctx?.mode || null,
+    day: ctx?.day ?? null,
+    slotIndex: ctx?.slotIndex ?? null,
+    post_key: ctx?.post_key || null,
+    reason: reason?.reason || reason,
+    field: reason?.field || null,
+    snippet: reason?.snippet || undefined,
+    extra: reason?.extra || undefined,
+  });
+}
+
 function validatePostCompleteness(post = {}) {
   const missing = [];
   const checkString = (value, key) => {
@@ -5925,6 +6099,8 @@ function validatePostCompleteness(post = {}) {
   checkString(post.cta, 'cta');
   checkString(post.topic_signature, 'topic_signature');
   checkString(post.angle, 'angle');
+  checkString(post.decision_question, 'decision_question');
+  checkString(post.decision_angle, 'decision_angle');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
@@ -7464,9 +7640,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const requiredKeys = new Set(Array.isArray(schema.required) ? schema.required : []);
   const missingRequired = propertyKeys.filter((key) => !requiredKeys.has(key));
   if (missingRequired.length) {
-    const schemaErr = new Error('OpenAI schema validation failed');
-    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
-    schemaErr.statusCode = 400;
+    const schemaErr = new Error('OpenAI schema invalid');
+    schemaErr.code = 'OPENAI_SCHEMA_INVALID';
+    schemaErr.statusCode = 422;
     schemaErr.details = {
       message: 'Schema required is missing property keys',
       schemaName: useSinglePost ? 'calendar_post' : 'calendar_batch',
@@ -9098,6 +9274,30 @@ const server = http.createServer((req, res) => {
       err.payload = { expectedCount, actualCount: plan.length };
       throw err;
     }
+    const titleSuffixes = [
+      'for beginners',
+      'for busy schedules',
+      'for budget limits',
+      'for risk-averse choices',
+      'for quick comparisons',
+      'for long-term planning',
+    ];
+    const titleSeen = new Set();
+    plan.forEach((item, index) => {
+      const baseTitle = toPlainString(item?.topic_signature || '');
+      if (!baseTitle) return;
+      let candidate = baseTitle;
+      let attempts = 0;
+      let normalized = normalizeSignatureText(candidate);
+      while (titleSeen.has(normalized) && attempts < titleSuffixes.length) {
+        const suffix = titleSuffixes[(safeStart + index + attempts) % titleSuffixes.length];
+        candidate = `${baseTitle} ${suffix}`.trim();
+        normalized = normalizeSignatureText(candidate);
+        attempts += 1;
+      }
+      item.topic_signature = candidate;
+      titleSeen.add(normalized);
+    });
     console.log('[Calendar][Plan]', {
       requestId,
       mode,
@@ -9937,6 +10137,41 @@ const server = http.createServer((req, res) => {
         postsPerDay: perDay,
       });
     }
+    const qualityState = { signatureMap: new Map() };
+    posts.forEach((post, idx) => {
+      const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
+      const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+      const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
+      const validation = validateCalendarPostQuality(post, {
+        mode: calendarMode,
+        nicheStyle,
+        day,
+        slotIndex,
+        post_key: postKeyValue,
+        requestId: loggingContext?.requestId || null,
+      }, qualityState);
+      if (validation?.ok) return;
+      logCalendarPostReject(validation, {
+        mode: calendarMode,
+        nicheStyle,
+        day,
+        slotIndex,
+        post_key: postKeyValue,
+        requestId: loggingContext?.requestId || null,
+      });
+      const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+      err.code = 'CALENDAR_POST_GENERATION_FAILED';
+      err.statusCode = 422;
+      err.details = {
+        post_key: postKeyValue,
+        day,
+        slotIndex,
+        reason: validation?.reason || 'VALIDATION_FAILED',
+        field: validation?.field || null,
+        extra: validation?.extra || null,
+      };
+      throw err;
+    });
     let promoCount = 0;
     const promoKeywords = /\b(discount|special|deal|promo|offer|sale|glow special|student)\b/i;
     posts = posts.map((normalized) => {
@@ -10393,6 +10628,8 @@ const server = http.createServer((req, res) => {
         let totalValidateMs = 0;
         let modelCalls = 0;
         let maxModelCallMs = 0;
+        const regenNicheStyle = body?.nicheStyle || body?.niche || body?.niche_style || '';
+        const regenQualityState = { signatureMap: new Map() };
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
@@ -10548,6 +10785,19 @@ const server = http.createServer((req, res) => {
             } catch (err) {
               const status = err?.statusCode || err?.status || null;
               const msg = String(err?.message || '').toLowerCase();
+              if (err?.code === 'CALENDAR_POST_GENERATION_FAILED') {
+                const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+                failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+                failErr.statusCode = 422;
+                failErr.details = {
+                  post_key: slot.post_key,
+                  day: slot.day,
+                  reason: err?.details?.reason || 'VALIDATION_FAILED',
+                  field: err?.details?.field || null,
+                  extra: err?.details?.extra || null,
+                };
+                throw failErr;
+              }
               const timeoutLike =
                 err?.code === 'MODEL_TIMEOUT' ||
                 err?.code === 'OPENAI_TIMEOUT' ||
@@ -10583,6 +10833,36 @@ const server = http.createServer((req, res) => {
             const post = singlePosts[0];
             const scheduledPillar = scheduleByKey.get(slot.post_key);
             if (scheduledPillar) post.pillar = scheduledPillar;
+            const quality = validateCalendarPostQuality(post, {
+              mode: selectedMode,
+              nicheStyle: regenNicheStyle,
+              day: slot.day,
+              slotIndex: slot.slotIndex,
+              post_key: slot.post_key,
+              requestId,
+            }, regenQualityState);
+            if (quality && !quality.ok) {
+              logCalendarPostReject(quality, {
+                mode: selectedMode,
+                nicheStyle: regenNicheStyle,
+                day: slot.day,
+                slotIndex: slot.slotIndex,
+                post_key: slot.post_key,
+                requestId,
+              });
+              const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              failErr.statusCode = 422;
+              failErr.details = {
+                post_key: slot.post_key,
+                day: slot.day,
+                slotIndex: slot.slotIndex,
+                reason: quality.reason || 'VALIDATION_FAILED',
+                field: quality.field || null,
+                extra: quality.extra || null,
+              };
+              throw failErr;
+            }
             const validateStart = Date.now();
             const missing = validatePostCompleteness(post);
             totalValidateMs += Date.now() - validateStart;
@@ -10753,6 +11033,14 @@ const server = http.createServer((req, res) => {
             error: 'MODEL_TIMEOUT',
             message: 'Model timeout',
             requestId,
+          });
+        }
+        if (safeError?.code === 'OPENAI_SCHEMA_INVALID') {
+          return sendJson(res, 422, {
+            error: 'OPENAI_SCHEMA_INVALID',
+            message: 'OpenAI schema invalid.',
+            requestId,
+            details: safeError?.details || null,
           });
         }
         if (safeError?.code === 'CALENDAR_POST_GENERATION_FAILED') {
