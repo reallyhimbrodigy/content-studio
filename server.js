@@ -2837,8 +2837,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       format: { type: 'string', minLength: 1 },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
-      decision_question: { type: 'string' },
-      decision_angle: { type: 'string' },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
@@ -7460,6 +7458,20 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     schemaErr.code = 'OPENAI_SCHEMA_ERROR';
     schemaErr.statusCode = 400;
     schemaErr.details = { message: err?.message || err, schemaKeys: Object.keys(schema || {}) };
+    throw schemaErr;
+  }
+  const propertyKeys = Object.keys(schema.properties || {});
+  const requiredKeys = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const missingRequired = propertyKeys.filter((key) => !requiredKeys.has(key));
+  if (missingRequired.length) {
+    const schemaErr = new Error('OpenAI schema validation failed');
+    schemaErr.code = 'OPENAI_SCHEMA_ERROR';
+    schemaErr.statusCode = 400;
+    schemaErr.details = {
+      message: 'Schema required is missing property keys',
+      schemaName: useSinglePost ? 'calendar_post' : 'calendar_batch',
+      missingRequired,
+    };
     throw schemaErr;
   }
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
