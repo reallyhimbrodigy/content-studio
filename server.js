@@ -7342,12 +7342,28 @@ function normalizeCalendarModelOutput(rawParsed, expectedCount, context = {}, ra
   return { posts, shape };
 }
 
+function extractStructuredJsonTextFromResponsesOutput(resp) {
+  const out = resp?.output;
+  if (!Array.isArray(out)) return null;
+  for (const item of out) {
+    if (item?.type !== 'message') continue;
+    const content = item?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (part?.type === 'output_text' && typeof part?.text === 'string') return part.text;
+      if (part?.type === 'text' && typeof part?.text === 'string') return part.text;
+    }
+  }
+  return null;
+}
+
 function extractStructuredCalendarOutput(resp) {
   const responseId = resp?.id || null;
   const model = resp?.model || null;
   const presentFields = resp && typeof resp === 'object' ? Object.keys(resp) : [];
   const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
   let parsed = null;
+  let text = null;
   const directCandidates = [resp?.output_parsed, resp?.parsed];
   for (const candidate of directCandidates) {
     if (isPlainObject(candidate) || Array.isArray(candidate)) {
@@ -7375,7 +7391,8 @@ function extractStructuredCalendarOutput(resp) {
       if (parsed) break;
     }
   }
-  return { parsed, responseId, model, presentFields };
+  text = extractStructuredJsonTextFromResponsesOutput(resp);
+  return { parsed, text, responseId, model, presentFields };
 }
 
 function extractCalendarOutput(resp) {
@@ -7918,7 +7935,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const json = await Promise.race([requestPromise, timeoutPromise]);
     const extracted = extractStructuredCalendarOutput(json);
     const parsedOutput = extracted.parsed || null;
-    const content = '';
+    const content = typeof extracted.text === 'string' ? extracted.text : '';
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
@@ -7929,9 +7946,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       promptMeta: lastPromptMeta,
       responseId: extracted.responseId || json?.id || null,
       responseModel: extracted.model || json?.model || attemptModel,
-      rawTextLength: null,
+      rawTextLength: typeof content === 'string' ? content.length : null,
       responseKeys: extracted.presentFields || [],
-      extractedKind: parsedOutput ? 'structured' : 'none',
+      extractedKind: parsedOutput || content ? 'structured' : 'none',
     };
   };
 
@@ -7972,7 +7989,30 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const parseStart = Date.now();
     if (useSinglePost) {
       const rawText = firstResponse.content || '';
-      const parsed = firstResponse.parsedOutput;
+      let parsed = firstResponse.parsedOutput;
+      let parsedSource = 'output_parsed';
+      if (!parsed && rawText) {
+        try {
+          parsed = JSON.parse(rawText);
+          parsedSource = 'output_text_in_output';
+        } catch (parseErr) {
+          console.warn('[Calendar][Parse] structured_output_parse_failed', {
+            requestId: loggingContext?.requestId || 'unknown',
+            responseId: firstResponse.responseId || null,
+            model: firstResponse.responseModel || modelName,
+            prefix: rawText.slice(0, 120),
+            suffix: rawText.slice(-120),
+          });
+          const err = new Error('missing_posts_parse_failed');
+          err.code = 'PARSE_FAILED';
+          err.statusCode = 422;
+          err.reason = 'PARSE_FAILED';
+          err.responseId = firstResponse.responseId || null;
+          err.responseModel = firstResponse.responseModel || modelName;
+          err.usedStructuredOutput = false;
+          throw err;
+        }
+      }
       if (parsed) {
         const normalized = normalizeCalendarModelOutput(parsed, expectedChunkCount, {
           requestId: loggingContext?.requestId || null,
@@ -7986,6 +8026,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           responseId: firstResponse.responseId || null,
           model: firstResponse.responseModel || modelName,
           usedStructuredOutput: true,
+          source: parsedSource,
         });
         return {
           posts: normalized.posts,
@@ -8002,7 +8043,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         responseId: firstResponse.responseId || null,
         model: firstResponse.responseModel || modelName,
         presentFields: firstResponse.responseKeys || [],
-        note: 'missing_output_parsed',
+        note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
       });
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
@@ -8014,14 +8055,38 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       throw parseErr;
     }
     const rawText = firstResponse.content || '';
-    if (!firstResponse.parsedOutput) {
+    let parsed = firstResponse.parsedOutput;
+    let parsedSource = 'output_parsed';
+    if (!parsed && rawText) {
+      try {
+        parsed = JSON.parse(rawText);
+        parsedSource = 'output_text_in_output';
+      } catch (parseErr) {
+        console.warn('[Calendar][Parse] structured_output_parse_failed', {
+          requestId: loggingContext?.requestId || 'unknown',
+          responseId: firstResponse.responseId || null,
+          model: firstResponse.responseModel || modelName,
+          prefix: rawText.slice(0, 120),
+          suffix: rawText.slice(-120),
+        });
+        const err = new Error('missing_posts_parse_failed');
+        err.code = 'PARSE_FAILED';
+        err.statusCode = 422;
+        err.reason = 'PARSE_FAILED';
+        err.responseId = firstResponse.responseId || null;
+        err.responseModel = firstResponse.responseModel || modelName;
+        err.usedStructuredOutput = false;
+        throw err;
+      }
+    }
+    if (!parsed) {
       console.warn('[Calendar][Parse] structured_output_missing', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
         responseId: firstResponse.responseId || null,
         model: firstResponse.responseModel || modelName,
         presentFields: firstResponse.responseKeys || [],
-        note: 'missing_output_parsed',
+        note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
       });
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
@@ -8032,7 +8097,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.usedStructuredOutput = false;
       throw parseErr;
     }
-    const normalized = normalizeCalendarModelOutput(firstResponse.parsedOutput, expectedChunkCount, {
+    const normalized = normalizeCalendarModelOutput(parsed, expectedChunkCount, {
       requestId: loggingContext?.requestId || null,
       mode: calendarMode,
       chunkIndex: loggingContext?.chunkIndex ?? null,
@@ -8044,6 +8109,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       responseId: firstResponse.responseId || null,
       model: firstResponse.responseModel || modelName,
       usedStructuredOutput: true,
+      source: parsedSource,
     });
     return {
       posts: normalized.posts,
