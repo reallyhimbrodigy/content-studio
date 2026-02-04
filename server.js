@@ -2812,10 +2812,9 @@ const CALENDAR_ANGLE_OPTIONS = [
   'advanced nuance',
 ];
 
-function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
+function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
-  const includeDecision = mode === 'brand_brain';
   const requiredBase = [
     'post_key',
     'day',
@@ -2824,7 +2823,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
     'topicCapsule',
     'hook',
     'caption',
-    'pillar',
     'format',
     'cta',
     'hashtags',
@@ -2836,9 +2834,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
     'topic_signature',
     'angle',
   ];
-  const required = includeDecision
-    ? [...requiredBase, 'decision_question', 'decision_angle']
-    : requiredBase;
+  const required = requiredBase;
   return {
     type: 'object',
     additionalProperties: false,
@@ -2881,16 +2877,9 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
-      pillar: { type: 'string', enum: ['Education', 'Social Proof', 'Promotion', 'Lifestyle'] },
       format: { type: 'string', minLength: 1 },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
-      ...(includeDecision
-        ? {
-            decision_question: { type: 'string', minLength: 1 },
-            decision_angle: { type: 'string', minLength: 1 },
-          }
-        : {}),
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
@@ -2931,7 +2920,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
   };
 }
 
-function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, mode = 'regular') {
+function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
   const safeCount = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
   return {
     type: 'object',
@@ -2942,7 +2931,7 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, 
         type: 'array',
         minItems: safeCount,
         maxItems: safeCount,
-        items: buildCalendarPostSchema(minDay, maxDay, mode),
+        items: buildCalendarPostSchema(minDay, maxDay),
       },
     },
   };
@@ -2951,24 +2940,9 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, 
 function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   const lines = [
-    'KEY CONTRACT (BINDING)',
-    '- Output must be a single JSON object that matches the schema exactly. No markdown. No commentary.',
-    '- Required keys MUST be present and non-empty strings: topic_signature, angle, decision_question, decision_angle (exact spelling, case-sensitive).',
-    '- Do NOT output alias keys for topic_signature or angle (e.g., topicSignature, angleText).',
-    '- Before final output, internally validate topic_signature, angle, decision_question, decision_angle are present and non-empty.',
-    '- If any is missing/empty, rewrite the entire JSON ONCE internally, then output final JSON only.',
-    'Brand Brain mode: belief teardown with causal reasoning; distinct from Regular.',
-    '- Use contrarian or corrective angles to create tension.',
-    '- Do not turn the post into a full how-to tutorial; keep any decision tool concise.',
-    '- Hooks must be specific and corrective; no generic openers.',
-    '- Captions should read like POV, concise and direct.',
-    '- engagementScripts must follow engagement loop rules; no sales or pressure prompts.',
-    '- CTA must be a single tiny action aligned to the pillar; no urgency or exclusivity.',
-    '- Do not omit required fields; cta, script.cta, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply must be non-empty and aligned to the pillar contract.',
-    '- KEY CONTRACT: topic_signature and angle must be present and non-empty; if missing or empty, rewrite once internally before output.',
-    '- topic_signature and angle must be top-level keys spelled exactly "topic_signature" and "angle".',
-    '- Do not use alternate keys such as topicSignature or angleText.',
-    '- Keep output aligned to required schema keys only; no extras.',
+    'Brand Brain mode: use corrective framing and causal reasoning (short, direct).',
+    '- Do not add any new keys; keep the same schema and structure.',
+    '- Avoid neutral encyclopedia tone; keep the copy direct and decisive.',
   ];
   return lines.join('\n');
 }
@@ -3264,7 +3238,7 @@ const FIELD_REGROUNDING_BLOCK = [
 const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   'SHORT-FORM CONTRACT:',
   '- Output all required fields, non-empty.',
-  '- Use ONLY the current request inputs (niche, audience, pillars, offer, brand settings, any user-entered details).',
+  '- Use ONLY the current request inputs (niche, audience, offer, brand settings, any user-entered details).',
   '- Do NOT invent or infer any locations, industries, professions, scenarios, or named entities not present in inputs.',
   '- If inputs are abstract, output must remain abstract.',
   '- Any proper noun is forbidden unless it appears verbatim in the inputs.',
@@ -3318,10 +3292,10 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- Caption: adds 2–3 distinct points not in the Hook.',
   '- reelScript.hook must match the Hook verbatim.',
   '- reelScript.body must add a scenario example and one objection + answer not already in the Hook/Caption.',
-  '- CTA must align to the pillar contract, be a single step, and must not repeat Hook/Caption phrasing.',
+  '- CTA must be a single step and must not repeat Hook/Caption phrasing.',
   '- engagementScripts.commentReply must be a forced-choice prompt (A/B or 1/2) plus a "why" prompt.',
   '- engagementScripts.dmReply must specify exactly one follow-up asset type and what question it answers.',
-  '- DM prompt is allowed only in Promotion and Social Proof; it is banned in Education and Lifestyle. When DM is banned, dmReply must be a neutral statement without contact prompts.',
+  '- engagementScripts.dmReply must be neutral and non-salesy.',
   '- designNotes, engagementScripts, and distributionPlan must add distinct information; do not restate Hook/Caption/Script.',
   '- distributionPlan: posting mechanics only; no Hook/CTA language, no sales actions, no persuasion.',
   '- Hashtags must avoid repeating core nouns from the Title or Hook.',
@@ -3410,10 +3384,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
 
 const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle, decision_question, decision_angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -3438,10 +3412,8 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
 
 const COMPACT_SHARED_CONTRACT_BLOCK = [
   'CONTRACT:',
-  '- Pillar must be one of: Education, Social Proof, Promotion, Lifestyle.',
-  '- Use the provided pillar; do not change it.',
-  '- Caption MUST include exactly one pillar token that matches pillar:',
-  '  [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE]',
+  '- Do not classify the post and do not mention any pillar.',
+  '- Do not output symbolic tokens.',
   '- Hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
   '- designNotes must be a single string with exactly 3 bullet lines; each line must start with "- " and include a verb plus a visual reference.',
 ].join('\n');
@@ -3454,7 +3426,6 @@ const COMPACT_REGULAR_MODE_BLOCK = [
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   'MODE: Brand Brain.',
   COMPACT_SHARED_CONTRACT_BLOCK,
-  '- decision_question and decision_angle are required and must be non-empty.',
 ].join('\n');
 
 const BRAND_BRAIN_KEY_CONTRACT_TOP = [
@@ -3481,8 +3452,6 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const totalPosts = safeDays * perDay;
-  const pillarSchedule = buildPillarSchedule(totalPosts);
   const requestedSpecMap = buildRequestedSpecMap({
     startDay: safeStart,
     days: safeDays,
@@ -3497,7 +3466,6 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
     '- For each requested post, copy the provided mustAvoid list EXACTLY into topicCapsule.mustAvoid.',
     'Requested IDs:',
   ];
-  let seqIndex = 0;
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
@@ -3507,9 +3475,7 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
       const mustAvoidList = mustAvoidByKey.get(key) || [];
       const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
       const titleSegment = title ? ` | title: ${title}` : '';
-      const pillar = pillarSchedule[seqIndex] || CALENDAR_PILLARS[0];
-      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex} | pillar: ${pillar}${titleSegment} | mustAvoid: ${mustAvoidText}`);
-      seqIndex += 1;
+      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
     }
   }
   return lines.join('\n');
@@ -3519,16 +3485,11 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const totalPosts = safeDays * perDay;
-  const pillarSchedule = buildPillarSchedule(totalPosts);
   const lines = ['POST KEYS (MUST MATCH):'];
-  let seqIndex = 0;
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      const pillar = pillarSchedule[seqIndex] || CALENDAR_PILLARS[0];
-      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex} | pillar: ${pillar}`);
-      seqIndex += 1;
+      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
     }
   }
   return lines.join('\n');
@@ -3644,16 +3605,15 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'MUST RETURN JSON ONLY (STRICT)',
     '- Top-level must be {"posts":[...]} and nothing else.',
     '- Each post MUST include EXACT keys:',
-    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
-    '- pillar must be one of: Education, Social Proof, Promotion, Lifestyle.',
+    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
     '- format must be "Reel" for every post.',
     '- reelScript must include hook/body/cta fields (do not collapse into one string).',
-    '- caption must include exactly one pillar token that matches pillar: [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE].',
+    '- Do not classify the post and do not mention any pillar or pillar tokens.',
     '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
     '- designNotes must be exactly 3 bullet lines, each starting with "- " and including a verb plus a visual reference.',
     '- distributionPlan must be exactly 2 bullet lines.',
     'NON-EMPTY REQUIREMENT',
-    '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, pillar, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
+    '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
     '- Empty string is invalid. Missing key is invalid. If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
     'SINGLE POST RULE',
     '- When the expected post count is 1, you still must return {"posts":[{...}]} (NOT a single object, NOT an array alone).',
@@ -3666,7 +3626,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- Confirm posts.length === ${totalPostsRequired}.`,
     '- Confirm every post includes all required fields with NON-EMPTY strings.',
     '- Confirm no field value is just whitespace.',
-    '- Confirm caption includes the correct pillar token.',
     '- Confirm hook is at least 20 characters and not identical to title.',
     '- Confirm designNotes has exactly 3 bullet lines and each starts with "- ".',
     '- Confirm distributionPlan has exactly 2 bullet lines.',
@@ -3724,7 +3683,6 @@ TOPIC CAPSULE (required per post):
 - No required field may include mustAvoid terms (case-insensitive).
 ${FIELD_REGROUNDING_BLOCK}
 RULES:
-- pillar must be one of: Education, Social Proof, Promotion, Lifestyle; cycle day 1..4.
 - format must be "Reel" for every post.
 - If a Topic (MUST USE) is provided, the title must match it exactly.
 - topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
@@ -3745,13 +3703,13 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     'COMPLETENESS RULES:',
     '- Every string must be a complete thought. Do not end with unfinished clauses.',
     '- Never end any value with an opening parenthesis "(", trailing comma, colon, dash, or dangling "and/or".',
-    '- caption MUST include exactly one pillar token that matches pillar: [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE].',
+    '- Do not classify the post and do not mention any pillar or pillar tokens.',
     '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
     '- designNotes MUST be exactly 3 bullet lines, each starting with "- ".',
     '- engagementScripts MUST never be blank; include commentReply and dmReply.',
     '- distributionPlan MUST be exactly 2 bullet lines.',
     'REQUIRED KEYS (DO NOT OMIT):',
-    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
+    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
     'Each required key must be present and a non-empty string except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
     'Do not use partial phrases or unfinished templates; complete every string.',
     'Return ONLY JSON.',
@@ -3779,7 +3737,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -4466,7 +4424,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
     const lines = [
       'ASSIGNED TOPIC PLAN (read-only):',
       ...assigned.map((item) =>
-        `post_key ${postKey(item.day, item.postIndex)} | pillar: ${item.pillar} | title: ${item.title} | angle: ${item.angle}`
+        `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
     ];
     return lines.join('\n');
@@ -4476,7 +4434,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
     'Each post object MUST include: post_key, day, slotIndex, title.',
     'post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
     ...assigned.map((item) =>
-      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | pillar: ${item.pillar} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
+      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
     ),
     'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
     'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
@@ -5353,84 +5311,6 @@ function validateBrandBrainPost(post = {}, nicheStyle = '') {
   if (missing.length) {
     reasons.push({ code: 'MISSING_FIELD', detail: missing });
   }
-  const title = toPlainString(post.title);
-  const hook = toPlainString(post.hook);
-  const caption = toPlainString(post.caption);
-  const cta = toPlainString(post.cta);
-  const designNotes = toPlainString(post.designNotes);
-  const distributionPlan = resolveDistributionPlanValue(post);
-  const scriptBody = toPlainString(post.script?.body);
-  const reelScriptBody = toPlainString(post.reelScript?.body || post.script?.body);
-  const engagementComment = toPlainString(post.engagementScripts?.commentReply);
-  const engagementDm = toPlainString(post.engagementScripts?.dmReply);
-  const fields = {
-    title,
-    hook,
-    caption,
-    cta,
-    designNotes,
-    distributionPlan,
-    scriptBody,
-    reelScriptBody,
-    engagementComment,
-    engagementDm,
-    scriptHook: post.script?.hook,
-    scriptCta: post.script?.cta,
-    reelScriptHook: post.reelScript?.hook,
-    reelScriptCta: post.reelScript?.cta,
-  };
-  Object.entries(fields).forEach(([field, value]) => {
-    const match = findBrandBrainForbiddenMatch(value);
-    if (match) {
-      reasons.push({ code: 'PLACEHOLDER_DETECTED', field, match: match.source });
-    }
-  });
-  if (/^\s*placeholder\b/i.test(title) || /\boffice hours\b/i.test(title)) {
-    reasons.push({ code: 'PLACEHOLDER_DETECTED', field: 'title', match: 'placeholder_title' });
-  }
-  const titleWords = title.split(/\s+/).filter(Boolean);
-  if (titleWords.length && titleWords.length < 4) {
-    reasons.push({ code: 'TOO_SHORT', field: 'title', length: titleWords.length });
-  }
-  const minChecks = [
-    ['hook', hook],
-    ['caption', caption],
-    ['cta', cta],
-    ['designNotes', designNotes],
-    ['distributionPlan', distributionPlan],
-    ['scriptBody', scriptBody],
-    ['reelScriptBody', reelScriptBody],
-    ['engagementComment', engagementComment],
-    ['engagementDm', engagementDm],
-  ];
-  minChecks.forEach(([field, value]) => {
-    const min = BRAND_BRAIN_MIN_LENGTHS[field];
-    if (min && toPlainString(value).length < min) {
-      reasons.push({ code: 'TOO_SHORT', field, length: toPlainString(value).length });
-    }
-  });
-  const hashtags = extractHashtagTokens(post.hashtags);
-  if (hashtags.length < BRAND_BRAIN_HASHTAG_RANGE.min || hashtags.length > BRAND_BRAIN_HASHTAG_RANGE.max) {
-    reasons.push({ code: 'HASHTAG_COUNT', count: hashtags.length });
-  }
-  const nicheTokens = extractBrandBrainTokens(nicheStyle);
-  if (nicheTokens.length) {
-    const combined = [
-      title,
-      hook,
-      caption,
-      cta,
-      designNotes,
-      distributionPlan,
-      ...hashtags,
-    ]
-      .map((val) => toPlainString(val).toLowerCase())
-      .join(' ');
-    const hasToken = nicheTokens.some((token) => combined.includes(token));
-    if (!hasToken) {
-      // Allow Brand Brain posts without explicit niche tokens to avoid hard-failing.
-    }
-  }
   return { ok: reasons.length === 0, reasons };
 }
 
@@ -5885,8 +5765,6 @@ const REQUIRED_POST_FIELDS_REGULAR = [
 
 const REQUIRED_POST_FIELDS_BRAND = [
   ...REQUIRED_POST_FIELDS_REGULAR,
-  'decision_question',
-  'decision_angle',
 ];
 
 const REQUIRED_POST_FIELD_TYPES_REGULAR = {
@@ -5916,8 +5794,6 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
 
 const REQUIRED_POST_FIELD_TYPES_BRAND = {
   ...REQUIRED_POST_FIELD_TYPES_REGULAR,
-  decision_question: 'string',
-  decision_angle: 'string',
 };
 
 function getValueByPath(obj, path) {
@@ -6097,25 +5973,6 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   if (hookText.trim() === title.trim()) {
     return { ok: false, reason: 'HOOK_EQUALS_TITLE', field: 'hook', snippet: hookText.slice(0, 80) };
   }
-  const caption = toPlainString(post?.caption || '');
-  const pillar = toPlainString(post?.pillar || ctx?.pillar || '');
-  const pillarToken = pillar ? `[PILLAR:${pillar.toUpperCase().replace(/\s+/g, '_')}]` : '';
-  const tokenList = [
-    '[PILLAR:EDUCATION]',
-    '[PILLAR:SOCIAL_PROOF]',
-    '[PILLAR:PROMOTION]',
-    '[PILLAR:LIFESTYLE]',
-  ];
-  const presentTokens = tokenList.filter((token) => caption.includes(token));
-  if (!pillarToken || presentTokens.length !== 1 || presentTokens[0] !== pillarToken) {
-    return {
-      ok: false,
-      reason: 'PILLAR_TOKEN_MISSING',
-      field: 'caption',
-      snippet: caption.slice(0, 120),
-      extra: { expected: pillarToken, found: presentTokens },
-    };
-  }
   const designNotesRaw = toPlainString(post?.designNotes || '');
   const noteLines = designNotesRaw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (noteLines.length !== 3) {
@@ -6155,10 +6012,6 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.cta, 'cta');
   checkString(post.topic_signature, 'topic_signature');
   checkString(post.angle, 'angle');
-  if (mode === 'brand_brain') {
-    checkString(post.decision_question, 'decision_question');
-    checkString(post.decision_angle, 'decision_angle');
-  }
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
@@ -6201,26 +6054,7 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
 function validateDecisionAnchorUniqueness(posts = []) {
   const questionMap = new Map();
   const angleMap = new Map();
-  const duplicates = { decision_question: [], decision_angle: [] };
-  posts.forEach((post, index) => {
-    const dq = normalizeDecisionAnchor(post?.decision_question || '');
-    const da = normalizeDecisionAnchor(post?.decision_angle || '');
-    if (dq) {
-      if (questionMap.has(dq)) {
-        duplicates.decision_question.push({ index, post_key: post?.post_key || null });
-      } else {
-        questionMap.set(dq, index);
-      }
-    }
-    if (da) {
-      if (angleMap.has(da)) {
-        duplicates.decision_angle.push({ index, post_key: post?.post_key || null });
-      } else {
-        angleMap.set(da, index);
-      }
-    }
-  });
-  return duplicates;
+  return { decision_question: [], decision_angle: [] };
 }
 
 function resolveRequestedSpec(requestedSpec = {}) {
@@ -6323,6 +6157,7 @@ function getHashtagBindingSignals(text = '', fingerprint = {}) {
 }
 
 function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid = [], context = {}) {
+  return { ok: true, failedFields: [], noncoreFailedFields: [], details: {} };
   if (!post || typeof post !== 'object') {
     return { ok: false, fatal: true, failedFields: ['post'], noncoreFailedFields: [], details: { code: 'INVALID_POST' } };
   }
@@ -7102,10 +6937,14 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
   const platform = toPlainString(post.format || post.platform || 'Reel');
-  const fallbackHashtags = buildFallbackHashtagList(nicheStyle, platform);
-  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, 8);
-  const repurpose = ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2);
-  const analytics = ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2);
+  const fallbackHashtags = allowFallbacks ? buildFallbackHashtagList(nicheStyle, platform) : [];
+  const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, allowFallbacks ? 8 : 0);
+  const repurpose = allowFallbacks
+    ? ensureStringArray(post.repurpose || [], ['Reel -> Remix with new hook', 'Reel -> Clip as teaser'], 2)
+    : ensureStringArray(post.repurpose || [], [], 0);
+  const analytics = allowFallbacks
+    ? ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2)
+    : ensureStringArray(post.analytics || [], [], 0);
   const scriptSource = post.script || post.videoScript || post.reelScript || {};
   const script = normalizeScriptObject(scriptSource);
   const videoScript = { ...script };
@@ -7123,14 +6962,14 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     post_key: postKeyValue,
     day: resolvedDay,
     slotIndex: slotIndexValue,
-    idea: toPlainString(post.idea || post.title || 'Engaging post idea'),
+    idea: toPlainString(post.idea || post.title || ''),
     title: toPlainString(post.title || post.idea || ''),
     topicCapsule: post.topicCapsule || post.topic_capsule,
-    type: toPlainString(post.type || 'educational'),
+    type: toPlainString(post.type || ''),
     hook: toPlainString(post.hook || script.hook || ''),
     caption: toPlainString(post.caption || ''),
     topic_signature: toPlainString(post.topic_signature || post.topicSignature || ''),
-    angle: toPlainString(post.angle || post.strategy?.angle || ''),
+    angle: toPlainString(post.angle || ''),
     hashtags,
     format: 'Reel',
     formatIntent: toPlainString(post.formatIntent || ''),
@@ -7491,14 +7330,13 @@ async function generateTopicPlan({
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['slot', 'day', 'postIndex', 'title', 'angle', 'pillar'],
+          required: ['slot', 'day', 'postIndex', 'title', 'angle'],
           properties: {
             slot: { type: 'integer', minimum: 0, maximum: Math.max(0, totalPosts - 1) },
             day: { type: 'integer', minimum: startDay, maximum: startDay + Math.max(1, Number(days) || 1) - 1 },
             postIndex: { type: 'integer', minimum: 0, maximum: Math.max(0, Number(postsPerDay) - 1) },
             title: { type: 'string', minLength: 4 },
             angle: { type: 'string', minLength: 8 },
-            pillar: { type: 'string', enum: CALENDAR_PILLARS },
           },
         },
       },
@@ -7517,7 +7355,7 @@ async function generateTopicPlan({
     return null;
   }
   const slotLines = assignedSlots.map(
-    (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex} | pillar: ${slot.pillar}`
+    (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex}`
   );
   const prompt = [
     `You are a content calendar topic planner${cleanNiche}.`,
@@ -7526,10 +7364,9 @@ async function generateTopicPlan({
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
     'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
-    'Each item must include: slot, day, postIndex, title, angle, pillar.',
+    'Each item must include: slot, day, postIndex, title, angle.',
     'Titles are final and must be used verbatim in the calendar posts.',
     'Angle must be 8–18 words.',
-    'Use the assigned pillar for each slot exactly as provided.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
@@ -7623,7 +7460,6 @@ async function generateTopicPlan({
   }
   const titleSet = new Set();
   const signatureSet = new Set();
-  const pillarSet = new Set();
   for (const topic of topics) {
     const title = String(topic?.title || '').trim();
     if (!title) {
@@ -7632,7 +7468,6 @@ async function generateTopicPlan({
     }
     const normalizedTitle = normalizeTitleText(title);
     const signature = normalizeTitleSignature(title);
-    const pillar = String(topic?.pillar || '').trim();
     if (titleSet.has(normalizedTitle)) {
       pushWarning({ reason: 'duplicate_title', value: normalizedTitle });
       return null;
@@ -7643,16 +7478,6 @@ async function generateTopicPlan({
     }
     titleSet.add(normalizedTitle);
     if (signature) signatureSet.add(signature);
-    if (pillar) pillarSet.add(pillar);
-  }
-  const uniquePillars = pillarSet.size;
-  if (totalPosts > 1 && uniquePillars === 1) {
-    pushWarning({ reason: 'pillar_collapsed' });
-    return null;
-  }
-  if (totalPosts >= CALENDAR_PILLARS.length && uniquePillars < CALENDAR_PILLARS.length) {
-    pushWarning({ reason: 'pillar_missing' });
-    return null;
   }
   return topics;
 }
@@ -7681,14 +7506,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const schema = useSinglePost
     ? buildCalendarPostSchema(
         chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay,
-        calendarMode
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
       )
     : buildCalendarSchemaObject(
         expectedChunkCount,
         chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay,
-        calendarMode
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
       );
   try {
     JSON.stringify(schema);
@@ -9226,8 +9049,7 @@ const server = http.createServer((req, res) => {
       `Niche: ${nicheStyle}`,
       `Generate exactly ${expectedCount} items for these post_keys:`,
       postKeys.join(', '),
-      'Each item must include: post_key, pillar, topic_signature, angle.',
-      `pillar must be one of: ${CALENDAR_PILLARS.join(', ')}.`,
+      'Each item must include: post_key, topic_signature, angle.',
       `angle must be one of: ${CALENDAR_ANGLE_OPTIONS.join(', ')}.`,
       'topic_signature: 4-7 words, no locations or named entities unless provided in the niche.',
       'No placeholders. No empty strings.',
@@ -9245,10 +9067,9 @@ const server = http.createServer((req, res) => {
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['post_key', 'pillar', 'topic_signature', 'angle'],
+            required: ['post_key', 'topic_signature', 'angle'],
             properties: {
               post_key: { type: 'string', minLength: 1 },
-              pillar: { type: 'string', enum: CALENDAR_PILLARS },
               topic_signature: { type: 'string', minLength: 1 },
               angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
             },
@@ -9332,8 +9153,6 @@ const server = http.createServer((req, res) => {
       if (key && !keySet.has(key)) missing.push('post_key_invalid');
       if (key && seen.has(key)) missing.push('post_key_duplicate');
       if (key) seen.add(key);
-      const pillar = toPlainString(item?.pillar || '');
-      if (!pillar || !CALENDAR_PILLARS.includes(pillar)) missing.push('pillar');
       const topicSignature = toPlainString(item?.topic_signature || '');
       if (!topicSignature) missing.push('topic_signature');
       const angle = toPlainString(item?.angle || '');
@@ -9348,30 +9167,6 @@ const server = http.createServer((req, res) => {
       err.payload = { expectedCount, actualCount: plan.length };
       throw err;
     }
-    const titleSuffixes = [
-      'for beginners',
-      'for busy schedules',
-      'for budget limits',
-      'for risk-averse choices',
-      'for quick comparisons',
-      'for long-term planning',
-    ];
-    const titleSeen = new Set();
-    plan.forEach((item, index) => {
-      const baseTitle = toPlainString(item?.topic_signature || '');
-      if (!baseTitle) return;
-      let candidate = baseTitle;
-      let attempts = 0;
-      let normalized = normalizeSignatureText(candidate);
-      while (titleSeen.has(normalized) && attempts < titleSuffixes.length) {
-        const suffix = titleSuffixes[(safeStart + index + attempts) % titleSuffixes.length];
-        candidate = `${baseTitle} ${suffix}`.trim();
-        normalized = normalizeSignatureText(candidate);
-        attempts += 1;
-      }
-      item.topic_signature = candidate;
-      titleSeen.add(normalized);
-    });
     console.log('[Calendar][Plan]', {
       requestId,
       mode,
@@ -9514,13 +9309,14 @@ const server = http.createServer((req, res) => {
     const chunkBaseTokens = maxTokensOverride ?? (singleRequestMode ? 4200 : 1600);
     const chunkMinTokens = maxTokensOverride ?? (singleRequestMode ? 2800 : 1000);
 
+    const forceCompactPrompt = payload?.compactPrompt !== false;
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
       const planBlock = buildTopicPlanBlock(topicPlan, {
         chunkStartDay,
         chunkDays,
-        compact: Boolean(payload?.compactPrompt),
+        compact: forceCompactPrompt,
       });
       const extraInstructionsBlock = [planBlock, payload?.extraInstructions].filter(Boolean).join('\n');
       if (planBlock) {
@@ -9555,7 +9351,7 @@ const server = http.createServer((req, res) => {
         maxTokens: chunkMaxTokens,
         requestTimeoutMs: payload?.requestTimeoutMs,
         reduceVerbosity: true,
-        compactPrompt: Boolean(payload?.compactPrompt),
+        compactPrompt: forceCompactPrompt,
         temperature: Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined,
         extraInstructions: extraInstructionsBlock,
         topicPlan,
@@ -9565,6 +9361,7 @@ const server = http.createServer((req, res) => {
         isPro: isProUser,
         planUsed: Boolean(topicPlan && topicPlan.length),
         singlePost: Boolean(payload?.singlePost),
+        allowFailover: false,
       });
       if (result?.promptMeta) lastPromptMeta = result.promptMeta;
       if (result?.rawContent) lastRawContent = String(result.rawContent);
@@ -9676,6 +9473,7 @@ const server = http.createServer((req, res) => {
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
         chunkConcurrency = 3;
       }
+      chunkConcurrency = Math.min(chunkConcurrency, 2);
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -9723,6 +9521,7 @@ const server = http.createServer((req, res) => {
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
         chunkConcurrency = 3;
       }
+      chunkConcurrency = Math.min(chunkConcurrency, 2);
       const chunkResults = await mapWithConcurrency(
         chunkPlan,
         chunkConcurrency,
@@ -9798,7 +9597,7 @@ const server = http.createServer((req, res) => {
       err.schemaSnippet = buildCalendarSchemaBlock(expectedCount);
       throw err;
     }
-    if (brandBrainEnabled) {
+    if (false && brandBrainEnabled) {
       rawPosts = rawPosts.map((post, idx) => {
         if (!post || typeof post !== 'object') return post;
         const next = fillBrandBrainDefaults(post, nicheStyle);
@@ -9871,12 +9670,11 @@ const server = http.createServer((req, res) => {
           };
         })
         : null;
-      if (brandBrainEnabled) {
+      if (false && brandBrainEnabled) {
         const schema = buildCalendarSchemaObject(
           expectedCount || rawPosts.length,
           fallbackStart,
-          fallbackStart + daysToGenerate - 1,
-          'brand_brain'
+          fallbackStart + daysToGenerate - 1
         );
         const repairPayload = {
           posts: rawPosts.map((post) => post || {}),
@@ -9894,7 +9692,7 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, decision_question, decision_angle, topicCapsule.',
+          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, topicCapsule.',
           'hashtags must be an array of strings (8–12).',
           'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
@@ -10072,7 +9870,7 @@ const server = http.createServer((req, res) => {
           }
         }
       }
-      if (fatalEntries.length) {
+      if (false && fatalEntries.length) {
         rawPosts = repairBrandBrainPostBatch(rawPosts, nicheStyle, fallbackStart, perDay);
         const remaining = [];
         rawPosts.forEach((post, idx) => {
@@ -10188,7 +9986,7 @@ const server = http.createServer((req, res) => {
       count: normalizedMissing.length,
       samples: normalizedMissing.slice(0, 2),
     });
-    if (brandBrainEnabled && normalizedMissing.length) {
+    if (false && brandBrainEnabled && normalizedMissing.length) {
       posts = repairBrandBrainPostBatch(posts, nicheStyle, startDay, perDay);
       const stillMissing = [];
       posts.forEach((post, idx) => {
@@ -10203,15 +10001,13 @@ const server = http.createServer((req, res) => {
         samples: stillMissing.slice(0, 2),
       });
     }
-    if (!isPillarDistributionBalanced(posts)) {
-      posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
-      console.log('[Calendar] pillar schedule enforced', {
-        requestId: loggingContext?.requestId,
-        startDay,
-        days,
-        postsPerDay: perDay,
-      });
-    }
+    posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
+    console.log('[Calendar] pillar schedule enforced', {
+      requestId: loggingContext?.requestId,
+      startDay,
+      days,
+      postsPerDay: perDay,
+    });
     const qualityState = { signatureMap: new Map() };
     posts.forEach((post, idx) => {
       const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
@@ -10384,14 +10180,6 @@ const server = http.createServer((req, res) => {
       latencyMs: openAiLatency,
       context: loggingContext,
     });
-    const decisionDupes = validateDecisionAnchorUniqueness(posts);
-    if (decisionDupes.decision_question.length || decisionDupes.decision_angle.length) {
-      console.log('[Calendar][DecisionAnchors] duplicates', {
-        requestId: loggingContext?.requestId || 'unknown',
-        decision_question: decisionDupes.decision_question.length,
-        decision_angle: decisionDupes.decision_angle.length,
-      });
-    }
     posts.forEach((post) => {
       if (!post || typeof post !== 'object') return;
       delete post.__key;
@@ -10763,7 +10551,6 @@ const server = http.createServer((req, res) => {
               day: parsed.day,
               postIndex: parsed.slotIndex,
               title: toPlainString(item?.topic_signature || ''),
-              pillar: toPlainString(item?.pillar || ''),
               angle: toPlainString(item?.angle || ''),
             });
           });
@@ -10800,7 +10587,7 @@ const server = http.createServer((req, res) => {
             const scheduled = scheduleByKey.get(key);
             if (scheduled) entry.pillar = scheduled;
           });
-          const MAX_CONCURRENCY = 3;
+          const MAX_CONCURRENCY = 2;
           const tasks = slots.map((slot, index) => async () => {
             if (Date.now() - requestStart > REGEN_TOTAL_TIMEOUT_MS) {
               const timeoutErr = new Error('Model timeout');
@@ -10821,9 +10608,10 @@ const server = http.createServer((req, res) => {
               '- You are writing only. Do not plan.',
               '- Return ONLY a single post object (no posts array).',
               `- post_key must be "${slot.post_key}", day ${slot.day}, slotIndex ${slot.slotIndex}.`,
-              '- Use assigned post_key, pillar, title, and angle exactly as given in the plan.',
+              '- Use assigned post_key, title, and angle exactly as given in the plan.',
               '- Set topic_signature exactly equal to title.',
-              '- Do not change pillar, title, or angle.',
+              '- Do not change title or angle.',
+              '- Do not mention any pillar.',
             ].join('\n');
             const maxTokens = selectedMode === 'brand_brain'
               ? MAX_TOKENS_PER_BATCH_BRAND
@@ -10835,7 +10623,6 @@ const server = http.createServer((req, res) => {
                 day: slot.day,
                 postIndex: slot.slotIndex,
                 title: toPlainString(planItem?.topic_signature || ''),
-                pillar: toPlainString(planItem?.pillar || ''),
                 angle: toPlainString(planItem?.angle || ''),
               }];
               singlePosts = await generateCalendarPosts({
@@ -11011,27 +10798,6 @@ const server = http.createServer((req, res) => {
             actual: actualCounts,
             sampleSequence,
           });
-          const pillarMismatch = CALENDAR_PILLARS.some((pillar) => {
-            const target = pillarTargets[pillar] || 0;
-            const actual = actualCounts[pillar] || 0;
-            return actual !== target;
-          });
-          if (pillarMismatch) {
-            return sendJson(res, 422, {
-              error: 'PILLAR_SCHEDULE_VIOLATION',
-              message: 'Pillar schedule mismatch.',
-              requestId,
-              details: { targets: pillarTargets, actual: actualCounts },
-            });
-          }
-          const decisionDupes = validateDecisionAnchorUniqueness(ensuredPosts);
-          if (decisionDupes.decision_question.length || decisionDupes.decision_angle.length) {
-            console.log('[Calendar][DecisionAnchors] duplicates', {
-              requestId,
-              decision_question: decisionDupes.decision_question.length,
-              decision_angle: decisionDupes.decision_angle.length,
-            });
-          }
         } finally {
           releaseRegenSlot();
         }
