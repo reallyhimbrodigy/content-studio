@@ -5928,6 +5928,47 @@ function parseDesignNotesDirectives(value = '') {
   return bullets;
 }
 
+function normalizeDesignNotesInput(input) {
+  let beforeText = '';
+  const items = [];
+  if (Array.isArray(input)) {
+    beforeText = input.map((item) => String(item || '')).join('\n');
+    input.forEach((item) => {
+      const cleaned = String(item || '').trim().replace(/^[\s*-•]+/, '').trim();
+      if (cleaned) items.push(cleaned);
+    });
+  } else if (typeof input === 'string') {
+    beforeText = input;
+    const text = input.replace(/\r\n/g, '\n').trim();
+    if (text) {
+      const lines = text.split('\n');
+      lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const split = trimmed.split(/\s*-\s+/).filter(Boolean);
+        if (split.length > 1 || trimmed.startsWith('-')) {
+          split.forEach((part) => {
+            const cleaned = String(part || '').replace(/^[\s*-•]+/, '').trim();
+            if (cleaned) items.push(cleaned);
+          });
+        } else {
+          const cleaned = trimmed.replace(/^[\s*-•]+/, '').trim();
+          if (cleaned) items.push(cleaned);
+        }
+      });
+    }
+  } else if (input != null) {
+    beforeText = String(input);
+  }
+
+  if (!items.length) {
+    return { value: '', changed: Boolean(beforeText && beforeText.trim()) };
+  }
+  const normalized = items.map((item) => `- ${item}`).join('\n');
+  const changed = beforeText.trim() !== normalized.trim();
+  return { value: normalized, changed, before: beforeText.slice(0, 120), after: normalized.slice(0, 120) };
+}
+
 function normalizeSignatureText(value = '') {
   return String(value || '')
     .toLowerCase()
@@ -5974,13 +6015,8 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     return { ok: false, reason: 'HOOK_EQUALS_TITLE', field: 'hook', snippet: hookText.slice(0, 80) };
   }
   const designNotesRaw = toPlainString(post?.designNotes || '');
-  const noteLines = designNotesRaw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  if (noteLines.length !== 3) {
-    return { ok: false, reason: 'DESIGN_NOTES_INVALID', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
-  }
-  const invalidLine = noteLines.find((line) => !line.startsWith('- '));
-  if (invalidLine) {
-    return { ok: false, reason: 'DESIGN_NOTES_INVALID', field: 'designNotes', snippet: invalidLine.slice(0, 120) };
+  if (!designNotesRaw.trim()) {
+    return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
   }
   return { ok: true };
 }
@@ -6958,6 +6994,8 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const postKeyValue = toPlainString(post.post_key || post.postKey || '');
   const slotIndexValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
   const resolvedPillar = normalizeCalendarPillar(post.pillar) || getCalendarPillarForDay(resolvedDay);
+  const rawDesignNotes = post.designNotes ?? post.design_notes ?? post.designNotesRaw;
+  const normalizedDesignNotes = normalizeDesignNotesInput(rawDesignNotes);
   const normalized = {
     post_key: postKeyValue,
     day: resolvedDay,
@@ -6975,7 +7013,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     formatIntent: toPlainString(post.formatIntent || ''),
     cta: toPlainString(post.cta || ''),
     pillar: resolvedPillar,
-    designNotes: toPlainString(post.designNotes || ''),
+    designNotes: normalizedDesignNotes.value || '',
     repurpose,
     analytics,
     engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
@@ -6991,6 +7029,15 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     distributionPlan,
     suggestedAudio: extractSuggestedAudioFromPost(post),
   };
+  if (normalizedDesignNotes.changed) {
+    console.log('[Calendar][NormalizeDesignNotes]', {
+      requestId: loggingContext?.requestId || null,
+      post_key: postKeyValue || null,
+      changed: true,
+      beforeSnippet: normalizedDesignNotes.before || '',
+      afterSnippet: normalizedDesignNotes.after || '',
+    });
+  }
   if (post.topicBindingFailed) {
     normalized.topicBindingFailed = true;
     if (Array.isArray(post.topicBindingFailedFields) && post.topicBindingFailedFields.length) {
