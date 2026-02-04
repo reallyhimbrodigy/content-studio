@@ -3422,7 +3422,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- caption <= 140 chars (1-2 sentences)',
   '- hashtags: exactly 6 tags',
   '- suggestedAudio: single short string (no prefix); "Original audio" allowed',
-  '- designNotes: exactly 3 bullet lines (8–80 chars each)',
+  '- designNotes: exactly 3 bullet lines, each starting with "- "',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
@@ -3436,30 +3436,25 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- Use reelScript.hook as line 1, reelScript.body as lines 2-3, reelScript.cta as line 4. Mirror the same lines in script.hook/body/cta.',
 ].join('\n');
 
+const COMPACT_SHARED_CONTRACT_BLOCK = [
+  'CONTRACT:',
+  '- Pillar must be one of: Education, Social Proof, Promotion, Lifestyle.',
+  '- Use the provided pillar; do not change it.',
+  '- Caption MUST include exactly one pillar token that matches pillar:',
+  '  [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE]',
+  '- Hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
+  '- designNotes must be a single string with exactly 3 bullet lines; each line must start with "- " and include a verb plus a visual reference.',
+].join('\n');
+
 const COMPACT_REGULAR_MODE_BLOCK = [
-  'MODE: Regular (neutral/practical).',
-  '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
-  '- Include decision_question and decision_angle; keep them specific to the title/topic and not generic.',
-  '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
-  '- Each post must resolve its decision_context; no two posts may share it.',
-  '- Pillar requirements: Education=Reel Script body includes Step 1/Step 2/Step 3; Social Proof includes proof token + 1 metric number; Promotion CTA includes DM/comment/book/call; Lifestyle includes 2 lifestyle specifics from [walkable, schools, commute, nightlife, parks, culture].',
-  '- Hook must match the topic/title; do not default to neighborhoods unless the topic/title is neighborhoods.',
-  '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
-  '- No belief/teardown framing.',
-  '- DM allowed only in Promotion + Social Proof; otherwise engagementScripts.dmReply must be neutral share/save.',
+  'MODE: Regular.',
+  COMPACT_SHARED_CONTRACT_BLOCK,
 ].join('\n');
 
 const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
-  'MODE: Brand Brain (belief teardown).',
-  '- Angle is derived from (pillar + title + day index); keep hook/CTA stems unique across posts.',
-  '- Include decision_question and decision_angle; treat the decision_question with a contrarian/reframing lens.',
-  '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
-  '- Each post must resolve its decision_context; no two posts may share it.',
-  '- Pillar requirements: Education=Reel Script body includes Step 1/Step 2/Step 3; Social Proof includes proof token + 1 metric number; Promotion CTA includes DM/comment/book/call; Lifestyle includes 2 lifestyle specifics from [walkable, schools, commute, nightlife, parks, culture].',
-  '- Hook must match the topic/title; do not default to neighborhoods unless the topic/title is neighborhoods.',
-  '- Treat decision_context by reframing the assumption and surfacing a hidden tradeoff/constraint with second-order consequences.',
-  '- Use at most 2 persuasion moves in VO lines (pick from: Belief/Constraint/Consequence/Identity) and label them compactly.',
-  '- Keep within VO line caps; no urgency or motivational fluff.',
+  'MODE: Brand Brain.',
+  COMPACT_SHARED_CONTRACT_BLOCK,
+  '- decision_question and decision_angle are required and must be non-empty.',
 ].join('\n');
 
 const BRAND_BRAIN_KEY_CONTRACT_TOP = [
@@ -3478,14 +3473,16 @@ const CALENDAR_HARD_SEPARATION_BLOCK = [
   '- If mode framing overlaps (Regular uses Brand Brain rhetoric, or Brand Brain becomes neutral), rewrite until distinct.',
 ].join('\n');
 
-const REGULAR_CONTENT_QUALITY_RULES_BLOCK = REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK;
+const REGULAR_CONTENT_QUALITY_RULES_BLOCK = '';
 
-const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK;
+const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = '';
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const totalPosts = safeDays * perDay;
+  const pillarSchedule = buildPillarSchedule(totalPosts);
   const requestedSpecMap = buildRequestedSpecMap({
     startDay: safeStart,
     days: safeDays,
@@ -3500,6 +3497,7 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
     '- For each requested post, copy the provided mustAvoid list EXACTLY into topicCapsule.mustAvoid.',
     'Requested IDs:',
   ];
+  let seqIndex = 0;
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
@@ -3509,7 +3507,9 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
       const mustAvoidList = mustAvoidByKey.get(key) || [];
       const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
       const titleSegment = title ? ` | title: ${title}` : '';
-      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
+      const pillar = pillarSchedule[seqIndex] || CALENDAR_PILLARS[0];
+      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex} | pillar: ${pillar}${titleSegment} | mustAvoid: ${mustAvoidText}`);
+      seqIndex += 1;
     }
   }
   return lines.join('\n');
@@ -3519,11 +3519,16 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  const totalPosts = safeDays * perDay;
+  const pillarSchedule = buildPillarSchedule(totalPosts);
   const lines = ['POST KEYS (MUST MATCH):'];
+  let seqIndex = 0;
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
+      const pillar = pillarSchedule[seqIndex] || CALENDAR_PILLARS[0];
+      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex} | pillar: ${pillar}`);
+      seqIndex += 1;
     }
   }
   return lines.join('\n');
@@ -3640,9 +3645,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Top-level must be {"posts":[...]} and nothing else.',
     '- Each post MUST include EXACT keys:',
     'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
+    '- pillar must be one of: Education, Social Proof, Promotion, Lifestyle.',
     '- format must be "Reel" for every post.',
     '- reelScript must include hook/body/cta fields (do not collapse into one string).',
-    '- designNotes must be exactly 3 bullet lines.',
+    '- caption must include exactly one pillar token that matches pillar: [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE].',
+    '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
+    '- designNotes must be exactly 3 bullet lines, each starting with "- " and including a verb plus a visual reference.',
     '- distributionPlan must be exactly 2 bullet lines.',
     'NON-EMPTY REQUIREMENT',
     '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, pillar, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
@@ -3658,7 +3666,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- Confirm posts.length === ${totalPostsRequired}.`,
     '- Confirm every post includes all required fields with NON-EMPTY strings.',
     '- Confirm no field value is just whitespace.',
-    '- Confirm designNotes has exactly 3 bullet lines.',
+    '- Confirm caption includes the correct pillar token.',
+    '- Confirm hook is at least 20 characters and not identical to title.',
+    '- Confirm designNotes has exactly 3 bullet lines and each starts with "- ".',
     '- Confirm distributionPlan has exactly 2 bullet lines.',
   ].join('\n');
   const calendarContextBlock = [
@@ -3735,7 +3745,9 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     'COMPLETENESS RULES:',
     '- Every string must be a complete thought. Do not end with unfinished clauses.',
     '- Never end any value with an opening parenthesis "(", trailing comma, colon, dash, or dangling "and/or".',
-    '- designNotes MUST be exactly 3 bullet lines.',
+    '- caption MUST include exactly one pillar token that matches pillar: [PILLAR:EDUCATION] | [PILLAR:SOCIAL_PROOF] | [PILLAR:PROMOTION] | [PILLAR:LIFESTYLE].',
+    '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
+    '- designNotes MUST be exactly 3 bullet lines, each starting with "- ".',
     '- engagementScripts MUST never be blank; include commentReply and dmReply.',
     '- distributionPlan MUST be exactly 2 bullet lines.',
     'REQUIRED KEYS (DO NOT OMIT):',
@@ -6040,52 +6052,6 @@ function parseDesignNotesDirectives(value = '') {
   return bullets;
 }
 
-function normalizeDesignNotes(post = {}, ctx = {}) {
-  const requestId = ctx?.requestId || null;
-  const postKeyValue = toPlainString(ctx?.post_key || post?.post_key || post?.postKey || '');
-  const original = typeof post?.designNotes === 'string' ? post.designNotes : '';
-  const raw = typeof post?.designNotes === 'string' ? post.designNotes : '';
-  const topicSource = toPlainString(post?.topic || post?.title || post?.idea || '');
-  const topicShort = topicSource.split(/[.!?]/)[0].trim().slice(0, 60) || 'the topic';
-  const cleanedLines = String(raw || '')
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^[\s•\-\*]+/, '').trim())
-    .filter(Boolean);
-  const fillLines = [];
-  fillLines.push(`Open on-screen with: ${topicShort}`);
-  fillLines.push('Show 3 proof points: price, DOM, area');
-  fillLines.push("Close with CTA lower-third: DM 'MIAMI'");
-  const lines = cleanedLines.slice(0, 3);
-  while (lines.length < 3) {
-    lines.push(fillLines[lines.length]);
-  }
-  const normalizeLine = (line) => {
-    let next = String(line || '').trim();
-    while (next.length < 10) {
-      next = `${next} (quick visual)`.trim();
-    }
-    if (next.length > 88) {
-      next = next.slice(0, 88).trim();
-    }
-    return next;
-  };
-  const finalLines = lines.map((line) => `- ${normalizeLine(line)}`);
-  const normalized = finalLines.join('\n');
-  if (normalized.trim() !== original.trim()) {
-    console.log('[Calendar][NormalizeDesignNotes]', {
-      requestId,
-      post_key: postKeyValue || null,
-      changed: true,
-      beforeSnippet: original.slice(0, 120),
-      afterSnippet: normalized.slice(0, 120),
-    });
-  }
-  post.designNotes = normalized;
-  return post;
-}
-
 function normalizeSignatureText(value = '') {
   return String(value || '')
     .toLowerCase()
@@ -6120,127 +6086,46 @@ function hasCommaListThree(text = '') {
 }
 
 function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
-  const mode = String(ctx?.mode || '').toLowerCase() || 'regular';
-  const nicheValue = normalizeSignatureText(ctx?.nicheStyle || '');
-  const result = { ok: true };
   if (!post || typeof post !== 'object') {
     return { ok: false, reason: 'INVALID_POST' };
   }
-  const fieldsToCheck = ['title', 'hook', 'caption', 'cta'];
-  for (const field of fieldsToCheck) {
-    const value = toPlainString(post?.[field] || '');
-    const trimmed = value.trim();
-    if (trimmed.length < 20) {
-      return { ok: false, reason: 'FIELD_TOO_SHORT', field, snippet: trimmed.slice(0, 80) };
-    }
-    const normalized = normalizeSignatureText(trimmed);
-    if (PLACEHOLDER_BLACKLIST.has(normalized) || (nicheValue && normalized === nicheValue)) {
-      return { ok: false, reason: 'PLACEHOLDER', field, snippet: trimmed.slice(0, 80) };
-    }
+  const title = toPlainString(post?.title || '');
+  const hookText = toPlainString(post?.hook || '');
+  if (hookText.trim().length < 20) {
+    return { ok: false, reason: 'HOOK_TOO_SHORT', field: 'hook', snippet: hookText.slice(0, 80) };
+  }
+  if (hookText.trim() === title.trim()) {
+    return { ok: false, reason: 'HOOK_EQUALS_TITLE', field: 'hook', snippet: hookText.slice(0, 80) };
+  }
+  const caption = toPlainString(post?.caption || '');
+  const pillar = toPlainString(post?.pillar || ctx?.pillar || '');
+  const pillarToken = pillar ? `[PILLAR:${pillar.toUpperCase().replace(/\s+/g, '_')}]` : '';
+  const tokenList = [
+    '[PILLAR:EDUCATION]',
+    '[PILLAR:SOCIAL_PROOF]',
+    '[PILLAR:PROMOTION]',
+    '[PILLAR:LIFESTYLE]',
+  ];
+  const presentTokens = tokenList.filter((token) => caption.includes(token));
+  if (!pillarToken || presentTokens.length !== 1 || presentTokens[0] !== pillarToken) {
+    return {
+      ok: false,
+      reason: 'PILLAR_TOKEN_MISSING',
+      field: 'caption',
+      snippet: caption.slice(0, 120),
+      extra: { expected: pillarToken, found: presentTokens },
+    };
   }
   const designNotesRaw = toPlainString(post?.designNotes || '');
   const noteLines = designNotesRaw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (noteLines.length !== 3) {
-    return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
+    return { ok: false, reason: 'DESIGN_NOTES_INVALID', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
   }
-  const weakDirective = noteLines.find((line) => {
-    const len = line.trim().length;
-    return !line.startsWith('- ') || len < 12 || len > 90;
-  });
-  if (weakDirective) {
-    return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: weakDirective.slice(0, 120) };
+  const invalidLine = noteLines.find((line) => !line.startsWith('- '));
+  if (invalidLine) {
+    return { ok: false, reason: 'DESIGN_NOTES_INVALID', field: 'designNotes', snippet: invalidLine.slice(0, 120) };
   }
-
-  const title = toPlainString(post?.title || '');
-  const topicSummary = toPlainString(post?.topicCapsule?.summary || '');
-  const triggerText = `${title} ${topicSummary}`.toLowerCase();
-  if (/top\s*3/.test(triggerText)) {
-    const bodyText = [
-      toPlainString(post?.caption || ''),
-      toPlainString(post?.script?.body || ''),
-      toPlainString(post?.reelScript?.body || post?.script?.body || ''),
-    ].join(' ');
-    if (!hasNumberedTopThree(bodyText) && !hasCommaListThree(bodyText)) {
-      return { ok: false, reason: 'PROMISE_NOT_FULFILLED', field: 'title', snippet: title.slice(0, 80) };
-    }
-  }
-
-  const repurpose = post?.repurpose;
-  if (Array.isArray(repurpose) && repurpose.length > 3) {
-    return { ok: false, reason: 'REPURPOSE_SPAM', field: 'repurpose' };
-  }
-  if (typeof repurpose === 'string') {
-    const separators = (repurpose.match(/•|->|→/g) || []).length;
-    if (separators > 2) {
-      return { ok: false, reason: 'REPURPOSE_SPAM', field: 'repurpose' };
-    }
-  }
-
-  const captionText = toPlainString(post?.caption || '');
-  const reelBody = toPlainString(post?.reelScript?.body || post?.script?.body || '');
-  const combined = `${captionText} ${reelBody}`.toLowerCase();
-
-  const pillar = String(post?.pillar || '').toLowerCase();
-  if (pillar.includes('education')) {
-    const hasStep1 = /step\s*1/i.test(reelBody);
-    const hasStep2 = /step\s*2/i.test(reelBody);
-    const hasStep3 = /step\s*3/i.test(reelBody);
-    if (!(hasStep1 && hasStep2 && hasStep3)) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'reelScript.body', snippet: reelBody.slice(0, 120) };
-    }
-  } else if (pillar.includes('social')) {
-    const hasProofToken = PILLAR_TOKENS.social_proof.some((token) => combined.includes(token));
-    const hasDigit = /\d/.test(combined);
-    if (!hasProofToken || !hasDigit) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'caption', snippet: captionText.slice(0, 120) };
-    }
-  } else if (pillar.includes('promotion')) {
-    const ctaLower = toPlainString(post?.cta || '').toLowerCase();
-    if (!PILLAR_TOKENS.promotion.some((token) => ctaLower.includes(token))) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'cta', snippet: ctaLower.slice(0, 120) };
-    }
-  } else if (pillar.includes('lifestyle')) {
-    const matches = PILLAR_TOKENS.lifestyle.filter((token) => combined.includes(token));
-    const uniqueMatches = new Set(matches);
-    if (uniqueMatches.size < 2) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'caption', snippet: captionText.slice(0, 120) };
-    }
-  }
-
-  const topicText = [
-    toPlainString(post?.title || ''),
-    toPlainString(post?.topic_signature || ''),
-    toPlainString(post?.topicCapsule?.summary || ''),
-  ].join(' ');
-  const topicTokens = new Set(extractKeywordTokens(topicText));
-  const hookTokens = extractKeywordTokens(toPlainString(post?.hook || ''));
-  const sharedTokens = hookTokens.filter((token) => topicTokens.has(token));
-  if (sharedTokens.length < 2) {
-    return { ok: false, reason: 'TOPIC_HOOK_MISMATCH', field: 'hook', snippet: toPlainString(post?.hook || '').slice(0, 120) };
-  }
-
-  if (mode === 'brand_brain') {
-    if (!isNonEmptyString(post?.decision_question) || !isNonEmptyString(post?.decision_angle)) {
-      return { ok: false, reason: 'MODE_CONSTRAINT_FAILED', field: 'decision_question' };
-    }
-  }
-
-  const signature = buildPostSignature(post);
-  if (signature) {
-    const signatureMap = state.signatureMap || new Map();
-    if (!state.signatureMap) state.signatureMap = signatureMap;
-    if (signatureMap.has(signature)) {
-      const conflict = signatureMap.get(signature);
-      return { ok: false, reason: 'TOPIC_DUPLICATE', extra: { conflict } };
-    }
-    signatureMap.set(signature, {
-      post_key: ctx?.post_key || null,
-      day: ctx?.day ?? null,
-      slotIndex: ctx?.slotIndex ?? null,
-    });
-  }
-
-  return result;
+  return { ok: true };
 }
 
 function logCalendarPostReject(reason, ctx = {}) {
@@ -10327,15 +10212,6 @@ const server = http.createServer((req, res) => {
         postsPerDay: perDay,
       });
     }
-    posts.forEach((post, idx) => {
-      const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
-      const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-      const postKeyValue = toPlainString(post?.post_key || post?.postKey || post?.__key || '');
-      normalizeDesignNotes(post, {
-        requestId: loggingContext?.requestId || null,
-        post_key: postKeyValue || (Number.isFinite(day) ? postKey(day, Number.isFinite(slotIndex) ? slotIndex : 0) : null),
-      });
-    });
     const qualityState = { signatureMap: new Map() };
     posts.forEach((post, idx) => {
       const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
@@ -11034,10 +10910,6 @@ const server = http.createServer((req, res) => {
             const post = singlePosts[0];
             const scheduledPillar = scheduleByKey.get(slot.post_key);
             if (scheduledPillar) post.pillar = scheduledPillar;
-            normalizeDesignNotes(post, {
-              requestId,
-              post_key: slot.post_key,
-            });
             const quality = validateCalendarPostQuality(post, {
               mode: selectedMode,
               nicheStyle: regenNicheStyle,
