@@ -6087,6 +6087,66 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   return missing;
 }
 
+const ALLOWED_CALENDAR_POST_KEYS = (() => {
+  const keys = new Set();
+  REQUIRED_POST_FIELDS_REGULAR.forEach((field) => {
+    if (!field) return;
+    keys.add(String(field).split('.')[0]);
+  });
+  [
+    'post_key',
+    'postKey',
+    'day',
+    'slotIndex',
+    'title',
+    'topic_signature',
+    'angle',
+    'topicCapsule',
+    'format',
+    'pillar',
+    'hook',
+    'reelScript',
+    'script',
+    'caption',
+    'hashtags',
+    'designNotes',
+    'storyPrompt',
+    'cta',
+    'engagementLoop',
+    'engagementScripts',
+    'distributionPlan',
+    'dmReply',
+  ].forEach((key) => keys.add(key));
+  return keys;
+})();
+
+const ALLOWED_TOPICCAPSULE_KEYS = new Set([
+  'summary',
+  'talkingPoints',
+  'proof',
+  'objection',
+  'dmReply',
+]);
+
+function sanitizeCalendarPost(post) {
+  if (!post || typeof post !== 'object') return post;
+  const cleaned = {};
+  Object.keys(post).forEach((key) => {
+    if (!ALLOWED_CALENDAR_POST_KEYS.has(key)) return;
+    cleaned[key] = post[key];
+  });
+  if (cleaned.topicCapsule && typeof cleaned.topicCapsule === 'object' && !Array.isArray(cleaned.topicCapsule)) {
+    const capsule = {};
+    Object.keys(cleaned.topicCapsule).forEach((key) => {
+      if (ALLOWED_TOPICCAPSULE_KEYS.has(key)) {
+        capsule[key] = cleaned.topicCapsule[key];
+      }
+    });
+    cleaned.topicCapsule = capsule;
+  }
+  return cleaned;
+}
+
 function validateDecisionAnchorUniqueness(posts = []) {
   const questionMap = new Map();
   const angleMap = new Map();
@@ -10786,10 +10846,14 @@ const server = http.createServer((req, res) => {
               const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
               failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
               failErr.statusCode = 422;
+              const detail = err?.details || {};
               failErr.details = {
                 post_key: slot.post_key,
                 day: slot.day,
                 reason: err?.code === 'PARSE_FAILED' ? 'PARSE_FAILED' : 'SCHEMA_MISMATCH',
+                field: detail?.field || detail?.reason || null,
+                snippet: typeof err?.rawContent === 'string' ? err.rawContent.slice(0, 200) : null,
+                extra: detail || null,
               };
               throw failErr;
             }
@@ -10801,12 +10865,31 @@ const server = http.createServer((req, res) => {
               const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
               failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
               failErr.statusCode = 422;
-              failErr.details = { post_key: slot.post_key, day: slot.day, reason: 'SCHEMA_MISMATCH' };
+              failErr.details = {
+                post_key: slot.post_key,
+                day: slot.day,
+                reason: 'SCHEMA_MISMATCH',
+                field: 'posts',
+                snippet: (() => {
+                  try {
+                    return JSON.stringify(singlePosts).slice(0, 200);
+                  } catch {
+                    return null;
+                  }
+                })(),
+              };
               throw failErr;
             }
-            const post = singlePosts[0];
+            let post = sanitizeCalendarPost(singlePosts[0]);
             const scheduledPillar = scheduleByKey.get(slot.post_key);
             if (scheduledPillar) post.pillar = scheduledPillar;
+            post.day = slot.day;
+            post.slotIndex = slot.slotIndex;
+            post.post_key = slot.post_key;
+            if (planItem?.topic_signature) {
+              post.title = toPlainString(planItem.topic_signature);
+              post.topic_signature = toPlainString(planItem.topic_signature);
+            }
             const quality = validateCalendarPostQuality(post, {
               mode: selectedMode,
               nicheStyle: regenNicheStyle,
