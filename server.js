@@ -539,9 +539,17 @@ function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   if (res.headersSent) return;
   const isOpenAISchema = err?.code === 'OPENAI_SCHEMA_ERROR';
   const isOpenAISchemaInvalid = err?.code === 'OPENAI_SCHEMA_INVALID';
+  const isCalendarPostFailed = err?.code === 'CALENDAR_POST_GENERATION_FAILED';
   const isTopicBinding = err?.code === 'TOPIC_BINDING_FAILED';
   const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
   const requestIdValue = requestId || generateRequestId('server_error');
+  if (isCalendarPostFailed) {
+    return sendJson(res, 422, {
+      error: 'CALENDAR_POST_GENERATION_FAILED',
+      requestId: requestIdValue,
+      details: err?.details || null,
+    });
+  }
   if (isOpenAISchemaInvalid) {
     return sendJson(res, 422, {
       error: 'OPENAI_SCHEMA_INVALID',
@@ -3393,6 +3401,8 @@ const COMPACT_REGULAR_MODE_BLOCK = [
   '- Include decision_question and decision_angle; keep them specific to the title/topic and not generic.',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
+  '- Pillar requirements: Education=Reel Script body includes Step 1/Step 2/Step 3; Social Proof includes proof token + 1 metric number; Promotion CTA includes DM/comment/book/call; Lifestyle includes 2 lifestyle specifics from [walkable, schools, commute, nightlife, parks, culture].',
+  '- Hook must match the topic/title; do not default to neighborhoods unless the topic/title is neighborhoods.',
   '- Pillar structure: Education=3 concrete points + on-screen cue; Social Proof=client process story; Promotion=offer+constraint; Lifestyle=decision tradeoff tied to the niche.',
   '- No belief/teardown framing.',
   '- DM allowed only in Promotion + Social Proof; otherwise engagementScripts.dmReply must be neutral share/save.',
@@ -3404,6 +3414,8 @@ const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
   '- Include decision_question and decision_angle; treat the decision_question with a contrarian/reframing lens.',
   '- Define decision_context (short sentence) from pillar + day index + slot index; do not output it as a field.',
   '- Each post must resolve its decision_context; no two posts may share it.',
+  '- Pillar requirements: Education=Reel Script body includes Step 1/Step 2/Step 3; Social Proof includes proof token + 1 metric number; Promotion CTA includes DM/comment/book/call; Lifestyle includes 2 lifestyle specifics from [walkable, schools, commute, nightlife, parks, culture].',
+  '- Hook must match the topic/title; do not default to neighborhoods unless the topic/title is neighborhoods.',
   '- Treat decision_context by reframing the assumption and surfacing a hidden tradeoff/constraint with second-order consequences.',
   '- Use at most 2 persuasion moves in VO lines (pick from: Belief/Constraint/Consequence/Identity) and label them compactly.',
   '- Keep within VO line caps; no urgency or motivational fluff.',
@@ -5936,11 +5948,37 @@ const PLACEHOLDER_BLACKLIST = new Set([
 ]);
 
 const PILLAR_TOKENS = {
-  education: ['how to', 'checklist', 'steps', 'framework', 'do this', 'avoid'],
-  social_proof: ['client', 'closed', 'under contract', 'sold', 'testimonial', 'case study', 'before/after'],
-  promotion: ['dm', 'comment', 'book', 'call', 'text', 'get the list', 'send', 'download'],
-  lifestyle: ['vibe', 'lifestyle', 'walkable', 'nightlife', 'family', 'schools', 'commute', 'culture'],
+  social_proof: ['client', 'testimonial', 'sold', 'under contract', 'closed'],
+  promotion: ['dm', 'comment', 'book', 'call', 'text', 'get the list', 'schedule'],
+  lifestyle: ['walkable', 'schools', 'commute', 'nightlife', 'parks', 'culture', 'family', 'beach'],
 };
+
+const TOPIC_HOOK_STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'for', 'on', 'with', 'your', 'you', 'this', 'that',
+  'is', 'are', 'from', 'by', 'as', 'at', 'it', 'be', 'vs', 'vs.',
+]);
+
+function extractKeywordTokens(value = '') {
+  const normalized = normalizeSignatureText(value);
+  return normalized
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2 && !TOPIC_HOOK_STOPWORDS.has(token));
+}
+
+function parseDesignNotesDirectives(value = '') {
+  const raw = String(value || '');
+  const bulletMatches = raw.match(/(?:^|\n)\s*[•\-\*]\s*([^\n]+)/g);
+  if (bulletMatches && bulletMatches.length) {
+    return bulletMatches
+      .map((line) => line.replace(/^[\s•\-\*]+/, '').trim())
+      .filter(Boolean);
+  }
+  return raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 function normalizeSignatureText(value = '') {
   return String(value || '')
@@ -5982,7 +6020,7 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   if (!post || typeof post !== 'object') {
     return { ok: false, reason: 'INVALID_POST' };
   }
-  const fieldsToCheck = ['title', 'hook', 'caption', 'cta', 'designNotes'];
+  const fieldsToCheck = ['title', 'hook', 'caption', 'cta'];
   for (const field of fieldsToCheck) {
     const value = toPlainString(post?.[field] || '');
     const trimmed = value.trim();
@@ -5993,6 +6031,15 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     if (PLACEHOLDER_BLACKLIST.has(normalized) || (nicheValue && normalized === nicheValue)) {
       return { ok: false, reason: 'PLACEHOLDER', field, snippet: trimmed.slice(0, 80) };
     }
+  }
+  const designNotesRaw = toPlainString(post?.designNotes || '');
+  const directives = parseDesignNotesDirectives(designNotesRaw);
+  if (directives.length < 2 || directives.length > 5) {
+    return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
+  }
+  const weakDirective = directives.find((line) => line.trim().length < 8);
+  if (weakDirective) {
+    return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: weakDirective.slice(0, 120) };
   }
 
   const title = toPlainString(post?.title || '');
@@ -6020,32 +6067,47 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     }
   }
 
-  const combined = [
-    toPlainString(post?.caption || ''),
-    toPlainString(post?.script?.body || ''),
-    toPlainString(post?.reelScript?.body || post?.script?.body || ''),
-  ]
-    .join(' ')
-    .toLowerCase();
+  const captionText = toPlainString(post?.caption || '');
+  const reelBody = toPlainString(post?.reelScript?.body || post?.script?.body || '');
+  const combined = `${captionText} ${reelBody}`.toLowerCase();
 
   const pillar = String(post?.pillar || '').toLowerCase();
   if (pillar.includes('education')) {
-    if (!PILLAR_TOKENS.education.some((token) => combined.includes(token))) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    const hasStep1 = /step\s*1/i.test(reelBody);
+    const hasStep2 = /step\s*2/i.test(reelBody);
+    const hasStep3 = /step\s*3/i.test(reelBody);
+    if (!(hasStep1 && hasStep2 && hasStep3)) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'reelScript.body', snippet: reelBody.slice(0, 120) };
     }
   } else if (pillar.includes('social')) {
-    if (!PILLAR_TOKENS.social_proof.some((token) => combined.includes(token))) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    const hasProofToken = PILLAR_TOKENS.social_proof.some((token) => combined.includes(token));
+    const hasDigit = /\d/.test(combined);
+    if (!hasProofToken || !hasDigit) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'caption', snippet: captionText.slice(0, 120) };
     }
   } else if (pillar.includes('promotion')) {
     const ctaLower = toPlainString(post?.cta || '').toLowerCase();
     if (!PILLAR_TOKENS.promotion.some((token) => ctaLower.includes(token))) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'cta' };
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'cta', snippet: ctaLower.slice(0, 120) };
     }
   } else if (pillar.includes('lifestyle')) {
-    if (!PILLAR_TOKENS.lifestyle.some((token) => combined.includes(token))) {
-      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'pillar' };
+    const matches = PILLAR_TOKENS.lifestyle.filter((token) => combined.includes(token));
+    const uniqueMatches = new Set(matches);
+    if (uniqueMatches.size < 2) {
+      return { ok: false, reason: 'PILLAR_CONSTRAINT_FAILED', field: 'caption', snippet: captionText.slice(0, 120) };
     }
+  }
+
+  const topicText = [
+    toPlainString(post?.title || ''),
+    toPlainString(post?.topic_signature || ''),
+    toPlainString(post?.topicCapsule?.summary || ''),
+  ].join(' ');
+  const topicTokens = new Set(extractKeywordTokens(topicText));
+  const hookTokens = extractKeywordTokens(toPlainString(post?.hook || ''));
+  const sharedTokens = hookTokens.filter((token) => topicTokens.has(token));
+  if (sharedTokens.length < 2) {
+    return { ok: false, reason: 'TOPIC_HOOK_MISMATCH', field: 'hook', snippet: toPlainString(post?.hook || '').slice(0, 120) };
   }
 
   if (mode === 'brand_brain') {
@@ -10172,6 +10234,7 @@ const server = http.createServer((req, res) => {
         slotIndex,
         reason: validation?.reason || 'VALIDATION_FAILED',
         field: validation?.field || null,
+        snippet: validation?.snippet || null,
         extra: validation?.extra || null,
       };
       throw err;
@@ -10798,6 +10861,7 @@ const server = http.createServer((req, res) => {
                   day: slot.day,
                   reason: err?.details?.reason || 'VALIDATION_FAILED',
                   field: err?.details?.field || null,
+                  snippet: err?.details?.snippet || null,
                   extra: err?.details?.extra || null,
                 };
                 throw failErr;
@@ -10863,6 +10927,7 @@ const server = http.createServer((req, res) => {
                 slotIndex: slot.slotIndex,
                 reason: quality.reason || 'VALIDATION_FAILED',
                 field: quality.field || null,
+                snippet: quality.snippet || null,
                 extra: quality.extra || null,
               };
               throw failErr;
