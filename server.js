@@ -6135,6 +6135,26 @@ function sanitizeCalendarPost(post) {
     if (!ALLOWED_CALENDAR_POST_KEYS.has(key)) return;
     cleaned[key] = post[key];
   });
+  if (cleaned.script && typeof cleaned.script === 'object' && !Array.isArray(cleaned.script)) {
+    cleaned.script = {
+      hook: cleaned.script.hook,
+      body: cleaned.script.body,
+      cta: cleaned.script.cta,
+    };
+  }
+  if (cleaned.reelScript && typeof cleaned.reelScript === 'object' && !Array.isArray(cleaned.reelScript)) {
+    cleaned.reelScript = {
+      hook: cleaned.reelScript.hook,
+      body: cleaned.reelScript.body,
+      cta: cleaned.reelScript.cta,
+    };
+  }
+  if (cleaned.engagementScripts && typeof cleaned.engagementScripts === 'object' && !Array.isArray(cleaned.engagementScripts)) {
+    cleaned.engagementScripts = {
+      commentReply: cleaned.engagementScripts.commentReply,
+      dmReply: cleaned.engagementScripts.dmReply,
+    };
+  }
   if (cleaned.topicCapsule && typeof cleaned.topicCapsule === 'object' && !Array.isArray(cleaned.topicCapsule)) {
     const capsule = {};
     Object.keys(cleaned.topicCapsule).forEach((key) => {
@@ -10909,12 +10929,22 @@ const server = http.createServer((req, res) => {
               failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
               failErr.statusCode = 422;
               const detail = err?.details || {};
+              const fallbackField = Array.isArray(detail?.missing) && detail.missing.length ? detail.missing[0] : null;
               failErr.details = {
                 post_key: slot.post_key,
                 day: slot.day,
                 reason: err?.code === 'PARSE_FAILED' ? 'PARSE_FAILED' : 'SCHEMA_MISMATCH',
-                field: detail?.field || detail?.reason || null,
-                snippet: typeof err?.rawContent === 'string' ? err.rawContent.slice(0, 200) : null,
+                field: detail?.field || detail?.reason || fallbackField || 'schema',
+                snippet:
+                  detail?.snippet ||
+                  (typeof err?.rawContent === 'string' ? err.rawContent.slice(0, 200) : null) ||
+                  (() => {
+                    try {
+                      return JSON.stringify(detail).slice(0, 200);
+                    } catch {
+                      return null;
+                    }
+                  })(),
                 extra: detail || null,
               };
               throw failErr;
@@ -11176,8 +11206,14 @@ const server = http.createServer((req, res) => {
           const detail = safeError?.details || {};
           const responseDetails = {
             reason: detail?.reason || null,
-            field: detail?.field || null,
-            snippet: detail?.snippet || null,
+            field: detail?.field || detail?.reason || 'schema',
+            snippet: detail?.snippet || (() => {
+              try {
+                return JSON.stringify(detail).slice(0, 200);
+              } catch {
+                return null;
+              }
+            })(),
             day: detail?.day ?? null,
             post_key: detail?.post_key || null,
           };
