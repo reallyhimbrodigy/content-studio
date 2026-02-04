@@ -6147,6 +6147,68 @@ function sanitizeCalendarPost(post) {
   return cleaned;
 }
 
+function coerceCalendarPostTypes(post) {
+  if (!post || typeof post !== 'object') return post;
+  if (typeof post.day === 'string' && post.day.trim()) {
+    const num = Number(post.day);
+    if (Number.isFinite(num)) post.day = num;
+  }
+  if (typeof post.slotIndex === 'string' && post.slotIndex.trim()) {
+    const num = Number(post.slotIndex);
+    if (Number.isFinite(num)) post.slotIndex = num;
+  }
+  if (typeof post.hashtags === 'string') {
+    post.hashtags = post.hashtags.split(/[\s,]+/).filter(Boolean);
+  }
+  if (Array.isArray(post.designNotes)) {
+    post.designNotes = post.designNotes.join('\n');
+  }
+  if (post.topicCapsule && typeof post.topicCapsule === 'object' && !Array.isArray(post.topicCapsule)) {
+    if (typeof post.topicCapsule.talkingPoints === 'string') {
+      post.topicCapsule.talkingPoints = [post.topicCapsule.talkingPoints].filter(Boolean);
+    }
+  }
+  return post;
+}
+
+function validatePostSchemaTypes(post, mode = 'regular') {
+  const errors = [];
+  const requiredFields = requiredFieldsForMode(mode);
+  const requiredTypes = requiredFieldTypesForMode(mode);
+  requiredFields.forEach((key) => {
+    const expected = requiredTypes[key] || 'string';
+    const value = getValueByPath(post, key);
+    if (value === undefined || value === null) {
+      errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'required', message: 'is required' });
+      return;
+    }
+    if (expected === 'array') {
+      if (!Array.isArray(value)) {
+        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be array' });
+      }
+      return;
+    }
+    if (expected === 'object') {
+      if (typeof value !== 'object' || Array.isArray(value)) {
+        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be object' });
+      }
+      return;
+    }
+    if (expected === 'number') {
+      if (!Number.isFinite(Number(value))) {
+        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be number' });
+      }
+      return;
+    }
+    if (expected === 'string') {
+      if (typeof value !== 'string') {
+        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be string' });
+      }
+    }
+  });
+  return errors;
+}
+
 function validateDecisionAnchorUniqueness(posts = []) {
   const questionMap = new Map();
   const angleMap = new Map();
@@ -10889,6 +10951,40 @@ const server = http.createServer((req, res) => {
             if (planItem?.topic_signature) {
               post.title = toPlainString(planItem.topic_signature);
               post.topic_signature = toPlainString(planItem.topic_signature);
+            }
+            post = coerceCalendarPostTypes(post);
+            const schemaErrors = validatePostSchemaTypes(post, selectedMode);
+            if (schemaErrors.length) {
+              const sample = schemaErrors.slice(0, 3).map((entry) => ({
+                instancePath: entry.instancePath,
+                keyword: entry.keyword,
+                message: entry.message,
+              }));
+              console.warn('[Calendar][PostSchema][Error]', {
+                requestId,
+                post_key: slot.post_key,
+                day: slot.day,
+                errors: sample,
+              });
+              const firstErr = schemaErrors[0];
+              const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+              failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+              failErr.statusCode = 422;
+              failErr.details = {
+                post_key: slot.post_key,
+                day: slot.day,
+                reason: 'SCHEMA_MISMATCH',
+                field: firstErr?.instancePath || 'unknown',
+                snippet: (() => {
+                  try {
+                    return JSON.stringify(post).slice(0, 200);
+                  } catch {
+                    return null;
+                  }
+                })(),
+                extra: sample,
+              };
+              throw failErr;
             }
             const quality = validateCalendarPostQuality(post, {
               mode: selectedMode,
