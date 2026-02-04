@@ -544,10 +544,18 @@ function respondWithServerError(res, err, { requestId, statusCode } = {}) {
   const isPostKeyMapping = err?.code === 'POST_KEY_MAPPING_FAILED';
   const requestIdValue = requestId || generateRequestId('server_error');
   if (isCalendarPostFailed) {
+    const detail = err?.details || {};
+    const responseDetails = {
+      reason: detail?.reason || null,
+      field: detail?.field || null,
+      snippet: detail?.snippet || null,
+      day: detail?.day ?? null,
+      post_key: detail?.post_key || null,
+    };
     return sendJson(res, 422, {
       error: 'CALENDAR_POST_GENERATION_FAILED',
       requestId: requestIdValue,
-      details: err?.details || null,
+      details: responseDetails,
     });
   }
   if (isOpenAISchemaInvalid) {
@@ -2804,13 +2812,37 @@ const CALENDAR_ANGLE_OPTIONS = [
   'advanced nuance',
 ];
 
-function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
+function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
+  const includeDecision = mode === 'brand_brain';
+  const requiredBase = [
+    'post_key',
+    'day',
+    'slotIndex',
+    'title',
+    'topicCapsule',
+    'hook',
+    'caption',
+    'pillar',
+    'format',
+    'cta',
+    'hashtags',
+    'script',
+    'reelScript',
+    'designNotes',
+    'engagementScripts',
+    'distributionPlan',
+    'topic_signature',
+    'angle',
+  ];
+  const required = includeDecision
+    ? [...requiredBase, 'decision_question', 'decision_angle']
+    : requiredBase;
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['post_key', 'day', 'slotIndex', 'title', 'topicCapsule', 'hook', 'caption', 'pillar', 'format', 'cta', 'hashtags', 'script', 'reelScript', 'designNotes', 'engagementScripts', 'distributionPlan', 'topic_signature', 'angle', 'decision_question', 'decision_angle'],
+    required,
     properties: {
       post_key: { type: 'string', minLength: 1 },
       day: {
@@ -2853,8 +2885,12 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       format: { type: 'string', minLength: 1 },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
-      decision_question: { type: 'string', minLength: 1 },
-      decision_angle: { type: 'string', minLength: 1 },
+      ...(includeDecision
+        ? {
+            decision_question: { type: 'string', minLength: 1 },
+            decision_angle: { type: 'string', minLength: 1 },
+          }
+        : {}),
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
@@ -2895,7 +2931,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   };
 }
 
-function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
+function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, mode = 'regular') {
   const safeCount = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
   return {
     type: 'object',
@@ -2904,7 +2940,9 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
     properties: {
       posts: {
         type: 'array',
-        items: buildCalendarPostSchema(minDay, maxDay),
+        minItems: safeCount,
+        maxItems: safeCount,
+        items: buildCalendarPostSchema(minDay, maxDay, mode),
       },
     },
   };
@@ -2915,10 +2953,10 @@ function buildBrandBrainDirective(settings = {}) {
   const lines = [
     'KEY CONTRACT (BINDING)',
     '- Output must be a single JSON object that matches the schema exactly. No markdown. No commentary.',
-    '- Required keys MUST be present and non-empty strings: topic_signature, angle (exact spelling, case-sensitive).',
+    '- Required keys MUST be present and non-empty strings: topic_signature, angle, decision_question, decision_angle (exact spelling, case-sensitive).',
     '- Do NOT output alias keys for topic_signature or angle (e.g., topicSignature, angleText).',
-    '- Before final output, internally validate topic_signature and angle are present and non-empty.',
-    '- If either is missing/empty, rewrite the entire JSON ONCE internally, then output final JSON only.',
+    '- Before final output, internally validate topic_signature, angle, decision_question, decision_angle are present and non-empty.',
+    '- If any is missing/empty, rewrite the entire JSON ONCE internally, then output final JSON only.',
     'Brand Brain mode: belief teardown with causal reasoning; distinct from Regular.',
     '- Use contrarian or corrective angles to create tension.',
     '- Do not turn the post into a full how-to tutorial; keep any decision tool concise.',
@@ -3304,7 +3342,7 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- caption: <= 2 sentences AND <= 220 chars',
   '- hashtags: exactly 6 hashtags',
   '- suggestedAudio: always present; use "Original audio" if unsure',
-  '- designNotes: exactly 4 bullets, each <= 60 chars',
+  '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
   '- distributionPlan: exactly 2 bullets, each <= 60 chars',
@@ -3345,7 +3383,7 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- caption: <= 2 sentences AND <= 220 chars',
   '- hashtags: exactly 6 hashtags',
   '- suggestedAudio: always present; use "Original audio" if unsure',
-  '- designNotes: exactly 4 bullets, each <= 60 chars',
+  '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
   '- distributionPlan: exactly 2 bullets, each <= 60 chars',
@@ -3371,7 +3409,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '[/BRAND_BRAIN_MODE_INSTRUCTIONS]',
 ].join('\n');
 
-const COMPACT_REQUIRED_KEYS_LINE =
+const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
+  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+
+const COMPACT_REQUIRED_KEYS_LINE_BRAND =
   'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle, decision_question, decision_angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
@@ -3381,7 +3422,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- caption <= 140 chars (1-2 sentences)',
   '- hashtags: exactly 6 tags',
   '- suggestedAudio: single short string (no prefix); "Original audio" allowed',
-  '- designNotes: exactly 4 beats, each <= 20 chars',
+  '- designNotes: exactly 3 bullet lines (8–80 chars each)',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
   '- distributionPlan: exactly 2 bullets, each <= 45 chars',
@@ -3509,7 +3550,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       '- topic_signature and angle are REQUIRED top-level keys, non-empty strings, exact spelling.',
       '- Do not use alias keys for these (topicSignature, angleText).',
       '- If topic_signature or angle would be missing/empty, rewrite once internally before output.',
-      `- Required keys (verbatim): ${REQUIRED_POST_FIELDS.join(', ')}.`,
+      `- Required keys (verbatim): ${requiredFieldsForMode('brand_brain').join(', ')}.`,
       '- Do not output any new top-level keys or rename existing keys.',
       '- Output JSON only.',
     ].join('\\n')
@@ -3563,13 +3604,16 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
   if (compactPrompt) {
     const compactModeBlock = opts.brandBrainDirective ? COMPACT_BRAND_BRAIN_MODE_BLOCK : COMPACT_REGULAR_MODE_BLOCK;
+    const compactRequiredLine = opts.brandBrainDirective
+      ? COMPACT_REQUIRED_KEYS_LINE_BRAND
+      : COMPACT_REQUIRED_KEYS_LINE_REGULAR;
     const singlePostLine = opts.singlePost ? '- Return ONLY a single post object (no posts array).' : null;
     const compactPromptText = [
       'Return JSON only.',
       nicheStyle ? `Niche: ${nicheStyle}` : null,
       `Generate exactly ${totalPostsRequired} posts for these post_keys:`,
       postIdentityBlock,
-      COMPACT_REQUIRED_KEYS_LINE,
+      compactRequiredLine,
       singlePostLine,
       '- All required keys must be present and non-empty strings.',
       '- No placeholders: "placeholder", "tbd", "lorem", "coming soon".',
@@ -3598,7 +3642,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, pillar, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
     '- format must be "Reel" for every post.',
     '- reelScript must include hook/body/cta fields (do not collapse into one string).',
-    '- designNotes must be exactly 4 bullet lines.',
+    '- designNotes must be exactly 3 bullet lines.',
     '- distributionPlan must be exactly 2 bullet lines.',
     'NON-EMPTY REQUIREMENT',
     '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, pillar, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
@@ -3614,7 +3658,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `- Confirm posts.length === ${totalPostsRequired}.`,
     '- Confirm every post includes all required fields with NON-EMPTY strings.',
     '- Confirm no field value is just whitespace.',
-    '- Confirm designNotes has exactly 4 bullet lines.',
+    '- Confirm designNotes has exactly 3 bullet lines.',
     '- Confirm distributionPlan has exactly 2 bullet lines.',
   ].join('\n');
   const calendarContextBlock = [
@@ -3691,7 +3735,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     'COMPLETENESS RULES:',
     '- Every string must be a complete thought. Do not end with unfinished clauses.',
     '- Never end any value with an opening parenthesis "(", trailing comma, colon, dash, or dangling "and/or".',
-    '- designNotes MUST be exactly 4 bullet lines.',
+    '- designNotes MUST be exactly 3 bullet lines.',
     '- engagementScripts MUST never be blank; include commentReply and dmReply.',
     '- distributionPlan MUST be exactly 2 bullet lines.',
     'REQUIRED KEYS (DO NOT OMIT):',
@@ -3715,7 +3759,7 @@ ${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
     '2) posts length matches expectedPosts.',
     '3) Every post includes every schema key.',
     '4) No field is empty or truncated.',
-    '5) designNotes includes 0-2s, 2-5s, 5-12s, 12-18s, 18-22s; engagementScripts include commentReply + dmReply; distributionPlan has TikTok/Instagram lines.',
+    '5) designNotes includes exactly 3 bullet lines; engagementScripts include commentReply + dmReply; distributionPlan has TikTok/Instagram lines.',
     'If any check fails, fix it BEFORE outputting.',
   ].join('\n');
   const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${modeQualityBlock}\n${hardOutputContractBlock}`;
@@ -5293,7 +5337,7 @@ function normalizeHashtagsForTopicBinding(post = {}, maxCount = TOPIC_BINDING_HA
 
 function validateBrandBrainPost(post = {}, nicheStyle = '') {
   const reasons = [];
-  const missing = validatePostCompleteness(post);
+  const missing = validatePostCompleteness(post, 'brand_brain');
   if (missing.length) {
     reasons.push({ code: 'MISSING_FIELD', detail: missing });
   }
@@ -5802,7 +5846,7 @@ function ensureCtaFallback(post = {}) {
 
 const MIN_HASHTAGS = 0;
 // Contract: required fields for regenerated posts (mirrors validatePostCompleteness).
-const REQUIRED_POST_FIELDS = [
+const REQUIRED_POST_FIELDS_REGULAR = [
   'title',
   'hook',
   'caption',
@@ -5810,8 +5854,6 @@ const REQUIRED_POST_FIELDS = [
   'cta',
   'topic_signature',
   'angle',
-  'decision_question',
-  'decision_angle',
   'designNotes',
   'distributionPlan',
   'day',
@@ -5829,7 +5871,13 @@ const REQUIRED_POST_FIELDS = [
   'engagementScripts.dmReply',
 ];
 
-const REQUIRED_POST_FIELD_TYPES = {
+const REQUIRED_POST_FIELDS_BRAND = [
+  ...REQUIRED_POST_FIELDS_REGULAR,
+  'decision_question',
+  'decision_angle',
+];
+
+const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   title: 'string',
   hook: 'string',
   caption: 'string',
@@ -5837,8 +5885,6 @@ const REQUIRED_POST_FIELD_TYPES = {
   format: 'string',
   topic_signature: 'string',
   angle: 'string',
-  decision_question: 'string',
-  decision_angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
   day: 'number',
@@ -5856,6 +5902,12 @@ const REQUIRED_POST_FIELD_TYPES = {
   'engagementScripts.dmReply': 'string',
 };
 
+const REQUIRED_POST_FIELD_TYPES_BRAND = {
+  ...REQUIRED_POST_FIELD_TYPES_REGULAR,
+  decision_question: 'string',
+  decision_angle: 'string',
+};
+
 function getValueByPath(obj, path) {
   const parts = String(path || '').split('.');
   let current = obj;
@@ -5866,12 +5918,26 @@ function getValueByPath(obj, path) {
   return current;
 }
 
-function buildRequiredFieldDiagnostics(post = {}) {
+function requiredFieldsForMode(mode = 'regular') {
+  return mode === 'brand_brain'
+    ? REQUIRED_POST_FIELDS_BRAND.slice()
+    : REQUIRED_POST_FIELDS_REGULAR.slice();
+}
+
+function requiredFieldTypesForMode(mode = 'regular') {
+  return mode === 'brand_brain'
+    ? REQUIRED_POST_FIELD_TYPES_BRAND
+    : REQUIRED_POST_FIELD_TYPES_REGULAR;
+}
+
+function buildRequiredFieldDiagnostics(post = {}, mode = 'regular') {
   const missing = [];
   const empty = [];
   const invalidTypes = [];
-  for (const key of REQUIRED_POST_FIELDS) {
-    const expected = REQUIRED_POST_FIELD_TYPES[key] || 'string';
+  const requiredFields = requiredFieldsForMode(mode);
+  const requiredTypes = requiredFieldTypesForMode(mode);
+  for (const key of requiredFields) {
+    const expected = requiredTypes[key] || 'string';
     const value = getValueByPath(post, key);
     if (value === undefined || value === null) {
       missing.push(key);
@@ -5968,16 +6034,10 @@ function extractKeywordTokens(value = '') {
 
 function parseDesignNotesDirectives(value = '') {
   const raw = String(value || '');
-  const bulletMatches = raw.match(/(?:^|\n)\s*[•\-\*]\s*([^\n]+)/g);
-  if (bulletMatches && bulletMatches.length) {
-    return bulletMatches
-      .map((line) => line.replace(/^[\s•\-\*]+/, '').trim())
-      .filter(Boolean);
-  }
-  return raw
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const bullets = lines.filter((line) => /^\s*[•\-\*]\s+/.test(line));
+  if (!bullets.length) return [];
+  return bullets.map((line) => line.replace(/^[\s•\-\*]+/, '').trim()).filter(Boolean);
 }
 
 function normalizeSignatureText(value = '') {
@@ -6034,10 +6094,13 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   }
   const designNotesRaw = toPlainString(post?.designNotes || '');
   const directives = parseDesignNotesDirectives(designNotesRaw);
-  if (directives.length < 2 || directives.length > 5) {
+  if (directives.length !== 3) {
     return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
   }
-  const weakDirective = directives.find((line) => line.trim().length < 8);
+  const weakDirective = directives.find((line) => {
+    const len = line.trim().length;
+    return len < 8 || len > 80;
+  });
   if (weakDirective) {
     return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: weakDirective.slice(0, 120) };
   }
@@ -6148,7 +6211,7 @@ function logCalendarPostReject(reason, ctx = {}) {
   });
 }
 
-function validatePostCompleteness(post = {}) {
+function validatePostCompleteness(post = {}, mode = 'regular') {
   const missing = [];
   const checkString = (value, key) => {
     if (!isNonEmptyString(value) && !missing.includes(key)) {
@@ -6161,8 +6224,10 @@ function validatePostCompleteness(post = {}) {
   checkString(post.cta, 'cta');
   checkString(post.topic_signature, 'topic_signature');
   checkString(post.angle, 'angle');
-  checkString(post.decision_question, 'decision_question');
-  checkString(post.decision_angle, 'decision_angle');
+  if (mode === 'brand_brain') {
+    checkString(post.decision_question, 'decision_question');
+    checkString(post.decision_angle, 'decision_angle');
+  }
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
@@ -6733,7 +6798,10 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
     normalized.suggestedAudio || rawPost.suggestedAudio || rawPost.suggested_audio,
     fallbackAudio
   );
-  let missing = validatePostCompleteness(normalized);
+  const inferredMode = toPlainString(normalized?.calendarMode || normalized?.mode || '') === 'brand_brain'
+    ? 'brand_brain'
+    : 'regular';
+  let missing = validatePostCompleteness(normalized, inferredMode);
   return { post: normalized, missingFields: missing, appliedFixes: applied };
 }
 
@@ -6992,7 +7060,10 @@ function repairBrandBrainPostBatch(posts = [], nicheStyle = '', startDay = 1, po
 function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
   const dayValue = Number.isFinite(Number(post?.day)) ? Number(post.day) : Number(dayNumber) || 1;
   const result = ensureRegenRequiredFields(post, nicheStyle, dayValue, { allowFallbacks: true });
-  const missing = validatePostCompleteness(result.post);
+  const inferredMode = toPlainString(result?.post?.calendarMode || result?.post?.mode || '') === 'brand_brain'
+    ? 'brand_brain'
+    : 'regular';
+  const missing = validatePostCompleteness(result.post, inferredMode);
   return { post: result.post, missingFields: missing, appliedFixes: result.appliedFixes || [] };
 }
 
@@ -7007,7 +7078,7 @@ function runRegenNormalizationSelfTest() {
   if (repaired.missingFields.length) {
     console.warn('[Calendar][Test] regen normalization missing fields', repaired.missingFields);
   }
-  const unexpected = repaired.missingFields.filter((field) => !REQUIRED_POST_FIELDS.includes(field));
+  const unexpected = repaired.missingFields.filter((field) => !requiredFieldsForMode('regular').includes(field));
   if (unexpected.length) {
     console.warn('[Calendar][Test] regen normalization unexpected required fields', unexpected);
   }
@@ -7026,10 +7097,6 @@ function computePostDayIndex(index, startDay = 1, postsPerDay = 1) {
   const baseStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const perDay = Number.isFinite(Number(postsPerDay)) && Number(postsPerDay) > 0 ? Number(postsPerDay) : 1;
   return baseStart + Math.floor(index / perDay);
-}
-
-function requiredFieldsForMode() {
-  return Array.isArray(REQUIRED_POST_FIELDS) ? REQUIRED_POST_FIELDS.slice() : [];
 }
 
 function withTimeout(promise, ms, meta = {}) {
@@ -7674,16 +7741,23 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
   const postsPerDay = 1;
   const useSinglePost = Boolean(opts.singlePost);
+  const calendarMode = String(
+    opts.calendarMode || (opts.brandBrainEnabled ? 'brand_brain' : 'regular')
+  ).toLowerCase() === 'brand_brain'
+    ? 'brand_brain'
+    : 'regular';
   const expectedChunkCount = useSinglePost ? 1 : chunkDays * postsPerDay;
   const schema = useSinglePost
     ? buildCalendarPostSchema(
         chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay,
+        calendarMode
       )
     : buildCalendarSchemaObject(
         expectedChunkCount,
         chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay,
+        calendarMode
       );
   try {
     JSON.stringify(schema);
@@ -7843,10 +7917,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         planUsed: Boolean(opts.planUsed),
       });
     }
-    const responseFormat = {
-      type: 'json_schema',
-      json_schema: { name: useSinglePost ? 'calendar_post' : 'calendar_batch', strict: true, schema },
-    };
+  const schemaName = useSinglePost
+    ? (calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular')
+    : (calendarMode === 'brand_brain' ? 'calendar_batch_brandbrain' : 'calendar_batch_regular');
+  const responseFormat = {
+    type: 'json_schema',
+    json_schema: { name: schemaName, strict: true, schema },
+  };
     const toTextFormat = (format) => ({
       name: format?.json_schema?.name,
       type: format?.type,
@@ -9808,7 +9885,7 @@ const server = http.createServer((req, res) => {
     const missingFieldsReport = [];
     const noncoreMissingReport = [];
     rawPosts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
+      const missing = validatePostCompleteness(post, calendarMode);
       if (!missing.length) return;
       const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
       const noncoreMissing = missing.filter((field) => NONCORE_OPTIONAL_FIELDS.has(field));
@@ -9854,7 +9931,7 @@ const server = http.createServer((req, res) => {
       const missingDiagnostics = debugDiagnosticsEnabled
         ? missingFieldsReport.map((entry) => {
           const post = rawPosts[entry.index] && typeof rawPosts[entry.index] === 'object' ? rawPosts[entry.index] : {};
-          const diagnostics = buildRequiredFieldDiagnostics(post);
+          const diagnostics = buildRequiredFieldDiagnostics(post, calendarMode);
           return {
             ...entry,
             missing: diagnostics.missing.length ? diagnostics.missing : entry.missing,
@@ -9867,7 +9944,8 @@ const server = http.createServer((req, res) => {
         const schema = buildCalendarSchemaObject(
           expectedCount || rawPosts.length,
           fallbackStart,
-          fallbackStart + daysToGenerate - 1
+          fallbackStart + daysToGenerate - 1,
+          'brand_brain'
         );
         const repairPayload = {
           posts: rawPosts.map((post) => post || {}),
@@ -9885,7 +9963,7 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, topicCapsule.',
+          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, decision_question, decision_angle, topicCapsule.',
           'hashtags must be an array of strings (8–12).',
           'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
@@ -9924,7 +10002,7 @@ const server = http.createServer((req, res) => {
             rawPosts = parsed.posts;
             missingFieldsReport.length = 0;
             rawPosts.forEach((post, idx) => {
-              const missing = validatePostCompleteness(post);
+              const missing = validatePostCompleteness(post, 'brand_brain');
               if (!missing.length) return;
               const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
               if (!coreMissing.length) return;
@@ -10067,7 +10145,7 @@ const server = http.createServer((req, res) => {
         rawPosts = repairBrandBrainPostBatch(rawPosts, nicheStyle, fallbackStart, perDay);
         const remaining = [];
         rawPosts.forEach((post, idx) => {
-          const missing = validatePostCompleteness(post);
+          const missing = validatePostCompleteness(post, calendarMode);
           if (!missing.length) return;
           const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
           remaining.push({ index: idx, day, missing });
@@ -10169,7 +10247,7 @@ const server = http.createServer((req, res) => {
     }
     const normalizedMissing = [];
     posts.forEach((post, idx) => {
-      const missing = validatePostCompleteness(post);
+      const missing = validatePostCompleteness(post, calendarMode);
       if (missing.length) {
         normalizedMissing.push({ index: idx, missing });
       }
@@ -10183,7 +10261,7 @@ const server = http.createServer((req, res) => {
       posts = repairBrandBrainPostBatch(posts, nicheStyle, startDay, perDay);
       const stillMissing = [];
       posts.forEach((post, idx) => {
-        const missing = validatePostCompleteness(post);
+        const missing = validatePostCompleteness(post, calendarMode);
         if (missing.length) {
           stillMissing.push({ index: idx, missing });
         }
@@ -10681,7 +10759,7 @@ const server = http.createServer((req, res) => {
           const report = [];
           if (!Array.isArray(postsList)) return report;
           postsList.forEach((post, idx) => {
-            const missing = validatePostCompleteness(post);
+            const missing = validatePostCompleteness(post, selectedMode);
             if (missing.length) report.push({ index: idx, missing });
           });
           return report;
@@ -10933,7 +11011,7 @@ const server = http.createServer((req, res) => {
               throw failErr;
             }
             const validateStart = Date.now();
-            const missing = validatePostCompleteness(post);
+            const missing = validatePostCompleteness(post, selectedMode);
             totalValidateMs += Date.now() - validateStart;
             if (missing.length || hasPlaceholderInPost(post)) {
               const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -11113,12 +11191,19 @@ const server = http.createServer((req, res) => {
           });
         }
         if (safeError?.code === 'CALENDAR_POST_GENERATION_FAILED') {
+          const detail = safeError?.details || {};
+          const responseDetails = {
+            reason: detail?.reason || null,
+            field: detail?.field || null,
+            snippet: detail?.snippet || null,
+            day: detail?.day ?? null,
+            post_key: detail?.post_key || null,
+          };
           return sendJson(res, 422, {
             error: 'CALENDAR_POST_GENERATION_FAILED',
             message: 'Calendar post generation failed.',
             requestId,
-            details: safeError?.details || null,
-            missingFieldsSample: missingFieldsSample || undefined,
+            details: responseDetails,
           });
         }
         const errorContext = {
@@ -11910,7 +11995,7 @@ const server = http.createServer((req, res) => {
           appliedFixes = (normalizedResult.appliedFixes || []).slice();
           if (!hadSignature) appliedFixes.push('topic_signature');
           if (!hadAngle) appliedFixes.push('angle');
-          missingFields = validatePostCompleteness(normalized);
+          missingFields = validatePostCompleteness(normalized, calendarMode);
           if (!missingFields.length) break;
           console.warn('[Calendar] regen-day missing fields after normalization', {
             requestId,
