@@ -7798,32 +7798,24 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       schema: format?.json_schema?.schema,
     });
     const responseTextFormat = toTextFormat(responseFormat);
-    const payload = useSinglePost
-      ? JSON.stringify({
-          model: attemptModel,
-          input: [{ role: 'user', content: prompt }],
-          temperature: attemptTemperature,
-          max_output_tokens: attemptMaxTokens,
-          text: { format: responseTextFormat },
-        })
-      : JSON.stringify({
-          model: attemptModel,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: attemptTemperature,
-          max_tokens: attemptMaxTokens,
-          response_format: responseFormat,
-        });
+    const payload = JSON.stringify({
+      model: attemptModel,
+      input: [{ role: 'user', content: prompt }],
+      temperature: attemptTemperature,
+      max_output_tokens: attemptMaxTokens,
+      text: { format: responseTextFormat },
+    });
     if (loggingContext?.requestId) {
       console.log('[OpenAI][CalendarChunk][Payload]', {
         requestId: loggingContext.requestId,
         model: attemptModel,
-        hasResponseFormat: !useSinglePost,
-        hasTextFormat: Boolean(useSinglePost),
+        hasResponseFormat: Boolean(responseTextFormat),
+        hasTextFormat: false,
         textFormatName: responseTextFormat?.name || null,
         formatType: responseTextFormat?.type || null,
       });
     }
-    if (useSinglePost && !responseTextFormat?.name) {
+    if (!responseTextFormat?.name) {
       const err = new Error('OpenAI payload missing text.format.name');
       err.code = 'OPENAI_PAYLOAD_INVALID';
       err.statusCode = 500;
@@ -7834,10 +7826,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       throw err;
     }
     const requestPromise = withOpenAiSlot(() =>
-      (useSinglePost
-        ? openAIResponsesRequest(buildRequestOptions(payload, true), payload)
-        : openAIRequest(buildRequestOptions(payload, false), payload)
-      ).catch((err) => {
+      openAIResponsesRequest(buildRequestOptions(payload, true), payload).catch((err) => {
         const payloadJson = parseOpenAiErrorPayload(err);
         const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
         const details = extractOpenAiErrorDetails(err);
@@ -7962,24 +7951,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           latency: firstResponse.latency,
           parseMs: 0,
           promptMeta: firstResponse.promptMeta || null,
+          usedStructuredOutput: true,
         };
       }
-      const rawTrimmed = String(rawText || '').trim();
-      const lastChar = rawTrimmed ? rawTrimmed[rawTrimmed.length - 1] : '';
       console.warn('[Calendar][Parse] failed', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
-        rawLength: rawText.length,
-        lastChar,
-        prefix: rawText.slice(0, 120),
-        suffix: rawText.slice(-120),
         responseId: firstResponse.responseId || null,
         model: firstResponse.responseModel || modelName,
         presentFields: firstResponse.responseKeys || [],
-        hasOutputText: typeof rawText === 'string' && rawText.length > 0,
-        hasOutputArray: false,
         extractedKind: firstResponse.extractedKind || null,
-        extractedTextLength: rawText.length || 0,
+        extractedTextLength: typeof rawText === 'string' ? rawText.length : null,
       });
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
@@ -7988,7 +7970,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
       parseErr.usedStructuredOutput = Boolean(firstResponse.parsedOutput);
-      parseErr.rawTextLength = rawText ? rawText.length : null;
+      parseErr.rawTextLength = typeof rawText === 'string' ? rawText.length : null;
       console.warn('[Calendar][Parse] structured_output_failed', {
         requestId: loggingContext?.requestId || 'unknown',
         responseId: parseErr.responseId,
@@ -7999,149 +7981,40 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       throw parseErr;
     }
     const rawText = firstResponse.content || '';
-    if (firstResponse.parsedOutput) {
-      const normalized = normalizeCalendarModelOutput(firstResponse.parsedOutput, expectedChunkCount, {
-        requestId: loggingContext?.requestId || null,
-        mode: calendarMode,
-        chunkIndex: loggingContext?.chunkIndex ?? null,
-        day: chunkStartDay,
-        schemaName: schemaName,
-      }, rawText);
-      return {
-        posts: normalized.posts,
-        rawContent: rawText,
-        latency: firstResponse.latency,
-        parseMs: 0,
-        promptMeta: firstResponse.promptMeta || null,
-      };
-    }
-    const logParseDebug = () => {
-      if (process.env.CALENDAR_PARSE_DEBUG !== '1') return;
-      console.warn('[Calendar][Parse][Debug]', {
-        requestId: loggingContext?.requestId || 'unknown',
-        chunkIndex: loggingContext?.chunkIndex ?? null,
-        chunkStartDay,
-        chunkDays,
-        rawHead: rawText.slice(0, 250),
-        rawTail: rawText.slice(-250),
-      });
-    };
-    const parseMs = Date.now() - parseStart;
-    const trimmedRaw = rawText.trim();
-    if (!useSinglePost && trimmedRaw) {
-      const lastChar = trimmedRaw[trimmedRaw.length - 1];
-      if (lastChar !== '}' && lastChar !== ']') {
-        const parseErr = new Error('missing_posts_parse_failed');
-        parseErr.code = 'PARSE_FAILED';
-        parseErr.statusCode = 422;
-        parseErr.rawContent = rawText;
-        parseErr.reason = 'TRUNCATED_OUTPUT';
-        attachPromptMeta(parseErr);
-        console.warn('[Calendar][Parse] truncated', {
-          requestId: loggingContext?.requestId || 'unknown',
-          expectedCount: expectedChunkCount,
-          rawLength: rawText.length,
-          lastChar,
-        });
-        logParseDebug();
-        throw parseErr;
-      }
-    }
-    const expectedStart = chunkStartDay;
-    const expectedEnd = chunkStartDay + chunkDays - 1;
-    const slotIndexMax = Math.max(0, postsPerDay - 1);
-    const parseResult = parsePostsFromModelText(rawText, {
-      expectedPosts: expectedChunkCount,
-      chunkStartDay: expectedStart,
-      chunkEndDay: expectedEnd,
-      postsPerDay,
-    });
-    if (!parseResult) {
-      const parseErr = new Error('missing_posts_parse_failed');
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      attachPromptMeta(parseErr);
+    if (!firstResponse.parsedOutput) {
       console.warn('[Calendar][Parse] failed', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
-        rawLength: rawText.length,
-        extracted: false,
-        rawHead: rawText.slice(0, 120),
-        rawTail: rawText.slice(-120),
+        responseId: firstResponse.responseId || null,
+        model: firstResponse.responseModel || modelName,
+        presentFields: firstResponse.responseKeys || [],
+        extractedKind: firstResponse.extractedKind || null,
+        extractedTextLength: typeof rawText === 'string' ? rawText.length : null,
       });
-      logParseDebug();
-      throw parseErr;
-    }
-    let posts = parseResult.posts;
-    const dayValues = posts
-      ? posts.map((post) => Number(post?.day)).filter((day) => Number.isFinite(day))
-      : [];
-    const minDay = dayValues.length ? Math.min(...dayValues) : null;
-    const maxDay = dayValues.length ? Math.max(...dayValues) : null;
-    console.log('[Calendar][Parse]', {
-      requestId: loggingContext?.requestId || 'unknown',
-      parsedType: parseResult.shape || 'unknown',
-      postsArray: Array.isArray(posts),
-      postCount: posts ? posts.length : 0,
-      expectedCount: expectedChunkCount,
-      minDay,
-      maxDay,
-      extracted: Boolean(posts),
-    });
-    if (!posts) {
-      const parseErr = new Error('missing_posts');
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      attachPromptMeta(parseErr);
-      logParseDebug();
-      throw parseErr;
-    }
-    if (posts.length !== expectedChunkCount) {
-      const parseErr = new Error(`missing_posts_length_mismatch expected=${expectedChunkCount} actual=${posts.length}`);
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      attachPromptMeta(parseErr);
-      logParseDebug();
-      throw parseErr;
-    }
-    if (minDay === null || maxDay === null || minDay < expectedStart || maxDay > expectedEnd) {
-      const parseErr = new Error(`missing_posts_day_range start=${expectedStart} end=${expectedEnd}`);
-      parseErr.code = 'PARSE_FAILED';
-      parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      attachPromptMeta(parseErr);
-      logParseDebug();
-      throw parseErr;
-    }
-    const keyPattern = /^day-(\d+)-slot-(\d+)$/i;
-    const invalidKey = posts.find((post) => {
-      const keyValue = toPlainString(post?.post_key || post?.postKey || '');
-      const dayValue = Number(post?.day);
-      const slotValue = Number(post?.slotIndex);
-      if (!keyValue || !Number.isFinite(dayValue) || !Number.isFinite(slotValue)) return true;
-      if (slotValue < 0 || slotValue > slotIndexMax) return true;
-      const match = keyValue.match(keyPattern);
-      if (!match) return true;
-      return Number(match[1]) !== dayValue || Number(match[2]) !== slotValue;
-    });
-    if (invalidKey) {
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.rawContent = rawText;
-      attachPromptMeta(parseErr);
-      logParseDebug();
+      parseErr.reason = 'PARSE_FAILED';
+      parseErr.responseId = firstResponse.responseId || null;
+      parseErr.responseModel = firstResponse.responseModel || modelName;
+      parseErr.usedStructuredOutput = false;
+      parseErr.rawTextLength = typeof rawText === 'string' ? rawText.length : null;
       throw parseErr;
     }
+    const normalized = normalizeCalendarModelOutput(firstResponse.parsedOutput, expectedChunkCount, {
+      requestId: loggingContext?.requestId || null,
+      mode: calendarMode,
+      chunkIndex: loggingContext?.chunkIndex ?? null,
+      day: chunkStartDay,
+      schemaName: schemaName,
+    }, rawText);
     return {
-      posts,
+      posts: normalized.posts,
       rawContent: rawText,
       latency: firstResponse.latency,
-      parseMs,
+      parseMs: Date.now() - parseStart,
       promptMeta: firstResponse.promptMeta || null,
+      usedStructuredOutput: true,
     };
   } catch (err) {
     if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_TIMEOUT' || err?.code === 'PARSE_FAILED') {
@@ -9573,6 +9446,7 @@ const server = http.createServer((req, res) => {
         days: chunkDays,
         openMs: result.latency || 0,
         parseMs: result.parseMs || 0,
+        usedStructuredOutput: Boolean(result.usedStructuredOutput),
         rawLength: String(result.rawContent || '').length,
         postCount: Array.isArray(result.posts) ? result.posts.length : 0,
       });
