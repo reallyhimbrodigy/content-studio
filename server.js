@@ -7342,6 +7342,42 @@ function normalizeCalendarModelOutput(rawParsed, expectedCount, context = {}, ra
   return { posts, shape };
 }
 
+function extractStructuredCalendarOutput(resp) {
+  const responseId = resp?.id || null;
+  const model = resp?.model || null;
+  const presentFields = resp && typeof resp === 'object' ? Object.keys(resp) : [];
+  const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+  let parsed = null;
+  const directCandidates = [resp?.output_parsed, resp?.parsed];
+  for (const candidate of directCandidates) {
+    if (isPlainObject(candidate) || Array.isArray(candidate)) {
+      parsed = candidate;
+      break;
+    }
+  }
+  if (!parsed && Array.isArray(resp?.output)) {
+    for (const item of resp.output) {
+      if (isPlainObject(item?.parsed) || Array.isArray(item?.parsed)) {
+        parsed = item.parsed;
+        break;
+      }
+      const content = Array.isArray(item?.content) ? item.content : [];
+      for (const chunk of content) {
+        if (isPlainObject(chunk?.parsed) || Array.isArray(chunk?.parsed)) {
+          parsed = chunk.parsed;
+          break;
+        }
+        if (isPlainObject(chunk?.json) || Array.isArray(chunk?.json)) {
+          parsed = chunk.json;
+          break;
+        }
+      }
+      if (parsed) break;
+    }
+  }
+  return { parsed, responseId, model, presentFields };
+}
+
 function extractCalendarOutput(resp) {
   const responseId = resp?.id || null;
   const model = resp?.model || null;
@@ -7880,9 +7916,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
     const json = await Promise.race([requestPromise, timeoutPromise]);
-    const extracted = extractCalendarOutput(json);
-    const parsedOutput = extracted.json || null;
-    const content = extracted.text || '';
+    const extracted = extractStructuredCalendarOutput(json);
+    const parsedOutput = extracted.parsed || null;
+    const content = '';
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
@@ -7893,9 +7929,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       promptMeta: lastPromptMeta,
       responseId: extracted.responseId || json?.id || null,
       responseModel: extracted.model || json?.model || attemptModel,
-      rawTextLength: typeof content === 'string' ? content.length : null,
+      rawTextLength: null,
       responseKeys: extracted.presentFields || [],
-      extractedKind: extracted.kind || null,
+      extractedKind: parsedOutput ? 'structured' : 'none',
     };
   };
 
@@ -7945,6 +7981,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           day: chunkStartDay,
           schemaName: schemaName,
         }, rawText);
+        console.log('[Calendar][Parse] structured_output_used', {
+          requestId: loggingContext?.requestId || 'unknown',
+          responseId: firstResponse.responseId || null,
+          model: firstResponse.responseModel || modelName,
+          usedStructuredOutput: true,
+        });
         return {
           posts: normalized.posts,
           rawContent: rawText,
@@ -7954,51 +7996,40 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           usedStructuredOutput: true,
         };
       }
-      console.warn('[Calendar][Parse] failed', {
+      console.warn('[Calendar][Parse] structured_output_missing', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
         responseId: firstResponse.responseId || null,
         model: firstResponse.responseModel || modelName,
         presentFields: firstResponse.responseKeys || [],
-        extractedKind: firstResponse.extractedKind || null,
-        extractedTextLength: typeof rawText === 'string' ? rawText.length : null,
+        note: 'missing_output_parsed',
       });
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.reason = 'PARSE_FAILED';
+      parseErr.reason = 'STRUCTURED_OUTPUT_MISSING';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
-      parseErr.usedStructuredOutput = Boolean(firstResponse.parsedOutput);
-      parseErr.rawTextLength = typeof rawText === 'string' ? rawText.length : null;
-      console.warn('[Calendar][Parse] structured_output_failed', {
-        requestId: loggingContext?.requestId || 'unknown',
-        responseId: parseErr.responseId,
-        model: parseErr.responseModel,
-        usedStructuredOutput: parseErr.usedStructuredOutput,
-        rawTextLength: parseErr.rawTextLength,
-      });
+      parseErr.usedStructuredOutput = false;
       throw parseErr;
     }
     const rawText = firstResponse.content || '';
     if (!firstResponse.parsedOutput) {
-      console.warn('[Calendar][Parse] failed', {
+      console.warn('[Calendar][Parse] structured_output_missing', {
         requestId: loggingContext?.requestId || 'unknown',
         expectedCount: expectedChunkCount,
         responseId: firstResponse.responseId || null,
         model: firstResponse.responseModel || modelName,
         presentFields: firstResponse.responseKeys || [],
-        extractedKind: firstResponse.extractedKind || null,
-        extractedTextLength: typeof rawText === 'string' ? rawText.length : null,
+        note: 'missing_output_parsed',
       });
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.reason = 'PARSE_FAILED';
+      parseErr.reason = 'STRUCTURED_OUTPUT_MISSING';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
       parseErr.usedStructuredOutput = false;
-      parseErr.rawTextLength = typeof rawText === 'string' ? rawText.length : null;
       throw parseErr;
     }
     const normalized = normalizeCalendarModelOutput(firstResponse.parsedOutput, expectedChunkCount, {
@@ -8008,6 +8039,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       day: chunkStartDay,
       schemaName: schemaName,
     }, rawText);
+    console.log('[Calendar][Parse] structured_output_used', {
+      requestId: loggingContext?.requestId || 'unknown',
+      responseId: firstResponse.responseId || null,
+      model: firstResponse.responseModel || modelName,
+      usedStructuredOutput: true,
+    });
     return {
       posts: normalized.posts,
       rawContent: rawText,
