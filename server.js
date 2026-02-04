@@ -7276,6 +7276,72 @@ function looksTruncatedJson(raw = '') {
   return depth !== 0;
 }
 
+function normalizeCalendarModelOutput(rawParsed, expectedCount, context = {}, rawText = '') {
+  let posts = null;
+  let shape = 'unknown';
+  if (Array.isArray(rawParsed)) {
+    posts = rawParsed;
+    shape = 'array';
+  } else if (rawParsed && typeof rawParsed === 'object') {
+    if (Array.isArray(rawParsed.posts)) {
+      posts = rawParsed.posts;
+      shape = 'posts-wrapper';
+    } else if (rawParsed.post && typeof rawParsed.post === 'object') {
+      posts = [rawParsed.post];
+      shape = 'post-wrapper';
+    } else {
+      posts = [rawParsed];
+      shape = 'single-object';
+    }
+  }
+  if (!Array.isArray(posts)) {
+    console.warn('[Calendar][Parse] schema_mismatch', {
+      requestId: context?.requestId || null,
+      mode: context?.mode || null,
+      chunkIndex: context?.chunkIndex ?? null,
+      day: context?.day ?? null,
+      expectedPosts: expectedCount ?? null,
+      parsedType: typeof rawParsed,
+      isArray: Array.isArray(rawParsed),
+      keys: rawParsed && typeof rawParsed === 'object' ? Object.keys(rawParsed).slice(0, 20) : [],
+      rawSnippet: rawText ? String(rawText).slice(0, 300) : '',
+      schemaName: context?.schemaName || null,
+    });
+    const err = new Error('SCHEMA_MISMATCH');
+    err.code = 'SCHEMA_MISMATCH';
+    err.statusCode = 422;
+    err.details = {
+      reason: 'invalid_envelope',
+      expectedPosts: expectedCount,
+      shape,
+    };
+    throw err;
+  }
+  if (Number.isFinite(Number(expectedCount)) && posts.length !== Number(expectedCount)) {
+    console.warn('[Calendar][Parse] schema_mismatch', {
+      requestId: context?.requestId || null,
+      mode: context?.mode || null,
+      chunkIndex: context?.chunkIndex ?? null,
+      day: context?.day ?? null,
+      expectedPosts: expectedCount ?? null,
+      actualPosts: posts.length,
+      shape,
+      schemaName: context?.schemaName || null,
+    });
+    const err = new Error('SCHEMA_MISMATCH');
+    err.code = 'SCHEMA_MISMATCH';
+    err.statusCode = 422;
+    err.details = {
+      reason: 'count_mismatch',
+      expectedPosts: expectedCount,
+      actualPosts: posts.length,
+      shape,
+    };
+    throw err;
+  }
+  return { posts, shape };
+}
+
 function extractCalendarOutput(resp) {
   const responseId = resp?.id || null;
   const model = resp?.model || null;
@@ -7549,6 +7615,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   ).toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
+  const schemaName = useSinglePost
+    ? (calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular')
+    : (calendarMode === 'brand_brain' ? 'calendar_batch_brandbrain' : 'calendar_batch_regular');
   const expectedChunkCount = useSinglePost ? 1 : chunkDays * postsPerDay;
   const schema = useSinglePost
     ? buildCalendarPostSchema(
@@ -7718,9 +7787,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         planUsed: Boolean(opts.planUsed),
       });
     }
-  const schemaName = useSinglePost
-    ? (calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular')
-    : (calendarMode === 'brand_brain' ? 'calendar_batch_brandbrain' : 'calendar_batch_regular');
   const responseFormat = {
     type: 'json_schema',
     json_schema: { name: schemaName, strict: true, schema },
@@ -7881,13 +7947,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const parseStart = Date.now();
     if (useSinglePost) {
       const rawText = firstResponse.content || '';
-      let parsed = firstResponse.parsedOutput;
-      if (!parsed && rawText) parsed = safeJsonParse(rawText);
-      if (parsed?.post && typeof parsed.post === 'object') parsed = parsed.post;
-      if (Array.isArray(parsed?.posts) && parsed.posts.length === 1) parsed = parsed.posts[0];
-      if (parsed && typeof parsed === 'object') {
+      const parsed = firstResponse.parsedOutput;
+      if (parsed) {
+        const normalized = normalizeCalendarModelOutput(parsed, expectedChunkCount, {
+          requestId: loggingContext?.requestId || null,
+          mode: calendarMode,
+          chunkIndex: loggingContext?.chunkIndex ?? null,
+          day: chunkStartDay,
+          schemaName: schemaName,
+        }, rawText);
         return {
-          posts: [parsed],
+          posts: normalized.posts,
           rawContent: rawText,
           latency: firstResponse.latency,
           parseMs: 0,
@@ -7917,7 +7987,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parseErr.reason = 'PARSE_FAILED';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
-      parseErr.usedStructuredOutput = Boolean(firstResponse.parsedOutput) || Boolean(rawText);
+      parseErr.usedStructuredOutput = Boolean(firstResponse.parsedOutput);
       parseErr.rawTextLength = rawText ? rawText.length : null;
       console.warn('[Calendar][Parse] structured_output_failed', {
         requestId: loggingContext?.requestId || 'unknown',
@@ -7929,6 +7999,22 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       throw parseErr;
     }
     const rawText = firstResponse.content || '';
+    if (firstResponse.parsedOutput) {
+      const normalized = normalizeCalendarModelOutput(firstResponse.parsedOutput, expectedChunkCount, {
+        requestId: loggingContext?.requestId || null,
+        mode: calendarMode,
+        chunkIndex: loggingContext?.chunkIndex ?? null,
+        day: chunkStartDay,
+        schemaName: schemaName,
+      }, rawText);
+      return {
+        posts: normalized.posts,
+        rawContent: rawText,
+        latency: firstResponse.latency,
+        parseMs: 0,
+        promptMeta: firstResponse.promptMeta || null,
+      };
+    }
     const logParseDebug = () => {
       if (process.env.CALENDAR_PARSE_DEBUG !== '1') return;
       console.warn('[Calendar][Parse][Debug]', {
@@ -10775,18 +10861,14 @@ const server = http.createServer((req, res) => {
               };
               throw failErr;
             }
-            const validateStart = Date.now();
-            const missing = validatePostCompleteness(post, selectedMode);
-            totalValidateMs += Date.now() - validateStart;
-            if (missing.length || hasPlaceholderInPost(post)) {
+            if (hasPlaceholderInPost(post)) {
               const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
               failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
               failErr.statusCode = 422;
               failErr.details = {
                 post_key: slot.post_key,
                 day: slot.day,
-                reason: 'SCHEMA_MISMATCH',
-                missing,
+                reason: 'PLACEHOLDER_DETECTED',
               };
               throw failErr;
             }
