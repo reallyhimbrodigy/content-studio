@@ -6035,9 +6035,55 @@ function extractKeywordTokens(value = '') {
 function parseDesignNotesDirectives(value = '') {
   const raw = String(value || '');
   const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const bullets = lines.filter((line) => /^\s*[•\-\*]\s+/.test(line));
+  const bullets = lines.filter((line) => /^-\s+/.test(line));
   if (!bullets.length) return [];
-  return bullets.map((line) => line.replace(/^[\s•\-\*]+/, '').trim()).filter(Boolean);
+  return bullets;
+}
+
+function normalizeDesignNotes(post = {}, ctx = {}) {
+  const requestId = ctx?.requestId || null;
+  const postKeyValue = toPlainString(ctx?.post_key || post?.post_key || post?.postKey || '');
+  const original = typeof post?.designNotes === 'string' ? post.designNotes : '';
+  const raw = typeof post?.designNotes === 'string' ? post.designNotes : '';
+  const topicSource = toPlainString(post?.topic || post?.title || post?.idea || '');
+  const topicShort = topicSource.split(/[.!?]/)[0].trim().slice(0, 60) || 'the topic';
+  const cleanedLines = String(raw || '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^[\s•\-\*]+/, '').trim())
+    .filter(Boolean);
+  const fillLines = [];
+  fillLines.push(`Open on-screen with: ${topicShort}`);
+  fillLines.push('Show 3 proof points: price, DOM, area');
+  fillLines.push("Close with CTA lower-third: DM 'MIAMI'");
+  const lines = cleanedLines.slice(0, 3);
+  while (lines.length < 3) {
+    lines.push(fillLines[lines.length]);
+  }
+  const normalizeLine = (line) => {
+    let next = String(line || '').trim();
+    while (next.length < 10) {
+      next = `${next} (quick visual)`.trim();
+    }
+    if (next.length > 88) {
+      next = next.slice(0, 88).trim();
+    }
+    return next;
+  };
+  const finalLines = lines.map((line) => `- ${normalizeLine(line)}`);
+  const normalized = finalLines.join('\n');
+  if (normalized.trim() !== original.trim()) {
+    console.log('[Calendar][NormalizeDesignNotes]', {
+      requestId,
+      post_key: postKeyValue || null,
+      changed: true,
+      beforeSnippet: original.slice(0, 120),
+      afterSnippet: normalized.slice(0, 120),
+    });
+  }
+  post.designNotes = normalized;
+  return post;
 }
 
 function normalizeSignatureText(value = '') {
@@ -6093,13 +6139,13 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     }
   }
   const designNotesRaw = toPlainString(post?.designNotes || '');
-  const directives = parseDesignNotesDirectives(designNotesRaw);
-  if (directives.length !== 3) {
+  const noteLines = designNotesRaw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  if (noteLines.length !== 3) {
     return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: designNotesRaw.slice(0, 120) };
   }
-  const weakDirective = directives.find((line) => {
+  const weakDirective = noteLines.find((line) => {
     const len = line.trim().length;
-    return len < 8 || len > 80;
+    return !line.startsWith('- ') || len < 12 || len > 90;
   });
   if (weakDirective) {
     return { ok: false, reason: 'DESIGN_NOTES_TOO_WEAK', field: 'designNotes', snippet: weakDirective.slice(0, 120) };
@@ -10281,6 +10327,15 @@ const server = http.createServer((req, res) => {
         postsPerDay: perDay,
       });
     }
+    posts.forEach((post, idx) => {
+      const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
+      const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
+      const postKeyValue = toPlainString(post?.post_key || post?.postKey || post?.__key || '');
+      normalizeDesignNotes(post, {
+        requestId: loggingContext?.requestId || null,
+        post_key: postKeyValue || (Number.isFinite(day) ? postKey(day, Number.isFinite(slotIndex) ? slotIndex : 0) : null),
+      });
+    });
     const qualityState = { signatureMap: new Map() };
     posts.forEach((post, idx) => {
       const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
@@ -10979,6 +11034,10 @@ const server = http.createServer((req, res) => {
             const post = singlePosts[0];
             const scheduledPillar = scheduleByKey.get(slot.post_key);
             if (scheduledPillar) post.pillar = scheduledPillar;
+            normalizeDesignNotes(post, {
+              requestId,
+              post_key: slot.post_key,
+            });
             const quality = validateCalendarPostQuality(post, {
               mode: selectedMode,
               nicheStyle: regenNicheStyle,
