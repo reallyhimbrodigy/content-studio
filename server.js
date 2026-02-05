@@ -2434,7 +2434,7 @@ async function generateAndValidateSinglePost({
   post_key,
   plannedTitle,
   plannedAngle,
-  scheduledPillar,
+  pillarKey,
   requestId,
   loggingContext = {},
   maxTokens,
@@ -2444,6 +2444,8 @@ async function generateAndValidateSinglePost({
   extraInstructions,
 }) {
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
+  const assignedPillarKey = pillarKey || pickPillarKeyForPostKey(post_key);
+  const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
   const baseInstructions = [
     'WRITE MODE (SINGLE POST):',
     '- Return ONLY a single post object (no posts array).',
@@ -2453,7 +2455,8 @@ async function generateAndValidateSinglePost({
     '- topic_signature must equal title.',
     `- Schema name: ${schemaLabel}.`,
     `- Niche: ${nicheStyle}.`,
-    '- Do not mention any pillar.',
+    `- Pillar (style only): ${assignedPillarKey}. ${pillarStyle}`.trim(),
+    '- Do NOT output pillar.',
   ].filter(Boolean).join('\n');
   const state = qualityState || { signatureMap: new Map() };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -2513,7 +2516,6 @@ async function generateAndValidateSinglePost({
         post.topic_signature = plannedTitle;
       }
       if (plannedAngle) post.angle = plannedAngle;
-      if (scheduledPillar) post.pillar = scheduledPillar;
       post = coerceCalendarPostTypes(post);
       console.log('[Calendar][Candidate]', {
         requestId,
@@ -2613,13 +2615,25 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
+      console.log('[Calendar][Pillar][Validated]', {
+        requestId,
+        post_key,
+        hasPillar: Object.prototype.hasOwnProperty.call(post, 'pillar'),
+      });
+      const finalPost = { ...post, pillar: assignedPillarKey };
+      console.log('[Calendar][Pillar][Final]', {
+        requestId,
+        post_key,
+        hasPillar: Object.prototype.hasOwnProperty.call(finalPost, 'pillar'),
+        pillar: assignedPillarKey,
+      });
       console.log('[Calendar][Job] success', {
         requestId,
         day,
         slot: slotIndex,
         post_key,
       });
-      return post;
+      return finalPost;
       } catch (err) {
         if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_SCHEMA_INVALID') {
           const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -5613,6 +5627,13 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 }
 
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
+const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
+const CALENDAR_PILLAR_STYLE_RULES = {
+  education: 'Teach a concept with 2–3 steps.',
+  social_proof: 'Use a client outcome story.',
+  promotion: 'Highlight an offer and a next step.',
+  lifestyle: 'Describe a routine or moment plus a practical tip.',
+};
 
 function seedFromString(value = '') {
   let hash = 2166136261;
@@ -5633,6 +5654,12 @@ function makePrng(seed) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function pickPillarKeyForPostKey(postKeyValue = '') {
+  const rand = makePrng(seedFromString(`pillar|${String(postKeyValue || '')}`));
+  const idx = Math.floor(rand() * CALENDAR_PILLAR_KEYS.length);
+  return CALENDAR_PILLAR_KEYS[idx] || CALENDAR_PILLAR_KEYS[0];
 }
 
 function shuffleArray(list = [], rand) {
@@ -9908,7 +9935,7 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
-        scheduledPillar: scheduleByKey.get(slot.post_key),
+        pillarKey: pickPillarKeyForPostKey(slot.post_key),
         requestId,
         loggingContext,
         maxTokens,
@@ -11164,11 +11191,10 @@ const server = http.createServer((req, res) => {
           ? Number(body.totalDays)
           : (Number.isFinite(Number(body?.days)) ? Number(body.days) : 30);
         const totalPosts = totalDays * postsPerDay;
-        const seedSource = `${body?.runId || calendarId || requestId}|${nicheStyle}|${totalDays}|${postsPerDay}`;
-        const rand = makePrng(seedFromString(seedSource));
-        const pillarSchedule = buildPillarSchedule(totalPosts, rand);
         const scheduleIndex = (day - 1) * postsPerDay + slotIndex;
-        const scheduledPillar = Number.isFinite(scheduleIndex) ? pillarSchedule[scheduleIndex] : null;
+        const scheduledPillar = Number.isFinite(scheduleIndex)
+          ? pickPillarKeyForPostKey(postKeyValue)
+          : pickPillarKeyForPostKey(postKeyValue);
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
@@ -11203,7 +11229,7 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
-            scheduledPillar,
+            pillarKey: scheduledPillar,
             requestId,
             loggingContext: { requestId, day, slotIndex, post_key: postKeyValue },
             maxTokens,
