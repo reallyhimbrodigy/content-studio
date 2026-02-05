@@ -2620,10 +2620,23 @@ async function generateAndValidateSinglePost({
         post_key,
       });
       return post;
-    } catch (err) {
-      const reason = err?.code === 'PARSE_FAILED'
-        ? (err?.reason || 'PARSE_FAILED')
-        : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
+      } catch (err) {
+        if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_SCHEMA_INVALID') {
+          const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
+          failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
+          failErr.statusCode = 422;
+          failErr.details = {
+            reason: 'SCHEMA_INVALID_REQUEST',
+            field: err?.details?.schemaObject || err?.details?.schemaName || 'schema',
+            snippet: err?.openaiMessage || err?.message || '',
+            day,
+            post_key,
+          };
+          throw failErr;
+        }
+        const reason = err?.code === 'PARSE_FAILED'
+          ? (err?.reason || 'PARSE_FAILED')
+          : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
           ? 'TIMEOUT'
           : err?.code === 'OPENAI_BACKEND_ERROR'
             ? 'OPENAI_ERROR'
@@ -3101,7 +3114,33 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       },
       slotIndex: { type: 'integer', minimum: 0 },
       title: { type: 'string', minLength: 1 },
-      topicCapsule: { type: 'object', additionalProperties: true },
+      topicCapsule: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['summary', 'mustUse', 'mustAvoid', 'audienceAngle', 'keyEntities'],
+        properties: {
+          summary: { type: 'string', minLength: 1 },
+          mustUse: {
+            type: 'array',
+            minItems: 5,
+            maxItems: 10,
+            items: { type: 'string', minLength: 1 },
+          },
+          mustAvoid: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 10,
+            items: { type: 'string', minLength: 1 },
+          },
+          audienceAngle: { type: 'string', minLength: 1 },
+          keyEntities: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 5,
+            items: { type: 'string', minLength: 1 },
+          },
+        },
+      },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       format: { type: 'string', minLength: 1 },
@@ -3114,9 +3153,35 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
         type: 'array',
         items: { type: 'string', minLength: 1 },
       },
-      script: { type: 'object', additionalProperties: true },
-      reelScript: { type: 'object', additionalProperties: true },
-      engagementScripts: { type: 'object', additionalProperties: true },
+      script: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hook', 'body', 'cta'],
+        properties: {
+          hook: { type: 'string', minLength: 1 },
+          body: { type: 'string', minLength: 1 },
+          cta: { type: 'string', minLength: 1 },
+        },
+      },
+      reelScript: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hook', 'body', 'cta'],
+        properties: {
+          hook: { type: 'string', minLength: 1 },
+          body: { type: 'string', minLength: 1 },
+          cta: { type: 'string', minLength: 1 },
+        },
+      },
+      engagementScripts: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['commentReply', 'dmReply'],
+        properties: {
+          commentReply: { type: 'string', minLength: 1 },
+          dmReply: { type: 'string', minLength: 1 },
+        },
+      },
     },
   };
 }
@@ -4004,6 +4069,37 @@ function assertJsonSchemaFiniteNumbers(schema, label = 'schema') {
     err.code = 'OPENAI_SCHEMA_ERROR';
     err.statusCode = 400;
     err.details = { reason: 'non_finite_number', paths: issues };
+    throw err;
+  }
+}
+
+function assertJsonSchemaAdditionalProperties(schema, label = 'schema') {
+  const issues = [];
+  const walk = (node, path) => {
+    if (!node || typeof node !== 'object') return;
+    const isObjectType = node.type === 'object' || Boolean(node.properties);
+    if (isObjectType) {
+      if (node.additionalProperties !== false) {
+        issues.push(path);
+      }
+      if (node.properties && typeof node.properties === 'object') {
+        Object.entries(node.properties).forEach(([key, child]) => walk(child, `${path}.properties.${key}`));
+      }
+      if (node.items) {
+        walk(node.items, `${path}.items`);
+      }
+      return;
+    }
+    if (node.type === 'array' && node.items) {
+      walk(node.items, `${path}.items`);
+    }
+  };
+  walk(schema, label);
+  if (issues.length) {
+    const err = new Error('Invalid JSON schema');
+    err.code = 'OPENAI_SCHEMA_ERROR';
+    err.statusCode = 400;
+    err.details = { reason: 'additional_properties_missing', paths: issues };
     throw err;
   }
 }
@@ -8154,6 +8250,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       throw new Error('Invalid schema root shape');
     }
     assertJsonSchemaFiniteNumbers(schema, 'calendarChunkSchema');
+    assertJsonSchemaAdditionalProperties(schema, 'calendarChunkSchema');
   } catch (err) {
     const schemaErr = new Error('OpenAI schema validation failed');
     schemaErr.code = 'OPENAI_SCHEMA_ERROR';
