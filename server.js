@@ -2487,6 +2487,7 @@ async function generateAndValidateSinglePost({
         calendarMode,
         singlePost: true,
         allowFailover: false,
+        schemaOverride: schema,
       });
       if (!Array.isArray(result.posts) || result.posts.length !== 1) {
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -2593,7 +2594,7 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       const missing = validatePostCompleteness(post, calendarMode);
-      if (missing.length || hasPlaceholderInPost(post)) {
+      if (missing.length) {
         const missingField = missing[0] || 'unknown';
         const missingValue = missingField !== 'unknown'
           ? getValueByPath(post, missingField.replace(/\./g, '.'))
@@ -2602,7 +2603,7 @@ async function generateAndValidateSinglePost({
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
-          reason: 'SCHEMA_MISMATCH',
+          reason: 'MISSING_REQUIRED_FIELD',
           field: missingField,
           snippet: (() => {
             if (typeof missingValue === 'string') return missingValue.slice(0, 160);
@@ -2612,6 +2613,17 @@ async function generateAndValidateSinglePost({
               return '';
             }
           })(),
+        };
+        throw err;
+      }
+      if (hasPlaceholderInPost(post)) {
+        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+        err.code = 'CALENDAR_POST_GENERATION_FAILED';
+        err.statusCode = 422;
+        err.details = {
+          reason: 'PLACEHOLDER_FOUND',
+          field: 'content',
+          snippet: JSON.stringify({ post_key }).slice(0, 160),
         };
         throw err;
       }
@@ -8196,17 +8208,19 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     ? (calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular')
     : (calendarMode === 'brand_brain' ? 'calendar_batch_brandbrain' : 'calendar_batch_regular');
   const expectedChunkCount = useSinglePost ? 1 : chunkDays * postsPerDay;
-  const schema = useSinglePost
-    ? getCalendarPostSchema(
-        calendarMode,
-        chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
-      )
-    : buildCalendarSchemaObject(
-        expectedChunkCount,
-        chunkStartDay,
-        Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
-      );
+  const schema = useSinglePost && opts.schemaOverride
+    ? opts.schemaOverride
+    : useSinglePost
+      ? getCalendarPostSchema(
+          calendarMode,
+          chunkStartDay,
+          Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+        )
+      : buildCalendarSchemaObject(
+          expectedChunkCount,
+          chunkStartDay,
+          Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+        );
   try {
     JSON.stringify(schema);
     if (!schema || schema.type !== 'object' || !schema.properties || !schema.required) {
