@@ -9135,7 +9135,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     }
   }
   let abortScheduling = false;
-  let batchErrorLogged = false;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
   const isActiveRun = () => window.__calendarGenActiveRunId === runToken && currentGenerationRunId === thisRunId;
@@ -9162,13 +9161,15 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const CHUNK_DAYS = 10;
-    const totalBatches = Math.ceil(totalDays / CHUNK_DAYS);
-    let completedBatches = 0;
-    const usedSignaturesForRun = [];
-    // Incremental render state
-    const partialByIndex = {};
-    let firstRenderDone = false;
+    const POOL_CONCURRENCY = 6;
+    const jobs = [];
+    for (let day = 1; day <= totalDays; day += 1) {
+      for (let slot = 0; slot < normalizedFrequency; slot += 1) {
+        jobs.push({ day, slot, post_key: `day-${day}-slot-${slot}` });
+      }
+    }
+    console.log(`[Calendar][Pool] jobs=${jobs.length} concurrency=${POOL_CONCURRENCY}`);
+    let completedPosts = 0;
     let generatedCalendarId = null;
     expectedCalendarPostCount = totalPosts;
     renderGateEnabled = true;
@@ -9196,10 +9197,41 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         return undefined;
       }
     })();
-    let firstDispatchLogged = false;
-    const fetchBatch = async (batchIndex) => {
+    const runPool = async (items, concurrency, worker) => {
+      const results = new Array(items.length);
+      const errors = [];
+      let next = 0;
+      const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (true) {
+          const idx = next++;
+          if (idx >= items.length) return;
+          try {
+            results[idx] = await worker(items[idx], idx);
+          } catch (err) {
+            errors.push(err);
+          }
+        }
+      });
+      await Promise.all(workers);
+      if (errors.length) throw errors[0];
+      return results;
+    };
+
+    const updateProgress = () => {
+      const btn = document.getElementById('generate-calendar');
+      const textSpan = btn?.querySelector('.btn-text');
+      const pFill = document.getElementById('progress-fill');
+      const pText = document.getElementById('progress-text');
+      const progress = Math.min(completedPosts, totalPosts);
+      const percent = Math.round((progress / totalPosts) * 100);
+      if (textSpan) textSpan.textContent = `Generating... (${progress}/${totalPosts} posts)`;
+      if (pFill) pFill.style.width = `${percent}%`;
+      if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
+    };
+
+    const fetchSinglePost = async (job, attempt = 1) => {
       if (!isActiveRun()) {
-        return { batchIndex, posts: [], cancelled: true };
+        return { cancelled: true };
       }
       if (calendarExportsLocked) {
         showUpgradeModal();
@@ -9211,38 +9243,26 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         err.elapsedMs = Math.round(performance.now() - tStart);
         throw err;
       }
-      const startDay = 1 + batchIndex * CHUNK_DAYS;
-      const requestDays = Math.min(CHUNK_DAYS, totalDays - batchIndex * CHUNK_DAYS);
-      const batchSize = requestDays * normalizedFrequency;
-      // Resolve payload user id lazily; do not block early dispatch if it’s still pending
       if (typeof payloadUserId === 'undefined') {
         payloadUserId = await payloadUserIdPromise;
       }
       const payload = {
         nicheStyle,
         userId: payloadUserId,
-        days: requestDays,
-        startDay,
+        day: job.day,
+        slot: job.slot,
+        post_key: job.post_key,
         postsPerDay: normalizedFrequency,
-        usedSignatures: usedSignaturesForRun.slice(),
+        totalDays,
+        runId: runToken,
+        isFirst: job.day === 1 && job.slot === 0,
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
       if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
-      if (thisRunId !== currentGenerationRunId || abortScheduling || batchSignal.aborted) {
-        const err = new Error(clientTimedOut ? 'client_timeout' : 'generation_cancelled');
-        err.code = clientTimedOut ? 'client_timeout' : 'generation_cancelled';
-        err.elapsedMs = Math.round(performance.now() - tStart);
-        throw err;
-      }
-      if (!firstDispatchLogged) {
-        console.log(`[Calendar][Perf] first batch request dispatched (t=${Math.round(performance.now())}ms)`);
-        firstDispatchLogged = true;
-      }
-      const logEndDay = startDay + requestDays - 1;
-      console.log(`[Calendar] run ${thisRunId} Requesting batch ${batchIndex + 1}/${totalBatches} (days ${startDay}-${logEndDay})`, payload);
-      const response = await fetchWithAuth('/api/calendar/regenerate', {
+      console.log(`[Calendar] job ${job.day}-${job.slot} start (attempt ${attempt})`);
+      const response = await fetchWithAuth('/api/calendar/regenerate_one', {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -9287,143 +9307,63 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         lastGenerationErrorStatus = response.status;
         lastGenerationRequestId = requestId;
         lastGenerationErrorCode = data?.error?.code || data?.code || null;
-        if (!batchErrorLogged && !batchSignal.aborted) {
-          console.error('[Calendar] fetchBatch bad response', {
-            batchIndex,
-            status: response.status,
-            requestId,
-            error: msg,
-          });
-          batchErrorLogged = true;
-        }
-        if (data?.error?.code === 'OPENAI_SCHEMA_ERROR') {
-          lastGenerationErrorCode = data?.error?.code;
-          const schemaErr = new Error('openai_schema_error');
-          schemaErr.status = response.status;
-          schemaErr.requestId = requestId;
-          schemaErr.payload = data;
-          if (!batchSignal.aborted) {
-            abortScheduling = true;
-            batchAbortController.abort();
+        if (data?.error === 'upgrade_required') {
+          if (data?.feature === 'calendar_exports') {
+            lockCalendarExportButtons();
           }
-          throw schemaErr;
+          showUpgradeModal();
+          throw new Error('upgrade_required');
         }
         const err = new Error(msg);
         err.status = response.status;
         err.requestId = requestId;
         err.payload = data;
-        if (!batchSignal.aborted) {
-          abortScheduling = true;
-          batchAbortController.abort();
+        if (data?.error === 'CALENDAR_POST_GENERATION_FAILED') {
+          err.code = 'CALENDAR_POST_GENERATION_FAILED';
         }
         throw err;
       }
-      if (firstDispatchLogged) {
-        console.log(`[Calendar][Perf] first batch response received (t=${Math.round(performance.now())}ms)`);
-        // Only log once
-        firstDispatchLogged = false;
-      }
-
       const responsePayload = parsedDetail;
-      if (responsePayload?.error === 'upgrade_required') {
-        if (responsePayload?.feature === 'calendar_exports') {
-          lockCalendarExportButtons();
-        }
-        showUpgradeModal();
-        lastGenerationErrorCode = 'upgrade_required';
-        const upgradeRequestId = responsePayload?.requestId || reqIdHeader;
-        if (upgradeRequestId) lastGenerationRequestId = upgradeRequestId;
-        throw new Error('upgrade_required');
-      }
-
-      if (!responsePayload) {
-        console.error('[Calendar] fetchBatch invalid JSON response', {
-          batchIndex,
-          payload: responsePayload,
-          body: responseText,
-        });
-        if (reqIdHeader) lastGenerationRequestId = reqIdHeader;
+      if (!responsePayload || !responsePayload.post) {
         const err = new Error('API error: invalid_json');
         err.status = response.status;
         err.requestId = reqIdHeader || null;
-        err.payload = null;
-        throw err;
-      }
-
-      const postsCandidate =
-        responsePayload.posts ??
-        responsePayload.data?.posts ??
-        responsePayload.result?.posts ??
-        responsePayload.items ??
-        responsePayload;
-      const calendarId = responsePayload.calendarId ?? responsePayload.id ?? responsePayload.calendar?.id ?? null;
-      const requestIdFromPayload = responsePayload.requestId || reqIdHeader;
-      if (requestIdFromPayload) lastGenerationRequestId = requestIdFromPayload;
-      if (!Array.isArray(postsCandidate)) {
-        console.error('[Calendar] fetchBatch invalid JSON response', {
-          batchIndex,
-          payload: responsePayload,
-          body: responseText,
-        });
-        if (requestIdFromPayload || reqIdHeader) lastGenerationRequestId = requestIdFromPayload || reqIdHeader;
-        const err = new Error('API error: invalid_json');
-        err.status = response.status;
-        err.requestId = requestIdFromPayload || reqIdHeader || null;
         err.payload = responsePayload || null;
         throw err;
       }
-
-      postsCandidate.forEach((post) => {
-        const signature = normalizeCalendarSignature(post.title);
-        if (signature && !usedSignaturesForRun.includes(signature)) {
-          usedSignaturesForRun.push(signature);
-        }
-      });
-
-      if (!postsCandidate.length) {
-        const suffix = requestIdFromPayload ? ` (requestId=${requestIdFromPayload})` : '';
-        throw new Error(`API returned no posts${suffix}`);
+      const post = responsePayload.post;
+      if (!generatedCalendarId && responsePayload.calendarId) {
+        generatedCalendarId = responsePayload.calendarId;
       }
-
-      if (responsePayload?.debugStack) {
-        console.log('[Calendar] fetchBatch debugStack:', responsePayload.debugStack);
-      }
-      let batchPosts = postsCandidate;
-      if (!generatedCalendarId && calendarId) {
-        generatedCalendarId = calendarId;
-      }
-
-      // Update progress UI as each batch completes
-      completedBatches++;
-      const btn = document.getElementById('generate-calendar');
-      const textSpan = btn?.querySelector('.btn-text');
-      const pFill = document.getElementById('progress-fill');
-      const pText = document.getElementById('progress-text');
-      
-      const progress = Math.min(completedBatches * batchSize, totalPosts);
-      const percent = Math.round((progress / totalPosts) * 100);
-      
-      if (textSpan) textSpan.textContent = `Generating... (${progress}/${totalPosts} posts)`;
-      if (pFill) pFill.style.width = `${percent}%`;
-      if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
-
-      await userIsProPromise;
-
-      console.log(`[Calendar] run ${thisRunId} Batch ${batchIndex + 1} complete`);
-      return { batchIndex, posts: batchPosts, calendarId, requestId: requestIdFromPayload || reqIdHeader || null };
+      if (responsePayload.requestId) lastGenerationRequestId = responsePayload.requestId;
+      return post;
     };
-    const orderedResults = [];
-    const t0 = performance.now();
-    const batchDescriptors = Array.from({ length: totalBatches }, (_, batchIndex) => ({
-      batchIndex,
-      startDay: 1 + batchIndex * CHUNK_DAYS,
-      days: Math.min(CHUNK_DAYS, totalDays - batchIndex * CHUNK_DAYS),
-    }));
-    console.log(`[Calendar] Dispatching ${batchDescriptors.length} concurrent batches`);
+
+    const worker = async (job, idx) => {
+      if (!isActiveRun()) return null;
+      try {
+        const post = await fetchSinglePost(job, 1);
+        completedPosts += 1;
+        updateProgress();
+        console.log(`[Calendar] job ${idx + 1}/${jobs.length} success day=${job.day} slot=${job.slot}`);
+        return post;
+      } catch (err) {
+        const retryReason = err?.payload?.details?.reason || err?.payload?.reason || null;
+        if (err?.code === 'CALENDAR_POST_GENERATION_FAILED' && ['PARSE_FAILED', 'SCHEMA_MISMATCH'].includes(String(retryReason || ''))) {
+          console.log(`[Calendar] job ${idx + 1}/${jobs.length} retry day=${job.day} slot=${job.slot}`);
+          const post = await fetchSinglePost(job, 2);
+          completedPosts += 1;
+          updateProgress();
+          console.log(`[Calendar] job ${idx + 1}/${jobs.length} success day=${job.day} slot=${job.slot}`);
+          return post;
+        }
+        throw err;
+      }
+    };
+
+    let allPosts = [];
     try {
-      const results = await Promise.all(batchDescriptors.map((batch) => fetchBatch(batch.batchIndex)));
-      results.forEach((result) => orderedResults.push(result));
-      console.log('[Calendar] All batches resolved');
+      allPosts = await runPool(jobs, POOL_CONCURRENCY, worker);
     } catch (err) {
       if (!batchSignal.aborted) {
         abortScheduling = true;
@@ -9437,23 +9377,12 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
       throw err;
     }
+
     if (!isActiveRun()) {
       return { posts: [], calendarId: generatedCalendarId, cancelled: true };
     }
-    console.log(`[Calendar] batches complete in ${Math.round(performance.now() - t0)}ms`);
-    
-    orderedResults.forEach((result) => {
-      if (!generatedCalendarId && result?.calendarId) {
-        generatedCalendarId = result.calendarId;
-      }
-    });
 
-    // Sort by batch index and flatten
-    const cancelledResults = orderedResults.some((result) => result?.cancelled);
-    if (cancelledResults || !isActiveRun()) {
-      return { posts: [], calendarId: generatedCalendarId, cancelled: true };
-    }
-    let allPosts = orderedResults.flatMap((r) => r.posts);
+    allPosts = allPosts.filter(Boolean);
 
     const rawPostCount = allPosts.length;
     // Normalize every post to ensure required fields
