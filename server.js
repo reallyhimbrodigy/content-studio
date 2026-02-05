@@ -2306,7 +2306,7 @@ const OPENAI_MAX_CONCURRENCY = (() => {
 })();
 const CALENDAR_CONCURRENCY = (() => {
   const configured = Number(process.env.CALENDAR_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 8;
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 6;
 })();
 const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
@@ -11069,7 +11069,10 @@ const server = http.createServer((req, res) => {
         try {
           const safeDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : 1;
           const safeStart = Number.isFinite(Number(body?.startDay)) ? Number(body.startDay) : 1;
-          const requestedPostsPerDay = 1;
+          const requestedPostsPerDay = Math.max(
+            1,
+            Number.isFinite(Number(body?.postsPerDay)) ? Number(body.postsPerDay) : 1
+          );
           const posts = await generateCalendarPosts({
             ...(body || {}),
             userId: user.id,
