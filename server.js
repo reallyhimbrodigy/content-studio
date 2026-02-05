@@ -2502,6 +2502,7 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
+      logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
       let post = sanitizeCalendarPost(result.posts[0]);
       if (scheduledPillar) post.pillar = scheduledPillar;
       post.day = day;
@@ -2525,6 +2526,18 @@ async function generateAndValidateSinglePost({
           acc[key] = Array.isArray(value) ? 'array' : typeof value;
           return acc;
         }, {});
+        const firstErr = schemaErrors[0];
+        const offendingValue = firstErr?.instancePath
+          ? getValueByInstancePath(post, firstErr.instancePath)
+          : undefined;
+        const snippet = (() => {
+          if (typeof offendingValue === 'string') return offendingValue.slice(0, 160);
+          try {
+            return JSON.stringify(offendingValue ?? post).slice(0, 160);
+          } catch {
+            return '';
+          }
+        })();
         console.warn('[Calendar][Schema][Errors]', {
           requestId,
           day,
@@ -2532,20 +2545,13 @@ async function generateAndValidateSinglePost({
           errors: trimmedErrors,
           keyTypes,
         });
-        const firstErr = schemaErrors[0];
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
           reason: 'SCHEMA_MISMATCH',
           field: firstErr?.instancePath || 'unknown',
-          snippet: (() => {
-            try {
-              return JSON.stringify(post).slice(0, 160);
-            } catch {
-              return '';
-            }
-          })(),
+          snippet,
         };
         throw err;
       }
@@ -2570,15 +2576,20 @@ async function generateAndValidateSinglePost({
       }
       const missing = validatePostCompleteness(post, calendarMode);
       if (missing.length || hasPlaceholderInPost(post)) {
+        const missingField = missing[0] || 'unknown';
+        const missingValue = missingField !== 'unknown'
+          ? getValueByPath(post, missingField.replace(/\./g, '.'))
+          : undefined;
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
           reason: 'SCHEMA_MISMATCH',
-          field: missing[0] || 'unknown',
+          field: missingField,
           snippet: (() => {
+            if (typeof missingValue === 'string') return missingValue.slice(0, 160);
             try {
-              return JSON.stringify(post).slice(0, 160);
+              return JSON.stringify(missingValue ?? post).slice(0, 160);
             } catch {
               return '';
             }
@@ -6032,6 +6043,18 @@ function getValueByPath(obj, path) {
   return current;
 }
 
+function getValueByInstancePath(obj, instancePath = '') {
+  const trimmed = String(instancePath || '').replace(/^\//, '');
+  if (!trimmed) return undefined;
+  const parts = trimmed.split('/').filter(Boolean);
+  let current = obj;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
 function requiredFieldsForMode(mode = 'regular') {
   return mode === 'brand_brain'
     ? REQUIRED_POST_FIELDS_BRAND.slice()
@@ -7708,6 +7731,40 @@ function normalizeCalendarModelOutput(rawParsed, expectedCount, context = {}, ra
     throw err;
   }
   return { posts, shape };
+}
+
+function logCalendarPostShapeFingerprint(obj, ctx = {}) {
+  const safe = obj && typeof obj === 'object' ? obj : {};
+  const topKeys = Object.keys(safe);
+  const topTypes = {};
+  topKeys.forEach((key) => {
+    const value = safe[key];
+    topTypes[key] = Array.isArray(value) ? 'array' : typeof value;
+  });
+  let nested = null;
+  if (safe.post && typeof safe.post === 'object') {
+    nested = safe.post;
+  } else if (Array.isArray(safe.posts) && safe.posts[0] && typeof safe.posts[0] === 'object') {
+    nested = safe.posts[0];
+  }
+  let nestedKeys = [];
+  let nestedTypes = {};
+  if (nested) {
+    nestedKeys = Object.keys(nested);
+    nestedKeys.forEach((key) => {
+      const value = nested[key];
+      nestedTypes[key] = Array.isArray(value) ? 'array' : typeof value;
+    });
+  }
+  console.log('[Calendar][Shape]', {
+    requestId: ctx?.requestId || null,
+    day: ctx?.day ?? null,
+    post_key: ctx?.post_key || null,
+    topKeys,
+    topTypes,
+    nestedKeys,
+    nestedTypes,
+  });
 }
 
 function extractStructuredJsonTextFromResponsesOutput(resp) {
