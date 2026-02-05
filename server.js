@@ -2455,8 +2455,8 @@ async function generateAndValidateSinglePost({
     '- topic_signature must equal title.',
     `- Schema name: ${schemaLabel}.`,
     `- Niche: ${nicheStyle}.`,
-    `- Pillar (style only): ${assignedPillarKey}. ${pillarStyle}`.trim(),
-    '- Do NOT output pillar.',
+    `- pillar must be "${assignedPillarKey}".`,
+    `- Pillar style: ${pillarStyle}`.trim(),
   ].filter(Boolean).join('\n');
   const state = qualityState || { signatureMap: new Map() };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -2512,6 +2512,7 @@ async function generateAndValidateSinglePost({
       post.day = day;
       post.slotIndex = slotIndex;
       post.post_key = post_key;
+      post.pillar = assignedPillarKey;
       if (plannedTitle) {
         post.title = plannedTitle;
         post.topic_signature = plannedTitle;
@@ -2524,6 +2525,7 @@ async function generateAndValidateSinglePost({
         post_key,
         candidateKeys: Object.keys(post || {}),
         types: {
+          pillar: typeof post?.pillar,
           script: Array.isArray(post?.script) ? 'array' : typeof post?.script,
           reelScript: Array.isArray(post?.reelScript) ? 'array' : typeof post?.reelScript,
           engagementScripts: Array.isArray(post?.engagementScripts) ? 'array' : typeof post?.engagementScripts,
@@ -2632,7 +2634,7 @@ async function generateAndValidateSinglePost({
         post_key,
         hasPillar: Object.prototype.hasOwnProperty.call(post, 'pillar'),
       });
-      const finalPost = { ...post, pillar: assignedPillarKey };
+      const finalPost = { ...post };
       console.log('[Calendar][Pillar][Final]', {
         requestId,
         post_key,
@@ -3111,6 +3113,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'post_key',
     'day',
     'slotIndex',
+    'pillar',
     'title',
     'topicCapsule',
     'hook',
@@ -3139,6 +3142,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
         maximum: safeMax,
       },
       slotIndex: { type: 'integer', minimum: 0 },
+      pillar: { type: 'string', enum: CALENDAR_PILLAR_KEYS },
       title: { type: 'string', minLength: 1 },
       topicCapsule: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
@@ -6027,6 +6031,7 @@ function ensureCtaFallback(post = {}) {
 const MIN_HASHTAGS = 0;
 // Contract: required fields for regenerated posts (mirrors validatePostCompleteness).
 const REQUIRED_POST_FIELDS_REGULAR = [
+  'pillar',
   'title',
   'hook',
   'caption',
@@ -6049,6 +6054,7 @@ const REQUIRED_POST_FIELDS_BRAND = [
 ];
 
 const REQUIRED_POST_FIELD_TYPES_REGULAR = {
+  pillar: 'string',
   title: 'string',
   hook: 'string',
   caption: 'string',
