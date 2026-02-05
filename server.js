@@ -2503,8 +2503,8 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
-      let post = sanitizeCalendarPost(result.posts[0]);
-      if (scheduledPillar) post.pillar = scheduledPillar;
+      const schema = getCalendarPostSchema(calendarMode, day, day);
+      let post = sanitizePostForSchema(schema, result.posts[0]);
       post.day = day;
       post.slotIndex = slotIndex;
       post.post_key = post_key;
@@ -2513,6 +2513,7 @@ async function generateAndValidateSinglePost({
         post.topic_signature = plannedTitle;
       }
       if (plannedAngle) post.angle = plannedAngle;
+      if (scheduledPillar) post.pillar = scheduledPillar;
       post = coerceCalendarPostTypes(post);
       console.log('[Calendar][Candidate]', {
         requestId,
@@ -2526,7 +2527,6 @@ async function generateAndValidateSinglePost({
           topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
         },
       });
-      const schema = getCalendarPostSchema(calendarMode, day, day);
       const schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
       if (schemaErrors.length) {
         const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
@@ -3114,33 +3114,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       },
       slotIndex: { type: 'integer', minimum: 0 },
       title: { type: 'string', minLength: 1 },
-      topicCapsule: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['summary', 'mustUse', 'mustAvoid', 'audienceAngle', 'keyEntities'],
-        properties: {
-          summary: { type: 'string', minLength: 1 },
-          mustUse: {
-            type: 'array',
-            minItems: 5,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          mustAvoid: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          audienceAngle: { type: 'string', minLength: 1 },
-          keyEntities: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 5,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
-      },
+      topicCapsule: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       format: { type: 'string', minLength: 1 },
@@ -3153,35 +3127,9 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
         type: 'array',
         items: { type: 'string', minLength: 1 },
       },
-      script: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      reelScript: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      engagementScripts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commentReply', 'dmReply'],
-        properties: {
-          commentReply: { type: 'string', minLength: 1 },
-          dmReply: { type: 'string', minLength: 1 },
-        },
-      },
+      script: { type: 'string', minLength: 1 },
+      reelScript: { type: 'string', minLength: 1 },
+      engagementScripts: { type: 'string', minLength: 1 },
     },
   };
 }
@@ -6052,16 +6000,9 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'day',
   'hashtags',
   'script',
-  'script.hook',
-  'script.body',
-  'script.cta',
   'reelScript',
-  'reelScript.hook',
-  'reelScript.body',
-  'reelScript.cta',
   'engagementScripts',
-  'engagementScripts.commentReply',
-  'engagementScripts.dmReply',
+  'topicCapsule',
 ];
 
 const REQUIRED_POST_FIELDS_BRAND = [
@@ -6080,17 +6021,10 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   distributionPlan: 'string',
   day: 'number',
   hashtags: 'array',
-  script: 'object',
-  'script.hook': 'string',
-  'script.body': 'string',
-  'script.cta': 'string',
-  reelScript: 'object',
-  'reelScript.hook': 'string',
-  'reelScript.body': 'string',
-  'reelScript.cta': 'string',
-  engagementScripts: 'object',
-  'engagementScripts.commentReply': 'string',
-  'engagementScripts.dmReply': 'string',
+  script: 'string',
+  reelScript: 'string',
+  engagementScripts: 'string',
+  topicCapsule: 'string',
 };
 
 const REQUIRED_POST_FIELD_TYPES_BRAND = {
@@ -6394,31 +6328,10 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
     .filter(Boolean);
   if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
 
-  const scriptCandidate = post.script || post.videoScript;
-  if (!scriptCandidate) {
-    missing.push('script');
-  } else {
-    checkString(scriptCandidate.hook, 'script.hook');
-    checkString(scriptCandidate.body, 'script.body');
-    checkString(scriptCandidate.cta, 'script.cta');
-  }
-
-  const reelCandidate = post.reelScript || post.reel_script || post.script || post.videoScript;
-  if (!reelCandidate) {
-    missing.push('reelScript');
-  } else {
-    checkString(reelCandidate.hook, 'reelScript.hook');
-    checkString(reelCandidate.body, 'reelScript.body');
-    checkString(reelCandidate.cta, 'reelScript.cta');
-  }
-
-  const engagement = post.engagementScripts;
-  if (!engagement) {
-    missing.push('engagementScripts');
-  } else {
-    checkString(engagement.commentReply, 'engagementScripts.commentReply');
-    checkString(engagement.dmReply, 'engagementScripts.dmReply');
-  }
+  checkString(post.script, 'script');
+  checkString(post.reelScript, 'reelScript');
+  checkString(post.engagementScripts, 'engagementScripts');
+  checkString(post.topicCapsule, 'topicCapsule');
 
   return missing;
 }
@@ -6504,6 +6417,29 @@ function sanitizeCalendarPost(post) {
     });
     cleaned.topicCapsule = capsule;
   }
+  return cleaned;
+}
+
+function sanitizePostForSchema(schema, post) {
+  if (!schema || !schema.properties || !post || typeof post !== 'object') return post;
+  const allowed = new Set(Object.keys(schema.properties));
+  const cleaned = {};
+  Object.keys(post).forEach((key) => {
+    if (!allowed.has(key)) return;
+    cleaned[key] = post[key];
+  });
+  const coerceToString = (value) => {
+    if (typeof value === 'string') return value.trim();
+    if (value === null || value === undefined) return '';
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  };
+  ['topicCapsule', 'script', 'reelScript', 'engagementScripts'].forEach((key) => {
+    if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
+  });
   return cleaned;
 }
 
