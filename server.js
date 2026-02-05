@@ -2514,15 +2514,29 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
+      console.log('[Calendar][Candidate]', {
+        requestId,
+        day,
+        post_key,
+        candidateKeys: Object.keys(post || {}),
+        types: {
+          script: Array.isArray(post?.script) ? 'array' : typeof post?.script,
+          reelScript: Array.isArray(post?.reelScript) ? 'array' : typeof post?.reelScript,
+          engagementScripts: Array.isArray(post?.engagementScripts) ? 'array' : typeof post?.engagementScripts,
+          topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
+        },
+      });
       const schema = getCalendarPostSchema(calendarMode, day, day);
       const schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
       if (schemaErrors.length) {
         const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
           instancePath: error?.instancePath || '',
+          schemaPath: error?.schemaPath || '',
           keyword: error?.keyword || '',
           message: error?.message || '',
           expected: error?.expected || '',
           actual: error?.actual || '',
+          params: error?.params || {},
         }));
         const keyTypes = Object.keys(post || {}).reduce((acc, key) => {
           const value = post[key];
@@ -2533,14 +2547,13 @@ async function generateAndValidateSinglePost({
         const offendingValue = firstErr?.instancePath
           ? getValueByInstancePath(post, firstErr.instancePath)
           : undefined;
-        const snippet = (() => {
-          if (typeof offendingValue === 'string') return offendingValue.slice(0, 160);
-          try {
-            return JSON.stringify(offendingValue ?? post).slice(0, 160);
-          } catch {
-            return '';
-          }
-        })();
+        const snippet = JSON.stringify({
+          path: firstErr?.instancePath || '',
+          keyword: firstErr?.keyword || '',
+          message: firstErr?.message || '',
+          params: firstErr?.params || {},
+          valueType: Array.isArray(offendingValue) ? 'array' : typeof offendingValue,
+        }).slice(0, 300);
         console.warn('[Calendar][Schema][Errors]', {
           requestId,
           day,
@@ -2553,7 +2566,7 @@ async function generateAndValidateSinglePost({
         err.statusCode = 422;
         err.details = {
           reason: 'SCHEMA_MISMATCH',
-          field: firstErr?.instancePath || 'unknown',
+          field: firstErr?.instancePath || firstErr?.schemaPath || 'unknown',
           snippet,
         };
         throw err;
@@ -3088,33 +3101,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       },
       slotIndex: { type: 'integer', minimum: 0 },
       title: { type: 'string', minLength: 1 },
-      topicCapsule: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['summary', 'mustUse', 'mustAvoid', 'audienceAngle', 'keyEntities'],
-        properties: {
-          summary: { type: 'string', minLength: 1 },
-          mustUse: {
-            type: 'array',
-            minItems: 5,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          mustAvoid: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 10,
-            items: { type: 'string', minLength: 1 },
-          },
-          audienceAngle: { type: 'string', minLength: 1 },
-          keyEntities: {
-            type: 'array',
-            minItems: 0,
-            maxItems: 5,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
-      },
+      topicCapsule: { type: 'object', additionalProperties: true },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       format: { type: 'string', minLength: 1 },
@@ -3127,35 +3114,9 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
         type: 'array',
         items: { type: 'string', minLength: 1 },
       },
-      script: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      reelScript: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'body', 'cta'],
-        properties: {
-          hook: { type: 'string', minLength: 1 },
-          body: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
-        },
-      },
-      engagementScripts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commentReply', 'dmReply'],
-        properties: {
-          commentReply: { type: 'string', minLength: 1 },
-          dmReply: { type: 'string', minLength: 1 },
-        },
-      },
+      script: { type: 'object', additionalProperties: true },
+      reelScript: { type: 'object', additionalProperties: true },
+      engagementScripts: { type: 'object', additionalProperties: true },
     },
   };
 }
@@ -6489,10 +6450,12 @@ function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
     if (value === undefined || value === null) {
       errors.push({
         instancePath: `/${key.replace(/\./g, '/')}`,
+        schemaPath: `#/properties/${key.split('.')[0] || ''}`,
         keyword: 'required',
         message: 'is required',
         expected,
         actual: value === null ? 'null' : 'undefined',
+        params: { missingProperty: key },
       });
       return;
     }
@@ -6500,10 +6463,12 @@ function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
       if (!Array.isArray(value)) {
         errors.push({
           instancePath: `/${key.replace(/\./g, '/')}`,
+          schemaPath: `#/properties/${key.split('.')[0] || ''}/type`,
           keyword: 'type',
           message: 'should be array',
           expected,
           actual: Array.isArray(value) ? 'array' : typeof value,
+          params: { type: 'array' },
         });
       }
       return;
@@ -6512,10 +6477,12 @@ function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
       if (typeof value !== 'object' || Array.isArray(value)) {
         errors.push({
           instancePath: `/${key.replace(/\./g, '/')}`,
+          schemaPath: `#/properties/${key.split('.')[0] || ''}/type`,
           keyword: 'type',
           message: 'should be object',
           expected,
           actual: Array.isArray(value) ? 'array' : typeof value,
+          params: { type: 'object' },
         });
       }
       return;
@@ -6524,10 +6491,12 @@ function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
       if (!Number.isFinite(Number(value))) {
         errors.push({
           instancePath: `/${key.replace(/\./g, '/')}`,
+          schemaPath: `#/properties/${key.split('.')[0] || ''}/type`,
           keyword: 'type',
           message: 'should be number',
           expected,
           actual: typeof value,
+          params: { type: 'number' },
         });
       }
       return;
@@ -6536,10 +6505,12 @@ function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
       if (typeof value !== 'string') {
         errors.push({
           instancePath: `/${key.replace(/\./g, '/')}`,
+          schemaPath: `#/properties/${key.split('.')[0] || ''}/type`,
           keyword: 'type',
           message: 'should be string',
           expected,
           actual: typeof value,
+          params: { type: 'string' },
         });
       }
     }
