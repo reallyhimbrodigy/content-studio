@@ -2514,12 +2514,15 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
-      const schemaErrors = validatePostSchemaTypes(post, calendarMode);
+      const schema = getCalendarPostSchema(calendarMode, day, day);
+      const schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
       if (schemaErrors.length) {
-        const trimmedErrors = schemaErrors.slice(0, 3).map((error) => ({
+        const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
           instancePath: error?.instancePath || '',
           keyword: error?.keyword || '',
           message: error?.message || '',
+          expected: error?.expected || '',
+          actual: error?.actual || '',
         }));
         const keyTypes = Object.keys(post || {}).reduce((acc, key) => {
           const value = post[key];
@@ -3155,6 +3158,10 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       },
     },
   };
+}
+
+function getCalendarPostSchema(mode = 'regular', minDay = 1, maxDay = 30) {
+  return buildCalendarPostSchema(minDay, maxDay);
 }
 
 function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
@@ -6067,6 +6074,29 @@ function requiredFieldTypesForMode(mode = 'regular') {
     : REQUIRED_POST_FIELD_TYPES_REGULAR;
 }
 
+function buildSchemaRequirements(schema) {
+  const requiredFields = [];
+  const requiredTypes = {};
+  if (!schema || schema.type !== 'object' || !schema.properties) {
+    return { requiredFields, requiredTypes };
+  }
+  const props = schema.properties || {};
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  required.forEach((key) => {
+    requiredFields.push(key);
+    const def = props[key] || {};
+    if (def.type) requiredTypes[key] = def.type;
+    if (def.type === 'object' && def.properties && Array.isArray(def.required)) {
+      def.required.forEach((child) => {
+        requiredFields.push(`${key}.${child}`);
+        const childDef = def.properties[child] || {};
+        if (childDef.type) requiredTypes[`${key}.${child}`] = childDef.type;
+      });
+    }
+  });
+  return { requiredFields, requiredTypes };
+}
+
 function buildRequiredFieldDiagnostics(post = {}, mode = 'regular') {
   const missing = [];
   const empty = [];
@@ -6371,6 +6401,10 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
 
 const ALLOWED_TOPICCAPSULE_KEYS = new Set([
   'summary',
+  'mustUse',
+  'mustAvoid',
+  'audienceAngle',
+  'keyEntities',
   'talkingPoints',
   'proof',
   'objection',
@@ -6440,38 +6474,73 @@ function coerceCalendarPostTypes(post) {
   return post;
 }
 
-function validatePostSchemaTypes(post, mode = 'regular') {
+function validatePostSchemaTypes(post, mode = 'regular', schema = null) {
   const errors = [];
-  const requiredFields = requiredFieldsForMode(mode);
-  const requiredTypes = requiredFieldTypesForMode(mode);
+  const schemaRequirements = schema ? buildSchemaRequirements(schema) : null;
+  const requiredFields = schemaRequirements?.requiredFields?.length
+    ? schemaRequirements.requiredFields
+    : requiredFieldsForMode(mode);
+  const requiredTypes = schemaRequirements?.requiredTypes && Object.keys(schemaRequirements.requiredTypes).length
+    ? schemaRequirements.requiredTypes
+    : requiredFieldTypesForMode(mode);
   requiredFields.forEach((key) => {
     const expected = requiredTypes[key] || 'string';
     const value = getValueByPath(post, key);
     if (value === undefined || value === null) {
-      errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'required', message: 'is required' });
+      errors.push({
+        instancePath: `/${key.replace(/\./g, '/')}`,
+        keyword: 'required',
+        message: 'is required',
+        expected,
+        actual: value === null ? 'null' : 'undefined',
+      });
       return;
     }
     if (expected === 'array') {
       if (!Array.isArray(value)) {
-        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be array' });
+        errors.push({
+          instancePath: `/${key.replace(/\./g, '/')}`,
+          keyword: 'type',
+          message: 'should be array',
+          expected,
+          actual: Array.isArray(value) ? 'array' : typeof value,
+        });
       }
       return;
     }
     if (expected === 'object') {
       if (typeof value !== 'object' || Array.isArray(value)) {
-        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be object' });
+        errors.push({
+          instancePath: `/${key.replace(/\./g, '/')}`,
+          keyword: 'type',
+          message: 'should be object',
+          expected,
+          actual: Array.isArray(value) ? 'array' : typeof value,
+        });
       }
       return;
     }
     if (expected === 'number') {
       if (!Number.isFinite(Number(value))) {
-        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be number' });
+        errors.push({
+          instancePath: `/${key.replace(/\./g, '/')}`,
+          keyword: 'type',
+          message: 'should be number',
+          expected,
+          actual: typeof value,
+        });
       }
       return;
     }
     if (expected === 'string') {
       if (typeof value !== 'string') {
-        errors.push({ instancePath: `/${key.replace(/\./g, '/')}`, keyword: 'type', message: 'should be string' });
+        errors.push({
+          instancePath: `/${key.replace(/\./g, '/')}`,
+          keyword: 'type',
+          message: 'should be string',
+          expected,
+          actual: typeof value,
+        });
       }
     }
   });
@@ -8098,7 +8167,8 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     : (calendarMode === 'brand_brain' ? 'calendar_batch_brandbrain' : 'calendar_batch_regular');
   const expectedChunkCount = useSinglePost ? 1 : chunkDays * postsPerDay;
   const schema = useSinglePost
-    ? buildCalendarPostSchema(
+    ? getCalendarPostSchema(
+        calendarMode,
         chunkStartDay,
         Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
       )
