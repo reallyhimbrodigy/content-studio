@@ -2424,6 +2424,57 @@ async function runCalendarJobPool(items, limit, worker) {
   return { results, errors };
 }
 
+function isPlaceholderString(value = '') {
+  const raw = String(value ?? '');
+  const trimmed = raw.trim();
+  if (!trimmed) return { reason: 'empty', snippet: '' };
+  const hasAlnum = /[A-Za-z0-9]/.test(trimmed);
+  if (!hasAlnum) return { reason: 'only_punctuation', snippet: trimmed.slice(0, 120) };
+  const tokenPattern = /(\{\{[^}]+\}\}|\$\{[^}]+\}|<[^>]+>|\[(?:insert|placeholder|tbd|todo)[^\]]*\])/i;
+  if (tokenPattern.test(trimmed)) return { reason: 'template_token', snippet: trimmed.slice(0, 120) };
+  const fillerPattern = /\b(lorem ipsum|placeholder|tbd|todo|fill in|insert here)\b/i;
+  if (fillerPattern.test(trimmed)) return { reason: 'filler_text', snippet: trimmed.slice(0, 120) };
+  return null;
+}
+
+function findPlaceholders(value, path, out, seen) {
+  if (value === null || value === undefined) return;
+  if (typeof value === 'string') {
+    const issue = isPlaceholderString(value);
+    if (issue) {
+      out.push({
+        field: path || '/',
+        reason: issue.reason,
+        snippet: issue.snippet,
+      });
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, idx) => {
+      findPlaceholders(item, `${path}/${idx}`, out, seen);
+    });
+    return;
+  }
+  if (typeof value !== 'object') return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  Object.keys(value).forEach((key) => {
+    findPlaceholders(value[key], `${path}/${key}`, out, seen);
+  });
+}
+
+function hasPlaceholderInPost(post) {
+  const errors = [];
+  try {
+    findPlaceholders(post, '', errors, new Set());
+  } catch {
+    return { ok: true, errors: [] };
+  }
+  if (!errors.length) return { ok: true, errors: [] };
+  return { ok: false, errors: errors.slice(0, 8) };
+}
+
 async function generateAndValidateSinglePost({
   nicheStyle,
   brandContext,
@@ -2679,15 +2730,17 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
-      if (hasPlaceholderInPost(post)) {
+      const placeholderCheck = hasPlaceholderInPost(post);
+      if (!placeholderCheck.ok) {
+        const firstPlaceholder = placeholderCheck.errors[0] || { field: 'content', snippet: '' };
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
-          reason: 'PLACEHOLDER_FOUND',
-          field: 'content',
-          snippet: JSON.stringify({ post_key }).slice(0, 160),
-          errors: null,
+          reason: 'SCHEMA_MISMATCH',
+          field: firstPlaceholder.field || 'content',
+          snippet: (firstPlaceholder.snippet || '').slice(0, 160),
+          errors: placeholderCheck.errors,
           reachedOpenAI,
           structuredOutputUsed,
           stage: currentStage,
