@@ -2754,6 +2754,7 @@ async function generateAndValidateSinglePost({
       }
       post.reelScript = renderedReelScript;
       post.script = renderedReelScript;
+      post.engagementScripts = renderEngagementScriptsFromParts(post.engagementScripts);
       const missing = validatePostCompleteness(post, calendarMode);
       if (missing.length) {
         const missingField = missing[0] || 'unknown';
@@ -3523,7 +3524,31 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
           },
         },
       },
-      engagementScripts: { type: 'string', minLength: 1 },
+      engagementScripts: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
+        properties: {
+          commentPrompts: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 6,
+            items: { type: 'string', minLength: 1 },
+          },
+          dmScripts: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 3,
+            items: { type: 'string', minLength: 1 },
+          },
+          replyTemplates: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 6,
+            items: { type: 'string', minLength: 1 },
+          },
+        },
+      },
     },
   };
   if (isBrandBrain) {
@@ -4170,6 +4195,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
     '- All fields must align to planned_title / topic_signature and the same topic.',
     '- hashtags must be a JSON array of 5–10 strings.',
+    '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
+    '- Each engagementScripts item must be 6–18 words.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
@@ -4182,11 +4209,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- social_proof: case-style outcome with process and “a client”.',
     '- promotion: explain the offer, who it is for, and the next step.',
     '- lifestyle: day-in-life or neighborhood vibe tied to a real decision.',
-    'engagementScripts MUST be exactly 3 lines labeled:',
-    'COMMENT_PROMPT: ...',
-    'POLL_PROMPT: ...',
-    'SHARE_PROMPT: ...',
-    'Each line must be >= 8 words.',
+    'engagementScripts arrays must match the contract in GLOBAL RULES.',
   ].join('\n');
 
   const BRAND_BRAIN_CONTRACT = [
@@ -6311,7 +6334,7 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   hashtags: 'array',
   script: 'string',
   reelScript: 'object',
-  engagementScripts: 'string',
+  engagementScripts: 'object',
   topicCapsule: 'string',
   details: 'object',
 };
@@ -6570,8 +6593,9 @@ const REELSCRIPT_LABELS = [
   'BROLL_NOTES',
 ];
 const REELSCRIPT_BEAT_LABELS = ['BEAT_1', 'BEAT_2', 'BEAT_3'];
-const REELSCRIPT_MIN_BEAT_WORDS = 12;
-const REELSCRIPT_MIN_TOTAL_WORDS = 80;
+const REELSCRIPT_MIN_HOOK_WORDS = 8;
+const REELSCRIPT_MIN_BEAT_WORDS = 18;
+const REELSCRIPT_MIN_CTA_WORDS = 10;
 const REELSCRIPT_ONSCREEN_MIN_WORDS = 2;
 const REELSCRIPT_ONSCREEN_MAX_WORDS = 6;
 const REELSCRIPT_BROLL_MIN_WORDS = 2;
@@ -6630,6 +6654,30 @@ function renderReelScriptFromParts(parts = {}, markers = null) {
   return lines.join('\n').trim();
 }
 
+function renderEngagementScriptsFromParts(parts = {}) {
+  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
+    return toPlainString(parts || '');
+  }
+  const commentPrompts = Array.isArray(parts.commentPrompts)
+    ? parts.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const dmScripts = Array.isArray(parts.dmScripts)
+    ? parts.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const replyTemplates = Array.isArray(parts.replyTemplates)
+    ? parts.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const lines = [
+    'COMMENT_PROMPTS:',
+    ...commentPrompts.map((item) => `- ${item}`),
+    'DM_SCRIPTS:',
+    ...dmScripts.map((item) => `- ${item}`),
+    'REPLY_TEMPLATES:',
+    ...replyTemplates.map((item) => `- ${item}`),
+  ];
+  return lines.join('\n').trim();
+}
+
 function validateReelScriptParts(parts = {}, mode = 'regular') {
   if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
     return { ok: false, reason: 'REELSCRIPT_MISSING_PARTS', field: 'reelScript', snippet: '' };
@@ -6641,9 +6689,8 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
   const cta = toPlainString(parts.cta || '');
   const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
   const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
-  const totalWords = countWords(`${hook} ${beat1} ${beat2} ${beat3} ${cta}`);
-  if (totalWords < REELSCRIPT_MIN_TOTAL_WORDS) {
-    return { ok: false, reason: 'REELSCRIPT_TOTAL_TOO_SHORT', field: 'reelScript', snippet: hook.slice(0, 120), extra: { wordCount: totalWords } };
+  if (countWords(hook) < REELSCRIPT_MIN_HOOK_WORDS) {
+    return { ok: false, reason: 'REELSCRIPT_HOOK_TOO_SHORT', field: 'reelScript', snippet: hook.slice(0, 120), extra: { wordCount: countWords(hook) } };
   }
   const beats = [
     { label: 'beat1', value: beat1 },
@@ -6651,9 +6698,13 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
     { label: 'beat3', value: beat3 },
   ];
   for (const beat of beats) {
-    if (countWords(beat.value) < REELSCRIPT_MIN_BEAT_WORDS) {
-      return { ok: false, reason: 'REELSCRIPT_BEAT_TOO_SHORT', field: 'reelScript', snippet: beat.value.slice(0, 120), extra: { label: beat.label } };
+    const beatCount = countWords(beat.value);
+    if (beatCount < REELSCRIPT_MIN_BEAT_WORDS) {
+      return { ok: false, reason: 'REELSCRIPT_BEAT_TOO_SHORT', field: 'reelScript', snippet: beat.value.slice(0, 120), extra: { label: beat.label, wordCount: beatCount } };
     }
+  }
+  if (countWords(cta) < REELSCRIPT_MIN_CTA_WORDS) {
+    return { ok: false, reason: 'REELSCRIPT_CTA_TOO_SHORT', field: 'reelScript', snippet: cta.slice(0, 120), extra: { wordCount: countWords(cta) } };
   }
   if (onScreen.length < 3 || onScreen.length > 6) {
     return { ok: false, reason: 'REELSCRIPT_ON_SCREEN_FORMAT', field: 'reelScript', snippet: onScreen.join(' | ').slice(0, 120), extra: { count: onScreen.length } };
@@ -6665,12 +6716,12 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
     }
   }
   if (broll.length < 4 || broll.length > 8) {
-    return { ok: false, reason: 'REELSCRIPT_BROLL_FORMAT', field: 'reelScript', snippet: broll.join(', ').slice(0, 120), extra: { count: broll.length } };
+    return { ok: false, reason: 'REELSCRIPT_BROLL_COUNT', field: 'reelScript', snippet: broll.join(', ').slice(0, 120), extra: { count: broll.length } };
   }
   for (const item of broll) {
     const wc = countWords(item);
     if (wc < REELSCRIPT_BROLL_MIN_WORDS || wc > REELSCRIPT_BROLL_MAX_WORDS) {
-      return { ok: false, reason: 'REELSCRIPT_BROLL_FORMAT', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc } };
+      return { ok: false, reason: 'REELSCRIPT_BROLL_ITEM_LENGTH', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc } };
     }
   }
   if (String(mode || '') === 'brand_brain') {
@@ -6710,6 +6761,40 @@ function validateEngagementScriptsStructure(raw = '') {
       return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_TOO_SHORT', field: 'engagementScripts', snippet: line.slice(0, 120), extra: { label } };
     }
   }
+  return { ok: true };
+}
+
+function validateEngagementScriptsParts(parts = {}) {
+  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
+    return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_MISSING', field: 'engagementScripts', snippet: '' };
+  }
+  const commentPrompts = Array.isArray(parts.commentPrompts)
+    ? parts.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const dmScripts = Array.isArray(parts.dmScripts)
+    ? parts.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const replyTemplates = Array.isArray(parts.replyTemplates)
+    ? parts.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
+    : [];
+  const checkItems = (items, min, max, field, label) => {
+    if (items.length < min || items.length > max) {
+      return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_COUNT', field, snippet: items.join(' | ').slice(0, 120), extra: { count: items.length, label } };
+    }
+    for (const item of items) {
+      const wc = countWords(item);
+      if (wc < 6 || wc > 18) {
+        return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH', field, snippet: item.slice(0, 120), extra: { wordCount: wc, label } };
+      }
+    }
+    return null;
+  };
+  const commentCheck = checkItems(commentPrompts, 4, 6, 'engagementScripts.commentPrompts', 'commentPrompts');
+  if (commentCheck) return commentCheck;
+  const dmCheck = checkItems(dmScripts, 2, 3, 'engagementScripts.dmScripts', 'dmScripts');
+  if (dmCheck) return dmCheck;
+  const replyCheck = checkItems(replyTemplates, 4, 6, 'engagementScripts.replyTemplates', 'replyTemplates');
+  if (replyCheck) return replyCheck;
   return { ok: true };
 }
 
@@ -6804,11 +6889,10 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
         extra: { missing: BRAND_BRAIN_MARKERS },
       };
     }
-  } else {
-    const engagementCheck = validateEngagementScriptsStructure(post?.engagementScripts || '');
-    if (engagementCheck && !engagementCheck.ok) {
-      return engagementCheck;
-    }
+  }
+  const engagementCheck = validateEngagementScriptsParts(post?.engagementScripts || {});
+  if (engagementCheck && !engagementCheck.ok) {
+    return engagementCheck;
   }
   const hookText = toPlainString(post?.hook || '');
   const captionText = toPlainString(post?.caption || '');
@@ -6878,7 +6962,14 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   } else {
     checkString(reelValue, 'reelScript');
   }
-  checkString(post.engagementScripts, 'engagementScripts');
+  const engagementValue = post.engagementScripts;
+  if (engagementValue && typeof engagementValue === 'object' && !Array.isArray(engagementValue)) {
+    const hasArrays = ['commentPrompts', 'dmScripts', 'replyTemplates']
+      .every((key) => Array.isArray(engagementValue[key]) && engagementValue[key].length > 0);
+    if (!hasArrays) missing.push('engagementScripts');
+  } else {
+    checkString(engagementValue, 'engagementScripts');
+  }
   checkString(post.topicCapsule, 'topicCapsule');
   const detailsAudio = post?.details && typeof post.details === 'object' ? post.details.suggestedAudio : '';
   checkString(detailsAudio, 'details.suggestedAudio');
@@ -6951,8 +7042,9 @@ function sanitizeCalendarPost(post) {
   }
   if (cleaned.engagementScripts && typeof cleaned.engagementScripts === 'object' && !Array.isArray(cleaned.engagementScripts)) {
     cleaned.engagementScripts = {
-      commentReply: cleaned.engagementScripts.commentReply,
-      dmReply: cleaned.engagementScripts.dmReply,
+      commentPrompts: cleaned.engagementScripts.commentPrompts,
+      dmScripts: cleaned.engagementScripts.dmScripts,
+      replyTemplates: cleaned.engagementScripts.replyTemplates,
     };
   }
   if (cleaned.topicCapsule && typeof cleaned.topicCapsule === 'object' && !Array.isArray(cleaned.topicCapsule)) {
@@ -6998,6 +7090,19 @@ function sanitizePostForSchema(schema, post) {
     } else {
       cleaned.details = {};
     }
+  }
+  if (cleaned.engagementScripts && typeof cleaned.engagementScripts === 'object' && !Array.isArray(cleaned.engagementScripts)) {
+    cleaned.engagementScripts = {
+      commentPrompts: Array.isArray(cleaned.engagementScripts.commentPrompts)
+        ? cleaned.engagementScripts.commentPrompts
+        : cleaned.engagementScripts.commentPrompts,
+      dmScripts: Array.isArray(cleaned.engagementScripts.dmScripts)
+        ? cleaned.engagementScripts.dmScripts
+        : cleaned.engagementScripts.dmScripts,
+      replyTemplates: Array.isArray(cleaned.engagementScripts.replyTemplates)
+        ? cleaned.engagementScripts.replyTemplates
+        : cleaned.engagementScripts.replyTemplates,
+    };
   }
   return cleaned;
 }
@@ -8033,7 +8138,9 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const reelScriptText = renderedFromParts
     ? renderedFromParts.trim()
     : (typeof post.reelScript === 'string' ? post.reelScript.trim() : scriptText);
-  const engagementScriptsText = typeof post.engagementScripts === 'string' ? post.engagementScripts.trim() : '';
+  const engagementScriptsText = (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts))
+    ? renderEngagementScriptsFromParts(post.engagementScripts)
+    : (typeof post.engagementScripts === 'string' ? post.engagementScripts.trim() : '');
   let distributionPlan = resolveDistributionPlanValue(post);
   if (!distributionPlan && allowFallbacks) {
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
