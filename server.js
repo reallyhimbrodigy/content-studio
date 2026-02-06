@@ -2633,9 +2633,6 @@ async function generateAndValidateSinglePost({
         post.topic_signature = plannedTitle;
       }
       if (plannedAngle) post.angle = plannedAngle;
-      if (typeof post.engagementScripts === 'string') {
-        post.engagementScripts = convertEngagementScriptsToObject(post.engagementScripts);
-      }
       post = coerceCalendarPostTypes(post);
       const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
       const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
@@ -2650,6 +2647,18 @@ async function generateAndValidateSinglePost({
         type: Array.isArray(post?.engagementScripts)
           ? 'array'
           : typeof post?.engagementScripts,
+        hasCommentPrompts: Array.isArray(post?.engagementScripts?.commentPrompts),
+        commentPromptsLen: Array.isArray(post?.engagementScripts?.commentPrompts)
+          ? post.engagementScripts.commentPrompts.length
+          : 0,
+        hasDmScripts: Array.isArray(post?.engagementScripts?.dmScripts),
+        dmScriptsLen: Array.isArray(post?.engagementScripts?.dmScripts)
+          ? post.engagementScripts.dmScripts.length
+          : 0,
+        hasReplyTemplates: Array.isArray(post?.engagementScripts?.replyTemplates),
+        replyTemplatesLen: Array.isArray(post?.engagementScripts?.replyTemplates)
+          ? post.engagementScripts.replyTemplates.length
+          : 0,
       });
       console.log('[Calendar][Candidate]', {
         requestId,
@@ -2774,7 +2783,9 @@ async function generateAndValidateSinglePost({
       }
       post.reelScript = renderedReelScript;
       post.script = renderedReelScript;
-      post.engagementScripts = renderEngagementScriptsFromParts(post.engagementScripts);
+      if (post.engagementScripts && typeof post.engagementScripts === 'string') {
+        post.engagementScripts = convertEngagementScriptsToObject(post.engagementScripts);
+      }
       const missing = validatePostCompleteness(post, calendarMode);
       if (missing.length) {
         const missingField = missing[0] || 'unknown';
@@ -3545,37 +3556,29 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         },
       },
       engagementScripts: {
-        oneOf: [
-          {
-            type: 'object',
-            additionalProperties: false,
-            required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
-            properties: {
-              commentPrompts: {
-                type: 'array',
-                minItems: 4,
-                maxItems: 6,
-                items: { type: 'string', minLength: 1 },
-              },
-              dmScripts: {
-                type: 'array',
-                minItems: 2,
-                maxItems: 3,
-                items: { type: 'string', minLength: 1 },
-              },
-              replyTemplates: {
-                type: 'array',
-                minItems: 4,
-                maxItems: 6,
-                items: { type: 'string', minLength: 1 },
-              },
-            },
+        type: 'object',
+        additionalProperties: false,
+        required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
+        properties: {
+          commentPrompts: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 6,
+            items: { type: 'string', minLength: 1 },
           },
-          {
-            type: 'string',
-            minLength: 1,
+          dmScripts: {
+            type: 'array',
+            minItems: 2,
+            maxItems: 3,
+            items: { type: 'string', minLength: 1 },
           },
-        ],
+          replyTemplates: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 6,
+            items: { type: 'string', minLength: 1 },
+          },
+        },
       },
     },
   };
@@ -4224,7 +4227,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- All fields must align to planned_title / topic_signature and the same topic.',
     '- hashtags must be a JSON array of 5–10 strings.',
     '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
-    '- engagementScripts MUST be an object (never a string).',
+    '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
     '- Each engagementScripts item must be 6–18 words.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
@@ -6831,18 +6834,17 @@ function validateEngagementScriptsStructure(raw = '') {
 }
 
 function validateEngagementScriptsParts(parts = {}) {
-  const normalized = convertEngagementScriptsToObject(parts);
-  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
+  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
     return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_MISSING', field: 'engagementScripts', snippet: '' };
   }
-  const commentPrompts = Array.isArray(normalized.commentPrompts)
-    ? normalized.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
+  const commentPrompts = Array.isArray(parts.commentPrompts)
+    ? parts.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const dmScripts = Array.isArray(normalized.dmScripts)
-    ? normalized.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
+  const dmScripts = Array.isArray(parts.dmScripts)
+    ? parts.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const replyTemplates = Array.isArray(normalized.replyTemplates)
-    ? normalized.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
+  const replyTemplates = Array.isArray(parts.replyTemplates)
+    ? parts.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
     : [];
   const checkItems = (items, min, max, field, label) => {
     if (items.length < min || items.length > max) {
@@ -8205,9 +8207,9 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const reelScriptText = renderedFromParts
     ? renderedFromParts.trim()
     : (typeof post.reelScript === 'string' ? post.reelScript.trim() : scriptText);
-  const engagementScriptsText = (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts))
-    ? renderEngagementScriptsFromParts(post.engagementScripts)
-    : (typeof post.engagementScripts === 'string' ? post.engagementScripts.trim() : '');
+  const engagementScriptsValue = (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts))
+    ? post.engagementScripts
+    : post.engagementScripts;
   let distributionPlan = resolveDistributionPlanValue(post);
   if (!distributionPlan && allowFallbacks) {
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
@@ -8238,7 +8240,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     designNotes: normalizedDesignNotes.value || '',
     repurpose,
     analytics,
-    engagementScripts: engagementScriptsText,
+    engagementScripts: engagementScriptsValue,
     promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
     weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
     script: reelScriptText,

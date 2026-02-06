@@ -6312,11 +6312,27 @@ const createCard = (post) => {
     const audioRowText = suggestedAudioText || '';
     // Audio completeness is summarized once per generation run.
     const engagementParts = [];
-    if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
-      if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
-      if (engagementScripts.dmReply) engagementParts.push(`DM: ${engagementScripts.dmReply}`);
+    if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
+      if (Array.isArray(engagementScripts.commentPrompts) && engagementScripts.commentPrompts.length) {
+        engagementParts.push('Comment prompts:');
+        engagementScripts.commentPrompts.forEach((item) => engagementParts.push(`- ${item}`));
+      }
+      if (Array.isArray(engagementScripts.dmScripts) && engagementScripts.dmScripts.length) {
+        engagementParts.push('DM scripts:');
+        engagementScripts.dmScripts.forEach((item) => engagementParts.push(`- ${item}`));
+      }
+      if (Array.isArray(engagementScripts.replyTemplates) && engagementScripts.replyTemplates.length) {
+        engagementParts.push('Reply templates:');
+        engagementScripts.replyTemplates.forEach((item) => engagementParts.push(`- ${item}`));
+      }
+      if (engagementScripts.commentReply || engagementScripts.dmReply) {
+        if (engagementScripts.commentReply) engagementParts.push(`Comment: ${engagementScripts.commentReply}`);
+        if (engagementScripts.dmReply) engagementParts.push(`DM: ${engagementScripts.dmReply}`);
+      }
     } else if (engagementScript) {
       engagementParts.push(engagementScript);
+    } else if (typeof engagementScripts === 'string') {
+      engagementParts.push(engagementScripts);
     }
     const engagementEl = engagementParts.filter(Boolean).join('\n');
 
@@ -6508,9 +6524,20 @@ const createCard = (post) => {
       if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
-    if (engagementScripts && (engagementScripts.commentReply || engagementScripts.dmReply)) {
+    if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
+      if (Array.isArray(engagementScripts.commentPrompts) && engagementScripts.commentPrompts.length) {
+        fullTextParts.push(`Engagement Comment Prompts: ${engagementScripts.commentPrompts.join(' | ')}`);
+      }
+      if (Array.isArray(engagementScripts.dmScripts) && engagementScripts.dmScripts.length) {
+        fullTextParts.push(`Engagement DM Scripts: ${engagementScripts.dmScripts.join(' | ')}`);
+      }
+      if (Array.isArray(engagementScripts.replyTemplates) && engagementScripts.replyTemplates.length) {
+        fullTextParts.push(`Engagement Reply Templates: ${engagementScripts.replyTemplates.join(' | ')}`);
+      }
       if (engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${engagementScripts.commentReply}`);
       if (engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${engagementScripts.dmReply}`);
+    } else if (typeof engagementScripts === 'string' && engagementScripts.trim()) {
+      fullTextParts.push(`Engagement Scripts: ${engagementScripts.trim()}`);
     }
     if (entry.variants) {
       if (entry.variants.igCaption) fullTextParts.push(`Instagram Variant: ${entry.variants.igCaption}`);
@@ -10296,9 +10323,20 @@ function renderPublishHub(){
       if (post.videoScript.cta) scriptLines.push(`CTA: ${post.videoScript.cta}`);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
-    if (post.engagementScripts && (post.engagementScripts.commentReply || post.engagementScripts.dmReply)) {
+    if (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts)) {
+      if (Array.isArray(post.engagementScripts.commentPrompts) && post.engagementScripts.commentPrompts.length) {
+        fullTextParts.push(`Engagement Comment Prompts: ${post.engagementScripts.commentPrompts.join(' | ')}`);
+      }
+      if (Array.isArray(post.engagementScripts.dmScripts) && post.engagementScripts.dmScripts.length) {
+        fullTextParts.push(`Engagement DM Scripts: ${post.engagementScripts.dmScripts.join(' | ')}`);
+      }
+      if (Array.isArray(post.engagementScripts.replyTemplates) && post.engagementScripts.replyTemplates.length) {
+        fullTextParts.push(`Engagement Reply Templates: ${post.engagementScripts.replyTemplates.join(' | ')}`);
+      }
       if (post.engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${post.engagementScripts.commentReply}`);
       if (post.engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${post.engagementScripts.dmReply}`);
+    } else if (typeof post.engagementScripts === 'string' && post.engagementScripts.trim()) {
+      fullTextParts.push(`Engagement Scripts: ${post.engagementScripts.trim()}`);
     }
     if (post.variants) {
       if (post.variants.igCaption) fullTextParts.push(`Instagram Variant: ${post.variants.igCaption}`);
