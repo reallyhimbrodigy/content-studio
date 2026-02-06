@@ -846,6 +846,9 @@ function normalizeContentCard(card) {
 
 function ensureReelScriptHook(entry) {
   if (!entry || typeof entry !== 'object') return '';
+  if (typeof entry.videoScript === 'string') {
+    return entry.videoScript.split(/\r?\n/)[0]?.trim() || '';
+  }
   if (!entry.videoScript || typeof entry.videoScript !== 'object') {
     entry.videoScript = {};
   }
@@ -5958,9 +5961,9 @@ const createCard = (post) => {
       engagementScripts,
       engagementScript,
       promoSlot,
-      videoScript,
       weeklyPromo,
     } = entry;
+    const videoScript = entry.reelScript || entry.script || entry.videoScript;
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
     // No inline audio overrides; display server-provided post.audio only.
 
@@ -5977,7 +5980,7 @@ const createCard = (post) => {
         const artist = parts.join(' - ').trim();
         return title && artist ? `${title} - ${artist}` : '';
       }
-      return '';
+      return cleaned;
     };
     const infoRows = document.createElement('div');
     infoRows.className = 'calendar-card__primary-meta';
@@ -6364,7 +6367,7 @@ const createCard = (post) => {
     const collapsedCtaEl = null;
 
     const buildReelScript = () => {
-      const label = format === 'Reel' ? 'Reel Script' : 'Video Script';
+      const label = 'Reel Script';
       if (!videoScript) return null;
       const structured = {
         hook: videoScript.hook || '',
@@ -6605,7 +6608,7 @@ const createCard = (post) => {
     const hiddenDetailNodes = [];
     if (audioRowText) {
       hiddenDetailNodes.push(
-        createDetailRow('Suggested audio', audioRowText, 'calendar-card__audio suggested-audio')
+        createDetailRow('Suggested Audio', audioRowText, 'calendar-card__audio suggested-audio')
       );
     }
     const engagementRow = (() => {
@@ -6690,7 +6693,7 @@ const createCard = (post) => {
     };
 
     const captionAcc = buildAccordion('Caption', [captionRow, hashtagsEl]);
-    const scriptAcc = buildAccordion(format === 'Reel' ? 'Reel Script' : 'Video Script', videoScriptEl);
+    const scriptAcc = buildAccordion('Reel Script', videoScriptEl);
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
     const distributionAcc = buildAccordion('Distribution Plan', distributionPlanEl);
@@ -8208,10 +8211,10 @@ function buildPostHTML(post){
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const weeklyPromo = post.weeklyPromo || '';
   const promoSlot = !!post.promoSlot;
-  const vs = post.videoScript || {};
+  const vs = post.videoScript || post.reelScript || post.script || {};
   const engage = post.engagementScripts || {};
   const nl2br = (s)=> escapeHtml(s).replace(/\n/g,'<br/>');
-  const videoLabel = format === 'Reel' ? 'Reel Script' : 'Reel Script (can repurpose as Reel)';
+  const videoLabel = 'Reel Script';
 
   // Build a single calendar card markup mirroring the in-app component
   const formatLabel = String(format || '').trim();
@@ -8230,6 +8233,7 @@ function buildPostHTML(post){
     (engagementComment||engagementDm) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engagementComment?`<div><em>Comment:</em> ${escapeHtml(engagementComment)}</div>`:''}${engagementDm?`<div><em>DM:</em> ${escapeHtml(engagementDm)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
     (cleanedHook||cleanedBody||cleanedCta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${cleanedHook?`<div>${escapeHtml(cleanedHook)}</div>`:''}${cleanedBody?`<div><em>Body:</em> ${nl2br(cleanedBody)}</div>`:''}${cleanedCta?`<div><em>CTA:</em> ${escapeHtml(cleanedCta)}</div>`:''}</div>` : '',
+    (post.suggestedAudio ? `<div class="calendar-card__audio"><strong>Suggested Audio:</strong> ${escapeHtml(String(post.suggestedAudio))}</div>` : ''),
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
         + `${post.variants.igCaption?`<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>`:''}`
@@ -9096,7 +9100,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     engagementScripts: base.engagementScripts || { commentReply: '', dmReply: '' },
     promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
     weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
-    videoScript: base.videoScript || {},
+    videoScript: base.videoScript || base.reelScript || base.script || {},
     variants: base.variants || undefined,
     distributionPlan: base.distributionPlan || '',
     audio: base.audio || '',

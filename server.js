@@ -2623,6 +2623,14 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
+      const scriptText = toPlainString(post.script || '');
+      const reelText = toPlainString(post.reelScript || '');
+      if (!reelText && scriptText) post.reelScript = scriptText;
+      if (!scriptText && reelText) post.script = reelText;
+      post.format = 'reel';
+      if (!isNonEmptyString(post.suggestedAudio)) {
+        post.suggestedAudio = DEFAULT_SUGGESTED_AUDIO;
+      }
       console.log('[Calendar][Candidate]', {
         requestId,
         day,
@@ -3294,6 +3302,8 @@ const CALENDAR_ANGLE_OPTIONS = [
   'advanced nuance',
 ];
 
+const DEFAULT_SUGGESTED_AUDIO = 'Original audio - voiceover';
+
 function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
@@ -3314,6 +3324,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'designNotes',
     'engagementScripts',
     'distributionPlan',
+    'suggestedAudio',
     'topic_signature',
     'angle',
   ];
@@ -3335,12 +3346,13 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       topicCapsule: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
-      format: { type: 'string', minLength: 1 },
+      format: { type: 'string', enum: ['reel'] },
       topic_signature: { type: 'string', minLength: 3 },
       angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
+      suggestedAudio: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
         items: { type: 'string', minLength: 1 },
@@ -3972,6 +3984,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Banned patterns: {{…}}, […], <…>, "insert", "placeholder", "TBD", "TODO", "lorem ipsum".',
     '- ALL sections required. Every required field must be fully written and non-empty.',
     '- If format is video/reel, a full script is required with Hook (0–2s), Body beats, and Close + CTA.',
+    '- format MUST be exactly "reel".',
+    '- script and reelScript must both be present and non-empty (they may be identical).',
+    `- suggestedAudio must be a concrete non-empty string; use "${DEFAULT_SUGGESTED_AUDIO}" only if unsure.`,
     '- Topic coherence: title, hook, script, caption, CTA, design notes, and distribution plan must all be about the same specific topic.',
     '- Niche anchored: content must be explicitly grounded in the provided niche. Generic content is INVALID.',
     '- CTA quality: specific and outcome-driven. Generic CTAs like “Learn more”, “Follow for more”, “Check it out” are banned.',
@@ -4018,7 +4033,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, suggestedAudio, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -4818,7 +4833,7 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStar
   const stats = { total: posts.length, missingAudio: 0 };
   posts.forEach((post, idx) => {
     if (!list.length) {
-      post.suggestedAudio = '';
+      post.suggestedAudio = DEFAULT_SUGGESTED_AUDIO;
       stats.missingAudio += 1;
       return;
     }
@@ -4887,7 +4902,7 @@ OUTPUT DISCIPLINE:
     '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
   ].join('\n');
   const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
-Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "Reel", cta, pillar, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). Return JSON only; do not omit fields or use null/placeholder values. Do not add extra keys beyond the master schema.
+Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "reel", cta, pillar, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). Return JSON only; do not omit fields or use null/placeholder values. Do not add extra keys beyond the master schema.
 SCOPE LOCK: Only generate content for the provided day in this chunk. Do not generate other days.
 ${hardOutputContractBlock}`;
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
@@ -5631,7 +5646,7 @@ function ensureDesignNotesFallback(post = {}, nicheStyle = '') {
   if (existing) return existing;
   const idea = toPlainString(post.idea || post.title || post.hook || '');
   const topic = idea || 'this topic';
-  const format = toPlainString(post.format || 'Reel').toLowerCase();
+  const format = toPlainString(post.format || 'reel').toLowerCase();
   const niche = toPlainString(nicheStyle || 'your niche');
   const direction = [];
   if (format) {
@@ -6074,6 +6089,7 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'angle',
   'designNotes',
   'distributionPlan',
+  'suggestedAudio',
   'day',
   'hashtags',
   'script',
@@ -6097,6 +6113,7 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
+  suggestedAudio: 'string',
   day: 'number',
   hashtags: 'array',
   script: 'string',
@@ -6219,7 +6236,6 @@ const NONCORE_OPTIONAL_FIELDS = new Set([
   'engagementScripts.dmReply',
   'distributionPlan',
   'designNotes',
-  'suggestedAudio',
   'executionNotes',
 ]);
 
@@ -6398,6 +6414,7 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.angle, 'angle');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
+  checkString(post.suggestedAudio, 'suggestedAudio');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
@@ -6515,7 +6532,7 @@ function sanitizePostForSchema(schema, post) {
       return String(value);
     }
   };
-  ['topicCapsule', 'script', 'reelScript', 'engagementScripts'].forEach((key) => {
+  ['topicCapsule', 'script', 'reelScript', 'engagementScripts', 'suggestedAudio'].forEach((key) => {
     if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
   });
   return cleaned;
@@ -6536,6 +6553,9 @@ function coerceCalendarPostTypes(post) {
   }
   if (Array.isArray(post.designNotes)) {
     post.designNotes = post.designNotes.join('\n');
+  }
+  if (post.suggestedAudio && typeof post.suggestedAudio !== 'string') {
+    post.suggestedAudio = String(post.suggestedAudio);
   }
   if (post.topicCapsule && typeof post.topicCapsule === 'object' && !Array.isArray(post.topicCapsule)) {
     if (typeof post.topicCapsule.talkingPoints === 'string') {
@@ -7025,7 +7045,7 @@ function sanitizeSuggestedAudioEntry(entry = {}) {
 }
 
 function normalizeSuggestedAudioValue(candidate, fallbackEntry = null) {
-  const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+  const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Original audio', artist: 'voiceover' };
   const fallbackString = normalizeAudioString(fallback.title, fallback.artist);
   if (!candidate) {
     return fallbackString;
@@ -7056,7 +7076,7 @@ function fillMissingFieldsFromFallback(post = {}, fallback = {}, missingFields =
   if (missingSet.has('hashtags')) {
     post.hashtags = Array.isArray(post.hashtags) && post.hashtags.length
       ? post.hashtags
-      : buildFallbackHashtagList(nicheStyle || fallback.nicheStyle || '', post.format || 'Reel');
+      : buildFallbackHashtagList(nicheStyle || fallback.nicheStyle || '', post.format || 'reel');
   }
   if (missingSet.has('script') || missingSet.has('script.hook') || missingSet.has('script.body') || missingSet.has('script.cta')) {
     post.script = {
@@ -7374,7 +7394,7 @@ function repairBrandBrainPostBatch(posts = [], nicheStyle = '', startDay = 1, po
     if (!isNonEmptyString(base.post_key)) {
       base.post_key = postKey(dayValue, slotIndexValue);
     }
-    if (!isNonEmptyString(base.format)) base.format = 'Reel';
+    if (!isNonEmptyString(base.format)) base.format = 'reel';
     const seeded = fillBrandBrainDefaults(base, nicheStyle);
     const ensured = ensureRegenRequiredFields(seeded, nicheStyle, dayValue, { allowFallbacks: true });
     const repaired = repairBrandBrainRequiredKeys(ensured.post, dayValue, nicheStyle);
@@ -7513,7 +7533,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const fallbackDay = typeof forcedDay === 'number'
     ? Number(forcedDay)
     : (startDay ? Number(startDay) + idx : idx + 1);
-  const platform = toPlainString(post.format || post.platform || 'Reel');
+  const platform = toPlainString(post.format || post.platform || 'reel');
   const fallbackHashtags = allowFallbacks ? buildFallbackHashtagList(nicheStyle, platform) : [];
   const hashtags = ensureHashtagArray(post.hashtags || [], fallbackHashtags, allowFallbacks ? 8 : 0);
   const repurpose = allowFallbacks
@@ -7550,7 +7570,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     topic_signature: toPlainString(post.topic_signature || post.topicSignature || ''),
     angle: toPlainString(post.angle || ''),
     hashtags,
-    format: 'Reel',
+    format: 'reel',
     formatIntent: toPlainString(post.formatIntent || ''),
     cta: toPlainString(post.cta || ''),
     pillar: resolvedPillar,
@@ -7568,7 +7588,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
     distributionPlan,
-    suggestedAudio: extractSuggestedAudioFromPost(post),
+    suggestedAudio: extractSuggestedAudioFromPost(post) || DEFAULT_SUGGESTED_AUDIO,
   };
   if (normalizedDesignNotes.changed) {
     console.log('[Calendar][NormalizeDesignNotes]', {
@@ -11297,6 +11317,15 @@ const server = http.createServer((req, res) => {
           if (!isPro && body?.isFirst === true) {
             await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
           }
+          console.log('[Calendar][One][Payload]', {
+            requestId,
+            post_key: postKeyValue,
+            keys: Object.keys(post || {}),
+            format: post?.format,
+            hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
+            hasScript: Boolean(post?.script && String(post.script).trim()),
+            hasSuggestedAudio: Boolean(post?.suggestedAudio && String(post.suggestedAudio).trim()),
+          });
           console.log('[Calendar][One] success', {
             requestId,
             day,
@@ -11543,6 +11572,19 @@ const server = http.createServer((req, res) => {
           });
           if (!isPro) {
             await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
+          }
+          if (Array.isArray(posts)) {
+            posts.forEach((post) => {
+              console.log('[Calendar][Regen][Payload]', {
+                requestId,
+                post_key: post?.post_key || '',
+                keys: Object.keys(post || {}),
+                format: post?.format,
+                hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
+                hasScript: Boolean(post?.script && String(post.script).trim()),
+                hasSuggestedAudio: Boolean(post?.suggestedAudio && String(post.suggestedAudio).trim()),
+              });
+            });
           }
           return sendJson(res, 200, { calendarId: targetCalendarId, posts, requestId });
         } finally {
