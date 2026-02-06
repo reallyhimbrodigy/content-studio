@@ -2631,6 +2631,10 @@ async function generateAndValidateSinglePost({
       if (!scriptText && reelText) post.script = reelText;
       post.format = 'reel';
       post.suggestedAudio = await getHot100AudioForPostKey(post_key, requestId);
+      post.details = {
+        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
+        suggestedAudio: post.suggestedAudio,
+      };
       console.log('[Calendar][Candidate]', {
         requestId,
         day,
@@ -2896,41 +2900,40 @@ async function getCachedHot100(options = {}) {
   if (cached && Date.now() - cached.fetchedAt < HOT100_CACHE_TTL_MS) {
     return cached.value;
   }
-  const fresh = await getNonHolidayHot100(options);
-  hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
-  return fresh;
+  try {
+    const fresh = await getNonHolidayHot100(options);
+    hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
+    return fresh;
+  } catch (err) {
+    const fallback = { tracks: FALLBACK_HOT100_TRACKS.slice(), source: 'fallback', chartDateUsed: null };
+    hot100Cache.set(key, { fetchedAt: Date.now(), value: fallback });
+    return fallback;
+  }
+}
+
+async function getHot100TracksSafe(requestId = '', minCount = 30) {
+  const result = await getCachedHot100({ requestId, minCount });
+  const tracks = Array.isArray(result?.tracks) ? result.tracks.slice() : [];
+  if (tracks.length >= minCount) return tracks;
+  const fallback = FALLBACK_HOT100_TRACKS.slice();
+  return fallback;
+}
+
+function shuffleArray(list = []) {
+  const arr = list.slice();
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 async function getHot100AudioForPostKey(postKeyValue = '', requestId = '') {
-  const result = await getCachedHot100({ requestId, minCount: 20 });
-  const tracks = Array.isArray(result?.tracks) ? result.tracks : [];
-  if (!tracks.length) {
-    const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-    err.code = 'CALENDAR_POST_GENERATION_FAILED';
-    err.statusCode = 422;
-    err.details = {
-      reason: 'AUDIO_SOURCE_UNAVAILABLE',
-      field: 'suggestedAudio',
-      snippet: 'hot100_unavailable',
-    };
-    throw err;
-  }
-  const seed = seedFromString(`audio|${String(postKeyValue || '')}`);
-  const index = Math.abs(seed) % tracks.length;
-  const entry = selectBillboardEntry(tracks, index) || tracks[index];
+  const tracks = await getHot100TracksSafe(requestId, 30);
+  if (!tracks.length) return DEFAULT_SUGGESTED_AUDIO;
+  const entry = tracks[Math.floor(Math.random() * tracks.length)] || tracks[0];
   const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
-  if (!audioString || !audioString.trim()) {
-    const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-    err.code = 'CALENDAR_POST_GENERATION_FAILED';
-    err.statusCode = 422;
-    err.details = {
-      reason: 'AUDIO_SOURCE_INVALID',
-      field: 'suggestedAudio',
-      snippet: 'hot100_empty',
-    };
-    throw err;
-  }
-  return audioString;
+  return audioString || DEFAULT_SUGGESTED_AUDIO;
 }
 
 function openAIRequest(options, payload) {
@@ -3334,7 +3337,39 @@ const CALENDAR_ANGLE_OPTIONS = [
   'advanced nuance',
 ];
 
-const DEFAULT_SUGGESTED_AUDIO = 'Original audio - voiceover';
+const FALLBACK_HOT100_TRACKS = [
+  { title: 'Espresso', artist: 'Sabrina Carpenter' },
+  { title: 'Houdini', artist: 'Dua Lipa' },
+  { title: 'Fortnight', artist: 'Taylor Swift ft. Post Malone' },
+  { title: 'Not Like Us', artist: 'Kendrick Lamar' },
+  { title: 'Lose Control', artist: 'Teddy Swims' },
+  { title: 'Lovin On Me', artist: 'Jack Harlow' },
+  { title: 'Greedy', artist: 'Tate McRae' },
+  { title: 'Cruel Summer', artist: 'Taylor Swift' },
+  { title: 'Paint The Town Red', artist: 'Doja Cat' },
+  { title: 'Beautiful Things', artist: 'Benson Boone' },
+  { title: 'I Remember Everything', artist: 'Zach Bryan ft. Kacey Musgraves' },
+  { title: 'Agora Hills', artist: 'Doja Cat' },
+  { title: 'Lil Boo Thang', artist: 'Paul Russell' },
+  { title: 'Water', artist: 'Tyla' },
+  { title: 'Anti-Hero', artist: 'Taylor Swift' },
+  { title: 'Vampire', artist: 'Olivia Rodrigo' },
+  { title: 'Fast Car', artist: 'Luke Combs' },
+  { title: 'Flowers', artist: 'Miley Cyrus' },
+  { title: 'Last Night', artist: 'Morgan Wallen' },
+  { title: 'Seven', artist: 'Jung Kook ft. Latto' },
+  { title: 'Kill Bill', artist: 'SZA' },
+  { title: 'Creepin\'', artist: 'Metro Boomin, The Weeknd, 21 Savage' },
+  { title: 'Calm Down', artist: 'Rema & Selena Gomez' },
+  { title: 'Daylight', artist: 'David Kushner' },
+  { title: 'Unstoppable', artist: 'Sia' },
+  { title: 'One Of The Girls', artist: 'The Weeknd, JENNIE, Lily-Rose Depp' },
+  { title: 'Stick Season', artist: 'Noah Kahan' },
+  { title: 'As It Was', artist: 'Harry Styles' },
+  { title: 'Blinding Lights', artist: 'The Weeknd' },
+  { title: 'Levitating', artist: 'Dua Lipa' },
+];
+const DEFAULT_SUGGESTED_AUDIO = `${FALLBACK_HOT100_TRACKS[0].title} - ${FALLBACK_HOT100_TRACKS[0].artist}`;
 
 function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
@@ -3356,6 +3391,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'designNotes',
     'engagementScripts',
     'distributionPlan',
+    'details',
     'suggestedAudio',
     'topic_signature',
     'angle',
@@ -3384,6 +3420,14 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
+      details: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['suggestedAudio'],
+        properties: {
+          suggestedAudio: { type: 'string', minLength: 1 },
+        },
+      },
       suggestedAudio: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
@@ -3864,10 +3908,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle.';
 
 const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -4009,22 +4053,28 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'GLOBAL RULES (NON-NEGOTIABLE)',
     '- Output JSON only. No markdown. No commentary.',
     '- Every required field MUST be present and non-empty.',
-    '- No placeholders, brackets, or implied fill-ins. No ellipses.',
+    '- If a field is hard to generate, still generate best-effort real content (never leave it blank).',
+    '- No placeholders, brackets, or implied fill-ins. No ellipses. No template tokens like {{...}}, [...], <...>, TBD, TODO, lorem ipsum.',
     '- No emojis in any field.',
     '- format MUST be exactly "reel".',
-    '- The canonical script field is reelScript. The required script field MUST be an exact copy of reelScript. Do not output any other script-named fields.',
+    '- reelScript MUST be present and non-empty. The required script field MUST be an exact copy of reelScript.',
+    '- Do NOT rename reelScript or replace it with another script field. Do NOT output any other script-named fields.',
     '- reelScript must be step-by-step and include: spoken hook, on-screen visual guidance, pacing beats, spoken CTA.',
     '- Do NOT mention time or duration explicitly; keep the script short for 7–20s.',
-    '- suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO" (server will inject real audio).',
+    '- suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO".',
+    '- Also set details.suggestedAudio to "SERVER_ASSIGNED_TRENDING_AUDIO".',
     '- Do NOT invent or name songs; do not mention audio sources.',
     '- Planning fields are forbidden: idea, type, repurpose, followUpIdea.',
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
     '- Pillar must materially affect structure, tone, and CTA.',
     '- Topic coherence: title, hook, caption, reelScript, CTA, designNotes, distributionPlan must all be about the same specific topic.',
+    '- Content must be explicitly grounded in the provided niche; generic creator advice is invalid.',
     '- title and topic_signature must match semantically.',
-    '- hashtags must be relevant to the topic; no padding.',
+    '- CTA must be specific and outcome-driven; generic CTAs like "learn more", "check it out", "follow for more" are forbidden.',
+    '- hashtags must be a JSON array of strings, relevant to the topic (no padding).',
     '- engagementScripts must be intentional and specific, not filler.',
+    '- Valid pillars: education, social_proof, promotion, lifestyle.',
     `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
 
@@ -4065,7 +4115,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, suggestedAudio, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -4861,38 +4911,19 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStar
   if (!Array.isArray(posts) || !posts.length) {
     return { total: 0, missingAudio: 0 };
   }
-  const list = Array.isArray(audioEntries) ? audioEntries : [];
   const stats = { total: posts.length, missingAudio: 0 };
+  const baseList = Array.isArray(audioEntries) ? audioEntries.slice() : [];
+  const tracks = baseList.length >= posts.length ? baseList : FALLBACK_HOT100_TRACKS.slice();
+  const shuffled = shuffleArray(tracks);
   posts.forEach((post, idx) => {
-    if (!list.length) {
-      const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-      err.code = 'CALENDAR_POST_GENERATION_FAILED';
-      err.statusCode = 422;
-      err.details = {
-        reason: 'AUDIO_SOURCE_UNAVAILABLE',
-        field: 'suggestedAudio',
-        snippet: 'hot100_unavailable',
-      };
-      throw err;
-    }
-    const dayIndex = Number(post.day) || computePostDayIndex(idx, chunkStartDay, postsPerDay);
-    const postIndex = Number.isFinite(Number(post.slot)) ? Number(post.slot) - 1 : (idx % postsPerDay);
-    const key = toPlainString(post?.post_key || post?.postKey || '');
-    const seed = key ? seedFromString(`audio|${key}`) : (dayIndex + postIndex);
-    const entry = selectBillboardEntry(list, seed) || selectBillboardEntry(list, idx);
+    const entry = shuffled[idx % shuffled.length] || tracks[0];
     const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
-    if (!audioString) {
-      const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-      err.code = 'CALENDAR_POST_GENERATION_FAILED';
-      err.statusCode = 422;
-      err.details = {
-        reason: 'AUDIO_SOURCE_INVALID',
-        field: 'suggestedAudio',
-        snippet: 'hot100_empty',
-      };
-      throw err;
-    }
-    post.suggestedAudio = audioString;
+    post.suggestedAudio = audioString || DEFAULT_SUGGESTED_AUDIO;
+    post.details = {
+      ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
+      suggestedAudio: post.suggestedAudio,
+    };
+    if (!isValidSuggestedAudio(post.suggestedAudio)) stats.missingAudio += 1;
   });
   return stats;
 }
@@ -6139,6 +6170,7 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'angle',
   'designNotes',
   'distributionPlan',
+  'details',
   'suggestedAudio',
   'day',
   'hashtags',
@@ -6163,6 +6195,7 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
+  details: 'object',
   suggestedAudio: 'string',
   day: 'number',
   hashtags: 'array',
@@ -6476,6 +6509,9 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
   checkString(post.suggestedAudio, 'suggestedAudio');
+  if (!post.details || typeof post.details !== 'object' || !isNonEmptyString(post.details.suggestedAudio)) {
+    missing.push('details.suggestedAudio');
+  }
   if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
@@ -6521,6 +6557,8 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
     'engagementScripts',
     'distributionPlan',
     'dmReply',
+    'details',
+    'suggestedAudio',
   ].forEach((key) => keys.add(key));
   return keys;
 })();
@@ -6596,6 +6634,18 @@ function sanitizePostForSchema(schema, post) {
   ['topicCapsule', 'script', 'reelScript', 'engagementScripts', 'suggestedAudio'].forEach((key) => {
     if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
   });
+  if ('details' in cleaned) {
+    const rawDetails = cleaned.details;
+    if (rawDetails && typeof rawDetails === 'object' && !Array.isArray(rawDetails)) {
+      cleaned.details = {
+        suggestedAudio: coerceToString(rawDetails.suggestedAudio || ''),
+      };
+    } else if (typeof rawDetails === 'string') {
+      cleaned.details = { suggestedAudio: rawDetails.trim() };
+    } else {
+      cleaned.details = {};
+    }
+  }
   return cleaned;
 }
 
@@ -6617,6 +6667,14 @@ function coerceCalendarPostTypes(post) {
   }
   if (post.suggestedAudio && typeof post.suggestedAudio !== 'string') {
     post.suggestedAudio = String(post.suggestedAudio);
+  }
+  if (post.details && typeof post.details !== 'object') {
+    post.details = { suggestedAudio: String(post.details) };
+  }
+  if (post.details && typeof post.details === 'object' && !Array.isArray(post.details)) {
+    if (post.details.suggestedAudio && typeof post.details.suggestedAudio !== 'string') {
+      post.details.suggestedAudio = String(post.details.suggestedAudio);
+    }
   }
   if (post.topicCapsule && typeof post.topicCapsule === 'object' && !Array.isArray(post.topicCapsule)) {
     if (typeof post.topicCapsule.talkingPoints === 'string') {
@@ -11003,13 +11061,19 @@ const server = http.createServer((req, res) => {
       filteredOut,
     } = await getCachedHot100({
       requestId: loggingContext?.requestId,
-      minCount: 20,
+      minCount: 30,
     });
     const audioStats = ensureSuggestedAudioForPosts(posts, {
       audioEntries: billboardEntries,
       requestId: loggingContext?.requestId,
       chunkStartDay: startDay,
       postsPerDay: perDay,
+    });
+    posts.forEach((post) => {
+      post.details = {
+        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
+        suggestedAudio: post.suggestedAudio,
+      };
     });
     const invalidAudio = posts.find((post) => !post || !isValidSuggestedAudio(post.suggestedAudio));
     if (invalidAudio) {
