@@ -3338,36 +3338,36 @@ const CALENDAR_ANGLE_OPTIONS = [
 ];
 
 const FALLBACK_HOT100_TRACKS = [
-  { title: 'Espresso', artist: 'Sabrina Carpenter' },
-  { title: 'Houdini', artist: 'Dua Lipa' },
-  { title: 'Fortnight', artist: 'Taylor Swift ft. Post Malone' },
-  { title: 'Not Like Us', artist: 'Kendrick Lamar' },
-  { title: 'Lose Control', artist: 'Teddy Swims' },
-  { title: 'Lovin On Me', artist: 'Jack Harlow' },
-  { title: 'Greedy', artist: 'Tate McRae' },
-  { title: 'Cruel Summer', artist: 'Taylor Swift' },
-  { title: 'Paint The Town Red', artist: 'Doja Cat' },
-  { title: 'Beautiful Things', artist: 'Benson Boone' },
-  { title: 'I Remember Everything', artist: 'Zach Bryan ft. Kacey Musgraves' },
-  { title: 'Agora Hills', artist: 'Doja Cat' },
-  { title: 'Lil Boo Thang', artist: 'Paul Russell' },
-  { title: 'Water', artist: 'Tyla' },
-  { title: 'Anti-Hero', artist: 'Taylor Swift' },
-  { title: 'Vampire', artist: 'Olivia Rodrigo' },
-  { title: 'Fast Car', artist: 'Luke Combs' },
-  { title: 'Flowers', artist: 'Miley Cyrus' },
-  { title: 'Last Night', artist: 'Morgan Wallen' },
-  { title: 'Seven', artist: 'Jung Kook ft. Latto' },
-  { title: 'Kill Bill', artist: 'SZA' },
-  { title: 'Creepin\'', artist: 'Metro Boomin, The Weeknd, 21 Savage' },
-  { title: 'Calm Down', artist: 'Rema & Selena Gomez' },
-  { title: 'Daylight', artist: 'David Kushner' },
-  { title: 'Unstoppable', artist: 'Sia' },
-  { title: 'One Of The Girls', artist: 'The Weeknd, JENNIE, Lily-Rose Depp' },
-  { title: 'Stick Season', artist: 'Noah Kahan' },
-  { title: 'As It Was', artist: 'Harry Styles' },
-  { title: 'Blinding Lights', artist: 'The Weeknd' },
-  { title: 'Levitating', artist: 'Dua Lipa' },
+  { title: 'Original audio', artist: 'Voiceover' },
+  { title: 'Original audio', artist: 'Ambient instrumental' },
+  { title: 'Original audio', artist: 'Minimal piano' },
+  { title: 'Original audio', artist: 'Lo-fi groove' },
+  { title: 'Original audio', artist: 'Clean synth bed' },
+  { title: 'Original audio', artist: 'Warm guitar' },
+  { title: 'Original audio', artist: 'Subtle ambient pads' },
+  { title: 'Original audio', artist: 'Light percussion' },
+  { title: 'Original audio', artist: 'Soft strings' },
+  { title: 'Original audio', artist: 'Neutral background' },
+  { title: 'Original audio', artist: 'Bright acoustic' },
+  { title: 'Original audio', artist: 'Calm ambient' },
+  { title: 'Original audio', artist: 'Clean electronic' },
+  { title: 'Original audio', artist: 'Mellow keys' },
+  { title: 'Original audio', artist: 'Minimal beat' },
+  { title: 'Original audio', artist: 'Neutral tone' },
+  { title: 'Original audio', artist: 'Studio room tone' },
+  { title: 'Original audio', artist: 'Light groove' },
+  { title: 'Original audio', artist: 'Soft arpeggio' },
+  { title: 'Original audio', artist: 'Ambient wash' },
+  { title: 'Original audio', artist: 'Low-fi texture' },
+  { title: 'Original audio', artist: 'Clean pad' },
+  { title: 'Original audio', artist: 'Simple rhythm' },
+  { title: 'Original audio', artist: 'Subtle pulse' },
+  { title: 'Original audio', artist: 'Quiet bed' },
+  { title: 'Original audio', artist: 'Neutral backdrop' },
+  { title: 'Original audio', artist: 'Soft percussion' },
+  { title: 'Original audio', artist: 'Gentle ambience' },
+  { title: 'Original audio', artist: 'Minimal underscore' },
+  { title: 'Original audio', artist: 'Clean backdrop' },
 ];
 const DEFAULT_SUGGESTED_AUDIO = `${FALLBACK_HOT100_TRACKS[0].title} - ${FALLBACK_HOT100_TRACKS[0].artist}`;
 
@@ -4059,7 +4059,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- format MUST be exactly "reel".',
     '- reelScript MUST be present and non-empty. The required script field MUST be an exact copy of reelScript.',
     '- Do NOT rename reelScript or replace it with another script field. Do NOT output any other script-named fields.',
-    '- reelScript must be step-by-step and include: spoken hook, on-screen visual guidance, pacing beats, spoken CTA.',
+    '- reelScript must be a real reel script: spoken hook line + 3–6 beat outline with VO/on-screen/b-roll directions in-line + explicit CTA line at the end.',
     '- Do NOT mention time or duration explicitly; keep the script short for 7–20s.',
     '- suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO".',
     '- Also set details.suggestedAudio to "SERVER_ASSIGNED_TRENDING_AUDIO".',
@@ -4072,8 +4072,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Content must be explicitly grounded in the provided niche; generic creator advice is invalid.',
     '- title and topic_signature must match semantically.',
     '- CTA must be specific and outcome-driven; generic CTAs like "learn more", "check it out", "follow for more" are forbidden.',
-    '- hashtags must be a JSON array of strings, relevant to the topic (no padding).',
-    '- engagementScripts must be intentional and specific, not filler.',
+    '- hashtags must be a JSON array of 5–10 strings, relevant to the topic, no duplicates.',
+    '- designNotes must be a concrete shot list + overlays (no placeholders).',
+    '- engagementScripts must include at least 3 ready-to-paste comment replies (one per line).',
+    '- distributionPlan must include where to post, when to post, and how to reply to comments (concise).',
+    '- topicCapsule must be a concise string with thesis + proof points (not JSON).',
+    '- Avoid generic filler phrases like "luxury living", "dream home awaits", "don’t miss out" unless the specific post context supports them.',
     '- Valid pillars: education, social_proof, promotion, lifestyle.',
     `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
@@ -4086,6 +4090,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'CTA is simple and direct.',
     'Design Notes are practical and visual.',
     'EngagementScripts encourage light interaction only.',
+    'Pillar enforcement:',
+    '- education: teach a concept with clear steps/checklist.',
+    '- lifestyle: vivid day-in-life or neighborhood vibe tied to a real decision.',
+    '- social_proof: story/testimonial framing with process steps and outcome (use “a client”).',
+    '- promotion: offer-driven with clear terms and a process-based urgency (no hype).',
     'Forbidden in Regular: belief teardown, objection handling, contrarian framing, psychological pressure.',
   ].join('\n');
 
@@ -4093,13 +4102,16 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'BRAND BRAIN CALENDAR CONTRACT',
     'Purpose: persuasion-grade content that changes how the audience thinks.',
     'Tone: confident, direct, insight-driven; never generic or motivational.',
-    'Mandatory structures (must ALL appear in topicCapsule, reelScript, and engagementScripts):',
-    '- Belief Teardown (identify and explicitly challenge a flawed belief).',
-    '- Hidden Constraint (reveal what is not being considered).',
-    '- Second-Order Consequence (what happens if belief remains).',
-    '- Objection Preemption (address likely resistance).',
-    '- Asymmetric Insight (a framing competitors avoid).',
-    'If any are missing, the output is invalid.',
+    'Must be materially different from Regular.',
+    'Every post must embed ALL of the following (without labeling them):',
+    '- Belief teardown (challenge a common belief).',
+    '- Hidden constraint (reveal a non-obvious factor that changes decisions).',
+    '- Second-order consequence (what happens if ignored).',
+    '- Objection preemption (address likely resistance in-line).',
+    '- Asymmetric insight (a framing competitors avoid).',
+    'These elements must be visible in topicCapsule, reelScript, and engagementScripts.',
+    'Include at least one specific, plausible domain detail (no fabricated stats).',
+    'CTA must feel earned and decisive, not generic.',
   ].join('\n');
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_CONTRACT : REGULAR_CONTRACT;
@@ -5773,10 +5785,10 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
 const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
 const CALENDAR_PILLAR_STYLE_RULES = {
-  education: 'Teach a concept with 2–3 steps.',
-  social_proof: 'Use a client outcome story.',
-  promotion: 'Highlight an offer and a next step.',
-  lifestyle: 'Describe a routine or moment plus a practical tip.',
+  education: 'Teach a concept with a checklist or steps. Include a clear takeaway.',
+  social_proof: 'Use a client story with process steps and outcome (no fake names).',
+  promotion: 'Present a clear offer (who it is for, what it includes, next step).',
+  lifestyle: 'Vivid day-in-life or neighborhood vibe anchored to a real decision.',
 };
 
 function seedFromString(value = '') {
@@ -6475,6 +6487,19 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   const designNotesRaw = toPlainString(post?.designNotes || '');
   if (!designNotesRaw.trim()) {
     return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
+  }
+  const reelScriptRaw = toPlainString(post?.reelScript || '');
+  const reelLines = reelScriptRaw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (reelLines.length < 4) {
+    return {
+      ok: false,
+      reason: 'REELSCRIPT_TOO_SHORT',
+      field: 'reelScript',
+      snippet: reelScriptRaw.slice(0, 120),
+    };
   }
   return { ok: true };
 }
