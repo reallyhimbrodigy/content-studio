@@ -2630,11 +2630,6 @@ async function generateAndValidateSinglePost({
       if (!reelText && scriptText) post.reelScript = scriptText;
       if (!scriptText && reelText) post.script = reelText;
       post.format = 'reel';
-      post.suggestedAudio = await getHot100AudioForPostKey(post_key, requestId);
-      post.details = {
-        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-        suggestedAudio: post.suggestedAudio,
-      };
       console.log('[Calendar][Candidate]', {
         requestId,
         day,
@@ -2726,6 +2721,8 @@ async function generateAndValidateSinglePost({
           field: quality.field || 'unknown',
           snippet: quality.snippet || '',
           errors: quality.errors || null,
+          extra: quality.extra || null,
+          wordCount: quality?.extra?.wordCount,
           reachedOpenAI,
           structuredOutputUsed,
           stage: currentStage,
@@ -2755,6 +2752,27 @@ async function generateAndValidateSinglePost({
             }
           })(),
           errors: null,
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
+        };
+        throw err;
+      }
+      post.suggestedAudio = await getHot100AudioForPostKey(post_key, requestId);
+      post.details = {
+        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
+        suggestedAudio: post.suggestedAudio,
+      };
+      if (!isValidSuggestedAudio(post.suggestedAudio)) {
+        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+        err.code = 'CALENDAR_POST_GENERATION_FAILED';
+        err.statusCode = 422;
+        err.details = {
+          reason: 'AUDIO_SOURCE_INVALID',
+          field: 'details.suggestedAudio',
+          snippet: String(post.suggestedAudio || '').slice(0, 120),
           reachedOpenAI,
           structuredOutputUsed,
           stage: currentStage,
@@ -3391,8 +3409,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'designNotes',
     'engagementScripts',
     'distributionPlan',
-    'details',
-    'suggestedAudio',
     'topic_signature',
     'angle',
   ];
@@ -3420,15 +3436,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
-      details: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['suggestedAudio'],
-        properties: {
-          suggestedAudio: { type: 'string', minLength: 1 },
-        },
-      },
-      suggestedAudio: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
         items: { type: 'string', minLength: 1 },
@@ -3839,7 +3846,7 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- hook: <= 90 chars',
   '- caption: <= 2 sentences AND <= 220 chars',
   '- hashtags: exactly 6 hashtags',
-  '- suggestedAudio: always present; must be a real Billboard Hot 100 song in "Title - Artist" format',
+  '- suggestedAudio will be assigned by the server (do not output audio names)',
   '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
@@ -3880,7 +3887,7 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- hook: <= 90 chars',
   '- caption: <= 2 sentences AND <= 220 chars',
   '- hashtags: exactly 6 hashtags',
-  '- suggestedAudio: always present; must be a real Billboard Hot 100 song in "Title - Artist" format',
+  '- suggestedAudio will be assigned by the server (do not output audio names)',
   '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
@@ -3908,10 +3915,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle.';
 
 const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -3919,7 +3926,7 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- hook <= 80 chars',
   '- caption <= 140 chars (1-2 sentences)',
   '- hashtags: exactly 6 tags',
-  '- suggestedAudio: single short string; must be a real Billboard Hot 100 song in "Title - Artist" format',
+  '- suggestedAudio will be assigned by the server (do not output audio names)',
   '- designNotes: exactly 3 bullet lines, each starting with "- "',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
@@ -4059,11 +4066,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- format MUST be exactly "reel".',
     '- reelScript MUST be present and non-empty. The required script field MUST be an exact copy of reelScript.',
     '- Do NOT rename reelScript or replace it with another script field. Do NOT output any other script-named fields.',
-    '- reelScript must be a real reel script: spoken hook line + 3–6 beat outline with VO/on-screen/b-roll directions in-line + explicit CTA line at the end.',
-    '- Do NOT mention time or duration explicitly; keep the script short for 7–20s.',
-    '- suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO".',
-    '- Also set details.suggestedAudio to "SERVER_ASSIGNED_TRENDING_AUDIO".',
-    '- Do NOT invent or name songs; do not mention audio sources.',
+    '- reelScript must be plain text, 60–110 words, exactly 5 sentences total:',
+    '  1) Hook sentence.',
+    '  2–4) Value sentences (concrete, niche-specific).',
+    '  5) CTA sentence that matches cta.',
+    '- Do NOT use timestamps, bullets, or parentheses stage directions in reelScript.',
+    '- If reelScript is shorter than 60 words, the output is invalid.',
+    '- Do NOT mention time or duration explicitly.',
+    '- suggestedAudio will be assigned by the server; do NOT mention any song names.',
     '- Planning fields are forbidden: idea, type, repurpose, followUpIdea.',
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
@@ -4127,7 +4137,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, suggestedAudio, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -6182,8 +6192,6 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'angle',
   'designNotes',
   'distributionPlan',
-  'details',
-  'suggestedAudio',
   'day',
   'hashtags',
   'script',
@@ -6207,8 +6215,6 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   angle: 'string',
   designNotes: 'string',
   distributionPlan: 'string',
-  details: 'object',
-  suggestedAudio: 'string',
   day: 'number',
   hashtags: 'array',
   script: 'string',
@@ -6489,16 +6495,26 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
   }
   const reelScriptRaw = toPlainString(post?.reelScript || '');
-  const reelLines = reelScriptRaw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (reelLines.length < 4) {
+  if (!reelScriptRaw.trim()) {
+    return { ok: false, reason: 'MISSING_REQUIRED_FIELD', field: 'reelScript', snippet: '' };
+  }
+  const wc = reelScriptRaw
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if (wc < 45) {
+    console.warn('[Calendar][ValidatePost] REELSCRIPT_TOO_SHORT', {
+      requestId: ctx?.requestId || null,
+      post_key: ctx?.post_key || null,
+      wordCount: wc,
+      snippet: reelScriptRaw.slice(0, 120),
+    });
     return {
       ok: false,
       reason: 'REELSCRIPT_TOO_SHORT',
       field: 'reelScript',
       snippet: reelScriptRaw.slice(0, 120),
+      extra: { wordCount: wc },
     };
   }
   return { ok: true };
@@ -6533,10 +6549,6 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.angle, 'angle');
   checkString(post.designNotes, 'designNotes');
   checkString(post.distributionPlan, 'distributionPlan');
-  checkString(post.suggestedAudio, 'suggestedAudio');
-  if (!post.details || typeof post.details !== 'object' || !isNonEmptyString(post.details.suggestedAudio)) {
-    missing.push('details.suggestedAudio');
-  }
   if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
@@ -11421,7 +11433,7 @@ const server = http.createServer((req, res) => {
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
-        const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 900;
+        const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : 0.2;
         const schemaLabel = selectedMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
@@ -11506,6 +11518,7 @@ const server = http.createServer((req, res) => {
               reason,
               field: detail?.field || 'unknown',
               snippet: detail?.snippet || '',
+              wordCount: detail?.wordCount ?? detail?.extra?.wordCount ?? null,
               day,
               post_key: postKeyValue,
             },
