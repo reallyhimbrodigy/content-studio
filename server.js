@@ -2482,6 +2482,7 @@ async function generateAndValidateSinglePost({
   brandBrainDirective = '',
   day,
   slotIndex,
+  postsPerDay = 1,
   post_key,
   plannedTitle,
   plannedAngle,
@@ -2501,22 +2502,36 @@ async function generateAndValidateSinglePost({
     return CALENDAR_PILLAR_KEYS.includes(raw) ? raw : '';
   };
   const resolvedPillarKey = normalizePillarKey(pillarKey);
-  const assignedPillarKey = resolvedPillarKey || pickPillarKeyForPostKey(post_key);
+  let assignedPillarKey = resolvedPillarKey || pickPillarKeyForPostKey(post_key);
+  const safePostsPerDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
+  let previousPillar = 'none';
+  if (slotIndex > 0) {
+    previousPillar = pickPillarKeyForPostKey(postKey(day, slotIndex - 1));
+  } else if (day > 1) {
+    previousPillar = pickPillarKeyForPostKey(postKey(day - 1, safePostsPerDay - 1));
+  }
+  if (previousPillar !== 'none' && assignedPillarKey === previousPillar) {
+    const idx = CALENDAR_PILLAR_KEYS.indexOf(assignedPillarKey);
+    if (idx >= 0) {
+      assignedPillarKey = CALENDAR_PILLAR_KEYS[(idx + 1) % CALENDAR_PILLAR_KEYS.length];
+    }
+  }
   const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
   currentStage = 'build_schema';
   console.log('[Calendar][Diag] STAGE=build_schema', { requestId, day, post_key });
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const baseInstructions = [
-    'WRITE MODE (SINGLE POST):',
-    '- Return ONLY a single post object (no posts array).',
-    `- post_key must be "${post_key}", day ${day}, slotIndex ${slotIndex}.`,
-    plannedTitle ? `- title must be "${plannedTitle}".` : '- Provide a specific title.',
-    plannedAngle ? `- angle must be "${plannedAngle}".` : '- Provide an angle.',
-    '- topic_signature must equal title.',
-    `- Schema name: ${schemaLabel}.`,
-    `- Niche: ${nicheStyle}.`,
-    `- pillar must be "${assignedPillarKey}".`,
-    `- Pillar style: ${pillarStyle}`.trim(),
+    'POST CONTEXT:',
+    `post_key: ${post_key}`,
+    `day: ${day}`,
+    `slotIndex: ${slotIndex}`,
+    `previous_pillar: ${previousPillar}`,
+    `target_pillar: ${assignedPillarKey}`,
+    plannedTitle ? `planned_title: ${plannedTitle}` : '',
+    plannedAngle ? `planned_angle: ${plannedAngle}` : '',
+    `Schema name: ${schemaLabel}`,
+    `Niche: ${nicheStyle}`,
+    pillarStyle ? `Pillar style: ${pillarStyle}` : '',
   ].filter(Boolean).join('\n');
   const state = qualityState || { signatureMap: new Map() };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -2560,6 +2575,12 @@ async function generateAndValidateSinglePost({
         singlePost: true,
         allowFailover: false,
         schemaOverride: schema,
+        previousPillar,
+        targetPillar: assignedPillarKey,
+        postKey: post_key,
+        slotIndex,
+        plannedTitle,
+        plannedAngle,
       });
       reachedOpenAI = true;
       structuredOutputUsed = Boolean(result.usedStructuredOutput);
@@ -3913,242 +3934,87 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
-  const chunkEndDay = startDay + days - 1;
-  const postsPerDaySetting = 1;
-  const totalPostsRequired = days * postsPerDaySetting;
-  const dayRangeLabel = `${startDay}..${startDay + days - 1}`;
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonthNumber = now.getMonth() + 1;
-  const currentMonthName = now.toLocaleString('en-US', { month: 'long' });
-  const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}
-` : '';
-  const brandBrainAddendum = opts.brandBrainDirective
-    ? [
-      'KEY CONTRACT (BINDING):',
-      '- Output JSON only; match schema keys exactly; no unknown keys.',
-      '- topic_signature and angle are REQUIRED top-level keys, non-empty strings, exact spelling.',
-      '- Do not use alias keys for these (topicSignature, angleText).',
-      '- If topic_signature or angle would be missing/empty, rewrite once internally before output.',
-      `- Required keys (verbatim): ${requiredFieldsForMode('brand_brain').join(', ')}.`,
-      '- Do not output any new top-level keys or rename existing keys.',
-      '- Output JSON only.',
-    ].join('\\n')
-    : '';
-  const brandBrainBlock = opts.brandBrainDirective
-    ? `${BRAND_BRAIN_KEY_CONTRACT_TOP}\nBrand Brain directives:\n${opts.brandBrainDirective.trim()}\n${brandBrainAddendum}\n`
-    : '';
-  if (opts.brandBrainDirective) {
-    console.log('[BrandBrain][Prompt] addendum_appended=%s', Boolean(brandBrainAddendum));
-  }
-  const extraInstructions = opts.extraInstructions ? `${opts.extraInstructions.trim()}\n` : '';
-  const compactPrompt = Boolean(opts.compactPrompt);
-  const nonBrandBrainMultiPostBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          'MULTIPLE POSTS PER DAY (CRITICAL):',
-          '- You must create multiple posts for the same calendar day.',
-          `- postsPerDay = ${postsPerDaySetting}. For each day D, output exactly ${postsPerDaySetting} separate post objects with "day": D.`,
-          '- When postsPerDay > 1, repeated "day" values are required and expected.',
-          '',
-        ].join('\\n')
-      : '';
-  const nonBrandBrainQualityBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          '',
-          'QUALITY REQUIREMENTS:',
-          '- No filler, no vague “tips”, no generic motivational lines, no placeholders.',
-        ].join('\\n')
-      : '';
-  const nonBrandBrainAbsoluteBlock =
-    !opts.brandBrainDirective && postsPerDaySetting > 1
-      ? [
-          '',
-          'ABSOLUTE OUTPUT REQUIREMENTS (DO NOT VIOLATE):',
-          '- Output JSON only. No markdown. No commentary.',
-          '- Return exactly: {"posts":[...]}.',
-          '- "posts" must be a flat array of post objects (do not group by day).',
-          `- posts.length MUST equal days * postsPerDay (= ${days} * ${postsPerDaySetting} = ${totalPostsRequired}).`,
-          `- For each day D in [${startDay} .. ${startDay + days - 1}], include EXACTLY ${postsPerDaySetting} objects with "day": D.`,
-          '- Do not output fewer posts. Do not output extra posts.',
-        ].join('\\n')
-      : '';
-  const hashtagRange = opts.brandBrainDirective ? '8–12' : '5–8';
-  const regularCalendarContractBlock = '';
-  const regularContentQualityBlock = !opts.brandBrainDirective ? REGULAR_CONTENT_QUALITY_RULES_BLOCK : '';
-  const brandBrainDifferentiationBlock = opts.brandBrainDirective ? BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK : '';
-  const modeQualityBlock = [regularContentQualityBlock, brandBrainDifferentiationBlock].filter(Boolean).join('\n');
-  const postIdentityBlock = compactPrompt
-    ? buildCompactPostKeyBlock(startDay, days, postsPerDaySetting)
-    : buildRequestedPostIdentityBlock(startDay, days, postsPerDaySetting, opts.topicPlan || null);
-  if (compactPrompt) {
-    const compactModeBlock = opts.brandBrainDirective ? COMPACT_BRAND_BRAIN_MODE_BLOCK : COMPACT_REGULAR_MODE_BLOCK;
-    const compactRequiredLine = opts.brandBrainDirective
-      ? COMPACT_REQUIRED_KEYS_LINE_BRAND
-      : COMPACT_REQUIRED_KEYS_LINE_REGULAR;
-    const singlePostLine = opts.singlePost ? '- Return ONLY a single post object (no posts array).' : null;
-    const compactPromptText = [
-      'Return JSON only.',
-      nicheStyle ? `Niche: ${nicheStyle}` : null,
-      `Generate exactly ${totalPostsRequired} posts for these post_keys:`,
-      postIdentityBlock,
-      compactRequiredLine,
-      singlePostLine,
-      '- All required keys must be present and non-empty strings.',
-      '- No placeholders: "placeholder", "tbd", "lorem", "coming soon".',
-      COMPACT_LENGTH_LIMITS_BLOCK,
-      compactModeBlock,
-    ].filter(Boolean).join('\n');
-    const compactExtra = extraInstructions ? `\n${extraInstructions.trim()}` : '';
-    return compactPromptText + compactExtra;
-  }
-  const outputContractBlock = [
-    'OUTPUT CONTRACT (MANDATORY)',
-    '- Return ONLY a single JSON object. No markdown. No backticks. No commentary. No headings.',
-    '- The first character of your entire response must be "{" and the last character must be "}".',
-    '- Always return the SAME top-level object shape: {"posts":[ ... ]}. Even when generating 1 post, still wrap it in {"posts":[{...}]}.',
-    `- The "posts" value must be an array containing EXACTLY ${totalPostsRequired} post objects. Do not return fewer or more.`,
-    '- Do not include newline-delimited templates or partial phrases. Every string must be complete and finished.',
-    '- Never end a string with an opening parenthesis, trailing comma, colon, dash, or unfinished clause.',
-    '- Every post object must include every field required by the schema, and every field must be a NON-EMPTY string, except numeric fields defined as numbers or arrays defined as arrays.',
-    '- Never omit a field. Never change field names. Never nest unexpected keys.',
-    '- The ONLY allowed keys are those required by the schema; do not add any extra keys.',
-    '- Use plain ASCII quotes " for JSON strings. Escape any internal quotes. No trailing commas. No NaN/Infinity.',
-    '- NOTE: Output contract prevents parse failures (422 missing_posts_parse_failed).',
-    'MUST RETURN JSON ONLY (STRICT)',
-    '- Top-level must be {"posts":[...]} and nothing else.',
-    '- Each post MUST include EXACT keys:',
-    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
-    '- format must be "Reel" for every post.',
-    '- reelScript must include hook/body/cta fields (do not collapse into one string).',
-    '- Do not classify the post and do not mention any pillar or pillar tokens.',
-    '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
-    '- designNotes must be exactly 3 bullet lines, each starting with "- " and including a verb plus a visual reference.',
-    '- distributionPlan must be exactly 2 bullet lines.',
-    'NON-EMPTY REQUIREMENT',
-    '- These fields MUST NEVER be empty or missing: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags, designNotes, distributionPlan, script.hook, script.body, script.cta, reelScript.hook, reelScript.body, reelScript.cta, engagementScripts.commentReply, engagementScripts.dmReply, topicCapsule.summary, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.audienceAngle, topicCapsule.keyEntities.',
-    '- Empty string is invalid. Missing key is invalid. If you are uncertain, still write a best-effort value that fits the niche and topic; do not leave it blank.',
-    'SINGLE POST RULE',
-    '- When the expected post count is 1, you still must return {"posts":[{...}]} (NOT a single object, NOT an array alone).',
+  const endDay = startDay + days - 1;
+  const mode = String(opts.calendarMode || (opts.brandBrainDirective ? 'brand_brain' : 'regular')).toLowerCase() === 'brand_brain'
+    ? 'brand_brain'
+    : 'regular';
+  const schema = getCalendarPostSchema(mode, startDay, endDay);
+  const requiredKeys = Object.keys(schema.properties || {}).join(', ');
+  const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
+  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
+  const previousPillar = opts.previousPillar || 'none';
+  const targetPillar = opts.targetPillar || '';
+  const plannedTitle = opts.plannedTitle || '';
+  const plannedAngle = opts.plannedAngle || '';
+  const postKeyValue = opts.postKey || '';
+  const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
+  const contextLines = [
+    `Mode: ${mode}`,
+    `Niche: ${cleanNiche}`,
+    postKeyValue ? `post_key: ${postKeyValue}` : null,
+    `day: ${startDay}`,
+    `slotIndex: ${slotIndex}`,
+    previousPillar ? `previous_pillar: ${previousPillar}` : null,
+    targetPillar ? `target_pillar: ${targetPillar}` : null,
+    plannedTitle ? `planned_title: ${plannedTitle}` : null,
+    plannedAngle ? `planned_angle: ${plannedAngle}` : null,
+  ].filter(Boolean).join('\n');
+
+  const GLOBAL_CONTRACT = [
+    'GLOBAL RULES (MANDATORY)',
+    '- You are generating ONE post as part of a calendar sequence.',
+    '- You are given previous_pillar. The current post MUST use a DIFFERENT pillar if previous_pillar != "none".',
+    '- Valid pillars (exact): education, social_proof, promotion, lifestyle.',
+    '- The chosen pillar must materially affect angle, tone, structure, and CTA.',
+    '- If target_pillar is provided, you MUST use it.',
+    '- Output JSON only. No markdown. No commentary.',
+    '- No placeholders, filler, or “to be filled later” language.',
+    '- Banned patterns: {{…}}, […], <…>, "insert", "placeholder", "TBD", "TODO", "lorem ipsum".',
+    '- ALL sections required. Every required field must be fully written and non-empty.',
+    '- If format is video/reel, a full script is required with Hook (0–2s), Body beats, and Close + CTA.',
+    '- Topic coherence: title, hook, script, caption, CTA, design notes, and distribution plan must all be about the same specific topic.',
+    '- Niche anchored: content must be explicitly grounded in the provided niche. Generic content is INVALID.',
+    '- CTA quality: specific and outcome-driven. Generic CTAs like “Learn more”, “Follow for more”, “Check it out” are banned.',
+    `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
-  const finalSelfCheckBlock = [
-    'FINAL SELF-CHECK (REQUIRED BEFORE RESPONDING)',
-    '- Before finalizing, verify every post includes every required key and none are empty.',
-    '- Confirm JSON parses.',
-    '- Confirm top-level is an object with key "posts" only.',
-    `- Confirm posts.length === ${totalPostsRequired}.`,
-    '- Confirm every post includes all required fields with NON-EMPTY strings.',
-    '- Confirm no field value is just whitespace.',
-    '- Confirm hook is at least 20 characters and not identical to title.',
-    '- Confirm designNotes has exactly 3 bullet lines and each starts with "- ".',
-    '- Confirm distributionPlan has exactly 2 bullet lines.',
+
+  const REGULAR_CONTRACT = [
+    'REGULAR CONTENT CALENDAR CONTRACT',
+    'Purpose: clear, useful, responsible content. No manipulation.',
+    'Tone: clear, neutral, helpful, competent.',
+    'Education: teach something concrete with explanation/comparison/framework/steps.',
+    'Social Proof: credibility via real scenario/outcome framing, no hype.',
+    'Promotion: explain offer, who it is for, and why useful. No pressure.',
+    'Lifestyle: connect niche to lived experience; grounded and realistic.',
+    'Video script: hook states what viewer will learn/see; body delivers value; close reinforces takeaway + CTA.',
+    'BANNED: belief teardown, identity pressure, fear-based framing.',
   ].join('\n');
-  const calendarContextBlock = [
-    'CALENDAR CONTEXT (GROUNDING ONLY):',
-    `- Current year: ${currentYear}`,
-    `- Current month: ${currentMonthName} (${currentMonthNumber})`,
-    `- This chunk covers day ${startDay}..${chunkEndDay}, slotIndex 0..${Math.max(0, postsPerDaySetting - 1)}.`,
-    '- Use this context only if a post is TIME_SENSITIVE; avoid time language in EVERGREEN posts.',
+
+  const BRAND_BRAIN_CONTRACT = [
+    'BRAND BRAIN CONTENT CALENDAR CONTRACT',
+    'Purpose: strategic, persuasive, belief-shaping content.',
+    'Tone: opinionated, strategic, confident, intellectually sharp.',
+    'MANDATORY: include at least ONE persuasion mechanism explicitly:',
+    '- belief teardown OR hidden constraint OR second-order consequence OR objection reframe OR identity/status framing.',
+    'If none are present, output is INVALID.',
+    'Education: must challenge how the audience currently thinks.',
+    'Social Proof: use proof to reshape belief, not just show success.',
+    'Promotion: frame the offer as strategic advantage and cost of not acting.',
+    'Lifestyle: connect identity/status/self-image to choices.',
+    'Video script: hook disrupts belief; body applies persuasion mechanism; close reinforces reframed belief + CTA.',
+    'BANNED: safe neutrality, generic tips, friendly marketer tone.',
   ].join('\n');
-  const basePrompt = `${outputContractBlock}
-You are a thoughtful calendar writer${cleanNiche}.
-${brandBlock}${brandBrainBlock}${nonBrandBrainMultiPostBlock}${calendarContextBlock}
-`;
-const compactSchemaBlock = `REQUIRED FIELDS (STRICT):
-For EACH post object, EVERY key in the schema MUST be present and MUST be non-empty.
-- Missing key = invalid.
-- Empty string "" = invalid.
-- Whitespace-only = invalid.
-- Truncated/incomplete phrase = invalid.
-Output will be rejected if any post violates this.
-Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
-SCOPE LOCK: only generate content for the provided day(s) in this chunk.
-${postIdentityBlock}
-${regularCalendarContractBlock}
-RULES:
-- format must be "Reel" for every post.
-- Each post must include all required fields and non-empty values.
-- Generate each post fully before starting the next.
-${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
-`;
-const schemaBlock = compactPrompt
-  ? compactSchemaBlock
-  : `${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
-${TITLE_ANCHOR_ECHO_BLOCK}
-${LIFESTYLE_REDEFINITION_BLOCK}
-${QUALITY_ALIGNMENT_BLOCK}
-REQUIRED FIELDS (STRICT):
-For EACH post object, EVERY key in the schema MUST be present and MUST be non-empty.
-- Missing key = invalid.
-- Empty string "" = invalid.
-- Whitespace-only = invalid.
-- Truncated/incomplete phrase = invalid.
-Output will be rejected if any post violates this.
-Return ONLY valid JSON: {"posts":[...]}. Generate EXACTLY ${totalPostsRequired} posts for days ${dayRangeLabel} (postsPerDay=${postsPerDaySetting}). Use plain ASCII quotes.
-SCOPE LOCK: only generate content for the provided day(s) in this chunk.
-${postIdentityBlock}
-${TOPIC_LOCK_CONTRACT_BLOCK}
-${regularCalendarContractBlock}
-TOPIC CAPSULE (required per post):
-- topicCapsule: { summary, mustUse, mustAvoid, audienceAngle, keyEntities }.
-- mustUse: 5-10 phrases from the title/topic. mustAvoid: copy from Requested IDs for that post.
-- Every required field must include at least 2 distinct mustUse terms (case-insensitive).
-- No required field may include mustAvoid terms (case-insensitive).
-${FIELD_REGROUNDING_BLOCK}
-RULES:
-- format must be "Reel" for every post.
-- If a Topic (MUST USE) is provided, the title must match it exactly.
-- topic_signature: 3-6 tokens from the title; angle: 1 sentence derived from the title.
-- Each post must include all required fields and non-empty values.
-- Generate each post fully before starting the next.
-${extraInstructions}${nonBrandBrainQualityBlock}${nonBrandBrainAbsoluteBlock}
-`;
-  const hardOutputContractBlock = [
-    'STRICT OUTPUT CONTRACT',
-    'Return ONLY JSON (no markdown, no code fences, no commentary).',
-    'Top-level: {"posts":[...]} and NOTHING ELSE.',
-    `posts must contain EXACTLY ${totalPostsRequired} items — not more, not less.`,
-    `Generate ONLY for day range ${startDay}..${chunkEndDay}.`,
-    `Each item must match exactly ONE slot: slotIndex in 0..${Math.max(0, postsPerDaySetting - 1)}.`,
-    'Do NOT include posts for any other day or slot.',
-  ].join('\n');
-  const requiredKeysBlock = [
-    'COMPLETENESS RULES:',
-    '- Every string must be a complete thought. Do not end with unfinished clauses.',
-    '- Never end any value with an opening parenthesis "(", trailing comma, colon, dash, or dangling "and/or".',
-    '- Do not classify the post and do not mention any pillar or pillar tokens.',
-    '- hook must restate the title/idea in different words, be at least 20 characters, and must not exactly equal the title.',
-    '- designNotes MUST be exactly 3 bullet lines, each starting with "- ".',
-    '- engagementScripts MUST never be blank; include commentReply and dmReply.',
-    '- distributionPlan MUST be exactly 2 bullet lines.',
-    'REQUIRED KEYS (DO NOT OMIT):',
-    'post_key, day, slotIndex, title, topicCapsule{summary,mustUse[],mustAvoid[],audienceAngle,keyEntities[]}, format, hook, caption, cta, hashtags[], script{hook,body,cta}, reelScript{hook,body,cta}, designNotes, engagementScripts{commentReply,dmReply}, distributionPlan, topic_signature, angle.',
-    'Each required key must be present and a non-empty string except numeric fields (day/slotIndex) and arrays (hashtags, topicCapsule.mustUse, topicCapsule.mustAvoid, topicCapsule.keyEntities). Empty string is invalid.',
-    'Do not use partial phrases or unfinished templates; complete every string.',
-    'Return ONLY JSON.',
-  ].join('\n');
-  const targetAudienceBlock = opts.targetAudience?.enabled ? opts.targetAudience.instructionBlock : '';
-  const voiceLockBlock = opts.voiceLock?.enabled ? opts.voiceLock.instructionBlock : '';
-  if (voiceLockBlock && opts.requestId && !VOICE_LOCK_APPLIED_REQUESTS.has(opts.requestId)) {
-    const presetLabel = VOICE_LOCK_PRESET_GUIDES[opts.voiceLock.preset]?.label || opts.voiceLock.preset;
-    console.log('[VoiceLock][Prompt] appended=true preset=%s chars=%s', presetLabel, String(voiceLockBlock.length));
-    VOICE_LOCK_APPLIED_REQUESTS.add(opts.requestId);
-    if (VOICE_LOCK_APPLIED_REQUESTS.size > 5000) VOICE_LOCK_APPLIED_REQUESTS.clear();
-  }
-  const finalCheckBlock = [
-    'FINAL CHECK (SILENT):',
-    'Before you output, verify:',
-    '1) Valid JSON only.',
-    '2) posts length matches expectedPosts.',
-    '3) Every post includes every schema key.',
-    '4) No field is empty or truncated.',
-    '5) designNotes includes exactly 3 bullet lines; engagementScripts include commentReply + dmReply; distributionPlan has TikTok/Instagram lines.',
-    'If any check fails, fix it BEFORE outputting.',
-  ].join('\n');
-  const finalPrompt = `${basePrompt}${schemaBlock}${voiceLockBlock}${targetAudienceBlock}\n${requiredKeysBlock}\n${finalSelfCheckBlock}\n${finalCheckBlock}\n${modeQualityBlock}\n${hardOutputContractBlock}`;
-  return finalPrompt;
+
+  const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_CONTRACT : REGULAR_CONTRACT;
+  const promptParts = [
+    'You are generating ONE calendar post.',
+    brandBlock,
+    contextLines,
+    GLOBAL_CONTRACT,
+    contractBlock,
+  ].filter(Boolean);
+  const extra = opts.extraInstructions ? `\n${opts.extraInstructions.trim()}` : '';
+  return `${promptParts.join('\n')}${extra}`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -10119,6 +9985,7 @@ const server = http.createServer((req, res) => {
         brandBrainDirective,
         day: slot.day,
         slotIndex: slot.slotIndex,
+        postsPerDay,
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
@@ -11415,6 +11282,7 @@ const server = http.createServer((req, res) => {
             brandBrainDirective,
             day,
             slotIndex,
+            postsPerDay,
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
