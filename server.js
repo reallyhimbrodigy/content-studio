@@ -2443,9 +2443,18 @@ async function generateAndValidateSinglePost({
   qualityState,
   extraInstructions,
 }) {
+  let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
-  const assignedPillarKey = pillarKey || pickPillarKeyForPostKey(post_key);
+  const normalizePillarKey = (value) => {
+    const raw = typeof value === 'string' ? value.toLowerCase().trim() : '';
+    return CALENDAR_PILLAR_KEYS.includes(raw) ? raw : '';
+  };
+  const resolvedPillarKey = normalizePillarKey(pillarKey);
+  const assignedPillarKey = resolvedPillarKey || pickPillarKeyForPostKey(post_key);
   const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
+  currentStage = 'build_schema';
+  console.log('[Calendar][Diag] STAGE=build_schema', { requestId, day, post_key });
+  const schema = getCalendarPostSchema(calendarMode, day, day);
   const baseInstructions = [
     'WRITE MODE (SINGLE POST):',
     '- Return ONLY a single post object (no posts array).',
@@ -2460,6 +2469,9 @@ async function generateAndValidateSinglePost({
   ].filter(Boolean).join('\n');
   const state = qualityState || { signatureMap: new Map() };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let reachedOpenAI = false;
+    let structuredOutputUsed = false;
+    let validatorErrors = null;
     console.log('[Calendar][Job] start', {
       requestId,
       day,
@@ -2467,11 +2479,20 @@ async function generateAndValidateSinglePost({
       post_key,
       attempt,
     });
+    currentStage = 'assign_pillar';
+    console.log('[Calendar][Diag] STAGE=assign_pillar', {
+      requestId,
+      day,
+      post_key,
+      pillar: assignedPillarKey,
+    });
     const retryLine = attempt === 2
       ? `Return ONLY valid JSON that matches schema "${schemaLabel}". No extra keys. No markdown.`
       : '';
     const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
+      currentStage = 'openai_request';
+      console.log('[Calendar][Diag] REACHED_OPENAI=true', { requestId, day, post_key, attempt });
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: 1,
         startDay: day,
@@ -2489,6 +2510,15 @@ async function generateAndValidateSinglePost({
         allowFailover: false,
         schemaOverride: schema,
       });
+      reachedOpenAI = true;
+      structuredOutputUsed = Boolean(result.usedStructuredOutput);
+      console.log('[Calendar][Diag] GOT_OPENAI=true', {
+        requestId,
+        day,
+        post_key,
+        attempt,
+        usedStructuredOutput: structuredOutputUsed,
+      });
       if (!Array.isArray(result.posts) || result.posts.length !== 1) {
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
@@ -2503,11 +2533,13 @@ async function generateAndValidateSinglePost({
               return '';
             }
           })(),
+          errors: [],
+          reachedOpenAI,
+          structuredOutputUsed,
         };
         throw err;
       }
       logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
-      const schema = getCalendarPostSchema(calendarMode, day, day);
       let post = sanitizePostForSchema(schema, result.posts[0]);
       post.day = day;
       post.slotIndex = slotIndex;
@@ -2532,6 +2564,8 @@ async function generateAndValidateSinglePost({
           topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
         },
       });
+      currentStage = 'validate';
+      console.log('[Calendar][Diag] STAGE=validate', { requestId, day, post_key });
       const schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
       if (schemaErrors.length) {
         const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
@@ -2543,6 +2577,12 @@ async function generateAndValidateSinglePost({
           actual: error?.actual || '',
           params: error?.params || {},
         }));
+        console.log('[Calendar][Diag] VALIDATED ok=false', {
+          requestId,
+          day,
+          post_key,
+          errors: trimmedErrors,
+        });
         const keyTypes = Object.keys(post || {}).reduce((acc, key) => {
           const value = post[key];
           acc[key] = Array.isArray(value) ? 'array' : typeof value;
@@ -2559,11 +2599,14 @@ async function generateAndValidateSinglePost({
           params: firstErr?.params || {},
           valueType: Array.isArray(offendingValue) ? 'array' : typeof offendingValue,
         }).slice(0, 300);
+        validatorErrors = trimmedErrors;
         console.warn('[Calendar][Schema][Errors]', {
           requestId,
           day,
           post_key,
           errors: trimmedErrors,
+          reachedOpenAI,
+          structuredOutputUsed,
           keyTypes,
         });
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -2573,6 +2616,12 @@ async function generateAndValidateSinglePost({
           reason: 'SCHEMA_MISMATCH',
           field: firstErr?.instancePath || firstErr?.schemaPath || 'unknown',
           snippet,
+          errors: trimmedErrors,
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
         };
         throw err;
       }
@@ -2592,6 +2641,12 @@ async function generateAndValidateSinglePost({
           reason: quality.reason || 'VALIDATION_FAILED',
           field: quality.field || 'unknown',
           snippet: quality.snippet || '',
+          errors: quality.errors || null,
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
         };
         throw err;
       }
@@ -2615,6 +2670,12 @@ async function generateAndValidateSinglePost({
               return '';
             }
           })(),
+          errors: null,
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
         };
         throw err;
       }
@@ -2626,6 +2687,12 @@ async function generateAndValidateSinglePost({
           reason: 'PLACEHOLDER_FOUND',
           field: 'content',
           snippet: JSON.stringify({ post_key }).slice(0, 160),
+          errors: null,
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
         };
         throw err;
       }
@@ -2649,6 +2716,20 @@ async function generateAndValidateSinglePost({
       });
       return finalPost;
       } catch (err) {
+        if (!err?.details) {
+          err.details = {
+            reason: 'SCHEMA_MISMATCH',
+            field: `stage:${currentStage}`,
+            stage: currentStage,
+            day,
+            post_key,
+          };
+        } else if (!err.details.field) {
+          err.details.field = `stage:${currentStage}`;
+          err.details.stage = currentStage;
+          err.details.day = day;
+          err.details.post_key = post_key;
+        }
         if (err?.code === 'OPENAI_SCHEMA_ERROR' || err?.code === 'OPENAI_SCHEMA_INVALID') {
           const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
           failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
@@ -2659,16 +2740,28 @@ async function generateAndValidateSinglePost({
             snippet: err?.openaiMessage || err?.message || '',
             day,
             post_key,
+            reachedOpenAI: Boolean(err?.openaiDetails || err?.responseId),
+            structuredOutputUsed: Boolean(err?.usedStructuredOutput),
+            stage: currentStage,
           };
           throw failErr;
         }
-        const reason = err?.code === 'PARSE_FAILED'
-          ? (err?.reason || 'PARSE_FAILED')
-          : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
-          ? 'TIMEOUT'
-          : err?.code === 'OPENAI_BACKEND_ERROR'
-            ? 'OPENAI_ERROR'
-            : 'SCHEMA_MISMATCH';
+        if (err?.code === 'SCHEMA_MISMATCH' || err?.code === 'PARSE_FAILED') {
+          reachedOpenAI = true;
+        }
+        reachedOpenAI = reachedOpenAI || Boolean(err?.openaiDetails || err?.responseId || err?.statusCode);
+        structuredOutputUsed = structuredOutputUsed || Boolean(err?.usedStructuredOutput);
+        const reason = err?.details?.reason
+          || (err?.code === 'PARSE_FAILED'
+            ? (err?.reason || 'PARSE_FAILED')
+            : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
+              ? 'TIMEOUT'
+              : err?.code === 'OPENAI_BACKEND_ERROR'
+                ? 'OPENAI_ERROR'
+                : 'SCHEMA_MISMATCH');
+      const errorsForLog = err?.details?.errors || validatorErrors || null;
+      const missingDetails = reason === 'SCHEMA_MISMATCH'
+        && (!errorsForLog || !errorsForLog.length || (err?.details?.field || 'unknown') === 'unknown');
       console.log('[Calendar][Job] fail', {
         requestId,
         day,
@@ -2676,17 +2769,38 @@ async function generateAndValidateSinglePost({
         post_key,
         reason,
         field: err?.details?.field || null,
+        reachedOpenAI,
+        structuredOutputUsed,
+        errors: errorsForLog,
+        note: missingDetails ? 'missing_schema_details' : undefined,
       });
       if (attempt < 2) continue;
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
       failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
       failErr.statusCode = 422;
+      const detailsField = err?.details?.field || 'unknown';
+      const detailsSnippet = err?.details?.snippet || '';
+      const detailsErrors = err?.details?.errors || validatorErrors || null;
+      let finalReason = reason;
+      if (reason === 'SCHEMA_MISMATCH' && (!detailsErrors || !detailsErrors.length || detailsField === 'unknown')) {
+        console.error('[Calendar][Schema][MissingDetails]', {
+          requestId,
+          day,
+          post_key,
+          error: err?.message || err,
+          stack: err?.stack || null,
+        });
+        finalReason = 'SCHEMA_MISMATCH_UNSPECIFIED';
+      }
       failErr.details = {
-        reason,
-        field: err?.details?.field || 'unknown',
-        snippet: err?.details?.snippet || '',
+        reason: finalReason,
+        field: detailsField,
+        snippet: detailsSnippet,
+        errors: detailsErrors,
         day,
         post_key,
+        reachedOpenAI,
+        structuredOutputUsed,
       };
       throw failErr;
     }
@@ -11212,8 +11326,10 @@ const server = http.createServer((req, res) => {
           : (Number.isFinite(Number(body?.days)) ? Number(body.days) : 30);
         const totalPosts = totalDays * postsPerDay;
         const scheduleIndex = (day - 1) * postsPerDay + slotIndex;
-        const scheduledPillar = Number.isFinite(scheduleIndex)
-          ? pickPillarKeyForPostKey(postKeyValue)
+        const bodyPillarRaw = typeof body?.pillar === 'string' ? body.pillar : (typeof body?.plannedPillar === 'string' ? body.plannedPillar : '');
+        const bodyPillar = bodyPillarRaw ? bodyPillarRaw.toLowerCase().trim() : '';
+        const scheduledPillar = CALENDAR_PILLAR_KEYS.includes(bodyPillar)
+          ? bodyPillar
           : pickPillarKeyForPostKey(postKeyValue);
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
