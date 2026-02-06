@@ -2628,7 +2628,8 @@ async function generateAndValidateSinglePost({
       const scriptText = toPlainString(post.script || '');
       const reelText = toPlainString(post.reelScript || '');
       if (!reelText && scriptText) post.reelScript = scriptText;
-      if (!scriptText && reelText) post.script = reelText;
+      const reelTextFinal = toPlainString(post.reelScript || '');
+      if (reelTextFinal) post.script = reelTextFinal;
       post.format = 'reel';
       console.log('[Calendar][Candidate]', {
         requestId,
@@ -2760,19 +2761,22 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
-      post.suggestedAudio = await getHot100AudioForPostKey(post_key, requestId);
+      const injectedAudio = await getHot100AudioForPostKey(post_key, requestId);
       post.details = {
         ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-        suggestedAudio: post.suggestedAudio,
+        suggestedAudio: injectedAudio,
       };
-      if (!isValidSuggestedAudio(post.suggestedAudio)) {
+      if (Object.prototype.hasOwnProperty.call(post, 'suggestedAudio')) {
+        delete post.suggestedAudio;
+      }
+      if (!isValidSuggestedAudio(injectedAudio)) {
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
           reason: 'AUDIO_SOURCE_INVALID',
           field: 'details.suggestedAudio',
-          snippet: String(post.suggestedAudio || '').slice(0, 120),
+          snippet: String(injectedAudio || '').slice(0, 120),
           reachedOpenAI,
           structuredOutputUsed,
           stage: currentStage,
@@ -2918,23 +2922,32 @@ async function getCachedHot100(options = {}) {
   if (cached && Date.now() - cached.fetchedAt < HOT100_CACHE_TTL_MS) {
     return cached.value;
   }
-  try {
-    const fresh = await getNonHolidayHot100(options);
-    hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
-    return fresh;
-  } catch (err) {
-    const fallback = { tracks: FALLBACK_HOT100_TRACKS.slice(), source: 'fallback', chartDateUsed: null };
-    hot100Cache.set(key, { fetchedAt: Date.now(), value: fallback });
-    return fallback;
+  const minCount = Number.isFinite(Number(options?.minCount)) ? Number(options.minCount) : 30;
+  const fresh = await getNonHolidayHot100({ ...options, minCount });
+  const source = String(fresh?.source || '');
+  const tracks = Array.isArray(fresh?.tracks) ? fresh.tracks : [];
+  if (!tracks.length || tracks.length < minCount || source.includes('fallback')) {
+    const err = new Error('BILLBOARD_FETCH_FAILED');
+    err.code = 'CALENDAR_POST_GENERATION_FAILED';
+    err.statusCode = 422;
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    throw err;
   }
+  hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
+  return fresh;
 }
 
 async function getHot100TracksSafe(requestId = '', minCount = 30) {
   const result = await getCachedHot100({ requestId, minCount });
   const tracks = Array.isArray(result?.tracks) ? result.tracks.slice() : [];
-  if (tracks.length >= minCount) return tracks;
-  const fallback = FALLBACK_HOT100_TRACKS.slice();
-  return fallback;
+  if (!tracks.length) {
+    const err = new Error('BILLBOARD_FETCH_FAILED');
+    err.code = 'CALENDAR_POST_GENERATION_FAILED';
+    err.statusCode = 422;
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    throw err;
+  }
+  return tracks;
 }
 
 function shuffleArray(list = []) {
@@ -2948,10 +2961,23 @@ function shuffleArray(list = []) {
 
 async function getHot100AudioForPostKey(postKeyValue = '', requestId = '') {
   const tracks = await getHot100TracksSafe(requestId, 30);
-  if (!tracks.length) return DEFAULT_SUGGESTED_AUDIO;
+  if (!tracks.length) {
+    const err = new Error('BILLBOARD_FETCH_FAILED');
+    err.code = 'CALENDAR_POST_GENERATION_FAILED';
+    err.statusCode = 422;
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    throw err;
+  }
   const entry = tracks[Math.floor(Math.random() * tracks.length)] || tracks[0];
   const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
-  return audioString || DEFAULT_SUGGESTED_AUDIO;
+  if (!audioString) {
+    const err = new Error('BILLBOARD_FETCH_FAILED');
+    err.code = 'CALENDAR_POST_GENERATION_FAILED';
+    err.statusCode = 422;
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    throw err;
+  }
+  return audioString;
 }
 
 function openAIRequest(options, payload) {
@@ -3409,6 +3435,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'designNotes',
     'engagementScripts',
     'distributionPlan',
+    'details',
     'topic_signature',
     'angle',
   ];
@@ -3436,6 +3463,14 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
       cta: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
+      details: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['suggestedAudio'],
+        properties: {
+          suggestedAudio: { type: 'string', minLength: 1 },
+        },
+      },
       hashtags: {
         type: 'array',
         items: { type: 'string', minLength: 1 },
@@ -3915,10 +3950,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle.';
 
 const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -4057,71 +4092,61 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   ].filter(Boolean).join('\n');
 
   const GLOBAL_RULES = [
-    'GLOBAL RULES (NON-NEGOTIABLE)',
+    'GLOBAL CONTRACT (BINDING)',
     '- Output JSON only. No markdown. No commentary.',
-    '- Every required field MUST be present and non-empty.',
-    '- If a field is hard to generate, still generate best-effort real content (never leave it blank).',
-    '- No placeholders, brackets, or implied fill-ins. No ellipses. No template tokens like {{...}}, [...], <...>, TBD, TODO, lorem ipsum.',
-    '- No emojis in any field.',
+    '- Use the schema exactly; output every required field with non-empty content.',
+    '- No emojis anywhere in any field.',
+    '- No placeholders or template tokens (no {{...}}, <...>, TBD, TODO, lorem ipsum).',
     '- format MUST be exactly "reel".',
-    '- reelScript MUST be present and non-empty. The required script field MUST be an exact copy of reelScript.',
-    '- Do NOT rename reelScript or replace it with another script field. Do NOT output any other script-named fields.',
-    '- reelScript must be plain text, 60–110 words, exactly 5 sentences total:',
-    '  1) Hook sentence.',
-    '  2–4) Value sentences (concrete, niche-specific).',
-    '  5) CTA sentence that matches cta.',
-    '- Do NOT use timestamps, bullets, or parentheses stage directions in reelScript.',
-    '- If reelScript is shorter than 60 words, the output is invalid.',
-    '- Do NOT mention time or duration explicitly.',
-    '- suggestedAudio will be assigned by the server; do NOT mention any song names.',
-    '- Planning fields are forbidden: idea, type, repurpose, followUpIdea.',
+    '- reelScript MUST follow this exact labeled structure, one label per line in this order:',
+    '  HOOK: ...',
+    '  BEAT_1: ...',
+    '  BEAT_2: ...',
+    '  BEAT_3: ...',
+    '  CTA: ...',
+    '  ON_SCREEN_TEXT: phrase1 | phrase2 | phrase3',
+    '  BROLL_NOTES: item1, item2, item3, item4',
+    '- Each BEAT line must be a full sentence (>=12 words).',
+    '- Total words across HOOK+BEAT_1+BEAT_2+BEAT_3+CTA must be >= 80.',
+    '- Total words across HOOK+BEAT_1+BEAT_2+BEAT_3+CTA must be >= 80.',
+    '- ON_SCREEN_TEXT must contain 3–6 phrases separated by " | ".',
+    '- BROLL_NOTES must contain 4–8 comma-separated items.',
+    '- reelScript must not include timestamps, bullets, or parentheses.',
+    '- Do not mention time or duration explicitly.',
+    '- script MUST be an exact copy of reelScript.',
+    '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
+    '- Do not output planning artifacts: idea, type, repurpose, followUpIdea.',
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
-    '- Pillar must materially affect structure, tone, and CTA.',
-    '- Topic coherence: title, hook, caption, reelScript, CTA, designNotes, distributionPlan must all be about the same specific topic.',
-    '- Content must be explicitly grounded in the provided niche; generic creator advice is invalid.',
-    '- title and topic_signature must match semantically.',
-    '- CTA must be specific and outcome-driven; generic CTAs like "learn more", "check it out", "follow for more" are forbidden.',
-    '- hashtags must be a JSON array of 5–10 strings, relevant to the topic, no duplicates.',
-    '- designNotes must be a concrete shot list + overlays (no placeholders).',
-    '- engagementScripts must include at least 3 ready-to-paste comment replies (one per line).',
-    '- distributionPlan must include where to post, when to post, and how to reply to comments (concise).',
-    '- topicCapsule must be a concise string with thesis + proof points (not JSON).',
-    '- Avoid generic filler phrases like "luxury living", "dream home awaits", "don’t miss out" unless the specific post context supports them.',
-    '- Valid pillars: education, social_proof, promotion, lifestyle.',
+    '- All fields must align to planned_title / topic_signature and the same topic.',
+    '- hashtags must be a JSON array of 5–10 strings.',
+    '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
 
   const REGULAR_CONTRACT = [
     'REGULAR CALENDAR CONTRACT',
-    'Purpose: clear, helpful, high-quality content. Clarity and usefulness, not persuasion depth.',
-    'Behavior: teach, explain, or showcase; neutral and concrete.',
-    'Caption explains ONE clear idea; reelScript mirrors the caption topic exactly.',
-    'CTA is simple and direct.',
-    'Design Notes are practical and visual.',
-    'EngagementScripts encourage light interaction only.',
-    'Pillar enforcement:',
-    '- education: teach a concept with clear steps/checklist.',
-    '- lifestyle: vivid day-in-life or neighborhood vibe tied to a real decision.',
-    '- social_proof: story/testimonial framing with process steps and outcome (use “a client”).',
-    '- promotion: offer-driven with clear terms and a process-based urgency (no hype).',
-    'Forbidden in Regular: belief teardown, objection handling, contrarian framing, psychological pressure.',
+    'Tone: clear, neutral, helpful. No persuasion frameworks or belief attacks.',
+    'Pillar structure:',
+    '- education: teach a concept with steps/checklist.',
+    '- social_proof: case-style outcome with process and “a client”.',
+    '- promotion: explain the offer, who it is for, and the next step.',
+    '- lifestyle: day-in-life or neighborhood vibe tied to a real decision.',
+    'engagementScripts MUST be exactly 3 lines labeled:',
+    'COMMENT_PROMPT: ...',
+    'POLL_PROMPT: ...',
+    'SHARE_PROMPT: ...',
+    'Each line must be >= 8 words.',
   ].join('\n');
 
   const BRAND_BRAIN_CONTRACT = [
     'BRAND BRAIN CALENDAR CONTRACT',
-    'Purpose: persuasion-grade content that changes how the audience thinks.',
-    'Tone: confident, direct, insight-driven; never generic or motivational.',
-    'Must be materially different from Regular.',
-    'Every post must embed ALL of the following (without labeling them):',
-    '- Belief teardown (challenge a common belief).',
-    '- Hidden constraint (reveal a non-obvious factor that changes decisions).',
-    '- Second-order consequence (what happens if ignored).',
-    '- Objection preemption (address likely resistance in-line).',
-    '- Asymmetric insight (a framing competitors avoid).',
-    'These elements must be visible in topicCapsule, reelScript, and engagementScripts.',
-    'Include at least one specific, plausible domain detail (no fabricated stats).',
-    'CTA must feel earned and decisive, not generic.',
+    'Tone: confident, direct, insight-driven; must be materially different from Regular.',
+    'reelScript MUST include each marker exactly once, embedded inside BEAT_1/BEAT_2/BEAT_3:',
+    '[BELIEF_TEARDOWN] [HIDDEN_CONSTRAINT] [SECOND_ORDER] [OBJECTION] [IDENTITY_SHIFT]',
+    'Markers must be used to deliver real persuasion content, not labels.',
+    'topicCapsule and engagementScripts must each include at least one of the markers.',
+    'CTA must be decisive and strategic, not generic.',
   ].join('\n');
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_CONTRACT : REGULAR_CONTRACT;
@@ -4137,7 +4162,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -4929,23 +4954,41 @@ function isValidSuggestedAudio(audio = '') {
   return /.+\s-\s.+/.test(audio);
 }
 
-function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [], chunkStartDay = 1, postsPerDay = 1 } = {}) {
+function getSuggestedAudioValue(post = {}) {
+  if (!post || typeof post !== 'object') return '';
+  const candidate = post?.details?.suggestedAudio ?? post?.suggestedAudio ?? post?.suggested_audio;
+  return typeof candidate === 'string' ? candidate : '';
+}
+
+function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [] } = {}) {
   if (!Array.isArray(posts) || !posts.length) {
     return { total: 0, missingAudio: 0 };
   }
   const stats = { total: posts.length, missingAudio: 0 };
   const baseList = Array.isArray(audioEntries) ? audioEntries.slice() : [];
-  const tracks = baseList.length >= posts.length ? baseList : FALLBACK_HOT100_TRACKS.slice();
-  const shuffled = shuffleArray(tracks);
+  if (!baseList.length) {
+    const err = new Error('BILLBOARD_FETCH_FAILED');
+    err.code = 'CALENDAR_POST_GENERATION_FAILED';
+    err.statusCode = 422;
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    throw err;
+  }
+  const picks = [];
+  while (picks.length < posts.length) {
+    const shuffled = shuffleArray(baseList);
+    picks.push(...shuffled);
+  }
   posts.forEach((post, idx) => {
-    const entry = shuffled[idx % shuffled.length] || tracks[0];
+    const entry = picks[idx] || baseList[0];
     const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
-    post.suggestedAudio = audioString || DEFAULT_SUGGESTED_AUDIO;
     post.details = {
       ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-      suggestedAudio: post.suggestedAudio,
+      suggestedAudio: audioString,
     };
-    if (!isValidSuggestedAudio(post.suggestedAudio)) stats.missingAudio += 1;
+    if (Object.prototype.hasOwnProperty.call(post, 'suggestedAudio')) {
+      delete post.suggestedAudio;
+    }
+    if (!isValidSuggestedAudio(audioString)) stats.missingAudio += 1;
   });
   return stats;
 }
@@ -6198,6 +6241,7 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'reelScript',
   'engagementScripts',
   'topicCapsule',
+  'details',
 ];
 
 const REQUIRED_POST_FIELDS_BRAND = [
@@ -6221,6 +6265,7 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   reelScript: 'string',
   engagementScripts: 'string',
   topicCapsule: 'string',
+  details: 'object',
 };
 
 const REQUIRED_POST_FIELD_TYPES_BRAND = {
@@ -6467,6 +6512,204 @@ function hasCommaListThree(text = '') {
   return unique.size >= 3;
 }
 
+const REELSCRIPT_LABELS = [
+  'HOOK',
+  'BEAT_1',
+  'BEAT_2',
+  'BEAT_3',
+  'CTA',
+  'ON_SCREEN_TEXT',
+  'BROLL_NOTES',
+];
+const REELSCRIPT_BEAT_LABELS = ['BEAT_1', 'BEAT_2', 'BEAT_3'];
+const REELSCRIPT_MIN_BEAT_WORDS = 12;
+const REELSCRIPT_MIN_TOTAL_WORDS = 80;
+const BRAND_BRAIN_MARKERS = [
+  '[BELIEF_TEARDOWN]',
+  '[HIDDEN_CONSTRAINT]',
+  '[SECOND_ORDER]',
+  '[OBJECTION]',
+  '[IDENTITY_SHIFT]',
+];
+
+function countWords(text = '') {
+  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function splitNonEmptyLines(text = '') {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function validateReelScriptContract(reelScriptRaw = '') {
+  const raw = toPlainString(reelScriptRaw || '');
+  if (!raw.trim()) {
+    return { ok: false, reason: 'MISSING_REQUIRED_FIELD', field: 'reelScript', snippet: '' };
+  }
+  if (/\([^)]*\)/.test(raw)) {
+    return { ok: false, reason: 'REELSCRIPT_FORBIDDEN_PAREN', field: 'reelScript', snippet: raw.slice(0, 120) };
+  }
+  if (/\b\d{1,2}\s*(s|sec|secs|seconds)\b/i.test(raw)) {
+    return { ok: false, reason: 'REELSCRIPT_FORBIDDEN_TIME', field: 'reelScript', snippet: raw.slice(0, 120) };
+  }
+  const lines = splitNonEmptyLines(raw);
+  if (lines.length !== REELSCRIPT_LABELS.length) {
+    return {
+      ok: false,
+      reason: 'REELSCRIPT_LABEL_COUNT',
+      field: 'reelScript',
+      snippet: lines.slice(0, 3).join(' | ').slice(0, 160),
+      extra: { expected: REELSCRIPT_LABELS.length, actual: lines.length },
+    };
+  }
+  const seen = new Set();
+  const sections = {};
+  for (let i = 0; i < REELSCRIPT_LABELS.length; i += 1) {
+    const label = REELSCRIPT_LABELS[i];
+    const line = lines[i];
+    if (!line.startsWith(`${label}:`)) {
+      return {
+        ok: false,
+        reason: 'REELSCRIPT_LABEL_ORDER',
+        field: 'reelScript',
+        snippet: line.slice(0, 120),
+        extra: { expected: label },
+      };
+    }
+    if (seen.has(label)) {
+      return {
+        ok: false,
+        reason: 'REELSCRIPT_DUP_LABEL',
+        field: 'reelScript',
+        snippet: line.slice(0, 120),
+        extra: { label },
+      };
+    }
+    seen.add(label);
+    const content = line.slice(label.length + 1).trim();
+    if (!content) {
+      return {
+        ok: false,
+        reason: 'REELSCRIPT_EMPTY_SECTION',
+        field: 'reelScript',
+        snippet: line.slice(0, 120),
+        extra: { label },
+      };
+    }
+    sections[label] = content;
+  }
+  const totalWords = ['HOOK', 'BEAT_1', 'BEAT_2', 'BEAT_3', 'CTA']
+    .reduce((sum, label) => sum + countWords(sections[label] || ''), 0);
+  if (totalWords < REELSCRIPT_MIN_TOTAL_WORDS) {
+    return {
+      ok: false,
+      reason: 'REELSCRIPT_TOTAL_TOO_SHORT',
+      field: 'reelScript',
+      snippet: raw.slice(0, 160),
+      extra: { wordCount: totalWords },
+    };
+  }
+  for (const beatLabel of REELSCRIPT_BEAT_LABELS) {
+    const beatWords = countWords(sections[beatLabel] || '');
+    if (beatWords < REELSCRIPT_MIN_BEAT_WORDS) {
+      return {
+        ok: false,
+        reason: 'REELSCRIPT_BEAT_TOO_SHORT',
+        field: 'reelScript',
+        snippet: sections[beatLabel].slice(0, 120),
+        extra: { label: beatLabel, wordCount: beatWords },
+      };
+    }
+  }
+  const onScreenParts = sections.ON_SCREEN_TEXT.split('|').map((part) => part.trim()).filter(Boolean);
+  if (onScreenParts.length < 3 || onScreenParts.length > 6) {
+    return {
+      ok: false,
+      reason: 'REELSCRIPT_ON_SCREEN_FORMAT',
+      field: 'reelScript',
+      snippet: sections.ON_SCREEN_TEXT.slice(0, 120),
+      extra: { count: onScreenParts.length },
+    };
+  }
+  const brollParts = sections.BROLL_NOTES.split(',').map((part) => part.trim()).filter(Boolean);
+  if (brollParts.length < 4 || brollParts.length > 8) {
+    return {
+      ok: false,
+      reason: 'REELSCRIPT_BROLL_FORMAT',
+      field: 'reelScript',
+      snippet: sections.BROLL_NOTES.slice(0, 120),
+      extra: { count: brollParts.length },
+    };
+  }
+  return { ok: true };
+}
+
+function validateEngagementScriptsStructure(raw = '') {
+  const text = toPlainString(raw || '');
+  if (!text.trim()) {
+    return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_MISSING', field: 'engagementScripts', snippet: '' };
+  }
+  const lines = splitNonEmptyLines(text);
+  if (lines.length < 3) {
+    return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_TOO_SHORT', field: 'engagementScripts', snippet: text.slice(0, 120) };
+  }
+  const expectedLabels = ['COMMENT_PROMPT', 'POLL_PROMPT', 'SHARE_PROMPT'];
+  for (let i = 0; i < expectedLabels.length; i += 1) {
+    const label = expectedLabels[i];
+    const line = lines[i] || '';
+    if (!line.startsWith(`${label}:`)) {
+      return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_LABEL_MISSING', field: 'engagementScripts', snippet: line.slice(0, 120), extra: { expected: label } };
+    }
+    const content = line.slice(label.length + 1).trim();
+    if (countWords(content) < 8) {
+      return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_TOO_SHORT', field: 'engagementScripts', snippet: line.slice(0, 120), extra: { label } };
+    }
+  }
+  return { ok: true };
+}
+
+function validateBrandBrainMarkers(reelScriptRaw = '') {
+  const text = toPlainString(reelScriptRaw || '');
+  const missing = [];
+  const duplicates = [];
+  BRAND_BRAIN_MARKERS.forEach((marker) => {
+    const count = text.split(marker).length - 1;
+    if (count === 0) missing.push(marker);
+    if (count > 1) duplicates.push(marker);
+  });
+  if (duplicates.length) {
+    return { ok: false, reason: 'BRAND_BRAIN_MARKER_DUP', field: 'reelScript', snippet: duplicates.join(', ').slice(0, 120), extra: { duplicates } };
+  }
+  if (missing.length) {
+    return { ok: false, reason: 'BRAND_BRAIN_MARKER_MISSING', field: 'reelScript', snippet: missing.join(', ').slice(0, 120), extra: { missing } };
+  }
+  return { ok: true };
+}
+
+function extractTopicTerms(text = '') {
+  const normalized = normalizeTitleText(text);
+  if (!normalized) return [];
+  const tokens = normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 4)
+    .filter((token) => !TITLE_SIGNATURE_STOPWORDS.has(token));
+  return tokens.slice(0, 6);
+}
+
+function countTermHits(text = '', terms = []) {
+  const normalized = normalizeTitleText(text);
+  if (!normalized || !terms.length) return 0;
+  let hits = 0;
+  terms.forEach((term) => {
+    if (!term) return;
+    const regex = new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i');
+    if (regex.test(normalized)) hits += 1;
+  });
+  return hits;
+}
+
 function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   if (!post || typeof post !== 'object') {
     return { ok: false, reason: 'INVALID_POST' };
@@ -6482,40 +6725,64 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
       errors: placeholderCheck.errors,
     };
   }
-  const title = toPlainString(post?.title || '');
-  const hookText = toPlainString(post?.hook || '');
-  if (hookText.trim().length < 20) {
-    return { ok: false, reason: 'HOOK_TOO_SHORT', field: 'hook', snippet: hookText.slice(0, 80) };
-  }
-  if (hookText.trim() === title.trim()) {
-    return { ok: false, reason: 'HOOK_EQUALS_TITLE', field: 'hook', snippet: hookText.slice(0, 80) };
-  }
   const designNotesRaw = toPlainString(post?.designNotes || '');
   if (!designNotesRaw.trim()) {
     return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
   }
   const reelScriptRaw = toPlainString(post?.reelScript || '');
-  if (!reelScriptRaw.trim()) {
-    return { ok: false, reason: 'MISSING_REQUIRED_FIELD', field: 'reelScript', snippet: '' };
+  const reelCheck = validateReelScriptContract(reelScriptRaw);
+  if (reelCheck && !reelCheck.ok) {
+    return reelCheck;
   }
-  const wc = reelScriptRaw
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
-  if (wc < 45) {
-    console.warn('[Calendar][ValidatePost] REELSCRIPT_TOO_SHORT', {
-      requestId: ctx?.requestId || null,
-      post_key: ctx?.post_key || null,
-      wordCount: wc,
-      snippet: reelScriptRaw.slice(0, 120),
-    });
-    return {
-      ok: false,
-      reason: 'REELSCRIPT_TOO_SHORT',
-      field: 'reelScript',
-      snippet: reelScriptRaw.slice(0, 120),
-      extra: { wordCount: wc },
-    };
+  if (String(ctx?.mode || '') === 'brand_brain') {
+    const markerCheck = validateBrandBrainMarkers(reelScriptRaw);
+    if (markerCheck && !markerCheck.ok) {
+      return markerCheck;
+    }
+    const capsuleText = toPlainString(post?.topicCapsule || '');
+    const engagementText = toPlainString(post?.engagementScripts || '');
+    if (!BRAND_BRAIN_MARKERS.some((marker) => capsuleText.includes(marker))) {
+      return {
+        ok: false,
+        reason: 'BRAND_BRAIN_MARKER_MISSING',
+        field: 'topicCapsule',
+        snippet: capsuleText.slice(0, 120),
+        extra: { missing: BRAND_BRAIN_MARKERS },
+      };
+    }
+    if (!BRAND_BRAIN_MARKERS.some((marker) => engagementText.includes(marker))) {
+      return {
+        ok: false,
+        reason: 'BRAND_BRAIN_MARKER_MISSING',
+        field: 'engagementScripts',
+        snippet: engagementText.slice(0, 120),
+        extra: { missing: BRAND_BRAIN_MARKERS },
+      };
+    }
+  } else {
+    const engagementCheck = validateEngagementScriptsStructure(post?.engagementScripts || '');
+    if (engagementCheck && !engagementCheck.ok) {
+      return engagementCheck;
+    }
+  }
+  const hookText = toPlainString(post?.hook || '');
+  const captionText = toPlainString(post?.caption || '');
+  const topicSource = toPlainString(post?.topic_signature || post?.title || ctx?.plannedTitle || '');
+  const terms = extractTopicTerms(topicSource);
+  if (terms.length >= 2) {
+    const missingIn = [];
+    if (countTermHits(hookText, terms) < 1) missingIn.push('hook');
+    if (countTermHits(captionText, terms) < 2) missingIn.push('caption');
+    if (countTermHits(reelScriptRaw, terms) < 2) missingIn.push('reelScript');
+    if (missingIn.length) {
+      return {
+        ok: false,
+        reason: 'TOPIC_LOCK_FAILED',
+        field: missingIn[0],
+        snippet: hookText.slice(0, 80),
+        extra: { missingIn, terms },
+      };
+    }
   }
   return { ok: true };
 }
@@ -6561,6 +6828,8 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.reelScript, 'reelScript');
   checkString(post.engagementScripts, 'engagementScripts');
   checkString(post.topicCapsule, 'topicCapsule');
+  const detailsAudio = post?.details && typeof post.details === 'object' ? post.details.suggestedAudio : '';
+  checkString(detailsAudio, 'details.suggestedAudio');
 
   return missing;
 }
@@ -6595,7 +6864,6 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
     'distributionPlan',
     'dmReply',
     'details',
-    'suggestedAudio',
   ].forEach((key) => keys.add(key));
   return keys;
 })();
@@ -6668,7 +6936,7 @@ function sanitizePostForSchema(schema, post) {
       return String(value);
     }
   };
-  ['topicCapsule', 'script', 'reelScript', 'engagementScripts', 'suggestedAudio'].forEach((key) => {
+  ['topicCapsule', 'script', 'reelScript', 'engagementScripts'].forEach((key) => {
     if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
   });
   if ('details' in cleaned) {
@@ -6701,9 +6969,6 @@ function coerceCalendarPostTypes(post) {
   }
   if (Array.isArray(post.designNotes)) {
     post.designNotes = post.designNotes.join('\n');
-  }
-  if (post.suggestedAudio && typeof post.suggestedAudio !== 'string') {
-    post.suggestedAudio = String(post.suggestedAudio);
   }
   if (post.details && typeof post.details !== 'object') {
     post.details = { suggestedAudio: String(post.details) };
@@ -7313,10 +7578,15 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
   normalized.videoScript = normalized.videoScript && normalized.videoScript.hook ? normalized.videoScript : scriptBase;
   normalized.reelScript = normalized.reelScript || scriptBase;
   const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-  normalized.suggestedAudio = normalizeSuggestedAudioValue(
+  const normalizedAudio = normalizeSuggestedAudioValue(
     normalized.suggestedAudio || rawPost.suggestedAudio || rawPost.suggested_audio,
     fallbackAudio
   );
+  normalized.details = {
+    ...(normalized.details && typeof normalized.details === 'object' && !Array.isArray(normalized.details) ? normalized.details : {}),
+    suggestedAudio: normalizedAudio,
+  };
+  delete normalized.suggestedAudio;
   const inferredMode = toPlainString(normalized?.calendarMode || normalized?.mode || '') === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
@@ -7666,7 +7936,7 @@ function buildDistributionPlanFallback(post = {}) {
 
 function extractSuggestedAudioFromPost(post = {}) {
   if (!post || typeof post !== 'object') return null;
-  const candidate = post.suggestedAudio ?? post.suggested_audio;
+  const candidate = post?.details?.suggestedAudio ?? post.suggestedAudio ?? post.suggested_audio;
   if (!candidate) return null;
   if (typeof candidate === 'string') {
     return candidate.trim();
@@ -7698,11 +7968,18 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const analytics = allowFallbacks
     ? ensureStringArray(post.analytics || [], ['Reach', 'Saves'], 2)
     : ensureStringArray(post.analytics || [], [], 0);
-  const scriptSource = post.script || post.videoScript || post.reelScript || {};
-  const script = normalizeScriptObject(scriptSource);
-  const videoScript = { ...script };
-  const engagementComment = toPlainString(post.engagementScripts?.commentReply || post.engagementScript || '') || '';
-  const engagementDm = toPlainString(post.engagementScripts?.dmReply || '') || '';
+  const scriptSource = (post.script && typeof post.script === 'object' && !Array.isArray(post.script))
+    ? post.script
+    : (post.videoScript && typeof post.videoScript === 'object' && !Array.isArray(post.videoScript))
+      ? post.videoScript
+      : (post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript))
+        ? post.reelScript
+        : {};
+  const scriptObject = normalizeScriptObject(scriptSource);
+  const videoScript = { ...scriptObject };
+  const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
+  const reelScriptText = typeof post.reelScript === 'string' ? post.reelScript.trim() : scriptText;
+  const engagementScriptsText = typeof post.engagementScripts === 'string' ? post.engagementScripts.trim() : '';
   let distributionPlan = resolveDistributionPlanValue(post);
   if (!distributionPlan && allowFallbacks) {
     distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
@@ -7721,7 +7998,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     title: toPlainString(post.title || post.idea || ''),
     topicCapsule: post.topicCapsule || post.topic_capsule,
     type: toPlainString(post.type || ''),
-    hook: toPlainString(post.hook || script.hook || ''),
+    hook: toPlainString(post.hook || scriptObject.hook || ''),
     caption: toPlainString(post.caption || ''),
     topic_signature: toPlainString(post.topic_signature || post.topicSignature || ''),
     angle: toPlainString(post.angle || ''),
@@ -7733,10 +8010,11 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     designNotes: normalizedDesignNotes.value || '',
     repurpose,
     analytics,
-    engagementScripts: { commentReply: engagementComment, dmReply: engagementDm },
+    engagementScripts: engagementScriptsText,
     promoSlot: typeof post.promoSlot === 'boolean' ? post.promoSlot : !!post.weeklyPromo,
     weeklyPromo: typeof post.weeklyPromo === 'string' ? post.weeklyPromo : '',
-    script,
+    script: reelScriptText,
+    reelScript: reelScriptText,
     videoScript,
     instagram_caption: toPlainString(post.instagram_caption || post.caption || ''),
     tiktok_caption: toPlainString(post.tiktok_caption || post.caption || ''),
@@ -7744,7 +8022,9 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
     distributionPlan,
-    suggestedAudio: extractSuggestedAudioFromPost(post) || DEFAULT_SUGGESTED_AUDIO,
+    details: {
+      suggestedAudio: extractSuggestedAudioFromPost(post) || '',
+    },
   };
   if (normalizedDesignNotes.changed) {
     console.log('[Calendar][NormalizeDesignNotes]', {
@@ -11106,20 +11386,14 @@ const server = http.createServer((req, res) => {
       chunkStartDay: startDay,
       postsPerDay: perDay,
     });
-    posts.forEach((post) => {
-      post.details = {
-        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-        suggestedAudio: post.suggestedAudio,
-      };
-    });
-    const invalidAudio = posts.find((post) => !post || !isValidSuggestedAudio(post.suggestedAudio));
+    const invalidAudio = posts.find((post) => !post || !isValidSuggestedAudio(getSuggestedAudioValue(post)));
     if (invalidAudio) {
       const err = new Error('CALENDAR_POST_GENERATION_FAILED');
       err.code = 'CALENDAR_POST_GENERATION_FAILED';
       err.statusCode = 422;
       err.details = {
         reason: 'AUDIO_SOURCE_INVALID',
-        field: 'suggestedAudio',
+        field: 'details.suggestedAudio',
         snippet: 'hot100_invalid',
       };
       throw err;
@@ -11128,7 +11402,7 @@ const server = http.createServer((req, res) => {
       .slice(0, 2)
       .map((post) => ({
         day: post.day,
-        audio: post?.suggestedAudio,
+        audio: getSuggestedAudioValue(post),
       }))
       .filter((entry) => entry.audio);
     const postProcessingMs = Date.now() - validationStart;
@@ -11159,14 +11433,14 @@ const server = http.createServer((req, res) => {
     });
     if (!isProduction) {
       const holidayHits = posts.filter((post) => {
-        const value = post?.suggestedAudio || '';
+        const value = getSuggestedAudioValue(post) || '';
         const parsed = normalizeSuggestedAudioFromText(value);
         return parsed?.title && isHolidayTrack(parsed.title, parsed.artist);
       });
       if (holidayHits.length) {
         const sample = holidayHits.slice(0, 2).map((post) => ({
           day: post.day,
-          audio: post?.suggestedAudio,
+          audio: getSuggestedAudioValue(post),
         }));
         throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
       }
@@ -11483,7 +11757,7 @@ const server = http.createServer((req, res) => {
             format: post?.format,
             hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
             hasScript: Boolean(post?.script && String(post.script).trim()),
-            hasSuggestedAudio: Boolean(post?.suggestedAudio && String(post.suggestedAudio).trim()),
+            hasSuggestedAudio: Boolean(getSuggestedAudioValue(post).trim()),
           });
           console.log('[Calendar][One] success', {
             requestId,
@@ -11742,7 +12016,7 @@ const server = http.createServer((req, res) => {
                 format: post?.format,
                 hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
                 hasScript: Boolean(post?.script && String(post.script).trim()),
-                hasSuggestedAudio: Boolean(post?.suggestedAudio && String(post.suggestedAudio).trim()),
+                hasSuggestedAudio: Boolean(getSuggestedAudioValue(post).trim()),
               });
             });
           }
