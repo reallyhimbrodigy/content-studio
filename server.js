@@ -2613,6 +2613,15 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
+      const rawCandidate = result.posts[0];
+      console.log('[Calendar][EngagementScripts][Parsed]', {
+        requestId,
+        day,
+        post_key,
+        type: Array.isArray(rawCandidate?.engagementScripts)
+          ? 'array'
+          : typeof rawCandidate?.engagementScripts,
+      });
       logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
       let post = sanitizePostForSchema(schema, result.posts[0]);
       post.day = day;
@@ -2624,6 +2633,9 @@ async function generateAndValidateSinglePost({
         post.topic_signature = plannedTitle;
       }
       if (plannedAngle) post.angle = plannedAngle;
+      if (typeof post.engagementScripts === 'string') {
+        post.engagementScripts = convertEngagementScriptsToObject(post.engagementScripts);
+      }
       post = coerceCalendarPostTypes(post);
       const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
       const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
@@ -2631,6 +2643,14 @@ async function generateAndValidateSinglePost({
         post.reelScript = scriptText;
       }
       post.format = 'reel';
+      console.log('[Calendar][EngagementScripts][BeforeValidate]', {
+        requestId,
+        day,
+        post_key,
+        type: Array.isArray(post?.engagementScripts)
+          ? 'array'
+          : typeof post?.engagementScripts,
+      });
       console.log('[Calendar][Candidate]', {
         requestId,
         day,
@@ -3525,29 +3545,37 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         },
       },
       engagementScripts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
-        properties: {
-          commentPrompts: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 6,
-            items: { type: 'string', minLength: 1 },
+        oneOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
+            properties: {
+              commentPrompts: {
+                type: 'array',
+                minItems: 4,
+                maxItems: 6,
+                items: { type: 'string', minLength: 1 },
+              },
+              dmScripts: {
+                type: 'array',
+                minItems: 2,
+                maxItems: 3,
+                items: { type: 'string', minLength: 1 },
+              },
+              replyTemplates: {
+                type: 'array',
+                minItems: 4,
+                maxItems: 6,
+                items: { type: 'string', minLength: 1 },
+              },
+            },
           },
-          dmScripts: {
-            type: 'array',
-            minItems: 2,
-            maxItems: 3,
-            items: { type: 'string', minLength: 1 },
+          {
+            type: 'string',
+            minLength: 1,
           },
-          replyTemplates: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 6,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
+        ],
       },
     },
   };
@@ -4196,6 +4224,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- All fields must align to planned_title / topic_signature and the same topic.',
     '- hashtags must be a JSON array of 5–10 strings.',
     '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
+    '- engagementScripts MUST be an object (never a string).',
     '- Each engagementScripts item must be 6–18 words.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
@@ -6658,14 +6687,14 @@ function renderEngagementScriptsFromParts(parts = {}) {
   if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
     return toPlainString(parts || '');
   }
-  const commentPrompts = Array.isArray(parts.commentPrompts)
-    ? parts.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
+  const commentPrompts = Array.isArray(normalized.commentPrompts)
+    ? normalized.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const dmScripts = Array.isArray(parts.dmScripts)
-    ? parts.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
+  const dmScripts = Array.isArray(normalized.dmScripts)
+    ? normalized.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const replyTemplates = Array.isArray(parts.replyTemplates)
-    ? parts.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
+  const replyTemplates = Array.isArray(normalized.replyTemplates)
+    ? normalized.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
     : [];
   const lines = [
     'COMMENT_PROMPTS:',
@@ -6676,6 +6705,43 @@ function renderEngagementScriptsFromParts(parts = {}) {
     ...replyTemplates.map((item) => `- ${item}`),
   ];
   return lines.join('\n').trim();
+}
+
+function normalizeEngagementLines(text = '') {
+  const raw = toPlainString(text || '');
+  if (!raw) return [];
+  let lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    lines = raw.split(/\s*-\s+/).map((line) => line.trim()).filter(Boolean);
+  }
+  return lines.filter(Boolean);
+}
+
+function convertEngagementScriptsToObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
+  const lines = normalizeEngagementLines(value);
+  if (!lines.length) {
+    return { commentPrompts: [], dmScripts: [], replyTemplates: [] };
+  }
+  const fillToLength = (list, min, source) => {
+    const filled = list.slice();
+    if (!source.length) return filled;
+    let idx = 0;
+    while (filled.length < min) {
+      filled.push(source[idx % source.length]);
+      idx += 1;
+    }
+    return filled;
+  };
+  let commentPrompts = lines.slice(0, 6);
+  let dmScripts = lines.slice(6, 9);
+  let replyTemplates = lines.slice(9, 15);
+  commentPrompts = fillToLength(commentPrompts, 4, lines).slice(0, 6);
+  dmScripts = fillToLength(dmScripts, 2, lines).slice(0, 3);
+  replyTemplates = fillToLength(replyTemplates, 4, lines).slice(0, 6);
+  return { commentPrompts, dmScripts, replyTemplates };
 }
 
 function validateReelScriptParts(parts = {}, mode = 'regular') {
@@ -6765,17 +6831,18 @@ function validateEngagementScriptsStructure(raw = '') {
 }
 
 function validateEngagementScriptsParts(parts = {}) {
-  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
+  const normalized = convertEngagementScriptsToObject(parts);
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
     return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_MISSING', field: 'engagementScripts', snippet: '' };
   }
-  const commentPrompts = Array.isArray(parts.commentPrompts)
-    ? parts.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
+  const commentPrompts = Array.isArray(normalized.commentPrompts)
+    ? normalized.commentPrompts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const dmScripts = Array.isArray(parts.dmScripts)
-    ? parts.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
+  const dmScripts = Array.isArray(normalized.dmScripts)
+    ? normalized.dmScripts.map((item) => toPlainString(item)).filter(Boolean)
     : [];
-  const replyTemplates = Array.isArray(parts.replyTemplates)
-    ? parts.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
+  const replyTemplates = Array.isArray(normalized.replyTemplates)
+    ? normalized.replyTemplates.map((item) => toPlainString(item)).filter(Boolean)
     : [];
   const checkItems = (items, min, max, field, label) => {
     if (items.length < min || items.length > max) {
@@ -7076,7 +7143,7 @@ function sanitizePostForSchema(schema, post) {
       return String(value);
     }
   };
-  ['topicCapsule', 'script', 'engagementScripts'].forEach((key) => {
+  ['topicCapsule', 'script'].forEach((key) => {
     if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
   });
   if ('details' in cleaned) {
