@@ -2625,11 +2625,11 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
-      const scriptText = toPlainString(post.script || '');
-      const reelText = toPlainString(post.reelScript || '');
-      if (!reelText && scriptText) post.reelScript = scriptText;
-      const reelTextFinal = toPlainString(post.reelScript || '');
-      if (reelTextFinal) post.script = reelTextFinal;
+      const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
+      const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
+      if (!reelIsObject && !post.reelScript && scriptText) {
+        post.reelScript = scriptText;
+      }
       post.format = 'reel';
       console.log('[Calendar][Candidate]', {
         requestId,
@@ -2732,6 +2732,28 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
+      const renderedReelScript = renderReelScriptFromParts(
+        post.reelScript,
+        post.reelScript?.brandBrainMarkers
+      ).trim();
+      if (!renderedReelScript) {
+        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+        err.code = 'CALENDAR_POST_GENERATION_FAILED';
+        err.statusCode = 422;
+        err.details = {
+          reason: 'MISSING_REQUIRED_FIELD',
+          field: 'reelScript',
+          snippet: '',
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
+        };
+        throw err;
+      }
+      post.reelScript = renderedReelScript;
+      post.script = renderedReelScript;
       const missing = validatePostCompleteness(post, calendarMode);
       if (missing.length) {
         const missingField = missing[0] || 'unknown';
@@ -3415,9 +3437,10 @@ const FALLBACK_HOT100_TRACKS = [
 ];
 const DEFAULT_SUGGESTED_AUDIO = `${FALLBACK_HOT100_TRACKS[0].title} - ${FALLBACK_HOT100_TRACKS[0].artist}`;
 
-function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
+function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
   const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
   const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
+  const isBrandBrain = String(mode || '').toLowerCase() === 'brand_brain';
   const requiredBase = [
     'post_key',
     'day',
@@ -3440,7 +3463,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
     'angle',
   ];
   const required = requiredBase;
-  return {
+  const baseSchema = {
     type: 'object',
     additionalProperties: false,
     required,
@@ -3476,17 +3499,56 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30) {
         items: { type: 'string', minLength: 1 },
       },
       script: { type: 'string', minLength: 1 },
-      reelScript: { type: 'string', minLength: 1 },
+      reelScript: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes'],
+        properties: {
+          hook: { type: 'string', minLength: 1 },
+          beat1: { type: 'string', minLength: 1 },
+          beat2: { type: 'string', minLength: 1 },
+          beat3: { type: 'string', minLength: 1 },
+          cta: { type: 'string', minLength: 1 },
+          onScreenText: {
+            type: 'array',
+            minItems: 3,
+            maxItems: 6,
+            items: { type: 'string', minLength: 1 },
+          },
+          brollNotes: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 8,
+            items: { type: 'string', minLength: 1 },
+          },
+        },
+      },
       engagementScripts: { type: 'string', minLength: 1 },
     },
   };
+  if (isBrandBrain) {
+    baseSchema.properties.reelScript.properties.brandBrainMarkers = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['beliefTeardown', 'hiddenConstraint', 'secondOrder', 'objection', 'identityShift'],
+      properties: {
+        beliefTeardown: { type: 'string', minLength: 1 },
+        hiddenConstraint: { type: 'string', minLength: 1 },
+        secondOrder: { type: 'string', minLength: 1 },
+        objection: { type: 'string', minLength: 1 },
+        identityShift: { type: 'string', minLength: 1 },
+      },
+    };
+    baseSchema.properties.reelScript.required = baseSchema.properties.reelScript.required.concat(['brandBrainMarkers']);
+  }
+  return baseSchema;
 }
 
 function getCalendarPostSchema(mode = 'regular', minDay = 1, maxDay = 30) {
-  return buildCalendarPostSchema(minDay, maxDay);
+  return buildCalendarPostSchema(minDay, maxDay, mode);
 }
 
-function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) {
+function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, mode = 'regular') {
   const safeCount = Math.max(1, Number.isFinite(Number(totalPostsRequired)) ? Number(totalPostsRequired) : 1);
   return {
     type: 'object',
@@ -3497,7 +3559,7 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30) 
         type: 'array',
         minItems: safeCount,
         maxItems: safeCount,
-        items: buildCalendarPostSchema(minDay, maxDay),
+        items: buildCalendarPostSchema(minDay, maxDay, mode),
       },
     },
   };
@@ -4098,22 +4160,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- No emojis anywhere in any field.',
     '- No placeholders or template tokens (no {{...}}, <...>, TBD, TODO, lorem ipsum).',
     '- format MUST be exactly "reel".',
-    '- reelScript MUST follow this exact labeled structure, one label per line in this order:',
-    '  HOOK: ...',
-    '  BEAT_1: ...',
-    '  BEAT_2: ...',
-    '  BEAT_3: ...',
-    '  CTA: ...',
-    '  ON_SCREEN_TEXT: phrase1 | phrase2 | phrase3',
-    '  BROLL_NOTES: item1, item2, item3, item4',
-    '- Each BEAT line must be a full sentence (>=12 words).',
-    '- Total words across HOOK+BEAT_1+BEAT_2+BEAT_3+CTA must be >= 80.',
-    '- Total words across HOOK+BEAT_1+BEAT_2+BEAT_3+CTA must be >= 80.',
-    '- ON_SCREEN_TEXT must contain 3–6 phrases separated by " | ".',
-    '- BROLL_NOTES must contain 4–8 comma-separated items.',
-    '- reelScript must not include timestamps, bullets, or parentheses.',
-    '- Do not mention time or duration explicitly.',
-    '- script MUST be an exact copy of reelScript.',
+    '- reelScript MUST be an object with keys: hook, beat1, beat2, beat3, cta, onScreenText[], brollNotes[].',
+    '- hook/beat1/beat2/beat3/cta are full sentences; onScreenText is 3–6 short phrases; brollNotes is 4–8 items.',
+    '- Total words across hook+beat1+beat2+beat3+cta must be >= 80; each beat must be >= 12 words.',
+    '- script MUST be a plain-text render of reelScript (same content).',
     '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
     '- Do not output planning artifacts: idea, type, repurpose, followUpIdea.',
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
@@ -4142,10 +4192,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const BRAND_BRAIN_CONTRACT = [
     'BRAND BRAIN CALENDAR CONTRACT',
     'Tone: confident, direct, insight-driven; must be materially different from Regular.',
-    'reelScript MUST include each marker exactly once, embedded inside BEAT_1/BEAT_2/BEAT_3:',
-    '[BELIEF_TEARDOWN] [HIDDEN_CONSTRAINT] [SECOND_ORDER] [OBJECTION] [IDENTITY_SHIFT]',
-    'Markers must be used to deliver real persuasion content, not labels.',
-    'topicCapsule and engagementScripts must each include at least one of the markers.',
+    'reelScript.brandBrainMarkers MUST be an object with keys:',
+    'beliefTeardown, hiddenConstraint, secondOrder, objection, identityShift (non-empty).',
     'CTA must be decisive and strategic, not generic.',
   ].join('\n');
 
@@ -6262,7 +6310,7 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   day: 'number',
   hashtags: 'array',
   script: 'string',
-  reelScript: 'string',
+  reelScript: 'object',
   engagementScripts: 'string',
   topicCapsule: 'string',
   details: 'object',
@@ -6524,12 +6572,16 @@ const REELSCRIPT_LABELS = [
 const REELSCRIPT_BEAT_LABELS = ['BEAT_1', 'BEAT_2', 'BEAT_3'];
 const REELSCRIPT_MIN_BEAT_WORDS = 12;
 const REELSCRIPT_MIN_TOTAL_WORDS = 80;
+const REELSCRIPT_ONSCREEN_MIN_WORDS = 2;
+const REELSCRIPT_ONSCREEN_MAX_WORDS = 6;
+const REELSCRIPT_BROLL_MIN_WORDS = 2;
+const REELSCRIPT_BROLL_MAX_WORDS = 6;
 const BRAND_BRAIN_MARKERS = [
-  '[BELIEF_TEARDOWN]',
-  '[HIDDEN_CONSTRAINT]',
-  '[SECOND_ORDER]',
-  '[OBJECTION]',
-  '[IDENTITY_SHIFT]',
+  'beliefTeardown',
+  'hiddenConstraint',
+  'secondOrder',
+  'objection',
+  'identityShift',
 ];
 
 function countWords(text = '') {
@@ -6543,105 +6595,96 @@ function splitNonEmptyLines(text = '') {
     .filter((line) => line.length > 0);
 }
 
-function validateReelScriptContract(reelScriptRaw = '') {
-  const raw = toPlainString(reelScriptRaw || '');
-  if (!raw.trim()) {
-    return { ok: false, reason: 'MISSING_REQUIRED_FIELD', field: 'reelScript', snippet: '' };
+function renderReelScriptFromParts(parts = {}, markers = null) {
+  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
+    return toPlainString(parts || '');
   }
-  if (/\([^)]*\)/.test(raw)) {
-    return { ok: false, reason: 'REELSCRIPT_FORBIDDEN_PAREN', field: 'reelScript', snippet: raw.slice(0, 120) };
+  const hook = toPlainString(parts.hook || '');
+  const beat1 = toPlainString(parts.beat1 || '');
+  const beat2 = toPlainString(parts.beat2 || '');
+  const beat3 = toPlainString(parts.beat3 || '');
+  const cta = toPlainString(parts.cta || '');
+  const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
+  const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
+  const lines = [
+    `HOOK: ${hook}`,
+    `BEAT_1: ${beat1}`,
+    `BEAT_2: ${beat2}`,
+    `BEAT_3: ${beat3}`,
+    `CTA: ${cta}`,
+    `ON_SCREEN_TEXT: ${onScreen.join(' | ')}`,
+    `BROLL_NOTES: ${broll.join(', ')}`,
+  ];
+  if (markers && typeof markers === 'object' && !Array.isArray(markers)) {
+    const belief = toPlainString(markers.beliefTeardown || '');
+    const hidden = toPlainString(markers.hiddenConstraint || '');
+    const secondOrder = toPlainString(markers.secondOrder || '');
+    const objection = toPlainString(markers.objection || '');
+    const identity = toPlainString(markers.identityShift || '');
+    if (belief) lines.push(`BELIEF_TEARDOWN: ${belief}`);
+    if (hidden) lines.push(`HIDDEN_CONSTRAINT: ${hidden}`);
+    if (secondOrder) lines.push(`SECOND_ORDER: ${secondOrder}`);
+    if (objection) lines.push(`OBJECTION: ${objection}`);
+    if (identity) lines.push(`IDENTITY_SHIFT: ${identity}`);
   }
-  if (/\b\d{1,2}\s*(s|sec|secs|seconds)\b/i.test(raw)) {
-    return { ok: false, reason: 'REELSCRIPT_FORBIDDEN_TIME', field: 'reelScript', snippet: raw.slice(0, 120) };
+  return lines.join('\n').trim();
+}
+
+function validateReelScriptParts(parts = {}, mode = 'regular') {
+  if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
+    return { ok: false, reason: 'REELSCRIPT_MISSING_PARTS', field: 'reelScript', snippet: '' };
   }
-  const lines = splitNonEmptyLines(raw);
-  if (lines.length !== REELSCRIPT_LABELS.length) {
-    return {
-      ok: false,
-      reason: 'REELSCRIPT_LABEL_COUNT',
-      field: 'reelScript',
-      snippet: lines.slice(0, 3).join(' | ').slice(0, 160),
-      extra: { expected: REELSCRIPT_LABELS.length, actual: lines.length },
-    };
-  }
-  const seen = new Set();
-  const sections = {};
-  for (let i = 0; i < REELSCRIPT_LABELS.length; i += 1) {
-    const label = REELSCRIPT_LABELS[i];
-    const line = lines[i];
-    if (!line.startsWith(`${label}:`)) {
-      return {
-        ok: false,
-        reason: 'REELSCRIPT_LABEL_ORDER',
-        field: 'reelScript',
-        snippet: line.slice(0, 120),
-        extra: { expected: label },
-      };
-    }
-    if (seen.has(label)) {
-      return {
-        ok: false,
-        reason: 'REELSCRIPT_DUP_LABEL',
-        field: 'reelScript',
-        snippet: line.slice(0, 120),
-        extra: { label },
-      };
-    }
-    seen.add(label);
-    const content = line.slice(label.length + 1).trim();
-    if (!content) {
-      return {
-        ok: false,
-        reason: 'REELSCRIPT_EMPTY_SECTION',
-        field: 'reelScript',
-        snippet: line.slice(0, 120),
-        extra: { label },
-      };
-    }
-    sections[label] = content;
-  }
-  const totalWords = ['HOOK', 'BEAT_1', 'BEAT_2', 'BEAT_3', 'CTA']
-    .reduce((sum, label) => sum + countWords(sections[label] || ''), 0);
+  const hook = toPlainString(parts.hook || '');
+  const beat1 = toPlainString(parts.beat1 || '');
+  const beat2 = toPlainString(parts.beat2 || '');
+  const beat3 = toPlainString(parts.beat3 || '');
+  const cta = toPlainString(parts.cta || '');
+  const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
+  const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
+  const totalWords = countWords(`${hook} ${beat1} ${beat2} ${beat3} ${cta}`);
   if (totalWords < REELSCRIPT_MIN_TOTAL_WORDS) {
-    return {
-      ok: false,
-      reason: 'REELSCRIPT_TOTAL_TOO_SHORT',
-      field: 'reelScript',
-      snippet: raw.slice(0, 160),
-      extra: { wordCount: totalWords },
-    };
+    return { ok: false, reason: 'REELSCRIPT_TOTAL_TOO_SHORT', field: 'reelScript', snippet: hook.slice(0, 120), extra: { wordCount: totalWords } };
   }
-  for (const beatLabel of REELSCRIPT_BEAT_LABELS) {
-    const beatWords = countWords(sections[beatLabel] || '');
-    if (beatWords < REELSCRIPT_MIN_BEAT_WORDS) {
-      return {
-        ok: false,
-        reason: 'REELSCRIPT_BEAT_TOO_SHORT',
-        field: 'reelScript',
-        snippet: sections[beatLabel].slice(0, 120),
-        extra: { label: beatLabel, wordCount: beatWords },
-      };
+  const beats = [
+    { label: 'beat1', value: beat1 },
+    { label: 'beat2', value: beat2 },
+    { label: 'beat3', value: beat3 },
+  ];
+  for (const beat of beats) {
+    if (countWords(beat.value) < REELSCRIPT_MIN_BEAT_WORDS) {
+      return { ok: false, reason: 'REELSCRIPT_BEAT_TOO_SHORT', field: 'reelScript', snippet: beat.value.slice(0, 120), extra: { label: beat.label } };
     }
   }
-  const onScreenParts = sections.ON_SCREEN_TEXT.split('|').map((part) => part.trim()).filter(Boolean);
-  if (onScreenParts.length < 3 || onScreenParts.length > 6) {
-    return {
-      ok: false,
-      reason: 'REELSCRIPT_ON_SCREEN_FORMAT',
-      field: 'reelScript',
-      snippet: sections.ON_SCREEN_TEXT.slice(0, 120),
-      extra: { count: onScreenParts.length },
-    };
+  if (onScreen.length < 3 || onScreen.length > 6) {
+    return { ok: false, reason: 'REELSCRIPT_ON_SCREEN_FORMAT', field: 'reelScript', snippet: onScreen.join(' | ').slice(0, 120), extra: { count: onScreen.length } };
   }
-  const brollParts = sections.BROLL_NOTES.split(',').map((part) => part.trim()).filter(Boolean);
-  if (brollParts.length < 4 || brollParts.length > 8) {
-    return {
-      ok: false,
-      reason: 'REELSCRIPT_BROLL_FORMAT',
-      field: 'reelScript',
-      snippet: sections.BROLL_NOTES.slice(0, 120),
-      extra: { count: brollParts.length },
-    };
+  for (const phrase of onScreen) {
+    const wc = countWords(phrase);
+    if (wc < REELSCRIPT_ONSCREEN_MIN_WORDS || wc > REELSCRIPT_ONSCREEN_MAX_WORDS) {
+      return { ok: false, reason: 'REELSCRIPT_ON_SCREEN_FORMAT', field: 'reelScript', snippet: phrase.slice(0, 120), extra: { wordCount: wc } };
+    }
+  }
+  if (broll.length < 4 || broll.length > 8) {
+    return { ok: false, reason: 'REELSCRIPT_BROLL_FORMAT', field: 'reelScript', snippet: broll.join(', ').slice(0, 120), extra: { count: broll.length } };
+  }
+  for (const item of broll) {
+    const wc = countWords(item);
+    if (wc < REELSCRIPT_BROLL_MIN_WORDS || wc > REELSCRIPT_BROLL_MAX_WORDS) {
+      return { ok: false, reason: 'REELSCRIPT_BROLL_FORMAT', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc } };
+    }
+  }
+  if (String(mode || '') === 'brand_brain') {
+    const markers = parts.brandBrainMarkers;
+    if (!markers || typeof markers !== 'object' || Array.isArray(markers)) {
+      return { ok: false, reason: 'BRAND_BRAIN_MARKER_MISSING', field: 'reelScript', snippet: '', extra: { missing: BRAND_BRAIN_MARKERS } };
+    }
+    const missing = [];
+    ['beliefTeardown', 'hiddenConstraint', 'secondOrder', 'objection', 'identityShift'].forEach((key) => {
+      if (!isNonEmptyString(markers[key])) missing.push(key);
+    });
+    if (missing.length) {
+      return { ok: false, reason: 'BRAND_BRAIN_MARKER_MISSING', field: 'reelScript', snippet: missing.join(', ').slice(0, 120), extra: { missing } };
+    }
   }
   return { ok: true };
 }
@@ -6729,33 +6772,35 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   if (!designNotesRaw.trim()) {
     return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
   }
-  const reelScriptRaw = toPlainString(post?.reelScript || '');
-  const reelCheck = validateReelScriptContract(reelScriptRaw);
-  if (reelCheck && !reelCheck.ok) {
-    return reelCheck;
+  let reelScriptText = '';
+  if (post?.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript)) {
+    const reelCheck = validateReelScriptParts(post.reelScript, ctx?.mode || 'regular');
+    if (reelCheck && !reelCheck.ok) {
+      return reelCheck;
+    }
+    reelScriptText = renderReelScriptFromParts(
+      post.reelScript,
+      post.reelScript?.brandBrainMarkers
+    );
+  } else {
+    reelScriptText = toPlainString(post?.reelScript || '');
   }
   if (String(ctx?.mode || '') === 'brand_brain') {
-    const markerCheck = validateBrandBrainMarkers(reelScriptRaw);
-    if (markerCheck && !markerCheck.ok) {
-      return markerCheck;
-    }
-    const capsuleText = toPlainString(post?.topicCapsule || '');
-    const engagementText = toPlainString(post?.engagementScripts || '');
-    if (!BRAND_BRAIN_MARKERS.some((marker) => capsuleText.includes(marker))) {
+    if (!post?.reelScript || typeof post.reelScript !== 'object' || Array.isArray(post.reelScript)) {
       return {
         ok: false,
         reason: 'BRAND_BRAIN_MARKER_MISSING',
-        field: 'topicCapsule',
-        snippet: capsuleText.slice(0, 120),
+        field: 'reelScript',
+        snippet: reelScriptText.slice(0, 120),
         extra: { missing: BRAND_BRAIN_MARKERS },
       };
     }
-    if (!BRAND_BRAIN_MARKERS.some((marker) => engagementText.includes(marker))) {
+    if (!post.reelScript.brandBrainMarkers) {
       return {
         ok: false,
         reason: 'BRAND_BRAIN_MARKER_MISSING',
-        field: 'engagementScripts',
-        snippet: engagementText.slice(0, 120),
+        field: 'reelScript',
+        snippet: '',
         extra: { missing: BRAND_BRAIN_MARKERS },
       };
     }
@@ -6773,7 +6818,7 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     const missingIn = [];
     if (countTermHits(hookText, terms) < 1) missingIn.push('hook');
     if (countTermHits(captionText, terms) < 2) missingIn.push('caption');
-    if (countTermHits(reelScriptRaw, terms) < 2) missingIn.push('reelScript');
+    if (countTermHits(reelScriptText, terms) < 2) missingIn.push('reelScript');
     if (missingIn.length) {
       return {
         ok: false,
@@ -6825,7 +6870,14 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
 
   checkString(post.script, 'script');
-  checkString(post.reelScript, 'reelScript');
+  const reelValue = post.reelScript;
+  if (reelValue && typeof reelValue === 'object' && !Array.isArray(reelValue)) {
+    const hasParts = ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes']
+      .every((key) => reelValue[key] !== undefined && reelValue[key] !== null);
+    if (!hasParts) missing.push('reelScript');
+  } else {
+    checkString(reelValue, 'reelScript');
+  }
   checkString(post.engagementScripts, 'engagementScripts');
   checkString(post.topicCapsule, 'topicCapsule');
   const detailsAudio = post?.details && typeof post.details === 'object' ? post.details.suggestedAudio : '';
@@ -6895,11 +6947,7 @@ function sanitizeCalendarPost(post) {
     };
   }
   if (cleaned.reelScript && typeof cleaned.reelScript === 'object' && !Array.isArray(cleaned.reelScript)) {
-    cleaned.reelScript = {
-      hook: cleaned.reelScript.hook,
-      body: cleaned.reelScript.body,
-      cta: cleaned.reelScript.cta,
-    };
+    cleaned.reelScript = cleaned.reelScript;
   }
   if (cleaned.engagementScripts && typeof cleaned.engagementScripts === 'object' && !Array.isArray(cleaned.engagementScripts)) {
     cleaned.engagementScripts = {
@@ -6936,7 +6984,7 @@ function sanitizePostForSchema(schema, post) {
       return String(value);
     }
   };
-  ['topicCapsule', 'script', 'reelScript', 'engagementScripts'].forEach((key) => {
+  ['topicCapsule', 'script', 'engagementScripts'].forEach((key) => {
     if (key in cleaned) cleaned[key] = coerceToString(cleaned[key]);
   });
   if ('details' in cleaned) {
@@ -7978,7 +8026,13 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const scriptObject = normalizeScriptObject(scriptSource);
   const videoScript = { ...scriptObject };
   const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
-  const reelScriptText = typeof post.reelScript === 'string' ? post.reelScript.trim() : scriptText;
+  const reelScriptParts = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript)
+    ? post.reelScript
+    : null;
+  const renderedFromParts = reelScriptParts ? renderReelScriptFromParts(reelScriptParts, reelScriptParts?.brandBrainMarkers) : '';
+  const reelScriptText = renderedFromParts
+    ? renderedFromParts.trim()
+    : (typeof post.reelScript === 'string' ? post.reelScript.trim() : scriptText);
   const engagementScriptsText = typeof post.engagementScripts === 'string' ? post.engagementScripts.trim() : '';
   let distributionPlan = resolveDistributionPlanValue(post);
   if (!distributionPlan && allowFallbacks) {
@@ -8714,7 +8768,8 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       : buildCalendarSchemaObject(
           expectedChunkCount,
           chunkStartDay,
-          Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay
+          Number.isFinite(Number(chunkStartDay + chunkDays - 1)) ? chunkStartDay + chunkDays - 1 : chunkStartDay,
+          calendarMode
         );
   try {
     JSON.stringify(schema);
@@ -10968,7 +11023,8 @@ const server = http.createServer((req, res) => {
         const schema = buildCalendarSchemaObject(
           expectedCount || rawPosts.length,
           fallbackStart,
-          fallbackStart + daysToGenerate - 1
+          fallbackStart + daysToGenerate - 1,
+          calendarMode
         );
         const repairPayload = {
           posts: rawPosts.map((post) => post || {}),
