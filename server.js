@@ -2494,8 +2494,11 @@ async function generateAndValidateSinglePost({
   maxTokens,
   requestTimeoutMs,
   temperature,
+  presencePenalty,
   qualityState,
   extraInstructions,
+  calendarId = '',
+  usedSignatures = [],
 }) {
   let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
@@ -2518,6 +2521,15 @@ async function generateAndValidateSinglePost({
       assignedPillarKey = CALENDAR_PILLAR_KEYS[(idx + 1) % CALENDAR_PILLAR_KEYS.length];
     }
   }
+  const angleSeed = buildAngleSeed({
+    mode: calendarMode,
+    pillar: assignedPillarKey,
+    day,
+    slotIndex,
+    calendarId,
+  });
+  const lens = getModeLens(calendarMode);
+  const recentSignatures = Array.isArray(usedSignatures) ? usedSignatures.slice(-10) : [];
   const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
@@ -2532,6 +2544,8 @@ async function generateAndValidateSinglePost({
     `Schema name: ${schemaLabel}`,
     `Niche: ${nicheStyle}`,
     pillarStyle ? `Pillar style: ${pillarStyle}` : '',
+    `ANGLE_SEED: ${angleSeed}`,
+    `LENS: ${lens}`,
   ].filter(Boolean).join('\n');
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -2542,9 +2556,8 @@ async function generateAndValidateSinglePost({
       requestId,
       mode: calendarMode,
       post_key,
-      stage: 'start',
-      attempt,
-      promptVersion: PROMPT_VERSION,
+      ANGLE_SEED: angleSeed,
+      usedSignaturesCount: recentSignatures.length,
     });
     currentStage = 'assign_pillar';
       const retryLine = attempt === 2
@@ -2563,6 +2576,7 @@ async function generateAndValidateSinglePost({
         reduceVerbosity: true,
         compactPrompt: true,
         temperature,
+        presencePenalty,
         extraInstructions: mergedInstructions,
         brandBrainDirective,
         calendarMode,
@@ -2575,6 +2589,9 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
+        angleSeed,
+        lens,
+        usedSignatures: recentSignatures,
       });
       reachedOpenAI = true;
       structuredOutputUsed = Boolean(result.usedStructuredOutput);
@@ -4010,6 +4027,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const plannedAngle = opts.plannedAngle || '';
   const postKeyValue = opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
+  const angleSeed = toPlainString(opts.angleSeed || '');
+  const lens = toPlainString(opts.lens || '');
+  const usedSignatures = Array.isArray(opts.usedSignatures)
+    ? opts.usedSignatures.filter((item) => item && typeof item === 'object').slice(-10)
+    : [];
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
@@ -4021,7 +4043,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     targetPillar ? `pillar: ${targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
+    angleSeed ? `ANGLE_SEED: ${angleSeed}` : null,
+    lens ? `LENS: ${lens}` : null,
   ].filter(Boolean).join('\n');
+  const usedSignatureBlock = usedSignatures.length
+    ? [
+      'DO NOT REPEAT ANY OF THESE STEMS:',
+      ...usedSignatures.map((sig) => (
+        `- day ${sig.day || '?'} | pillar ${toPlainString(sig.pillar || 'unknown')} | titleStem: ${toPlainString(sig.titleStem || '')} | hookStem: ${toPlainString(sig.hookStem || '')} | ctaStem: ${toPlainString(sig.ctaStem || '')}`
+      )),
+    ].join('\n')
+    : '';
 
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4055,6 +4087,8 @@ Before writing:
 - Choose one angle that helps them understand or avoid confusion.
 - Do not optimize for virality. Optimize for clarity.
 - Do not reuse angles from other posts in this calendar.
+- Build this post around ANGLE_SEED. Make it noticeably distinct from prior stems.
+- Use LENS to shape the hook/body/cta.
 
 OUTPUT REQUIREMENTS
 Output JSON only, matching the schema exactly.
@@ -4111,7 +4145,13 @@ ABSOLUTE RULES
 - No selling tone
 - No exaggeration
 - No emotional manipulation
-- No repeated angles from other posts`;
+- No repeated angles from other posts
+
+SELF-CHECK BEFORE OUTPUT
+- Hook must include at least one concrete noun (examples: contract, invoice, calendar, camera, checklist, script, dashboard, offer, timeline, screenshot, pricing page, meeting notes, document, spreadsheet, blueprint, roadmap).
+- CTA must contain one action verb and one tangible artifact (template, checklist, script, example, swipe file).
+- Forbidden abstract openers: Consider, Explore, Discover, Learn more, Stay informed, Gain insights.
+- If any forbidden opener appears, rewrite before output.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `ROLE
 You are generating a single Brand Brain content calendar post designed to function as a winning short-form ad.
@@ -4133,6 +4173,8 @@ Before writing:
 - Identify one mechanism that explains why the failure happens.
 - The solution must feel like the only logical resolution without aggressive selling.
 - Do not reuse angles from other posts in this calendar.
+- Build this post around ANGLE_SEED. Make it noticeably distinct from prior stems.
+- Use LENS to shape the hook/body/cta.
 
 OUTPUT REQUIREMENTS
 Output JSON only, matching the schema exactly.
@@ -4193,13 +4235,20 @@ ABSOLUTE RULES
 - No soft CTAs
 - No repetition of angles
 - No emotional manipulation
-- This must feel like insight, not marketing`;
+- This must feel like insight, not marketing
+
+SELF-CHECK BEFORE OUTPUT
+- Hook must include at least one concrete noun (examples: contract, invoice, calendar, camera, checklist, script, dashboard, offer, timeline, screenshot, pricing page, meeting notes, document, spreadsheet, blueprint, roadmap).
+- CTA must contain one action verb and one tangible artifact (template, checklist, script, example, swipe file).
+- Forbidden abstract openers: Consider, Explore, Discover, Learn more, Stay informed, Gain insights.
+- If any forbidden opener appears, rewrite before output.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
+    usedSignatureBlock,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
@@ -5883,6 +5932,48 @@ const CALENDAR_PILLAR_STYLE_RULES = {
   promotion: 'Present a clear offer (who it is for, what it includes, next step).',
   lifestyle: 'Vivid day-in-life or neighborhood vibe anchored to a real decision.',
 };
+
+function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0, calendarId = '' } = {}) {
+  const raw = [
+    String(mode || 'regular'),
+    String(pillar || ''),
+    Number.isFinite(Number(day)) ? Number(day) : 1,
+    Number.isFinite(Number(slotIndex)) ? Number(slotIndex) : 0,
+    String(calendarId || ''),
+  ].join('|');
+  return crypto.createHash('sha1').update(raw).digest('hex').slice(0, 12);
+}
+
+function getModeLens(mode = 'regular') {
+  return mode === 'brand_brain'
+    ? 'Expose the hidden mechanism causing failure and reframe it.'
+    : 'Explain the simplest mental model to reduce confusion.';
+}
+
+function normalizeStemText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stemFromText(value = '', minWords = 6, maxWords = 10) {
+  const words = normalizeStemText(value).split(' ').filter(Boolean);
+  if (!words.length) return '';
+  const takeCount = Math.min(words.length, Math.max(minWords, maxWords));
+  return words.slice(0, takeCount).join(' ');
+}
+
+function buildPostSignature(post = {}) {
+  return {
+    day: Number.isFinite(Number(post?.day)) ? Number(post.day) : null,
+    pillar: toPlainString(post?.pillar || ''),
+    titleStem: stemFromText(post?.title || '', 6, 10),
+    hookStem: stemFromText(post?.reelHook || '', 8, 12),
+    ctaStem: stemFromText(post?.reelCta || '', 6, 10),
+  };
+}
 
 function seedFromString(value = '') {
   let hash = 2166136261;
@@ -9017,6 +9108,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       : maxTokenCap;
   const maxTokens = Math.min(requestedTokens, maxTokenCap);
   const temperature = Number.isFinite(Number(opts.temperature)) ? Number(opts.temperature) : 0;
+  const presencePenalty = Number.isFinite(Number(opts.presencePenalty)) ? Number(opts.presencePenalty) : null;
   const requestTimeoutMs = Number.isFinite(Number(opts.requestTimeoutMs)) ? Number(opts.requestTimeoutMs) : OPENAI_GENERATION_TIMEOUT_MS;
   const chunkDays = Number.isFinite(Number(opts.days)) && Number(opts.days) > 0 ? Number(opts.days) : 1;
   const chunkStartDay = Number.isFinite(Number(opts.startDay)) ? Number(opts.startDay) : 1;
@@ -9176,6 +9268,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const attemptNumber = Number.isFinite(Number(overrides.attempt)) ? Number(overrides.attempt) : 1;
     const attemptMaxTokens = Number.isFinite(Number(overrides.maxTokens)) ? Number(overrides.maxTokens) : maxTokens;
     const attemptTemperature = Number.isFinite(Number(overrides.temperature)) ? Number(overrides.temperature) : temperature;
+    const attemptPresencePenalty = Number.isFinite(Number(overrides.presencePenalty))
+      ? Number(overrides.presencePenalty)
+      : presencePenalty;
     const attemptModel = overrides.model || modelName;
     const attemptTimeoutMs = Number.isFinite(Number(overrides.timeoutMs)) ? Number(overrides.timeoutMs) : requestTimeoutMs;
     const attemptOpts = {
@@ -9228,13 +9323,17 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       schema: format?.json_schema?.schema,
     });
     const responseTextFormat = toTextFormat(responseFormat);
-    const payload = JSON.stringify({
+    const payloadObj = {
       model: attemptModel,
       input: [{ role: 'user', content: prompt }],
       temperature: attemptTemperature,
       max_output_tokens: attemptMaxTokens,
       text: { format: responseTextFormat },
-    });
+    };
+    if (Number.isFinite(Number(attemptPresencePenalty))) {
+      payloadObj.presence_penalty = Number(attemptPresencePenalty);
+    }
+    const payload = JSON.stringify(payloadObj);
     if (debugCalendar && loggingContext?.requestId) {
       console.log('[OpenAI][CalendarChunk][Payload]', {
         requestId: loggingContext.requestId,
@@ -10770,8 +10869,12 @@ const server = http.createServer((req, res) => {
       ? Number(payload.maxTokens)
       : 900;
     const requestTimeoutMs = payload?.requestTimeoutMs;
-    const temperature = Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : 0.2;
-    const poolSize = Math.max(1, Math.min(CALENDAR_CONCURRENCY, slots.length));
+    const temperature = Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : 0.8;
+    const presencePenalty = Number.isFinite(Number(payload?.presencePenalty))
+      ? Number(payload.presencePenalty)
+      : (Number.isFinite(Number(payload?.presence_penalty)) ? Number(payload.presence_penalty) : 0.4);
+    const calendarId = toPlainString(payload?.calendarId || payload?.id || '');
+    const usedSignatures = [];
 
     const runJob = async (slot, index) => {
       const planItem = planByKey.get(slot.post_key);
@@ -10799,14 +10902,18 @@ const server = http.createServer((req, res) => {
         maxTokens,
         requestTimeoutMs,
         temperature,
+        presencePenalty,
+        calendarId,
+        usedSignatures,
         qualityState: { signatureMap: new Map() },
       });
     };
-
-    const { results, errors } = await runCalendarJobPool(slots, poolSize, runJob);
-    if (errors.length) {
-      errors.sort((a, b) => a.index - b.index);
-      throw errors[0].error;
+    const results = [];
+    for (let index = 0; index < slots.length; index += 1) {
+      const slot = slots[index];
+      const post = await runJob(slot, index);
+      results.push(post);
+      usedSignatures.push(buildPostSignature(post));
     }
     const ordered = results.slice().sort((a, b) => {
       const dayA = Number(a?.day) || 0;
@@ -12094,6 +12201,8 @@ const server = http.createServer((req, res) => {
             maxTokens,
             requestTimeoutMs,
             temperature,
+            calendarId,
+            usedSignatures: [],
             qualityState: { signatureMap: new Map() },
           });
           if (!isPro && body?.isFirst === true) {
