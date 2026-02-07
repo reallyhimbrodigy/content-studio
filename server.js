@@ -2636,6 +2636,13 @@ async function generateAndValidateSinglePost({
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
       normalizeReelScriptBroll(post, { requestId, post_key });
+      normalizeEngagementScripts(post, {
+        requestId,
+        post_key,
+        title: post.title,
+        topic_signature: post.topic_signature,
+        topicCapsule: post.topicCapsule,
+      });
       lastPost = post;
       const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
       const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
@@ -2952,9 +2959,9 @@ async function generateAndValidateSinglePost({
             constraints.push(`reelScript.brollNotes: ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words per item, 4–8 items`);
           }
           if (reason === 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH') {
-            constraints.push('engagementScripts.commentPrompts: 4–6 items, 6–18 words each');
-            constraints.push('engagementScripts.dmScripts: 2–3 items, 6–18 words each');
-            constraints.push('engagementScripts.replyTemplates: 4–6 items, 6–18 words each');
+            constraints.push(`engagementScripts.commentPrompts: ${ENGAGEMENT_COMMENT_MIN_ITEMS}–${ENGAGEMENT_COMMENT_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
+            constraints.push(`engagementScripts.dmScripts: ${ENGAGEMENT_DM_MIN_ITEMS}–${ENGAGEMENT_DM_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
+            constraints.push(`engagementScripts.replyTemplates: ${ENGAGEMENT_REPLY_MIN_ITEMS}–${ENGAGEMENT_REPLY_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
           }
           if (reason === 'TOPIC_LOCK_FAILED') {
             const terms = err?.details?.extra?.terms || [];
@@ -4269,13 +4276,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
     '- All fields must align to planned_title / topic_signature and the same topic.',
+    '- Hook and caption must explicitly mention the core topic/offer in concrete terms (avoid abstract “dream” copy).',
     '- hashtags must be a JSON array of 5–10 strings.',
-    '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
+    `- engagementScripts MUST be an object with arrays: commentPrompts[${ENGAGEMENT_COMMENT_MIN_ITEMS}-${ENGAGEMENT_COMMENT_MAX_ITEMS}], dmScripts[${ENGAGEMENT_DM_MIN_ITEMS}-${ENGAGEMENT_DM_MAX_ITEMS}], replyTemplates[${ENGAGEMENT_REPLY_MIN_ITEMS}-${ENGAGEMENT_REPLY_MAX_ITEMS}].`,
     '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
-    '- Each engagementScripts item must be 6–18 words and reference the SAME failure as the hook.',
+    `- Each engagementScripts item must be ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words and reference the SAME failure as the hook.`,
     '- Each engagementScripts item must include a concrete noun (invoice, edit, call, ad, landing page, proposal, checkout).',
     '- brollNotes must be 4–8 items; each broll item is a single shot description with a concrete object + action.',
-    '- Each b-roll item MUST be 2–6 words. If longer, it will be truncated.',
+    `- Each b-roll item MUST be ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words. If longer, it will be truncated.`,
     '- Write b-roll as compressed shot labels: verb+noun phrases, no filler.',
     '- Before output, verify broll items and engagementScripts items satisfy the length rules; if not, rewrite them.',
     '- topicCapsule must be a concise string with thesis + proof points.',
@@ -6681,6 +6689,14 @@ const REELSCRIPT_ONSCREEN_MIN_WORDS = 2;
 const REELSCRIPT_ONSCREEN_MAX_WORDS = 6;
 const REELSCRIPT_BROLL_MIN_WORDS = 2;
 const REELSCRIPT_BROLL_MAX_WORDS = 6;
+const ENGAGEMENT_ITEM_MIN_WORDS = 6;
+const ENGAGEMENT_ITEM_MAX_WORDS = 18;
+const ENGAGEMENT_COMMENT_MIN_ITEMS = 4;
+const ENGAGEMENT_COMMENT_MAX_ITEMS = 6;
+const ENGAGEMENT_DM_MIN_ITEMS = 2;
+const ENGAGEMENT_DM_MAX_ITEMS = 3;
+const ENGAGEMENT_REPLY_MIN_ITEMS = 4;
+const ENGAGEMENT_REPLY_MAX_ITEMS = 6;
 const BRAND_BRAIN_MARKERS = [
   'beliefTeardown',
   'hiddenConstraint',
@@ -6794,6 +6810,59 @@ function convertEngagementScriptsToObject(value) {
   dmScripts = fillToLength(dmScripts, 2, lines).slice(0, 3);
   replyTemplates = fillToLength(replyTemplates, 4, lines).slice(0, 6);
   return { commentPrompts, dmScripts, replyTemplates };
+}
+
+function normalizeEngagementScripts(post, ctx = {}) {
+  if (!post || typeof post !== 'object') return false;
+  let scripts = post.engagementScripts;
+  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) {
+    scripts = convertEngagementScriptsToObject(scripts);
+  }
+  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return false;
+  const topicSource = [
+    ctx?.topic_signature,
+    ctx?.title,
+    ctx?.topicCapsule,
+  ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
+  const topicWords = normalizeTitleText(topicSource).split(/\s+/).filter(Boolean).slice(0, 2);
+  const tail = topicWords.length ? `about ${topicWords.join(' ')}` : 'about this';
+  const normalizeItem = (value, fieldName, itemIndex) => {
+    const beforeRaw = value === null || value === undefined ? '' : String(value);
+    let text = beforeRaw.trim().replace(/\s+/g, ' ').replace(/[.,!?]+$/g, '');
+    let words = text ? text.split(/\s+/).filter(Boolean) : [];
+    const beforeWordCount = words.length;
+    while (words.length > 0 && words.length < ENGAGEMENT_ITEM_MIN_WORDS) {
+      const tailWords = tail.split(/\s+/);
+      words = words.concat(tailWords);
+    }
+    if (words.length > ENGAGEMENT_ITEM_MAX_WORDS) {
+      words = words.slice(0, ENGAGEMENT_ITEM_MAX_WORDS);
+    }
+    const after = words.join(' ');
+    const afterWordCount = words.length;
+    if (after && after !== beforeRaw.trim()) {
+      console.log('[Calendar][EngagementScripts][Normalize]', {
+        requestId: ctx?.requestId || null,
+        post_key: ctx?.post_key || null,
+        fieldName,
+        itemIndex,
+        before: beforeRaw.slice(0, 200),
+        after: after.slice(0, 200),
+        beforeWordCount,
+        afterWordCount,
+      });
+    }
+    return after || beforeRaw.trim();
+  };
+  const normalizeArray = (arr, fieldName) => {
+    if (!Array.isArray(arr)) return arr;
+    return arr.map((item, idx) => normalizeItem(item, fieldName, idx));
+  };
+  scripts.commentPrompts = normalizeArray(scripts.commentPrompts, 'commentPrompts');
+  scripts.dmScripts = normalizeArray(scripts.dmScripts, 'dmScripts');
+  scripts.replyTemplates = normalizeArray(scripts.replyTemplates, 'replyTemplates');
+  post.engagementScripts = scripts;
+  return true;
 }
 
 function normalizeReelScriptBroll(post, ctx = {}) {
@@ -6967,10 +7036,15 @@ function validateEngagementScriptsParts(parts = {}) {
       const item = items[i];
       const wc = countWords(item);
       const cc = String(item || '').length;
-      if (wc < 6 || wc > 18) {
+      if (wc < ENGAGEMENT_ITEM_MIN_WORDS || wc > ENGAGEMENT_ITEM_MAX_WORDS) {
         console.log('[Calendar][EngagementScripts][ItemLength]', {
           reason: 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH',
-          expected: { minWords: 6, maxWords: 18, minChars: null, maxChars: null },
+          expected: {
+            minWords: ENGAGEMENT_ITEM_MIN_WORDS,
+            maxWords: ENGAGEMENT_ITEM_MAX_WORDS,
+            minChars: null,
+            maxChars: null,
+          },
           actual: { array: label, itemIndex: i, wordCount: wc, charCount: cc },
           sample: String(item || '').slice(0, 200),
         });
@@ -6979,11 +7053,29 @@ function validateEngagementScriptsParts(parts = {}) {
     }
     return null;
   };
-  const commentCheck = checkItems(commentPrompts, 4, 6, 'engagementScripts.commentPrompts', 'commentPrompts');
+  const commentCheck = checkItems(
+    commentPrompts,
+    ENGAGEMENT_COMMENT_MIN_ITEMS,
+    ENGAGEMENT_COMMENT_MAX_ITEMS,
+    'engagementScripts.commentPrompts',
+    'commentPrompts'
+  );
   if (commentCheck) return commentCheck;
-  const dmCheck = checkItems(dmScripts, 2, 3, 'engagementScripts.dmScripts', 'dmScripts');
+  const dmCheck = checkItems(
+    dmScripts,
+    ENGAGEMENT_DM_MIN_ITEMS,
+    ENGAGEMENT_DM_MAX_ITEMS,
+    'engagementScripts.dmScripts',
+    'dmScripts'
+  );
   if (dmCheck) return dmCheck;
-  const replyCheck = checkItems(replyTemplates, 4, 6, 'engagementScripts.replyTemplates', 'replyTemplates');
+  const replyCheck = checkItems(
+    replyTemplates,
+    ENGAGEMENT_REPLY_MIN_ITEMS,
+    ENGAGEMENT_REPLY_MAX_ITEMS,
+    'engagementScripts.replyTemplates',
+    'replyTemplates'
+  );
   if (replyCheck) return replyCheck;
   return { ok: true };
 }
@@ -7099,6 +7191,49 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     if (countTermHits(captionText, terms) < 2) missingIn.push('caption');
     if (countTermHits(reelScriptText, terms) < 2) missingIn.push('reelScript');
     if (missingIn.length) {
+      const injectTerms = (text, neededTerms) => {
+        const missingTerms = neededTerms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(text));
+        const inject = missingTerms.slice(0, 2);
+        if (!inject.length) return text;
+        return `${text} — ${inject.join(' ')}`;
+      };
+      let repairedHook = hookText;
+      let repairedCaption = captionText;
+      if (missingIn.includes('hook')) {
+        repairedHook = injectTerms(hookText, terms);
+        if (repairedHook !== hookText) {
+          console.log('[Calendar][TopicLock][Repair]', {
+            requestId: ctx?.requestId || null,
+            post_key: ctx?.post_key || null,
+            field: 'hook',
+            before: hookText.slice(0, 200),
+            after: repairedHook.slice(0, 200),
+            injectedTerms: terms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(hookText)).slice(0, 2),
+          });
+          post.hook = repairedHook;
+        }
+      }
+      if (missingIn.includes('caption')) {
+        repairedCaption = injectTerms(captionText, terms);
+        if (repairedCaption !== captionText) {
+          console.log('[Calendar][TopicLock][Repair]', {
+            requestId: ctx?.requestId || null,
+            post_key: ctx?.post_key || null,
+            field: 'caption',
+            before: captionText.slice(0, 200),
+            after: repairedCaption.slice(0, 200),
+            injectedTerms: terms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(captionText)).slice(0, 2),
+          });
+          post.caption = repairedCaption;
+        }
+      }
+      const recheckMissing = [];
+      if (countTermHits(repairedHook, terms) < 1) recheckMissing.push('hook');
+      if (countTermHits(repairedCaption, terms) < 2) recheckMissing.push('caption');
+      if (countTermHits(reelScriptText, terms) < 2) recheckMissing.push('reelScript');
+      if (!recheckMissing.length) {
+        return { ok: true };
+      }
       console.log('[Calendar][TopicLock][Failed]', {
         title: toPlainString(post?.title || ''),
         topicCapsule: toPlainString(post?.topicCapsule || ''),
