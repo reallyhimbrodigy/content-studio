@@ -4043,127 +4043,270 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- No emojis. No placeholders. No filler templates.',
   ].join('\n');
 
-  const REGULAR_ALL_FIELDS_PROMPT = [
-    'REGULAR MODE (AD CONTRACT)',
-    '- Tone: clear, practical, non-manipulative.',
-    '- This is an ad: every field must push one concrete problem to one resolution.',
-    '',
-    'FIELD RULES (EACH LINE MUST OBEY)',
-    'title: one concrete buyer problem or misconception.',
-    '- Fail if: abstract, motivational, or could fit any product.',
-    '- Example shape: "{TOPIC} stalls at {FRICTION}".',
-    'hook: lived micro-failure with a concrete consequence.',
-    '- Fail if: "Did you know", "Here’s why", or generic tips.',
-    '- Example shape: "I tried {ACTION} and lost {RESULT}."',
-    'body: 1–2 tight lines that worsen the failure and point to the product.',
-    '- Fail if: educational explainer or list of tips.',
-    '- Example shape: "The hidden step is {OBSTACLE}, so DIY keeps failing."',
-    'cta: single clear action tied to the resolution.',
-    '- Fail if: vague ("learn more", "follow for tips").',
-    '- Example shape: "Get the {DELIVERABLE} that fixes this."',
-    'STYLE OUTPUT CONTRACT (hard rules)',
-    '- Forbidden characters: double quotes ", single quotes \', smart quotes “ ” ‘ ’, exclamation mark !.',
-    '- If you would normally use any forbidden character, rewrite the sentence to avoid it.',
-    '- Do not wrap any sentence in quotes.',
-    '- Do not use labels like Hook:, Body:, CTA:, Reel Script: inside field text.',
-    '- Use plain sentences. End with a period or no punctuation.',
-    'Bad (do not do this):',
-    'hook: "I lost my dream home!"',
-    'cta: "Download now!"',
-    'Good (do this):',
-    'hook: I lost my dream home because I waited.',
-    'cta: Download the checklist.',
-    'Before you output JSON, scan your hook/body/cta text and confirm none contains any forbidden characters.',
-    'Output JSON only.',
-    'Match schema exactly.',
-    'No extra keys.',
-    'No markdown.',
-    'reelHook: hook-only text.',
-    '- Fail if: includes body/cta copy or labels.',
-    '- Example shape: "{HOOK LINE}"',
-    'reelBody: body-only text.',
-    '- Fail if: includes hook/cta copy or labels.',
-    '- Example shape: "{BODY LINE}"',
-    'reelCta: CTA-only text.',
-    '- Fail if: includes hook/body copy or labels.',
-    '- Example shape: "{CTA LINE}"',
-    'caption: reinforces the same failure and resolution in plain language.',
-    '- Fail if: generic motivational copy.',
-    '- Example shape: "{PAIN}. {RESOLUTION}."',
-    'designNotes: concrete filming guidance; no theory.',
-    '- Fail if: abstract or vague.',
-    '- Example shape: "{SHOT 1}. {SHOT 2}. {SHOT 3}."',
-    'engagementLoop: one natural prompt tied to the same failure.',
-    '- Fail if: generic question.',
-    '- Example shape: "What broke for you when {FAILURE}?"',
-    'distributionPlan: short plan for where/how to post; no growth hacks.',
-    '- Fail if: boilerplate.',
-    '- Example shape: "Post to {CHANNEL} and pin {HOOK}."',
-    'hashtags: array of relevant strings, no duplicates.',
-    '- Fail if: empty or non-relevant.',
-    '- Example shape: ["#tagone","#tagtwo"]',
-  ].join('\n');
+  const REGULAR_ALL_FIELDS_PROMPT = `You are generating **ONE regular content calendar post**.
 
-  const BRAND_BRAIN_ALL_FIELDS_PROMPT = [
-    'BRAND BRAIN MODE (AD CONTRACT)',
-    '- Must be materially different from regular: persuasion-first, sharper and more decisive.',
-    '- Still an ad: one concrete failure to one resolution.',
-    '',
-    'FIELD RULES (EACH LINE MUST OBEY)',
-    'title: challenge a false assumption about {TOPIC}.',
-    '- Fail if: neutral, educational, or generic.',
-    '- Example shape: "{ASSUMPTION} is why {TOPIC} keeps failing."',
-    'hook: lived micro-failure that implies a wrong belief.',
-    '- Fail if: tips, advice, or abstract claims.',
-    '- Example shape: "I did {COMMON_TACTIC} and it made things worse."',
-    'body: 1–2 tight lines exposing the hidden constraint and second-order consequence.',
-    '- Fail if: it reads like a tutorial.',
-    '- Example shape: "The real blocker is {CONSTRAINT}, which costs {CONSEQUENCE}."',
-    'cta: single action that resolves the failure with authority.',
-    '- Fail if: generic, soft, or vague.',
-    '- Example shape: "Use {OFFER} to avoid that trap."',
-    'STYLE OUTPUT CONTRACT (hard rules)',
-    '- Forbidden characters: double quotes ", single quotes \', smart quotes “ ” ‘ ’, exclamation mark !.',
-    '- If you would normally use any forbidden character, rewrite the sentence to avoid it.',
-    '- Do not wrap any sentence in quotes.',
-    '- Do not use labels like Hook:, Body:, CTA:, Reel Script: inside field text.',
-    '- Use plain sentences. End with a period or no punctuation.',
-    'Bad (do not do this):',
-    'hook: "I lost my dream home!"',
-    'cta: "Download now!"',
-    'Good (do this):',
-    'hook: I lost my dream home because I waited.',
-    'cta: Download the checklist.',
-    'Before you output JSON, scan your hook/body/cta text and confirm none contains any forbidden characters.',
-    'Output JSON only.',
-    'Match schema exactly.',
-    'No extra keys.',
-    'No markdown.',
-    'reelHook: hook-only text.',
-    '- Fail if: includes body/cta copy or labels.',
-    '- Example shape: "{HOOK LINE}"',
-    'reelBody: body-only text.',
-    '- Fail if: includes hook/cta copy or labels.',
-    '- Example shape: "{BODY LINE}"',
-    'reelCta: CTA-only text.',
-    '- Fail if: includes hook/body copy or labels.',
-    '- Example shape: "{CTA LINE}"',
-    'caption: reinforces the same belief shift and consequence.',
-    '- Fail if: neutral tone.',
-    '- Example shape: "{BELIEF COST}. {RESOLUTION}."',
-    'designNotes: concrete filming guidance that reinforces tension.',
-    '- Fail if: abstract or vague.',
-    '- Example shape: "{SHOT 1}. {SHOT 2}. {SHOT 3}."',
-    'engagementLoop: prompt that surfaces the belief/objection.',
-    '- Fail if: generic question.',
-    '- Example shape: "What belief kept you stuck on {FAILURE}?"',
-    'distributionPlan: short plan for where/how to post; no growth hacks.',
-    '- Fail if: boilerplate.',
-    '- Example shape: "Post to {CHANNEL} and pin {HOOK}."',
-    'hashtags: array of relevant strings, no duplicates.',
-    '- Fail if: empty or non-relevant.',
-    '- Example shape: ["#tagone","#tagtwo"]',
-  ].join('\n');
+This is **not** a high-pressure ad.  
+It should feel useful, credible, and easy to consume.  
+The goal is clarity and consistency, not persuasion intensity.
+
+### OUTPUT CONTRACT (NON-NEGOTIABLE)
+- Output **JSON only**
+- Match the schema **exactly**
+- Output **all required keys**
+- **No extra keys**
+- **No labels** like “Hook:”, “Body:”, “CTA:” inside values
+- Do not include server-owned fields (post_key, day, slotIndex, pillar, format, mode)
+- No markdown, no commentary
+
+### STYLE GUIDELINES
+- Plain, natural sentences
+- Avoid quotes and exclamation marks; if you use one, rewrite once to remove it
+- No emojis
+- No hype language
+- No hard selling
+- No abstract fluff
+- No “as an AI” language
+
+---
+
+### CONTENT RULES (REGULAR MODE)
+
+This post should feel:
+- Helpful
+- Trustworthy
+- Calm
+- Practical
+
+Do **not** over-optimize for virality.
+
+---
+
+### FIELD INSTRUCTIONS
+
+**title**  
+A clear, literal description of the topic.  
+No hooks. No hype.
+
+**hook**  
+A simple, relatable problem or observation.  
+No exaggeration. No open loops.
+
+**body**  
+Explain the issue or idea clearly in 1–2 sentences.  
+Informative, neutral tone.
+
+**cta**  
+A soft, optional next step tied to learning or clarity.  
+No urgency language.
+
+---
+
+### REEL SCRIPT (SPOKEN VERSION)
+
+These are spoken equivalents of the content-card copy.  
+They must express the **same meaning**, but use **different wording**.
+
+**reelHook**  
+One sentence only.  
+Problem or observation only.  
+No explanation. No CTA.
+
+**reelBody**  
+One or two sentences only.  
+Explanation only.  
+No hook phrasing. No CTA.
+
+**reelCta**  
+One sentence only.  
+Single, clear action.  
+Starts with a verb.
+
+---
+
+### SUPPORTING FIELDS
+
+**caption**  
+Short, clear summary of the post.  
+No hashtags inside the caption text.
+
+**designNotes**  
+Simple visual guidance.  
+Describe what should appear on screen.
+
+**engagementLoop**  
+One sentence that invites a low-effort response.  
+No pressure. No manipulation.
+
+**distributionPlan**  
+Straightforward posting guidance.  
+No growth hacks.
+
+**hashtags**  
+Relevant, non-empty hashtags only.  
+No spam tags.
+
+---
+
+### ANTI-DUPLICATION RULE
+This post must differ in:
+- Angle
+- Wording
+- Framing  
+from other posts in the same calendar.
+
+Before outputting JSON, mentally verify this is not a repeat.
+
+Output JSON only.`;
+
+  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `You are generating **ONE Brand Brain content calendar post**.
+
+This **must feel like a winning ad** without sounding like an ad.  
+Every field should be intentional, sharp, and valuable.
+
+The user should feel:
+- Seen
+- Slightly uncomfortable
+- Curious
+- Relieved when the solution appears
+
+### OUTPUT CONTRACT (NON-NEGOTIABLE)
+- Output **JSON only**
+- Match the schema **exactly**
+- Output **all required keys**
+- **No extra keys**
+- **No labels** like “Hook:”, “Body:”, “CTA:” inside values
+- Do not include server-owned fields (post_key, day, slotIndex, pillar, format, mode)
+- No markdown, no commentary
+
+### STYLE GUIDELINES
+- Plain sentences
+- Avoid quotes and exclamation marks; if used, rewrite once to remove them
+- No emojis
+- No filler
+- No generic advice
+- No abstract language
+- No hard selling
+
+---
+
+### CORE DIFFERENCE FROM REGULAR MODE
+
+This post **must**:
+- Stop the scroll
+- Create tension
+- Resolve that tension with a specific mechanism
+- Make the product or service feel like the obvious next step
+
+---
+
+### VARIATION REQUIREMENT (CRITICAL)
+
+Before writing, internally choose:
+- ONE primary pattern  
+  (confession, myth-bust, contrarian take, hidden cost, mistake teardown, before/after, taboo truth)
+- ONE emotional driver  
+  (regret, relief, curiosity, status, fear of loss, competence)
+- ONE angle mechanic  
+  (cost of delay, hidden tradeoff, overlooked step, false assumption)
+
+Write the post through those lenses.
+
+Do not mention these choices in the output.
+
+---
+
+### FIELD INSTRUCTIONS
+
+**title**  
+Clear topic framing with implied tension.  
+Not clickbait.
+
+**hook**  
+A lived micro-failure or uncomfortable truth.  
+Creates an open loop.  
+No explanation. No solution.
+
+Fail conditions:
+- Abstract statements
+- Motivational language
+- Generic problems
+
+**body**  
+1–2 tight sentences.  
+Explain *why* the problem exists or *why* it keeps happening.  
+Introduce the mechanism, not the pitch.
+
+Fail conditions:
+- Listicles
+- Teaching tone
+- General advice
+
+**cta**  
+One sentence.  
+Single action.  
+Value-first, not sales-first.
+
+Fail conditions:
+- “Buy now”
+- “Download now”
+- Urgency without value
+
+---
+
+### REEL SCRIPT (SPOKEN VERSION)
+
+These are **spoken**, not written, versions.  
+They must map 1:1 in meaning but use different phrasing.
+
+**reelHook**  
+One sentence only.  
+Pure scroll-stopper.  
+No CTA. No explanation.
+
+**reelBody**  
+One or two sentences only.  
+Mechanism reveal.  
+No hook phrasing. No CTA.
+
+**reelCta**  
+One sentence only.  
+Starts with a verb.  
+Clear value exchange.
+
+---
+
+### SUPPORTING FIELDS
+
+**caption**  
+Reinforces the hook with clarity.  
+No repetition of reel script.
+
+**designNotes**  
+Specific visual guidance that supports the message.  
+No generic “use graphics” notes.
+
+**engagementLoop**  
+One sentence that invites reflection or admission.  
+Not a question dump.
+
+**distributionPlan**  
+Intentional placement guidance.  
+Focus on context, not hacks.
+
+**hashtags**  
+Relevant, non-empty hashtags only.  
+No filler tags.
+
+---
+
+### FINAL CHECK (SELF-CORRECTION)
+
+Before outputting JSON, confirm:
+- No field blends hook/body/cta together
+- No duplicate phrasing across fields
+- This post would not look interchangeable with another post
+
+Output JSON only.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
