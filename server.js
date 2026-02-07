@@ -2913,14 +2913,14 @@ async function generateAndValidateSinglePost({
         }
         reachedOpenAI = reachedOpenAI || Boolean(err?.openaiDetails || err?.responseId || err?.statusCode);
         structuredOutputUsed = structuredOutputUsed || Boolean(err?.usedStructuredOutput);
-        const reason = err?.details?.reason
-          || (err?.code === 'PARSE_FAILED'
-            ? (err?.reason || 'PARSE_FAILED')
-            : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
-              ? 'TIMEOUT'
-              : err?.code === 'OPENAI_BACKEND_ERROR'
-                ? 'OPENAI_ERROR'
-                : 'SCHEMA_MISMATCH');
+      const reason = err?.details?.reason
+        || (err?.code === 'PARSE_FAILED'
+          ? (err?.reason || 'PARSE_FAILED')
+          : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
+            ? 'TIMEOUT'
+            : err?.code === 'OPENAI_BACKEND_ERROR'
+              ? 'OPENAI_ERROR'
+              : 'SCHEMA_MISMATCH');
       const errorsForLog = err?.details?.errors || validatorErrors || null;
       const missingDetails = reason === 'SCHEMA_MISMATCH'
         && (!errorsForLog || !errorsForLog.length || (err?.details?.field || 'unknown') === 'unknown');
@@ -2936,7 +2936,9 @@ async function generateAndValidateSinglePost({
         errors: errorsForLog,
         note: missingDetails ? 'missing_schema_details' : undefined,
       });
-      if (attempt < 2) continue;
+      const deterministicFailure = typeof reason === 'string'
+        && (reason.startsWith('REELSCRIPT_') || reason.startsWith('ENGAGEMENT_SCRIPTS_'));
+      if (attempt < 2 && !deterministicFailure) continue;
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
       failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
       failErr.statusCode = 422;
@@ -3536,11 +3538,11 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         additionalProperties: false,
         required: ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes'],
         properties: {
-          hook: { type: 'string', minLength: 1 },
-          beat1: { type: 'string', minLength: 1 },
-          beat2: { type: 'string', minLength: 1 },
-          beat3: { type: 'string', minLength: 1 },
-          cta: { type: 'string', minLength: 1 },
+          hook: { type: 'string', minLength: 55, maxLength: 260 },
+          beat1: { type: 'string', minLength: 55, maxLength: 260 },
+          beat2: { type: 'string', minLength: 55, maxLength: 260 },
+          beat3: { type: 'string', minLength: 55, maxLength: 260 },
+          cta: { type: 'string', minLength: 55, maxLength: 260 },
           onScreenText: {
             type: 'array',
             minItems: 3,
@@ -4218,6 +4220,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- format MUST be exactly "reel".',
     '- reelScript MUST be an object with keys: hook, beat1, beat2, beat3, cta, onScreenText[], brollNotes[].',
     '- hook/beat1/beat2/beat3/cta are full sentences; onScreenText is 3–6 short phrases; brollNotes is 4–8 items.',
+    '- Each reelScript beat (hook/beat1/beat2/beat3/cta) must be 8–18 words. No fragments.',
+    '- Before output, verify every reelScript beat is 8–18 words.',
+    '- Never output beats like "Hook." "Cut." "Show." or 1–5 word phrases.',
     '- Total words across hook+beat1+beat2+beat3+cta must be >= 80; each beat must be >= 12 words.',
     '- script MUST be a plain-text render of reelScript (same content).',
     '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
@@ -12000,13 +12005,14 @@ const server = http.createServer((req, res) => {
           });
           return sendJson(res, 200, { post, calendarId, requestId });
         } catch (err) {
-          const reason = err?.code === 'PARSE_FAILED'
-            ? (err?.reason || 'PARSE_FAILED')
-            : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
-              ? 'TIMEOUT'
-              : err?.code === 'OPENAI_BACKEND_ERROR'
-                ? 'OPENAI_ERROR'
-                : 'SCHEMA_MISMATCH';
+          const reason = err?.details?.reason
+            || (err?.code === 'PARSE_FAILED'
+              ? (err?.reason || 'PARSE_FAILED')
+              : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
+                ? 'TIMEOUT'
+                : err?.code === 'OPENAI_BACKEND_ERROR'
+                  ? 'OPENAI_ERROR'
+                  : 'SCHEMA_MISMATCH');
           console.log('[Calendar][One] fail', {
             requestId,
             day,
