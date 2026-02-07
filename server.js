@@ -2635,6 +2635,7 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
+      normalizeReelScriptBroll(post, { requestId, post_key });
       lastPost = post;
       const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
       const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
@@ -4274,6 +4275,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Each engagementScripts item must be 6–18 words and reference the SAME failure as the hook.',
     '- Each engagementScripts item must include a concrete noun (invoice, edit, call, ad, landing page, proposal, checkout).',
     '- brollNotes must be 4–8 items; each broll item is a single shot description with a concrete object + action.',
+    '- Each b-roll item MUST be 2–6 words. If longer, it will be truncated.',
+    '- Write b-roll as compressed shot labels: verb+noun phrases, no filler.',
     '- Before output, verify broll items and engagementScripts items satisfy the length rules; if not, rewrite them.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
@@ -6791,6 +6794,61 @@ function convertEngagementScriptsToObject(value) {
   dmScripts = fillToLength(dmScripts, 2, lines).slice(0, 3);
   replyTemplates = fillToLength(replyTemplates, 4, lines).slice(0, 6);
   return { commentPrompts, dmScripts, replyTemplates };
+}
+
+function normalizeReelScriptBroll(post, ctx = {}) {
+  if (!post || typeof post !== 'object') return false;
+  const reel = post.reelScript;
+  if (!reel || typeof reel !== 'object' || Array.isArray(reel)) return false;
+  const raw = reel.brollNotes;
+  if (!Array.isArray(raw)) return false;
+  const normalized = [];
+  let changed = false;
+  raw.forEach((item, idx) => {
+    const beforeRaw = item === null || item === undefined ? '' : String(item);
+    let text = beforeRaw.trim().replace(/\s+/g, ' ');
+    text = text.replace(/[.,!?]+$/g, '');
+    const beforeWords = text ? text.split(/\s+/).filter(Boolean) : [];
+    const beforeWordCount = beforeWords.length;
+    let afterWords = beforeWords;
+    if (beforeWordCount > 6) {
+      afterWords = beforeWords.slice(0, 6);
+    }
+    const after = afterWords.join(' ');
+    const afterWordCount = afterWords.length;
+    if (!after) {
+      if (beforeRaw.trim()) changed = true;
+      if (changed) {
+        console.log('[Calendar][ReelScript][BrollNormalize]', {
+          requestId: ctx?.requestId || null,
+          post_key: ctx?.post_key || null,
+          itemIndex: idx,
+          before: beforeRaw.slice(0, 200),
+          after: '',
+          beforeWordCount,
+          afterWordCount,
+        });
+      }
+      return;
+    }
+    if (beforeRaw.trim() !== after) {
+      changed = true;
+      console.log('[Calendar][ReelScript][BrollNormalize]', {
+        requestId: ctx?.requestId || null,
+        post_key: ctx?.post_key || null,
+        itemIndex: idx,
+        before: beforeRaw.slice(0, 200),
+        after: after.slice(0, 200),
+        beforeWordCount,
+        afterWordCount,
+      });
+    }
+    normalized.push(after);
+  });
+  if (changed) {
+    post.reelScript.brollNotes = normalized;
+  }
+  return changed;
 }
 
 function validateReelScriptParts(parts = {}, mode = 'regular') {
