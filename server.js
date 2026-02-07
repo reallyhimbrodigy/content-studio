@@ -2536,6 +2536,7 @@ async function generateAndValidateSinglePost({
     pillarStyle ? `Pillar style: ${pillarStyle}` : '',
   ].filter(Boolean).join('\n');
   const state = qualityState || { signatureMap: new Map() };
+  let lastPost = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     let reachedOpenAI = false;
     let structuredOutputUsed = false;
@@ -2634,6 +2635,7 @@ async function generateAndValidateSinglePost({
       }
       if (plannedAngle) post.angle = plannedAngle;
       post = coerceCalendarPostTypes(post);
+      lastPost = post;
       const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
       const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
       if (!reelIsObject && !post.reelScript && scriptText) {
@@ -2936,9 +2938,40 @@ async function generateAndValidateSinglePost({
         errors: errorsForLog,
         note: missingDetails ? 'missing_schema_details' : undefined,
       });
-      const deterministicFailure = typeof reason === 'string'
-        && (reason.startsWith('REELSCRIPT_') || reason.startsWith('ENGAGEMENT_SCRIPTS_'));
-      if (attempt < 2 && !deterministicFailure) continue;
+      const repairableReasons = new Set([
+        'REELSCRIPT_BROLL_ITEM_LENGTH',
+        'ENGAGEMENT_SCRIPTS_ITEM_LENGTH',
+        'TOPIC_LOCK_FAILED',
+      ]);
+      if (attempt < 2) {
+        if (repairableReasons.has(reason)) {
+          const repairPost = lastPost || null;
+          const constraints = [];
+          if (reason === 'REELSCRIPT_BROLL_ITEM_LENGTH') {
+            constraints.push(`reelScript.brollNotes: ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words per item, 4–8 items`);
+          }
+          if (reason === 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH') {
+            constraints.push('engagementScripts.commentPrompts: 4–6 items, 6–18 words each');
+            constraints.push('engagementScripts.dmScripts: 2–3 items, 6–18 words each');
+            constraints.push('engagementScripts.replyTemplates: 4–6 items, 6–18 words each');
+          }
+          if (reason === 'TOPIC_LOCK_FAILED') {
+            const terms = err?.details?.extra?.terms || [];
+            constraints.push(`topic lock: include at least 2 of these terms in caption and reelScript and 1 in hook: ${terms.join(', ')}`);
+          }
+          const repairBlock = [
+            `REPAIR ONLY these fields for schema "${schemaLabel}". Keep all other keys unchanged.`,
+            `Failed fields: ${reason}`,
+            constraints.length ? `Constraints:\n- ${constraints.join('\n- ')}` : '',
+            repairPost ? `Previous JSON:\n${safeStringify(repairPost)}` : '',
+          ].filter(Boolean).join('\n');
+          extraInstructions = repairBlock;
+          continue;
+        }
+        const deterministicFailure = typeof reason === 'string'
+          && (reason.startsWith('REELSCRIPT_') || reason.startsWith('ENGAGEMENT_SCRIPTS_') || reason === 'TOPIC_LOCK_FAILED');
+        if (!deterministicFailure) continue;
+      }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
       failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
       failErr.statusCode = 422;
@@ -4234,6 +4267,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
     '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
     '- Each engagementScripts item must be 6–18 words.',
+    '- brollNotes must be 4–8 items; each broll item must be 2–6 words.',
+    '- Before output, verify broll items and engagementScripts items satisfy the length rules; if not, rewrite them.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
   ].join('\n');
@@ -6797,10 +6832,23 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
   if (broll.length < 4 || broll.length > 8) {
     return { ok: false, reason: 'REELSCRIPT_BROLL_COUNT', field: 'reelScript', snippet: broll.join(', ').slice(0, 120), extra: { count: broll.length } };
   }
-  for (const item of broll) {
+  for (let i = 0; i < broll.length; i += 1) {
+    const item = broll[i];
     const wc = countWords(item);
+    const cc = String(item || '').length;
     if (wc < REELSCRIPT_BROLL_MIN_WORDS || wc > REELSCRIPT_BROLL_MAX_WORDS) {
-      return { ok: false, reason: 'REELSCRIPT_BROLL_ITEM_LENGTH', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc } };
+      console.log('[Calendar][ReelScript][BrollItemLength]', {
+        reason: 'REELSCRIPT_BROLL_ITEM_LENGTH',
+        expected: {
+          minWords: REELSCRIPT_BROLL_MIN_WORDS,
+          maxWords: REELSCRIPT_BROLL_MAX_WORDS,
+          minChars: null,
+          maxChars: null,
+        },
+        actual: { itemIndex: i, wordCount: wc, charCount: cc },
+        sample: String(item || '').slice(0, 200),
+      });
+      return { ok: false, reason: 'REELSCRIPT_BROLL_ITEM_LENGTH', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc, itemIndex: i } };
     }
   }
   if (String(mode || '') === 'brand_brain') {
@@ -6860,10 +6908,18 @@ function validateEngagementScriptsParts(parts = {}) {
     if (items.length < min || items.length > max) {
       return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_COUNT', field, snippet: items.join(' | ').slice(0, 120), extra: { count: items.length, label } };
     }
-    for (const item of items) {
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
       const wc = countWords(item);
+      const cc = String(item || '').length;
       if (wc < 6 || wc > 18) {
-        return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH', field, snippet: item.slice(0, 120), extra: { wordCount: wc, label } };
+        console.log('[Calendar][EngagementScripts][ItemLength]', {
+          reason: 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH',
+          expected: { minWords: 6, maxWords: 18, minChars: null, maxChars: null },
+          actual: { array: label, itemIndex: i, wordCount: wc, charCount: cc },
+          sample: String(item || '').slice(0, 200),
+        });
+        return { ok: false, reason: 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH', field, snippet: item.slice(0, 120), extra: { wordCount: wc, label, itemIndex: i } };
       }
     }
     return null;
@@ -6983,6 +7039,19 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     if (countTermHits(captionText, terms) < 2) missingIn.push('caption');
     if (countTermHits(reelScriptText, terms) < 2) missingIn.push('reelScript');
     if (missingIn.length) {
+      console.log('[Calendar][TopicLock][Failed]', {
+        title: toPlainString(post?.title || ''),
+        topicCapsule: toPlainString(post?.topicCapsule || ''),
+        topic_signature: toPlainString(post?.topic_signature || ''),
+        failingField: missingIn[0],
+        sample: toPlainString(
+          missingIn[0] === 'hook'
+            ? hookText
+            : missingIn[0] === 'caption'
+              ? captionText
+              : reelScriptText
+        ).slice(0, 200),
+      });
       return {
         ok: false,
         reason: 'TOPIC_LOCK_FAILED',
