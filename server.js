@@ -3538,11 +3538,11 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         additionalProperties: false,
         required: ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes'],
         properties: {
-          hook: { type: 'string', minLength: 55, maxLength: 260 },
-          beat1: { type: 'string', minLength: 55, maxLength: 260 },
-          beat2: { type: 'string', minLength: 55, maxLength: 260 },
-          beat3: { type: 'string', minLength: 55, maxLength: 260 },
-          cta: { type: 'string', minLength: 55, maxLength: 260 },
+          hook: { type: 'string', minLength: 80, maxLength: 260 },
+          beat1: { type: 'string', minLength: 80, maxLength: 260 },
+          beat2: { type: 'string', minLength: 80, maxLength: 260 },
+          beat3: { type: 'string', minLength: 80, maxLength: 260 },
+          cta: { type: 'string', minLength: 80, maxLength: 260 },
           onScreenText: {
             type: 'array',
             minItems: 3,
@@ -4223,7 +4223,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Each reelScript beat (hook/beat1/beat2/beat3/cta) must be 8–18 words. No fragments.',
     '- Before output, verify every reelScript beat is 8–18 words.',
     '- Never output beats like "Hook." "Cut." "Show." or 1–5 word phrases.',
-    '- Total words across hook+beat1+beat2+beat3+cta must be >= 80; each beat must be >= 12 words.',
+    '- Total words across hook+beat1+beat2+beat3+cta must be >= 80.',
     '- script MUST be a plain-text render of reelScript (same content).',
     '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
     '- Do not output planning artifacts: idea, type, repurpose, followUpIdea.',
@@ -6631,7 +6631,7 @@ const REELSCRIPT_LABELS = [
 ];
 const REELSCRIPT_BEAT_LABELS = ['BEAT_1', 'BEAT_2', 'BEAT_3'];
 const REELSCRIPT_MIN_HOOK_WORDS = 8;
-const REELSCRIPT_MIN_BEAT_WORDS = 18;
+const REELSCRIPT_MIN_BEAT_WORDS = 8;
 const REELSCRIPT_MIN_CTA_WORDS = 10;
 const REELSCRIPT_ONSCREEN_MIN_WORDS = 2;
 const REELSCRIPT_ONSCREEN_MAX_WORDS = 6;
@@ -6774,6 +6774,11 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
   for (const beat of beats) {
     const beatCount = countWords(beat.value);
     if (beatCount < REELSCRIPT_MIN_BEAT_WORDS) {
+      console.log('[Calendar][ReelScript][BeatTooShort]', {
+        beatKey: beat.label,
+        wordCount: beatCount,
+        sample: beat.value.slice(0, 200),
+      });
       return { ok: false, reason: 'REELSCRIPT_BEAT_TOO_SHORT', field: 'reelScript', snippet: beat.value.slice(0, 120), extra: { label: beat.label, wordCount: beatCount } };
     }
   }
