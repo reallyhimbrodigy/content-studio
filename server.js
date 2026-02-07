@@ -2649,13 +2649,14 @@ async function generateAndValidateSinglePost({
           post.title = plannedTitle;
           post.topic_signature = plannedTitle;
         }
-        if (plannedAngle) post.angle = plannedAngle;
-        post = coerceCalendarPostTypes(post);
-        normalizeReelScriptBroll(post, { requestId, post_key });
-        normalizeEngagementScripts(post, {
-          requestId,
-          post_key,
-          title: post.title,
+      if (plannedAngle) post.angle = plannedAngle;
+      post = coerceCalendarPostTypes(post);
+      normalizeAdFields(post, { requestId, post_key });
+      normalizeReelScriptBroll(post, { requestId, post_key });
+      normalizeEngagementScripts(post, {
+        requestId,
+        post_key,
+        title: post.title,
           topic_signature: post.topic_signature,
           topicCapsule: post.topicCapsule,
         });
@@ -4326,6 +4327,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- brollNotes must be 4–8 items; each broll item is a single shot description with a concrete object + action.',
     `- Each b-roll item MUST be ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words. If longer, it will be truncated.`,
     '- Write b-roll as compressed shot labels: verb+noun phrases, no filler.',
+    '- NEVER output tokens: "Reel Script:", "HOOK:", "BODY:", "CTA:", "BEAT_", "ON_SCREEN_TEXT:", "BROLL_NOTES:".',
+    '- hook must be 6–12 words and contain no labels.',
+    '- cta must be 4–10 words and contain no labels.',
+    '- script must be 3–6 newline-separated voiceover lines, no labels or beat markers.',
+    '- reelScript.onScreenText must be 3–6 items, 2–5 words each.',
+    `- reelScript.brollNotes must be 4–8 items, ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words each.`,
     '- Before output, verify broll items and engagementScripts items satisfy the length rules; if not, rewrite them.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
@@ -6824,6 +6831,144 @@ function normalizeEngagementLines(text = '') {
     lines = raw.split(/\s*-\s+/).map((line) => line.trim()).filter(Boolean);
   }
   return lines.filter(Boolean);
+}
+
+function stripAdLabels(text = '') {
+  let out = toPlainString(text || '');
+  if (!out) return out;
+  const leadingLabel = /^\s*(Reel Script|Hook|Body|CTA|On[- ]screen text|Broll notes)\s*:\s*/i;
+  while (leadingLabel.test(out)) {
+    out = out.replace(leadingLabel, '');
+  }
+  out = out
+    .replace(/BEAT[_\s-]*\d+\s*:\s*/gi, '')
+    .replace(/ON_SCREEN_TEXT\s*:\s*/gi, '')
+    .replace(/BROLL_NOTES\s*:\s*/gi, '')
+    .replace(/HOOK\s*:\s*/gi, '')
+    .replace(/CTA\s*:\s*/gi, '')
+    .replace(/BODY\s*:\s*/gi, '');
+  out = out.replace(/\r\n/g, '\n');
+  out = out
+    .split('\n')
+    .map((line) => line.trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    .join('\n');
+  return out.trim();
+}
+
+function extractLabeledLine(text = '', label = '') {
+  const raw = toPlainString(text || '');
+  if (!raw || !label) return '';
+  const lines = raw.split(/\r?\n/);
+  const prefix = `${label}:`;
+  const found = lines.find((line) => line.trim().toLowerCase().startsWith(prefix.toLowerCase()));
+  if (found) {
+    return found.slice(found.indexOf(':') + 1).trim();
+  }
+  return '';
+}
+
+function firstSentence(text = '') {
+  const raw = toPlainString(text || '').trim();
+  if (!raw) return '';
+  const split = raw.split(/[.!?]\s+/);
+  return split[0] ? split[0].trim() : raw;
+}
+
+function normalizeAdFields(post, ctx = {}) {
+  if (!post || typeof post !== 'object') return false;
+  const changedFields = [];
+  const samples = {};
+  const trackChange = (field, before, after) => {
+    if (before === after) return;
+    if (!changedFields.includes(field)) changedFields.push(field);
+    samples[field] = {
+      before: toPlainString(before).slice(0, 120),
+      after: toPlainString(after).slice(0, 120),
+    };
+  };
+  const fields = [
+    'title',
+    'topicCapsule',
+    'hook',
+    'caption',
+    'script',
+    'angle',
+    'cta',
+    'designNotes',
+    'distributionPlan',
+  ];
+  fields.forEach((field) => {
+    if (typeof post[field] !== 'string') return;
+    const before = post[field];
+    const after = stripAdLabels(before);
+    if (after) post[field] = after;
+    trackChange(field, before, post[field]);
+  });
+
+  if (post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript)) {
+    const reel = post.reelScript;
+    ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'body'].forEach((key) => {
+      if (typeof reel[key] === 'string') {
+        const before = reel[key];
+        const after = stripAdLabels(before);
+        if (after) reel[key] = after;
+        trackChange(`reelScript.${key}`, before, reel[key]);
+      }
+    });
+    if (Array.isArray(reel.onScreenText)) {
+      reel.onScreenText = reel.onScreenText.map((item) => stripAdLabels(item));
+    }
+    if (Array.isArray(reel.brollNotes)) {
+      reel.brollNotes = reel.brollNotes.map((item) => stripAdLabels(item));
+    }
+  }
+
+  const rawScript = toPlainString(post.script || '');
+  const rawReel = typeof post.reelScript === 'string'
+    ? post.reelScript
+    : renderReelScriptFromParts(post.reelScript, post.reelScript?.brandBrainMarkers);
+
+  if (!toPlainString(post.hook || '').trim()) {
+    const extracted = extractLabeledLine(rawScript, 'HOOK') || extractLabeledLine(rawReel, 'HOOK');
+    const fallback = extracted || firstSentence(rawScript || rawReel);
+    const cleaned = stripAdLabels(fallback);
+    if (cleaned) {
+      trackChange('hook', post.hook || '', cleaned);
+      post.hook = cleaned;
+    }
+  }
+  if (!toPlainString(post.cta || '').trim()) {
+    const extracted = extractLabeledLine(rawScript, 'CTA') || extractLabeledLine(rawReel, 'CTA');
+    const fallback = extracted || firstSentence(rawScript || rawReel);
+    const cleaned = stripAdLabels(fallback);
+    if (cleaned) {
+      trackChange('cta', post.cta || '', cleaned);
+      post.cta = cleaned;
+    }
+  }
+
+  if (typeof post.script === 'string') {
+    const before = post.script;
+    let cleaned = stripAdLabels(before);
+    if (cleaned) {
+      let lines = cleaned.split('\n').map((line) => line.trim()).filter(Boolean);
+      if (lines.length > 6) lines = lines.slice(0, 6);
+      cleaned = lines.join('\n');
+      post.script = cleaned;
+      trackChange('script', before, cleaned);
+    }
+  }
+
+  if (changedFields.length) {
+    console.log('[Calendar][NormalizeAd]', {
+      requestId: ctx?.requestId || null,
+      post_key: ctx?.post_key || null,
+      changedFields,
+      samples,
+    });
+  }
+  return Boolean(changedFields.length);
 }
 
 function convertEngagementScriptsToObject(value) {
