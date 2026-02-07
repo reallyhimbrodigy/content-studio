@@ -833,6 +833,16 @@ function normalizeContentCard(card) {
   const targetCommentsText = formatStrategyTarget(normalizedStrategy.target_comments_pct);
   return {
     ...base,
+    reelScript: (() => {
+      if (typeof base.reelScript === 'string' && (base.hook || base.body || base.cta)) {
+        return {
+          hook: typeof base.hook === 'string' ? base.hook.trim() : '',
+          body: typeof base.body === 'string' ? base.body.trim() : base.reelScript.trim(),
+          cta: typeof base.cta === 'string' ? base.cta.trim() : '',
+        };
+      }
+      return base.reelScript;
+    })(),
     strategy: normalizedStrategy,
     angle,
     objective,
@@ -841,6 +851,24 @@ function normalizeContentCard(card) {
     hookOptions,
     targetSaves: targetSavesText,
     targetComments: targetCommentsText,
+    videoScript: (() => {
+      const hook = typeof base.hook === 'string' ? base.hook.trim() : '';
+      const body = typeof base.body === 'string' ? base.body.trim() : '';
+      const cta = typeof base.cta === 'string' ? base.cta.trim() : '';
+      const reelText = typeof base.reelScript === 'string' ? base.reelScript.trim() : '';
+      if (!hook && !body && !cta && !reelText) return base.videoScript || base.reelScript || base.script || {};
+      return {
+        hook,
+        body: body || reelText,
+        cta,
+      };
+    })(),
+    engagementScripts: (() => {
+      if (typeof base.engagementLoop === 'string' && base.engagementLoop.trim()) {
+        return base.engagementLoop;
+      }
+      return base.engagementScripts;
+    })(),
   };
 }
 
@@ -8561,12 +8589,12 @@ const PLACEHOLDER_TEXT_RE = /\bplaceholder\b/i;
 const REQUIRED_POST_TEXT_FIELDS = [
   'title',
   'hook',
-  'caption',
+  'body',
   'cta',
+  'caption',
   'designNotes',
+  'engagementLoop',
   'distributionPlan',
-  'topic_signature',
-  'angle',
 ];
 
 function isNonEmptyText(value) {
@@ -8586,22 +8614,18 @@ function hasRequiredPostFields(post = {}) {
   for (const key of REQUIRED_POST_TEXT_FIELDS) {
     if (!isNonEmptyText(post[key])) return false;
   }
-  if (!Array.isArray(post.hashtags)) return false;
-  if (!post.topicCapsule || typeof post.topicCapsule !== 'object') return false;
-  if (!isNonEmptyText(post.topicCapsule.summary)) return false;
-  if (!Array.isArray(post.topicCapsule.mustUse)) return false;
-  if (!Array.isArray(post.topicCapsule.mustAvoid)) return false;
-  if (!isNonEmptyText(post.topicCapsule.audienceAngle)) return false;
-  if (!Array.isArray(post.topicCapsule.keyEntities)) return false;
-  const script = post.script || post.videoScript;
-  if (!script || typeof script !== 'object') return false;
-  if (!isNonEmptyText(script.hook) || !isNonEmptyText(script.body) || !isNonEmptyText(script.cta)) return false;
+  if (!Array.isArray(post.hashtags) || post.hashtags.length === 0) return false;
+  if (!post.hashtags.every((item) => isNonEmptyText(item))) return false;
   const reelScript = post.reelScript || post.reel_script;
-  if (!reelScript || typeof reelScript !== 'object') return false;
-  if (!isNonEmptyText(reelScript.hook) || !isNonEmptyText(reelScript.body) || !isNonEmptyText(reelScript.cta)) return false;
-  const engagement = post.engagementScripts || post.engagement_scripts;
-  if (!engagement || typeof engagement !== 'object') return false;
-  if (!isNonEmptyText(engagement.commentReply) || !isNonEmptyText(engagement.dmReply)) return false;
+  if (typeof reelScript === 'string') {
+    if (!isNonEmptyText(reelScript)) return false;
+  } else if (reelScript && typeof reelScript === 'object') {
+    if (!isNonEmptyText(reelScript.hook) || !isNonEmptyText(reelScript.body) || !isNonEmptyText(reelScript.cta)) {
+      return false;
+    }
+  } else {
+    return false;
+  }
   return true;
 }
 
@@ -8623,14 +8647,20 @@ function validateRenderablePost(post = {}) {
   if (!isNonEmptyText(pillar)) missing.push('pillar');
   const format = getFieldValue(post, ['format', 'postFormat']);
   if (!isNonEmptyText(format)) missing.push('format');
+  const schemaVersion = getFieldValue(post, ['schema_version', 'schemaVersion']);
+  if (!isNonEmptyText(schemaVersion) || schemaVersion !== 'v1') missing.push('schema_version');
   const hook = getFieldValue(post, ['hook', 'headline']);
   if (!isNonEmptyText(hook)) missing.push('hook');
+  const body = getFieldValue(post, ['body']);
+  if (!isNonEmptyText(body)) missing.push('body');
   const caption = getFieldValue(post, ['caption', 'copy', 'caption_full']);
   if (!isNonEmptyText(caption)) missing.push('caption');
   const hashtags = getFieldValue(post, ['hashtags', 'tags']);
   if (!(Array.isArray(hashtags) || typeof hashtags === 'string')) missing.push('hashtags');
   const designNotes = getFieldValue(post, ['designNotes', 'design_notes', 'design']);
   if (typeof designNotes !== 'string') missing.push('designNotes');
+  const engagementLoop = getFieldValue(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
+  if (!isNonEmptyText(engagementLoop)) missing.push('engagementLoop');
   const postKey = getFieldValue(post, ['post_key', 'postKey']);
   const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : null;
   const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
@@ -9114,17 +9144,17 @@ function normalizePost(p, idx = 0, startDay = 1) {
   });
   const out = {
     day: typeof base.day === 'number' ? base.day : (startDay + idx),
-    idea: base.idea || base.title || DEFAULT_IDEA_TEXT,
-    type: base.type || 'educational',
-    caption: base.caption || DEFAULT_CAPTION_TEXT,
+    idea: base.idea || base.title || '',
+    type: base.type || '',
+    caption: base.caption || '',
     hashtags: Array.isArray(base.hashtags) ? base.hashtags : (base.hashtags ? String(base.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
     format: base.format || '',
     cta: base.cta || '',
     pillar: base.pillar || '',
     designNotes: base.designNotes || '',
-    repurpose: Array.isArray(base.repurpose) && base.repurpose.length ? base.repurpose : (base.repurpose ? [base.repurpose] : ['Reel -> Carousel (3 slides)','Caption -> Story (2 frames)']),
-    analytics: Array.isArray(base.analytics) && base.analytics.length ? base.analytics : (base.analytics ? [base.analytics] : ['Reach','Saves']),
-    engagementScripts: base.engagementScripts || { commentReply: '', dmReply: '' },
+    repurpose: Array.isArray(base.repurpose) ? base.repurpose : (base.repurpose ? [base.repurpose] : []),
+    analytics: Array.isArray(base.analytics) ? base.analytics : (base.analytics ? [base.analytics] : []),
+    engagementScripts: base.engagementScripts || base.engagementLoop || {},
     promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
     weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
     videoScript: base.videoScript || base.reelScript || base.script || {},
@@ -9380,7 +9410,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         return post;
       } catch (err) {
         const retryReason = err?.payload?.details?.reason || err?.payload?.reason || null;
-        if (err?.code === 'CALENDAR_POST_GENERATION_FAILED' && ['PARSE_FAILED', 'SCHEMA_MISMATCH'].includes(String(retryReason || ''))) {
+        if (err?.code === 'CALENDAR_POST_GENERATION_FAILED' && ['PARSE_FAILED', 'PARSE_FAIL', 'SCHEMA_MISMATCH', 'SCHEMA_FAIL', 'SCHEMA_CONTRACT_VIOLATION'].includes(String(retryReason || ''))) {
           console.log(`[Calendar] job ${idx + 1}/${jobs.length} retry day=${job.day} slot=${job.slot}`);
           const post = await fetchSinglePost(job, 2);
           completedPosts += 1;
@@ -9464,6 +9494,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       })
       .filter(Boolean);
     const hasMissingFields = renderFailures.length > 0;
+    const hasSchemaVersionMismatch = hasMissingFields && renderFailures.some((item) => Array.isArray(item?.missing) && item.missing.includes('schema_version'));
     const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
     const postKeys = allPosts.map((post) => post?.post_key || post?.postKey || '').filter(Boolean);
     const uniquePostKeys = postKeys.length ? new Set(postKeys).size : null;
@@ -9481,13 +9512,15 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const hasDuplicatePostKeys = uniquePostKeys !== null && uniquePostKeys !== totalPosts;
     const hasDuplicateSlots = uniqueSlotPairs !== null && uniqueSlotPairs !== totalPosts;
     if (!hasFullCount || hasMissingFields || hasPlaceholders || hasDuplicatePostKeys || hasDuplicateSlots) {
-      const reason = !hasFullCount
+    const reason = !hasFullCount
         ? 'count_mismatch'
         : hasDuplicatePostKeys
           ? 'duplicate_post_keys'
           : hasDuplicateSlots
             ? 'duplicate_slots'
-            : hasMissingFields
+            : hasSchemaVersionMismatch
+              ? 'schema_version_mismatch'
+              : hasMissingFields
               ? 'missing_required_fields'
               : 'placeholder_detected';
       const requestIds = orderedResults.map((result) => result?.requestId).filter(Boolean);

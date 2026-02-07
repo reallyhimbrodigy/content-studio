@@ -2520,48 +2520,39 @@ async function generateAndValidateSinglePost({
   }
   const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
   currentStage = 'build_schema';
-  console.log('[Calendar][Diag] STAGE=build_schema', { requestId, day, post_key });
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const baseInstructions = [
     'POST CONTEXT:',
     `post_key: ${post_key}`,
     `day: ${day}`,
     `slotIndex: ${slotIndex}`,
-    `previous_pillar: ${previousPillar}`,
-    `target_pillar: ${assignedPillarKey}`,
+    `pillar: ${assignedPillarKey}`,
     plannedTitle ? `planned_title: ${plannedTitle}` : '',
     plannedAngle ? `planned_angle: ${plannedAngle}` : '',
     `Schema name: ${schemaLabel}`,
     `Niche: ${nicheStyle}`,
     pillarStyle ? `Pillar style: ${pillarStyle}` : '',
   ].filter(Boolean).join('\n');
-  const state = qualityState || { signatureMap: new Map() };
-  let lastPost = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let reachedOpenAI = false;
     let structuredOutputUsed = false;
-    let validatorErrors = null;
+    let rawCandidate = null;
     console.log('[Calendar][Job] start', {
       requestId,
-      day,
-      slot: slotIndex,
+      mode: calendarMode,
       post_key,
+      stage: 'start',
       attempt,
+      promptVersion: PROMPT_VERSION,
     });
     currentStage = 'assign_pillar';
-    console.log('[Calendar][Diag] STAGE=assign_pillar', {
-      requestId,
-      day,
-      post_key,
-      pillar: assignedPillarKey,
-    });
     const retryLine = attempt === 2
       ? `Return ONLY valid JSON that matches schema "${schemaLabel}". No extra keys. No markdown.`
       : '';
     const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
       currentStage = 'openai_request';
-      console.log('[Calendar][Diag] REACHED_OPENAI=true', { requestId, day, post_key, attempt });
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: 1,
         startDay: day,
@@ -2587,19 +2578,12 @@ async function generateAndValidateSinglePost({
       });
       reachedOpenAI = true;
       structuredOutputUsed = Boolean(result.usedStructuredOutput);
-      console.log('[Calendar][Diag] GOT_OPENAI=true', {
-        requestId,
-        day,
-        post_key,
-        attempt,
-        usedStructuredOutput: structuredOutputUsed,
-      });
       if (!Array.isArray(result.posts) || result.posts.length !== 1) {
         const err = new Error('CALENDAR_POST_GENERATION_FAILED');
         err.code = 'CALENDAR_POST_GENERATION_FAILED';
         err.statusCode = 422;
         err.details = {
-          reason: 'SCHEMA_MISMATCH',
+          reason: 'SCHEMA_FAIL',
           field: 'posts',
           snippet: (() => {
             try {
@@ -2614,330 +2598,57 @@ async function generateAndValidateSinglePost({
         };
         throw err;
       }
-      const rawCandidate = result.posts[0];
-      console.log('[Calendar][EngagementScripts][Parsed]', {
-        requestId,
-        day,
-        post_key,
-        type: Array.isArray(rawCandidate?.engagementScripts)
-          ? 'array'
-          : typeof rawCandidate?.engagementScripts,
-      });
-      console.log('[Calendar][AfterEngagementParse]', {
-        requestId,
-        post_key,
-        day,
-        hasEngagementScripts: Boolean(rawCandidate?.engagementScripts),
-        engagementType: typeof rawCandidate?.engagementScripts,
-        engagementKeys: rawCandidate?.engagementScripts && typeof rawCandidate.engagementScripts === 'object'
-          ? Object.keys(rawCandidate.engagementScripts)
-          : null,
-        postType: typeof rawCandidate,
-        postKeys: rawCandidate && typeof rawCandidate === 'object'
-          ? Object.keys(rawCandidate).slice(0, 30)
-          : null,
-      });
-      logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
-      let post;
-      try {
-        post = sanitizePostForSchema(schema, result.posts[0]);
-        post.day = day;
-        post.slotIndex = slotIndex;
-        post.post_key = post_key;
-        post.pillar = assignedPillarKey;
-        if (plannedTitle) {
-          post.title = plannedTitle;
-          post.topic_signature = plannedTitle;
-        }
-      if (plannedAngle) post.angle = plannedAngle;
-      post = coerceCalendarPostTypes(post);
-      normalizeAdFields(post, { requestId, post_key });
-      normalizeReelScriptBroll(post, { requestId, post_key });
-      normalizeEngagementScripts(post, {
-        requestId,
-        post_key,
-        title: post.title,
-          topic_signature: post.topic_signature,
-          topicCapsule: post.topicCapsule,
-        });
-        lastPost = post;
-        const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
-        const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
-        if (!reelIsObject && !post.reelScript && scriptText) {
-          post.reelScript = scriptText;
-        }
-        post.format = 'reel';
-        console.log('[Calendar][EngagementScripts][BeforeValidate]', {
-          requestId,
-          day,
-          post_key,
-          type: Array.isArray(post?.engagementScripts)
-            ? 'array'
-            : typeof post?.engagementScripts,
-          hasCommentPrompts: Array.isArray(post?.engagementScripts?.commentPrompts),
-          commentPromptsLen: Array.isArray(post?.engagementScripts?.commentPrompts)
-            ? post.engagementScripts.commentPrompts.length
-            : 0,
-          hasDmScripts: Array.isArray(post?.engagementScripts?.dmScripts),
-          dmScriptsLen: Array.isArray(post?.engagementScripts?.dmScripts)
-            ? post.engagementScripts.dmScripts.length
-            : 0,
-          hasReplyTemplates: Array.isArray(post?.engagementScripts?.replyTemplates),
-          replyTemplatesLen: Array.isArray(post?.engagementScripts?.replyTemplates)
-            ? post.engagementScripts.replyTemplates.length
-            : 0,
-        });
-        console.log('[Calendar][Candidate]', {
-          requestId,
-          day,
-          post_key,
-          candidateKeys: Object.keys(post || {}),
-          types: {
-            pillar: typeof post?.pillar,
-            script: Array.isArray(post?.script) ? 'array' : typeof post?.script,
-            reelScript: Array.isArray(post?.reelScript) ? 'array' : typeof post?.reelScript,
-            engagementScripts: Array.isArray(post?.engagementScripts) ? 'array' : typeof post?.engagementScripts,
-            topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
-          },
-        });
-        currentStage = 'validate';
-        console.log('[Calendar][Diag] STAGE=validate', { requestId, day, post_key });
-        var schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
-      } catch (postProcessErr) {
-        console.error('[Calendar][Postprocess][Error]', {
-          requestId,
-          post_key,
-          day,
-          slot: slotIndex,
-          message: postProcessErr?.message,
-          stack: String(postProcessErr?.stack || '').slice(0, 2000),
-          postType: typeof post,
-          postKeys: post && typeof post === 'object' ? Object.keys(post).slice(0, 40) : null,
-        });
-        if (postProcessErr?.code === 'CALENDAR_POST_GENERATION_FAILED') throw postProcessErr;
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'POSTPROCESS_FAILED',
-          field: 'postprocess',
-          snippet: postProcessErr?.message || '',
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      if (schemaErrors.length) {
-        const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
-          instancePath: error?.instancePath || '',
-          schemaPath: error?.schemaPath || '',
-          keyword: error?.keyword || '',
-          message: error?.message || '',
-          expected: error?.expected || '',
-          actual: error?.actual || '',
-          params: error?.params || {},
-        }));
-        console.log('[Calendar][Diag] VALIDATED ok=false', {
-          requestId,
-          day,
-          post_key,
-          errors: trimmedErrors,
-        });
-        const keyTypes = Object.keys(post || {}).reduce((acc, key) => {
-          const value = post[key];
-          acc[key] = Array.isArray(value) ? 'array' : typeof value;
-          return acc;
-        }, {});
-        const firstErr = schemaErrors[0];
-        const offendingValue = firstErr?.instancePath
-          ? getValueByInstancePath(post, firstErr.instancePath)
-          : undefined;
-        const snippet = JSON.stringify({
-          path: firstErr?.instancePath || '',
-          keyword: firstErr?.keyword || '',
-          message: firstErr?.message || '',
-          params: firstErr?.params || {},
-          valueType: Array.isArray(offendingValue) ? 'array' : typeof offendingValue,
-        }).slice(0, 300);
-        validatorErrors = trimmedErrors;
-        console.warn('[Calendar][Schema][Errors]', {
-          requestId,
-          day,
-          post_key,
-          errors: trimmedErrors,
-          reachedOpenAI,
-          structuredOutputUsed,
-          keyTypes,
-        });
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'SCHEMA_MISMATCH',
-          field: firstErr?.instancePath || firstErr?.schemaPath || 'unknown',
-          snippet,
-          errors: trimmedErrors,
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      const quality = validateCalendarPostQuality(post, {
-        mode: calendarMode,
-        nicheStyle,
+      rawCandidate = result.posts[0];
+      const serverFields = {
         day,
         slotIndex,
         post_key,
-        requestId,
-      }, state);
-      if (quality && !quality.ok) {
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: quality.reason || 'VALIDATION_FAILED',
-          field: quality.field || 'unknown',
-          snippet: quality.snippet || '',
-          errors: quality.errors || null,
-          extra: quality.extra || null,
-          wordCount: quality?.extra?.wordCount,
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      const renderedReelScript = renderReelScriptFromParts(
-        post.reelScript,
-        post.reelScript?.brandBrainMarkers
-      ).trim();
-      if (!renderedReelScript) {
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'MISSING_REQUIRED_FIELD',
-          field: 'reelScript',
-          snippet: '',
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      post.reelScript = renderedReelScript;
-      post.script = renderedReelScript;
-      if (post.engagementScripts && typeof post.engagementScripts === 'string') {
-        post.engagementScripts = convertEngagementScriptsToObject(post.engagementScripts);
-      }
-      const missing = validatePostCompleteness(post, calendarMode);
-      if (missing.length) {
-        const missingField = missing[0] || 'unknown';
-        const missingValue = missingField !== 'unknown'
-          ? getValueByPath(post, missingField.replace(/\./g, '.'))
-          : undefined;
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'MISSING_REQUIRED_FIELD',
-          field: missingField,
-          snippet: (() => {
-            if (typeof missingValue === 'string') return missingValue.slice(0, 160);
-            try {
-              return JSON.stringify(missingValue ?? post).slice(0, 160);
-            } catch {
-              return '';
-            }
-          })(),
-          errors: null,
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      const injectedAudio = await getHot100AudioForPostKey(post_key, requestId);
-      post.details = {
-        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-        suggestedAudio: injectedAudio,
-      };
-      if (Object.prototype.hasOwnProperty.call(post, 'suggestedAudio')) {
-        delete post.suggestedAudio;
-      }
-      if (!isValidSuggestedAudio(injectedAudio)) {
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'AUDIO_SOURCE_INVALID',
-          field: 'details.suggestedAudio',
-          snippet: String(injectedAudio || '').slice(0, 120),
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      const placeholderCheck = hasPlaceholderInPost(post);
-      if (!placeholderCheck.ok) {
-        const firstPlaceholder = placeholderCheck.errors[0] || { field: 'content', snippet: '', reason: 'placeholder' };
-        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
-        err.code = 'CALENDAR_POST_GENERATION_FAILED';
-        err.statusCode = 422;
-        err.details = {
-          reason: firstPlaceholder.reason === 'emoji' ? 'EMOJI_DETECTED' : 'PLACEHOLDER_DETECTED',
-          field: firstPlaceholder.field || 'content',
-          snippet: (firstPlaceholder.snippet || '').slice(0, 160),
-          errors: placeholderCheck.errors,
-          reachedOpenAI,
-          structuredOutputUsed,
-          stage: currentStage,
-          day,
-          post_key,
-        };
-        throw err;
-      }
-      console.log('[Calendar][Pillar][Validated]', {
-        requestId,
-        post_key,
-        hasPillar: Object.prototype.hasOwnProperty.call(post, 'pillar'),
-      });
-      const finalPost = { ...post };
-      console.log('[Calendar][Pillar][Final]', {
-        requestId,
-        post_key,
-        hasPillar: Object.prototype.hasOwnProperty.call(finalPost, 'pillar'),
         pillar: assignedPillarKey,
-      });
+        format: 'reel',
+        mode: calendarMode,
+      };
+      currentStage = 'validate';
+      const validation = normalizeAndValidateCalendarPost({ rawModelJson: rawCandidate, serverFields, schema });
+      if (!validation.ok) {
+        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+        err.code = 'CALENDAR_POST_GENERATION_FAILED';
+        err.statusCode = 422;
+        err.details = {
+          reason: validation.reason || 'SCHEMA_FAIL',
+          field: validation.field || 'unknown',
+          snippet: validation.snippet || '',
+          missing_fields: validation.missing_fields || [],
+          wrong_types: validation.wrong_types || [],
+          extra_keys: validation.extra_keys || [],
+          reachedOpenAI,
+          structuredOutputUsed,
+          stage: currentStage,
+          day,
+          post_key,
+        };
+        throw err;
+      }
+      const post = validation.post;
       console.log('[Calendar][Job] success', {
         requestId,
-        day,
-        slot: slotIndex,
+        mode: calendarMode,
         post_key,
+        stage: 'success',
       });
-      return finalPost;
+      return post;
       } catch (err) {
         if (!err?.details) {
-          err.details = {
-            reason: 'SCHEMA_MISMATCH',
+          const baseDetails = {
             field: `stage:${currentStage}`,
             stage: currentStage,
             day,
             post_key,
           };
+          if (err?.code === 'PARSE_FAILED') {
+            err.details = { ...baseDetails, reason: 'PARSE_FAIL', field: 'root' };
+          } else {
+            err.details = { ...baseDetails, reason: 'SCHEMA_FAIL' };
+          }
         } else if (!err.details.field) {
           err.details.field = `stage:${currentStage}`;
           err.details.stage = currentStage;
@@ -2949,7 +2660,7 @@ async function generateAndValidateSinglePost({
           failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
           failErr.statusCode = 422;
           failErr.details = {
-            reason: 'SCHEMA_INVALID_REQUEST',
+            reason: 'OPENAI_UPSTREAM_FAIL',
             field: err?.details?.schemaObject || err?.details?.schemaName || 'schema',
             snippet: err?.openaiMessage || err?.message || '',
             day,
@@ -2965,80 +2676,52 @@ async function generateAndValidateSinglePost({
         }
         reachedOpenAI = reachedOpenAI || Boolean(err?.openaiDetails || err?.responseId || err?.statusCode);
         structuredOutputUsed = structuredOutputUsed || Boolean(err?.usedStructuredOutput);
-      const reason = err?.details?.reason
-        || (err?.code === 'PARSE_FAILED'
-          ? (err?.reason || 'PARSE_FAILED')
-          : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
-            ? 'TIMEOUT'
-            : err?.code === 'OPENAI_BACKEND_ERROR'
-              ? 'OPENAI_ERROR'
-              : 'SCHEMA_MISMATCH');
-      const errorsForLog = err?.details?.errors || validatorErrors || null;
-      const missingDetails = reason === 'SCHEMA_MISMATCH'
-        && (!errorsForLog || !errorsForLog.length || (err?.details?.field || 'unknown') === 'unknown');
-      console.log('[Calendar][Job] fail', {
-        requestId,
-        day,
-        slot: slotIndex,
-        post_key,
-        reason,
-        field: err?.details?.field || null,
-        reachedOpenAI,
-        structuredOutputUsed,
-        errors: errorsForLog,
-        note: missingDetails ? 'missing_schema_details' : undefined,
-      });
-      const repairableReasons = new Set([
-        'REELSCRIPT_BROLL_ITEM_LENGTH',
-        'ENGAGEMENT_SCRIPTS_ITEM_LENGTH',
-        'TOPIC_LOCK_FAILED',
-      ]);
-      if (attempt < 2) {
-        if (repairableReasons.has(reason)) {
-          const repairPost = lastPost || null;
-          const constraints = [];
-          if (reason === 'REELSCRIPT_BROLL_ITEM_LENGTH') {
-            constraints.push(`reelScript.brollNotes: ${REELSCRIPT_BROLL_MIN_WORDS}–${REELSCRIPT_BROLL_MAX_WORDS} words per item, 4–8 items`);
-          }
-          if (reason === 'ENGAGEMENT_SCRIPTS_ITEM_LENGTH') {
-            constraints.push(`engagementScripts.commentPrompts: ${ENGAGEMENT_COMMENT_MIN_ITEMS}–${ENGAGEMENT_COMMENT_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
-            constraints.push(`engagementScripts.dmScripts: ${ENGAGEMENT_DM_MIN_ITEMS}–${ENGAGEMENT_DM_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
-            constraints.push(`engagementScripts.replyTemplates: ${ENGAGEMENT_REPLY_MIN_ITEMS}–${ENGAGEMENT_REPLY_MAX_ITEMS} items, ${ENGAGEMENT_ITEM_MIN_WORDS}–${ENGAGEMENT_ITEM_MAX_WORDS} words each`);
-          }
-          if (reason === 'TOPIC_LOCK_FAILED') {
-            const terms = err?.details?.extra?.terms || [];
-            constraints.push(`topic lock: include at least 2 of these terms in caption and reelScript and 1 in hook: ${terms.join(', ')}`);
-          }
-          const repairBlock = [
-            `REPAIR ONLY these fields for schema "${schemaLabel}". Keep all other keys unchanged.`,
-            `Failed fields: ${reason}`,
-            constraints.length ? `Constraints:\n- ${constraints.join('\n- ')}` : '',
-            repairPost ? `Previous JSON:\n${safeStringify(repairPost)}` : '',
+        let reason = err?.details?.reason
+          || (err?.code === 'PARSE_FAILED'
+            ? (err?.reason || 'PARSE_FAILED')
+            : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
+              ? 'OPENAI_TIMEOUT'
+              : err?.code === 'OPENAI_BACKEND_ERROR'
+                ? 'OPENAI_UPSTREAM_FAIL'
+                : 'SCHEMA_MISMATCH');
+        if (reason === 'PARSE_FAILED') reason = 'PARSE_FAIL';
+        if (reason === 'SCHEMA_CONTRACT_VIOLATION') reason = 'SCHEMA_FAIL';
+        if (reason === 'SCHEMA_MISMATCH') reason = 'SCHEMA_FAIL';
+        console.log('[Calendar][Job] fail', {
+          requestId,
+          mode: calendarMode,
+          post_key,
+          stage: currentStage,
+          fail_code: reason,
+          missing_fields: err?.details?.missing_fields || [],
+          wrong_types: err?.details?.wrong_types || [],
+          extra_keys: err?.details?.extra_keys || [],
+          response_size: typeof rawCandidate === 'string' ? rawCandidate.length : null,
+        });
+      const retryableReasons = new Set(['PARSE_FAIL', 'SCHEMA_FAIL']);
+      if (attempt < maxAttempts && retryableReasons.has(reason)) {
+        const missing = Array.isArray(err?.details?.missing_fields) ? err.details.missing_fields : [];
+        const wrongTypes = Array.isArray(err?.details?.wrong_types) ? err.details.wrong_types : [];
+          const retrySummary = reason === 'PARSE_FAIL'
+            ? 'invalid JSON / not a single object'
+            : [
+              missing.length ? `missing: ${missing.join(', ')}` : '',
+              wrongTypes.length ? `wrong_types: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
+            ].filter(Boolean).join(' | ');
+          extraInstructions = [
+            `Your output failed schema validation.`,
+            retrySummary ? `Issues: ${retrySummary}` : '',
+            `Output JSON only. Match the schema exactly. No extra keys.`,
           ].filter(Boolean).join('\n');
-          extraInstructions = repairBlock;
           continue;
         }
-        const deterministicFailure = typeof reason === 'string'
-          && (reason.startsWith('REELSCRIPT_') || reason.startsWith('ENGAGEMENT_SCRIPTS_') || reason === 'TOPIC_LOCK_FAILED');
-        if (!deterministicFailure) continue;
-      }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
       failErr.code = 'CALENDAR_POST_GENERATION_FAILED';
       failErr.statusCode = 422;
       const detailsField = err?.details?.field || 'unknown';
       const detailsSnippet = err?.details?.snippet || '';
-      const detailsErrors = err?.details?.errors || validatorErrors || null;
-      let finalReason = reason;
-      if (reason === 'SCHEMA_MISMATCH' && (!detailsErrors || !detailsErrors.length || detailsField === 'unknown')) {
-        console.error('[Calendar][Schema][MissingDetails]', {
-          requestId,
-          day,
-          post_key,
-          error: err?.message || err,
-          stack: err?.stack || null,
-        });
-        finalReason = 'SCHEMA_MISMATCH_UNSPECIFIED';
-      }
+      const detailsErrors = err?.details?.errors || null;
+      const finalReason = reason;
       failErr.details = {
         reason: finalReason,
         field: detailsField,
@@ -3555,133 +3238,38 @@ const FALLBACK_HOT100_TRACKS = [
 const DEFAULT_SUGGESTED_AUDIO = `${FALLBACK_HOT100_TRACKS[0].title} - ${FALLBACK_HOT100_TRACKS[0].artist}`;
 
 function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
-  const safeMin = Number.isFinite(Number(minDay)) ? Number(minDay) : 1;
-  const safeMax = Number.isFinite(Number(maxDay)) && Number(maxDay) >= safeMin ? Number(maxDay) : safeMin;
-  const isBrandBrain = String(mode || '').toLowerCase() === 'brand_brain';
-  const requiredBase = [
-    'post_key',
-    'day',
-    'slotIndex',
-    'pillar',
-    'title',
-    'topicCapsule',
-    'hook',
-    'caption',
-    'format',
-    'cta',
-    'hashtags',
-    'script',
-    'reelScript',
-    'designNotes',
-    'engagementScripts',
-    'distributionPlan',
-    'details',
-    'topic_signature',
-    'angle',
-  ];
-  const required = requiredBase;
   const baseSchema = {
     type: 'object',
     additionalProperties: false,
-    required,
+    required: [
+      'title',
+      'hook',
+      'body',
+      'cta',
+      'reelScript',
+      'caption',
+      'designNotes',
+      'engagementLoop',
+      'distributionPlan',
+      'hashtags',
+    ],
     properties: {
-      post_key: { type: 'string', minLength: 1 },
-      day: {
-        type: 'integer',
-        minimum: safeMin,
-        maximum: safeMax,
-      },
-      slotIndex: { type: 'integer', minimum: 0 },
-      pillar: { type: 'string', enum: CALENDAR_PILLAR_KEYS },
       title: { type: 'string', minLength: 1 },
-      topicCapsule: { type: 'string', minLength: 1 },
       hook: { type: 'string', minLength: 1 },
-      caption: { type: 'string', minLength: 1 },
-      format: { type: 'string', enum: ['reel'] },
-      topic_signature: { type: 'string', minLength: 3 },
-      angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
+      body: { type: 'string', minLength: 1 },
       cta: { type: 'string', minLength: 1 },
+      reelScript: { type: 'string', minLength: 1 },
+      caption: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
+      engagementLoop: { type: 'string', minLength: 1 },
       distributionPlan: { type: 'string', minLength: 1 },
-      details: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['suggestedAudio'],
-        properties: {
-          suggestedAudio: { type: 'string', minLength: 1 },
-        },
-      },
       hashtags: {
         type: 'array',
+        minItems: 1,
         items: { type: 'string', minLength: 1 },
-      },
-      script: { type: 'string', minLength: 1 },
-      reelScript: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes'],
-        properties: {
-          hook: { type: 'string', minLength: 20, maxLength: 260 },
-          beat1: { type: 'string', minLength: 20, maxLength: 260 },
-          beat2: { type: 'string', minLength: 20, maxLength: 260 },
-          beat3: { type: 'string', minLength: 20, maxLength: 260 },
-          cta: { type: 'string', minLength: 20, maxLength: 260 },
-          onScreenText: {
-            type: 'array',
-            minItems: 3,
-            maxItems: 6,
-            items: { type: 'string', minLength: 1 },
-          },
-          brollNotes: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 8,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
-      },
-      engagementScripts: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['commentPrompts', 'dmScripts', 'replyTemplates'],
-        properties: {
-          commentPrompts: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 6,
-            items: { type: 'string', minLength: 1 },
-          },
-          dmScripts: {
-            type: 'array',
-            minItems: 2,
-            maxItems: 3,
-            items: { type: 'string', minLength: 1 },
-          },
-          replyTemplates: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 6,
-            items: { type: 'string', minLength: 1 },
-          },
-        },
       },
     },
   };
-  if (isBrandBrain) {
-    baseSchema.properties.reelScript.properties.brandBrainMarkers = {
-      type: 'object',
-      additionalProperties: false,
-      required: ['beliefTeardown', 'hiddenConstraint', 'secondOrder', 'objection', 'identityShift'],
-      properties: {
-        beliefTeardown: { type: 'string', minLength: 1 },
-        hiddenConstraint: { type: 'string', minLength: 1 },
-        secondOrder: { type: 'string', minLength: 1 },
-        objection: { type: 'string', minLength: 1 },
-        identityShift: { type: 'string', minLength: 1 },
-      },
-    };
-    baseSchema.properties.reelScript.required = baseSchema.properties.reelScript.required.concat(['brandBrainMarkers']);
-  }
   return baseSchema;
 }
 
@@ -3704,6 +3292,137 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, 
       },
     },
   };
+}
+
+function normalizeToMinimalShape(raw = {}) {
+  if (!raw || typeof raw !== 'object') return {};
+  const cleaned = {
+    title: raw.title,
+    hook: raw.hook,
+    body: raw.body,
+    cta: raw.cta,
+    reelScript: raw.reelScript,
+    caption: raw.caption,
+    designNotes: raw.designNotes,
+    engagementLoop: raw.engagementLoop,
+    distributionPlan: raw.distributionPlan,
+    hashtags: raw.hashtags,
+  };
+  return cleaned;
+}
+
+function validateMinimalShape(post = {}) {
+  const missing = [];
+  const wrongTypes = [];
+  const fail = (reason, field, snippet) => ({
+    ok: false,
+    reason,
+    field,
+    snippet,
+    missing_fields: missing,
+    wrong_types: wrongTypes,
+  });
+  if (!post || typeof post !== 'object') {
+    return { ok: false, reason: 'PARSE_FAIL', field: 'root', snippet: '' };
+  }
+  const required = [
+    'title',
+    'hook',
+    'body',
+    'cta',
+    'reelScript',
+    'caption',
+    'designNotes',
+    'engagementLoop',
+    'distributionPlan',
+    'hashtags',
+  ];
+  for (const key of required) {
+    if (!Object.prototype.hasOwnProperty.call(post, key)) {
+      missing.push(key);
+    }
+  }
+  if (missing.length) {
+    return fail('SCHEMA_FAIL', missing[0], '');
+  }
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelScript', 'caption', 'designNotes', 'engagementLoop', 'distributionPlan'];
+  for (const key of stringFields) {
+    if (typeof post[key] !== 'string' || !post[key].trim()) {
+      wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
+    }
+  }
+  if (!Array.isArray(post.hashtags)) {
+    wrongTypes.push({ key: 'hashtags', expected: 'array', got: typeof post.hashtags });
+  } else if (!post.hashtags.length) {
+    wrongTypes.push({ key: 'hashtags', expected: 'array<non-empty string>', got: 'empty' });
+  } else {
+    post.hashtags.forEach((item, idx) => {
+      if (typeof item !== 'string' || !item.trim()) {
+        wrongTypes.push({ key: `hashtags[${idx}]`, expected: 'string', got: typeof item });
+      }
+    });
+  }
+  if (wrongTypes.length) {
+    const first = wrongTypes[0];
+    return fail('SCHEMA_FAIL', first.key, JSON.stringify(first).slice(0, 120));
+  }
+  return { ok: true };
+}
+
+function normalizeAndValidateCalendarPost({ rawModelJson, serverFields, schema }) {
+  if (!rawModelJson || typeof rawModelJson !== 'object' || Array.isArray(rawModelJson)) {
+    return { ok: false, reason: 'PARSE_FAIL', field: 'root', snippet: '' };
+  }
+  const post = normalizeToMinimalShape(rawModelJson);
+  const candidate = {
+    ...post,
+    post_key: serverFields.post_key,
+    day: serverFields.day,
+    slotIndex: serverFields.slotIndex,
+    pillar: serverFields.pillar,
+    format: serverFields.format,
+    mode: serverFields.mode,
+    schema_version: 'v1',
+  };
+  const validation = validateMinimalShape(candidate);
+  if (!validation.ok) {
+    return { ok: false, ...validation, post: candidate };
+  }
+  return { ok: true, post: candidate };
+}
+
+function runCalendarSchemaSelfTest() {
+  const sample = {
+    title: 'Sample title',
+    hook: 'Sample hook',
+    body: 'Sample body',
+    cta: 'Sample CTA',
+    reelScript: 'Sample reel script',
+    caption: 'Sample caption',
+    designNotes: 'Sample design notes',
+    engagementLoop: 'Sample engagement loop',
+    distributionPlan: 'Sample distribution plan',
+    hashtags: ['sample'],
+  };
+  const serverFields = {
+    post_key: 'day-1-slot-0',
+    day: 1,
+    slotIndex: 0,
+    pillar: 'education',
+    format: 'reel',
+    mode: 'regular',
+  };
+  const ok = normalizeAndValidateCalendarPost({ rawModelJson: sample, serverFields });
+  const missing = normalizeAndValidateCalendarPost({ rawModelJson: {}, serverFields });
+  console.log('[Calendar][SelfTest]', {
+    ok: ok.ok,
+    missing_ok: missing.ok,
+    missing_reason: missing.reason,
+  });
+}
+
+if (process.env.CALENDAR_SCHEMA_SELFTEST === '1') {
+  runCalendarSchemaSelfTest();
 }
 
 function buildBrandBrainDirective(settings = {}) {
@@ -4264,6 +3983,8 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   return lines.join('\n');
 }
 
+const PROMPT_VERSION = 'calendar_minimal_v1';
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -4275,7 +3996,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
-  const previousPillar = opts.previousPillar || 'none';
   const targetPillar = opts.targetPillar || '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
@@ -4288,71 +4008,104 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     postKeyValue ? `post_key: ${postKeyValue}` : null,
     `day: ${startDay}`,
     `slotIndex: ${slotIndex}`,
-    previousPillar ? `previous_pillar: ${previousPillar}` : null,
-    targetPillar ? `target_pillar: ${targetPillar}` : null,
+    'format: reel',
+    targetPillar ? `pillar: ${targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
   ].filter(Boolean).join('\n');
 
   const GLOBAL_RULES = [
-    'GLOBAL AD CONTRACT (BINDING)',
+    'OUTPUT CONTRACT',
     '- Output JSON only. No markdown. No commentary.',
-    '- Use the schema exactly; output every required field with non-empty content.',
-    '- No emojis anywhere in any field.',
-    '- No placeholders or template tokens (no {{...}}, <...>, TBD, TODO, lorem ipsum).',
-    '- All content is an ad. No educational framing. No explainer tone. No abstract insights.',
-    '- Do not use: learn, discover, understand, tips, guide.',
-    '- Every post resolves a problem that already exists.',
-    '- Hook introduces a failure. Body escalates consequences. CTA resolves the failure.',
-    '- The product/service must feel required, not optional.',
-    '- NEVER output labels in any field (no "HOOK:", "BEAT_", "BODY:", "CTA:", "ON_SCREEN_TEXT:", "BROLL_NOTES:", "Reel Script:").',
-    '- No word-count or length constraints. Do not mention seconds or counts.',
-    '- format MUST be exactly "reel".',
-    '- reelScript MUST be an object with keys: hook, beat1, beat2, beat3, cta, onScreenText[], brollNotes[].',
-    '- script MUST be a plain-text render of reelScript (same content).',
-    '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
-    '- Do not output planning artifacts: idea, type, repurpose, followUpIdea.',
-    '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
-    '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
-    '- All fields must align to planned_title / topic_signature and the same topic.',
-    '- Hook, caption, script, and onScreenText must explicitly include the core anchor phrase(s) from planned_title/topic_signature (location + domain + angle).',
-    '- hashtags must be a JSON array of strings.',
-    `- engagementScripts MUST be an object with arrays: commentPrompts[${ENGAGEMENT_COMMENT_MIN_ITEMS}-${ENGAGEMENT_COMMENT_MAX_ITEMS}], dmScripts[${ENGAGEMENT_DM_MIN_ITEMS}-${ENGAGEMENT_DM_MAX_ITEMS}], replyTemplates[${ENGAGEMENT_REPLY_MIN_ITEMS}-${ENGAGEMENT_REPLY_MAX_ITEMS}].`,
-    '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
-    '- onScreenText MUST be an array of clean fragments intended to be joined with " | " into a single line. No labels, no numbering, no commas as separators, no newlines.',
-    '- Each onScreenText fragment is plain stakes/contrast text only (no definitions).',
-    '- brollNotes MUST be an array of plain phrase strings only (no labels, no numbering, no sentences that require commas).',
-    '- brollNotes are real-world moments showing confusion, cost, hesitation, or stakes.',
-    '- CTA must directly counter the mistake shown; no generic contact language.',
+    '- Match the schema exactly; output every required field with non-empty content.',
+    '- Do not add extra keys.',
     `- Required keys (exact): ${requiredKeys}`,
-    'FIELD CONTRACTS (AD-ONLY, NO LABELS)',
-    '- Title: plain buyer problem or misconception; no hype.',
-    '- Hook: lived micro-failure in past/present tense with concrete consequence.',
-    '- Reel script: scene-based escalation; each line increases pressure.',
-    '- Caption: restated pain + added consequence + credibility anchor; no fluff.',
-    '- Engagement scripts: reference mistakes/regrets; no opinion farming.',
-    '- Design notes: amplify tension (contrast, pauses, zooms on consequences).',
-    '- Distribution plan: platform-specific to amplify the hook; no boilerplate.',
+    '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
+    '- No emojis. No placeholders. No filler templates.',
   ].join('\n');
 
-  const REGULAR_CONTRACT = [
-    'REGULAR AD MODE',
-    'Tone: direct, calm, consequence-aware. No educational framing.',
-    'Focus: immediate failure -> required resolution. No teaching.',
+  const REGULAR_ALL_FIELDS_PROMPT = [
+    'REGULAR MODE (AD CONTRACT)',
+    '- Tone: clear, practical, non-manipulative.',
+    '- This is an ad: every field must push one concrete problem to one resolution.',
+    '',
+    'FIELD RULES (EACH LINE MUST OBEY)',
+    'title: one concrete buyer problem or misconception.',
+    '- Fail if: abstract, motivational, or could fit any product.',
+    '- Example shape: "{TOPIC} stalls at {FRICTION}".',
+    'hook: lived micro-failure with a concrete consequence.',
+    '- Fail if: "Did you know", "Here’s why", or generic tips.',
+    '- Example shape: "I tried {ACTION} and lost {RESULT}."',
+    'body: 1–2 tight lines that worsen the failure and point to the product.',
+    '- Fail if: educational explainer or list of tips.',
+    '- Example shape: "The hidden step is {OBSTACLE}, so DIY keeps failing."',
+    'cta: single clear action tied to the resolution.',
+    '- Fail if: vague ("learn more", "follow for tips").',
+    '- Example shape: "Get the {DELIVERABLE} that fixes this."',
+    'reelScript: short ad copy only, no labels, no beats, no timestamps.',
+    '- Fail if: contains labels like HOOK:, CTA:, BEAT.',
+    '- Example shape: "{HOOK LINE}. {BODY LINE}. {CTA LINE}."',
+    'caption: reinforces the same failure and resolution in plain language.',
+    '- Fail if: generic motivational copy.',
+    '- Example shape: "{PAIN}. {RESOLUTION}."',
+    'designNotes: concrete filming guidance; no theory.',
+    '- Fail if: abstract or vague.',
+    '- Example shape: "{SHOT 1}. {SHOT 2}. {SHOT 3}."',
+    'engagementLoop: one natural prompt tied to the same failure.',
+    '- Fail if: generic question.',
+    '- Example shape: "What broke for you when {FAILURE}?"',
+    'distributionPlan: short plan for where/how to post; no growth hacks.',
+    '- Fail if: boilerplate.',
+    '- Example shape: "Post to {CHANNEL} and pin {HOOK}."',
+    'hashtags: array of relevant strings, no duplicates.',
+    '- Fail if: empty or non-relevant.',
+    '- Example shape: ["#tagone","#tagtwo"]',
   ].join('\n');
 
-  const BRAND_BRAIN_CONTRACT = [
-    'BRAND BRAIN AD MODE',
-    'Add persuasion depth while keeping the same ad structure.',
-    'Embed: belief teardown, hidden constraint, second-order consequence, objection preemption, identity or status contrast.',
-    'Must remain a direct-response ad, not a manifesto.',
+  const BRAND_BRAIN_ALL_FIELDS_PROMPT = [
+    'BRAND BRAIN MODE (AD CONTRACT)',
+    '- Must be materially different from regular: persuasion-first, sharper and more decisive.',
+    '- Still an ad: one concrete failure to one resolution.',
+    '',
+    'FIELD RULES (EACH LINE MUST OBEY)',
+    'title: challenge a false assumption about {TOPIC}.',
+    '- Fail if: neutral, educational, or generic.',
+    '- Example shape: "{ASSUMPTION} is why {TOPIC} keeps failing."',
+    'hook: lived micro-failure that implies a wrong belief.',
+    '- Fail if: tips, advice, or abstract claims.',
+    '- Example shape: "I did {COMMON_TACTIC} and it made things worse."',
+    'body: 1–2 tight lines exposing the hidden constraint and second-order consequence.',
+    '- Fail if: it reads like a tutorial.',
+    '- Example shape: "The real blocker is {CONSTRAINT}, which costs {CONSEQUENCE}."',
+    'cta: single action that resolves the failure with authority.',
+    '- Fail if: generic, soft, or vague.',
+    '- Example shape: "Use {OFFER} to avoid that trap."',
+    'reelScript: short ad copy only, no labels, no beats, no timestamps.',
+    '- Fail if: contains labels like HOOK:, CTA:, BEAT.',
+    '- Example shape: "{HOOK LINE}. {BODY LINE}. {CTA LINE}."',
+    'caption: reinforces the same belief shift and consequence.',
+    '- Fail if: neutral tone.',
+    '- Example shape: "{BELIEF COST}. {RESOLUTION}."',
+    'designNotes: concrete filming guidance that reinforces tension.',
+    '- Fail if: abstract or vague.',
+    '- Example shape: "{SHOT 1}. {SHOT 2}. {SHOT 3}."',
+    'engagementLoop: prompt that surfaces the belief/objection.',
+    '- Fail if: generic question.',
+    '- Example shape: "What belief kept you stuck on {FAILURE}?"',
+    'distributionPlan: short plan for where/how to post; no growth hacks.',
+    '- Fail if: boilerplate.',
+    '- Example shape: "Post to {CHANNEL} and pin {HOOK}."',
+    'hashtags: array of relevant strings, no duplicates.',
+    '- Fail if: empty or non-relevant.',
+    '- Example shape: ["#tagone","#tagtwo"]',
   ].join('\n');
 
-  const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_CONTRACT : REGULAR_CONTRACT;
+  const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
+    `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
   ].filter(Boolean);
@@ -4361,7 +4114,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-return `Calendar schema: ${expectedCount} posts with post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelScript, caption, designNotes, engagementLoop, distributionPlan, hashtags[]. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -5478,7 +5231,6 @@ function deriveFallbackDeliverable(post = {}, classification = 'creator') {
 const NICHE_KEYWORD_BANK = {
   fitness: ['TRAIN','GRIND','LIFT','FIGHT','STRONG'],
   basketball: ['HOOPS','DRILLS','SHOOT','DEFENSE','HANDLES'],
-  'real estate': ['LISTING','HOME','DEAL'],
   beauty: ['GLOW','SKIN','LOOK'],
   cooking: ['RECIPE','EAT','COOK'],
   restaurant: ['BURGER','FRIES','MENU','SAUCE','DEAL','ORDER'],
@@ -5486,7 +5238,7 @@ const NICHE_KEYWORD_BANK = {
   marketing: ['LEADS','SALES','LAUNCH'],
   creator: ['CREATE','IMPACT','INSPIRE'],
 };
-const DIRECT_RESPONSE_KEYWORDS = ['coach','consult','agency','course','training','consultant','creator','fitness','real estate','broker'];
+const DIRECT_RESPONSE_KEYWORDS = ['coach','consult','agency','course','training','consultant','creator','fitness','broker'];
 const NON_DIRECT_RESPONSE_KEYWORDS = ['restaurant','fast-food','cafe','local','diner','bar','retail','bakery','food'];
 const NON_DIRECT_DELIVERABLES = {
   restaurant: 'reply with the best item to try first',
@@ -6596,13 +6348,11 @@ function normalizeDecisionAnchor(value = '') {
 }
 
 const DECISION_ANCHOR_BLOCKLIST = new Set([
-  'miami',
   'market trends',
   'top neighborhoods',
 ]);
 
 const PLACEHOLDER_BLACKLIST = new Set([
-  'miami',
   'n/a',
   'tbd',
   'placeholder',
@@ -6997,56 +6747,20 @@ function normalizeEngagementScripts(post, ctx = {}) {
       scripts = convertEngagementScriptsToObject(scripts);
     }
     if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return false;
-    const topicSource = [
-      ctx?.topic_signature,
-      ctx?.title,
-      ctx?.topicCapsule,
-    ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
-    const topicWords = normalizeTitleText(topicSource).split(/\s+/).filter(Boolean).slice(0, 2);
-    const tail = topicWords.length ? `about ${topicWords.join(' ')}` : 'about this';
-    const normalizeItem = (value, fieldName, itemIndex) => {
+    const normalizeItem = (value) => {
       const beforeRaw = value === null || value === undefined ? '' : String(value);
-      let text = beforeRaw.trim().replace(/\s+/g, ' ').replace(/[.,!?]+$/g, '');
-      let words = text ? text.split(/\s+/).filter(Boolean) : [];
-      const beforeWordCount = words.length;
-      while (words.length > 0 && words.length < ENGAGEMENT_ITEM_MIN_WORDS) {
-        const tailWords = tail.split(/\s+/);
-        words = words.concat(tailWords);
-      }
-      if (words.length > ENGAGEMENT_ITEM_MAX_WORDS) {
-        words = words.slice(0, ENGAGEMENT_ITEM_MAX_WORDS);
-      }
-      const after = words.join(' ');
-      const afterWordCount = words.length;
-      if (after && after !== beforeRaw.trim()) {
-        console.log('[Calendar][EngagementScripts][Normalize]', {
-          requestId: ctx?.requestId || null,
-          post_key: ctx?.post_key || null,
-          fieldName,
-          itemIndex,
-          before: beforeRaw.slice(0, 200),
-          after: after.slice(0, 200),
-          beforeWordCount,
-          afterWordCount,
-        });
-      }
-      return after || beforeRaw.trim();
+      return beforeRaw.trim().replace(/\s+/g, ' ').replace(/[.,!?]+$/g, '');
     };
-    const normalizeArray = (arr, fieldName) => {
+    const normalizeArray = (arr) => {
       if (!Array.isArray(arr)) return arr;
-      return arr.map((item, idx) => normalizeItem(item, fieldName, idx));
+      return arr.map((item) => normalizeItem(item));
     };
-    scripts.commentPrompts = normalizeArray(scripts.commentPrompts, 'commentPrompts');
-    scripts.dmScripts = normalizeArray(scripts.dmScripts, 'dmScripts');
-    scripts.replyTemplates = normalizeArray(scripts.replyTemplates, 'replyTemplates');
+    scripts.commentPrompts = normalizeArray(scripts.commentPrompts);
+    scripts.dmScripts = normalizeArray(scripts.dmScripts);
+    scripts.replyTemplates = normalizeArray(scripts.replyTemplates);
     post.engagementScripts = scripts;
     return true;
-  } catch (err) {
-    console.warn('[Calendar][EngagementScripts][NormalizeError]', {
-      requestId: ctx?.requestId || null,
-      post_key: ctx?.post_key || null,
-      message: err?.message || err,
-    });
+  } catch {
     return false;
   }
 }
@@ -7323,13 +7037,6 @@ function extractTopicAnchors(text = '') {
     if (!phrase) return;
     if (!anchors.includes(phrase)) anchors.push(phrase);
   };
-  if (normalized.includes('real estate')) include('real estate');
-  for (let i = 0; i < allTokens.length - 2; i += 1) {
-    if (allTokens[i + 1] === 'real' && allTokens[i + 2] === 'estate') {
-      include(`${allTokens[i]} real estate`);
-      break;
-    }
-  }
   if (anchors.length < 2 && filtered.length >= 2) {
     include(`${filtered[0]} ${filtered[1]}`);
   }
@@ -7361,141 +7068,6 @@ function countTermHits(text = '', terms = []) {
 }
 
 function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
-  if (!post || typeof post !== 'object') {
-    return { ok: false, reason: 'INVALID_POST' };
-  }
-  const placeholderCheck = hasPlaceholderInPost(post);
-  if (!placeholderCheck.ok) {
-    const first = placeholderCheck.errors[0] || { field: '/', reason: 'placeholder', snippet: '' };
-    return {
-      ok: false,
-      reason: first.reason === 'emoji' ? 'EMOJI_DETECTED' : 'PLACEHOLDER_DETECTED',
-      field: first.field,
-      snippet: first.snippet,
-      errors: placeholderCheck.errors,
-    };
-  }
-  const designNotesRaw = toPlainString(post?.designNotes || '');
-  if (!designNotesRaw.trim()) {
-    return { ok: false, reason: 'DESIGN_NOTES_MISSING', field: 'designNotes', snippet: '' };
-  }
-  let reelScriptText = '';
-  if (post?.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript)) {
-    const reelCheck = validateReelScriptParts(post.reelScript, ctx?.mode || 'regular');
-    if (reelCheck && !reelCheck.ok) {
-      return reelCheck;
-    }
-    reelScriptText = renderReelScriptFromParts(
-      post.reelScript,
-      post.reelScript?.brandBrainMarkers
-    );
-  } else {
-    reelScriptText = toPlainString(post?.reelScript || '');
-  }
-  if (String(ctx?.mode || '') === 'brand_brain') {
-    if (!post?.reelScript || typeof post.reelScript !== 'object' || Array.isArray(post.reelScript)) {
-      return {
-        ok: false,
-        reason: 'BRAND_BRAIN_MARKER_MISSING',
-        field: 'reelScript',
-        snippet: reelScriptText.slice(0, 120),
-        extra: { missing: BRAND_BRAIN_MARKERS },
-      };
-    }
-    if (!post.reelScript.brandBrainMarkers) {
-      return {
-        ok: false,
-        reason: 'BRAND_BRAIN_MARKER_MISSING',
-        field: 'reelScript',
-        snippet: '',
-        extra: { missing: BRAND_BRAIN_MARKERS },
-      };
-    }
-  }
-  const engagementCheck = validateEngagementScriptsParts(post?.engagementScripts || {});
-  if (engagementCheck && !engagementCheck.ok) {
-    return engagementCheck;
-  }
-  const hookText = toPlainString(post?.hook || '');
-  const captionText = toPlainString(post?.caption || '');
-  const topicSource = [
-    post?.topic_signature,
-    post?.title,
-    post?.topicCapsule,
-    ctx?.plannedTitle,
-  ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
-  const terms = extractTopicAnchors(topicSource);
-  if (terms.length >= 2) {
-    const missingIn = [];
-    if (countTermHits(hookText, terms) < 1) missingIn.push('hook');
-    if (countTermHits(captionText, terms) < 2) missingIn.push('caption');
-    if (countTermHits(reelScriptText, terms) < 2) missingIn.push('reelScript');
-    if (missingIn.length) {
-      const injectTerms = (text, neededTerms) => {
-        const missingTerms = neededTerms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(text));
-        if (!missingTerms.length) return text;
-        return `${text} — ${missingTerms.join(' ')}`;
-      };
-      let repairedHook = hookText;
-      let repairedCaption = captionText;
-      if (missingIn.includes('hook')) {
-        repairedHook = injectTerms(hookText, terms);
-        if (repairedHook !== hookText) {
-          console.log('[Calendar][TopicLock][Repair]', {
-            requestId: ctx?.requestId || null,
-            post_key: ctx?.post_key || null,
-            field: 'hook',
-            before: hookText.slice(0, 200),
-            after: repairedHook.slice(0, 200),
-            injectedTerms: terms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(hookText)).slice(0, 2),
-          });
-          post.hook = repairedHook;
-        }
-      }
-      if (missingIn.includes('caption')) {
-        repairedCaption = injectTerms(captionText, terms);
-        if (repairedCaption !== captionText) {
-          console.log('[Calendar][TopicLock][Repair]', {
-            requestId: ctx?.requestId || null,
-            post_key: ctx?.post_key || null,
-            field: 'caption',
-            before: captionText.slice(0, 200),
-            after: repairedCaption.slice(0, 200),
-            injectedTerms: terms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(captionText)).slice(0, 2),
-          });
-          post.caption = repairedCaption;
-        }
-      }
-      const recheckMissing = [];
-      if (countTermHits(repairedHook, terms) < 1) recheckMissing.push('hook');
-      if (countTermHits(repairedCaption, terms) < 2) recheckMissing.push('caption');
-      if (countTermHits(reelScriptText, terms) < 2) recheckMissing.push('reelScript');
-      if (!recheckMissing.length) {
-        return { ok: true };
-      }
-      console.log('[Calendar][TopicLock][Failed]', {
-        title: toPlainString(post?.title || ''),
-        topicCapsule: toPlainString(post?.topicCapsule || ''),
-        topic_signature: toPlainString(post?.topic_signature || ''),
-        terms,
-        failingField: missingIn[0],
-        sample: toPlainString(
-          missingIn[0] === 'hook'
-            ? hookText
-            : missingIn[0] === 'caption'
-              ? captionText
-              : reelScriptText
-        ).slice(0, 200),
-      });
-      return {
-        ok: false,
-        reason: 'TOPIC_LOCK_FAILED',
-        field: missingIn[0],
-        snippet: hookText.slice(0, 80),
-        extra: { missingIn, terms },
-      };
-    }
-  }
   return { ok: true };
 }
 
@@ -9527,6 +9099,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const attemptStart = Date.now();
   const contextLabel = formatCalendarLogContext(loggingContext);
   const label = contextLabel ? ` (${contextLabel})` : '';
+  const debugCalendar = process.env.DEBUG_CALENDAR === '1';
   const previewJson = (value = '') => {
     if (!value) return '';
     const snippet = String(value);
@@ -9576,6 +9149,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     }
     return null;
   };
+  const parseJsonFromText = (text = '') => {
+    const trimmed = String(text || '').trim();
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error('PARSE_FAILED');
+    }
+    return JSON.parse(trimmed.slice(start, end + 1));
+  };
+
   const attemptRequest = async (extraInstructions = '', useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
     const attemptNumber = Number.isFinite(Number(overrides.attempt)) ? Number(overrides.attempt) : 1;
@@ -9603,22 +9186,24 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       ? (VOICE_LOCK_PRESET_GUIDES[attemptOpts.voiceLock.preset]?.label || attemptOpts.voiceLock.preset)
       : 'none';
     const openAiRequestId = loggingContext?.requestId || 'unknown';
-    if (voiceLockApplied) {
-      console.log('[VoiceLock] applied=true preset="%s" requestId=%s', voiceLockPreset, openAiRequestId);
-    } else if (attemptOpts.voiceLock?.reason === 'unknown_preset') {
-      console.log('[VoiceLock] applied=false requestId=%s reason=unknown_preset', openAiRequestId);
-    } else {
-      console.log('[VoiceLock] applied=false requestId=%s', openAiRequestId);
-    }
-    if (loggingContext?.requestId) {
-      console.log('[Calendar][Prompt]', {
-        requestId: loggingContext.requestId,
-        chunkStartDay,
-        chunkDays,
-        promptChars: prompt.length,
-        maxTokens: attemptMaxTokens,
-        planUsed: Boolean(opts.planUsed),
-      });
+    if (debugCalendar) {
+      if (voiceLockApplied) {
+        console.log('[VoiceLock] applied=true preset="%s" requestId=%s', voiceLockPreset, openAiRequestId);
+      } else if (attemptOpts.voiceLock?.reason === 'unknown_preset') {
+        console.log('[VoiceLock] applied=false requestId=%s reason=unknown_preset', openAiRequestId);
+      } else {
+        console.log('[VoiceLock] applied=false requestId=%s', openAiRequestId);
+      }
+      if (loggingContext?.requestId) {
+        console.log('[Calendar][Prompt]', {
+          requestId: loggingContext.requestId,
+          chunkStartDay,
+          chunkDays,
+          promptChars: prompt.length,
+          maxTokens: attemptMaxTokens,
+          planUsed: Boolean(opts.planUsed),
+        });
+      }
     }
   const responseFormat = {
     type: 'json_schema',
@@ -9638,7 +9223,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       max_output_tokens: attemptMaxTokens,
       text: { format: responseTextFormat },
     });
-    if (loggingContext?.requestId) {
+    if (debugCalendar && loggingContext?.requestId) {
       console.log('[OpenAI][CalendarChunk][Payload]', {
         requestId: loggingContext.requestId,
         model: attemptModel,
@@ -9773,15 +9358,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       let parsedSource = 'output_parsed';
       if (!parsed && rawText) {
         try {
-          parsed = JSON.parse(rawText);
+          parsed = parseJsonFromText(rawText);
           parsedSource = 'output_text_in_output';
         } catch (parseErr) {
-          console.warn('[Calendar][Parse] structured_output_parse_failed', {
+          const rawHead = String(rawText || '').replace(/\s+/g, ' ').slice(0, 120);
+          console.log('[Calendar][Parse][Fail]', {
             requestId: loggingContext?.requestId || 'unknown',
-            responseId: firstResponse.responseId || null,
-            model: firstResponse.responseModel || modelName,
-            prefix: rawText.slice(0, 120),
-            suffix: rawText.slice(-120),
+            mode: calendarMode,
+            raw_head: rawHead,
           });
           const err = new Error('missing_posts_parse_failed');
           err.code = 'PARSE_FAILED';
@@ -9801,13 +9385,15 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           day: chunkStartDay,
           schemaName: schemaName,
         }, rawText);
-        console.log('[Calendar][Parse] structured_output_used', {
-          requestId: loggingContext?.requestId || 'unknown',
-          responseId: firstResponse.responseId || null,
-          model: firstResponse.responseModel || modelName,
-          usedStructuredOutput: true,
-          source: parsedSource,
-        });
+        if (debugCalendar) {
+          console.log('[Calendar][Parse] structured_output_used', {
+            requestId: loggingContext?.requestId || 'unknown',
+            responseId: firstResponse.responseId || null,
+            model: firstResponse.responseModel || modelName,
+            usedStructuredOutput: true,
+            source: parsedSource,
+          });
+        }
         return {
           posts: normalized.posts,
           rawContent: rawText,
@@ -9817,14 +9403,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           usedStructuredOutput: true,
         };
       }
-      console.warn('[Calendar][Parse] structured_output_missing', {
-        requestId: loggingContext?.requestId || 'unknown',
-        expectedCount: expectedChunkCount,
-        responseId: firstResponse.responseId || null,
-        model: firstResponse.responseModel || modelName,
-        presentFields: firstResponse.responseKeys || [],
-        note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
-      });
+      if (debugCalendar) {
+        console.warn('[Calendar][Parse] structured_output_missing', {
+          requestId: loggingContext?.requestId || 'unknown',
+          expectedCount: expectedChunkCount,
+          responseId: firstResponse.responseId || null,
+          model: firstResponse.responseModel || modelName,
+          presentFields: firstResponse.responseKeys || [],
+          note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
+        });
+      }
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
@@ -9839,15 +9427,14 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     let parsedSource = 'output_parsed';
     if (!parsed && rawText) {
       try {
-        parsed = JSON.parse(rawText);
+        parsed = parseJsonFromText(rawText);
         parsedSource = 'output_text_in_output';
       } catch (parseErr) {
-        console.warn('[Calendar][Parse] structured_output_parse_failed', {
+        const rawHead = String(rawText || '').replace(/\s+/g, ' ').slice(0, 120);
+        console.log('[Calendar][Parse][Fail]', {
           requestId: loggingContext?.requestId || 'unknown',
-          responseId: firstResponse.responseId || null,
-          model: firstResponse.responseModel || modelName,
-          prefix: rawText.slice(0, 120),
-          suffix: rawText.slice(-120),
+          mode: calendarMode,
+          raw_head: rawHead,
         });
         const err = new Error('missing_posts_parse_failed');
         err.code = 'PARSE_FAILED';
@@ -9860,14 +9447,16 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       }
     }
     if (!parsed) {
-      console.warn('[Calendar][Parse] structured_output_missing', {
-        requestId: loggingContext?.requestId || 'unknown',
-        expectedCount: expectedChunkCount,
-        responseId: firstResponse.responseId || null,
-        model: firstResponse.responseModel || modelName,
-        presentFields: firstResponse.responseKeys || [],
-        note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
-      });
+      if (debugCalendar) {
+        console.warn('[Calendar][Parse] structured_output_missing', {
+          requestId: loggingContext?.requestId || 'unknown',
+          expectedCount: expectedChunkCount,
+          responseId: firstResponse.responseId || null,
+          model: firstResponse.responseModel || modelName,
+          presentFields: firstResponse.responseKeys || [],
+          note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
+        });
+      }
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
@@ -9884,13 +9473,15 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       day: chunkStartDay,
       schemaName: schemaName,
     }, rawText);
-    console.log('[Calendar][Parse] structured_output_used', {
-      requestId: loggingContext?.requestId || 'unknown',
-      responseId: firstResponse.responseId || null,
-      model: firstResponse.responseModel || modelName,
-      usedStructuredOutput: true,
-      source: parsedSource,
-    });
+    if (debugCalendar) {
+      console.log('[Calendar][Parse] structured_output_used', {
+        requestId: loggingContext?.requestId || 'unknown',
+        responseId: firstResponse.responseId || null,
+        model: firstResponse.responseModel || modelName,
+        usedStructuredOutput: true,
+        source: parsedSource,
+      });
+    }
     return {
       posts: normalized.posts,
       rawContent: rawText,
@@ -12496,15 +12087,6 @@ const server = http.createServer((req, res) => {
           if (!isPro && body?.isFirst === true) {
             await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
           }
-          console.log('[Calendar][One][Payload]', {
-            requestId,
-            post_key: postKeyValue,
-            keys: Object.keys(post || {}),
-            format: post?.format,
-            hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
-            hasScript: Boolean(post?.script && String(post.script).trim()),
-            hasSuggestedAudio: Boolean(getSuggestedAudioValue(post).trim()),
-          });
           console.log('[Calendar][One] success', {
             requestId,
             day,
@@ -12518,16 +12100,21 @@ const server = http.createServer((req, res) => {
             || (err?.code === 'PARSE_FAILED'
               ? (err?.reason || 'PARSE_FAILED')
               : err?.code === 'OPENAI_TIMEOUT' || err?.code === 'MODEL_TIMEOUT'
-                ? 'TIMEOUT'
+                ? 'OPENAI_TIMEOUT'
                 : err?.code === 'OPENAI_BACKEND_ERROR'
-                  ? 'OPENAI_ERROR'
+                  ? 'OPENAI_UPSTREAM_FAIL'
                   : 'SCHEMA_MISMATCH');
+          const normalizedReason = reason === 'PARSE_FAILED'
+            ? 'PARSE_FAIL'
+            : reason === 'SCHEMA_MISMATCH'
+              ? 'SCHEMA_FAIL'
+              : reason;
           console.log('[Calendar][One] fail', {
             requestId,
             day,
             slot: slotIndex,
             post_key: postKeyValue,
-            reason,
+            reason: normalizedReason,
             field: err?.details?.field || null,
           });
           const detail = err?.details || {};
@@ -12536,10 +12123,13 @@ const server = http.createServer((req, res) => {
             message: 'Calendar post generation failed.',
             requestId,
             details: {
-              reason,
+              reason: normalizedReason,
               field: detail?.field || 'unknown',
               snippet: detail?.snippet || '',
               wordCount: detail?.wordCount ?? detail?.extra?.wordCount ?? null,
+              missing_fields: detail?.missing_fields || [],
+              wrong_types: detail?.wrong_types || [],
+              extra_keys: detail?.extra_keys || [],
               day,
               post_key: postKeyValue,
             },
@@ -12686,47 +12276,6 @@ const server = http.createServer((req, res) => {
         });
         regenContext.batchIndex = body?.batchIndex;
         regenContext.startDay = body?.startDay;
-        const requestedPostsPerDay = 1;
-        const expectedPostCount = (() => {
-          const computed = computePostCountTarget(body?.days, requestedPostsPerDay);
-          if (Number.isFinite(computed) && computed > 0) return computed;
-          if (Array.isArray(body?.posts) && body.posts.length) return body.posts.length;
-          if (body?.post && typeof body.post === 'object') return 1;
-          const fallbackDays = Number.isFinite(Number(body?.days)) && Number(body?.days) > 0 ? Number(body.days) : null;
-          return fallbackDays;
-        })();
-        let targetCount = expectedPostCount || null;
-        let lastMissingReport = [];
-        let lastMissingCounts = {};
-        let lastAttemptDetails = null;
-        const hasPlaceholderInPost = (post) => {
-          if (!post || typeof post !== 'object') return false;
-          try {
-            return /\bplaceholder\b/i.test(JSON.stringify(post));
-          } catch {
-            return false;
-          }
-        };
-        const collectMissing = (postsList) => {
-          const report = [];
-          if (!Array.isArray(postsList)) return report;
-          postsList.forEach((post, idx) => {
-            const missing = validatePostCompleteness(post, selectedMode);
-            if (missing.length) report.push({ index: idx, missing });
-          });
-          return report;
-        };
-        const MODEL_TIMEOUT_MS = 60000;
-        const REGEN_TOTAL_TIMEOUT_MS = 55000;
-        const MAX_TOKENS_PER_BATCH_REGULAR = 900;
-        const MAX_TOKENS_PER_BATCH_BRAND = 1100;
-        let ensuredPosts = [];
-        let totalModelMs = 0;
-        let totalValidateMs = 0;
-        let modelCalls = 0;
-        let maxModelCallMs = 0;
-        const regenNicheStyle = body?.nicheStyle || body?.niche || body?.niche_style || '';
-        const regenQualityState = { signatureMap: new Map() };
         if (clientAborted || req.aborted || res.writableEnded) return;
         await acquireRegenSlot(requestId);
         try {
@@ -12753,19 +12302,6 @@ const server = http.createServer((req, res) => {
           });
           if (!isPro) {
             await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
-          }
-          if (Array.isArray(posts)) {
-            posts.forEach((post) => {
-              console.log('[Calendar][Regen][Payload]', {
-                requestId,
-                post_key: post?.post_key || '',
-                keys: Object.keys(post || {}),
-                format: post?.format,
-                hasReelScript: Boolean(post?.reelScript && String(post.reelScript).trim()),
-                hasScript: Boolean(post?.script && String(post.script).trim()),
-                hasSuggestedAudio: Boolean(getSuggestedAudioValue(post).trim()),
-              });
-            });
           }
           return sendJson(res, 200, { calendarId: targetCalendarId, posts, requestId });
         } finally {
