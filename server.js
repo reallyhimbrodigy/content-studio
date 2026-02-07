@@ -4027,11 +4027,34 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const plannedAngle = opts.plannedAngle || '';
   const postKeyValue = opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
-  const angleSeed = toPlainString(opts.angleSeed || '');
-  const lens = toPlainString(opts.lens || '');
-  const usedSignatures = Array.isArray(opts.usedSignatures)
-    ? opts.usedSignatures.filter((item) => item && typeof item === 'object').slice(-10)
-    : [];
+  const failureSeeds = [
+    { key: 'waited-too-long', description: 'delay turned a manageable decision into a loss' },
+    { key: 'trusted-wrong-number', description: 'a wrong input drove the wrong call' },
+    { key: 'surprise-fee', description: 'a hidden cost appeared late and changed the outcome' },
+    { key: 'missed-window', description: 'timing slipped and the best option vanished' },
+    { key: 'wrong-order', description: 'steps happened in the wrong order and created friction' },
+    { key: 'assumed-standard', description: 'assuming standard process caused preventable rework' },
+    { key: 'overlooked-step', description: 'one skipped step created downstream problems' },
+    { key: 'outmaneuvered', description: 'another option moved faster and won' },
+    { key: 'paperwork-delay', description: 'documents lagged and blocked momentum' },
+    { key: 'deal-fell-apart', description: 'a weak setup caused the final outcome to fail' },
+  ];
+  const pickFailureSeed = ({ modeValue, pillarValue, dayValue, slotValue, postKey }) => {
+    const raw = `${modeValue}|${pillarValue}|${dayValue}|${slotValue}|${postKey || ''}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i += 1) {
+      hash = ((hash * 33) + raw.charCodeAt(i)) | 0;
+    }
+    const idx = Math.abs(hash) % failureSeeds.length;
+    return failureSeeds[idx] || failureSeeds[0];
+  };
+  const failureSeed = pickFailureSeed({
+    modeValue: mode,
+    pillarValue: targetPillar || 'none',
+    dayValue: startDay,
+    slotValue: slotIndex,
+    postKey: postKeyValue || postKey(startDay, slotIndex),
+  });
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
@@ -4043,17 +4066,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     targetPillar ? `pillar: ${targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
-    angleSeed ? `ANGLE_SEED: ${angleSeed}` : null,
-    lens ? `LENS: ${lens}` : null,
+    `FAILURE_MODE_SEED: ${failureSeed.key} (${failureSeed.description})`,
+    'Use this as the reason this post exists. Do not reuse the same failure-mode wording across posts.',
   ].filter(Boolean).join('\n');
-  const usedSignatureBlock = usedSignatures.length
-    ? [
-      'DO NOT REPEAT ANY OF THESE STEMS:',
-      ...usedSignatures.map((sig) => (
-        `- day ${sig.day || '?'} | pillar ${toPlainString(sig.pillar || 'unknown')} | titleStem: ${toPlainString(sig.titleStem || '')} | hookStem: ${toPlainString(sig.hookStem || '')} | ctaStem: ${toPlainString(sig.ctaStem || '')}`
-      )),
-    ].join('\n')
-    : '';
 
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4066,35 +4081,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- No emojis. No placeholders. No filler templates.',
   ].join('\n');
 
-  const REGULAR_ALL_FIELDS_PROMPT = `ROLE
-You are generating a single Regular content calendar post for a short-form reel.
+  const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-PURPOSE
-This post should feel:
-- Helpful
-- Clear
-- Trust-building
-- Low pressure
+UPSTREAM OBJECTIVE
+You are NOT teaching. You are creating a short-form post that earns attention by naming a real friction or mistake.
+Regular mode is awareness: helpful and calm. Keep some tension open and keep CTA gentle.
+Write like a creator, not an instructor.
+Use FAILURE_MODE_SEED as the reason this post exists.
 
-It should educate or orient, not aggressively persuade.
+Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 
-A user should feel:
-“This creator knows what they’re talking about. I learned something useful.”
-
-THINK FIRST (do not output)
-Before writing:
-- Choose one clear idea a beginner or casual audience would find useful.
-- Choose one angle that helps them understand or avoid confusion.
-- Do not optimize for virality. Optimize for clarity.
-- Do not reuse angles from other posts in this calendar.
-- Build this post around ANGLE_SEED. Make it noticeably distinct from prior stems.
-- Use LENS to shape the hook/body/cta.
-
-OUTPUT REQUIREMENTS
-Output JSON only, matching the schema exactly.
-Do not include labels like “Hook:” or “CTA:” inside values.
-Do not add extra keys.
-No markdown. No commentary.
+Tiny style exemplar:
+hook: I lost two options because I started one step late.
+body: The miss started with the wrong order, then timing got tighter and options shrank.
+cta: Get the checklist before you start.
 
 FIELD INSTRUCTIONS
 
@@ -4103,17 +4103,16 @@ A clear, neutral title describing the idea.
 Avoid hype. Avoid claims.
 
 hook
-Open with a relatable situation or confusion the audience recognizes.
-Grounded, calm, familiar.
-No shock. No urgency. No emotional manipulation.
+A lived micro-failure or real friction.
+No generic teaching opener.
 
 body
-One to two lines that explain or clarify the situation introduced in the hook.
-No abstractions. No motivational language. No generic advice.
+Connect failure to consequence, then what changes.
+Keep it concrete and tight.
 
 cta
-A soft, optional next step that feels helpful, not salesy.
-Examples of tone: Learn, Review, Explore, Consider.
+Single clear action tied to value.
+Soft and helpful, not passive.
 
 reelHook
 Hook-only text. Spoken opening line. Do not include body or CTA.
@@ -4139,48 +4138,22 @@ No pressure. No bait.
 hashtags
 Relevant, descriptive hashtags only.
 
-ABSOLUTE RULES
-- No abstract language
-- No generic advice
-- No selling tone
-- No exaggeration
-- No emotional manipulation
-- No repeated angles from other posts
+Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
-SELF-CHECK BEFORE OUTPUT
-- Hook must include at least one concrete noun (examples: contract, invoice, calendar, camera, checklist, script, dashboard, offer, timeline, screenshot, pricing page, meeting notes, document, spreadsheet, blueprint, roadmap).
-- CTA must contain one action verb and one tangible artifact (template, checklist, script, example, swipe file).
-- Forbidden abstract openers: Consider, Explore, Discover, Learn more, Stay informed, Gain insights.
-- If any forbidden opener appears, rewrite before output.`;
+  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `ROLE
-You are generating a single Brand Brain content calendar post designed to function as a winning short-form ad.
+UPSTREAM OBJECTIVE
+You are writing an ad where the viewer feels the cost of inaction.
+Brand Brain mode is conversion: consequence-driven, specific, direct. CTA is the logical escape route.
+Entertain first. No hard selling. No generic tips.
+Use FAILURE_MODE_SEED as the reason this post exists.
 
-PURPOSE
-This post should feel:
-- Sharp
-- Insightful
-- Pattern-breaking
-- Persuasive without sounding like an ad
+Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 
-A user should feel:
-“This exposed something I didn’t realize — and now I want the solution.”
-
-THINK FIRST (do not output)
-Before writing:
-- Choose one specific micro-failure the audience experiences.
-- Choose one angle that reframes the problem in a non-obvious way.
-- Identify one mechanism that explains why the failure happens.
-- The solution must feel like the only logical resolution without aggressive selling.
-- Do not reuse angles from other posts in this calendar.
-- Build this post around ANGLE_SEED. Make it noticeably distinct from prior stems.
-- Use LENS to shape the hook/body/cta.
-
-OUTPUT REQUIREMENTS
-Output JSON only, matching the schema exactly.
-Do not include labels inside values.
-Do not add extra keys.
-No markdown. No commentary.
+Tiny style exemplar:
+hook: We lost the deal after one missing step surfaced at the deadline.
+body: The failure started earlier when a bad number framed the decision, so risk stayed hidden until it was expensive.
+cta: Use the script to catch this before it costs you.
 
 FIELD INSTRUCTIONS
 
@@ -4189,19 +4162,16 @@ A clear statement of the core failure or insight.
 Not clever. Not vague.
 
 hook
-A scroll-stopping lived moment that signals:
-“You thought you were doing the right thing — but that’s why this failed.”
-Concrete, uncomfortable, specific.
-No shock tactics. No hype.
+A lived micro-failure or concrete friction with consequence pressure.
+No generic tips framing.
 
 body
-One to two tight lines that reveal the mechanism behind the failure.
-This is the aha.
-No tips framing. No lists. No generic education.
+Connect failure to consequence, then reveal what changes the outcome.
+Keep it tight and specific.
 
 cta
-A single, clear action tied to value, not urgency.
-Examples of tone: See, Get, Use, Access, Apply.
+Single clear action tied to value.
+Direct and solution-oriented.
 
 reelHook
 Hook-only text. Spoken opening line. Do not include body or CTA.
@@ -4217,7 +4187,7 @@ A reinforcing insight that sharpens the hook.
 No emojis. No hype. No hashtags inside text.
 
 designNotes
-Visuals that reinforce the failure → insight → resolution arc.
+Visuals that reinforce the failure to consequence to resolution arc.
 Examples: screen contrast, before/after moments, friction points, pattern interrupts.
 
 engagementLoop
@@ -4227,28 +4197,13 @@ No bait. No pressure language.
 hashtags
 Relevant discovery hashtags only.
 
-ABSOLUTE RULES
-- No abstract hooks
-- No generic education
-- No motivational language
-- No tips framing
-- No soft CTAs
-- No repetition of angles
-- No emotional manipulation
-- This must feel like insight, not marketing
-
-SELF-CHECK BEFORE OUTPUT
-- Hook must include at least one concrete noun (examples: contract, invoice, calendar, camera, checklist, script, dashboard, offer, timeline, screenshot, pricing page, meeting notes, document, spreadsheet, blueprint, roadmap).
-- CTA must contain one action verb and one tangible artifact (template, checklist, script, example, swipe file).
-- Forbidden abstract openers: Consider, Explore, Discover, Learn more, Stay informed, Gain insights.
-- If any forbidden opener appears, rewrite before output.`;
+Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
-    usedSignatureBlock,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
