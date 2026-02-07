@@ -833,16 +833,15 @@ function normalizeContentCard(card) {
   const targetCommentsText = formatStrategyTarget(normalizedStrategy.target_comments_pct);
   return {
     ...base,
-    reelScript: (() => {
-      if (typeof base.reelScript === 'string' && (base.hook || base.body || base.cta)) {
-        return {
-          hook: typeof base.hook === 'string' ? base.hook.trim() : '',
-          body: typeof base.body === 'string' ? base.body.trim() : base.reelScript.trim(),
-          cta: typeof base.cta === 'string' ? base.cta.trim() : '',
-        };
-      }
-      return base.reelScript;
-    })(),
+    reelHook: typeof base.reelHook === 'string'
+      ? base.reelHook.trim()
+      : (typeof base.videoScript?.hook === 'string' ? base.videoScript.hook.trim() : ''),
+    reelBody: typeof base.reelBody === 'string'
+      ? base.reelBody.trim()
+      : (typeof base.videoScript?.body === 'string' ? base.videoScript.body.trim() : ''),
+    reelCta: typeof base.reelCta === 'string'
+      ? base.reelCta.trim()
+      : (typeof base.videoScript?.cta === 'string' ? base.videoScript.cta.trim() : ''),
     strategy: normalizedStrategy,
     angle,
     objective,
@@ -852,15 +851,16 @@ function normalizeContentCard(card) {
     targetSaves: targetSavesText,
     targetComments: targetCommentsText,
     videoScript: (() => {
-      const hook = typeof base.hook === 'string' ? base.hook.trim() : '';
-      const body = typeof base.body === 'string' ? base.body.trim() : '';
-      const cta = typeof base.cta === 'string' ? base.cta.trim() : '';
-      const reelText = typeof base.reelScript === 'string' ? base.reelScript.trim() : '';
-      if (!hook && !body && !cta && !reelText) return base.videoScript || base.reelScript || base.script || {};
       return {
-        hook,
-        body: body || reelText,
-        cta,
+        hook: typeof base.reelHook === 'string'
+          ? base.reelHook.trim()
+          : (typeof base.videoScript?.hook === 'string' ? base.videoScript.hook.trim() : ''),
+        body: typeof base.reelBody === 'string'
+          ? base.reelBody.trim()
+          : (typeof base.videoScript?.body === 'string' ? base.videoScript.body.trim() : ''),
+        cta: typeof base.reelCta === 'string'
+          ? base.reelCta.trim()
+          : (typeof base.videoScript?.cta === 'string' ? base.videoScript.cta.trim() : ''),
       };
     })(),
     engagementScripts: (() => {
@@ -874,17 +874,8 @@ function normalizeContentCard(card) {
 
 function ensureReelScriptHook(entry) {
   if (!entry || typeof entry !== 'object') return '';
-  if (typeof entry.videoScript === 'string') {
-    return entry.videoScript.split(/\r?\n/)[0]?.trim() || '';
-  }
-  if (!entry.videoScript || typeof entry.videoScript !== 'object') {
-    entry.videoScript = {};
-  }
-  const script = entry.videoScript;
-  const hook = String(script.hook || '').trim();
-  script.hook = hook;
-  entry.videoScript = script;
-  return hook;
+  if (typeof entry.reelHook === 'string' && entry.reelHook.trim()) return entry.reelHook.trim();
+  return typeof entry.videoScript?.hook === 'string' ? entry.videoScript.hook.trim() : '';
 }
 
 /**
@@ -5991,7 +5982,11 @@ const createCard = (post) => {
       promoSlot,
       weeklyPromo,
     } = entry;
-    const videoScript = entry.reelScript || entry.script || entry.videoScript;
+    const videoScript = {
+      hook: typeof entry.reelHook === 'string' ? entry.reelHook.trim() : '',
+      body: typeof entry.reelBody === 'string' ? entry.reelBody.trim() : '',
+      cta: typeof entry.reelCta === 'string' ? entry.reelCta.trim() : '',
+    };
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
     // No inline audio overrides; display server-provided post.audio only.
 
@@ -6412,25 +6407,12 @@ const createCard = (post) => {
 
     const buildReelScript = () => {
       const label = 'Reel Script';
-      if (!videoScript) return null;
       const structured = {
         hook: videoScript.hook || '',
         body: videoScript.body || '',
         cta: videoScript.cta || '',
       };
-      if (!structured.hook && !structured.body && !structured.cta && typeof videoScript === 'string') {
-        const raw = videoScript;
-        const normalized = raw.replace(/\u2022/g, '|');
-        const hookMatch = normalized.match(/hook:\s*([^|\\n]*)(?:\||\\n|$)/i);
-        const bodyMatch = normalized.match(/body:\s*([^|\\n]*)(?:\||\\n|$)/i);
-        const ctaMatch = normalized.match(/cta:\s*([^|\\n]*)(?:\||\\n|$)/i);
-        structured.hook = hookMatch ? hookMatch[1].trim() : '';
-        structured.body = bodyMatch ? bodyMatch[1].trim() : '';
-        structured.cta = ctaMatch ? ctaMatch[1].trim() : '';
-        if (!structured.hook && !structured.cta && !structured.body) {
-          structured.body = raw;
-        }
-      }
+      if (!structured.hook && !structured.body && !structured.cta) return null;
       structured.hook = stripLeadingSectionLabelLine(structured.hook || '', label);
       structured.body = stripLeadingSectionLabelLine(structured.body || '', label);
       structured.cta = stripLeadingSectionLabelLine(structured.cta || '', label);
@@ -6548,8 +6530,8 @@ const createCard = (post) => {
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
       const scriptLines = [];
       if (videoScript.hook) scriptLines.push(videoScript.hook);
-      if (videoScript.body) scriptLines.push(`Body: ${videoScript.body}`);
-      if (videoScript.cta) scriptLines.push(`CTA: ${videoScript.cta}`);
+      if (videoScript.body) scriptLines.push(videoScript.body);
+      if (videoScript.cta) scriptLines.push(videoScript.cta);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
     if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
@@ -8266,7 +8248,11 @@ function buildPostHTML(post){
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const weeklyPromo = post.weeklyPromo || '';
   const promoSlot = !!post.promoSlot;
-  const vs = post.videoScript || post.reelScript || post.script || {};
+  const vs = {
+    hook: typeof post.reelHook === 'string' ? post.reelHook : (post.videoScript?.hook || ''),
+    body: typeof post.reelBody === 'string' ? post.reelBody : (post.videoScript?.body || ''),
+    cta: typeof post.reelCta === 'string' ? post.reelCta : (post.videoScript?.cta || ''),
+  };
   const engage = post.engagementScripts || {};
   const nl2br = (s)=> escapeHtml(s).replace(/\n/g,'<br/>');
   const videoLabel = 'Reel Script';
@@ -8616,14 +8602,7 @@ function hasRequiredPostFields(post = {}) {
   }
   if (!Array.isArray(post.hashtags) || post.hashtags.length === 0) return false;
   if (!post.hashtags.every((item) => isNonEmptyText(item))) return false;
-  const reelScript = post.reelScript || post.reel_script;
-  if (typeof reelScript === 'string') {
-    if (!isNonEmptyText(reelScript)) return false;
-  } else if (reelScript && typeof reelScript === 'object') {
-    if (!isNonEmptyText(reelScript.hook) || !isNonEmptyText(reelScript.body) || !isNonEmptyText(reelScript.cta)) {
-      return false;
-    }
-  } else {
+  if (!isNonEmptyText(post.reelHook) || !isNonEmptyText(post.reelBody) || !isNonEmptyText(post.reelCta)) {
     return false;
   }
   return true;
@@ -9157,7 +9136,14 @@ function normalizePost(p, idx = 0, startDay = 1) {
     engagementScripts: base.engagementScripts || base.engagementLoop || {},
     promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
     weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
-    videoScript: base.videoScript || base.reelScript || base.script || {},
+    reelHook: typeof base.reelHook === 'string' ? base.reelHook : '',
+    reelBody: typeof base.reelBody === 'string' ? base.reelBody : '',
+    reelCta: typeof base.reelCta === 'string' ? base.reelCta : '',
+    videoScript: {
+      hook: typeof base.reelHook === 'string' ? base.reelHook : '',
+      body: typeof base.reelBody === 'string' ? base.reelBody : '',
+      cta: typeof base.reelCta === 'string' ? base.reelCta : '',
+    },
     variants: base.variants || undefined,
     distributionPlan: base.distributionPlan || '',
     audio: base.audio || '',
@@ -10352,8 +10338,8 @@ function renderPublishHub(){
     if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
       const scriptLines = [];
       if (post.videoScript.hook) scriptLines.push(post.videoScript.hook);
-      if (post.videoScript.body) scriptLines.push(`Body: ${post.videoScript.body}`);
-      if (post.videoScript.cta) scriptLines.push(`CTA: ${post.videoScript.cta}`);
+      if (post.videoScript.body) scriptLines.push(post.videoScript.body);
+      if (post.videoScript.cta) scriptLines.push(post.videoScript.cta);
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
     if (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts)) {

@@ -2547,8 +2547,8 @@ async function generateAndValidateSinglePost({
       promptVersion: PROMPT_VERSION,
     });
     currentStage = 'assign_pillar';
-    const retryLine = attempt === 2
-      ? `Return ONLY valid JSON that matches schema "${schemaLabel}". No extra keys. No markdown.`
+      const retryLine = attempt === 2
+      ? `Output JSON only, schema exactly.`
       : '';
     const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
@@ -2619,7 +2619,7 @@ async function generateAndValidateSinglePost({
           snippet: validation.snippet || '',
           missing_fields: validation.missing_fields || [],
           wrong_types: validation.wrong_types || [],
-          extra_keys: validation.extra_keys || [],
+          empty_fields: validation.empty_fields || [],
           reachedOpenAI,
           structuredOutputUsed,
           stage: currentStage,
@@ -2695,24 +2695,21 @@ async function generateAndValidateSinglePost({
           fail_code: reason,
           missing_fields: err?.details?.missing_fields || [],
           wrong_types: err?.details?.wrong_types || [],
-          extra_keys: err?.details?.extra_keys || [],
           response_size: typeof rawCandidate === 'string' ? rawCandidate.length : null,
         });
       const retryableReasons = new Set(['PARSE_FAIL', 'SCHEMA_FAIL']);
       if (attempt < maxAttempts && retryableReasons.has(reason)) {
         const missing = Array.isArray(err?.details?.missing_fields) ? err.details.missing_fields : [];
         const wrongTypes = Array.isArray(err?.details?.wrong_types) ? err.details.wrong_types : [];
+        const emptyFields = Array.isArray(err?.details?.empty_fields) ? err.details.empty_fields : [];
           const retrySummary = reason === 'PARSE_FAIL'
-            ? 'invalid JSON / not a single object'
+            ? 'invalid_json'
             : [
-              missing.length ? `missing: ${missing.join(', ')}` : '',
-              wrongTypes.length ? `wrong_types: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
-            ].filter(Boolean).join(' | ');
-          extraInstructions = [
-            `Your output failed schema validation.`,
-            retrySummary ? `Issues: ${retrySummary}` : '',
-            `Output JSON only. Match the schema exactly. No extra keys.`,
-          ].filter(Boolean).join('\n');
+              missing.length ? `missing fields: ${missing.join(', ')}` : '',
+              wrongTypes.length ? `wrong type fields: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
+              emptyFields.length ? `empty fields: ${emptyFields.join(', ')}` : '',
+            ].filter(Boolean).join('; ');
+          extraInstructions = `Your output failed because: ${retrySummary || 'schema mismatch'}. Output JSON only, schema exactly.`;
           continue;
         }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -2721,7 +2718,9 @@ async function generateAndValidateSinglePost({
       const detailsField = err?.details?.field || 'unknown';
       const detailsSnippet = err?.details?.snippet || '';
       const detailsErrors = err?.details?.errors || null;
-      const finalReason = reason;
+      const finalReason = (reason === 'PARSE_FAIL' || reason === 'SCHEMA_FAIL')
+        ? 'STRUCTURAL_OUTPUT_INVALID'
+        : reason;
       failErr.details = {
         reason: finalReason,
         field: detailsField,
@@ -3246,7 +3245,9 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       'hook',
       'body',
       'cta',
-      'reelScript',
+      'reelHook',
+      'reelBody',
+      'reelCta',
       'caption',
       'designNotes',
       'engagementLoop',
@@ -3258,7 +3259,9 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       hook: { type: 'string', minLength: 1 },
       body: { type: 'string', minLength: 1 },
       cta: { type: 'string', minLength: 1 },
-      reelScript: { type: 'string', minLength: 1 },
+      reelHook: { type: 'string', minLength: 1 },
+      reelBody: { type: 'string', minLength: 1 },
+      reelCta: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       engagementLoop: { type: 'string', minLength: 1 },
@@ -3301,7 +3304,9 @@ function normalizeToMinimalShape(raw = {}) {
     hook: raw.hook,
     body: raw.body,
     cta: raw.cta,
-    reelScript: raw.reelScript,
+    reelHook: raw.reelHook,
+    reelBody: raw.reelBody,
+    reelCta: raw.reelCta,
     caption: raw.caption,
     designNotes: raw.designNotes,
     engagementLoop: raw.engagementLoop,
@@ -3314,6 +3319,7 @@ function normalizeToMinimalShape(raw = {}) {
 function validateMinimalShape(post = {}) {
   const missing = [];
   const wrongTypes = [];
+  const emptyFields = [];
   const fail = (reason, field, snippet) => ({
     ok: false,
     reason,
@@ -3321,6 +3327,7 @@ function validateMinimalShape(post = {}) {
     snippet,
     missing_fields: missing,
     wrong_types: wrongTypes,
+    empty_fields: emptyFields,
   });
   if (!post || typeof post !== 'object') {
     return { ok: false, reason: 'PARSE_FAIL', field: 'root', snippet: '' };
@@ -3330,7 +3337,9 @@ function validateMinimalShape(post = {}) {
     'hook',
     'body',
     'cta',
-    'reelScript',
+    'reelHook',
+    'reelBody',
+    'reelCta',
     'caption',
     'designNotes',
     'engagementLoop',
@@ -3345,10 +3354,14 @@ function validateMinimalShape(post = {}) {
   if (missing.length) {
     return fail('SCHEMA_FAIL', missing[0], '');
   }
-  const stringFields = ['title', 'hook', 'body', 'cta', 'reelScript', 'caption', 'designNotes', 'engagementLoop', 'distributionPlan'];
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'engagementLoop', 'distributionPlan'];
   for (const key of stringFields) {
-    if (typeof post[key] !== 'string' || !post[key].trim()) {
+    if (typeof post[key] !== 'string') {
       wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
+      continue;
+    }
+    if (!post[key].trim()) {
+      emptyFields.push(key);
     }
   }
   if (!Array.isArray(post.hashtags)) {
@@ -3361,6 +3374,9 @@ function validateMinimalShape(post = {}) {
         wrongTypes.push({ key: `hashtags[${idx}]`, expected: 'string', got: typeof item });
       }
     });
+  }
+  if (emptyFields.length) {
+    return fail('SCHEMA_FAIL', emptyFields[0], '');
   }
   if (wrongTypes.length) {
     const first = wrongTypes[0];
@@ -3397,7 +3413,9 @@ function runCalendarSchemaSelfTest() {
     hook: 'Sample hook',
     body: 'Sample body',
     cta: 'Sample CTA',
-    reelScript: 'Sample reel script',
+    reelHook: 'Sample reel hook',
+    reelBody: 'Sample reel body',
+    reelCta: 'Sample reel CTA',
     caption: 'Sample caption',
     designNotes: 'Sample design notes',
     engagementLoop: 'Sample engagement loop',
@@ -4020,6 +4038,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Match the schema exactly; output every required field with non-empty content.',
     '- Do not add extra keys.',
     `- Required keys (exact): ${requiredKeys}`,
+    '- Each field value must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
     '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
     '- No emojis. No placeholders. No filler templates.',
   ].join('\n');
@@ -4042,9 +4061,15 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'cta: single clear action tied to the resolution.',
     '- Fail if: vague ("learn more", "follow for tips").',
     '- Example shape: "Get the {DELIVERABLE} that fixes this."',
-    'reelScript: short ad copy only, no labels, no beats, no timestamps.',
-    '- Fail if: contains labels like HOOK:, CTA:, BEAT.',
-    '- Example shape: "{HOOK LINE}. {BODY LINE}. {CTA LINE}."',
+    'reelHook: hook-only text.',
+    '- Fail if: includes body/cta copy or labels.',
+    '- Example shape: "{HOOK LINE}"',
+    'reelBody: body-only text.',
+    '- Fail if: includes hook/cta copy or labels.',
+    '- Example shape: "{BODY LINE}"',
+    'reelCta: CTA-only text.',
+    '- Fail if: includes hook/body copy or labels.',
+    '- Example shape: "{CTA LINE}"',
     'caption: reinforces the same failure and resolution in plain language.',
     '- Fail if: generic motivational copy.',
     '- Example shape: "{PAIN}. {RESOLUTION}."',
@@ -4080,9 +4105,15 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'cta: single action that resolves the failure with authority.',
     '- Fail if: generic, soft, or vague.',
     '- Example shape: "Use {OFFER} to avoid that trap."',
-    'reelScript: short ad copy only, no labels, no beats, no timestamps.',
-    '- Fail if: contains labels like HOOK:, CTA:, BEAT.',
-    '- Example shape: "{HOOK LINE}. {BODY LINE}. {CTA LINE}."',
+    'reelHook: hook-only text.',
+    '- Fail if: includes body/cta copy or labels.',
+    '- Example shape: "{HOOK LINE}"',
+    'reelBody: body-only text.',
+    '- Fail if: includes hook/cta copy or labels.',
+    '- Example shape: "{BODY LINE}"',
+    'reelCta: CTA-only text.',
+    '- Fail if: includes hook/body copy or labels.',
+    '- Example shape: "{CTA LINE}"',
     'caption: reinforces the same belief shift and consequence.',
     '- Fail if: neutral tone.',
     '- Example shape: "{BELIEF COST}. {RESOLUTION}."',
@@ -4114,7 +4145,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelScript, caption, designNotes, engagementLoop, distributionPlan, hashtags[]. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, distributionPlan, hashtags[]. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -6619,14 +6650,9 @@ function firstSentence(text = '') {
 function normalizeAdFields(post, ctx = {}) {
   if (!post || typeof post !== 'object') return false;
   const changedFields = [];
-  const samples = {};
   const trackChange = (field, before, after) => {
     if (before === after) return;
     if (!changedFields.includes(field)) changedFields.push(field);
-    samples[field] = {
-      before: toPlainString(before).slice(0, 120),
-      after: toPlainString(after).slice(0, 120),
-    };
   };
   const fields = [
     'title',
@@ -6706,7 +6732,6 @@ function normalizeAdFields(post, ctx = {}) {
       requestId: ctx?.requestId || null,
       post_key: ctx?.post_key || null,
       changedFields,
-      samples,
     });
   }
   return Boolean(changedFields.length);
@@ -6793,8 +6818,6 @@ function normalizeReelScriptBroll(post, ctx = {}) {
             requestId: ctx?.requestId || null,
             post_key: ctx?.post_key || null,
             itemIndex: idx,
-            before: beforeRaw.slice(0, 200),
-            after: '',
             beforeWordCount,
             afterWordCount,
           });
@@ -6807,8 +6830,6 @@ function normalizeReelScriptBroll(post, ctx = {}) {
           requestId: ctx?.requestId || null,
           post_key: ctx?.post_key || null,
           itemIndex: idx,
-          before: beforeRaw.slice(0, 200),
-          after: after.slice(0, 200),
           beforeWordCount,
           afterWordCount,
         });
