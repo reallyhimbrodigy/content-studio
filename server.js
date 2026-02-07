@@ -3251,7 +3251,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       'caption',
       'designNotes',
       'engagementLoop',
-      'distributionPlan',
       'hashtags',
     ],
     properties: {
@@ -3265,7 +3264,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       caption: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
       engagementLoop: { type: 'string', minLength: 1 },
-      distributionPlan: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
         minItems: 1,
@@ -3310,7 +3308,6 @@ function normalizeToMinimalShape(raw = {}) {
     caption: raw.caption,
     designNotes: raw.designNotes,
     engagementLoop: raw.engagementLoop,
-    distributionPlan: raw.distributionPlan,
     hashtags: raw.hashtags,
   };
   return cleaned;
@@ -3343,7 +3340,6 @@ function validateMinimalShape(post = {}) {
     'caption',
     'designNotes',
     'engagementLoop',
-    'distributionPlan',
     'hashtags',
   ];
   for (const key of required) {
@@ -3354,7 +3350,7 @@ function validateMinimalShape(post = {}) {
   if (missing.length) {
     return fail('SCHEMA_FAIL', missing[0], '');
   }
-  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'engagementLoop', 'distributionPlan'];
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'engagementLoop'];
   for (const key of stringFields) {
     if (typeof post[key] !== 'string') {
       wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
@@ -3419,7 +3415,6 @@ function runCalendarSchemaSelfTest() {
     caption: 'Sample caption',
     designNotes: 'Sample design notes',
     engagementLoop: 'Sample engagement loop',
-    distributionPlan: 'Sample distribution plan',
     hashtags: ['sample'],
   };
   const serverFields = {
@@ -3763,7 +3758,7 @@ const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
   '- Time-awareness: never output year-specific claims unless provided and aligned to the calendar context.',
   '- Uniqueness: no repeated opening patterns across days, no reused CTA wording or boilerplate.',
   'UNIQUENESS:',
-  'Do not reuse phrasing across posts. Do not repeat identical distributionPlan/engagementScripts structures beyond the required format.',
+  'Do not reuse phrasing across posts. Do not repeat identical engagementScripts structures beyond the required format.',
   'Each post must use topic-specific wording and details.',
   'Title: specific to topic and niche; avoid brochure phrasing.',
   'Hashtags: 5-8, relevant to title/topic; no generic algorithm-bait tags.',
@@ -3791,7 +3786,7 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- Include at least one specific, concrete detail per post (number, constraint, or scenario) without referencing outdated years or inventing real-world stats.',
   '- Do not assume niche-specific facts beyond the provided niche label.',
   '- ReelScript hook/body/cta must align to Hook/Caption/CTA without repeating verbatim; no off-topic drift.',
-  '- Title, Hook, Caption, Reel Script Body, CTA, Design Notes, Engagement Loop, and Distribution Plan must not repeat or paraphrase each other.',
+  '- Title, Hook, Caption, Reel Script Body, CTA, Design Notes, and Engagement Loop must not repeat or paraphrase each other.',
   '- If any two sections are semantically redundant or paraphrase each other, rewrite until all sections are distinct.',
   '- Hook must support the Title without reusing Title phrasing.',
   '- Hook: 1 sentence. Topic orientation only.',
@@ -3802,8 +3797,7 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- engagementScripts.commentReply must be a forced-choice prompt (A/B or 1/2) plus a "why" prompt.',
   '- engagementScripts.dmReply must specify exactly one follow-up asset type and what question it answers.',
   '- engagementScripts.dmReply must be neutral and non-salesy.',
-  '- designNotes, engagementScripts, and distributionPlan must add distinct information; do not restate Hook/Caption/Script.',
-  '- distributionPlan: posting mechanics only; no Hook/CTA language, no sales actions, no persuasion.',
+  '- designNotes and engagementScripts must add distinct information; do not restate Hook/Caption/Script.',
   '- Hashtags must avoid repeating core nouns from the Title or Hook.',
 ].join('\n');
 
@@ -3825,7 +3819,6 @@ const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
   '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
-  '- distributionPlan: exactly 2 bullets, each <= 60 chars',
   '- reelScript: EXACTLY 5 lines for a 15-20s video:',
   '  1) On-screen (0-2s): <= 60 chars',
   '  2) VO (2-6s): <= 90 chars',
@@ -3866,7 +3859,6 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
   '- designNotes: exactly 3 bullets, each 8–80 chars',
   '- engagementScripts.commentReply (engagementComment): 1 question <= 90 chars',
   '- engagementScripts.dmReply (engagementDM): 1 line <= 90 chars',
-  '- distributionPlan: exactly 2 bullets, each <= 60 chars',
   '- reelScript: EXACTLY 5 lines for a 15-20s video:',
   '  1) On-screen (0-2s): <= 60 chars',
   '  2) VO (2-6s): <= 90 chars',
@@ -3890,10 +3882,10 @@ const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
 ].join('\n');
 
 const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, details{suggestedAudio}, topic_signature, angle.';
 
 const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, distributionPlan, details{suggestedAudio}, topic_signature, angle.';
+  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, details{suggestedAudio}, topic_signature, angle.';
 
 const COMPACT_LENGTH_LIMITS_BLOCK = [
   'LENGTH CAPS:',
@@ -3905,7 +3897,6 @@ const COMPACT_LENGTH_LIMITS_BLOCK = [
   '- designNotes: exactly 3 bullet lines, each starting with "- "',
   '- engagementScripts.commentReply (engagementComment): 1 sentence <= 80 chars',
   '- engagementScripts.dmReply (engagementDM): 1 sentence <= 80 chars',
-  '- distributionPlan: exactly 2 bullets, each <= 45 chars',
   '- reelScript: EXACTLY 4 lines total:',
   '  1) On-screen: <= 55 chars',
   '  2) VO: <= 95 chars',
@@ -4137,10 +4128,6 @@ Describe what should appear on screen.
 One sentence that invites a low-effort response.  
 No pressure. No manipulation.
 
-**distributionPlan**  
-Straightforward posting guidance.  
-No growth hacks.
-
 **hashtags**  
 Relevant, non-empty hashtags only.  
 No spam tags.
@@ -4289,10 +4276,6 @@ No generic “use graphics” notes.
 One sentence that invites reflection or admission.  
 Not a question dump.
 
-**distributionPlan**  
-Intentional placement guidance.  
-Focus on context, not hacks.
-
 **hashtags**  
 Relevant, non-empty hashtags only.  
 No filler tags.
@@ -4322,7 +4305,7 @@ Output JSON only.`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, distributionPlan, hashtags[]. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Each field must be non-empty and JSON must be valid.`;
 }
 
 function safeStringify(value) {
@@ -5725,7 +5708,6 @@ function normalizeScriptObject(source = {}) {
   return { hook, body, cta };
 }
 
-const DISTRIBUTION_PLACEHOLDER_REGEX = /^(?:tbd|n\/a|null|undefined|none|distribution plan here)$/i;
 const BRAND_BRAIN_FORBIDDEN_PHRASES = [
   'placeholder',
   'quick hook',
@@ -5745,7 +5727,6 @@ const BRAND_BRAIN_MIN_LENGTHS = {
   caption: 80,
   cta: 10,
   designNotes: 40,
-  distributionPlan: 40,
   scriptBody: 40,
   reelScriptBody: 40,
   engagementComment: 12,
@@ -5834,10 +5815,6 @@ function fillBrandBrainDefaults(post = {}, nicheStyle = '') {
   }
   if (!isNonEmptyString(next.designNotes)) {
     next.designNotes = `On-screen text: ${next.title}. Show a niche-specific scene, then a proof moment, then the CTA keyword.`;
-  }
-  if (!isNonEmptyString(next.distributionPlan)) {
-    const visual = topic ? `Show ${topic} on screen.` : `Show a niche-specific moment on screen.`;
-    next.distributionPlan = `Open with the hook in the first second. ${visual} Pin a comment with the DM keyword and reply to early comments within 30 minutes. Close with the CTA.`;
   }
   if (!next.engagementScripts || typeof next.engagementScripts !== 'object') {
     next.engagementScripts = {};
@@ -6142,7 +6119,6 @@ function applyCalendarPostAliases(post = {}) {
       }
     }
   };
-  copyAliasString('distributionPlan', 'distribution_plan');
   copyAliasString('engagementLoop', 'engagement_loop');
   copyAliasString('designNotes', 'design_notes');
   copyAliasString('reelScript', 'reel_script');
@@ -6393,7 +6369,6 @@ const REQUIRED_POST_FIELDS_REGULAR = [
   'topic_signature',
   'angle',
   'designNotes',
-  'distributionPlan',
   'day',
   'hashtags',
   'script',
@@ -6417,7 +6392,6 @@ const REQUIRED_POST_FIELD_TYPES_REGULAR = {
   topic_signature: 'string',
   angle: 'string',
   designNotes: 'string',
-  distributionPlan: 'string',
   day: 'number',
   hashtags: 'array',
   script: 'string',
@@ -6539,7 +6513,6 @@ const NONCORE_OPTIONAL_FIELDS = new Set([
   'engagementScripts',
   'engagementScripts.commentReply',
   'engagementScripts.dmReply',
-  'distributionPlan',
   'designNotes',
   'executionNotes',
 ]);
@@ -6840,7 +6813,6 @@ function normalizeAdFields(post, ctx = {}) {
     'angle',
     'cta',
     'designNotes',
-    'distributionPlan',
   ];
   fields.forEach((field) => {
     if (typeof post[field] !== 'string') return;
@@ -7297,7 +7269,6 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
   checkString(post.topic_signature, 'topic_signature');
   checkString(post.angle, 'angle');
   checkString(post.designNotes, 'designNotes');
-  checkString(post.distributionPlan, 'distributionPlan');
   if (!Number.isFinite(Number(post.day))) missing.push('day');
 
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
@@ -7357,7 +7328,6 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
     'cta',
     'engagementLoop',
     'engagementScripts',
-    'distributionPlan',
     'dmReply',
     'details',
   ].forEach((key) => keys.add(key));
@@ -7727,7 +7697,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   const hashtagsText = getField(post, ['hashtags']);
   const designNotesText = getField(post, ['designNotes', 'design_notes']);
   const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
-  const distributionPlanText = getField(post, ['distributionPlan', 'distribution_plan']);
   const coreFailedFields = [];
   const noncoreFailedFields = [];
   const snippets = {};
@@ -7768,13 +7737,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   if (!engagementLoopOk) {
     noncoreFailedFields.push('engagementLoop');
     snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
-  }
-  const distributionPlanSignals = getFieldBindingSignals(distributionPlanText, fingerprint);
-  const distributionPlanOk = isNonEmptyString(distributionPlanText)
-    && (distributionPlanSignals.offerHit || distributionPlanSignals.anchorHits >= 1);
-  if (!distributionPlanOk) {
-    noncoreFailedFields.push('distributionPlan');
-    snippets.distributionPlan = distributionPlanText ? distributionPlanText.slice(0, 60) : '';
   }
   if (!coreFailedFields.length && !noncoreFailedFields.length) {
     return { ok: true, failedFields: [], noncoreFailedFields: [], details: {} };
@@ -7820,7 +7782,6 @@ function runTopicBindSelfTest() {
     hashtags: ['#ServiceFee', '#1Percent', '#NewClients'],
     designNotes: 'Minimal layout with the 1% offer highlighted.',
     engagementScripts: { commentReply: 'Happy to help with the offer.', dmReply: 'Share your timeline and we can help.' },
-    distributionPlan: 'Post to feed with the 1% service fee offer, then share in stories.',
   };
   const passes = (() => {
     const result = assertPostTopicBound(basePost, requestedSpec, []);
@@ -7851,7 +7812,6 @@ function runTopicBindSelfTest() {
     hashtags: ['#Testimonials', '#ClientFeedback'],
     designNotes: 'Quote-style layout with a client photo.',
     engagementScripts: { commentReply: 'Thanks for sharing your experience.', dmReply: 'Happy to answer questions.' },
-    distributionPlan: 'Post to feed and pin a client quote.',
   };
   const socialFingerprint = deriveTopicFingerprint(socialTitle);
   console.assert(
@@ -7891,7 +7851,6 @@ function runTopicBindSelfTest() {
     hashtags: ['#NoWinNoFee'],
     designNotes: 'Bold guarantee headline.',
     engagementScripts: { commentReply: 'Happy to explain the guarantee.', dmReply: 'Send your questions.' },
-    distributionPlan: 'Post to feed and pin the guarantee.',
   };
   const nowinPass = (() => {
     const result = assertPostTopicBound(nowinPost, nowinSpec, []);
@@ -7926,7 +7885,6 @@ function runTopicBindSelfTest() {
     hashtags: ['#FreeValuation'],
     designNotes: 'Highlight the free valuation offer.',
     engagementScripts: { commentReply: 'Happy to help with your valuation.', dmReply: 'Send your details to start.' },
-    distributionPlan: 'Post to feed with the free valuation highlight, then share in stories.',
   };
   const freePass = (() => {
     const result = assertPostTopicBound(freePost, freeSpec, []);
@@ -8046,12 +8004,6 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
     if (allowFallbacks) {
       normalized.designNotes = ensureDesignNotesFallback(normalized, nicheStyle);
       applied.push('designNotes');
-    }
-  }
-  if (!isNonEmptyString(normalized.distributionPlan)) {
-    if (allowFallbacks) {
-      normalized.distributionPlan = buildDistributionPlanFallback(normalized, nicheStyle);
-      applied.push('distributionPlan');
     }
   }
   if (allowFallbacks) {
@@ -8345,9 +8297,6 @@ function repairBrandBrainPostBatch(posts = [], nicheStyle = '', startDay = 1, po
     if (!isNonEmptyString(repaired.designNotes)) {
       repaired.designNotes = ensureDesignNotesFallback(repaired, nicheStyle);
     }
-    if (!isNonEmptyString(repaired.distributionPlan)) {
-      repaired.distributionPlan = buildDistributionPlanFallback(repaired, nicheStyle);
-    }
     return repaired;
   });
 }
@@ -8409,37 +8358,6 @@ function withTimeout(promise, ms, meta = {}) {
   });
 }
 
-const DISTRIBUTION_PLAN_ALIASES = [
-  'distributionPlan',
-  'distribution_plan',
-  'distribution plan',
-  'distributionPlanSteps',
-  'distribution_plan_steps',
-  'distributionPlanText',
-];
-
-function resolveDistributionPlanValue(post = {}) {
-  for (const key of DISTRIBUTION_PLAN_ALIASES) {
-    if (!Object.prototype.hasOwnProperty.call(post, key)) continue;
-    const value = post[key];
-    const trimmed = toPlainString(value);
-    if (trimmed && !DISTRIBUTION_PLACEHOLDER_REGEX.test(trimmed)) return trimmed;
-  }
-  return '';
-}
-
-function buildDistributionPlanFallback(post = {}) {
-  const idea = toPlainString(post.idea || post.title || 'this idea');
-  const topic = toPlainString(post.topic || post.caption || 'the topic');
-  const cta = toPlainString(post.cta || 'Learn more');
-  const plan = [
-    `0–2s: open on ${idea} with on-screen text.`,
-    `3–8s: show ${topic} with a concrete visual beat tied to the niche.`,
-    `Close: restate the takeaway and end with "${cta}".`,
-  ];
-  return plan.join(' ');
-}
-
 function extractSuggestedAudioFromPost(post = {}) {
   if (!post || typeof post !== 'object') return null;
   const candidate = post?.details?.suggestedAudio ?? post.suggestedAudio ?? post.suggested_audio;
@@ -8494,10 +8412,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const engagementScriptsValue = (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts))
     ? post.engagementScripts
     : post.engagementScripts;
-  let distributionPlan = resolveDistributionPlanValue(post);
-  if (!distributionPlan && allowFallbacks) {
-    distributionPlan = buildDistributionPlanFallback(post, nicheStyle);
-  }
   const resolvedDay = typeof post.day === 'number' ? post.day : fallbackDay;
   const postKeyValue = toPlainString(post.post_key || post.postKey || '');
   const slotIndexValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
@@ -8535,7 +8449,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     linkedin_caption: toPlainString(post.linkedin_caption || post.caption || ''),
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
-    distributionPlan,
     details: {
       suggestedAudio: extractSuggestedAudioFromPost(post) || '',
     },
@@ -8575,11 +8488,8 @@ function normalizePostWithOverrideFallback(post, idx = 0, startDay = 1, forcedDa
   return normalizePost(post, idx, startDay, forcedDay, nicheStyle, { allowFallbacks });
 }
 
-const buildDistributionPlanText = (post = {}) => toPlainString(post.distributionPlan || '');
-
 const enrichRegenPost = (post = {}, dayIndex = 0) => {
   const enriched = { ...post };
-  enriched.distributionPlan = buildDistributionPlanText(post);
   return enriched;
 };
 
@@ -11521,7 +11431,7 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, distributionPlan, engagementScripts, topic_signature, angle, topicCapsule.',
+          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, engagementScripts, topic_signature, angle, topicCapsule.',
           'hashtags must be an array of strings (8–12).',
           'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,

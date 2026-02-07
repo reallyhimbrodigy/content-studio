@@ -6655,9 +6655,6 @@ const createCard = (post) => {
       const value = parts.filter(Boolean).join('\n');
       return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
     })();
-    const distributionPlanEl = entry.distributionPlan
-      ? createDetailRow('Distribution Plan', entry.distributionPlan, 'calendar-card__distribution')
-      : null;
 
     const pinnedBlock = entryEl._pinnedBlock;
     const cardBody = document.createElement('div');
@@ -6733,7 +6730,6 @@ const createCard = (post) => {
     const scriptAcc = buildAccordion('Reel Script', videoScriptEl);
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
-    const distributionAcc = buildAccordion('Distribution Plan', distributionPlanEl);
     const detailsAcc = buildAccordion('Details', [
       infoRows,
       formatEl,
@@ -6745,7 +6741,7 @@ const createCard = (post) => {
       ...hiddenDetailNodes,
     ]);
 
-    [captionAcc, scriptAcc, designAcc, engagementAcc, distributionAcc, detailsAcc]
+    [captionAcc, scriptAcc, designAcc, engagementAcc, detailsAcc]
       .filter(Boolean)
       .forEach((acc) => accordions.appendChild(acc));
 
@@ -8580,7 +8576,6 @@ const REQUIRED_POST_TEXT_FIELDS = [
   'caption',
   'designNotes',
   'engagementLoop',
-  'distributionPlan',
 ];
 
 function isNonEmptyText(value) {
@@ -9145,7 +9140,6 @@ function normalizePost(p, idx = 0, startDay = 1) {
       cta: typeof base.reelCta === 'string' ? base.reelCta : '',
     },
     variants: base.variants || undefined,
-    distributionPlan: base.distributionPlan || '',
     audio: base.audio || '',
     suggestedAudio: normalizeSuggestedAudio(base),
   };
