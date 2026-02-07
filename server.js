@@ -3571,11 +3571,11 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         additionalProperties: false,
         required: ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes'],
         properties: {
-          hook: { type: 'string', minLength: 80, maxLength: 260 },
-          beat1: { type: 'string', minLength: 80, maxLength: 260 },
-          beat2: { type: 'string', minLength: 80, maxLength: 260 },
-          beat3: { type: 'string', minLength: 80, maxLength: 260 },
-          cta: { type: 'string', minLength: 80, maxLength: 260 },
+          hook: { type: 'string', minLength: 20, maxLength: 260 },
+          beat1: { type: 'string', minLength: 20, maxLength: 260 },
+          beat2: { type: 'string', minLength: 20, maxLength: 260 },
+          beat3: { type: 'string', minLength: 20, maxLength: 260 },
+          cta: { type: 'string', minLength: 20, maxLength: 260 },
           onScreenText: {
             type: 'array',
             minItems: 3,
@@ -4250,13 +4250,18 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Use the schema exactly; output every required field with non-empty content.',
     '- No emojis anywhere in any field.',
     '- No placeholders or template tokens (no {{...}}, <...>, TBD, TODO, lorem ipsum).',
+    'FAILURE-FIRST CONTRACT (INTERNAL, NOT OUTPUT):',
+    '- Silently derive: intended outcome, common failed attempt, break moment, hidden constraint, why this product exists because of the constraint.',
+    '- If this hook could sell a different product/service, rewrite until it cannot.',
+    '- Hook must be a past/present failure moment (no future promises).',
+    '- Ban abstract hook words unless tied to a concrete failure event: success, growth, mindset, journey, secret, truth, optimize, unlock, level up, game changer.',
     '- format MUST be exactly "reel".',
     '- reelScript MUST be an object with keys: hook, beat1, beat2, beat3, cta, onScreenText[], brollNotes[].',
     '- hook/beat1/beat2/beat3/cta are full sentences; onScreenText is 3–6 short phrases; brollNotes is 4–8 items.',
-    '- Each reelScript beat (hook/beat1/beat2/beat3/cta) must be 8–18 words. No fragments.',
-    '- Before output, verify every reelScript beat is 8–18 words.',
+    '- Hook guideline: 8–22 words (do not mention word counts).',
+    '- Each beat must include: a concrete noun, a verb, and a consequence marker (so/then/which meant/leading to).',
     '- Never output beats like "Hook." "Cut." "Show." or 1–5 word phrases.',
-    '- Total words across hook+beat1+beat2+beat3+cta must be >= 80.',
+    '- Total words across hook+beat1+beat2+beat3+cta should be >= 80.',
     '- script MUST be a plain-text render of reelScript (same content).',
     '- details.suggestedAudio must be exactly "SERVER_ASSIGNED_TRENDING_AUDIO". Do NOT name songs or artists.',
     '- Do not output planning artifacts: idea, type, repurpose, followUpIdea.',
@@ -4266,8 +4271,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- hashtags must be a JSON array of 5–10 strings.',
     '- engagementScripts MUST be an object with arrays: commentPrompts[4-6], dmScripts[2-3], replyTemplates[4-6].',
     '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
-    '- Each engagementScripts item must be 6–18 words.',
-    '- brollNotes must be 4–8 items; each broll item must be 2–6 words.',
+    '- Each engagementScripts item must be 6–18 words and reference the SAME failure as the hook.',
+    '- Each engagementScripts item must include a concrete noun (invoice, edit, call, ad, landing page, proposal, checkout).',
+    '- brollNotes must be 4–8 items; each broll item is a single shot description with a concrete object + action.',
     '- Before output, verify broll items and engagementScripts items satisfy the length rules; if not, rewrite them.',
     '- topicCapsule must be a concise string with thesis + proof points.',
     `- Required keys (exact): ${requiredKeys}`,
@@ -6798,27 +6804,18 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
   const cta = toPlainString(parts.cta || '');
   const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
   const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
-  if (countWords(hook) < REELSCRIPT_MIN_HOOK_WORDS) {
-    return { ok: false, reason: 'REELSCRIPT_HOOK_TOO_SHORT', field: 'reelScript', snippet: hook.slice(0, 120), extra: { wordCount: countWords(hook) } };
-  }
   const beats = [
     { label: 'beat1', value: beat1 },
     { label: 'beat2', value: beat2 },
     { label: 'beat3', value: beat3 },
   ];
   for (const beat of beats) {
-    const beatCount = countWords(beat.value);
-    if (beatCount < REELSCRIPT_MIN_BEAT_WORDS) {
-      console.log('[Calendar][ReelScript][BeatTooShort]', {
-        beatKey: beat.label,
-        wordCount: beatCount,
-        sample: beat.value.slice(0, 200),
-      });
-      return { ok: false, reason: 'REELSCRIPT_BEAT_TOO_SHORT', field: 'reelScript', snippet: beat.value.slice(0, 120), extra: { label: beat.label, wordCount: beatCount } };
+    if (!beat.value.trim()) {
+      return { ok: false, reason: 'REELSCRIPT_BEAT_MISSING', field: 'reelScript', snippet: '', extra: { label: beat.label } };
     }
   }
-  if (countWords(cta) < REELSCRIPT_MIN_CTA_WORDS) {
-    return { ok: false, reason: 'REELSCRIPT_CTA_TOO_SHORT', field: 'reelScript', snippet: cta.slice(0, 120), extra: { wordCount: countWords(cta) } };
+  if (!cta.trim()) {
+    return { ok: false, reason: 'REELSCRIPT_CTA_MISSING', field: 'reelScript', snippet: '' };
   }
   if (onScreen.length < 3 || onScreen.length > 6) {
     return { ok: false, reason: 'REELSCRIPT_ON_SCREEN_FORMAT', field: 'reelScript', snippet: onScreen.join(' | ').slice(0, 120), extra: { count: onScreen.length } };
@@ -7031,7 +7028,12 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
   }
   const hookText = toPlainString(post?.hook || '');
   const captionText = toPlainString(post?.caption || '');
-  const topicSource = toPlainString(post?.topic_signature || post?.title || ctx?.plannedTitle || '');
+  const topicSource = [
+    post?.topic_signature,
+    post?.title,
+    post?.topicCapsule,
+    ctx?.plannedTitle,
+  ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
   const terms = extractTopicTerms(topicSource);
   if (terms.length >= 2) {
     const missingIn = [];
@@ -7043,6 +7045,7 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
         title: toPlainString(post?.title || ''),
         topicCapsule: toPlainString(post?.topicCapsule || ''),
         topic_signature: toPlainString(post?.topic_signature || ''),
+        terms,
         failingField: missingIn[0],
         sample: toPlainString(
           missingIn[0] === 'hook'
