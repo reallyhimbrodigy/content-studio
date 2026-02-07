@@ -4315,6 +4315,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Pillar is assigned before prompting. Use target_pillar exactly and do not change it.',
     '- If previous_pillar != "none", target_pillar MUST differ from previous_pillar.',
     '- All fields must align to planned_title / topic_signature and the same topic.',
+    '- Hook, caption, script, and onScreenText must explicitly include the core anchor phrase(s) from planned_title/topic_signature (location + domain + angle).',
     '- hashtags must be a JSON array of strings.',
     `- engagementScripts MUST be an object with arrays: commentPrompts[${ENGAGEMENT_COMMENT_MIN_ITEMS}-${ENGAGEMENT_COMMENT_MAX_ITEMS}], dmScripts[${ENGAGEMENT_DM_MIN_ITEMS}-${ENGAGEMENT_DM_MAX_ITEMS}], replyTemplates[${ENGAGEMENT_REPLY_MIN_ITEMS}-${ENGAGEMENT_REPLY_MAX_ITEMS}].`,
     '- Do not stringify engagementScripts. It must be a JSON object (never a string).',
@@ -7302,6 +7303,51 @@ function extractTopicTerms(text = '') {
   return tokens.slice(0, 6);
 }
 
+const TOPIC_LOCK_LOW_SIGNAL_TOKENS = new Set([
+  'your', 'you', 'missing', 'the', 'and', 'for', 'with', 'without', 'from', 'this', 'that', 'these', 'those',
+  'their', 'our', 'ours', 'yours', 'mine', 'my', 'me', 'we', 'us', 'they', 'them', 'its', 'it', 'is', 'are',
+  'was', 'were', 'be', 'been', 'being', 'how', 'why', 'what', 'when', 'where', 'many', 'most', 'people',
+  'buyers', 'sellers', 'clients', 'tips', 'guide', 'learn', 'discover', 'understand', 'insights',
+]);
+
+function extractTopicAnchors(text = '') {
+  const normalized = normalizeTitleText(text);
+  if (!normalized) return [];
+  const allTokens = normalized.split(/\s+/).filter(Boolean);
+  const filtered = allTokens
+    .filter((token) => token.length >= 4)
+    .filter((token) => !TITLE_SIGNATURE_STOPWORDS.has(token))
+    .filter((token) => !TOPIC_LOCK_LOW_SIGNAL_TOKENS.has(token));
+  const anchors = [];
+  const include = (phrase) => {
+    if (!phrase) return;
+    if (!anchors.includes(phrase)) anchors.push(phrase);
+  };
+  if (normalized.includes('real estate')) include('real estate');
+  for (let i = 0; i < allTokens.length - 2; i += 1) {
+    if (allTokens[i + 1] === 'real' && allTokens[i + 2] === 'estate') {
+      include(`${allTokens[i]} real estate`);
+      break;
+    }
+  }
+  if (anchors.length < 2 && filtered.length >= 2) {
+    include(`${filtered[0]} ${filtered[1]}`);
+  }
+  if (anchors.length < 2 && filtered.length >= 1) {
+    include(filtered[0]);
+  }
+  if (anchors.length < 4) {
+    const usedWords = new Set(anchors.join(' ').split(/\s+/).filter(Boolean));
+    for (const token of filtered) {
+      if (anchors.length >= 4) break;
+      if (usedWords.has(token)) continue;
+      include(token);
+      usedWords.add(token);
+    }
+  }
+  return anchors.slice(0, 4);
+}
+
 function countTermHits(text = '', terms = []) {
   const normalized = normalizeTitleText(text);
   if (!normalized || !terms.length) return 0;
@@ -7378,7 +7424,7 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     post?.topicCapsule,
     ctx?.plannedTitle,
   ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
-  const terms = extractTopicTerms(topicSource);
+  const terms = extractTopicAnchors(topicSource);
   if (terms.length >= 2) {
     const missingIn = [];
     if (countTermHits(hookText, terms) < 1) missingIn.push('hook');
@@ -7387,9 +7433,8 @@ function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
     if (missingIn.length) {
       const injectTerms = (text, neededTerms) => {
         const missingTerms = neededTerms.filter((term) => !new RegExp(`\\b${escapeRegexPattern(term)}\\b`, 'i').test(text));
-        const inject = missingTerms.slice(0, 2);
-        if (!inject.length) return text;
-        return `${text} — ${inject.join(' ')}`;
+        if (!missingTerms.length) return text;
+        return `${text} — ${missingTerms.join(' ')}`;
       };
       let repairedHook = hookText;
       let repairedCaption = captionText;
