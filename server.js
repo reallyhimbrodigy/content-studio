@@ -4034,262 +4034,166 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- No emojis. No placeholders. No filler templates.',
   ].join('\n');
 
-  const REGULAR_ALL_FIELDS_PROMPT = `You are generating **ONE regular content calendar post**.
+  const REGULAR_ALL_FIELDS_PROMPT = `ROLE
+You are generating a single Regular content calendar post for a short-form reel.
 
-This is **not** a high-pressure ad.  
-It should feel useful, credible, and easy to consume.  
-The goal is clarity and consistency, not persuasion intensity.
-
-### OUTPUT CONTRACT (NON-NEGOTIABLE)
-- Output **JSON only**
-- Match the schema **exactly**
-- Output **all required keys**
-- **No extra keys**
-- **No labels** like “Hook:”, “Body:”, “CTA:” inside values
-- Do not include server-owned fields (post_key, day, slotIndex, pillar, format, mode)
-- No markdown, no commentary
-
-### STYLE GUIDELINES
-- Plain, natural sentences
-- Avoid quotes and exclamation marks; if you use one, rewrite once to remove it
-- No emojis
-- No hype language
-- No hard selling
-- No abstract fluff
-- No “as an AI” language
-
----
-
-### CONTENT RULES (REGULAR MODE)
-
+PURPOSE
 This post should feel:
 - Helpful
-- Trustworthy
-- Calm
-- Practical
+- Clear
+- Trust-building
+- Low pressure
 
-Do **not** over-optimize for virality.
+It should educate or orient, not aggressively persuade.
 
----
+A user should feel:
+“This creator knows what they’re talking about. I learned something useful.”
 
-### FIELD INSTRUCTIONS
+THINK FIRST (do not output)
+Before writing:
+- Choose one clear idea a beginner or casual audience would find useful.
+- Choose one angle that helps them understand or avoid confusion.
+- Do not optimize for virality. Optimize for clarity.
+- Do not reuse angles from other posts in this calendar.
 
-**title**  
-A clear, literal description of the topic.  
-No hooks. No hype.
+OUTPUT REQUIREMENTS
+Output JSON only, matching the schema exactly.
+Do not include labels like “Hook:” or “CTA:” inside values.
+Do not add extra keys.
+No markdown. No commentary.
 
-**hook**  
-A simple, relatable problem or observation.  
-No exaggeration. No open loops.
+FIELD INSTRUCTIONS
 
-**body**  
-Explain the issue or idea clearly in 1–2 sentences.  
-Informative, neutral tone.
+title
+A clear, neutral title describing the idea.
+Avoid hype. Avoid claims.
 
-**cta**  
-A soft, optional next step tied to learning or clarity.  
-No urgency language.
+hook
+Open with a relatable situation or confusion the audience recognizes.
+Grounded, calm, familiar.
+No shock. No urgency. No emotional manipulation.
 
----
+body
+One to two lines that explain or clarify the situation introduced in the hook.
+No abstractions. No motivational language. No generic advice.
 
-### REEL SCRIPT (SPOKEN VERSION)
+cta
+A soft, optional next step that feels helpful, not salesy.
+Examples of tone: Learn, Review, Explore, Consider.
 
-These are spoken equivalents of the content-card copy.  
-They must express the **same meaning**, but use **different wording**.
+reelHook
+Hook-only text. Spoken opening line. Do not include body or CTA.
 
-**reelHook**  
-One sentence only.  
-Problem or observation only.  
-No explanation. No CTA.
+reelBody
+Body-only text. Spoken explanation. Do not include hook or CTA.
 
-**reelBody**  
-One or two sentences only.  
-Explanation only.  
-No hook phrasing. No CTA.
+reelCta
+CTA-only text. Spoken close. Do not include hook or body.
 
-**reelCta**  
-One sentence only.  
-Single, clear action.  
-Starts with a verb.
+caption
+A short reinforcing summary of the idea.
+No emojis. No hype.
 
----
+designNotes
+Simple visuals that support understanding.
+Examples: diagrams, on-screen text, screen recordings, annotated visuals.
 
-### SUPPORTING FIELDS
+engagementLoop
+One natural, curiosity-based question.
+No pressure. No bait.
 
-**caption**  
-Short, clear summary of the post.  
-No hashtags inside the caption text.
+hashtags
+Relevant, descriptive hashtags only.
 
-**designNotes**  
-Simple visual guidance.  
-Describe what should appear on screen.
-
-**engagementLoop**  
-One sentence that invites a low-effort response.  
-No pressure. No manipulation.
-
-**hashtags**  
-Relevant, non-empty hashtags only.  
-No spam tags.
-
----
-
-### ANTI-DUPLICATION RULE
-This post must differ in:
-- Angle
-- Wording
-- Framing  
-from other posts in the same calendar.
-
-Before outputting JSON, mentally verify this is not a repeat.
-
-Output JSON only.`;
-
-  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `You are generating **ONE Brand Brain content calendar post**.
-
-This **must feel like a winning ad** without sounding like an ad.  
-Every field should be intentional, sharp, and valuable.
-
-The user should feel:
-- Seen
-- Slightly uncomfortable
-- Curious
-- Relieved when the solution appears
-
-### OUTPUT CONTRACT (NON-NEGOTIABLE)
-- Output **JSON only**
-- Match the schema **exactly**
-- Output **all required keys**
-- **No extra keys**
-- **No labels** like “Hook:”, “Body:”, “CTA:” inside values
-- Do not include server-owned fields (post_key, day, slotIndex, pillar, format, mode)
-- No markdown, no commentary
-
-### STYLE GUIDELINES
-- Plain sentences
-- Avoid quotes and exclamation marks; if used, rewrite once to remove them
-- No emojis
-- No filler
-- No generic advice
+ABSOLUTE RULES
 - No abstract language
-- No hard selling
+- No generic advice
+- No selling tone
+- No exaggeration
+- No emotional manipulation
+- No repeated angles from other posts`;
 
----
+  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `ROLE
+You are generating a single Brand Brain content calendar post designed to function as a winning short-form ad.
 
-### CORE DIFFERENCE FROM REGULAR MODE
+PURPOSE
+This post should feel:
+- Sharp
+- Insightful
+- Pattern-breaking
+- Persuasive without sounding like an ad
 
-This post **must**:
-- Stop the scroll
-- Create tension
-- Resolve that tension with a specific mechanism
-- Make the product or service feel like the obvious next step
+A user should feel:
+“This exposed something I didn’t realize — and now I want the solution.”
 
----
+THINK FIRST (do not output)
+Before writing:
+- Choose one specific micro-failure the audience experiences.
+- Choose one angle that reframes the problem in a non-obvious way.
+- Identify one mechanism that explains why the failure happens.
+- The solution must feel like the only logical resolution without aggressive selling.
+- Do not reuse angles from other posts in this calendar.
 
-### VARIATION REQUIREMENT (CRITICAL)
+OUTPUT REQUIREMENTS
+Output JSON only, matching the schema exactly.
+Do not include labels inside values.
+Do not add extra keys.
+No markdown. No commentary.
 
-Before writing, internally choose:
-- ONE primary pattern  
-  (confession, myth-bust, contrarian take, hidden cost, mistake teardown, before/after, taboo truth)
-- ONE emotional driver  
-  (regret, relief, curiosity, status, fear of loss, competence)
-- ONE angle mechanic  
-  (cost of delay, hidden tradeoff, overlooked step, false assumption)
+FIELD INSTRUCTIONS
 
-Write the post through those lenses.
+title
+A clear statement of the core failure or insight.
+Not clever. Not vague.
 
-Do not mention these choices in the output.
+hook
+A scroll-stopping lived moment that signals:
+“You thought you were doing the right thing — but that’s why this failed.”
+Concrete, uncomfortable, specific.
+No shock tactics. No hype.
 
----
+body
+One to two tight lines that reveal the mechanism behind the failure.
+This is the aha.
+No tips framing. No lists. No generic education.
 
-### FIELD INSTRUCTIONS
+cta
+A single, clear action tied to value, not urgency.
+Examples of tone: See, Get, Use, Access, Apply.
 
-**title**  
-Clear topic framing with implied tension.  
-Not clickbait.
+reelHook
+Hook-only text. Spoken opening line. Do not include body or CTA.
 
-**hook**  
-A lived micro-failure or uncomfortable truth.  
-Creates an open loop.  
-No explanation. No solution.
+reelBody
+Body-only text. Spoken explanation. Do not include hook or CTA.
 
-Fail conditions:
-- Abstract statements
-- Motivational language
-- Generic problems
+reelCta
+CTA-only text. Spoken close. Do not include hook or body.
 
-**body**  
-1–2 tight sentences.  
-Explain *why* the problem exists or *why* it keeps happening.  
-Introduce the mechanism, not the pitch.
+caption
+A reinforcing insight that sharpens the hook.
+No emojis. No hype. No hashtags inside text.
 
-Fail conditions:
-- Listicles
-- Teaching tone
-- General advice
+designNotes
+Visuals that reinforce the failure → insight → resolution arc.
+Examples: screen contrast, before/after moments, friction points, pattern interrupts.
 
-**cta**  
-One sentence.  
-Single action.  
-Value-first, not sales-first.
+engagementLoop
+One question that makes the viewer self-identify with the failure.
+No bait. No pressure language.
 
-Fail conditions:
-- “Buy now”
-- “Download now”
-- Urgency without value
+hashtags
+Relevant discovery hashtags only.
 
----
-
-### REEL SCRIPT (SPOKEN VERSION)
-
-These are **spoken**, not written, versions.  
-They must map 1:1 in meaning but use different phrasing.
-
-**reelHook**  
-One sentence only.  
-Pure scroll-stopper.  
-No CTA. No explanation.
-
-**reelBody**  
-One or two sentences only.  
-Mechanism reveal.  
-No hook phrasing. No CTA.
-
-**reelCta**  
-One sentence only.  
-Starts with a verb.  
-Clear value exchange.
-
----
-
-### SUPPORTING FIELDS
-
-**caption**  
-Reinforces the hook with clarity.  
-No repetition of reel script.
-
-**designNotes**  
-Specific visual guidance that supports the message.  
-No generic “use graphics” notes.
-
-**engagementLoop**  
-One sentence that invites reflection or admission.  
-Not a question dump.
-
-**hashtags**  
-Relevant, non-empty hashtags only.  
-No filler tags.
-
----
-
-### FINAL CHECK (SELF-CORRECTION)
-
-Before outputting JSON, confirm:
-- No field blends hook/body/cta together
-- No duplicate phrasing across fields
-- This post would not look interchangeable with another post
-
-Output JSON only.`;
+ABSOLUTE RULES
+- No abstract hooks
+- No generic education
+- No motivational language
+- No tips framing
+- No soft CTAs
+- No repetition of angles
+- No emotional manipulation
+- This must feel like insight, not marketing`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
