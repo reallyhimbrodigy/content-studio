@@ -2623,69 +2623,110 @@ async function generateAndValidateSinglePost({
           ? 'array'
           : typeof rawCandidate?.engagementScripts,
       });
+      console.log('[Calendar][AfterEngagementParse]', {
+        requestId,
+        post_key,
+        day,
+        hasEngagementScripts: Boolean(rawCandidate?.engagementScripts),
+        engagementType: typeof rawCandidate?.engagementScripts,
+        engagementKeys: rawCandidate?.engagementScripts && typeof rawCandidate.engagementScripts === 'object'
+          ? Object.keys(rawCandidate.engagementScripts)
+          : null,
+        postType: typeof rawCandidate,
+        postKeys: rawCandidate && typeof rawCandidate === 'object'
+          ? Object.keys(rawCandidate).slice(0, 30)
+          : null,
+      });
       logCalendarPostShapeFingerprint(result.posts[0], { requestId, day, post_key });
-      let post = sanitizePostForSchema(schema, result.posts[0]);
-      post.day = day;
-      post.slotIndex = slotIndex;
-      post.post_key = post_key;
-      post.pillar = assignedPillarKey;
-      if (plannedTitle) {
-        post.title = plannedTitle;
-        post.topic_signature = plannedTitle;
+      let post;
+      try {
+        post = sanitizePostForSchema(schema, result.posts[0]);
+        post.day = day;
+        post.slotIndex = slotIndex;
+        post.post_key = post_key;
+        post.pillar = assignedPillarKey;
+        if (plannedTitle) {
+          post.title = plannedTitle;
+          post.topic_signature = plannedTitle;
+        }
+        if (plannedAngle) post.angle = plannedAngle;
+        post = coerceCalendarPostTypes(post);
+        normalizeReelScriptBroll(post, { requestId, post_key });
+        normalizeEngagementScripts(post, {
+          requestId,
+          post_key,
+          title: post.title,
+          topic_signature: post.topic_signature,
+          topicCapsule: post.topicCapsule,
+        });
+        lastPost = post;
+        const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
+        const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
+        if (!reelIsObject && !post.reelScript && scriptText) {
+          post.reelScript = scriptText;
+        }
+        post.format = 'reel';
+        console.log('[Calendar][EngagementScripts][BeforeValidate]', {
+          requestId,
+          day,
+          post_key,
+          type: Array.isArray(post?.engagementScripts)
+            ? 'array'
+            : typeof post?.engagementScripts,
+          hasCommentPrompts: Array.isArray(post?.engagementScripts?.commentPrompts),
+          commentPromptsLen: Array.isArray(post?.engagementScripts?.commentPrompts)
+            ? post.engagementScripts.commentPrompts.length
+            : 0,
+          hasDmScripts: Array.isArray(post?.engagementScripts?.dmScripts),
+          dmScriptsLen: Array.isArray(post?.engagementScripts?.dmScripts)
+            ? post.engagementScripts.dmScripts.length
+            : 0,
+          hasReplyTemplates: Array.isArray(post?.engagementScripts?.replyTemplates),
+          replyTemplatesLen: Array.isArray(post?.engagementScripts?.replyTemplates)
+            ? post.engagementScripts.replyTemplates.length
+            : 0,
+        });
+        console.log('[Calendar][Candidate]', {
+          requestId,
+          day,
+          post_key,
+          candidateKeys: Object.keys(post || {}),
+          types: {
+            pillar: typeof post?.pillar,
+            script: Array.isArray(post?.script) ? 'array' : typeof post?.script,
+            reelScript: Array.isArray(post?.reelScript) ? 'array' : typeof post?.reelScript,
+            engagementScripts: Array.isArray(post?.engagementScripts) ? 'array' : typeof post?.engagementScripts,
+            topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
+          },
+        });
+        currentStage = 'validate';
+        console.log('[Calendar][Diag] STAGE=validate', { requestId, day, post_key });
+        var schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
+      } catch (postProcessErr) {
+        console.error('[Calendar][Postprocess][Error]', {
+          requestId,
+          post_key,
+          day,
+          slot: slotIndex,
+          message: postProcessErr?.message,
+          stack: String(postProcessErr?.stack || '').slice(0, 2000),
+          postType: typeof post,
+          postKeys: post && typeof post === 'object' ? Object.keys(post).slice(0, 40) : null,
+        });
+        if (postProcessErr?.code === 'CALENDAR_POST_GENERATION_FAILED') throw postProcessErr;
+        const err = new Error('CALENDAR_POST_GENERATION_FAILED');
+        err.code = 'CALENDAR_POST_GENERATION_FAILED';
+        err.statusCode = 422;
+        err.details = {
+          reason: 'POSTPROCESS_FAILED',
+          field: 'postprocess',
+          snippet: postProcessErr?.message || '',
+          stage: currentStage,
+          day,
+          post_key,
+        };
+        throw err;
       }
-      if (plannedAngle) post.angle = plannedAngle;
-      post = coerceCalendarPostTypes(post);
-      normalizeReelScriptBroll(post, { requestId, post_key });
-      normalizeEngagementScripts(post, {
-        requestId,
-        post_key,
-        title: post.title,
-        topic_signature: post.topic_signature,
-        topicCapsule: post.topicCapsule,
-      });
-      lastPost = post;
-      const scriptText = typeof post.script === 'string' ? post.script.trim() : '';
-      const reelIsObject = post.reelScript && typeof post.reelScript === 'object' && !Array.isArray(post.reelScript);
-      if (!reelIsObject && !post.reelScript && scriptText) {
-        post.reelScript = scriptText;
-      }
-      post.format = 'reel';
-      console.log('[Calendar][EngagementScripts][BeforeValidate]', {
-        requestId,
-        day,
-        post_key,
-        type: Array.isArray(post?.engagementScripts)
-          ? 'array'
-          : typeof post?.engagementScripts,
-        hasCommentPrompts: Array.isArray(post?.engagementScripts?.commentPrompts),
-        commentPromptsLen: Array.isArray(post?.engagementScripts?.commentPrompts)
-          ? post.engagementScripts.commentPrompts.length
-          : 0,
-        hasDmScripts: Array.isArray(post?.engagementScripts?.dmScripts),
-        dmScriptsLen: Array.isArray(post?.engagementScripts?.dmScripts)
-          ? post.engagementScripts.dmScripts.length
-          : 0,
-        hasReplyTemplates: Array.isArray(post?.engagementScripts?.replyTemplates),
-        replyTemplatesLen: Array.isArray(post?.engagementScripts?.replyTemplates)
-          ? post.engagementScripts.replyTemplates.length
-          : 0,
-      });
-      console.log('[Calendar][Candidate]', {
-        requestId,
-        day,
-        post_key,
-        candidateKeys: Object.keys(post || {}),
-        types: {
-          pillar: typeof post?.pillar,
-          script: Array.isArray(post?.script) ? 'array' : typeof post?.script,
-          reelScript: Array.isArray(post?.reelScript) ? 'array' : typeof post?.reelScript,
-          engagementScripts: Array.isArray(post?.engagementScripts) ? 'array' : typeof post?.engagementScripts,
-          topicCapsule: Array.isArray(post?.topicCapsule) ? 'array' : typeof post?.topicCapsule,
-        },
-      });
-      currentStage = 'validate';
-      console.log('[Calendar][Diag] STAGE=validate', { requestId, day, post_key });
-      const schemaErrors = validatePostSchemaTypes(post, calendarMode, schema);
       if (schemaErrors.length) {
         const trimmedErrors = schemaErrors.slice(0, 5).map((error) => ({
           instancePath: error?.instancePath || '',
@@ -6813,111 +6854,129 @@ function convertEngagementScriptsToObject(value) {
 }
 
 function normalizeEngagementScripts(post, ctx = {}) {
-  if (!post || typeof post !== 'object') return false;
-  let scripts = post.engagementScripts;
-  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) {
-    scripts = convertEngagementScriptsToObject(scripts);
+  try {
+    if (!post || typeof post !== 'object') return false;
+    let scripts = post.engagementScripts;
+    if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) {
+      scripts = convertEngagementScriptsToObject(scripts);
+    }
+    if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return false;
+    const topicSource = [
+      ctx?.topic_signature,
+      ctx?.title,
+      ctx?.topicCapsule,
+    ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
+    const topicWords = normalizeTitleText(topicSource).split(/\s+/).filter(Boolean).slice(0, 2);
+    const tail = topicWords.length ? `about ${topicWords.join(' ')}` : 'about this';
+    const normalizeItem = (value, fieldName, itemIndex) => {
+      const beforeRaw = value === null || value === undefined ? '' : String(value);
+      let text = beforeRaw.trim().replace(/\s+/g, ' ').replace(/[.,!?]+$/g, '');
+      let words = text ? text.split(/\s+/).filter(Boolean) : [];
+      const beforeWordCount = words.length;
+      while (words.length > 0 && words.length < ENGAGEMENT_ITEM_MIN_WORDS) {
+        const tailWords = tail.split(/\s+/);
+        words = words.concat(tailWords);
+      }
+      if (words.length > ENGAGEMENT_ITEM_MAX_WORDS) {
+        words = words.slice(0, ENGAGEMENT_ITEM_MAX_WORDS);
+      }
+      const after = words.join(' ');
+      const afterWordCount = words.length;
+      if (after && after !== beforeRaw.trim()) {
+        console.log('[Calendar][EngagementScripts][Normalize]', {
+          requestId: ctx?.requestId || null,
+          post_key: ctx?.post_key || null,
+          fieldName,
+          itemIndex,
+          before: beforeRaw.slice(0, 200),
+          after: after.slice(0, 200),
+          beforeWordCount,
+          afterWordCount,
+        });
+      }
+      return after || beforeRaw.trim();
+    };
+    const normalizeArray = (arr, fieldName) => {
+      if (!Array.isArray(arr)) return arr;
+      return arr.map((item, idx) => normalizeItem(item, fieldName, idx));
+    };
+    scripts.commentPrompts = normalizeArray(scripts.commentPrompts, 'commentPrompts');
+    scripts.dmScripts = normalizeArray(scripts.dmScripts, 'dmScripts');
+    scripts.replyTemplates = normalizeArray(scripts.replyTemplates, 'replyTemplates');
+    post.engagementScripts = scripts;
+    return true;
+  } catch (err) {
+    console.warn('[Calendar][EngagementScripts][NormalizeError]', {
+      requestId: ctx?.requestId || null,
+      post_key: ctx?.post_key || null,
+      message: err?.message || err,
+    });
+    return false;
   }
-  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return false;
-  const topicSource = [
-    ctx?.topic_signature,
-    ctx?.title,
-    ctx?.topicCapsule,
-  ].map((val) => toPlainString(val || '')).filter(Boolean).join(' ');
-  const topicWords = normalizeTitleText(topicSource).split(/\s+/).filter(Boolean).slice(0, 2);
-  const tail = topicWords.length ? `about ${topicWords.join(' ')}` : 'about this';
-  const normalizeItem = (value, fieldName, itemIndex) => {
-    const beforeRaw = value === null || value === undefined ? '' : String(value);
-    let text = beforeRaw.trim().replace(/\s+/g, ' ').replace(/[.,!?]+$/g, '');
-    let words = text ? text.split(/\s+/).filter(Boolean) : [];
-    const beforeWordCount = words.length;
-    while (words.length > 0 && words.length < ENGAGEMENT_ITEM_MIN_WORDS) {
-      const tailWords = tail.split(/\s+/);
-      words = words.concat(tailWords);
-    }
-    if (words.length > ENGAGEMENT_ITEM_MAX_WORDS) {
-      words = words.slice(0, ENGAGEMENT_ITEM_MAX_WORDS);
-    }
-    const after = words.join(' ');
-    const afterWordCount = words.length;
-    if (after && after !== beforeRaw.trim()) {
-      console.log('[Calendar][EngagementScripts][Normalize]', {
-        requestId: ctx?.requestId || null,
-        post_key: ctx?.post_key || null,
-        fieldName,
-        itemIndex,
-        before: beforeRaw.slice(0, 200),
-        after: after.slice(0, 200),
-        beforeWordCount,
-        afterWordCount,
-      });
-    }
-    return after || beforeRaw.trim();
-  };
-  const normalizeArray = (arr, fieldName) => {
-    if (!Array.isArray(arr)) return arr;
-    return arr.map((item, idx) => normalizeItem(item, fieldName, idx));
-  };
-  scripts.commentPrompts = normalizeArray(scripts.commentPrompts, 'commentPrompts');
-  scripts.dmScripts = normalizeArray(scripts.dmScripts, 'dmScripts');
-  scripts.replyTemplates = normalizeArray(scripts.replyTemplates, 'replyTemplates');
-  post.engagementScripts = scripts;
-  return true;
 }
 
 function normalizeReelScriptBroll(post, ctx = {}) {
-  if (!post || typeof post !== 'object') return false;
-  const reel = post.reelScript;
-  if (!reel || typeof reel !== 'object' || Array.isArray(reel)) return false;
-  const raw = reel.brollNotes;
-  if (!Array.isArray(raw)) return false;
-  const normalized = [];
-  let changed = false;
-  raw.forEach((item, idx) => {
-    const beforeRaw = item === null || item === undefined ? '' : String(item);
-    let text = beforeRaw.trim().replace(/\s+/g, ' ');
-    text = text.replace(/[.,!?]+$/g, '');
-    const beforeWords = text ? text.split(/\s+/).filter(Boolean) : [];
-    const beforeWordCount = beforeWords.length;
-    let afterWords = beforeWords;
-    if (beforeWordCount > 6) {
-      afterWords = beforeWords.slice(0, 6);
-    }
-    const after = afterWords.join(' ');
-    const afterWordCount = afterWords.length;
-    if (!after) {
-      if (beforeRaw.trim()) changed = true;
-      if (changed) {
+  try {
+    if (!post || typeof post !== 'object') return false;
+    const reel = post.reelScript;
+    if (!reel || typeof reel !== 'object' || Array.isArray(reel)) return false;
+    const raw = reel.brollNotes;
+    if (!Array.isArray(raw)) return false;
+    const normalized = [];
+    let changed = false;
+    raw.forEach((item, idx) => {
+      const beforeRaw = item === null || item === undefined ? '' : String(item);
+      let text = beforeRaw.trim().replace(/\s+/g, ' ');
+      text = text.replace(/[.,!?]+$/g, '');
+      const beforeWords = text ? text.split(/\s+/).filter(Boolean) : [];
+      const beforeWordCount = beforeWords.length;
+      let afterWords = beforeWords;
+      if (beforeWordCount > REELSCRIPT_BROLL_MAX_WORDS) {
+        afterWords = beforeWords.slice(0, REELSCRIPT_BROLL_MAX_WORDS);
+      }
+      const after = afterWords.join(' ');
+      const afterWordCount = afterWords.length;
+      if (!after) {
+        if (beforeRaw.trim()) changed = true;
+        if (changed) {
+          console.log('[Calendar][ReelScript][BrollNormalize]', {
+            requestId: ctx?.requestId || null,
+            post_key: ctx?.post_key || null,
+            itemIndex: idx,
+            before: beforeRaw.slice(0, 200),
+            after: '',
+            beforeWordCount,
+            afterWordCount,
+          });
+        }
+        return;
+      }
+      if (beforeRaw.trim() !== after) {
+        changed = true;
         console.log('[Calendar][ReelScript][BrollNormalize]', {
           requestId: ctx?.requestId || null,
           post_key: ctx?.post_key || null,
           itemIndex: idx,
           before: beforeRaw.slice(0, 200),
-          after: '',
+          after: after.slice(0, 200),
           beforeWordCount,
           afterWordCount,
         });
       }
-      return;
+      normalized.push(after);
+    });
+    if (changed) {
+      post.reelScript.brollNotes = normalized;
     }
-    if (beforeRaw.trim() !== after) {
-      changed = true;
-      console.log('[Calendar][ReelScript][BrollNormalize]', {
-        requestId: ctx?.requestId || null,
-        post_key: ctx?.post_key || null,
-        itemIndex: idx,
-        before: beforeRaw.slice(0, 200),
-        after: after.slice(0, 200),
-        beforeWordCount,
-        afterWordCount,
-      });
-    }
-    normalized.push(after);
-  });
-  if (changed) {
-    post.reelScript.brollNotes = normalized;
+    return changed;
+  } catch (err) {
+    console.warn('[Calendar][ReelScript][BrollNormalizeError]', {
+      requestId: ctx?.requestId || null,
+      post_key: ctx?.post_key || null,
+      message: err?.message || err,
+    });
+    return false;
   }
-  return changed;
 }
 
 function validateReelScriptParts(parts = {}, mode = 'regular') {
