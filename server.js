@@ -4010,6 +4010,145 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 }
 
 const PROMPT_VERSION = 'calendar_minimal_v1';
+const ANGLE_SEEDS_REGULAR = {
+  education: [
+    'missed first checkpoint',
+    'used stale baseline metric',
+    'skipped intake worksheet',
+    'misread deadline window',
+    'followed wrong order of steps',
+    'ignored setup checklist',
+    'copied old process map',
+    'overlooked handoff detail',
+    'tracked wrong success signal',
+    'started without scope notes',
+    'missed prerequisite document',
+    'assumed default timeline',
+  ],
+  lifestyle: [
+    'packed for wrong sequence',
+    'left without core tool',
+    'missed morning planning block',
+    'stacked too many priorities',
+    'chose low focus environment',
+    'skipped evening reset',
+    'started day without plan board',
+    'missed recovery window',
+    'used cluttered workspace',
+    'ignored calendar buffer',
+    'lost notes between tasks',
+    'rushed final review pass',
+  ],
+  promotion: [
+    'shared offer without context',
+    'published with weak headline',
+    'launched before proof assets',
+    'used generic audience message',
+    'buried call to action',
+    'timed post for low traffic',
+    'skipped social proof cue',
+    'presented too many options',
+    'missed urgency anchor',
+    'opened with feature list',
+    'did not clarify next step',
+    'left out offer boundary',
+  ],
+  social_proof: [
+    'told result without process',
+    'shared win without timeline',
+    'used vague transformation claim',
+    'hid starting point details',
+    'missed concrete before state',
+    'stacked too many testimonials',
+    'quoted outcome without method',
+    'skipped proof artifact',
+    'left out implementation step',
+    'framed story without obstacle',
+    'used anonymous generic example',
+    'ignored measurable checkpoint',
+  ],
+};
+const ANGLE_SEEDS_BRAND_BRAIN = {
+  education: [
+    'one missed checkpoint killed momentum',
+    'bad baseline number drove bad call',
+    'wrong order created expensive rework',
+    'stale assumption blocked good option',
+    'skipped intake step caused late failure',
+    'unseen dependency triggered deadline slip',
+    'missing document stalled final approval',
+    'misread timeline erased best choice',
+    'overlooked risk signal multiplied cost',
+    'incomplete setup caused chain breakdown',
+    'weak criteria selected wrong path',
+    'late correction doubled total effort',
+  ],
+  lifestyle: [
+    'rushed routine triggered avoidable mistake',
+    'no buffer turned small issue into loss',
+    'cluttered system hid critical signal',
+    'late reset ruined next day performance',
+    'overbooked calendar forced bad decision',
+    'fragmented attention missed key detail',
+    'no handoff notes broke continuity',
+    'wrong environment reduced execution quality',
+    'stacked tasks collapsed final outcome',
+    'skipped review led to public miss',
+    'weak prep caused expensive delay',
+    'default routine kept repeating failure',
+  ],
+  promotion: [
+    'weak opener burned the first impression',
+    'generic pitch made buyer delay again',
+    'unclear next step lost ready demand',
+    'feature heavy copy hid core payoff',
+    'late proof asset killed trust fast',
+    'too many choices froze good leads',
+    'timing error wasted prime attention',
+    'no consequence framing reduced urgency',
+    'offer without boundary invited indecision',
+    'missing mechanism made claim feel empty',
+    'soft close leaked conversion intent',
+    'wrong promise attracted bad fit leads',
+  ],
+  social_proof: [
+    'result only story felt unbelievable',
+    'no before state erased impact',
+    'missing proof artifact lowered trust',
+    'timeline gap made win look random',
+    'no mechanism made outcome non repeatable',
+    'sanitized case study removed real tension',
+    'anonymous example killed credibility',
+    'no obstacle arc weakened payoff',
+    'claim without metric raised skepticism',
+    'too broad testimonial felt generic',
+    'proof without context misled buyer',
+    'hidden failure point repeated in silence',
+  ],
+};
+
+function hashStringToInt(str = '') {
+  let hash = 2166136261;
+  const value = String(str || '');
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function pickAngleSeed({ mode = 'regular', pillar = 'education', post_key = '', promptVersion = '' } = {}) {
+  const normalizedMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
+  const normalizedPillar = String(pillar || 'education').toLowerCase();
+  const bank = normalizedMode === 'brand_brain' ? ANGLE_SEEDS_BRAND_BRAIN : ANGLE_SEEDS_REGULAR;
+  const fallback = Array.isArray(bank.education) ? bank.education : [];
+  const seeds = Array.isArray(bank[normalizedPillar]) && bank[normalizedPillar].length ? bank[normalizedPillar] : fallback;
+  if (!seeds.length) return { seed: 'missed foundational step', index: 0 };
+  const key = `${normalizedMode}|${normalizedPillar}|${post_key}|${promptVersion}`;
+  const hash = hashStringToInt(key);
+  const index = hash % seeds.length;
+  return { seed: seeds[index], index };
+}
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
@@ -4022,52 +4161,36 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
-  const targetPillar = opts.targetPillar || '';
+  const targetPillar = opts.pillar || opts.targetPillar || '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
-  const postKeyValue = opts.postKey || '';
+  const postKeyValue = opts.post_key || opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
-  const failureSeeds = [
-    { key: 'waited-too-long', description: 'delay turned a manageable decision into a loss' },
-    { key: 'trusted-wrong-number', description: 'a wrong input drove the wrong call' },
-    { key: 'surprise-fee', description: 'a hidden cost appeared late and changed the outcome' },
-    { key: 'missed-window', description: 'timing slipped and the best option vanished' },
-    { key: 'wrong-order', description: 'steps happened in the wrong order and created friction' },
-    { key: 'assumed-standard', description: 'assuming standard process caused preventable rework' },
-    { key: 'overlooked-step', description: 'one skipped step created downstream problems' },
-    { key: 'outmaneuvered', description: 'another option moved faster and won' },
-    { key: 'paperwork-delay', description: 'documents lagged and blocked momentum' },
-    { key: 'deal-fell-apart', description: 'a weak setup caused the final outcome to fail' },
-  ];
-  const pickFailureSeed = ({ modeValue, pillarValue, dayValue, slotValue, postKey }) => {
-    const raw = `${modeValue}|${pillarValue}|${dayValue}|${slotValue}|${postKey || ''}`;
-    let hash = 0;
-    for (let i = 0; i < raw.length; i += 1) {
-      hash = ((hash * 33) + raw.charCodeAt(i)) | 0;
-    }
-    const idx = Math.abs(hash) % failureSeeds.length;
-    return failureSeeds[idx] || failureSeeds[0];
-  };
-  const failureSeed = pickFailureSeed({
-    modeValue: mode,
-    pillarValue: targetPillar || 'none',
-    dayValue: startDay,
-    slotValue: slotIndex,
-    postKey: postKeyValue || postKey(startDay, slotIndex),
+  const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
+  const { seed: angleSeed, index: angleSeedIndex } = pickAngleSeed({
+    mode,
+    pillar: targetPillar || 'education',
+    post_key: resolvedPostKey,
+    promptVersion: PROMPT_VERSION,
+  });
+  console.log('[Calendar][PromptSeed]', {
+    requestId: opts.requestId || null,
+    mode,
+    post_key: resolvedPostKey,
+    pillar: targetPillar || null,
+    angleSeedIndex,
   });
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
-    postKeyValue ? `post_key: ${postKeyValue}` : null,
+    resolvedPostKey ? `post_key: ${resolvedPostKey}` : null,
     `day: ${startDay}`,
     `slotIndex: ${slotIndex}`,
     'format: reel',
     targetPillar ? `pillar: ${targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
-    `FAILURE_MODE_SEED: ${failureSeed.key} (${failureSeed.description})`,
-    'Use this as the reason this post exists. Do not reuse the same failure-mode wording across posts.',
   ].filter(Boolean).join('\n');
 
   const GLOBAL_RULES = [
@@ -4087,7 +4210,13 @@ UPSTREAM OBJECTIVE
 You are NOT teaching. You are creating a short-form post that earns attention by naming a real friction or mistake.
 Regular mode is awareness: helpful and calm. Keep some tension open and keep CTA gentle.
 Write like a creator, not an instructor.
-Use FAILURE_MODE_SEED as the reason this post exists.
+Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
+
+ANGLE SEED
+- ANGLE_SEED: ${angleSeed}
+- Every one of these fields must clearly reflect ANGLE_SEED: hook, body, cta, reelHook, reelBody, reelCta.
+- Do not mention the phrase ANGLE_SEED. Do not label. Do not wrap sentences in quotes.
+- Do not reuse sentences from other posts. Write fresh phrasing for this seed.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 
@@ -4146,7 +4275,13 @@ UPSTREAM OBJECTIVE
 You are writing an ad where the viewer feels the cost of inaction.
 Brand Brain mode is conversion: consequence-driven, specific, direct. CTA is the logical escape route.
 Entertain first. No hard selling. No generic tips.
-Use FAILURE_MODE_SEED as the reason this post exists.
+Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
+
+ANGLE SEED
+- ANGLE_SEED: ${angleSeed}
+- Every one of these fields must clearly reflect ANGLE_SEED: hook, body, cta, reelHook, reelBody, reelCta.
+- Do not mention the phrase ANGLE_SEED. Do not label. Do not wrap sentences in quotes.
+- Do not reuse sentences from other posts. Write fresh phrasing for this seed.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 
