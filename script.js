@@ -6511,27 +6511,28 @@ const createCard = (post) => {
     const captionBtn = null;
 
     const fullTextParts = [];
+    const safeText = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
     const dayLabel = `Day ${String(entryDay).padStart(2, '0')}${entries.length > 1 ? ` • Post ${idx + 1}` : ''}`;
     fullTextParts.push(dayLabel);
-    if (idea || title) fullTextParts.push(`Idea: ${idea || title}`);
+    if (idea || title) fullTextParts.push(`Idea: ${safeText(idea || title)}`);
     if (type) fullTextParts.push(`Type: ${type}`);
-    if (caption) fullTextParts.push(`Caption: ${caption}`);
+    if (caption) fullTextParts.push(`Caption: ${safeText(caption)}`);
     if (Array.isArray(hashtags) && hashtags.length) {
       fullTextParts.push(`Hashtags: ${hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')}`);
     } else if (typeof hashtags === 'string' && hashtags.trim()) {
       fullTextParts.push(`Hashtags: ${hashtags}`);
     }
     if (format) fullTextParts.push(`Format: ${format}`);
-    if (cta) fullTextParts.push(`CTA: ${cta}`);
-    if (designNotes) fullTextParts.push(`Design Notes: ${designNotes}`);
+    if (cta) fullTextParts.push(`CTA: ${safeText(cta)}`);
+    if (designNotes) fullTextParts.push(`Design Notes: ${safeText(designNotes)}`);
     if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
     if (promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
     if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
       const scriptLines = [];
-      if (videoScript.hook) scriptLines.push(videoScript.hook);
-      if (videoScript.body) scriptLines.push(videoScript.body);
-      if (videoScript.cta) scriptLines.push(videoScript.cta);
+      if (videoScript.hook) scriptLines.push(safeText(videoScript.hook));
+      if (videoScript.body) scriptLines.push(safeText(videoScript.body));
+      if (videoScript.cta) scriptLines.push(safeText(videoScript.cta));
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
     if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
@@ -6544,26 +6545,26 @@ const createCard = (post) => {
       if (Array.isArray(engagementScripts.replyTemplates) && engagementScripts.replyTemplates.length) {
         fullTextParts.push(`Engagement Reply Templates: ${engagementScripts.replyTemplates.join(' | ')}`);
       }
-      if (engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${engagementScripts.commentReply}`);
-      if (engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${engagementScripts.dmReply}`);
+      if (engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${safeText(engagementScripts.commentReply)}`);
+      if (engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${safeText(engagementScripts.dmReply)}`);
     } else if (typeof engagementScripts === 'string' && engagementScripts.trim()) {
-      fullTextParts.push(`Engagement Scripts: ${engagementScripts.trim()}`);
+      fullTextParts.push(`Engagement Scripts: ${safeText(engagementScripts.trim())}`);
     }
     if (entry.variants) {
-      if (entry.variants.igCaption) fullTextParts.push(`Instagram Variant: ${entry.variants.igCaption}`);
-      if (entry.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${entry.variants.tiktokCaption}`);
-      if (entry.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${entry.variants.linkedinCaption}`);
+      if (entry.variants.igCaption) fullTextParts.push(`Instagram Variant: ${safeText(entry.variants.igCaption)}`);
+      if (entry.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${safeText(entry.variants.tiktokCaption)}`);
+      if (entry.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${safeText(entry.variants.linkedinCaption)}`);
     }
     if (isProTier() && entry.captionVariations) {
-      if (entry.captionVariations.casual) fullTextParts.push(`Casual Caption: ${entry.captionVariations.casual}`);
-      if (entry.captionVariations.professional) fullTextParts.push(`Professional Caption: ${entry.captionVariations.professional}`);
-      if (entry.captionVariations.witty) fullTextParts.push(`Witty Caption: ${entry.captionVariations.witty}`);
+      if (entry.captionVariations.casual) fullTextParts.push(`Casual Caption: ${safeText(entry.captionVariations.casual)}`);
+      if (entry.captionVariations.professional) fullTextParts.push(`Professional Caption: ${safeText(entry.captionVariations.professional)}`);
+      if (entry.captionVariations.witty) fullTextParts.push(`Witty Caption: ${safeText(entry.captionVariations.witty)}`);
     }
     if (isProTier() && entry.hashtagSets) {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (audioRowText) fullTextParts.push(`Suggested audio: ${audioRowText}`);
+    if (audioRowText) fullTextParts.push(`Suggested audio: ${safeText(audioRowText)}`);
     const fullText = fullTextParts.join('\n\n');
 
     btnCopyFull.addEventListener('click', async () => {
@@ -8215,24 +8216,32 @@ function stripLeadingSectionLabelPrefix(text) {
   return text.replace(/^\s*(reel script|design notes|engagement loop|distribution plan|details)\s*:\s*/i, '');
 }
 
+function stripTrailingFollowUpSection(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(/\s*(?:\r?\n)?\s*(?:Follow-up Idea|Follow up idea|Follow-up|Next post|Tomorrow)\s*:[\s\S]*$/i, '')
+    .trim();
+}
+
 // Build a professional-looking standalone HTML for a single post
 function buildPostHTML(post){
+  const clean = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
   const day = post.day || '';
-  const title = post.title || '';
+  const title = clean(post.title || '');
   const pillar = post.pillar || '';
   const type = pillar || '';
   const format = post.format || '';
-  const caption = post.caption || '';
+  const caption = clean(post.caption || '');
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
-  const cta = post.cta || '';
-  const designNotes = stripSectionLabelIfNeeded(post.designNotes || '', 'Design Notes') || '';
+  const cta = clean(post.cta || '');
+  const designNotes = stripSectionLabelIfNeeded(clean(post.designNotes || ''), 'Design Notes') || '';
   const repurpose = Array.isArray(post.repurpose)? post.repurpose : (post.repurpose? [post.repurpose] : []);
   const weeklyPromo = post.weeklyPromo || '';
   const promoSlot = !!post.promoSlot;
   const vs = {
-    hook: typeof post.reelHook === 'string' ? post.reelHook : (post.videoScript?.hook || ''),
-    body: typeof post.reelBody === 'string' ? post.reelBody : (post.videoScript?.body || ''),
-    cta: typeof post.reelCta === 'string' ? post.reelCta : (post.videoScript?.cta || ''),
+    hook: typeof post.reelHook === 'string' ? clean(post.reelHook) : clean(post.videoScript?.hook || ''),
+    body: typeof post.reelBody === 'string' ? clean(post.reelBody) : clean(post.videoScript?.body || ''),
+    cta: typeof post.reelCta === 'string' ? clean(post.reelCta) : clean(post.videoScript?.cta || ''),
   };
   const engage = post.engagementScripts || {};
   const nl2br = (s)=> escapeHtml(s).replace(/\n/g,'<br/>');
@@ -8244,8 +8253,8 @@ function buildPostHTML(post){
   const cleanedHook = stripLeadingSectionLabelLine(vs.hook || '', 'Reel Script');
   const cleanedBody = stripLeadingSectionLabelLine(vs.body || '', 'Reel Script');
   const cleanedCta = stripLeadingSectionLabelLine(vs.cta || '', 'Reel Script');
-  const engagementComment = stripSectionLabelIfNeeded(engage.commentReply || '', 'Engagement Loop');
-  const engagementDm = stripSectionLabelIfNeeded(engage.dmReply || '', 'Engagement Loop');
+  const engagementComment = stripSectionLabelIfNeeded(clean(engage.commentReply || ''), 'Engagement Loop');
+  const engagementDm = stripSectionLabelIfNeeded(clean(engage.dmReply || ''), 'Engagement Loop');
   const detailBlocks = [
     hashtags ? `<div class="calendar-card__hashtags">${escapeHtml(hashtags)}</div>` : '',
     showFormat ? `<span class="calendar-card__format">Format: ${escapeHtml(format)}</span>` : '',
@@ -9092,6 +9101,7 @@ function getSuggestedAudioTitle(post) {
 
 function normalizePost(p, idx = 0, startDay = 1) {
   const base = { ...(p || {}) };
+  const clean = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
   Object.keys(base).forEach((key) => {
     const normalizedKey = String(key || '').toLowerCase();
     if (normalizedKey.includes('story') && normalizedKey.includes('prompt')) {
@@ -9100,26 +9110,28 @@ function normalizePost(p, idx = 0, startDay = 1) {
   });
   const out = {
     day: typeof base.day === 'number' ? base.day : (startDay + idx),
-    idea: base.idea || base.title || '',
+    idea: clean(base.idea || base.title || ''),
     type: base.type || '',
-    caption: base.caption || '',
+    caption: clean(base.caption || ''),
     hashtags: Array.isArray(base.hashtags) ? base.hashtags : (base.hashtags ? String(base.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
     format: base.format || '',
-    cta: base.cta || '',
+    cta: clean(base.cta || ''),
     pillar: base.pillar || '',
-    designNotes: base.designNotes || '',
+    designNotes: clean(base.designNotes || ''),
     repurpose: Array.isArray(base.repurpose) ? base.repurpose : (base.repurpose ? [base.repurpose] : []),
     analytics: Array.isArray(base.analytics) ? base.analytics : (base.analytics ? [base.analytics] : []),
-    engagementScripts: base.engagementScripts || base.engagementLoop || {},
+    engagementScripts: typeof base.engagementScripts === 'string'
+      ? clean(base.engagementScripts)
+      : (base.engagementScripts || clean(base.engagementLoop || '') || {}),
     promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
     weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
-    reelHook: typeof base.reelHook === 'string' ? base.reelHook : '',
-    reelBody: typeof base.reelBody === 'string' ? base.reelBody : '',
-    reelCta: typeof base.reelCta === 'string' ? base.reelCta : '',
+    reelHook: typeof base.reelHook === 'string' ? clean(base.reelHook) : '',
+    reelBody: typeof base.reelBody === 'string' ? clean(base.reelBody) : '',
+    reelCta: typeof base.reelCta === 'string' ? clean(base.reelCta) : '',
     videoScript: {
-      hook: typeof base.reelHook === 'string' ? base.reelHook : '',
-      body: typeof base.reelBody === 'string' ? base.reelBody : '',
-      cta: typeof base.reelCta === 'string' ? base.reelCta : '',
+      hook: typeof base.reelHook === 'string' ? clean(base.reelHook) : '',
+      body: typeof base.reelBody === 'string' ? clean(base.reelBody) : '',
+      cta: typeof base.reelCta === 'string' ? clean(base.reelCta) : '',
     },
     variants: base.variants || undefined,
     audio: base.audio || '',
@@ -10300,22 +10312,23 @@ function renderPublishHub(){
     const mk = (label)=>{ const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.style.fontSize='0.8rem'; b.style.padding='0.3rem 0.6rem'; return b; };
     // Build full text with all card content
     const fullTextParts = [];
+    const safeText = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
     fullTextParts.push(`Day ${String(post.day).padStart(2,'0')}`);
-    if (post.idea) fullTextParts.push(`Idea: ${post.idea}`);
+    if (post.idea) fullTextParts.push(`Idea: ${safeText(post.idea)}`);
     if (post.type) fullTextParts.push(`Type: ${post.type}`);
-    if (post.caption) fullTextParts.push(`Caption: ${post.caption}`);
+    if (post.caption) fullTextParts.push(`Caption: ${safeText(post.caption)}`);
     if (tags) fullTextParts.push(`Hashtags: ${tags}`);
     if (post.format) fullTextParts.push(`Format: ${post.format}`);
-    if (post.cta) fullTextParts.push(`CTA: ${post.cta}`);
-    if (post.designNotes) fullTextParts.push(`Design Notes: ${post.designNotes}`);
+    if (post.cta) fullTextParts.push(`CTA: ${safeText(post.cta)}`);
+    if (post.designNotes) fullTextParts.push(`Design Notes: ${safeText(post.designNotes)}`);
     if (post.repurpose && Array.isArray(post.repurpose) && post.repurpose.length) fullTextParts.push(`Repurpose: ${post.repurpose.join(' • ')}`);
     if (post.promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
     if (post.weeklyPromo) fullTextParts.push(`Promo: ${post.weeklyPromo}`);
     if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
       const scriptLines = [];
-      if (post.videoScript.hook) scriptLines.push(post.videoScript.hook);
-      if (post.videoScript.body) scriptLines.push(post.videoScript.body);
-      if (post.videoScript.cta) scriptLines.push(post.videoScript.cta);
+      if (post.videoScript.hook) scriptLines.push(safeText(post.videoScript.hook));
+      if (post.videoScript.body) scriptLines.push(safeText(post.videoScript.body));
+      if (post.videoScript.cta) scriptLines.push(safeText(post.videoScript.cta));
       fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
     }
     if (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts)) {
@@ -10328,15 +10341,15 @@ function renderPublishHub(){
       if (Array.isArray(post.engagementScripts.replyTemplates) && post.engagementScripts.replyTemplates.length) {
         fullTextParts.push(`Engagement Reply Templates: ${post.engagementScripts.replyTemplates.join(' | ')}`);
       }
-      if (post.engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${post.engagementScripts.commentReply}`);
-      if (post.engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${post.engagementScripts.dmReply}`);
+      if (post.engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${safeText(post.engagementScripts.commentReply)}`);
+      if (post.engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${safeText(post.engagementScripts.dmReply)}`);
     } else if (typeof post.engagementScripts === 'string' && post.engagementScripts.trim()) {
-      fullTextParts.push(`Engagement Scripts: ${post.engagementScripts.trim()}`);
+      fullTextParts.push(`Engagement Scripts: ${safeText(post.engagementScripts.trim())}`);
     }
     if (post.variants) {
-      if (post.variants.igCaption) fullTextParts.push(`Instagram Variant: ${post.variants.igCaption}`);
-      if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${post.variants.tiktokCaption}`);
-      if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${post.variants.linkedinCaption}`);
+      if (post.variants.igCaption) fullTextParts.push(`Instagram Variant: ${safeText(post.variants.igCaption)}`);
+      if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${safeText(post.variants.tiktokCaption)}`);
+      if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${safeText(post.variants.linkedinCaption)}`);
     }
     const fullText = fullTextParts.join('\n\n');
     const bCopyFull = mk('Copy Full'); bCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); bCopyFull.textContent='Copied!'; setTimeout(()=>bCopyFull.textContent='Copy Full', 1000);} catch(e){} });

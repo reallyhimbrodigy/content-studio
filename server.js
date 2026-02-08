@@ -3316,17 +3316,23 @@ function buildCalendarSchemaObject(totalPostsRequired, minDay = 1, maxDay = 30, 
 
 function normalizeToMinimalShape(raw = {}) {
   if (!raw || typeof raw !== 'object') return {};
+  const stripTrailingFollowUpSection = (value) => {
+    if (typeof value !== 'string') return value;
+    return value
+      .replace(/\s*(?:\r?\n)?\s*(?:Follow-up Idea|Follow up idea|Follow-up|Next post|Tomorrow)\s*:[\s\S]*$/i, '')
+      .trim();
+  };
   const cleaned = {
-    title: raw.title,
-    hook: raw.hook,
-    body: raw.body,
-    cta: raw.cta,
-    reelHook: raw.reelHook,
-    reelBody: raw.reelBody,
-    reelCta: raw.reelCta,
-    caption: raw.caption,
-    designNotes: raw.designNotes,
-    engagementLoop: raw.engagementLoop,
+    title: stripTrailingFollowUpSection(raw.title),
+    hook: stripTrailingFollowUpSection(raw.hook),
+    body: stripTrailingFollowUpSection(raw.body),
+    cta: stripTrailingFollowUpSection(raw.cta),
+    reelHook: stripTrailingFollowUpSection(raw.reelHook),
+    reelBody: stripTrailingFollowUpSection(raw.reelBody),
+    reelCta: stripTrailingFollowUpSection(raw.reelCta),
+    caption: stripTrailingFollowUpSection(raw.caption),
+    designNotes: stripTrailingFollowUpSection(raw.designNotes),
+    engagementLoop: stripTrailingFollowUpSection(raw.engagementLoop),
     hashtags: raw.hashtags,
   };
   return cleaned;
@@ -3814,7 +3820,7 @@ const QUALITY_ALIGNMENT_BLOCK = [
   '- reelScript.body must add a scenario example and one objection + answer not already in the Hook/Caption.',
   '- CTA must be a single step and must not repeat Hook/Caption phrasing.',
   '- engagementScripts.commentReply must be a forced-choice prompt (A/B or 1/2) plus a "why" prompt.',
-  '- engagementScripts.dmReply must specify exactly one follow-up asset type and what question it answers.',
+  '- engagementScripts.dmReply must specify exactly one asset type and what question it answers.',
   '- engagementScripts.dmReply must be neutral and non-salesy.',
   '- designNotes and engagementScripts must add distinct information; do not restate Hook/Caption/Script.',
   '- Hashtags must avoid repeating core nouns from the Title or Hook.',
@@ -4364,6 +4370,12 @@ SHARED QUALITY RULES (both modes)
 - Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
+- Hooks and reelHook should be 8 words or fewer and must stay concrete.
+
+CREATIVE DIRECTION (do not output this block)
+- Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
+- Use the same concrete anchor across hook, reel script, and design notes.
+- Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
 
 MODE INTENT (REGULAR)
 - Regular mode is practical, straightforward instruction for an ad.
@@ -4382,6 +4394,14 @@ reelCta should be a single action tied to CTA Asset.
 Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
 CTA PALETTE: Save the checklist. Use the template. Review the steps. Run the quick audit. Compare your options. Screenshot this. Send this to a friend.
 Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
+
+REEL SCRIPT SHAPE
+- 0-2s HOOK: 8 words or fewer, specific.
+- TENSION: the mistake or cost in one short beat.
+- RELATABLE INSIGHT: why it happens.
+- ONE-STEP FIX: one concrete action.
+- CTA: one line.
+- Keep the spoken flow about 25 to 40 seconds. No fluff.
 
 FIELD INSTRUCTIONS
 
@@ -4462,6 +4482,12 @@ SHARED QUALITY RULES (both modes)
 - Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
+- Hooks and reelHook should be 8 words or fewer and must stay concrete.
+
+CREATIVE DIRECTION (do not output this block)
+- Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
+- Use the same concrete anchor across hook, reel script, and design notes.
+- Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
 
 MODE INTENT (BRAND BRAIN)
 - Brand Brain mode must change the viewers mind and create differentiation.
@@ -4483,6 +4509,14 @@ Include exactly one concrete detail somewhere: a number OR step-count OR named c
 CTA PALETTE: Steal my checklist. Grab the template. Use the audit. Copy the script. Save this framework. Comment a keyword for the file. DM me for the template.
 Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
 
+REEL SCRIPT SHAPE
+- 0-2s HOOK: 8 words or fewer, specific.
+- TENSION: the mistake or cost in one short beat.
+- RELATABLE INSIGHT: why it happens.
+- ONE-STEP FIX: one concrete action.
+- CTA: one line.
+- Keep the spoken flow about 25 to 40 seconds. No fluff.
+
 FIELD INSTRUCTIONS
 
 title
@@ -4492,10 +4526,12 @@ Not clever. Not vague.
 hook
 Consequence-first moment where the cost is already incurred.
 No teaching opener or tips framing.
+State a belief reversal in the first line.
 
 body
 Use 2 to 4 sentences to reframe the past choice as the cause.
 No tips list. No broad education.
+Include second-order consequence and one concrete micro-proof.
 
 cta
 Single clear corrective action tied to value.
