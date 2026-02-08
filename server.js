@@ -4334,6 +4334,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 REGULAR MODE (AD CONTRACT)
 Write the post as if the creator is explaining something they wish they had understood earlier.
+Write as pre-mistake guidance; teach clearly and helpfully.
 
 THINKING LENS (REGULAR)
 You are writing a helpful, calm explainer for someone trying to understand the process.
@@ -4350,7 +4351,7 @@ Do not challenge beliefs or frame the user as wrong.
 The reader should feel informed and reassured.
 
 UPSTREAM OBJECTIVE
-You are NOT teaching. You are creating a short-form post that earns attention by naming a real friction or mistake.
+You are teaching in a short-form format that earns attention by naming a real friction or mistake.
 Regular mode is awareness: helpful and calm. Keep some tension open and keep CTA gentle.
 Write like a creator, not an instructor.
 Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
@@ -4375,12 +4376,12 @@ A clear, neutral title describing the idea.
 Avoid hype. Avoid claims.
 
 hook
-A lived micro-failure or real friction.
+A clear situation or confusion the audience recognizes before a mistake happens.
 No generic teaching opener.
 
 body
-Connect failure to consequence, then what changes.
-Keep it concrete and tight.
+Explain what to do next in clear, practical terms.
+Keep it concrete, calm, and forward-looking.
 
 cta
 Single clear action tied to value.
@@ -4417,6 +4418,7 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
 BRAND BRAIN MODE (AD CONTRACT)
 Write the post as a reflection on a mistake that could not be undone once it happened.
 Frame the post as a moment of realization after a mistake, where the cost is already felt. The CTA should feel like relief from repeating that mistake, not a generic resource.
+Write as if the viewer already paid the price for this mistake; do not teach, warn, or reassure—reframe the past decision and push a corrective action.
 
 THINKING LENS (BRAND BRAIN)
 You are writing a winning ad, not an explainer.
@@ -4458,16 +4460,16 @@ A clear statement of the core failure or insight.
 Not clever. Not vague.
 
 hook
-A lived micro-failure or concrete friction with consequence pressure.
-No generic tips framing.
+Consequence-first moment where the cost is already incurred.
+No teaching opener or tips framing.
 
 body
-Connect failure to consequence, then reveal what changes the outcome.
-Keep it tight and specific.
+Use 2 to 4 sentences to reframe the past choice as the cause.
+No tips list. No broad education.
 
 cta
-Single clear action tied to value.
-Direct and solution-oriented.
+Single clear corrective action tied to value.
+Frame it as prevent repeat, stop bleeding, or fix the system.
 
 reelHook
 Hook-only text. Spoken opening line. Do not include body or CTA.
