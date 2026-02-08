@@ -4358,6 +4358,20 @@ Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED 
 Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
 Do not reuse phrases from AVOID REPEATING list.
 Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
+
+SHARED QUALITY RULES (both modes)
+- Do not start hook or reelHook with generic advisory openers or vague claims.
+- Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
+- Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
+- Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
+
+MODE INTENT (REGULAR)
+- Regular mode is practical, straightforward instruction for an ad.
+- The post must teach one simple step the viewer can use today.
+- hook and reelHook must be practical and specific (one mistake or one step), not a broad motivational statement.
+- body and reelBody must be a how-to (2 to 4 clear steps) with concrete actions, not theory.
+- cta and reelCta must be low-friction and practical (save, download, use the checklist/template), not emotional or identity-based.
+
 CREATIVE PRIMITIVE: practical rule-of-thumb + one concrete example.
 Select ONE hook archetype and write reelHook using it.
 
@@ -4442,6 +4456,22 @@ Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
 Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
 Do not reuse phrases from AVOID REPEATING list.
 Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
+
+SHARED QUALITY RULES (both modes)
+- Do not start hook or reelHook with generic advisory openers or vague claims.
+- Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
+- Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
+- Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
+
+MODE INTENT (BRAND BRAIN)
+- Brand Brain mode must change the viewers mind and create differentiation.
+- hook and reelHook must be a belief flip or counterintuitive claim that creates tension.
+- body and reelBody must include:
+  1) the wrong assumption people have,
+  2) the hidden cost of that assumption,
+  3) the new rule that replaces it.
+- cta and reelCta must be a commitment step (comment keyword, DM keyword, or steal my framework), not a generic download checklist.
+
 CREATIVE PRIMITIVE: micro-story (mistake -> consequence -> corrective move).
 Select ONE hook archetype and write reelHook using it.
 
