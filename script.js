@@ -6565,7 +6565,7 @@ const createCard = (post) => {
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (audioRowText) fullTextParts.push(`Suggested audio: ${safeText(audioRowText)}`);
-    const fullText = fullTextParts.join('\n\n');
+    const fullText = stripTrailingFollowUpSection(fullTextParts.join('\n\n'));
 
     btnCopyFull.addEventListener('click', async () => {
       try {
@@ -8218,9 +8218,10 @@ function stripLeadingSectionLabelPrefix(text) {
 
 function stripTrailingFollowUpSection(text) {
   if (typeof text !== 'string') return text;
-  return text
-    .replace(/\s*(?:\r?\n)?\s*(?:Follow-up Idea|Follow up idea|Follow-up|Next post|Tomorrow)\s*:[\s\S]*$/i, '')
-    .trim();
+  const markerPattern = /(^|\r?\n)\s*(?:Follow-?\s*up(?:\s*idea)?|Next post|Tomorrow|Part\s*2|Next|Up next)\s*[:\-]\s*/i;
+  const match = markerPattern.exec(text);
+  if (!match) return text.trim();
+  return text.slice(0, match.index).trim();
 }
 
 // Build a professional-looking standalone HTML for a single post
@@ -10351,7 +10352,7 @@ function renderPublishHub(){
       if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${safeText(post.variants.tiktokCaption)}`);
       if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${safeText(post.variants.linkedinCaption)}`);
     }
-    const fullText = fullTextParts.join('\n\n');
+    const fullText = stripTrailingFollowUpSection(fullTextParts.join('\n\n'));
     const bCopyFull = mk('Copy Full'); bCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); bCopyFull.textContent='Copied!'; setTimeout(()=>bCopyFull.textContent='Copy Full', 1000);} catch(e){} });
     actions.appendChild(bCopyFull);
     if (post.variants){

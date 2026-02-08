@@ -3318,9 +3318,10 @@ function normalizeToMinimalShape(raw = {}) {
   if (!raw || typeof raw !== 'object') return {};
   const stripTrailingFollowUpSection = (value) => {
     if (typeof value !== 'string') return value;
-    return value
-      .replace(/\s*(?:\r?\n)?\s*(?:Follow-up Idea|Follow up idea|Follow-up|Next post|Tomorrow)\s*:[\s\S]*$/i, '')
-      .trim();
+    const markerPattern = /(^|\r?\n)\s*(?:Follow-?\s*up(?:\s*idea)?|Next post|Tomorrow|Part\s*2|Next|Up next)\s*[:\-]\s*/i;
+    const match = markerPattern.exec(value);
+    if (!match) return value.trim();
+    return value.slice(0, match.index).trim();
   };
   const cleaned = {
     title: stripTrailingFollowUpSection(raw.title),
@@ -4371,11 +4372,15 @@ SHARED QUALITY RULES (both modes)
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
 - Hooks and reelHook should be 8 words or fewer and must stay concrete.
+- Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
+- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
 
 CREATIVE DIRECTION (do not output this block)
 - Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
 - Use the same concrete anchor across hook, reel script, and design notes.
 - Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
+- Hook mechanism set, choose exactly one: contrarian truth, myth-bust, mistake confession, hidden step, do-this-instead, what nobody tells you, counterintuitive rule, fear-to-relief specific, before-after leverage, simple diagnostic test.
+- No two posts in the same batch may use the same hook mechanism.
 
 MODE INTENT (REGULAR)
 - Regular mode is practical, straightforward instruction for an ad.
@@ -4402,6 +4407,19 @@ REEL SCRIPT SHAPE
 - ONE-STEP FIX: one concrete action.
 - CTA: one line.
 - Keep the spoken flow about 25 to 40 seconds. No fluff.
+- No textbook explanation. Keep it specific and aligned to the post title.
+- Reel Script CTA line must match the CTA field exactly.
+
+INTERNAL - DO NOT OUTPUT
+POST THESIS LOCK (must be decided silently before writing any field):
+- Exact Mistake: a specific mistake a smart buyer or seller makes, not skipping X.
+- Non-obvious Consequence: a downstream effect, not generic costs money.
+- Assets Singular Job: what the checklist or timeline or sheet or worksheet uniquely does.
+- One Concrete Anchor: a specific scenario, number, condition, or data point.
+Hard rule:
+- Every sentence in Hook, Reel Script, and Caption must directly support the locked thesis.
+- If you cannot lock all four items cleanly, simplify the execution with shorter concrete wording rather than adding words.
+- Do not output the thesis lock, meta commentary, planning text, or headings for the thesis lock.
 
 FIELD INSTRUCTIONS
 
@@ -4483,11 +4501,15 @@ SHARED QUALITY RULES (both modes)
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
 - Hooks and reelHook should be 8 words or fewer and must stay concrete.
+- Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
+- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
 
 CREATIVE DIRECTION (do not output this block)
 - Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
 - Use the same concrete anchor across hook, reel script, and design notes.
 - Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
+- Hook mechanism set, choose exactly one: contrarian truth, myth-bust, mistake confession, hidden step, do-this-instead, what nobody tells you, counterintuitive rule, fear-to-relief specific, before-after leverage, simple diagnostic test.
+- No two posts in the same batch may use the same hook mechanism.
 
 MODE INTENT (BRAND BRAIN)
 - Brand Brain mode must change the viewers mind and create differentiation.
@@ -4516,6 +4538,19 @@ REEL SCRIPT SHAPE
 - ONE-STEP FIX: one concrete action.
 - CTA: one line.
 - Keep the spoken flow about 25 to 40 seconds. No fluff.
+- No textbook explanation. Keep it specific and aligned to the post title.
+- Reel Script CTA line must match the CTA field exactly.
+
+INTERNAL - DO NOT OUTPUT
+POST THESIS LOCK (must be decided silently before writing any field):
+- Exact Mistake: a specific mistake a smart buyer or seller makes, not skipping X.
+- Non-obvious Consequence: a downstream effect, not generic costs money.
+- Assets Singular Job: what the checklist or timeline or sheet or worksheet uniquely does.
+- One Concrete Anchor: a specific scenario, number, condition, or data point.
+Hard rule:
+- Every sentence in Hook, Reel Script, and Caption must directly support the locked thesis.
+- If you cannot lock all four items cleanly, simplify the execution with shorter concrete wording rather than adding words.
+- Do not output the thesis lock, meta commentary, planning text, or headings for the thesis lock.
 
 FIELD INSTRUCTIONS
 
