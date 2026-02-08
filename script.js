@@ -6564,7 +6564,6 @@ const createCard = (post) => {
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
     if (audioRowText) fullTextParts.push(`Suggested audio: ${audioRowText}`);
-    if (isProTier() && entry.followUpIdea) fullTextParts.push(`Follow-up Idea: ${entry.followUpIdea}`);
     const fullText = fullTextParts.join('\n\n');
 
     btnCopyFull.addEventListener('click', async () => {
@@ -6641,7 +6640,6 @@ const createCard = (post) => {
       const text = parts.join(' | ');
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
-    const followUpText = entry.followUpIdea ? String(entry.followUpIdea) : '';
     const hiddenDetailNodes = [];
     if (audioRowText) {
       hiddenDetailNodes.push(
@@ -6651,7 +6649,6 @@ const createCard = (post) => {
     const engagementRow = (() => {
       const parts = [];
       if (engagementEl) parts.push(engagementEl);
-      if (followUpText) parts.push(followUpText);
       const value = parts.filter(Boolean).join('\n');
       return value ? createDetailRow('Engagement Loop', value, 'calendar-card__engagement-loop') : null;
     })();
@@ -7568,15 +7565,6 @@ const slugify = (s = "") =>
     .replace(/(^-|-$)/g, "")
     .slice(0, 40);
 
-const proFollowUpIdeas = [
-  'Follow up with a testimonial carousel from a recent client.',
-  'Share a short Reel showing the before/after from this concept.',
-  'Post a static quote graphic summarizing key data from today’s drop.',
-  'Go live to answer the top questions sparked by this post.',
-  'Send a newsletter recap that embeds today’s main CTA.'
-];
-
-
 const capitalizeSentence = (text = '') => {
   if (!text) return '';
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -7601,10 +7589,8 @@ const pickCycled = (items, index = 0, offset = 0) => {
 };
 
 const enrichPostWithProFields = (post, index, nicheStyle = '') => {
-  const baseCaption = (post.caption || post.idea || 'Share today’s win.').trim();
   return {
     ...post,
-    followUpIdea: pickCycled(proFollowUpIdeas, index),
   };
 };
 
@@ -7613,7 +7599,6 @@ const stripProFields = (post) => {
   delete clone.captionVariations;
   delete clone.hashtagSets;
   delete clone.visualTemplate;
-  delete clone.followUpIdea;
   return clone;
 };
 
@@ -8349,9 +8334,6 @@ function buildPostHTML(post){
         detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
       }
     }
-  if (post.followUpIdea) {
-    detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
-  }
 
   const detailsBlocks = detailBlocks.filter(Boolean).join('');
 
@@ -8433,7 +8415,7 @@ function buildPostHTML(post){
     .calendar-card__format { display: inline-block; background: rgba(255, 255, 255, 0.13); color: #ffffff; font-size: 0.85rem; font-weight: 600; border-radius: 6px; padding: 0.15em 0.7em; margin: 0.25rem 0 0.5rem; }
     .calendar-card__cta { display: block; margin-top: 0.5rem; font-weight: 600; color: #ffffff; font-size: 0.97rem; }
   .calendar-card__weekly-promo, .calendar-card__video, .calendar-card__repurpose, .calendar-card__design, .calendar-card__story, .calendar-card__engagement, .calendar-card__variants { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
-    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__visual, .calendar-card__story-extended, .calendar-card__followup { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .calendar-card__caption-variations, .calendar-card__hashtag-sets, .calendar-card__audio, .calendar-card__visual, .calendar-card__story-extended { font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem; }
     .calendar-card__caption-variations em, .calendar-card__hashtag-sets em, .calendar-card__engagement em, .calendar-card__video em { font-style: normal; color: rgba(255, 255, 255, 0.9); font-weight: 600; }
     .calendar-card__visual a { color: #ffffff; text-decoration: none; font-weight: 600; }
     .calendar-card__visual a:hover { text-decoration: underline; }

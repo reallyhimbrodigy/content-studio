@@ -4240,6 +4240,33 @@ function buildRecentTitlesList(titles = [], limit = 10) {
   return out;
 }
 
+const PROMPT_ANGLE_OPTIONS = [
+  'The overlooked step that causes rework later',
+  'The default assumption that creates avoidable risk',
+  'The sequence error that slows progress',
+  'The quick check that prevents a costly miss',
+  'The hidden dependency behind repeated confusion',
+  'The comparison point that changes the decision',
+  'The timing cue that protects better outcomes',
+  'The boundary that keeps the process stable',
+  'The signal that appears before failure',
+  'The small correction with outsized payoff',
+  'The quality gate most people skip',
+  'The tradeoff that looks harmless but is not',
+  'The handoff detail that prevents downstream mistakes',
+  'The early choice that shapes everything after',
+];
+
+function pickAngleForPostKey(postKeyValue = '') {
+  const value = String(postKeyValue || '');
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash * 31) + value.charCodeAt(i)) >>> 0;
+  }
+  if (!PROMPT_ANGLE_OPTIONS.length) return 'The practical move that reduces confusion';
+  return PROMPT_ANGLE_OPTIONS[hash % PROMPT_ANGLE_OPTIONS.length];
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
@@ -4257,6 +4284,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postKeyValue = opts.post_key || opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
+  const promptAngle = pickAngleForPostKey(resolvedPostKey);
   const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
   const recentTitles = buildRecentTitlesList(opts.recentTitles || [], 10);
   const creativeBriefText = buildCreativeBrief({
@@ -4300,6 +4328,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Each field value must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
     '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
     '- No emojis. No placeholders. No filler templates.',
+    '- Use ANGLE to decide the specific scenario/example/story for this post. Do not repeat the same angle across adjacent posts if possible.',
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
@@ -4328,6 +4357,7 @@ Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED 
 Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
 Do not reuse phrases from AVOID REPEATING list.
 Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
+CREATIVE PRIMITIVE: practical rule-of-thumb + one concrete example.
 Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
@@ -4335,6 +4365,8 @@ Hook must be a concrete moment plus specific consequence. CTA must be one action
 reelBody should be 1 to 2 tight lines explaining the mechanism.
 reelCta should be a single action tied to CTA Asset.
 Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
+CTA PALETTE: Save the checklist. Use the template. Review the steps. Run the quick audit. Compare your options. Screenshot this. Send this to a friend.
+Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
 
 FIELD INSTRUCTIONS
 
@@ -4407,6 +4439,7 @@ Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
 Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
 Do not reuse phrases from AVOID REPEATING list.
 Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
+CREATIVE PRIMITIVE: micro-story (mistake -> consequence -> corrective move).
 Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
@@ -4414,6 +4447,8 @@ Hook must be a concrete moment plus specific consequence. CTA must be one action
 reelBody should be 1 to 2 tight lines explaining the mechanism.
 reelCta should be a single action tied to CTA Asset.
 Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
+CTA PALETTE: Steal my checklist. Grab the template. Use the audit. Copy the script. Save this framework. Comment a keyword for the file. DM me for the template.
+Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
 
 FIELD INSTRUCTIONS
 
@@ -4465,6 +4500,7 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
+    `ANGLE (do not output): ${promptAngle}`,
     creativeBriefBlock,
     recentIdeasBlock,
     `HOOK ARCHETYPES: ${HOOK_ARCHETYPES.join(' | ')}`,

@@ -134,9 +134,6 @@ function buildPostHTML(post) {
   if (isLibraryUserPro && post.visualTemplate && post.visualTemplate.url) {
     detailBlocks.push(`<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`);
   }
-  if (isLibraryUserPro && post.followUpIdea) {
-    detailBlocks.push(`<div class="calendar-card__followup"><strong>Follow-up idea</strong> ${escapeHtml(post.followUpIdea)}</div>`);
-  }
   if (Array.isArray(post.assets) && post.assets.length) {
     const chips = post.assets
       .map((asset) => {
@@ -183,7 +180,7 @@ function buildPostHTML(post) {
     summary:hover{color:#ffffff}
     .calendar-card__details{padding-top:1rem;display:flex;flex-direction:column;gap:1rem}
     .calendar-card__details>div,.calendar-card__details>span{background:rgba(255,255,255,0.06);padding:0.75rem;border-radius:8px;font-size:0.9rem}
-    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__visual,.calendar-card__story-extended,.calendar-card__followup{font-size:0.9rem;color:rgba(255,255,255,0.72)}
+    .calendar-card__caption-variations,.calendar-card__hashtag-sets,.calendar-card__audio,.calendar-card__visual,.calendar-card__story-extended{font-size:0.9rem;color:rgba(255,255,255,0.72)}
     .calendar-card__caption-variations em,.calendar-card__hashtag-sets em{color:#ffffff;font-style:normal;font-weight:600}
     .calendar-card__visual a{color:#ffffff;text-decoration:none;font-weight:600}
     .calendar-card__visual a:hover{text-decoration:underline}
