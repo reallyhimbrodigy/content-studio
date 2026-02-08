@@ -4304,6 +4304,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 REGULAR MODE (AD CONTRACT)
+Anchor the post around a moment of confusion, uncertainty, or realization that the audience commonly experiences during this process.
 
 THINKING LENS (REGULAR)
 You are writing a helpful, calm explainer for someone trying to understand the process.
@@ -4382,6 +4383,7 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 BRAND BRAIN MODE (AD CONTRACT)
+Anchor the post around a moment where a wrong decision caused irreversible loss of time, money, leverage, or opportunity.
 
 THINKING LENS (BRAND BRAIN)
 You are writing a winning ad, not an explainer.
