@@ -2495,8 +2495,6 @@ async function generateAndValidateSinglePost({
   requestTimeoutMs,
   temperature,
   presencePenalty,
-  assignedAngle = '',
-  angleSeedIndex = null,
   qualityState,
   extraInstructions,
   calendarId = '',
@@ -2543,7 +2541,6 @@ async function generateAndValidateSinglePost({
     `pillar: ${assignedPillarKey}`,
     plannedTitle ? `planned_title: ${plannedTitle}` : '',
     plannedAngle ? `planned_angle: ${plannedAngle}` : '',
-    assignedAngle ? `assigned_angle: ${assignedAngle}` : '',
     `Schema name: ${schemaLabel}`,
     `Niche: ${nicheStyle}`,
     pillarStyle ? `Pillar style: ${pillarStyle}` : '',
@@ -2592,8 +2589,6 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
-        assignedAngle,
-        angleSeedIndex,
         angleSeed,
         lens,
         usedSignatures: recentSignatures,
@@ -4015,30 +4010,168 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 }
 
 const PROMPT_VERSION = 'calendar_minimal_v1';
-const REGULAR_ANGLES = [
-  'Checklist clarity',
-  'Step order',
-  'Common confusion',
-  'One small fix',
-  'Simple comparison',
-];
-const BRAND_BRAIN_ANGLES = [
-  'Hidden constraint',
-  'Reframe',
-  'Second-order consequence',
-  'Tradeoff',
-  'Pattern interrupt',
-  'Social proof flip',
-];
+const ANGLE_BANK = {
+  regular: {
+    education: [
+      'The step that looks optional but prevents rework later.',
+      'The sequence detail that keeps the process stable.',
+      'The common misread that causes avoidable delay.',
+      'The checkpoint that confirms you are still on track.',
+      'The decision rule that removes guesswork early.',
+      'The setup choice that saves time downstream.',
+      'The handoff detail that protects quality.',
+      'The review pass that catches subtle mistakes.',
+    ],
+    lifestyle: [
+      'The routine adjustment that prevents daily drift.',
+      'The planning habit that protects focus windows.',
+      'The small reset that avoids end-of-day chaos.',
+      'The environment choice that improves execution.',
+      'The scheduling buffer that prevents rushed decisions.',
+      'The preparation step that makes tasks lighter.',
+      'The friction point that silently drains momentum.',
+      'The consistency move that compounds over time.',
+    ],
+    promotion: [
+      'The message order that makes the offer clearer.',
+      'The context line that improves first impression.',
+      'The comparison frame that lowers confusion.',
+      'The proof cue that builds trust quickly.',
+      'The single promise that avoids mixed signals.',
+      'The call-to-action phrasing that feels useful.',
+      'The timing choice that supports better response.',
+      'The clarity pass that removes noisy wording.',
+    ],
+    social_proof: [
+      'The before-state detail that makes the result believable.',
+      'The process step that explains why the result happened.',
+      'The milestone marker that makes progress visible.',
+      'The obstacle moment that creates credibility.',
+      'The evidence format that feels concrete not vague.',
+      'The timeline cue that anchors expectations.',
+      'The implementation note that makes proof practical.',
+      'The outcome framing that stays honest and clear.',
+    ],
+    default: [
+      'The practical step that prevents a common miss.',
+      'The simple check that changes the outcome.',
+      'The clarity move that reduces avoidable mistakes.',
+      'The sequence choice that improves results.',
+      'The tiny adjustment with outsized impact.',
+      'The decision rule that keeps progress clean.',
+      'The overlooked detail that protects execution.',
+      'The easy fix that prevents repeat errors.',
+    ],
+  },
+  brand_brain: {
+    education: [
+      'The hidden constraint that makes the obvious move fail.',
+      'The delayed consequence created by one early choice.',
+      'The wrong assumption that looks safe but is costly.',
+      'The backfire point that appears after initial progress.',
+      'The overlooked dependency that collapses outcomes.',
+      'The false signal that causes confident mistakes.',
+      'The mechanism that turns a small miss into a bigger loss.',
+      'The decisive check that prevents high-cost failure.',
+    ],
+    lifestyle: [
+      'The pattern that feels productive but leaks performance.',
+      'The small tradeoff that compounds into visible loss.',
+      'The routine blind spot that quietly breaks consistency.',
+      'The friction loop that keeps repeating the same mistake.',
+      'The context switch cost hidden inside normal habits.',
+      'The comfort move that delays real progress.',
+      'The ignored warning sign before the breakdown.',
+      'The correction moment that restores control fast.',
+    ],
+    promotion: [
+      'The claim that sounds right but weakens conversion.',
+      'The framing error that attracts the wrong audience.',
+      'The missed consequence that kills buying urgency.',
+      'The offer structure that creates decision paralysis.',
+      'The proof gap that makes trust collapse.',
+      'The obvious headline move that underperforms quietly.',
+      'The hidden tradeoff between reach and intent.',
+      'The sharper positioning move that changes response quality.',
+    ],
+    social_proof: [
+      'The success story angle that sounds good but feels generic.',
+      'The missing failure context that lowers credibility.',
+      'The evidence gap that makes outcomes look random.',
+      'The timeline omission that weakens trust.',
+      'The mechanism detail that turns proof into persuasion.',
+      'The contrast point that reveals the real advantage.',
+      'The risk moment that validates the final result.',
+      'The non-obvious reason this case worked.',
+    ],
+    default: [
+      'The hidden constraint behind a repeated failure.',
+      'The tradeoff people miss until it is expensive.',
+      'The obvious move that backfires under pressure.',
+      'The mechanism that explains why outcomes collapse.',
+      'The second-order consequence no one plans for.',
+      'The correction that flips the result trajectory.',
+      'The signal that predicts failure early.',
+      'The leverage point that changes the entire outcome.',
+    ],
+  },
+};
 
-function hashStringToInt(str = '') {
-  let hash = 2166136261;
-  const value = String(str || '');
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+function pickSlotAngle({ mode = 'regular', pillar = '', day = 1, slotIndex = 0 } = {}) {
+  const normalizedMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
+  const normalizedPillar = String(pillar || '').toLowerCase();
+  const modeBank = ANGLE_BANK[normalizedMode] || ANGLE_BANK.regular;
+  const list = Array.isArray(modeBank[normalizedPillar]) && modeBank[normalizedPillar].length
+    ? modeBank[normalizedPillar]
+    : modeBank.default;
+  const safeDay = Number.isFinite(Number(day)) ? Number(day) : 1;
+  const safeSlot = Number.isFinite(Number(slotIndex)) ? Number(slotIndex) : 0;
+  const index = Math.abs(safeDay + safeSlot) % Math.max(1, list.length);
+  return { angle: list[index] || list[0], index };
+}
+
+function toAvoidPhrase(value = '', minWords = 6, maxWords = 10) {
+  const cleaned = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '';
+  const words = cleaned.split(' ').filter(Boolean);
+  const take = Math.min(words.length, Math.max(minWords, maxWords));
+  return words.slice(0, take).join(' ');
+}
+
+function buildAvoidRepeatingList(posts = [], limit = 4) {
+  if (!Array.isArray(posts) || !posts.length) return [];
+  const seen = new Set();
+  const out = [];
+  for (const post of posts) {
+    const ctaPhrase = toAvoidPhrase(post?.cta || '');
+    if (ctaPhrase && !seen.has(ctaPhrase)) {
+      seen.add(ctaPhrase);
+      out.push(ctaPhrase);
+      if (out.length >= limit) break;
+    }
+    const hookPhrase = toAvoidPhrase(post?.reelHook || '');
+    if (hookPhrase && !seen.has(hookPhrase)) {
+      seen.add(hookPhrase);
+      out.push(hookPhrase);
+      if (out.length >= limit) break;
+    }
   }
-  return hash >>> 0;
+  return out.slice(0, limit);
+}
+
+function buildCreativeSlotGuidance(slotAngle = '', avoidList = []) {
+  const lines = [
+    'CREATIVE SLOT GUIDANCE (do not output this block)',
+    `ANGLE FOR THIS POST: ${String(slotAngle || '').trim() || 'The practical step that prevents a common miss.'}`,
+  ];
+  if (Array.isArray(avoidList) && avoidList.length) {
+    lines.push(`AVOID REPEATING THESE PHRASES: ${avoidList.slice(0, 4).join(' | ')}`);
+  }
+  return lines.join('\n');
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -4057,15 +4190,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const plannedAngle = opts.plannedAngle || '';
   const postKeyValue = opts.post_key || opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
-  const assignedAngle = toPlainString(opts.assignedAngle || '');
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
-  console.log('[Calendar][PromptSeed]', {
-    requestId: opts.requestId || null,
-    mode,
-    post_key: resolvedPostKey,
-    pillar: targetPillar || null,
-    angleSeedIndex: Number.isFinite(Number(opts.angleSeedIndex)) ? Number(opts.angleSeedIndex) : null,
-  });
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
@@ -4105,11 +4230,8 @@ You are NOT teaching. You are creating a short-form post that earns attention by
 Regular mode is awareness: helpful and calm. Keep some tension open and keep CTA gentle.
 Write like a creator, not an instructor.
 Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
-
-ANGLE
-- Assigned angle for this post: ${assignedAngle || 'Checklist clarity'}
-- Write ALL fields from this angle. Do not mention the word angle in the output.
-- Do not reuse the same scenario framing missed listing hesitation timing more than once per calendar. Follow the angle to choose a different concrete scenario.
+Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
+Do not reuse phrases from AVOID REPEATING list.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
@@ -4179,11 +4301,8 @@ You are writing an ad where the viewer feels the cost of inaction.
 Brand Brain mode is conversion: consequence-driven, specific, direct. CTA is the logical escape route.
 Entertain first. No hard selling. No generic tips.
 Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
-
-ANGLE
-- Assigned angle for this post: ${assignedAngle || 'Hidden constraint'}
-- Write ALL fields from this angle. Do not mention the word angle in the output.
-- Do not reuse the same scenario framing missed listing hesitation timing more than once per calendar. Follow the angle to choose a different concrete scenario.
+Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
+Do not reuse phrases from AVOID REPEATING list.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
@@ -10809,21 +10928,6 @@ const server = http.createServer((req, res) => {
         slots.push({ day, slotIndex, post_key: postKey(day, slotIndex) });
       }
     }
-    const angleCycleState = { regular: 0, brand_brain: 0 };
-    const angleListByMode = {
-      regular: REGULAR_ANGLES,
-      brand_brain: BRAND_BRAIN_ANGLES,
-    };
-    const assignedAngleByKey = new Map();
-    for (const slot of slots) {
-      const list = angleListByMode[calendarMode] || REGULAR_ANGLES;
-      const nextIndex = angleCycleState[calendarMode] % Math.max(1, list.length);
-      assignedAngleByKey.set(slot.post_key, {
-        value: list[nextIndex] || list[0] || 'Checklist clarity',
-        index: nextIndex,
-      });
-      angleCycleState[calendarMode] += 1;
-    }
 
     const seedSource = `${requestId || 'req'}|${nicheStyle || ''}|${safeStart}`;
     const rand = makePrng(seedFromString(seedSource));
@@ -10883,6 +10987,7 @@ const server = http.createServer((req, res) => {
       : (Number.isFinite(Number(payload?.presence_penalty)) ? Number(payload.presence_penalty) : 0.4);
     const calendarId = toPlainString(payload?.calendarId || payload?.id || '');
     const usedSignatures = [];
+    const acceptedPosts = [];
 
     const runJob = async (slot, index) => {
       const planItem = planByKey.get(slot.post_key);
@@ -10893,6 +10998,15 @@ const server = http.createServer((req, res) => {
         err.details = { reason: 'SCHEMA_MISMATCH', day: slot.day, post_key: slot.post_key };
         throw err;
       }
+      const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
+      const slotAngle = pickSlotAngle({
+        mode: calendarMode,
+        pillar: pillarForSlot,
+        day: slot.day,
+        slotIndex: slot.slotIndex,
+      }).angle;
+      const avoidList = buildAvoidRepeatingList(acceptedPosts, 4);
+      const creativeGuidance = buildCreativeSlotGuidance(slotAngle, avoidList);
       return generateAndValidateSinglePost({
         nicheStyle,
         brandContext,
@@ -10904,15 +11018,14 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
-        assignedAngle: assignedAngleByKey.get(slot.post_key)?.value || '',
-        angleSeedIndex: assignedAngleByKey.get(slot.post_key)?.index ?? null,
-        pillarKey: pickPillarKeyForPostKey(slot.post_key),
+        pillarKey: pillarForSlot,
         requestId,
         loggingContext,
         maxTokens,
         requestTimeoutMs,
         temperature,
         presencePenalty,
+        extraInstructions: creativeGuidance,
         calendarId,
         usedSignatures,
         qualityState: { signatureMap: new Map() },
@@ -10924,6 +11037,7 @@ const server = http.createServer((req, res) => {
       const post = await runJob(slot, index);
       results.push(post);
       usedSignatures.push(buildPostSignature(post));
+      acceptedPosts.push(post);
     }
     const ordered = results.slice().sort((a, b) => {
       const dayA = Number(a?.day) || 0;
@@ -12173,10 +12287,13 @@ const server = http.createServer((req, res) => {
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
-        const angleList = selectedMode === 'brand_brain' ? BRAND_BRAIN_ANGLES : REGULAR_ANGLES;
-        const angleHash = hashStringToInt(`${selectedMode}|${postKeyValue}|${PROMPT_VERSION}`);
-        const assignedAngleIndex = angleList.length ? angleHash % angleList.length : 0;
-        const assignedAngle = angleList[assignedAngleIndex] || '';
+        const slotAngle = pickSlotAngle({
+          mode: selectedMode,
+          pillar: scheduledPillar,
+          day,
+          slotIndex,
+        }).angle;
+        const creativeGuidance = buildCreativeSlotGuidance(slotAngle, []);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : 0.2;
@@ -12209,14 +12326,13 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
-            assignedAngle,
-            angleSeedIndex: assignedAngleIndex,
             pillarKey: scheduledPillar,
             requestId,
             loggingContext: { requestId, day, slotIndex, post_key: postKeyValue },
             maxTokens,
             requestTimeoutMs,
             temperature,
+            extraInstructions: creativeGuidance,
             calendarId,
             usedSignatures: [],
             qualityState: { signatureMap: new Map() },
