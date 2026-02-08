@@ -4012,259 +4012,161 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 }
 
 const PROMPT_VERSION = 'calendar_minimal_v1';
-const CREATIVE_BRIEF_LIBRARY = {
-  regular: {
-    angles: [
-      'clarity before commitment',
-      'sequence before speed',
-      'baseline before action',
-      'scope before execution',
-      'signal over noise',
-      'consistency over intensity',
-      'small fix first',
-      'simple rule first',
-      'checkpoint before next step',
-      'assumption check early',
-      'context before decision',
-      'prepare before publish',
-      'review before finalize',
-      'friction audit',
-      'handoff clarity',
-      'expectation reset',
-      'decision hygiene',
-      'progress calibration',
-      'risk visibility',
-      'priority alignment',
-      'constraint mapping',
-      'timing discipline',
-      'option filtering',
-      'process cleanup',
-      'proof over opinion',
-      'input quality',
-      'execution rhythm',
-      'focus protection',
-      'error prevention',
-      'feedback loop',
-      'workflow simplification',
-      'goal translation',
-      'intent clarity',
-      'milestone certainty',
-      'resource pacing',
-      'plan durability',
-      'rollback safety',
-      'handoff timing',
-      'scope guardrails',
-      'decision confidence',
-    ],
-    audiences: [
-      'busy beginner',
-      'new operator',
-      'team lead',
-      'solo creator',
-      'first-time buyer',
-      'curious learner',
-      'time-constrained planner',
-      'detail-focused executor',
-      'process owner',
-      'decision maker',
-      'early-stage founder',
-      'small business owner',
-      'overwhelmed manager',
-      'career switcher',
-      'implementation specialist',
-      'generalist builder',
-      'results-driven learner',
-      'careful skeptic',
-    ],
-    mechanisms: [
-      'wrong step order',
-      'missing checkpoint',
-      'unclear success criteria',
-      'weak initial baseline',
-      'late risk discovery',
-      'handoff ambiguity',
-      'scope creep',
-      'timing mismatch',
-      'evidence gap',
-      'overloaded workflow',
-      'unclear owner',
-      'default assumption',
-      'unverified inputs',
-      'poor sequencing',
-      'rushed final review',
-      'misread signal',
-      'false priority',
-      'hidden dependency',
-      'inconsistent routine',
-      'too many options',
-      'no decision rule',
-      'low visibility',
-      'process drift',
-      'fragmented attention',
-      'weak preparation',
-      'imprecise handoff',
-      'delayed correction',
-      'no contingency plan',
-      'unclear tradeoff',
-      'bad fit comparison',
-      'missing context',
-      'improper pacing',
-      'incomplete checklist',
-      'goal confusion',
-      'insufficient proof',
-      'priority conflict',
-      'redundant steps',
-      'signal misinterpretation',
-      'overconfidence bias',
-      'feedback delay',
-    ],
-    ctaAssets: [
-      'quick checklist',
-      'decision script',
-      'comparison template',
-      'setup worksheet',
-      'review framework',
-      'priority map',
-      'risk audit sheet',
-      'step sequence card',
-      'handoff template',
-      'progress tracker',
-      'quality rubric',
-      'plan outline',
-      'readiness scorecard',
-      'timing guide',
-      'proof checklist',
-      'execution playbook',
-      'clarity worksheet',
-      'workflow template',
-    ],
-  },
-  brand_brain: {
-    angles: [
-      'obvious move backfires',
-      'hidden cost of delay',
-      'tradeoff no one sees',
-      'false confidence loop',
-      'constraint beats effort',
-      'short-term win long-term loss',
-      'signal hidden in plain sight',
-      'default path fails',
-      'popular advice misleads',
-      'surface fix masks root cause',
-      'timing creates failure',
-      'assumption destroys margin',
-      'wrong metric drives failure',
-      'sequence determines outcome',
-      'comfort choice is costly',
-      'speed without structure fails',
-      'high intent low conversion trap',
-      'friction kills momentum',
-      'context shift changes result',
-      'unseen dependency collapses plan',
-      'risk compounds silently',
-      'proof gap breaks trust',
-      'positioning mismatch',
-      'value signal unclear',
-      'option overload causes paralysis',
-      'weak boundary invites loss',
-      'misaligned incentives',
-      'late correction penalty',
-      'execution tax',
-      'false comparison',
-      'generic messaging fails',
-      'default process outdated',
-      'quality leak',
-      'decision latency',
-      'second-order consequence',
-      'invisible bottleneck',
-      'process contradiction',
-      'strategy drift',
-      'hidden downside',
-      'leverage point ignored',
-    ],
-    audiences: [
-      'high-intent buyer',
-      'skeptical decision maker',
-      'burned previous client',
-      'performance marketer',
-      'founder under pressure',
-      'competitive operator',
-      'growth lead',
-      'revenue owner',
-      'deal-focused closer',
-      'strategic planner',
-      'efficiency seeker',
-      'risk-aware leader',
-      'overextended founder',
-      'advanced practitioner',
-      'market challenger',
-      'category switcher',
-      'results-first operator',
-      'high-accountability manager',
-    ],
-    mechanisms: [
-      'hidden constraint',
-      'second-order loss',
-      'timing penalty',
-      'tradeoff blindness',
-      'default path trap',
-      'false metric optimization',
-      'proof deficit',
-      'value ambiguity',
-      'assumption mismatch',
-      'sequence inversion',
-      'decision drag',
-      'execution bottleneck',
-      'incentive conflict',
-      'positioning error',
-      'conversion friction',
-      'signal dilution',
-      'quality drift',
-      'scope collapse',
-      'handoff failure',
-      'risk accumulation',
-      'late-stage surprise',
-      'attention fragmentation',
-      'insight gap',
-      'capacity overrun',
-      'alignment breakdown',
-      'trust erosion',
-      'message fatigue',
-      'offer confusion',
-      'decision fatigue',
-      'process debt',
-      'priority inversion',
-      'competitive displacement',
-      'resource misallocation',
-      'root-cause neglect',
-      'false urgency',
-      'underqualified lead fit',
-      'overpromise underproof',
-      'feedback lag',
-      'weak differentiation',
-      'control loss',
-    ],
-    ctaAssets: [
-      'diagnostic checklist',
-      'objection script',
-      'reframe template',
-      'risk calculator',
-      'decision matrix',
-      'conversion teardown',
-      'positioning worksheet',
-      'message map',
-      'constraint audit',
-      'tradeoff guide',
-      'offer blueprint',
-      'proof framework',
-      'mechanism brief',
-      'execution checklist',
-      'priority reset template',
-      'strategy one-pager',
-      'high-stakes playbook',
-      'failure mode worksheet',
-    ],
-  },
+const REGULAR_BRIEF = {
+  hookArchetypes: [
+    'Counterintuitive truth',
+    'Costly mistake',
+    'Hidden step',
+    'Do this instead',
+    'Myth bust',
+    'Common misread',
+    'Early warning sign',
+    'Simple decision rule',
+    'Before and after shift',
+    'Checklist blindspot',
+    'False shortcut',
+    'One change that helps',
+  ],
+  angles: [
+    'The prep step that prevents rework later',
+    'The ordering mistake that creates avoidable delays',
+    'The quality check that catches issues early',
+    'The planning choice that protects momentum',
+    'The handoff detail that avoids confusion',
+    'The assumption check that improves decisions',
+    'The baseline signal that guides better actions',
+    'The small correction that prevents bigger loss',
+    'The review pass that raises confidence',
+    'The scope boundary that keeps work clean',
+    'The comparison lens that clarifies options',
+    'The timing marker that prevents rushed choices',
+    'The checklist item that reduces repeated mistakes',
+    'The workflow simplification that improves consistency',
+    'The prioritization move that cuts noise',
+    'The risk note that saves time later',
+    'The context clue that changes the approach',
+    'The feedback loop that stabilizes outcomes',
+    'The decision gate that improves quality',
+    'The reset step that prevents drift',
+  ],
+  proofTypes: [
+    'micro case',
+    'before after contrast',
+    'numbers snapshot',
+    'common objection',
+    'rule of thumb',
+    'quick teardown',
+    'mistake timeline',
+    'decision checklist',
+    'friction map',
+    'simple benchmark',
+  ],
+  ctaAssets: [
+    'one-page checklist',
+    'timeline template',
+    'risk audit',
+    'decision rubric',
+    'workflow template',
+    'priority map',
+    'review checklist',
+    'handoff template',
+    'comparison sheet',
+    'readiness scorecard',
+    'process outline',
+    'quick reference card',
+    'clarity worksheet',
+    'implementation plan',
+    'quality checklist',
+  ],
+  ctaFormats: [
+    'Save this and use it',
+    'Comment {word} for the {asset}',
+    'DM {word} for the {asset}',
+    'Try the {asset} next',
+    'Use the {asset} this week',
+    'Keep the {asset} nearby',
+    'Review the {asset} before starting',
+    'Share this and use the {asset}',
+    'Bookmark this and apply the {asset}',
+  ],
+};
+const BRAND_BRAIN_BRIEF = {
+  hookArchetypes: [
+    'Pattern interrupt',
+    'Cost of inaction',
+    'Assumption reversal',
+    'Hidden constraint',
+    'Tradeoff reveal',
+    'Failure mechanism',
+    'Contrarian proof',
+    'Why obvious fails',
+    'Leverage point',
+    'Second-order consequence',
+    'False confidence check',
+    'Uncomfortable truth',
+  ],
+  angles: [
+    'The obvious move fails under hidden constraints',
+    'One assumption quietly destroys the outcome',
+    'The wrong metric drives expensive decisions',
+    'Speed without structure creates hidden losses',
+    'The tradeoff no one prices in time',
+    'A small miss compounds into larger failure',
+    'Popular advice masks the real mechanism',
+    'Late correction doubles the cost to recover',
+    'Surface fixes hide the root cause',
+    'Weak proof collapses trust at decision time',
+    'Generic positioning attracts the wrong fit',
+    'Option overload lowers conversion quality',
+    'The default sequence creates avoidable backfire',
+    'A silent bottleneck blocks progress repeatedly',
+    'False urgency forces poor tradeoffs',
+    'The risk signal appears before the visible failure',
+    'Comfort choices reduce long-term upside',
+    'Missing boundaries invite expensive drift',
+    'Attention fragmentation creates execution tax',
+    'The mechanism behind repeated deal collapse',
+  ],
+  proofTypes: [
+    'micro case',
+    'before after contrast',
+    'numbers snapshot',
+    'objection reversal',
+    'rule of thumb',
+    'decision autopsy',
+    'tradeoff table',
+    'failure timeline',
+    'mechanism breakdown',
+    'signal vs noise contrast',
+  ],
+  ctaAssets: [
+    'diagnostic checklist',
+    'risk audit',
+    'offer readiness rubric',
+    'objection script',
+    'positioning worksheet',
+    'constraint map',
+    'tradeoff guide',
+    'decision matrix',
+    'mechanism brief',
+    'conversion teardown',
+    'message map',
+    'execution checklist',
+    'priority reset template',
+    'failure mode worksheet',
+    'high-stakes playbook',
+  ],
+  ctaFormats: [
+    'Grab the {asset}',
+    'Comment {word} for the {asset}',
+    'DM {word} for the {asset}',
+    'Use the {asset} today',
+    'Take the {asset} and apply it',
+    'Link in bio for the {asset}',
+    'Get the {asset} and run it now',
+    'Start with the {asset}',
+    'Pull the {asset} before deciding',
+  ],
 };
 const HOOK_ARCHETYPES = [
   'The mistake that caused the loss',
@@ -4280,29 +4182,47 @@ const HOOK_ARCHETYPES = [
   'The check that changes outcomes',
   'The pattern behind repeated failure',
 ];
+const CTA_WORD_TOKENS = ['GUIDE', 'CHECK', 'MAP', 'PLAN', 'RESET', 'FIX', 'SHIFT', 'READY'];
 
-function hashBriefIndex(value = '', length = 1, offset = 0) {
-  const cleanLength = Math.max(1, Number.isFinite(Number(length)) ? Number(length) : 1);
-  const key = `${String(value || '')}|${offset}`;
-  let hash = 2166136261;
-  for (let i = 0; i < key.length; i += 1) {
-    hash ^= key.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) % cleanLength;
+function mulberry32(seed = 1) {
+  let state = Number(seed) >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-function pickCreativeBrief({ mode = 'regular', pillar = '', format = 'reel', post_key = '', day = 1, slotIndex = 0 } = {}) {
+function pick(rng, arr = []) {
+  if (!Array.isArray(arr) || !arr.length) return '';
+  const idx = Math.floor(rng() * arr.length);
+  return arr[idx] || arr[0];
+}
+
+// Deterministic by mode+post key (+pillar/format) so the same slot gets the same brief every run.
+function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', format = 'reel' } = {}) {
   const normalizedMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-  const library = CREATIVE_BRIEF_LIBRARY[normalizedMode] || CREATIVE_BRIEF_LIBRARY.regular;
-  const formatValue = toPlainString(format || 'reel') || 'reel';
-  const pillarValue = toPlainString(pillar || 'default').toLowerCase() || 'default';
-  const key = `${toPlainString(post_key || postKey(day, slotIndex))}|${normalizedMode}|${pillarValue}|${formatValue}`;
-  const angle = library.angles[hashBriefIndex(key, library.angles.length, 0)];
-  const audience = library.audiences[hashBriefIndex(key, library.audiences.length, 1)];
-  const mechanism = library.mechanisms[hashBriefIndex(key, library.mechanisms.length, 2)];
-  const ctaAsset = library.ctaAssets[hashBriefIndex(key, library.ctaAssets.length, 3)];
-  return { angle, audience, mechanism, ctaAsset };
+  const library = normalizedMode === 'brand_brain' ? BRAND_BRAIN_BRIEF : REGULAR_BRIEF;
+  const seedKey = `${toPlainString(post_key || '')}|${normalizedMode}|${toPlainString(pillar || '')}|${toPlainString(format || 'reel')}`;
+  const rng = mulberry32(seedFromString(seedKey));
+  const hookArchetype = pick(rng, library.hookArchetypes);
+  const angle = pick(rng, library.angles);
+  const proofType = pick(rng, library.proofTypes);
+  const ctaAsset = pick(rng, library.ctaAssets);
+  let ctaFormat = pick(rng, library.ctaFormats);
+  const wordToken = pick(rng, CTA_WORD_TOKENS) || 'GUIDE';
+  ctaFormat = String(ctaFormat || '')
+    .replaceAll('{word}', wordToken)
+    .replaceAll('{asset}', ctaAsset);
+  return [
+    'CREATIVE BRIEF:',
+    `- Hook archetype: ${hookArchetype}`,
+    `- Angle/mechanism: ${angle}`,
+    `- Proof style: ${proofType}`,
+    `- CTA: ${ctaAsset} via ${ctaFormat}`,
+  ].join('\n');
 }
 
 function buildRecentTitlesList(titles = [], limit = 10) {
@@ -4339,13 +4259,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
   const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
   const recentTitles = buildRecentTitlesList(opts.recentTitles || [], 10);
-  const brief = pickCreativeBrief({
+  const creativeBriefText = buildCreativeBrief({
     mode,
     pillar: targetPillar || 'default',
     format: targetFormat,
     post_key: resolvedPostKey,
-    day: startDay,
-    slotIndex,
   });
   const contextLines = [
     'CONTEXT',
@@ -4361,10 +4279,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   ].filter(Boolean).join('\n');
   const creativeBriefBlock = [
     'CREATIVE BRIEF (server-chosen, mandatory)',
-    `Angle: ${brief.angle}`,
-    `Audience: ${brief.audience}`,
-    `Mechanism: ${brief.mechanism}`,
-    `CTA Asset: ${brief.ctaAsset}`,
+    creativeBriefText,
     'You MUST incorporate all four brief items in the post.',
   ].join('\n');
   const recentIdeasBlock = recentTitles.length
@@ -4372,6 +4287,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'RECENT IDEAS (avoid repeating)',
       ...recentTitles.map((title, idx) => `${idx + 1}. ${title}`),
       'Do not reuse these concepts or phrasings.',
+      'Use a different hook archetype and angle than any implied by RECENT OUTPUT.',
     ].join('\n')
     : '';
 
@@ -4410,6 +4326,7 @@ Write like a creator, not an instructor.
 Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
 Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
 Do not reuse phrases from AVOID REPEATING list.
+Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
 Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
@@ -4487,6 +4404,7 @@ Entertain first. No hard selling. No generic tips.
 Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
 Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
 Do not reuse phrases from AVOID REPEATING list.
+Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
 Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
