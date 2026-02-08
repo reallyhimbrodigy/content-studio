@@ -2497,6 +2497,7 @@ async function generateAndValidateSinglePost({
   presencePenalty,
   qualityState,
   extraInstructions,
+  recentTitles = [],
   calendarId = '',
   usedSignatures = [],
 }) {
@@ -2589,6 +2590,7 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
+        recentTitles,
         angleSeed,
         lens,
         usedSignatures: recentSignatures,
@@ -4010,168 +4012,312 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 }
 
 const PROMPT_VERSION = 'calendar_minimal_v1';
-const ANGLE_BANK = {
+const CREATIVE_BRIEF_LIBRARY = {
   regular: {
-    education: [
-      'The step that looks optional but prevents rework later.',
-      'The sequence detail that keeps the process stable.',
-      'The common misread that causes avoidable delay.',
-      'The checkpoint that confirms you are still on track.',
-      'The decision rule that removes guesswork early.',
-      'The setup choice that saves time downstream.',
-      'The handoff detail that protects quality.',
-      'The review pass that catches subtle mistakes.',
+    angles: [
+      'clarity before commitment',
+      'sequence before speed',
+      'baseline before action',
+      'scope before execution',
+      'signal over noise',
+      'consistency over intensity',
+      'small fix first',
+      'simple rule first',
+      'checkpoint before next step',
+      'assumption check early',
+      'context before decision',
+      'prepare before publish',
+      'review before finalize',
+      'friction audit',
+      'handoff clarity',
+      'expectation reset',
+      'decision hygiene',
+      'progress calibration',
+      'risk visibility',
+      'priority alignment',
+      'constraint mapping',
+      'timing discipline',
+      'option filtering',
+      'process cleanup',
+      'proof over opinion',
+      'input quality',
+      'execution rhythm',
+      'focus protection',
+      'error prevention',
+      'feedback loop',
+      'workflow simplification',
+      'goal translation',
+      'intent clarity',
+      'milestone certainty',
+      'resource pacing',
+      'plan durability',
+      'rollback safety',
+      'handoff timing',
+      'scope guardrails',
+      'decision confidence',
     ],
-    lifestyle: [
-      'The routine adjustment that prevents daily drift.',
-      'The planning habit that protects focus windows.',
-      'The small reset that avoids end-of-day chaos.',
-      'The environment choice that improves execution.',
-      'The scheduling buffer that prevents rushed decisions.',
-      'The preparation step that makes tasks lighter.',
-      'The friction point that silently drains momentum.',
-      'The consistency move that compounds over time.',
+    audiences: [
+      'busy beginner',
+      'new operator',
+      'team lead',
+      'solo creator',
+      'first-time buyer',
+      'curious learner',
+      'time-constrained planner',
+      'detail-focused executor',
+      'process owner',
+      'decision maker',
+      'early-stage founder',
+      'small business owner',
+      'overwhelmed manager',
+      'career switcher',
+      'implementation specialist',
+      'generalist builder',
+      'results-driven learner',
+      'careful skeptic',
     ],
-    promotion: [
-      'The message order that makes the offer clearer.',
-      'The context line that improves first impression.',
-      'The comparison frame that lowers confusion.',
-      'The proof cue that builds trust quickly.',
-      'The single promise that avoids mixed signals.',
-      'The call-to-action phrasing that feels useful.',
-      'The timing choice that supports better response.',
-      'The clarity pass that removes noisy wording.',
+    mechanisms: [
+      'wrong step order',
+      'missing checkpoint',
+      'unclear success criteria',
+      'weak initial baseline',
+      'late risk discovery',
+      'handoff ambiguity',
+      'scope creep',
+      'timing mismatch',
+      'evidence gap',
+      'overloaded workflow',
+      'unclear owner',
+      'default assumption',
+      'unverified inputs',
+      'poor sequencing',
+      'rushed final review',
+      'misread signal',
+      'false priority',
+      'hidden dependency',
+      'inconsistent routine',
+      'too many options',
+      'no decision rule',
+      'low visibility',
+      'process drift',
+      'fragmented attention',
+      'weak preparation',
+      'imprecise handoff',
+      'delayed correction',
+      'no contingency plan',
+      'unclear tradeoff',
+      'bad fit comparison',
+      'missing context',
+      'improper pacing',
+      'incomplete checklist',
+      'goal confusion',
+      'insufficient proof',
+      'priority conflict',
+      'redundant steps',
+      'signal misinterpretation',
+      'overconfidence bias',
+      'feedback delay',
     ],
-    social_proof: [
-      'The before-state detail that makes the result believable.',
-      'The process step that explains why the result happened.',
-      'The milestone marker that makes progress visible.',
-      'The obstacle moment that creates credibility.',
-      'The evidence format that feels concrete not vague.',
-      'The timeline cue that anchors expectations.',
-      'The implementation note that makes proof practical.',
-      'The outcome framing that stays honest and clear.',
-    ],
-    default: [
-      'The practical step that prevents a common miss.',
-      'The simple check that changes the outcome.',
-      'The clarity move that reduces avoidable mistakes.',
-      'The sequence choice that improves results.',
-      'The tiny adjustment with outsized impact.',
-      'The decision rule that keeps progress clean.',
-      'The overlooked detail that protects execution.',
-      'The easy fix that prevents repeat errors.',
+    ctaAssets: [
+      'quick checklist',
+      'decision script',
+      'comparison template',
+      'setup worksheet',
+      'review framework',
+      'priority map',
+      'risk audit sheet',
+      'step sequence card',
+      'handoff template',
+      'progress tracker',
+      'quality rubric',
+      'plan outline',
+      'readiness scorecard',
+      'timing guide',
+      'proof checklist',
+      'execution playbook',
+      'clarity worksheet',
+      'workflow template',
     ],
   },
   brand_brain: {
-    education: [
-      'The hidden constraint that makes the obvious move fail.',
-      'The delayed consequence created by one early choice.',
-      'The wrong assumption that looks safe but is costly.',
-      'The backfire point that appears after initial progress.',
-      'The overlooked dependency that collapses outcomes.',
-      'The false signal that causes confident mistakes.',
-      'The mechanism that turns a small miss into a bigger loss.',
-      'The decisive check that prevents high-cost failure.',
+    angles: [
+      'obvious move backfires',
+      'hidden cost of delay',
+      'tradeoff no one sees',
+      'false confidence loop',
+      'constraint beats effort',
+      'short-term win long-term loss',
+      'signal hidden in plain sight',
+      'default path fails',
+      'popular advice misleads',
+      'surface fix masks root cause',
+      'timing creates failure',
+      'assumption destroys margin',
+      'wrong metric drives failure',
+      'sequence determines outcome',
+      'comfort choice is costly',
+      'speed without structure fails',
+      'high intent low conversion trap',
+      'friction kills momentum',
+      'context shift changes result',
+      'unseen dependency collapses plan',
+      'risk compounds silently',
+      'proof gap breaks trust',
+      'positioning mismatch',
+      'value signal unclear',
+      'option overload causes paralysis',
+      'weak boundary invites loss',
+      'misaligned incentives',
+      'late correction penalty',
+      'execution tax',
+      'false comparison',
+      'generic messaging fails',
+      'default process outdated',
+      'quality leak',
+      'decision latency',
+      'second-order consequence',
+      'invisible bottleneck',
+      'process contradiction',
+      'strategy drift',
+      'hidden downside',
+      'leverage point ignored',
     ],
-    lifestyle: [
-      'The pattern that feels productive but leaks performance.',
-      'The small tradeoff that compounds into visible loss.',
-      'The routine blind spot that quietly breaks consistency.',
-      'The friction loop that keeps repeating the same mistake.',
-      'The context switch cost hidden inside normal habits.',
-      'The comfort move that delays real progress.',
-      'The ignored warning sign before the breakdown.',
-      'The correction moment that restores control fast.',
+    audiences: [
+      'high-intent buyer',
+      'skeptical decision maker',
+      'burned previous client',
+      'performance marketer',
+      'founder under pressure',
+      'competitive operator',
+      'growth lead',
+      'revenue owner',
+      'deal-focused closer',
+      'strategic planner',
+      'efficiency seeker',
+      'risk-aware leader',
+      'overextended founder',
+      'advanced practitioner',
+      'market challenger',
+      'category switcher',
+      'results-first operator',
+      'high-accountability manager',
     ],
-    promotion: [
-      'The claim that sounds right but weakens conversion.',
-      'The framing error that attracts the wrong audience.',
-      'The missed consequence that kills buying urgency.',
-      'The offer structure that creates decision paralysis.',
-      'The proof gap that makes trust collapse.',
-      'The obvious headline move that underperforms quietly.',
-      'The hidden tradeoff between reach and intent.',
-      'The sharper positioning move that changes response quality.',
+    mechanisms: [
+      'hidden constraint',
+      'second-order loss',
+      'timing penalty',
+      'tradeoff blindness',
+      'default path trap',
+      'false metric optimization',
+      'proof deficit',
+      'value ambiguity',
+      'assumption mismatch',
+      'sequence inversion',
+      'decision drag',
+      'execution bottleneck',
+      'incentive conflict',
+      'positioning error',
+      'conversion friction',
+      'signal dilution',
+      'quality drift',
+      'scope collapse',
+      'handoff failure',
+      'risk accumulation',
+      'late-stage surprise',
+      'attention fragmentation',
+      'insight gap',
+      'capacity overrun',
+      'alignment breakdown',
+      'trust erosion',
+      'message fatigue',
+      'offer confusion',
+      'decision fatigue',
+      'process debt',
+      'priority inversion',
+      'competitive displacement',
+      'resource misallocation',
+      'root-cause neglect',
+      'false urgency',
+      'underqualified lead fit',
+      'overpromise underproof',
+      'feedback lag',
+      'weak differentiation',
+      'control loss',
     ],
-    social_proof: [
-      'The success story angle that sounds good but feels generic.',
-      'The missing failure context that lowers credibility.',
-      'The evidence gap that makes outcomes look random.',
-      'The timeline omission that weakens trust.',
-      'The mechanism detail that turns proof into persuasion.',
-      'The contrast point that reveals the real advantage.',
-      'The risk moment that validates the final result.',
-      'The non-obvious reason this case worked.',
-    ],
-    default: [
-      'The hidden constraint behind a repeated failure.',
-      'The tradeoff people miss until it is expensive.',
-      'The obvious move that backfires under pressure.',
-      'The mechanism that explains why outcomes collapse.',
-      'The second-order consequence no one plans for.',
-      'The correction that flips the result trajectory.',
-      'The signal that predicts failure early.',
-      'The leverage point that changes the entire outcome.',
+    ctaAssets: [
+      'diagnostic checklist',
+      'objection script',
+      'reframe template',
+      'risk calculator',
+      'decision matrix',
+      'conversion teardown',
+      'positioning worksheet',
+      'message map',
+      'constraint audit',
+      'tradeoff guide',
+      'offer blueprint',
+      'proof framework',
+      'mechanism brief',
+      'execution checklist',
+      'priority reset template',
+      'strategy one-pager',
+      'high-stakes playbook',
+      'failure mode worksheet',
     ],
   },
 };
+const HOOK_ARCHETYPES = [
+  'The mistake that caused the loss',
+  'The hidden step most people miss',
+  'Why your current approach fails',
+  'The truth people skip',
+  'The one change that fixed it',
+  'What I wish I knew earlier',
+  'The fastest way to stop this',
+  'The signal everyone ignores',
+  'The tradeoff no one mentions',
+  'The common move that backfires',
+  'The check that changes outcomes',
+  'The pattern behind repeated failure',
+];
 
-function pickSlotAngle({ mode = 'regular', pillar = '', day = 1, slotIndex = 0 } = {}) {
+function hashBriefIndex(value = '', length = 1, offset = 0) {
+  const cleanLength = Math.max(1, Number.isFinite(Number(length)) ? Number(length) : 1);
+  const key = `${String(value || '')}|${offset}`;
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % cleanLength;
+}
+
+function pickCreativeBrief({ mode = 'regular', pillar = '', format = 'reel', post_key = '', day = 1, slotIndex = 0 } = {}) {
   const normalizedMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-  const normalizedPillar = String(pillar || '').toLowerCase();
-  const modeBank = ANGLE_BANK[normalizedMode] || ANGLE_BANK.regular;
-  const list = Array.isArray(modeBank[normalizedPillar]) && modeBank[normalizedPillar].length
-    ? modeBank[normalizedPillar]
-    : modeBank.default;
-  const safeDay = Number.isFinite(Number(day)) ? Number(day) : 1;
-  const safeSlot = Number.isFinite(Number(slotIndex)) ? Number(slotIndex) : 0;
-  const index = Math.abs(safeDay + safeSlot) % Math.max(1, list.length);
-  return { angle: list[index] || list[0], index };
+  const library = CREATIVE_BRIEF_LIBRARY[normalizedMode] || CREATIVE_BRIEF_LIBRARY.regular;
+  const formatValue = toPlainString(format || 'reel') || 'reel';
+  const pillarValue = toPlainString(pillar || 'default').toLowerCase() || 'default';
+  const key = `${toPlainString(post_key || postKey(day, slotIndex))}|${normalizedMode}|${pillarValue}|${formatValue}`;
+  const angle = library.angles[hashBriefIndex(key, library.angles.length, 0)];
+  const audience = library.audiences[hashBriefIndex(key, library.audiences.length, 1)];
+  const mechanism = library.mechanisms[hashBriefIndex(key, library.mechanisms.length, 2)];
+  const ctaAsset = library.ctaAssets[hashBriefIndex(key, library.ctaAssets.length, 3)];
+  return { angle, audience, mechanism, ctaAsset };
 }
 
-function toAvoidPhrase(value = '', minWords = 6, maxWords = 10) {
-  const cleaned = String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleaned) return '';
-  const words = cleaned.split(' ').filter(Boolean);
-  const take = Math.min(words.length, Math.max(minWords, maxWords));
-  return words.slice(0, take).join(' ');
-}
-
-function buildAvoidRepeatingList(posts = [], limit = 4) {
-  if (!Array.isArray(posts) || !posts.length) return [];
+function buildRecentTitlesList(titles = [], limit = 10) {
+  if (!Array.isArray(titles) || !titles.length) return [];
   const seen = new Set();
   const out = [];
-  for (const post of posts) {
-    const ctaPhrase = toAvoidPhrase(post?.cta || '');
-    if (ctaPhrase && !seen.has(ctaPhrase)) {
-      seen.add(ctaPhrase);
-      out.push(ctaPhrase);
-      if (out.length >= limit) break;
-    }
-    const hookPhrase = toAvoidPhrase(post?.reelHook || '');
-    if (hookPhrase && !seen.has(hookPhrase)) {
-      seen.add(hookPhrase);
-      out.push(hookPhrase);
-      if (out.length >= limit) break;
-    }
+  for (const raw of titles) {
+    const value = toPlainString(raw || '');
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= limit) break;
   }
-  return out.slice(0, limit);
-}
-
-function buildCreativeSlotGuidance(slotAngle = '', avoidList = []) {
-  const lines = [
-    'CREATIVE SLOT GUIDANCE (do not output this block)',
-    `ANGLE FOR THIS POST: ${String(slotAngle || '').trim() || 'The practical step that prevents a common miss.'}`,
-  ];
-  if (Array.isArray(avoidList) && avoidList.length) {
-    lines.push(`AVOID REPEATING THESE PHRASES: ${avoidList.slice(0, 4).join(' | ')}`);
-  }
-  return lines.join('\n');
+  return out;
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -4191,6 +4337,16 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const postKeyValue = opts.post_key || opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
+  const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
+  const recentTitles = buildRecentTitlesList(opts.recentTitles || [], 10);
+  const brief = pickCreativeBrief({
+    mode,
+    pillar: targetPillar || 'default',
+    format: targetFormat,
+    post_key: resolvedPostKey,
+    day: startDay,
+    slotIndex,
+  });
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
@@ -4203,6 +4359,21 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
   ].filter(Boolean).join('\n');
+  const creativeBriefBlock = [
+    'CREATIVE BRIEF (server-chosen, mandatory)',
+    `Angle: ${brief.angle}`,
+    `Audience: ${brief.audience}`,
+    `Mechanism: ${brief.mechanism}`,
+    `CTA Asset: ${brief.ctaAsset}`,
+    'You MUST incorporate all four brief items in the post.',
+  ].join('\n');
+  const recentIdeasBlock = recentTitles.length
+    ? [
+      'RECENT IDEAS (avoid repeating)',
+      ...recentTitles.map((title, idx) => `${idx + 1}. ${title}`),
+      'Do not reuse these concepts or phrasings.',
+    ].join('\n')
+    : '';
 
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4239,14 +4410,13 @@ Write like a creator, not an instructor.
 Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
 Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
 Do not reuse phrases from AVOID REPEATING list.
+Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
-
-Tiny style exemplar:
-hook: I lost two options because I started one step late.
-body: The miss started with the wrong order, then timing got tighter and options shrank.
-cta: Get the checklist before you start.
+reelBody should be 1 to 2 tight lines explaining the mechanism.
+reelCta should be a single action tied to CTA Asset.
+Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
 
 FIELD INSTRUCTIONS
 
@@ -4289,6 +4459,7 @@ No pressure. No bait.
 
 hashtags
 Relevant, descriptive hashtags only.
+Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
 
 Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
@@ -4316,14 +4487,13 @@ Entertain first. No hard selling. No generic tips.
 Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
 Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
 Do not reuse phrases from AVOID REPEATING list.
+Select ONE hook archetype and write reelHook using it.
 
 Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
 Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
-
-Tiny style exemplar:
-hook: We lost the deal after one missing step surfaced at the deadline.
-body: The failure started earlier when a bad number framed the decision, so risk stayed hidden until it was expensive.
-cta: Use the script to catch this before it costs you.
+reelBody should be 1 to 2 tight lines explaining the mechanism.
+reelCta should be a single action tied to CTA Asset.
+Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
 
 FIELD INSTRUCTIONS
 
@@ -4366,6 +4536,7 @@ No bait. No pressure language.
 
 hashtags
 Relevant discovery hashtags only.
+Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
 
 Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
@@ -4374,6 +4545,9 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
+    creativeBriefBlock,
+    recentIdeasBlock,
+    `HOOK ARCHETYPES: ${HOOK_ARCHETYPES.join(' | ')}`,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
@@ -11012,14 +11186,7 @@ const server = http.createServer((req, res) => {
         throw err;
       }
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
-      const slotAngle = pickSlotAngle({
-        mode: calendarMode,
-        pillar: pillarForSlot,
-        day: slot.day,
-        slotIndex: slot.slotIndex,
-      }).angle;
-      const avoidList = buildAvoidRepeatingList(acceptedPosts, 4);
-      const creativeGuidance = buildCreativeSlotGuidance(slotAngle, avoidList);
+      const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
         nicheStyle,
         brandContext,
@@ -11038,7 +11205,7 @@ const server = http.createServer((req, res) => {
         requestTimeoutMs,
         temperature,
         presencePenalty,
-        extraInstructions: creativeGuidance,
+        recentTitles,
         calendarId,
         usedSignatures,
         qualityState: { signatureMap: new Map() },
@@ -12256,6 +12423,7 @@ const server = http.createServer((req, res) => {
         }
         const calendarId = body?.calendarId ?? null;
         let calendarBrandBrainEnabled = null;
+        let recentTitlesForRegenOne = [];
         if (calendarBrandBrainEnabled === null && calendarId && supabaseAdmin) {
           const { data: calendarRow, error: calendarError } = await supabaseAdmin
             .from('calendars')
@@ -12273,6 +12441,8 @@ const server = http.createServer((req, res) => {
             } else if (typeof calendarRow.calendarMode === 'string') {
               calendarBrandBrainEnabled = calendarRow.calendarMode === 'brand_brain';
             }
+            const calendarPosts = Array.isArray(calendarRow.posts) ? calendarRow.posts : [];
+            recentTitlesForRegenOne = buildRecentTitlesList(calendarPosts.map((post) => post?.title || ''), 10);
           }
         }
         let selectedMode = calendarBrandBrainEnabled === true ? 'brand_brain' : 'regular';
@@ -12300,13 +12470,6 @@ const server = http.createServer((req, res) => {
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
-        const slotAngle = pickSlotAngle({
-          mode: selectedMode,
-          pillar: scheduledPillar,
-          day,
-          slotIndex,
-        }).angle;
-        const creativeGuidance = buildCreativeSlotGuidance(slotAngle, []);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : 0.2;
@@ -12345,7 +12508,7 @@ const server = http.createServer((req, res) => {
             maxTokens,
             requestTimeoutMs,
             temperature,
-            extraInstructions: creativeGuidance,
+            recentTitles: recentTitlesForRegenOne,
             calendarId,
             usedSignatures: [],
             qualityState: { signatureMap: new Map() },
