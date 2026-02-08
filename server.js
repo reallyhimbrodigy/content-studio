@@ -4416,6 +4416,7 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 BRAND BRAIN MODE (AD CONTRACT)
 Write the post as a reflection on a mistake that could not be undone once it happened.
+Frame the post as a moment of realization after a mistake, where the cost is already felt. The CTA should feel like relief from repeating that mistake, not a generic resource.
 
 THINKING LENS (BRAND BRAIN)
 You are writing a winning ad, not an explainer.
