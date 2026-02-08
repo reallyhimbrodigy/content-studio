@@ -4091,6 +4091,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
+REGULAR MODE (AD CONTRACT)
+
+THINKING LENS (REGULAR)
+You are writing a helpful, calm explainer for someone trying to understand the process.
+Your goal is clarity and confidence.
+Do not dramatize.
+Do not position yourself as the only solution.
+Assume the viewer is learning, not buying yet.
 
 UPSTREAM OBJECTIVE
 You are NOT teaching. You are creating a short-form post that earns attention by naming a real friction or mistake.
@@ -4156,6 +4164,15 @@ Relevant, descriptive hashtags only.
 Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
+BRAND BRAIN MODE (AD CONTRACT)
+
+THINKING LENS (BRAND BRAIN)
+You are writing a winning ad, not an explainer.
+Your goal is to surface a non-obvious mistake or hidden constraint that causes failure even when people think they are doing the right thing.
+Assume the viewer already knows the basics.
+Do not explain the process.
+Do not repeat common advice.
+Show why the obvious move fails and why a different approach works.
 
 UPSTREAM OBJECTIVE
 You are writing an ad where the viewer feels the cost of inaction.
