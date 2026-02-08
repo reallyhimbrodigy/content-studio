@@ -68,20 +68,33 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function stripTrailingFollowUpSection(text) {
+  if (typeof text !== 'string') return text;
+  const markerPattern = /(^|\r?\n)\s*(?:Follow-?\s*up(?:\s*idea)?|Next post|Tomorrow|Part\s*2|Next|Up next)\s*[:\-]\s*/i;
+  const match = markerPattern.exec(text);
+  if (!match) return text.trim();
+  return text.slice(0, match.index).trim();
+}
+
 function buildPostHTML(post) {
+  const clean = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
   const day = post.day || '';
-  const title = post.idea || post.title || '';
+  const title = clean(post.idea || post.title || '');
   const type = post.type || '';
-  const caption = post.caption || '';
+  const caption = clean(post.caption || '');
   const pillar = post.pillar || '';
   const format = post.format || '';
-  const cta = post.cta || '';
-  const designNotes = post.designNotes || '';
+  const cta = clean(post.cta || '');
+  const designNotes = clean(post.designNotes || '');
   const repurpose = Array.isArray(post.repurpose) ? post.repurpose : [];
   const analytics = Array.isArray(post.analytics) ? post.analytics : (post.analytics ? [post.analytics] : []);
-  const weeklyPromo = post.weeklyPromo || '';
+  const weeklyPromo = clean(post.weeklyPromo || '');
   const promoSlot = !!post.promoSlot;
-  const vs = post.videoScript || {};
+  const vs = {
+    hook: clean(typeof post.reelHook === 'string' ? post.reelHook : (post.videoScript?.hook || '')),
+    body: clean(typeof post.reelBody === 'string' ? post.reelBody : (post.videoScript?.body || '')),
+    cta: clean(typeof post.reelCta === 'string' ? post.reelCta : (post.videoScript?.cta || '')),
+  };
   const engage = post.engagementScripts || {};
   const hashtags = Array.isArray(post.hashtags) 
     ? post.hashtags.map(h => h.startsWith('#') ? h : '#' + h).join(' ')
@@ -97,14 +110,14 @@ function buildPostHTML(post) {
     designNotes ? `<div class="calendar-card__design"><strong>Design Notes:</strong> ${nl2br(designNotes)}</div>` : '',
     repurpose.length ? `<div class="calendar-card__repurpose"><strong>Repurpose:</strong> ${escapeHtml(repurpose.join(' • '))}</div>` : '',
     analytics.length ? `<div class="calendar-card__analytics"><strong>Analytics:</strong> ${escapeHtml(analytics.join(', '))}</div>` : '',
-    (engage.commentReply || engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply ? `<div><em>Comment:</em> ${escapeHtml(engage.commentReply)}</div>` : ''}${engage.dmReply ? `<div><em>DM:</em> ${escapeHtml(engage.dmReply)}</div>` : ''}</div>` : '',
+    (engage.commentReply || engage.dmReply) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engage.commentReply ? `<div><em>Comment:</em> ${escapeHtml(clean(engage.commentReply))}</div>` : ''}${engage.dmReply ? `<div><em>DM:</em> ${escapeHtml(clean(engage.dmReply))}</div>` : ''}</div>` : '',
     (promoSlot || weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo ? escapeHtml(weeklyPromo) : 'Yes'}</div>` : '',
     (vs.hook || vs.body || vs.cta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${vs.hook ? `<div><em>Hook:</em> ${escapeHtml(vs.hook)}</div>` : ''}${vs.body ? `<div><em>Body:</em> ${nl2br(vs.body)}</div>` : ''}${vs.cta ? `<div><em>CTA:</em> ${escapeHtml(vs.cta)}</div>` : ''}</div>` : '',
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
-        + `${post.variants.igCaption ? `<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>` : ''}`
-        + `${post.variants.tiktokCaption ? `<div><em>TikTok:</em> ${escapeHtml(post.variants.tiktokCaption)}</div>` : ''}`
-        + `${post.variants.linkedinCaption ? `<div><em>LinkedIn:</em> ${escapeHtml(post.variants.linkedinCaption)}</div>` : ''}`
+        + `${post.variants.igCaption ? `<div><em>Instagram:</em> ${escapeHtml(clean(post.variants.igCaption))}</div>` : ''}`
+        + `${post.variants.tiktokCaption ? `<div><em>TikTok:</em> ${escapeHtml(clean(post.variants.tiktokCaption))}</div>` : ''}`
+        + `${post.variants.linkedinCaption ? `<div><em>LinkedIn:</em> ${escapeHtml(clean(post.variants.linkedinCaption))}</div>` : ''}`
         + `</div>`
       : ''
   ];
@@ -112,9 +125,9 @@ function buildPostHTML(post) {
   if (isLibraryUserPro && post.captionVariations) {
     detailBlocks.push(
       `<div class="calendar-card__caption-variations"><strong>Caption variations</strong>`
-      + `${post.captionVariations.casual ? `<div><em>Casual:</em> ${escapeHtml(post.captionVariations.casual)}</div>` : ''}`
-      + `${post.captionVariations.professional ? `<div><em>Professional:</em> ${escapeHtml(post.captionVariations.professional)}</div>` : ''}`
-      + `${post.captionVariations.witty ? `<div><em>Witty:</em> ${escapeHtml(post.captionVariations.witty)}</div>` : ''}`
+      + `${post.captionVariations.casual ? `<div><em>Casual:</em> ${escapeHtml(clean(post.captionVariations.casual))}</div>` : ''}`
+      + `${post.captionVariations.professional ? `<div><em>Professional:</em> ${escapeHtml(clean(post.captionVariations.professional))}</div>` : ''}`
+      + `${post.captionVariations.witty ? `<div><em>Witty:</em> ${escapeHtml(clean(post.captionVariations.witty))}</div>` : ''}`
       + `</div>`
     );
   }
@@ -129,7 +142,7 @@ function buildPostHTML(post) {
     );
   }
   if (isLibraryUserPro && post.audio) {
-    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(post.audio)}</div></div>`);
+    detailBlocks.push(`<div class="calendar-card__audio"><strong>Audio</strong><div>${escapeHtml(clean(post.audio))}</div></div>`);
   }
   if (isLibraryUserPro && post.visualTemplate && post.visualTemplate.url) {
     detailBlocks.push(`<div class="calendar-card__visual"><strong>Visual template</strong><div><a href="${escapeHtml(post.visualTemplate.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(post.visualTemplate.label || 'Open template')}</a></div></div>`);

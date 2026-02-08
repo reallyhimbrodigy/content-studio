@@ -4325,6 +4325,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'Use a different hook archetype and angle than any implied by RECENT OUTPUT.',
     ].join('\n')
     : '';
+  const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
+  const recentSignatureLine = usedSignatures.length
+    ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
+    : 'RECENT SIGNATURES (do not reuse): none';
+  const mechanismLockBlock = [
+    'INTERNAL - DO NOT OUTPUT',
+    'MECHANISM LOCK',
+    '- Before writing fields, silently decide one hook mechanism, one core claim sentence, and one concrete anchor.',
+    '- Hook mechanism must be exactly one of: contrarian truth, myth-bust, hidden step, do-this-instead, counterintuitive rule, simple diagnostic test, before/after leverage, mistake confession, what nobody tells you, fear-to-relief specific.',
+    '- Do not reuse the same mechanism plus core-claim pattern already reflected in recent signatures.',
+    recentSignatureLine,
+    '- Banned phrases and close variants: Skipping * can cost you, Ignoring * can cost you, can cost you thousands, timing is everything, dont skip this step.',
+    '- Do not output this lock, planning text, or headings.',
+  ].join('\n');
 
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4371,7 +4385,6 @@ SHARED QUALITY RULES (both modes)
 - Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
-- Hooks and reelHook should be 8 words or fewer and must stay concrete.
 - Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
 - Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
 
@@ -4388,6 +4401,8 @@ MODE INTENT (REGULAR)
 - hook and reelHook must be practical and specific (one mistake or one step), not a broad motivational statement.
 - body and reelBody must be a how-to (2 to 4 clear steps) with concrete actions, not theory.
 - cta and reelCta must be low-friction and practical (save, download, use the checklist/template), not emotional or identity-based.
+- Reel Script must include one specific mistake and one specific one-step fix using the asset.
+- Keep tone calm and practical, avoid persuasion stacking.
 
 CREATIVE PRIMITIVE: practical rule-of-thumb + one concrete example.
 Select ONE hook archetype and write reelHook using it.
@@ -4397,8 +4412,8 @@ Hook must be a concrete moment plus specific consequence. CTA must be one action
 reelBody should be 1 to 2 tight lines explaining the mechanism.
 reelCta should be a single action tied to CTA Asset.
 Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
-CTA PALETTE: Save the checklist. Use the template. Review the steps. Run the quick audit. Compare your options. Screenshot this. Send this to a friend.
-Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
+CTA style: practical and low-friction.
+Avoid repeating the same CTA phrasing across posts.
 
 REEL SCRIPT SHAPE
 - 0-2s HOOK: 8 words or fewer, specific.
@@ -4500,7 +4515,6 @@ SHARED QUALITY RULES (both modes)
 - Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
 - Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
 - Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
-- Hooks and reelHook should be 8 words or fewer and must stay concrete.
 - Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
 - Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
 
@@ -4519,6 +4533,8 @@ MODE INTENT (BRAND BRAIN)
   2) the hidden cost of that assumption,
   3) the new rule that replaces it.
 - cta and reelCta must be a commitment step (comment keyword, DM keyword, or steal my framework), not a generic download checklist.
+- Integrate one belief reversal sentence and one second-order consequence inside Reel Script and or Caption.
+- Integrate one concrete anchor as micro-proof inside Reel Script or Design Notes.
 
 CREATIVE PRIMITIVE: micro-story (mistake -> consequence -> corrective move).
 Select ONE hook archetype and write reelHook using it.
@@ -4528,8 +4544,8 @@ Hook must be a concrete moment plus specific consequence. CTA must be one action
 reelBody should be 1 to 2 tight lines explaining the mechanism.
 reelCta should be a single action tied to CTA Asset.
 Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
-CTA PALETTE: Steal my checklist. Grab the template. Use the audit. Copy the script. Save this framework. Comment a keyword for the file. DM me for the template.
-Pick ONE CTA from the palette that best fits this post’s angle. Avoid using the same CTA phrasing across posts.
+CTA style: commitment-oriented and specific.
+Avoid repeating the same CTA phrasing across posts.
 
 REEL SCRIPT SHAPE
 - 0-2s HOOK: 8 words or fewer, specific.
@@ -4604,11 +4620,11 @@ Before outputting JSON, verify reelHook contains only the hook sentence(s), reel
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
-    `ANGLE (do not output): ${promptAngle}`,
+    !plannedAngle ? `ANGLE (do not output): ${promptAngle}` : '',
     creativeBriefBlock,
     recentIdeasBlock,
-    `HOOK ARCHETYPES: ${HOOK_ARCHETYPES.join(' | ')}`,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
+    mechanismLockBlock,
     GLOBAL_RULES,
     contractBlock,
   ].filter(Boolean);
