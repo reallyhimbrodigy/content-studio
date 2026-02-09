@@ -4018,7 +4018,7 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   return lines.join('\n');
 }
 
-const PROMPT_VERSION = 'calendar_minimal_v1';
+const PROMPT_VERSION = 'calendar_minimal_v2';
 const REGULAR_BRIEF = {
   hookArchetypes: [
     'Counterintuitive truth',
@@ -4327,7 +4327,11 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const noveltyThesisBlock = [
     'NOVELTY (most important)',
-    'First choose a decision gate category, then write the post. Use RECENT IDEAS and RECENT SIGNATURES to prevent repeating category clusters. If RECENT IDEAS is present, do not reuse the same gate category as any of the last 3 RECENT IDEAS. If recent posts are document/deadline-heavy, do not choose another document/deadline gate; switch to a different category such as insurance eligibility, condo reserves or special assessments, rental restrictions, permits or violations, survey encroachments, title exceptions, financing constraints, neighborhood constraints, or listing prep. Name the artifact AND quote the exact kind of thing you are checking (exception line, reserve %, rental cap clause, open permit flag, zone designation, assessment notice item). No deadline/document posts unless the artifact inherently is a deadline window; otherwise choose a non-deadline gate. The consequence must be operational, not generic money or time language: insurance denial, financing rework, leverage loss, resale constraint, rental restriction, forced renegotiation, or inability to close. STRUCTURE RANGE: Choose ONE Hook Frame from the allowed list below and write the hook in that frame. Do not reuse the same Hook Frame cadence; vary sentence shape and do not repeat one cadence such as If X then Y. Allowed Hook Frames: Condition Reveal (state the condition on the artifact and what it changes); Rule-of-Thumb (one rule that decides the gate); Counterintuitive Gate (what people check vs what actually blocks the deal); Checklist Lens (one line: On the artifact, the only line that matters is); Before/After Outcome (same moment, different outcome based on condition); If/Then Test (simple diagnostic tied to artifact condition).',
+    'Pick a decision-gate CATEGORY first, then write the post. Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same CATEGORY cluster and artifact type. If RECENT IDEAS exists, do not reuse any CATEGORY implied by the last 3 items. Do not use deadline or document-review gates unless the artifact is inherently a deadline window and the CREATIVE BRIEF situation implies it. If recent posts are deadline or document heavy, move to a different gate category (insurance eligibility, condo reserves or assessments, rental restrictions, permits or violations, survey encroachments, title exceptions, financing constraints, neighborhood constraints, listing prep).',
+    'Center the post on ONE named artifact and ONE inspectable condition on that artifact (checkbox, clause, exception line, percentage, field value, flag, or designation). Include one Miami-real-estate-native anchor without fabricated stats or fake anecdotes, such as flood zone designation, wind mitigation report, condo reserves, special assessment notice, rental cap clause, title commitment Schedule B-II exception line, or open permit search.',
+    'The consequence must be operational (insurance denial, financing rework, leverage loss, resale constraint, rental restriction, forced renegotiation, inability to close), not generic money or time language.',
+    'Do not use generic project-management language unless the CREATIVE BRIEF explicitly names it as the asset: quality gate, risk audit, decision rubric, process outline, workflow, handoff, scope boundaries, readiness scorecard, momentum, streamline your process, keep projects on track, team alignment.',
+    'STRUCTURE RANGE guidance only: choose ONE hook frame and vary cadence from RECENT SIGNATURES instead of repeating the same sentence shape: (1) Condition Reveal, (2) Rule-of-Thumb, (3) Counterintuitive Gate, (4) Checklist Lens, (5) Before/After Outcome, (6) If/Then Test.',
   ].join('\n');
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4338,26 +4342,49 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Each field must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
     '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
     '- No continuation sections (Follow-up, Next post, Tomorrow, Part 2, Next, Up next).',
-    '- hook and reelHook must be declarative, not a question.',
-    '- Ban these repetitive phrases in hook/reelHook/body/caption: Many buyers, Timing is everything, Don’t skip this step, Did you know, can cost you thousands, thousands, Avoid this mistake, a buyer, a client, recently, learn how, don’t make the same mistake, here’s how, avoid this.',
-    '- Do not fabricate case studies. Do not use dollar amounts or thousands language. Do not use anonymous anecdote framing at all.',
-    '- The condition must be inspectable on the artifact: checkbox, line item, field, exception, percentage, or clause.',
+    '- Regular: hook/reelHook may be declarative OR one calm question (non-rhetorical). Brand Brain: hook/reelHook must be declarative.',
+    '- Ban these generic PSA openers in hook/reelHook: “Did you know”, “Avoid”, “Don’t let”, “Many buyers”, “Timing is everything”, “Don’t skip this step”.',
+    '- No anonymous anecdotes: do not say “a buyer”, “a client”, “recently”, or invent stories.',
+    '- No dollar amounts, no “thousands”, no fake numeric claims. Numbers are allowed ONLY when intrinsic to the named artifact condition (reserve percent line, rental cap clause, zone designation, exception line, open permit flag, assessment line item).',
+    '- Do not fabricate case studies or fake client stories. Body/caption should ban anecdote framing, not ordinary verbs.',
+    '- Ban generic project-management language unless CREATIVE BRIEF explicitly names it as the asset: quality gate, risk audit, decision rubric, process outline, workflow, handoff, scope boundaries, readiness scorecard, momentum, streamline your process, keep projects on track, team alignment.',
+    '- If the chosen artifact is not inherently deadline-bound, do not mention X-day windows, submission deadlines, review by dates, countdowns, or mark your calendar language. Deadline wording is allowed only when the artifact is inherently deadline-window and CREATIVE BRIEF implies it.',
+    '- Do not use anonymous anecdote framing at all.',
+    '- ONE MOMENT RULE: All fields must describe the same specific moment + same named artifact + same inspectable condition + same operational consequence.',
+    '- Do not introduce a second gate. Keep one artifact, one condition, and one consequence throughout.',
     '- Use ONE specific moment. Every field must point to the same moment + same artifact + same consequence.',
     '- The CTA must be exactly aligned to the CTA direction in the CREATIVE BRIEF. Do not swap assets (no defaulting to checklist/template).',
   ].join('\n');
 
-  const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
+const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
 MODE INTENT
-Calm, practical, neutral. Teach one clear move that prevents a real-world mistake. Keep tone factual and grounded.
+Calm, practical, neutral. Teach one clear move that prevents a real-world mistake. Factual tone. No PSA warnings.
 
 HOW TO REDUCE REPETITION (CRITICAL)
 You are generating ONE post, but you are given RECENT IDEAS and RECENT SIGNATURES. Use them to pick a different decision gate category and a different named artifact than recent posts. If recent items are document/deadline-heavy, choose a different gate (e.g., condo reserves, special assessments, rental rules, permit/violation search, insurance constraints, survey encroachments). Your novelty should come from a different moment + artifact, not from rewording.
+Default away from deadlines and review or submit by X days framing unless the artifact is inherently a deadline window and the Creative Brief situation implies it. Prefer non-deadline gates: reserves, special assessment, rental cap, insurance eligibility wind or flood, open permits or violations, survey encroachment, title exception, financing constraint, neighborhood constraint, listing prep.
+Do not use generic project-management language unless the CREATIVE BRIEF explicitly names it as the asset: quality gate, risk audit, decision rubric, process outline, workflow, handoff, scope boundaries, readiness scorecard, momentum, streamline your process, keep projects on track, team alignment.
 
 VOICE RULES
-No fear or urgency language, no hype, no warning-PSA tone.
-Hook/reelHook must use ONE Hook Frame from NOVELTY block.
-Hook/reelHook must be declarative and must begin with the named artifact and an inspectable condition, not generic issues.
+- No PSA framing. Do not start with “Did you know…”, “Avoid…”, “Don’t let…”.
+- Hook/reelHook must be anchored in the artifact and an inspectable condition, written plainly, with the immediate implication of that condition.
+- You may use a short calm question OR a declarative line, but no rhetorical/viral cadence.
+- Include one Miami-real-estate-native anchor without fabricated stats or fake anecdotes.
+- If the artifact is not inherently deadline-window, do not use X-day window or countdown framing.
+
+PRE-WRITE DECISION (do not output)
+- Choose ONE gate category from this list: title/ownership, condo-COA docs, insurance/flood/wind, financing/appraisal, survey/boundaries, permits/violations, offer terms/contingencies, closing costs/escrows, listing prep/repairs, neighborhood constraints, rental rules, special assessments/reserves.
+- Choose ONE named artifact and ONE inspectable condition on it (line/field/clause/flag/percentage/designation).
+- Check RECENT IDEAS and do not match any of the last 3 implied categories.
+- If RECENT IDEAS is empty, still choose a category that is not document/deadline unless the Creative Brief explicitly demands a deadline-window artifact.
+- Choose ONE operational consequence from this set: financing rework, insurance denial, leverage loss, forced renegotiation, inability to close, resale constraint, rental restriction.
+- Write every field using the same artifact + condition + consequence.
+
+FIELD RULES (REGULAR)
+- Title, hook, body, caption, designNotes must all name the SAME artifact and the SAME condition on it.
+- Body must state: (a) where on the artifact the condition appears (section/line/field), (b) what you do if it’s present (one next action), (c) the operational consequence you prevent.
+- Do not introduce a second gate or second artifact.
 
 FIELD INSTRUCTIONS
 title
@@ -4365,15 +4392,17 @@ title
 
 hook
 - One specific moment that signals the gate (no generic opener).
+- Hook/reelHook must include artifact name + condition + immediate implication in plain language.
+- Calm question or declarative is allowed, but no rhetorical cadence.
 
 body
 - 2–4 sentences: what to do, what to look for on the artifact as a condition, and what specific next action changes if the condition is present. Practical steps, not theory.
-- Body must name the artifact condition you’re checking and the next action if it’s present.
-- Body must state where on the artifact the condition is found (line, section, or field).
+- Where on artifact must be explicit (for example: Title commitment -> Schedule B-II exception line; Condo budget -> reserves line item or percent funded).
+- State one explicit operational consequence in body: financing rework, insurance denial, leverage loss, forced renegotiation, inability to close, resale or rental constraint.
 
 cta
 - One low-friction action that matches the CREATIVE BRIEF CTA direction (same asset and wording intent).
-- No generic check your documents language; name the specific action and the specific artifact.
+- Name the action and reference the same artifact (no generic “check your docs”).
 
 reelHook
 - Hook-only spoken line for the same moment.
@@ -4394,61 +4423,92 @@ engagementLoop
 - One simple question tied to the decision gate.
 
 hashtags
-- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
+- Array of 5–8 strings, no leading #, no duplicates.
 
-  const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
+FINAL CHECK (do not output)
+Before emitting JSON, verify:
+1) You used a category different from the last 3 RECENT IDEAS.
+2) Artifact + condition appear in title/hook/body/designNotes.
+3) CTA matches CREATIVE BRIEF direction and does not swap assets.
+4) No banned PSA openers or anonymous anecdotes.`;
+
+const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
 MODE INTENT
-Belief flip + consequence beyond money/time + micro-proof from a named artifact. Keep it direct and specific, not instructional.
+Belief flip + operational consequence beyond generic money/time + micro-proof from a named artifact condition. Direct, specific, non-instructional.
 
 HOW TO REDUCE REPETITION (CRITICAL)
-Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category. If recent posts are clustered around deadlines and “don’t skip,” shift to a different hidden constraint (condo reserves/special assessments, insurance eligibility, rental restrictions, open permits, title exceptions, survey encroachments, HOA/condo docs). Novelty must be a different moment + artifact, not a reword.
+Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category. If recent posts are clustered around deadlines and “don’t skip,” shift to a different hidden constraint (condo reserves/special assessments, insurance eligibility, rental restrictions, open permits, title exceptions, survey encroachments, HOA/condo docs, listing prep constraints). Novelty must be a different moment + artifact, not a reword.
 
 REQUIRED BRAND BRAIN DIFFERENTIATORS
-- Belief flip in one hook line: people think X; the gate is actually Y.
+- Belief flip in ONE line: people rank X as the gate; the real gate is Y (artifact + condition).
 - Second-order consequence: one downstream effect beyond generic cost/time (deal leverage loss, insurance denial, financing rework, resale constraint, rental restriction, assessment exposure, inability to close, forced renegotiation).
-- Micro-proof: name the artifact and one condition on it (a checkbox item, an exception line, a reserve level note, an assessment notice, an open permit flag, a zone designation).
-- Hook/reelHook must use ONE Hook Frame from NOVELTY block and must be declarative.
-- Hook/reelHook must contain a belief flip.
-- Belief flip can be expressed as contrast, re-ranking, or rule replacement; avoid repeating the exact cadence from RECENT IDEAS/SIGNATURES.
-- Prohibit teaching voice: always, make sure, don’t forget, tip, here’s how.
-- No step-by-step lists.
+- Micro-proof: name the artifact AND state the inspectable condition on it (clause/exception/flag/percentage/designation).
+- No teaching voice: avoid “always”, “make sure”, “don’t forget”, “tip”, “here’s how”. No step-by-step lists.
+- Default away from deadlines and review or submit by X days framing unless the artifact is inherently a deadline window and the Creative Brief situation implies it. Prefer non-deadline gates: reserves, special assessment, rental cap, insurance eligibility wind or flood, open permits or violations, survey encroachment, title exception, financing constraint, neighborhood constraint, listing prep.
+- Do not use generic project-management language unless the CREATIVE BRIEF explicitly names it as the asset: quality gate, risk audit, decision rubric, process outline, workflow, handoff, scope boundaries, readiness scorecard, momentum, streamline your process, keep projects on track, team alignment.
+- Include one Miami-real-estate-native anchor without fabricated stats or fake anecdotes.
+
+PRE-WRITE DECISION (do not output)
+- Choose ONE gate category from this list: title/ownership, condo-COA docs, insurance/flood/wind, financing/appraisal, survey/boundaries, permits/violations, offer terms/contingencies, closing costs/escrows, listing prep/repairs, neighborhood constraints, rental rules, special assessments/reserves.
+- Choose ONE named artifact and ONE inspectable condition on it (line/field/clause/flag/percentage/designation).
+- Check RECENT IDEAS and do not match any of the last 3 implied categories.
+- If RECENT IDEAS is empty, still choose a category that is not document/deadline unless the Creative Brief explicitly demands a deadline-window artifact.
+- Choose ONE operational consequence from this set: financing rework, insurance denial, leverage loss, forced renegotiation, inability to close, resale constraint, rental restriction.
+- Write every field using the same artifact + condition + consequence.
+
+FIELD RULES (BRAND BRAIN)
+- Hook/reelHook must contain the belief flip and reference artifact + condition.
+- Hook/reelHook must be declarative only and must contain the belief flip with artifact + condition + immediate implication.
+- Body must include in order: wrong assumption -> why it fails -> operational consequence -> micro-proof from artifact condition (2–4 sentences, not a list).
+- Hook must be ONE line, declarative, in the form people rank X; the real gate is Y where Y includes artifact + condition + immediate implication.
+- No what to do phrasing in hook/body; it must read like realization and rule replacement.
+- Do not introduce a second gate or second artifact.
 
 FIELD INSTRUCTIONS
 title
-- Name the hidden decision failure clearly (plain language).
+- Name the hidden decision failure plainly.
 
 hook
-- Start with the moment + belief flip (no generic opener).
+- One line: moment + belief flip + artifact condition + immediate implication. No generic opener.
+- Must be declarative, not a question.
 
 body
-- 2–4 sentences: why the obvious move fails, the second-order consequence, and the artifact-based proof point.
-- Must include the wrong assumption, artifact condition as micro-proof, and one second-order consequence beyond generic money/time language.
+- 2–4 sentences: wrong assumption, why it fails, operational consequence, and artifact-based proof condition.
+- Micro-proof must be a single concrete condition, not a list.
+- No steps list and no always or make sure phrasing.
 
 cta
-- One commitment action that matches the CREATIVE BRIEF CTA direction (same asset intent). No defaulting.
-- Use commitment tone only when the CREATIVE BRIEF CTA direction is commitment; if brief is low-friction, do not force commitment tone and still match the brief exactly.
+- One action that matches the CREATIVE BRIEF CTA direction exactly. Use commitment tone only if the brief direction is commitment; otherwise stay low-friction but still corrective.
 
 reelHook
-- Hook-only spoken line with the belief flip.
+- Hook-only spoken line with the belief flip (artifact + condition).
 
 reelBody
 - Body-only spoken lines with consequence + micro-proof anchor.
 
 reelCta
-- CTA-only spoken line and it must match the CTA field verbatim.
+- CTA-only spoken line. Must match CTA field verbatim.
 
 caption
-- Reinforce the belief flip/new rule in one tight paragraph.
+- One tight paragraph sharpening the belief flip/new rule.
 
 designNotes
-- Show the named artifact and the proof condition visually.
+- Show the artifact and highlight the proof condition (zoom, underline, callout).
 
 engagementLoop
-- One question that challenges the viewer’s prior assumption.
+- One question that challenges the prior assumption (not fear-based).
 
 hashtags
-- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
+- Array of 5–8 strings, no leading #, no duplicates.
+
+FINAL CHECK (do not output)
+Before emitting JSON, verify:
+1) Belief flip is explicit in hook and reelHook.
+2) Operational consequence is not generic money/time.
+3) Artifact + condition are named and visually supported in designNotes.
+4) No teaching voice, no anecdotes, no banned PSA openers.
+5) CTA matches CREATIVE BRIEF direction exactly.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
