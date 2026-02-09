@@ -4321,6 +4321,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'Use a different hook archetype and angle than any implied by RECENT OUTPUT.',
     ].join('\n')
     : '';
+  const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
+  const recentSignatureLine = usedSignatures.length
+    ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
+    : '';
   const GLOBAL_RULES = [
     '- Output JSON only.',
     '- Match schema exactly.',
@@ -4390,12 +4394,15 @@ Every post must reference:
 
 If the post does not clearly occur at a specific real-world moment
 (e.g. offer review, inspection window, closing disclosure),
-it is incorrect.`,
+it is incorrect.
+
+NON-REPEAT TOPIC RULE (CRITICAL): Use RECENT IDEAS and RECENT SIGNATURES as memory of what the calendar already covered. Do not reuse the same core topic trigger from recent output—specifically do not repeat the same document/contract item (e.g., inspection report, HOA addendum, survey, flood map), the same deadline/window (e.g., “10-day inspection period”), or the same fee/charge type (e.g., “special assessment,” “HOA fee surprise”). If any of those appear in recent output, choose a different transaction moment and a different artifact. If you cannot find a new artifact, pick a different phase (offer → inspection → appraisal → underwriting → title → closing) and anchor the post to a different named document, clause, or line item.`,
     brandBlock,
     contextLines,
     `ANGLE = the specific situation, decision, or moment this post is about: ${plannedAngle || promptAngle}`,
     creativeBriefBlock,
     recentIdeasBlock,
+    recentSignatureLine,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
