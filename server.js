@@ -4325,54 +4325,63 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const recentSignatureLine = usedSignatures.length
     ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
     : '';
-  const noveltyThesisBlock = `NOVELTY + THESIS (most important):
-This post must be unmistakably different from RECENT IDEAS and RECENT SIGNATURES. Do not reuse the same document, deadline, “avoid this mistake” framing, or the same core decision gate. Choose ONE specific real-world moment (a named Miami-specific scenario, one concrete document/fee/deadline/constraint, and one precise consequence) and build every field around that single moment. Title = the decision gate. Hook/reelHook = the moment. Body/reelBody = the one explanation that makes the moment obvious. DesignNotes = show the same moment visually. If you are tempted to write generic advice, replace it with a named artifact (e.g., “HOA estoppel letter”, “condo budget/reserves”, “special assessment”, “title commitment exception”, “survey encroachment”, “wind mitigation”, “flood zone AE”), a number, and a clear before/after outcome. Never use the phrases “can cost you thousands”, “many buyers”, “timing is everything”, or “don’t skip this step”.`;
+  const noveltyThesisBlock = [
+    'NOVELTY (most important)',
+    'This post must be clearly different from RECENT IDEAS and RECENT SIGNATURES. Choose a different decision gate category than recent posts (examples of categories: title/ownership, condo-COA docs, insurance/flood/wind, financing/appraisal, survey/boundaries, permits/violations, offer terms/contingencies, closing costs/escrows, listing prep/repairs, neighborhood constraints, rental rules, special assessments/reserves). If RECENT content is clustered in one category, move to a different one. Keep ONE moment and ONE named artifact at the center (e.g., estoppel letter, condo budget/reserves, special assessment notice, title commitment exception, survey encroachment, open permit search, flood zone determination, wind mitigation report). Do not repeat the same “deadline slip” framing unless the chosen artifact inherently is a deadline window.',
+  ].join('\n');
   const GLOBAL_RULES = [
-    '- Output JSON only.',
-    '- Match schema exactly.',
-    '- No extra keys.',
+    'OUTPUT CONTRACT',
+    '- Output JSON only. No markdown. No commentary.',
+    '- Match the schema exactly; output every required field with non-empty content.',
+    '- Do not add extra keys.',
     `- Required keys (exact): ${requiredKeys}`,
-    '- Each field must contain only its field content (no labels).',
-    '- No continuation sections (Follow-up, Part 2, Next, etc.).',
-    '- No generic hooks.',
-    '- No filler, no hype, no emojis.',
+    '- Each field must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
+    '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
+    '- No continuation sections (Follow-up, Next post, Tomorrow, Part 2, Next, Up next).',
+    '- No generic openers like: "Many buyers...", "Don’t let...", "Timing is everything", "Avoid this mistake", "Did you know...".',
+    '- Do not fabricate case studies, fake client stories, or precise dollar amounts. Use concrete details only when they are inherent to the artifact (a named document, clause, fee type, deadline window, or condition).',
+    '- Use ONE specific moment. Every field must point to the same moment + same artifact + same consequence.',
+    '- The CTA must be exactly aligned to the CTA direction in the CREATIVE BRIEF. Do not swap assets (no defaulting to checklist/template).',
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
 MODE INTENT
-Regular should be calm, practical, and neutral. Keep it specific without fear-heavy language or fake case-study tone.
+Calm, practical, neutral. Teach one clear move that prevents a real-world mistake. No fear tone, no fake urgency, no “viral” phrasing.
+
+HOW TO AVOID REPETITION (CRITICAL)
+You are generating ONE post, but you are given RECENT IDEAS and RECENT SIGNATURES. Use them to pick a different decision gate category and a different named artifact than recent posts. If recent items are document/deadline-heavy, choose a different gate (e.g., condo reserves, special assessments, rental rules, permit/violation search, insurance constraints, survey encroachments). Your novelty should come from a different moment + artifact, not from rewording.
 
 FIELD INSTRUCTIONS
 title
-- Name one specific decision gate.
+- Name the specific decision gate (neutral, not hype).
 
 hook
-- Name one concrete moment tied to the same artifact.
+- One specific moment that signals the gate (no generic opener).
 
 body
-- Explain one practical move for that moment in clear language.
+- 2–4 sentences: what to do + what to look for + what changes if you find an issue. Practical steps, not theory.
 
 cta
-- One clear action tied to the same artifact. Do not default to download checklist unless the creative brief says checklist.
+- One low-friction action that matches the CREATIVE BRIEF CTA direction (same asset and wording intent).
 
 reelHook
-- Hook-only text for the same moment.
+- Hook-only spoken line for the same moment.
 
 reelBody
-- Body-only text for the same moment.
+- Body-only spoken lines (same steps, same artifact).
 
 reelCta
-- CTA-only text and it must match CTA field verbatim.
+- CTA-only spoken line and it must match the CTA field verbatim.
 
 caption
-- Reinforce the same moment and artifact.
+- Reinforce the same moment + artifact in one tight paragraph.
 
 designNotes
-- Show the same moment and artifact visually.
+- Visuals that show the same artifact and what to highlight on it.
 
 engagementLoop
-- One question tied to the same decision gate.
+- One simple question tied to the decision gate.
 
 hashtags
 - Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
@@ -4380,38 +4389,46 @@ hashtags
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
 MODE INTENT
-Brand Brain should drive a belief flip, include a second-order consequence beyond money or time, and include micro-proof from a named artifact plus a number or condition. Avoid teaching voice and generic tips-list tone.
+Belief flip + consequence beyond “money/time” + micro-proof from a named artifact. Avoid teaching voice and generic tips. Make it feel like a real realization.
+
+HOW TO AVOID REPETITION (CRITICAL)
+Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category. If recent posts are clustered around deadlines and “don’t skip,” shift to a different hidden constraint (condo reserves/special assessments, insurance eligibility, rental restrictions, open permits, title exceptions, survey encroachments, HOA/condo docs). Novelty must be a different moment + artifact, not a reword.
+
+REQUIRED BRAND BRAIN DIFFERENTIATORS
+- Belief flip in the hook (what people assume vs what actually matters).
+- Second-order consequence: one downstream effect beyond generic cost/time (deal leverage loss, insurance denial, financing rework, resale constraint, rental restriction, assessment exposure, inability to close, forced renegotiation).
+- Micro-proof: name the artifact and one condition on it (a checkbox item, an exception line, a reserve level note, an assessment notice, an open permit flag, a zone designation).
 
 FIELD INSTRUCTIONS
 title
-- Name the hidden decision failure clearly.
+- Name the hidden decision failure clearly (plain language).
 
 hook
-- Start with the moment and include a belief flip.
+- Start with the moment + belief flip (no generic opener).
 
 body
-- Explain why the obvious choice failed and the second-order consequence.
+- 2–4 sentences: why the obvious move fails, the second-order consequence, and the artifact-based proof point.
 
 cta
-- One commitment action tied to the same artifact. Do not default to download checklist unless the creative brief says checklist.
+- One commitment action that matches the CREATIVE BRIEF CTA direction (same asset intent). No defaulting.
 
 reelHook
-- Hook-only text with the belief flip.
+- Hook-only spoken line with the belief flip.
 
 reelBody
-- Body-only text with consequence and micro-proof anchor.
+- Body-only spoken lines with consequence + micro-proof anchor.
 
 reelCta
-- CTA-only text and it must match CTA field verbatim.
+- CTA-only spoken line and it must match the CTA field verbatim.
 
 caption
-- Reinforce the belief flip or new rule.
+- Reinforce the belief flip/new rule in one tight paragraph.
 
 designNotes
-- Show the named artifact and condition as proof.
+- Show the named artifact and the proof condition visually.
 
 engagementLoop
-- One question that challenges the prior assumption.
+- One question that challenges the viewer’s prior assumption.
 
 hashtags
 - Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
