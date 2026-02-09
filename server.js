@@ -4359,7 +4359,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
 MODE INTENT
-Calm, practical, neutral. Teach one clear move that prevents a real-world mistake. Factual tone. No PSA warnings.
+Calm, practical, neutral. Not a lesson. This is a single real-world gate you personally check.
+No tutorial voice. No here is how, no step-by-step, no make sure or always.
+The post should feel like: This is the line or field I look at, and what it changes.
 
 HOW TO REDUCE REPETITION (CRITICAL)
 You are generating ONE post, but you are given RECENT IDEAS and RECENT SIGNATURES. Use them to pick a different decision gate category and a different named artifact than recent posts. If recent items are document/deadline-heavy, choose a different gate (e.g., condo reserves, special assessments, rental rules, permit/violation search, insurance constraints, survey encroachments). Your novelty should come from a different moment + artifact, not from rewording.
@@ -4372,6 +4374,11 @@ VOICE RULES
 - You may use a short calm question OR a declarative line, but no rhetorical/viral cadence.
 - Include one Miami-real-estate-native anchor without fabricated stats or fake anecdotes.
 - If the artifact is not inherently deadline-window, do not use X-day window or countdown framing.
+
+ANTI-TEACHING RULE (CRITICAL)
+Do not write instructions or a mini-guide. Do not enumerate steps.
+Write in observation language: what you look at -> what it means -> what it changes.
+One next action is allowed only as a single short sentence, not a process.
 
 PRE-WRITE DECISION (do not output)
 - Choose ONE gate category from this list: title/ownership, condo-COA docs, insurance/flood/wind, financing/appraisal, survey/boundaries, permits/violations, offer terms/contingencies, closing costs/escrows, listing prep/repairs, neighborhood constraints, rental rules, special assessments/reserves.
@@ -4391,14 +4398,17 @@ title
 - Name the specific decision gate (neutral, not hype).
 
 hook
-- One specific moment that signals the gate (no generic opener).
-- Hook/reelHook must include artifact name + condition + immediate implication in plain language.
-- Calm question or declarative is allowed, but no rhetorical cadence.
+- One line. No generic opener.
+- Must start with the named artifact and the condition, then the immediate implication.
+- No you should, no remember to, no do not.
 
 body
-- 2–4 sentences: what to do, what to look for on the artifact as a condition, and what specific next action changes if the condition is present. Practical steps, not theory.
-- Where on artifact must be explicit (for example: Title commitment -> Schedule B-II exception line; Condo budget -> reserves line item or percent funded).
-- State one explicit operational consequence in body: financing rework, insurance denial, leverage loss, forced renegotiation, inability to close, resale or rental constraint.
+- 2–4 sentences, no lists.
+- Sentence 1: name the artifact + the inspectable condition.
+- Sentence 2: interpret what that condition means in plain language.
+- Sentence 3: state the operational consequence it changes (financing rework, insurance denial, leverage loss, forced renegotiation, inability to close, resale constraint, rental restriction).
+- Optional Sentence 4: one short next action (single sentence, not a procedure).
+- Must state where on the artifact the condition appears (section/line/field).
 
 cta
 - One low-friction action that matches the CREATIVE BRIEF CTA direction (same asset and wording intent).
@@ -4435,7 +4445,7 @@ Before emitting JSON, verify:
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
 MODE INTENT
-Belief flip + operational consequence beyond generic money/time + micro-proof from a named artifact condition. Direct, specific, non-instructional.
+Belief flip + operational consequence beyond generic money/time + micro-proof from a named artifact condition. Direct, specific, non-instructional. Reads like a realization and rule replacement, not advice.
 
 HOW TO REDUCE REPETITION (CRITICAL)
 Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category. If recent posts are clustered around deadlines and “don’t skip,” shift to a different hidden constraint (condo reserves/special assessments, insurance eligibility, rental restrictions, open permits, title exceptions, survey encroachments, HOA/condo docs, listing prep constraints). Novelty must be a different moment + artifact, not a reword.
@@ -4461,9 +4471,16 @@ FIELD RULES (BRAND BRAIN)
 - Hook/reelHook must contain the belief flip and reference artifact + condition.
 - Hook/reelHook must be declarative only and must contain the belief flip with artifact + condition + immediate implication.
 - Body must include in order: wrong assumption -> why it fails -> operational consequence -> micro-proof from artifact condition (2–4 sentences, not a list).
-- Hook must be ONE line, declarative, in the form people rank X; the real gate is Y where Y includes artifact + condition + immediate implication.
+- Hook must be ONE line, declarative.
+- It must contain an explicit belief flip (wrong ranked gate vs real gate) AND include artifact + condition + immediate implication.
+- Do not use a fixed template like people rank X; the real gate is Y every time; vary the sentence shape while keeping the belief flip explicit.
 - No what to do phrasing in hook/body; it must read like realization and rule replacement.
 - Do not introduce a second gate or second artifact.
+
+ANTI-INSTRUCTION RULE (CRITICAL)
+No what to do phrasing anywhere in hook/body/caption.
+No guidance verbs: check, review, make sure, always, remember, schedule, request, ask for.
+Write as: wrong assumption -> why it fails -> what the artifact proves -> operational consequence.
 
 FIELD INSTRUCTIONS
 title
@@ -4476,6 +4493,7 @@ hook
 body
 - 2–4 sentences: wrong assumption, why it fails, operational consequence, and artifact-based proof condition.
 - Micro-proof must be a single concrete condition, not a list.
+- Micro-proof must be ONE condition only. No and or also stacking, no multiple flags, no multiple clauses.
 - No steps list and no always or make sure phrasing.
 
 cta
