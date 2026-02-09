@@ -4355,6 +4355,10 @@ CORE INSTRUCTIONS
 Anchor the entire post to ONE named artifact AND ONE inspectable condition ON that artifact.
 Every field must refer to the same moment, same artifact, same condition, and same consequence.
 Novelty comes from choosing a different gate category and different artifact than RECENT IDEAS / RECENT SIGNATURES imply. Do not reword the same gate.
+- Artifact must be domain-native to the niche (a real document/system object used in that world).
+- Inspectable condition must be a literal state/value on the artifact (field value, checkbox state, missing/filled signature/date, status label, clause text, flag, percentage).
+- Hook/body/caption must contain zero guidance verbs; observation only.
+- CTA is the only place an action verb may appear.
 
 CLARITY STANDARD
 Be concrete enough that the viewer can point to the exact place on the artifact.
@@ -4381,8 +4385,7 @@ body
 2–4 sentences, no list formatting.
 Sentence 1: artifact + the exact condition + where it appears (section/line/field).
 Sentence 2: what that condition indicates in plain language.
-Sentence 3: the operational consequence it changes (denial, rework, restriction, renegotiation, leverage loss, inability to proceed).
-Optional Sentence 4: one short next action (single sentence, not a procedure).
+Sentence 3: state the downstream operational change it causes (eligibility, approval, leverage, restriction, or inability to proceed). Avoid “delay” as the whole consequence.
 
 cta
 One clear action that matches the CREATIVE BRIEF CTA direction exactly.
@@ -4424,10 +4427,11 @@ VOICE
 Direct, specific, non-instructional.
 No teaching verbs (no check, review, make sure, remember, ask, schedule, request).
 No step-by-step lists. No anecdotes. No PSA tone.
+- Hook/body/caption must contain zero guidance verbs; observation + rule replacement only. CTA is the only place an action verb may appear.
 
 BELIEF FLIP + PROOF (CRITICAL)
-Hook must contain an explicit belief flip: the thing people rank as the gate vs what actually gates the outcome.
-The “real gate” must be stated as: artifact + condition + immediate implication.
+- Hook must contain an explicit contrast: what people focus on vs what actually gates the outcome.
+- The real gate must be artifact + literal condition + immediate implication in the same line.
 Body must follow this logic in order: wrong assumption -> why it fails -> operational consequence -> micro-proof (artifact condition).
 Micro-proof is ONE condition only (no stacking).
 
@@ -4444,6 +4448,7 @@ body
 2–4 sentences, no list formatting.
 Include in order: wrong assumption, why it fails, operational consequence, micro-proof from the artifact condition.
 Micro-proof must be ONE concrete condition only.
+Consequence must be a downstream change in eligibility/leverage/ability to proceed; “delay” alone is insufficient.
 
 cta
 - One action that matches the CREATIVE BRIEF CTA direction exactly. Use commitment tone only if the brief direction is commitment; otherwise stay low-friction but still corrective.
