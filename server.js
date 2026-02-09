@@ -4346,274 +4346,127 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Match the schema exactly; output every required field with non-empty content.',
     '- Do not add extra keys.',
     `- Required keys (exact): ${requiredKeys}`,
-    '- Each field value must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
+    '- Each field value must contain only that field content; no labels like "Hook:" or "CTA:".',
     '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
-    '- No emojis. No placeholders. No filler templates.',
-    '- Use ANGLE to decide the specific scenario/example/story for this post. Do not repeat the same angle across adjacent posts if possible.',
+    '',
+    'QUALITY CONTRACT (HIGHEST PRIORITY)',
+    '- Single idea, single point. No wandering. No second topic.',
+    '- No generic explainers. No audience-descriptor openings.',
+    '  BANNED OPENERS anywhere in hook/reelHook/reelBody/caption:',
+    '  "Many buyers", "Most buyers", "Buyers often", "People often", "Before you", "Don’t overlook", "Avoid this common",',
+    '  "Timing is everything", "Timing can make all the difference", "This can save you from", "Navigating", "Understanding".',
+    '- No vague consequences: "headaches", "surprises", "costly mistakes", "regret", "better outcomes" unless immediately tied to a specific concrete consequence.',
+    '- Use ONE concrete anchor (a named item, constraint, document, fee, clause, rule, scenario, number, or condition) and keep it consistent across hook/reel script/design notes.',
+    '- No filler templates. No motivational generalities. No “tips list” tone.',
+    '',
+    'MODE HANDOFF',
+    '- REGULAR: teach one practical move with one concrete anchor and one clear next action.',
+    '- BRAND_BRAIN: force a belief flip + second-order consequence + micro-proof (still concise). No “educational overview.”',
+    '',
+    'CONTINUATIONS',
+    '- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, Up next.',
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
-REGULAR MODE (AD CONTRACT)
-Write the post as if the creator is explaining something they wish they had understood earlier.
-Write as pre-mistake guidance; teach clearly and helpfully.
 
-THINKING LENS (REGULAR)
-You are writing a helpful, calm explainer for someone trying to understand the process.
-Your goal is clarity and confidence.
-Do not dramatize.
-Do not position yourself as the only solution.
-Assume the viewer is learning, not buying yet.
+INTENT (REGULAR)
+You are writing a practical creator post that prevents one specific mistake by giving one specific move.
+This is not a lecture. This is not a broad explainer. This is not motivational.
 
-REASONING MODE (do not output this):
-Your job is to explain clearly and reduce confusion.
-Assume the user is uninformed but open.
-Teach step-by-step.
-Do not challenge beliefs or frame the user as wrong.
-The reader should feel informed and reassured.
+NON-NEGOTIABLES (REGULAR)
+- The post must center on ONE specific decision gate (named explicitly).
+- Use ONE concrete anchor and name it (document, fee, clause, checklist item, scenario, number, condition).
+- Provide ONE practical move the viewer can do today.
+- CTA is low-friction and directly tied to the asset (checklist/template/sheet/worksheet). No hype.
 
-UPSTREAM OBJECTIVE
-You are teaching in a short-form format that earns attention by naming a real friction or mistake.
-Regular mode is awareness: helpful and calm. Keep some tension open and keep CTA gentle.
-Write like a creator, not an instructor.
-Tone: calm, clear, helpful. Avoid dramatic confession framing unless ANGLE_SEED implies it.
-Use ANGLE FOR THIS POST as the main lesson. Keep it practical and calm.
-Do not reuse phrases from AVOID REPEATING list.
-Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
-
-SHARED QUALITY RULES (both modes)
-- Do not start hook or reelHook with generic advisory openers or vague claims.
-- Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
-- Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
-- Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
-- Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
-- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
-
-CREATIVE DIRECTION (do not output this block)
-- Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
-- Use the same concrete anchor across hook, reel script, and design notes.
-- Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
-- Hook mechanism set, choose exactly one: contrarian truth, myth-bust, mistake confession, hidden step, do-this-instead, what nobody tells you, counterintuitive rule, fear-to-relief specific, before-after leverage, simple diagnostic test.
-- No two posts in the same batch may use the same hook mechanism.
-
-MODE INTENT (REGULAR)
-- Regular mode is practical, straightforward instruction for an ad.
-- The post must teach one simple step the viewer can use today.
-- hook and reelHook must be practical and specific (one mistake or one step), not a broad motivational statement.
-- body and reelBody must be a how-to (2 to 4 clear steps) with concrete actions, not theory.
-- cta and reelCta must be low-friction and practical (save, download, use the checklist/template), not emotional or identity-based.
-- Reel Script must include one specific mistake and one specific one-step fix using the asset.
-- Keep tone calm and practical, avoid persuasion stacking.
-
-CREATIVE PRIMITIVE: practical rule-of-thumb + one concrete example.
-Select ONE hook archetype and write reelHook using it.
-
-Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
-Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
-reelBody should be 1 to 2 tight lines explaining the mechanism.
-reelCta should be a single action tied to CTA Asset.
-Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
-CTA style: practical and low-friction.
-Avoid repeating the same CTA phrasing across posts.
-
-REEL SCRIPT SHAPE
-- 0-2s HOOK: 8 words or fewer, specific.
-- TENSION: the mistake or cost in one short beat.
-- RELATABLE INSIGHT: why it happens.
-- ONE-STEP FIX: one concrete action.
-- CTA: one line.
-- Keep the spoken flow about 25 to 40 seconds. No fluff.
-- No textbook explanation. Keep it specific and aligned to the post title.
-- Reel Script CTA line must match the CTA field exactly.
-
-INTERNAL - DO NOT OUTPUT
-POST THESIS LOCK (must be decided silently before writing any field):
-- Exact Mistake: a specific mistake a smart buyer or seller makes, not skipping X.
-- Non-obvious Consequence: a downstream effect, not generic costs money.
-- Assets Singular Job: what the checklist or timeline or sheet or worksheet uniquely does.
-- One Concrete Anchor: a specific scenario, number, condition, or data point.
-Hard rule:
-- Every sentence in Hook, Reel Script, and Caption must directly support the locked thesis.
-- If you cannot lock all four items cleanly, simplify the execution with shorter concrete wording rather than adding words.
-- Do not output the thesis lock, meta commentary, planning text, or headings for the thesis lock.
-
-FIELD INSTRUCTIONS
-
+FIELD RULES (REGULAR)
 title
-A clear, neutral title describing the idea.
-Avoid hype. Avoid claims.
+- Clear and specific. No vague avoid this mistake unless the mistake is named.
 
 hook
-A clear situation or confusion the audience recognizes before a mistake happens.
-No generic teaching opener.
+- A specific moment or consequence tied to the anchor. No audience-descriptor opener.
 
 body
-Explain what to do next in clear, practical terms.
-Keep it concrete, calm, and forward-looking.
+- 2 to 4 short sentences. One mistake -> one move -> one concrete anchor. No general education.
 
 cta
-Single clear action tied to value.
-Soft and helpful, not passive.
+- One line. One action. Practical.
 
 reelHook
-Hook-only text. Spoken opening line. Do not include body or CTA.
+- Exactly 1 sentence. Must start with the concrete anchor or consequence.
 
 reelBody
-Body-only text. Spoken explanation. Do not include hook or CTA.
+- 2 to 3 sentences max. Explain the mechanism once. Give the move once. Keep the same anchor.
 
 reelCta
-CTA-only text. Spoken close. Do not include hook or body.
+- Exactly matches CTA field verbatim.
 
 caption
-A short reinforcing summary of the idea.
-No emojis. No hype.
+- Reinforces the same anchor + move. No generic reassurance.
 
 designNotes
-Simple visuals that support understanding.
-Examples: diagrams, on-screen text, screen recordings, annotated visuals.
+- Show the anchor visibly (document screenshot, checklist item highlight, fee line item, map overlay, clause highlight).
 
 engagementLoop
-One natural, curiosity-based question.
-No pressure. No bait.
+- One question that references the anchor or the decision gate (not what confuses you).
 
 hashtags
-Relevant, descriptive hashtags only.
-Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
+- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
 
-Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
+Before outputting JSON, verify reelHook contains only the hook sentence, reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
-BRAND BRAIN MODE (AD CONTRACT)
-Write the post as a reflection on a mistake that could not be undone once it happened.
-Frame the post as a moment of realization after a mistake, where the cost is already felt. The CTA should feel like relief from repeating that mistake, not a generic resource.
-Write as if the viewer already paid the price for this mistake; do not teach, warn, or reassure—reframe the past decision and push a corrective action.
 
-THINKING LENS (BRAND BRAIN)
-You are writing a winning ad, not an explainer.
-Your goal is to surface a non-obvious mistake or hidden constraint that causes failure even when people think they are doing the right thing.
-Assume the viewer already knows the basics.
-Do not explain the process.
-Do not repeat common advice.
-Show why the obvious move fails and why a different approach works.
+INTENT (BRAND BRAIN)
+Write a post that forces a belief shift and creates urgency through a specific second-order consequence.
+This is not teaching basics. This is not here are tips. It is a pattern interrupt.
 
-REASONING MODE (do not output this):
-Your job is to challenge the user’s existing assumptions.
-Assume the user believes the obvious solution is correct — and show why it fails.
-Introduce tension, tradeoffs, or second-order consequences.
-The reader should feel a belief shift, not just learn a fact.
+NON-NEGOTIABLES (BRAND BRAIN)
+- Belief flip: explicitly state a wrong assumption and the true rule (one sentence).
+- Second-order consequence: not generic money or headaches. Use ONE category:
+  leverage, appraisal risk, financing delay, deal fall-through, insurance availability, HOA special assessment exposure, resale liquidity.
+- Micro-proof: tie the consequence to ONE concrete anchor (document/fee/clause/scenario/number/condition).
+- CTA is a commitment step (comment/DM keyword OR steal my framework). No generic download framing.
 
-UPSTREAM OBJECTIVE
-You are writing an ad where the viewer feels the cost of inaction.
-Brand Brain mode is conversion: consequence-driven, specific, direct. CTA is the logical escape route.
-Entertain first. No hard selling. No generic tips.
-Tone: pattern interrupt + concrete consequence + payoff. Still not hard-sell.
-Use ANGLE FOR THIS POST as the contrarian lever hidden constraint why the obvious move fails.
-Do not reuse phrases from AVOID REPEATING list.
-Incorporate the Creative Brief. Do not reuse generic phrasing. Do not default to download a checklist unless the brief CTA says so.
-
-SHARED QUALITY RULES (both modes)
-- Do not start hook or reelHook with generic advisory openers or vague claims.
-- Forbidden generic openers include (examples): Many buyers overlook, Timing is everything, Dont let X cost you, A clear timeline helps, Understanding X is crucial, Navigating X can be tricky.
-- Start hook and reelHook with a specific scenario, concrete mistake, number, consequence, or micro-story.
-- Do not reuse the same core mistake or core angle across posts in the same calendar batch. Each post must center on a different mistake, decision gate, or belief.
-- Never use these hook templates or close variants: Skipping X can cost you, Ignoring X can cost you, can cost you thousands.
-- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, or Up next.
-
-CREATIVE DIRECTION (do not output this block)
-- Silently choose one hook mechanism, one one-sentence core claim, and one concrete anchor.
-- Use the same concrete anchor across hook, reel script, and design notes.
-- Do not reuse the same hook mechanism plus core claim pairing across posts in this batch.
-- Hook mechanism set, choose exactly one: contrarian truth, myth-bust, mistake confession, hidden step, do-this-instead, what nobody tells you, counterintuitive rule, fear-to-relief specific, before-after leverage, simple diagnostic test.
-- No two posts in the same batch may use the same hook mechanism.
-
-MODE INTENT (BRAND BRAIN)
-- Brand Brain mode must change the viewers mind and create differentiation.
-- hook and reelHook must be a belief flip or counterintuitive claim that creates tension.
-- body and reelBody must include:
-  1) the wrong assumption people have,
-  2) the hidden cost of that assumption,
-  3) the new rule that replaces it.
-- cta and reelCta must be a commitment step (comment keyword, DM keyword, or steal my framework), not a generic download checklist.
-- Integrate one belief reversal sentence and one second-order consequence inside Reel Script and or Caption.
-- Integrate one concrete anchor as micro-proof inside Reel Script or Design Notes.
-
-CREATIVE PRIMITIVE: micro-story (mistake -> consequence -> corrective move).
-Select ONE hook archetype and write reelHook using it.
-
-Forbidden teacher phrasing: consider, learn more, stay informed, for clarity, confusing, simplify, understanding, as an AI.
-Hook must be a concrete moment plus specific consequence. CTA must be one action with immediate value such as checklist script template, never consider learn more or stay informed.
-reelBody should be 1 to 2 tight lines explaining the mechanism.
-reelCta should be a single action tied to CTA Asset.
-Include exactly one concrete detail somewhere: a number OR step-count OR named checklist item.
-CTA style: commitment-oriented and specific.
-Avoid repeating the same CTA phrasing across posts.
-
-REEL SCRIPT SHAPE
-- 0-2s HOOK: 8 words or fewer, specific.
-- TENSION: the mistake or cost in one short beat.
-- RELATABLE INSIGHT: why it happens.
-- ONE-STEP FIX: one concrete action.
-- CTA: one line.
-- Keep the spoken flow about 25 to 40 seconds. No fluff.
-- No textbook explanation. Keep it specific and aligned to the post title.
-- Reel Script CTA line must match the CTA field exactly.
-
-INTERNAL - DO NOT OUTPUT
-POST THESIS LOCK (must be decided silently before writing any field):
-- Exact Mistake: a specific mistake a smart buyer or seller makes, not skipping X.
-- Non-obvious Consequence: a downstream effect, not generic costs money.
-- Assets Singular Job: what the checklist or timeline or sheet or worksheet uniquely does.
-- One Concrete Anchor: a specific scenario, number, condition, or data point.
-Hard rule:
-- Every sentence in Hook, Reel Script, and Caption must directly support the locked thesis.
-- If you cannot lock all four items cleanly, simplify the execution with shorter concrete wording rather than adding words.
-- Do not output the thesis lock, meta commentary, planning text, or headings for the thesis lock.
-
-FIELD INSTRUCTIONS
-
+FIELD RULES (BRAND BRAIN)
 title
-A clear statement of the core failure or insight.
-Not clever. Not vague.
+- Names the failure or hidden constraint clearly.
 
 hook
-Consequence-first moment where the cost is already incurred.
-No teaching opener or tips framing.
-State a belief reversal in the first line.
+- Consequence-first moment. Must include the belief flip in the first 1 to 2 sentences.
 
 body
-Use 2 to 4 sentences to reframe the past choice as the cause.
-No tips list. No broad education.
-Include second-order consequence and one concrete micro-proof.
+- 2 to 4 sentences max:
+  1) wrong assumption,
+  2) hidden constraint (why it fails),
+  3) second-order consequence (category),
+  4) the new rule + what to do.
 
 cta
-Single clear corrective action tied to value.
-Frame it as prevent repeat, stop bleeding, or fix the system.
+- One line. Commitment action (comment/DM keyword OR steal my framework). Specific.
 
 reelHook
-Hook-only text. Spoken opening line. Do not include body or CTA.
+- Exactly 1 sentence. Must be a belief flip or consequence-first claim.
 
 reelBody
-Body-only text. Spoken explanation. Do not include hook or CTA.
+- 2 to 3 sentences max. Must include: hidden constraint + second-order consequence + anchor as proof.
 
 reelCta
-CTA-only text. Spoken close. Do not include hook or body.
+- Exactly matches CTA field verbatim.
 
 caption
-A reinforcing insight that sharpens the hook.
-No emojis. No hype. No hashtags inside text.
+- One sharp reinforcement line that repeats the belief flip or the new rule.
 
 designNotes
-Visuals that reinforce the failure to consequence to resolution arc.
-Examples: screen contrast, before/after moments, friction points, pattern interrupts.
+- Show the anchor as proof (highlight clause/fee line/map zone/permit record/reserve study page/etc.).
 
 engagementLoop
-One question that makes the viewer self-identify with the failure.
-No bait. No pressure language.
+- One question that makes the viewer self-identify with the wrong assumption.
 
 hashtags
-Relevant discovery hashtags only.
-Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
+- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
 
-Before outputting JSON, verify reelHook contains only the hook sentence(s), reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
+Before outputting JSON, verify reelHook contains only the hook sentence, reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
