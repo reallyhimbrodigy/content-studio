@@ -4280,6 +4280,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? 'brand_brain'
     : 'regular';
   const schema = getCalendarPostSchema(mode, startDay, endDay);
+  const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
   const targetPillar = opts.pillar || opts.targetPillar || '';
@@ -4318,91 +4319,113 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'RECENT IDEAS (avoid repeating)',
       ...recentTitles.map((title, idx) => `${idx + 1}. ${title}`),
       'Do not reuse these concepts or phrasings.',
-      'Use a different hook archetype and angle than any implied by RECENT OUTPUT.',
     ].join('\n')
     : '';
   const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
   const recentSignatureLine = usedSignatures.length
     ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
     : '';
+  const noveltyThesisBlock = `NOVELTY + THESIS (most important):
+This post must be unmistakably different from RECENT IDEAS and RECENT SIGNATURES. Do not reuse the same document, deadline, “avoid this mistake” framing, or the same core decision gate. Choose ONE specific real-world moment (a named Miami-specific scenario, one concrete document/fee/deadline/constraint, and one precise consequence) and build every field around that single moment. Title = the decision gate. Hook/reelHook = the moment. Body/reelBody = the one explanation that makes the moment obvious. DesignNotes = show the same moment visually. If you are tempted to write generic advice, replace it with a named artifact (e.g., “HOA estoppel letter”, “condo budget/reserves”, “special assessment”, “title commitment exception”, “survey encroachment”, “wind mitigation”, “flood zone AE”), a number, and a clear before/after outcome. Never use the phrases “can cost you thousands”, “many buyers”, “timing is everything”, or “don’t skip this step”.`;
   const GLOBAL_RULES = [
     '- Output JSON only.',
     '- Match schema exactly.',
     '- No extra keys.',
-    '- No continuation sections (Follow-up, Part 2, Next, etc.).',
-    '- No generic hooks (e.g., Don’t skip X, This can cost you).',
-    '- Do not use abstract nouns; if a phrase sounds like a slide title, rewrite it as a concrete event.',
-    '- No filler, no hype, no emojis.',
+    `- Required keys (exact): ${requiredKeys}`,
     '- Each field must contain only its field content (no labels).',
-    '',
-    'MISTAKE SINGULARITY RULE:',
-    'Each post must focus on ONE specific mistake or decision point that can be named in a single short sentence.',
-    'If the post could apply to multiple mistakes, it is incorrect.',
-    '',
-    'ANGLE = the specific situation, decision, or moment this post is about.',
+    '- No continuation sections (Follow-up, Part 2, Next, etc.).',
+    '- No generic hooks.',
+    '- No filler, no hype, no emojis.',
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-Write as if you are describing a mistake someone actually made on a real transaction, not explaining a concept.
+MODE INTENT
+Regular should be calm, practical, and neutral. Keep it specific without fear-heavy language or fake case-study tone.
 
-Write as if helping someone BEFORE they make a mistake.
+FIELD INSTRUCTIONS
+title
+- Name one specific decision gate.
 
-Explain:
-- One specific mistake or decision point
-- One simple corrective action
+hook
+- Name one concrete moment tied to the same artifact.
 
-Do not dramatize.
-Do not persuade.
-Do not generalize.
+body
+- Explain one practical move for that moment in clear language.
 
-Clarity comes from specificity, not urgency.`;
+cta
+- One clear action tied to the same artifact. Do not default to download checklist unless the creative brief says checklist.
+
+reelHook
+- Hook-only text for the same moment.
+
+reelBody
+- Body-only text for the same moment.
+
+reelCta
+- CTA-only text and it must match CTA field verbatim.
+
+caption
+- Reinforce the same moment and artifact.
+
+designNotes
+- Show the same moment and artifact visually.
+
+engagementLoop
+- One question tied to the same decision gate.
+
+hashtags
+- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-Write as if you are describing a mistake someone actually made on a real transaction, not explaining a concept.
+MODE INTENT
+Brand Brain should drive a belief flip, include a second-order consequence beyond money or time, and include micro-proof from a named artifact plus a number or condition. Avoid teaching voice and generic tips-list tone.
 
-Write as if the mistake already happened and the cost is now obvious.
+FIELD INSTRUCTIONS
+title
+- Name the hidden decision failure clearly.
 
-Show:
-- Why the obvious choice failed
-- What would have prevented the mistake
+hook
+- Start with the moment and include a belief flip.
 
-Do not teach steps.
-Do not explain basics.
+body
+- Explain why the obvious choice failed and the second-order consequence.
 
-The goal is a belief shift, not instruction.`;
+cta
+- One commitment action tied to the same artifact. Do not default to download checklist unless the creative brief says checklist.
+
+reelHook
+- Hook-only text with the belief flip.
+
+reelBody
+- Body-only text with consequence and micro-proof anchor.
+
+reelCta
+- CTA-only text and it must match CTA field verbatim.
+
+caption
+- Reinforce the belief flip or new rule.
+
+designNotes
+- Show the named artifact and condition as proof.
+
+engagementLoop
+- One question that challenges the prior assumption.
+
+hashtags
+- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
-    `ANTI-ABSTRACTION RULE (CRITICAL)
-
-Do NOT use abstract, framework, or process language.
-
-Forbidden categories include (non-exhaustive):
-- frameworks, gates, rubrics, maps, systems, workflows, processes
-- decision quality, optimization, efficiency, scope, handoffs
-- strategy, methodology, evaluation models, best practices
-
-If the idea could apply to ANY industry, it is invalid.
-
-Every post must reference:
-- a real document (e.g. HOA addendum, inspection report, flood map)
-- OR a real number (fee, percentage, days, dollars)
-- OR a real deadline, clause, or checklist item
-
-If the post does not clearly occur at a specific real-world moment
-(e.g. offer review, inspection window, closing disclosure),
-it is incorrect.
-
-NON-REPEAT TOPIC RULE (CRITICAL): Use RECENT IDEAS and RECENT SIGNATURES as memory of what the calendar already covered. Do not reuse the same core topic trigger from recent output—specifically do not repeat the same document/contract item (e.g., inspection report, HOA addendum, survey, flood map), the same deadline/window (e.g., “10-day inspection period”), or the same fee/charge type (e.g., “special assessment,” “HOA fee surprise”). If any of those appear in recent output, choose a different transaction moment and a different artifact. If you cannot find a new artifact, pick a different phase (offer → inspection → appraisal → underwriting → title → closing) and anchor the post to a different named document, clause, or line item.`,
     brandBlock,
     contextLines,
     `ANGLE = the specific situation, decision, or moment this post is about: ${plannedAngle || promptAngle}`,
     creativeBriefBlock,
     recentIdeasBlock,
     recentSignatureLine,
+    noveltyThesisBlock,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
     contractBlock,
