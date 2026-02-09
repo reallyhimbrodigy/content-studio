@@ -4327,6 +4327,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- No extra keys.',
     '- No continuation sections (Follow-up, Part 2, Next, etc.).',
     '- No generic hooks (e.g., Don’t skip X, This can cost you).',
+    '- Do not use abstract nouns; if a phrase sounds like a slide title, rewrite it as a concrete event.',
     '- No filler, no hype, no emojis.',
     '- Each field must contain only its field content (no labels).',
     '',
@@ -4338,6 +4339,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
+
+Write as if you are describing a mistake someone actually made on a real transaction, not explaining a concept.
 
 Write as if helping someone BEFORE they make a mistake.
 
@@ -4353,6 +4356,8 @@ Clarity comes from specificity, not urgency.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
+Write as if you are describing a mistake someone actually made on a real transaction, not explaining a concept.
+
 Write as if the mistake already happened and the cost is now obvious.
 
 Show:
@@ -4367,6 +4372,25 @@ The goal is a belief shift, not instruction.`;
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
+    `ANTI-ABSTRACTION RULE (CRITICAL)
+
+Do NOT use abstract, framework, or process language.
+
+Forbidden categories include (non-exhaustive):
+- frameworks, gates, rubrics, maps, systems, workflows, processes
+- decision quality, optimization, efficiency, scope, handoffs
+- strategy, methodology, evaluation models, best practices
+
+If the idea could apply to ANY industry, it is invalid.
+
+Every post must reference:
+- a real document (e.g. HOA addendum, inspection report, flood map)
+- OR a real number (fee, percentage, days, dollars)
+- OR a real deadline, clause, or checklist item
+
+If the post does not clearly occur at a specific real-world moment
+(e.g. offer review, inspection window, closing disclosure),
+it is incorrect.`,
     brandBlock,
     contextLines,
     `ANGLE = the specific situation, decision, or moment this post is about: ${plannedAngle || promptAngle}`,
