@@ -4214,7 +4214,6 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
   const library = normalizedMode === 'brand_brain' ? BRAND_BRAIN_BRIEF : REGULAR_BRIEF;
   const seedKey = `${toPlainString(post_key || '')}|${normalizedMode}|${toPlainString(pillar || '')}|${toPlainString(format || 'reel')}`;
   const rng = mulberry32(seedFromString(seedKey));
-  const hookArchetype = pick(rng, library.hookArchetypes);
   const angle = pick(rng, library.angles);
   const proofType = pick(rng, library.proofTypes);
   const ctaAsset = pick(rng, library.ctaAssets);
@@ -4225,10 +4224,9 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     .replaceAll('{asset}', ctaAsset);
   return [
     'CREATIVE BRIEF:',
-    `- Hook archetype: ${hookArchetype}`,
-    `- Angle/mechanism: ${angle}`,
-    `- Proof style: ${proofType}`,
-    `- CTA: ${ctaAsset} via ${ctaFormat}`,
+    `- Situation: ${angle}`,
+    `- Proof focus: ${proofType}`,
+    `- CTA direction: ${ctaAsset} via ${ctaFormat}`,
   ].join('\n');
 }
 
@@ -4282,7 +4280,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? 'brand_brain'
     : 'regular';
   const schema = getCalendarPostSchema(mode, startDay, endDay);
-  const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
   const targetPillar = opts.pillar || opts.targetPillar || '';
@@ -4313,9 +4310,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
   ].filter(Boolean).join('\n');
   const creativeBriefBlock = [
-    'CREATIVE BRIEF (server-chosen, mandatory)',
+    'CREATIVE BRIEF',
     creativeBriefText,
-    'You MUST incorporate all four brief items in the post.',
   ].join('\n');
   const recentIdeasBlock = recentTitles.length
     ? [
@@ -4325,159 +4321,58 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       'Use a different hook archetype and angle than any implied by RECENT OUTPUT.',
     ].join('\n')
     : '';
-  const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
-  const recentSignatureLine = usedSignatures.length
-    ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
-    : 'RECENT SIGNATURES (do not reuse): none';
-  const mechanismLockBlock = [
-    'INTERNAL - DO NOT OUTPUT',
-    'MECHANISM LOCK',
-    '- Before writing fields, silently decide one hook mechanism, one core claim sentence, and one concrete anchor.',
-    '- Hook mechanism must be exactly one of: contrarian truth, myth-bust, hidden step, do-this-instead, counterintuitive rule, simple diagnostic test, before/after leverage, mistake confession, what nobody tells you, fear-to-relief specific.',
-    '- Do not reuse the same mechanism plus core-claim pattern already reflected in recent signatures.',
-    recentSignatureLine,
-    '- Banned phrases and close variants: Skipping * can cost you, Ignoring * can cost you, can cost you thousands, timing is everything, dont skip this step.',
-    '- Do not output this lock, planning text, or headings.',
-  ].join('\n');
-
   const GLOBAL_RULES = [
-    'OUTPUT CONTRACT',
-    '- Output JSON only. No markdown. No commentary.',
-    '- Match the schema exactly; output every required field with non-empty content.',
-    '- Do not add extra keys.',
-    `- Required keys (exact): ${requiredKeys}`,
-    '- Each field value must contain only that field content; no labels like "Hook:" or "CTA:".',
-    '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
+    '- Output JSON only.',
+    '- Match schema exactly.',
+    '- No extra keys.',
+    '- No continuation sections (Follow-up, Part 2, Next, etc.).',
+    '- No generic hooks (e.g., Don’t skip X, This can cost you).',
+    '- No filler, no hype, no emojis.',
+    '- Each field must contain only its field content (no labels).',
     '',
-    'QUALITY CONTRACT (HIGHEST PRIORITY)',
-    '- Single idea, single point. No wandering. No second topic.',
-    '- No generic explainers. No audience-descriptor openings.',
-    '  BANNED OPENERS anywhere in hook/reelHook/reelBody/caption:',
-    '  "Many buyers", "Most buyers", "Buyers often", "People often", "Before you", "Don’t overlook", "Avoid this common",',
-    '  "Timing is everything", "Timing can make all the difference", "This can save you from", "Navigating", "Understanding".',
-    '- No vague consequences: "headaches", "surprises", "costly mistakes", "regret", "better outcomes" unless immediately tied to a specific concrete consequence.',
-    '- Use ONE concrete anchor (a named item, constraint, document, fee, clause, rule, scenario, number, or condition) and keep it consistent across hook/reel script/design notes.',
-    '- No filler templates. No motivational generalities. No “tips list” tone.',
+    'MISTAKE SINGULARITY RULE:',
+    'Each post must focus on ONE specific mistake or decision point that can be named in a single short sentence.',
+    'If the post could apply to multiple mistakes, it is incorrect.',
     '',
-    'MODE HANDOFF',
-    '- REGULAR: teach one practical move with one concrete anchor and one clear next action.',
-    '- BRAND_BRAIN: force a belief flip + second-order consequence + micro-proof (still concise). No “educational overview.”',
-    '',
-    'CONTINUATIONS',
-    '- Never generate continuation sections such as Follow-up Idea, Next post, Tomorrow, Part 2, Next, Up next.',
+    'ANGLE = the specific situation, decision, or moment this post is about.',
   ].join('\n');
 
   const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-INTENT (REGULAR)
-You are writing a practical creator post that prevents one specific mistake by giving one specific move.
-This is not a lecture. This is not a broad explainer. This is not motivational.
+Write as if helping someone BEFORE they make a mistake.
 
-NON-NEGOTIABLES (REGULAR)
-- The post must center on ONE specific decision gate (named explicitly).
-- Use ONE concrete anchor and name it (document, fee, clause, checklist item, scenario, number, condition).
-- Provide ONE practical move the viewer can do today.
-- CTA is low-friction and directly tied to the asset (checklist/template/sheet/worksheet). No hype.
+Explain:
+- One specific mistake or decision point
+- One simple corrective action
 
-FIELD RULES (REGULAR)
-title
-- Clear and specific. No vague avoid this mistake unless the mistake is named.
+Do not dramatize.
+Do not persuade.
+Do not generalize.
 
-hook
-- A specific moment or consequence tied to the anchor. No audience-descriptor opener.
-
-body
-- 2 to 4 short sentences. One mistake -> one move -> one concrete anchor. No general education.
-
-cta
-- One line. One action. Practical.
-
-reelHook
-- Exactly 1 sentence. Must start with the concrete anchor or consequence.
-
-reelBody
-- 2 to 3 sentences max. Explain the mechanism once. Give the move once. Keep the same anchor.
-
-reelCta
-- Exactly matches CTA field verbatim.
-
-caption
-- Reinforces the same anchor + move. No generic reassurance.
-
-designNotes
-- Show the anchor visibly (document screenshot, checklist item highlight, fee line item, map overlay, clause highlight).
-
-engagementLoop
-- One question that references the anchor or the decision gate (not what confuses you).
-
-hashtags
-- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
-
-Before outputting JSON, verify reelHook contains only the hook sentence, reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
+Clarity comes from specificity, not urgency.`;
 
   const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-INTENT (BRAND BRAIN)
-Write a post that forces a belief shift and creates urgency through a specific second-order consequence.
-This is not teaching basics. This is not here are tips. It is a pattern interrupt.
+Write as if the mistake already happened and the cost is now obvious.
 
-NON-NEGOTIABLES (BRAND BRAIN)
-- Belief flip: explicitly state a wrong assumption and the true rule (one sentence).
-- Second-order consequence: not generic money or headaches. Use ONE category:
-  leverage, appraisal risk, financing delay, deal fall-through, insurance availability, HOA special assessment exposure, resale liquidity.
-- Micro-proof: tie the consequence to ONE concrete anchor (document/fee/clause/scenario/number/condition).
-- CTA is a commitment step (comment/DM keyword OR steal my framework). No generic download framing.
+Show:
+- Why the obvious choice failed
+- What would have prevented the mistake
 
-FIELD RULES (BRAND BRAIN)
-title
-- Names the failure or hidden constraint clearly.
+Do not teach steps.
+Do not explain basics.
 
-hook
-- Consequence-first moment. Must include the belief flip in the first 1 to 2 sentences.
-
-body
-- 2 to 4 sentences max:
-  1) wrong assumption,
-  2) hidden constraint (why it fails),
-  3) second-order consequence (category),
-  4) the new rule + what to do.
-
-cta
-- One line. Commitment action (comment/DM keyword OR steal my framework). Specific.
-
-reelHook
-- Exactly 1 sentence. Must be a belief flip or consequence-first claim.
-
-reelBody
-- 2 to 3 sentences max. Must include: hidden constraint + second-order consequence + anchor as proof.
-
-reelCta
-- Exactly matches CTA field verbatim.
-
-caption
-- One sharp reinforcement line that repeats the belief flip or the new rule.
-
-designNotes
-- Show the anchor as proof (highlight clause/fee line/map zone/permit record/reserve study page/etc.).
-
-engagementLoop
-- One question that makes the viewer self-identify with the wrong assumption.
-
-hashtags
-- Return hashtags as an array of 5 to 8 strings with no leading hash, no duplicates, and a mix of broad, niche, and intent tags.
-
-Before outputting JSON, verify reelHook contains only the hook sentence, reelBody contains only the body lines, reelCta contains only the CTA sentence.`;
+The goal is a belief shift, not instruction.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
     'You are generating ONE calendar post.',
     brandBlock,
     contextLines,
-    !plannedAngle ? `ANGLE (do not output): ${promptAngle}` : '',
+    `ANGLE = the specific situation, decision, or moment this post is about: ${plannedAngle || promptAngle}`,
     creativeBriefBlock,
     recentIdeasBlock,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
-    mechanismLockBlock,
     GLOBAL_RULES,
     contractBlock,
   ].filter(Boolean);
