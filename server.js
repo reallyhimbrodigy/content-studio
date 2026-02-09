@@ -4348,50 +4348,54 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
 INTENT
-One practical post about one real-world decision gate. Not a lesson. Not a warning. Not a story. It reads like: "Here is the line/field I look at, what it means, and what it changes."
+One post. Calm, grounded, specific. Not a lesson, not a warning, not a story.
+It reads like: “Here’s the exact line/field that decides this gate, what it means, and what it changes.”
 
-CORE PRINCIPLES
-- Generate ONE post only.
-- Anchor everything to ONE named artifact and ONE inspectable condition on that artifact.
-- Keep every field about the same moment + same artifact + same condition + same consequence.
-- Novelty comes from choosing a different gate category and artifact than recent posts; do not reword the same gate.
+CORE INSTRUCTIONS
+Anchor the entire post to ONE named artifact AND ONE inspectable condition ON that artifact.
+Every field must refer to the same moment, same artifact, same condition, and same consequence.
+Novelty comes from choosing a different gate category and different artifact than RECENT IDEAS / RECENT SIGNATURES imply. Do not reword the same gate.
 
-AVOID REPETITION
-You receive RECENT IDEAS and RECENT SIGNATURES. Do not repeat the same gate category or the same artifact they imply. If recent posts cluster in one category, switch categories.
+CLARITY STANDARD
+Be concrete enough that the viewer can point to the exact place on the artifact.
+Name where the condition appears (section/line/field) in plain terms.
 
 VOICE
-- Plain, grounded, specific.
-- No PSA openers, no hype, no anonymous anecdotes.
-- No tutorial voice and no step-by-step list. No always, make sure, or remember.
-- Observation language only: what you look at -> what it means -> what it changes.
+Plain and factual. No hype. No PSA tone. No anonymous anecdotes.
+No tutorial voice and no step-by-step lists.
+Use observation language: what is on the artifact -> what it indicates -> what it changes.
 
-FIELD COHERENCE RULE (CRITICAL)
-Title, hook, body, caption, designNotes must all explicitly name the SAME artifact and the SAME inspectable condition.
+FIELD COHERENCE (CRITICAL)
+Title, hook, body, caption, designNotes must explicitly name the SAME artifact and the SAME inspectable condition.
 
 FIELD INSTRUCTIONS
 title
-- Name the decision gate in plain terms (what the gate is), not avoid framing.
+Name the gate (what decision is being gated) in plain terms.
 
 hook
-- One line. No generic opener.
-- Start with the artifact + the condition, then the immediate implication.
+One line only.
+Start with: artifact + condition + immediate implication.
+No generic opener.
 
 body
-- 2–4 sentences, no lists.
-- Sentence 1: state the artifact and the exact condition.
-- Sentence 2: interpret what that condition means in plain language.
-- Sentence 3: state the operational consequence it changes (e.g., denial, rework, restriction, renegotiation, loss of leverage, inability to proceed).
-- Optional Sentence 4: one short next action (single sentence, not a procedure).
-- Must state where on the artifact the condition appears (section/line/field).
+2–4 sentences, no list formatting.
+Sentence 1: artifact + the exact condition + where it appears (section/line/field).
+Sentence 2: what that condition indicates in plain language.
+Sentence 3: the operational consequence it changes (denial, rework, restriction, renegotiation, leverage loss, inability to proceed).
+Optional Sentence 4: one short next action (single sentence, not a procedure).
 
 cta
-- One clear action that matches the CREATIVE BRIEF CTA direction exactly.
-- Reference the same artifact; no generic "check your docs."
+One clear action that matches the CREATIVE BRIEF CTA direction exactly.
+Reference the same artifact. No generic “check your docs.”
 
 reelHook
-- reelHook = hook-only spoken line.
-- reelBody = body-only spoken lines (same content).
-- reelCta = CTA-only spoken line and must match CTA verbatim.
+Hook-only spoken line (same meaning as hook).
+
+reelBody
+Body-only spoken lines (same meaning as body).
+
+reelCta
+CTA-only spoken line and must match CTA verbatim.
 
 caption
 - One tight paragraph reinforcing the same artifact + condition + implication.
@@ -4408,49 +4412,50 @@ hashtags
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
 INTENT
-One post that triggers a belief flip. It reads like a realization and rule replacement, not advice. It uses micro-proof from one named artifact condition and an operational consequence beyond generic money/time.
+One post that creates a belief flip. It reads like a realization and rule replacement, not advice.
+It uses micro-proof from ONE named artifact condition and ONE operational consequence beyond generic money/time.
 
-CORE PRINCIPLES
-- Generate ONE post only.
-- Anchor everything to ONE named artifact and ONE inspectable condition on that artifact.
-- Keep every field about the same moment + same artifact + same condition + same consequence.
-- Novelty comes from choosing a different hidden constraint or gate category and artifact than recent posts; do not reword the same gate.
-
-AVOID REPETITION
-Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category, artifact, or cadence. If recent posts cluster in one category, switch categories.
+CORE INSTRUCTIONS
+Anchor the entire post to ONE named artifact AND ONE inspectable condition ON that artifact.
+Every field must refer to the same moment, same artifact, same condition, and same consequence.
+Novelty comes from choosing a different hidden constraint / gate category and different artifact than RECENT IDEAS / RECENT SIGNATURES imply. Do not reword the same gate.
 
 VOICE
-- Direct, specific, non-instructional.
-- No teaching verbs (no check, review, make sure, remember, ask, schedule, request).
-- No step-by-step lists. No always.
-- No anecdotes, no PSA tone.
+Direct, specific, non-instructional.
+No teaching verbs (no check, review, make sure, remember, ask, schedule, request).
+No step-by-step lists. No anecdotes. No PSA tone.
 
 BELIEF FLIP + PROOF (CRITICAL)
-- Hook must contain an explicit belief flip: the thing people rank as the gate vs what actually gates the outcome.
-- The real gate must be expressed as artifact + condition + immediate implication.
-- Body must include: wrong assumption -> why it fails -> operational consequence -> micro-proof (artifact condition).
+Hook must contain an explicit belief flip: the thing people rank as the gate vs what actually gates the outcome.
+The “real gate” must be stated as: artifact + condition + immediate implication.
+Body must follow this logic in order: wrong assumption -> why it fails -> operational consequence -> micro-proof (artifact condition).
+Micro-proof is ONE condition only (no stacking).
 
 FIELD INSTRUCTIONS
 title
 - Name the hidden decision failure plainly.
 
 hook
-- ONE line, declarative.
-- Include belief flip + artifact condition + immediate implication.
-- Vary sentence shape; do not use a fixed template every time.
+ONE line, declarative.
+Include: belief flip + artifact condition + immediate implication.
+Vary sentence shape; do not use a fixed template every time.
 
 body
-- 2–4 sentences, no lists.
-- Include in order: wrong assumption, why it fails, operational consequence, micro-proof from the artifact condition.
-- Micro-proof is ONE condition only (no stacking).
+2–4 sentences, no list formatting.
+Include in order: wrong assumption, why it fails, operational consequence, micro-proof from the artifact condition.
+Micro-proof must be ONE concrete condition only.
 
 cta
 - One action that matches the CREATIVE BRIEF CTA direction exactly. Use commitment tone only if the brief direction is commitment; otherwise stay low-friction but still corrective.
 
 reelHook
-- reelHook = hook-only spoken line.
-- reelBody = body-only spoken lines (same content).
-- reelCta = CTA-only spoken line and must match CTA verbatim.
+Hook-only spoken line (same meaning as hook).
+
+reelBody
+Body-only spoken lines (same meaning as body).
+
+reelCta
+CTA-only spoken line and must match CTA verbatim.
 
 caption
 - One tight paragraph sharpening the belief flip/new rule (still non-instructional).
