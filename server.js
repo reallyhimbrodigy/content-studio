@@ -3736,7 +3736,7 @@ const CALENDAR_ALIGNMENT_BLOCK = [
   'Specificity: use observable details; avoid vague “shifts my approach” phrasing.',
   'Novelty: if recent items are provided, vary artifact/condition wording without changing the topic.',
   'Mode: Regular = observational. Brand Brain = corrective re-ranking with cost and replacement rule.',
-  'Output: return JSON only; match schema exactly; no extra keys; no labels inside fields.',
+  'Output: return JSON only; match schema exactly; no extra keys; field values contain content only.',
 ].join('\n');
 
 const TOPIC_LOCK_CONTRACT_BLOCK = '';
@@ -4170,7 +4170,7 @@ Generate one complete post.`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Each field must be non-empty and JSON must be valid.`;
+  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Return valid JSON; each field is non-empty.`;
 }
 
 function safeStringify(value) {
@@ -4891,7 +4891,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
       'Use the provided title as the topic label for the post.',
-      'Every field must stay about that topic.',
+      'Keep every field about that topic.',
     ];
     return lines.join('\n');
   }
@@ -4901,7 +4901,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
     'Use the provided title as the topic label for the post.',
-    'Every field must stay about that topic.',
+    'Keep every field about that topic.',
   ];
   return lines.join('\n');
 }
@@ -5298,7 +5298,18 @@ function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
   const niche = String(nicheStyle || 'General').trim() || 'General';
   const audience = brandContext ? `Audience: ${brandContext.split('\n')[0]}` : 'Audience: General';
   const offer = 'Offer: N/A';
-  return `\n=== NICHE PROFILE (SOURCE OF TRUTH) ===\nNiche: ${niche}\n${audience}\n${offer}\nHard rules:\n- Every line MUST be directly relevant to the niche above.\n- NEVER include concepts from unrelated niches.\n- Avoid beauty/med-spa language unless the niche is beauty/med-spa.\n- Avoid discount-code vibes unless the niche explicitly uses it.\n=== END NICHE PROFILE ===\n`;
+  return `
+=== NICHE PROFILE (SOURCE OF TRUTH) ===
+Niche: ${niche}
+${audience}
+${offer}
+Guidance:
+- Keep all content directly relevant to the niche above.
+- Avoid concepts from unrelated niches.
+- Avoid beauty/med-spa language unless the niche is beauty/med-spa.
+- Avoid discount-code vibes unless the niche explicitly uses it.
+=== END NICHE PROFILE ===
+`;
 }
 
 function deriveNicheKeyword(nicheStyle = '') {
@@ -8963,9 +8974,9 @@ async function generateTopicPlan({
     'Do not include extra keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle.',
-    'Title: a specific topic label for this niche (no generic phrasing).',
-    'Angle: a short label describing the decision dynamic.',
-    'Use each title as the topic label for its post.',
+    'Title: specific topic label for this niche (avoid generic phrasing).',
+    'Angle: short label for the decision dynamic.',
+    'Use the title as the topic label for the post.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
@@ -10624,7 +10635,7 @@ const server = http.createServer((req, res) => {
     `Generate exactly ${expectedCount} items for these post_keys:`,
     postKeys.join(', '),
     'Each item must include: post_key, topic_signature, angle.',
-    'topic_signature must capture: artifact + condition + consequence in a short phrase.',
+    'topic_signature captures: artifact + condition + consequence in a short phrase.',
     'angle is a short label for the decision dynamic.',
     'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
     'Avoid framing angles as tips, reminders, or broad advice.',
