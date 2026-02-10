@@ -4347,154 +4347,173 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-INTENT
-Generate one post that documents one real-world decision gate as a field-level observation. Not teaching. Not warning. Not story.
-It reads like: “This field is the gate. This is what it says. This is what it changes.”
+INTENT  
+Free-tier content calendar for consistent posters who want reliably good post ideas.
+This is not a lesson, not a warning, not a story, and not an ad.
+It reads like: “Here is the specific detail that decides this moment, what it means, and what it changes.”
 
-OUTPUT
-Return JSON only. Match the required schema keys exactly. No extra keys. No markdown. No commentary.
+PRIMARY GOAL  
+Surface one real-world decision gate that is useful, concrete, and easy to apply.
+The viewer should walk away thinking: “That’s a detail I didn’t realize mattered.”
 
-WRITING STANDARD
-Concrete enough that someone could open the artifact and point to the exact place you named.
+HOW TO CHOOSE THE IDEA (CRITICAL)  
+Choose a decision gate that changes what happens next in a real workflow.
+Prefer gates that affect leverage, eligibility, options, or outcomes *before* failure is obvious.
+Avoid defaulting to trivial completion states (missing signatures, blank fields, generic approvals) unless the Creative Brief explicitly centers on that topic.
 
-CORE DIRECTIONS
-- Generate ONE post only.
-- Choose ONE gate. Choose ONE artifact. Choose ONE inspectable condition on that artifact. Choose ONE operational consequence. Use the same four choices across every field.
-- Artifact is a domain-native object used in the niche’s normal work (document, report, form, disclosure, policy, record, statement, schedule, addendum, certificate, dashboard/status screen).
-- Do not invent internal frameworks or process artifacts (audit, rubric, scorecard, workflow, roadmap, checklist) unless the CREATIVE BRIEF explicitly names that asset.
-- Inspectable condition is a literal state/value on the artifact and is written in this exact encoding:
-  LOCATION + OPERATOR + VALUE/STATE
-  LOCATION examples: “Section 3 — Buyer Signature”, “Page 2 — Inspector Approval field”, “Status row — Approval”
-  OPERATOR: “=”, “is”, “is missing”, “is blank”, “is unchecked”, “is pending”, “is present”, “contains”, “excludes”, “<”, “>”, “below”, “above”
-  If the condition cannot be expressed in that encoding, it is not a valid condition.
-- Hook/body/caption contain zero guidance verbs and zero coaching language. No imperatives. No “you should”. No “make sure”. No “remember”. No “ensure”. No “review”. No “check”. No “consider”. No “avoid”. No “try”.
-- CTA is the only place an action verb appears and it must match the CREATIVE BRIEF CTA direction exactly.
-- Do not fabricate case studies, anonymous “a client” framing, or specific addresses.
-- Keep language domain-native to the niche. Do not drift into generic project-management framing.
+CORE WRITING PRINCIPLES  
+- Generate ONE post only.  
+- Anchor the entire post to ONE real, domain-native artifact.  
+- Focus on ONE specific, inspectable condition on that artifact.  
+- Explain ONE downstream operational consequence that condition causes.  
+- Every field must refer to the same moment, same artifact, same condition, and same consequence.  
 
-NOVELTY
-Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category or the same artifact. Do not reword the same gate.
+CLARITY STANDARD  
+The viewer should be able to point to the exact place on the artifact being discussed.
+If the condition cannot be visually highlighted, the idea is not specific enough.
 
-FIELD COHERENCE (CRITICAL)
-title, hook, body, caption, designNotes explicitly repeat the SAME artifact and the SAME condition encoding.
+VOICE  
+Plain, grounded, and specific.
+No hype. No PSA tone. No anonymous anecdotes.
+No tutorial framing and no step-by-step walkthroughs.
+Write in observational language: what is there → what it indicates → what it changes.
 
-FIELD INSTRUCTIONS
-title
+FIELD INSTRUCTIONS  
+
+title  
 Name the gate plainly (what decision is being gated).
 
-hook
+hook  
 ONE line. Includes: artifact + condition (in encoding) + immediate implication. No generic opener.
 
-body
+body  
 Exactly 3 sentences. No list formatting.
 Sentence 1: artifact + where + condition in the required encoding (LOCATION + OPERATOR + VALUE/STATE).
 Sentence 2: what that condition indicates in plain language (single interpretation).
 Sentence 3: the downstream operational change it causes (eligibility/approval/leverage/restriction/inability to proceed). Do not use “delay” as the whole consequence.
 
-cta
+cta  
 One clear action that matches the CREATIVE BRIEF CTA direction exactly and references the same artifact.
 
-reelHook
+reelHook  
 Hook-only spoken line (same meaning as hook).
 
-reelBody
+reelBody  
 Body-only spoken lines (same meaning as body). Still exactly 3 sentences.
 
-reelCta
+reelCta  
 CTA-only spoken line. Must match CTA field verbatim.
 
-caption
+caption  
 One tight paragraph restating artifact + condition encoding + implication. No coaching verbs.
 
-designNotes
+designNotes  
 Show the artifact and visually mark the condition at the stated location (zoom/underline/callout).
 
-engagementLoop
+engagementLoop  
 One question tied to the gate that invites experience or preference. Not fear-based.
 
-hashtags
-5–8 strings. No leading #. No duplicates. Mix broad + niche + intent.`;
+hashtags  
+5–8 strings. No leading #. No duplicates. Mix broad + niche + intent.
+
+GOALS / EXPECTATIONS — REGULAR CALENDAR  
+This calendar is for users who post consistently and want solid, dependable content ideas.
+The output should feel competent, practical, and publishable every day.
+It should build credibility and clarity, not dominate competitors or force belief flips.
+Do not optimize for aggressive hooks or contrarian positioning.
+Success means steady usefulness without embarrassment or noise.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-INTENT
-Generate one post that flips the viewer’s ranking of what actually gates the outcome. It reads like realization and rule replacement, not advice.
-It uses micro-proof from one named artifact condition and one downstream operational consequence beyond generic money/time.
+INTENT  
+Paid-tier content calendar for users who want to outperform competitors with short-form video.
+This is not advice content.
+It reads like a realization followed by a rule replacement.
 
-OUTPUT
-Return JSON only. Match the required schema keys exactly. No extra keys. No markdown. No commentary.
+PRIMARY GOAL  
+Create a belief flip that re-ranks what actually gates the outcome.
+Expose what people focus on — then show the real gate that professionals exploit.
 
-WRITING STANDARD
-Concrete enough that someone could open the artifact and point to the exact place you named.
+HOW TO CHOOSE THE IDEA (CRITICAL)  
+Select a gate that creates a “you were optimizing the wrong thing” moment.
+Prefer hidden constraints, overlooked mechanics, or second-order effects.
+Avoid trivial gates (missing signatures, basic status checks) unless the Creative Brief explicitly requires them.
 
-CORE DIRECTIONS
-- Generate ONE post only.
-- Choose ONE gate. Choose ONE artifact. Choose ONE inspectable condition on that artifact. Choose ONE operational consequence. Use the same four choices across every field.
-- Artifact is a domain-native object used in the niche’s normal work (document, report, form, disclosure, policy, record, statement, schedule, addendum, certificate, dashboard/status screen).
-- Do not invent internal frameworks or process artifacts (audit, rubric, scorecard, workflow, roadmap, checklist) unless the CREATIVE BRIEF explicitly names that asset.
-- Inspectable condition is a literal state/value on the artifact and is written in this exact encoding:
-  LOCATION + OPERATOR + VALUE/STATE
-  LOCATION examples: “Section 3 — Buyer Signature”, “Page 2 — Inspector Approval field”, “Status row — Approval”
-  OPERATOR: “=”, “is”, “is missing”, “is blank”, “is unchecked”, “is pending”, “is present”, “contains”, “excludes”, “<”, “>”, “below”, “above”
-  If the condition cannot be expressed in that encoding, it is not a valid condition.
-- Hook/body/caption contain zero guidance verbs and zero coaching language. No imperatives. No “you should”. No “make sure”. No “remember”. No “ensure”. No “review”. No “check”. No “consider”. No “avoid”. No “try”.
-- No step-by-step lists. No anecdotes. No PSA tone.
-- CTA is the only place an action verb appears and it must match the CREATIVE BRIEF CTA direction exactly.
-- Do not fabricate case studies, anonymous “a client” framing, or specific addresses.
-- Keep language domain-native to the niche. Do not drift into generic project-management framing.
+CORE WRITING PRINCIPLES  
+- Generate ONE post only.  
+- Anchor the entire post to ONE real, domain-native artifact.  
+- Focus on ONE specific, inspectable condition on that artifact.  
+- Show ONE downstream operational consequence beyond generic time or money loss.  
+- Every field must refer to the same moment, same artifact, same condition, and same consequence.  
 
-NOVELTY
-Use RECENT IDEAS and RECENT SIGNATURES to avoid repeating the same gate category or the same artifact. Do not reword the same gate. Avoid repeating the same belief-flip cadence.
+VOICE  
+Direct, sharp, and non-instructional.
+No teaching tone. No checklists. No anecdotes. No PSA framing.
+This should feel corrective, not friendly.
 
-BELIEF FLIP (CRITICAL)
-hook is ONE declarative line that explicitly re-ranks the gate:
-- states what people focus on
-- states what actually gates the outcome
-- expresses the real gate as artifact + condition encoding + immediate implication
-Vary sentence shape. Do not use a fixed template.
+BELIEF FLIP REQUIREMENT (NON-NEGOTIABLE)  
+The hook must explicitly contrast:
+- What people think gates the outcome  
+vs  
+- What actually gates the outcome  
 
-BODY LOGIC (CRITICAL)
-body is exactly 3 sentences. No list formatting. This exact order:
-1) wrong assumption (what people treat as the gate)
-2) why it fails + the downstream operational consequence (eligibility/leverage/ability to proceed/restriction). Not “delay” alone.
-3) micro-proof: artifact + where + condition in the required encoding (LOCATION + OPERATOR + VALUE/STATE)
+The real gate must be expressed as:
+artifact + specific condition + immediate implication.
 
-FIELD COHERENCE (CRITICAL)
-title, hook, body sentence 3, caption, designNotes explicitly repeat the SAME artifact and the SAME condition encoding.
+BODY LOGIC  
+The body must flow naturally through:
+1) The wrong assumption people optimize for  
+2) Why that assumption fails  
+3) The operational consequence that actually matters  
+4) Micro-proof: the exact artifact detail that makes this undeniable  
 
-FIELD INSTRUCTIONS
-title
+FIELD INSTRUCTIONS  
+
+title  
 Name the hidden failure plainly.
 
-hook
-ONE line, declarative. Contains: belief flip + real gate as artifact + condition encoding + immediate implication. No generic opener.
+hook  
+ONE line, declarative.
+Contain the belief flip and the real gate.
+Write it like a punchline, not a template.
 
-body
-Exactly 3 sentences following BODY LOGIC (CRITICAL). Sentence 3 includes where on the artifact the condition appears.
+body  
+2–4 sentences.
+State the wrong assumption, why it breaks, what it costs operationally, and prove it with the artifact condition.
+No step-by-step instructions.
 
-cta
-One clear action that matches the CREATIVE BRIEF CTA direction exactly and references the same artifact. Use commitment tone only if the CREATIVE BRIEF direction is commitment.
+cta  
+One action that matches the CREATIVE BRIEF direction exactly.
+Use commitment tone only if the brief requires it.
+Reference the same artifact.
 
-reelHook
-Hook-only spoken line (same meaning as hook).
+reelHook  
+Hook-only spoken line.
 
-reelBody
-Body-only spoken lines (same meaning as body). Still exactly 3 sentences.
+reelBody  
+Body-only spoken lines.
 
-reelCta
-CTA-only spoken line. Must match CTA field verbatim.
+reelCta  
+CTA-only spoken line and must match CTA verbatim.
 
-caption
-One tight paragraph sharpening the belief flip/new rule while restating artifact + condition encoding + implication. No coaching verbs.
+caption  
+One tight paragraph sharpening the new rule created by the belief flip.
 
-designNotes
-Show the artifact and visually mark the proof condition at the stated location (zoom/underline/callout).
+designNotes  
+Show the artifact and visually highlight the proof condition (zoom, underline, callout).
 
-engagementLoop
-One question that challenges the prior assumption. Not fear-based.
+engagementLoop  
+One question that challenges the prior assumption (not fear-based).
 
-hashtags
-5–8 strings. No leading #. No duplicates. Mix broad + niche + intent.`;
+hashtags  
+5–8 strings, no leading #, no duplicates; mix broad + niche + intent.
+
+GOALS / EXPECTATIONS — BRAND BRAIN CALENDAR  
+This calendar is for users who want to win attention and outperform competitors.
+Each post must create cognitive tension by exposing a mis-ranked belief.
+The content should feel sharp, corrective, and algorithm-native.
+If a post could be safely swapped into the Regular calendar, it failed.
+Success means belief disruption that drives replays, retention, and competitive edge.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
