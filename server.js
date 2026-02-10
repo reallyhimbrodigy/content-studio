@@ -4211,6 +4211,8 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
       ? 'Frame it as correction: wrong focus → real constraint → operational cost. Prove it with an artifact cue.'
       : 'Stay inside the work moment. No productivity/self-help framing. No generic checklist/momentum language.',
     'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
+    'The signal should naturally cause a competent professional to change sequence, timing, leverage, or verification — without announcing the change.',
+    'If the signal is environmental or behavioral, it must function as a filter or constraint, not a vibe or preference.',
     '',
     'Situation:',
     `${angle}`,
@@ -4220,7 +4222,7 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     '',
     'CTA intent:',
     'Choose a natural platform-native action (save, bookmark, share, comment, replay) that fits the moment.',
-    'The CTA should feel like a continuation of attention, not a task or tool.',
+    'The CTA should feel like a continuation of attention at the exact moment the next move becomes obvious.',
   ].join('\n');
 }
 
@@ -6210,7 +6212,7 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Correct a mis-ranked belief: show the wrong focus, reveal the real constraint, quantify the operational cost, and prove it with an undeniable cue on a real artifact.'
+    ? 'Correct a mis-ranked belief by making the old optimization feel unsafe or naive once the real gate is revealed.'
     : 'Stay inside a real work moment: one specific cue on a real artifact, and how it changes the next move. No productivity/self-help framing.';
 }
 
