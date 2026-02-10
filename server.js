@@ -2568,14 +2568,14 @@ async function generateAndValidateSinglePost({
       ? [
         'The previous output failed structural validation.',
         'Return valid JSON matching the schema exactly.',
-        'Do not change content intent.',
+        'Keep the same topic and moment.',
       ].join('\n')
       : '';
     const brandBrainExecutionReminder = calendarMode === 'brand_brain'
       ? [
         'Brand Brain execution reminder:',
         'Keep the post corrective and competitive, not neutral education.',
-        'Make sure the message clearly moves from wrong focus to real gate to operational cost to replacement rule.',
+        'Move from wrong focus to real gate to operational cost to replacement rule.',
       ].join('\n')
       : '';
     const mergedInstructions = [retryLine, baseInstructions, brandBrainExecutionReminder, extraInstructions].filter(Boolean).join('\n');
@@ -3847,24 +3847,20 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
     postsPerDay: perDay,
     topicPlan,
   });
-  const mustAvoidByKey = buildMustAvoidTokensByKey(requestedSpecMap);
   const lines = [
-    'REQUESTED POST IDS (MUST MATCH):',
-    '- Each post object MUST include: post_key, day, slotIndex, title.',
-    '- post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
-    '- For each requested post, copy the provided mustAvoid list EXACTLY into topicCapsule.mustAvoid.',
+    'REQUESTED POST IDS:',
+    '- Each post object should include: post_key, day, slotIndex, title.',
+    '- post_key format should be "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
     'Requested IDs:',
-  ];
+  ].filter(Boolean);
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
       const key = postKey(day, slotIndex);
       const spec = requestedSpecMap.get(key) || {};
       const title = toPlainString(spec.title || '');
-      const mustAvoidList = mustAvoidByKey.get(key) || [];
-      const mustAvoidText = `[${mustAvoidList.map((item) => `"${item}"`).join(', ')}]`;
       const titleSegment = title ? ` | title: ${title}` : '';
-      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment} | mustAvoid: ${mustAvoidText}`);
+      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment}`);
     }
   }
   return lines.join('\n');
@@ -3874,7 +3870,7 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const lines = ['POST KEYS (MUST MATCH):'];
+  const lines = ['POST KEYS:'];
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
@@ -3887,46 +3883,19 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 const PROMPT_VERSION = 'calendar_minimal_v2';
 const REGULAR_BRIEF = {
   hookArchetypes: [
-    'The line everyone skims',
-    'The pause that decides it',
-    'The mismatch that changes leverage',
-    'The quiet cue before a pivot',
-    'The detail that resets sequence',
-    'The question that filters buyers',
-    'The document line that moves time',
-    'The condition that changes the next move',
-    'The signal hiding in plain sight',
-    'The one cue that makes comps irrelevant',
-    'The artifact that changes the pitch',
-    'The detail that stops wasted showings',
+    'Observation-first framing',
+    'Signal-before-explanation framing',
+    'Decision-gate framing',
   ],
   angles: [
-    'Offer terms line that changes negotiation leverage',
-    'Inspection report note that changes repair strategy',
-    'HOA clause that changes buyer eligibility',
-    'Permit record detail that changes renovation confidence',
-    'Survey boundary marker that changes what is negotiable',
-    'Appraisal condition that changes contract sequencing',
-    'Disclosure line that changes risk posture',
-    'DOM plus price-history pattern that changes offer timing',
-    'Condo reserve signal that changes financing confidence',
-    'Insurance eligibility cue that changes buyer fit',
-    'Listing sheet omission that changes verification order',
-    'Title exception line that changes deal certainty',
-    'Assessment notice detail that changes decision urgency',
-    'Feedback phrase that changes the next showing approach',
+    'A real work moment where one condition changes the next move',
+    'A concrete gate signal that quietly changes sequence',
+    'An artifact-level cue that changes leverage or verification',
   ],
   proofTypes: [
-    'offer terms line item',
-    'inspection report line',
-    'HOA or condo clause',
-    'permit record entry',
-    'survey boundary marker',
-    'price history snapshot',
-    'DOM signal snapshot',
-    'appraisal note line',
-    'disclosure clause line',
-    'title exception line',
+    'artifact cue',
+    'condition marker',
+    'observable signal',
   ],
   ctaAssets: [
     'save',
@@ -3938,58 +3907,26 @@ const REGULAR_BRIEF = {
     'notice',
   ],
   ctaFormats: [
-    'Notice this before you talk numbers',
-    'Compare this before you set comps',
-    'Save this for your next listing review',
-    'Replay this before your next showing',
-    'Bookmark this for inspection day',
-    'Notice this in the condo docs',
-    'Compare MLS vs tax record next time',
-    'Save this before you write the offer',
-    'Replay this when you read feedback',
-    'Share this with a buyer in Miami',
+    'Continue attention at the decision moment',
+    'Save or bookmark when this cue appears again',
+    'Use a platform-native continuation action',
   ],
 };
 const BRAND_BRAIN_BRIEF = {
   hookArchetypes: [
-    'The metric you’re optimizing is wrong',
-    'The ‘obvious’ move backfires',
-    'Why the clean version loses',
-    'The constraint buyers act on',
-    'The signal pros notice instantly',
-    'The comfort move that kills leverage',
-    'The hidden tax nobody prices',
-    'The reason demand evaporates in person',
-    'The trust break that costs offers',
-    'The framing error that forces price cuts',
-    'The status tell amateurs miss',
-    'The second-order consequence you’re ignoring',
+    'Corrective re-ranking framing',
+    'Constraint-first framing',
+    'Operational consequence framing',
   ],
   angles: [
-    'Optimizing layout instead of livability friction loses conversions',
-    'Price drops without framing erode trust and reduce serious offers',
-    'Chasing finishes while HOA tolerance filters buyers kills momentum',
-    'Waterfront/vibes sells online but exposure friction kills in person',
-    'Speed without verification creates credibility loss at decision time',
-    'Over-indexing on comps ignores eligibility gates that decide outcomes',
-    'Marketing polish without artifact proof collapses confidence late',
-    'The default sequence makes the buyer’s hesitation irreversible',
-    'The ‘safe’ neutral pitch fails against sharper re-ranking competitors',
-    'Ignoring the real constraint forces endless follow-ups that never convert',
-    'Optimizing for clicks instead of the in-person gate wastes showings',
-    'Fixing surface objections hides the mechanism causing collapse',
+    'A wrong focus that loses to the real gate signal',
+    'A hidden constraint that changes outcomes earlier than expected',
+    'A mis-ranked belief corrected by an artifact-level cue',
   ],
   proofTypes: [
-    'signal vs noise contrast',
-    'constraint vs belief contrast',
-    'operational cost snapshot',
-    'artifact clause teardown',
-    'decision autopsy',
-    'failure timeline',
-    'tradeoff table (compressed)',
-    'before/after leverage shift',
-    'status tell example',
-    'mispriced signal example',
+    're-ranking proof',
+    'constraint proof',
+    'operational consequence proof',
   ],
   ctaAssets: [
     'save',
@@ -4001,15 +3938,9 @@ const BRAND_BRAIN_BRIEF = {
     'notice',
   ],
   ctaFormats: [
-    'Replay this before you commit',
-    'Save this so you stop optimizing the wrong signal',
-    'Bookmark this for your next pricing decision',
-    'Compare this against your last deal',
-    'Notice this in your next listing review',
-    'Save this and test it on the next showing',
-    'Share this with your team',
-    'Compare this before you drop price',
-    'Replay this before you blame the market',
+    'Continue attention where the old focus fails',
+    'Use a platform-native continuation action',
+    'Carry the correction into the next decision moment',
   ],
 };
 const HOOK_ARCHETYPES = [
@@ -4026,7 +3957,7 @@ const HOOK_ARCHETYPES = [
   'The check that changes outcomes',
   'The pattern behind repeated failure',
 ];
-const CTA_WORD_TOKENS = ['GUIDE', 'CHECK', 'MAP', 'PLAN', 'RESET', 'FIX', 'SHIFT', 'READY'];
+const CTA_WORD_TOKENS = [];
 
 function mulberry32(seed = 1) {
   let state = Number(seed) >>> 0;
@@ -4063,8 +3994,7 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     'CREATIVE BRIEF',
     'Center the post on one real work moment.',
     'Choose one concrete artifact and one inspectable condition.',
-    'Let that condition change the next move (sequence, timing, verification, leverage) without lecturing.',
-    'Keep the same artifact/condition consistent across fields.',
+    'Let that condition change the next move.',
     'Prefer specific, plain phrasing over generic slogans.',
   ].join('\n');
 }
@@ -4084,22 +4014,7 @@ function buildRecentTitlesList(titles = [], limit = 10) {
   return out;
 }
 
-const PROMPT_ANGLE_OPTIONS = [
-  'The cue that changes the next move',
-  'The detail that quietly changes leverage',
-  'The signal that separates “still live” from “already dead”',
-  'The mismatch that makes the next step fail later',
-  'The early tell that decides the outcome before it feels decided',
-  'The overlooked threshold that flips the decision',
-  'The proof point hiding in plain sight',
-  'The assumption that sounds reasonable but breaks in practice',
-  'The condition that forces a different sequence',
-  'The small signal that makes the “obvious” choice wrong',
-  'The mispriced signal professionals overweight',
-  'The hidden constraint that shows up only in the artifact',
-  'The handoff detail that changes who’s responsible next',
-  'The moment where momentum forks',
-];
+const PROMPT_ANGLE_OPTIONS = [];
 
 function pickAngleForPostKey(postKeyValue = '') {
   const value = String(postKeyValue || '');
@@ -4184,16 +4099,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Do not add extra keys.',
     `- Required keys (exact): ${requiredKeys}`,
     '- Each field must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
-    '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
     '- No continuation sections (Follow-up, Next post, Tomorrow, Part 2, Next, Up next).',
-    '- Keep one named artifact and one inspectable condition consistent across title, hook, body, reelHook, reelBody, caption, and designNotes.',
-    '- ONE MOMENT RULE: All fields must describe the same specific moment + same named artifact + same inspectable condition + same operational consequence.',
-    '- Do not introduce a second gate. Keep one artifact, one condition, and one consequence throughout.',
-    '- Use ONE specific moment. Every field must point to the same moment + same artifact + same condition + same consequence.',
-    '- The CTA must be exactly aligned to the CTA direction in the CREATIVE BRIEF. Do not swap assets (no defaulting to checklist/template).',
-    '- Keep tone plain and specific; avoid motivational or slogan cadence.',
-    '- Favor concrete nouns and observable details over abstract language.',
-    '- Regular reads as an observation, while Brand Brain clearly re-ranks a wrong focus into a real gate across fields.',
+    '- Keep one coherent moment across fields: same topic, same artifact/cue, and same operational consequence.',
+    '- Keep tone plain and specific; avoid motivational or slogan language.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
@@ -5061,19 +4969,18 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       ...assigned.map((item) =>
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
+      'Use the provided title as the topic label; all fields stay about that topic.',
     ];
     return lines.join('\n');
   }
   const lines = [
     'ASSIGNED TOPIC PLAN (read-only):',
-    'Each post object MUST include: post_key, day, slotIndex, title.',
+    'Each post object should include: post_key, day, slotIndex, title.',
     'post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
     ...assigned.map((item) =>
-      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic (MUST USE): ${item.title} | angle: ${item.angle}`
+      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
-    'TITLE IS FIXED: Use the exact Topic (MUST USE) as the title for each post. Do not rename it.',
-    'TITLE IS FIXED: Use the exact title for each post. Do not invent a different topic.',
-    'All sections must be about the title.',
+    'Use the provided title as the topic label; all fields stay about that topic.',
   ];
   return lines.join('\n');
 }
@@ -5200,45 +5107,22 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const brandBlock = brandContext
     ? `\n\nBrand Context: ${brandContext}\n\n`
     : '\n';
-  const qualityRules = `SHORT-FORM VIDEO CONTRACT (REQUIRED):
-${SHORT_FORM_CONTENT_CONTRACT_BLOCK}
-${TOPIC_LOCK_CONTRACT_BLOCK}
-${FIELD_REGROUNDING_BLOCK}
-Generate posts one at a time in order. Finish POST_ID X completely before starting POST_ID X+1. Do not plan or outline multiple posts at once.
-ENGAGEMENT LOOP FIELD MAPPING:
-- engagementScripts.commentReply: plain text only.
-- engagementScripts.dmReply: plain text only.
-DESIGN NOTES:
-- Output 4 timestamped lines for 0–2s, 2–6s, 6–14s, 14–20s.
-- Each line: 1 short sentence; include on-screen text for the hook (3–5 words max).
-FORMAT:
-- Choose the best format for this post in the niche: ${nicheStyle}. Output exactly one value from: Reel, Story, Carousel, Static.
-OUTPUT DISCIPLINE:
-- Keep outputs concise to avoid truncation.
-- CRITICAL: every post MUST include script { hook, body, cta }.`;
-  const nicheSpecific = nicheRules ? `\nNiche-specific constraints:\n${nicheRules}` : '';
-  const hardOutputContractBlock = [
-    'OUTPUT CONTRACT (MUST FOLLOW)',
-    '- Output a single JSON object and nothing else.',
-    '- Top-level must be exactly: {"posts":[...]}',
-    '- posts length must be exactly 1',
-    `- Only include days ${day}..${day}`,
-    '- Each post must include day, slotIndex, post_key where post_key === "day-{day}-slot-{slotIndex}"',
-  ].join('\n');
-  const schema = `${TITLE_ANCHOR_ECHO_BLOCK}
-Return ONLY a JSON array containing exactly 1 object for day ${day}. It must include ALL fields in the master schema (day, idea, type, hook, caption, hashtags, format MUST be "reel", cta, pillar, designNotes, repurpose, analytics, engagementScripts, promoSlot, weeklyPromo, script, instagram_caption, tiktok_caption, linkedin_caption, audio). Return JSON only; do not omit fields or use null/placeholder values. Do not add extra keys beyond the master schema.
-SCOPE LOCK: Only generate content for the provided day in this chunk. Do not generate other days.
-${hardOutputContractBlock}`;
+  const nicheSpecific = nicheRules ? `Niche-specific notes:\n${nicheRules}` : '';
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
-  return `You are a content strategist.${brandBlock}${presetBlock}${qualityRules}${nicheSpecific}
-
-Niche/Style: ${nicheStyle}
-Day to regenerate: ${day}
-
-Current post (reference only — do NOT reuse text):
-${snapshot}
-
-Rewrite this day from scratch with a fresh angle while respecting every schema field. ${schema}`;
+  return [
+    'You are regenerating one calendar post.',
+    'Return JSON only. No markdown. No commentary.',
+    'Output a single JSON object matching the same schema shape as the provided post payload.',
+    'Do not add extra keys.',
+    'Keep one coherent moment across all fields.',
+    `Niche/Style: ${nicheStyle}`,
+    `Day to regenerate: ${day}`,
+    brandContext ? `Brand Context:\n${brandContext}` : '',
+    presetGuidelines ? `Preset Guidelines:\n${presetGuidelines}` : '',
+    nicheSpecific,
+    'Current post payload (reference only — rewrite with a fresh angle):',
+    snapshot,
+  ].filter(Boolean).join('\n\n');
 }
 
 
@@ -5758,18 +5642,7 @@ const BRAND_BRAIN_FORBIDDEN_PHRASES = [
 const BRAND_BRAIN_FORBIDDEN_REGEXES = BRAND_BRAIN_FORBIDDEN_PHRASES.map(
   (phrase) => new RegExp(escapeRegexPattern(phrase), 'i')
 );
-const BRAND_BRAIN_MIN_LENGTHS = {
-  hook: 12,
-  caption: 80,
-  cta: 10,
-  designNotes: 40,
-  scriptBody: 40,
-  reelScriptBody: 40,
-  engagementComment: 12,
-  engagementDm: 12,
-};
-const BRAND_BRAIN_HASHTAG_RANGE = { min: 8, max: 12 };
-const TOPIC_BINDING_HASHTAG_MAX = BRAND_BRAIN_HASHTAG_RANGE.max;
+const TOPIC_BINDING_HASHTAG_MAX = 12;
 const BRAND_BRAIN_STOPWORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'from', 'to', 'of',
   'in', 'on', 'at', 'by', 'your', 'you', 'our', 'my', 'their', 'this', 'that',
@@ -5802,8 +5675,8 @@ function extractBrandBrainTokens(nicheStyle = '') {
 
 function buildBrandBrainHashtags(
   nicheStyle = '',
-  minCount = BRAND_BRAIN_HASHTAG_RANGE.min,
-  maxCount = BRAND_BRAIN_HASHTAG_RANGE.max
+  minCount = 1,
+  maxCount = 12
 ) {
   const tokens = extractBrandBrainTokens(nicheStyle);
   const tags = [];
@@ -5895,7 +5768,7 @@ function extractHashtagTokens(value = null) {
   return [];
 }
 
-function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTAG_RANGE) {
+function normalizeHashtagsForBrandBrain(post = {}) {
   if (!post || typeof post !== 'object') return;
   const raw = post.hashtags;
   if (!raw) return;
@@ -5912,14 +5785,7 @@ function normalizeHashtagsForBrandBrain(post = {}, expected = BRAND_BRAIN_HASHTA
     seen.add(key);
     deduped.push(token);
   });
-  const expectedExact = Number.isFinite(expected?.exact) ? expected.exact : null;
-  const expectedMax = Number.isFinite(expected?.max) ? expected.max : null;
-  let normalized = deduped;
-  if (expectedExact !== null) {
-    if (deduped.length >= expectedExact) normalized = deduped.slice(0, expectedExact);
-  } else if (expectedMax !== null && deduped.length > expectedMax) {
-    normalized = deduped.slice(0, expectedMax);
-  }
+  const normalized = deduped;
   if (!normalized.length) return;
   post.hashtags = normalized.join(' ');
 }
@@ -9164,11 +9030,11 @@ async function generateTopicPlan({
     brandBlock.trim(),
     requestLabel.trim(),
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
-    'Return ONLY valid minified JSON matching the schema. No markdown. No commentary.',
+    'Return ONLY valid JSON matching the schema. No markdown. No commentary.',
+    'Do not include extra keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle.',
-    'Titles are final and must be used verbatim in the calendar posts.',
-    'Angle must be 8–18 words.',
+    'Use each provided title as the topic label for its post.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
@@ -10827,20 +10693,11 @@ const server = http.createServer((req, res) => {
     `Generate exactly ${expectedCount} items for these post_keys:`,
     postKeys.join(', '),
     'Each item must include: post_key, topic_signature, angle.',
-    'ANGLE SELECTION GUIDANCE',
-    'Choose angles that describe a moment where momentum forks.',
-    'Favor signals, thresholds, filters, or cues that cause one path to advance and another to stall.',
-    '',
-    'Good angles feel like:',
-    '- something that moves first',
-    '- something that quietly filters outcomes',
-    '- something that changes how the next action is taken',
-    '- something that becomes obvious only after noticing it',
-    '',
-    'Avoid framing angles as tips, steps, reminders, or general advice.',
-    'topic_signature: 4-7 words, no locations or named entities unless provided in the niche.',
+    'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
+    'Avoid framing angles as tips, reminders, or broad advice.',
+    'topic_signature should be concise and distinctive for each post.',
     'No placeholders. No empty strings.',
-    'Do not include any other keys.',
+    'Do not include any extra keys.',
   ].join('\n');
     const planSchema = {
       type: 'object',
@@ -10858,7 +10715,7 @@ const server = http.createServer((req, res) => {
             properties: {
               post_key: { type: 'string', minLength: 1 },
               topic_signature: { type: 'string', minLength: 1 },
-              angle: { type: 'string', enum: CALENDAR_ANGLE_OPTIONS },
+              angle: { type: 'string', minLength: 1 },
             },
           },
         },
@@ -10943,7 +10800,7 @@ const server = http.createServer((req, res) => {
       const topicSignature = toPlainString(item?.topic_signature || '');
       if (!topicSignature) missing.push('topic_signature');
       const angle = toPlainString(item?.angle || '');
-      if (!angle || !CALENDAR_ANGLE_OPTIONS.includes(angle)) missing.push('angle');
+      if (!angle) missing.push('angle');
       if (missing.length) details.push({ index, missing });
     });
     if (plan.length !== expectedCount || seen.size !== expectedCount || details.length) {
@@ -11643,9 +11500,8 @@ const server = http.createServer((req, res) => {
           'Return ONLY valid JSON. No markdown. No commentary.',
           'You must keep the exact number of posts and the same order.',
           'Fill ONLY the missing fields listed per post; do not change existing fields.',
-          'Required fields per post: day, title, hook, caption, cta, hashtags, script, reelScript, designNotes, engagementScripts, topic_signature, angle, topicCapsule.',
-          'hashtags must be an array of strings (8–12).',
-          'Do not use placeholders or generic filler. Forbidden tokens: placeholder, quick hook, explain the idea, ask for feedback, neutral background, let me know what you think, talk briefly, screenshot this so you remember, office hours.',
+          'Fill missing fields only; preserve existing values, order, and count.',
+          'Do not use placeholders.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
           `Original JSON: ${JSON.stringify(repairPayload)}`,
         ].join('\n');
@@ -11775,7 +11631,7 @@ const server = http.createServer((req, res) => {
           fatalEntries.push({ index: idx, day, reasons: [{ code: 'INVALID_POST' }] });
           return;
         }
-        normalizeHashtagsForBrandBrain(post, BRAND_BRAIN_HASHTAG_RANGE);
+        normalizeHashtagsForBrandBrain(post);
         const validation = validateBrandBrainPost(post, nicheStyle);
         if (validation.ok) return;
         const fatalReasons = [];
