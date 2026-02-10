@@ -3484,12 +3484,13 @@ if (process.env.CALENDAR_SCHEMA_SELFTEST === '1') {
 
 function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
-  const lines = [
-    'Brand Brain mode: use corrective framing and causal reasoning (short, direct).',
-    '- Do not add any new keys; keep the same schema and structure.',
-    '- Avoid neutral encyclopedia tone; keep the copy direct and decisive.',
-  ];
-  return lines.join('\n');
+  return [
+    'BRAND BRAIN DIRECTIVE',
+    'Write competitively: wrong focus → real gate → operational cost → replacement rule.',
+    'Use one concrete artifact condition as proof.',
+    'Stay decisive; no neutral explainer voice.',
+    'Output must match the requested JSON schema exactly.',
+  ].join('\n');
 }
 
 const VOICE_LOCK_PRESET_GUIDES = {
@@ -3727,114 +3728,35 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   };
 }
 
-const TOPIC_LOCK_CONTRACT_BLOCK = [
-  'TOPIC LOCK (internal, do not output):',
-  '- Before each post, note POST_ID and POST_TOPIC (title/topic).',
-  '- All fields must stay about POST_TOPIC only; do not borrow from other posts.',
+const CALENDAR_ALIGNMENT_BLOCK = [
+  'CALENDAR ALIGNMENT',
+  'Goal: one publishable short-form post grounded in a real work moment.',
+  'Topic fidelity: keep every field about the provided title/topic.',
+  'Coherence: use one concrete artifact, one inspectable condition, and one operational next move across all fields.',
+  'Specificity: prefer observable details; avoid generic slogans and vague “shifts my approach” language.',
+  'Novelty: avoid repeating recent artifacts/conditions/signatures when provided.',
+  'Mode separation: Regular = observational; Brand Brain = corrective re-ranking with cost and replacement rule.',
+  'Output: match the requested JSON schema exactly; no extra keys; no labels inside fields.',
 ].join('\n');
 
-const FIELD_REGROUNDING_INSTRUCTION =
-  'Start by restating POST_TOPIC in your own words internally, then write the field strictly about it without keyword stuffing. Do NOT mention the phrase "POST_TOPIC".';
-
-const FIELD_REGROUNDING_BLOCK = [
-  'FIELD RE-GROUNDING:',
-  `- ${FIELD_REGROUNDING_INSTRUCTION}`,
-].join('\n');
-
-const SHORT_FORM_CONTENT_CONTRACT_BLOCK = [
-  'SHORT-FORM CONTRACT:',
-  'Use only the current request inputs (niche, brand context, planned title/angle, user-entered details).',
-  'Keep each post self-contained; do not reuse text from other posts or prior runs.',
-  'Stay on the provided POST_TOPIC/title for every field.',
-  'Do not fabricate facts (stats, dates, testimonials, prices, awards, specific outcomes) unless provided in inputs.',
-  'If RECENT IDEAS or RECENT SIGNATURES are provided, avoid repeating their phrasing.',
-].join('\n');
-
-const TITLE_ANCHOR_ECHO_BLOCK = [
-  'TITLE ANCHOR:',
-  'Title is the fixed topic for the post.',
-  'All fields should clearly stay about the title’s topic.',
-  'Avoid copying the full title verbatim as the hook.',
-].join('\n');
-
-const LIFESTYLE_REDEFINITION_BLOCK = [
-  'LIFESTYLE REDEFINITION (BOTH MODES):',
-  'Lifestyle content should connect a lifestyle cue to a real decision trigger or practical tradeoff in the niche.',
-  'Keep it grounded in decision context, not vibes-only narration.',
-].join('\n');
-
-const QUALITY_ALIGNMENT_BLOCK = [
-  'QUALITY + ALIGNMENT (ALL POSTS):',
-  'Prefer concrete, observable details over abstract phrasing.',
-  'Keep all fields about the same moment and the same topic.',
-  'Keep sections distinct in intent (avoid restating the same sentence across fields).',
-  'Keep tone consistent with the selected mode (Regular vs Brand Brain) without adding extra format rules.',
-].join('\n');
-
-const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = [
-  '[REGULAR_MODE_INSTRUCTIONS]',
-  'Output JSON only. No markdown. No commentary.',
-  'Match the schema exactly; include every required key with non-empty values.',
-  'Do not add extra keys.',
-  '',
-  'Regular mode: neutral, calm, observational (not adversarial, not corrective).',
-  '[/REGULAR_MODE_INSTRUCTIONS]',
-].join('\n');
-
-const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = [
-  '[BRAND_BRAIN_MODE_INSTRUCTIONS]',
-  'Output JSON only. No markdown. No commentary.',
-  'Match the schema exactly; include every required key with non-empty values.',
-  'Do not add extra keys.',
-  '',
-  'Brand Brain mode: corrective, competitive re-ranking (not neutral education).',
-  '[/BRAND_BRAIN_MODE_INSTRUCTIONS]',
-].join('\n');
-
-const COMPACT_REQUIRED_KEYS_LINE_REGULAR =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, details{suggestedAudio}, topic_signature, angle.';
-
-const COMPACT_REQUIRED_KEYS_LINE_BRAND =
-  'Required keys: post_key, day, slotIndex, title, topicCapsule, format, hook, caption, cta, hashtags[], script, reelScript, designNotes, engagementScripts, details{suggestedAudio}, topic_signature, angle.';
-
+const TOPIC_LOCK_CONTRACT_BLOCK = '';
+const FIELD_REGROUNDING_INSTRUCTION = '';
+const FIELD_REGROUNDING_BLOCK = '';
+const SHORT_FORM_CONTENT_CONTRACT_BLOCK = '';
+const TITLE_ANCHOR_ECHO_BLOCK = '';
+const LIFESTYLE_REDEFINITION_BLOCK = '';
+const QUALITY_ALIGNMENT_BLOCK = '';
+const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = '';
+const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = '';
+const COMPACT_REQUIRED_KEYS_LINE_REGULAR = '';
+const COMPACT_REQUIRED_KEYS_LINE_BRAND = '';
 const COMPACT_LENGTH_LIMITS_BLOCK = '';
-
-const COMPACT_SHARED_CONTRACT_BLOCK = [
-  'CONTRACT:',
-  'Output JSON only. No markdown. No commentary.',
-  'Match the schema exactly; include every required key with non-empty values.',
-  'Do not add extra keys.',
-  'Do not mention pillars or mode inside field text.',
-].join('\n');
-
-const COMPACT_REGULAR_MODE_BLOCK = [
-  'MODE: Regular.',
-  COMPACT_SHARED_CONTRACT_BLOCK,
-].join('\n');
-
-const COMPACT_BRAND_BRAIN_MODE_BLOCK = [
-  'MODE: Brand Brain.',
-  COMPACT_SHARED_CONTRACT_BLOCK,
-].join('\n');
-
-const BRAND_BRAIN_KEY_CONTRACT_TOP = [
-  'KEY CONTRACT (BINDING):',
-  '- Output ONE JSON object matching the schema exactly. No markdown. No commentary.',
-  '- Required non-empty string keys: topic_signature, angle (exact spelling, case-sensitive).',
-  '- Do not use alias keys for these fields.',
-  '- Before output, verify both keys exist and are non-empty; if missing, rewrite once internally.',
-].join('\n');
-
-const CALENDAR_HARD_SEPARATION_BLOCK = [
-  'CRITICAL:',
-  '- Regular Calendar posts must remain neutral and non-persuasive.',
-  '- Brand Brain posts must follow Brand Brain requirements and remain distinct from Regular posts.',
-  '- MODE FIREWALL: Regular must not contain belief attacks, myth framing, consequence framing, urgency, or adversarial language. Brand Brain must not be neutral education.',
-  '- If mode framing overlaps (Regular uses Brand Brain rhetoric, or Brand Brain becomes neutral), rewrite until distinct.',
-].join('\n');
-
+const COMPACT_SHARED_CONTRACT_BLOCK = '';
+const COMPACT_REGULAR_MODE_BLOCK = '';
+const COMPACT_BRAND_BRAIN_MODE_BLOCK = '';
+const BRAND_BRAIN_KEY_CONTRACT_TOP = '';
+const CALENDAR_HARD_SEPARATION_BLOCK = '';
 const REGULAR_CONTENT_QUALITY_RULES_BLOCK = '';
-
 const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = '';
 
 function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
@@ -3848,9 +3770,9 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
     topicPlan,
   });
   const lines = [
-    'REQUESTED POST IDS:',
-    '- Each post object should include: post_key, day, slotIndex, title.',
-    '- post_key format should be "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
+    'REQUESTED POST IDS',
+    'If post_key/day/slotIndex/title are present in the request context, copy them exactly into the output fields.',
+    'Do not invent or rename identifiers.',
     'Requested IDs:',
   ].filter(Boolean);
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
@@ -3870,7 +3792,10 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
   const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
   const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const lines = ['POST KEYS:'];
+  const lines = [
+    'POST KEYS',
+    'Copy these identifiers exactly where the schema includes them:',
+  ];
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
     const day = safeStart + dayOffset;
     for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
@@ -4014,16 +3939,14 @@ function buildRecentTitlesList(titles = [], limit = 10) {
   return out;
 }
 
-const PROMPT_ANGLE_OPTIONS = [];
+const PROMPT_ANGLE_OPTIONS = CALENDAR_ANGLE_OPTIONS;
 
 function pickAngleForPostKey(postKeyValue = '') {
-  const value = String(postKeyValue || '');
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = ((hash * 31) + value.charCodeAt(i)) >>> 0;
-  }
-  if (!PROMPT_ANGLE_OPTIONS.length) return 'The practical move that reduces confusion';
-  return PROMPT_ANGLE_OPTIONS[hash % PROMPT_ANGLE_OPTIONS.length];
+  const key = String(postKeyValue || '');
+  if (!PROMPT_ANGLE_OPTIONS.length) return 'decision inflection';
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return PROMPT_ANGLE_OPTIONS[h % PROMPT_ANGLE_OPTIONS.length];
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
@@ -4088,20 +4011,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
     : '';
   const noveltyThesisBlock = [
-    'NOVELTY (most important)',
-    'Use RECENT IDEAS and RECENT SIGNATURES as memory. Move to a different artifact category and a fresh cadence when recent output clusters around the same pattern.',
-    'Keep one named artifact and one inspectable condition at the center, then carry that same moment and consequence across fields.',
+    'NOVELTY',
+    'If recent ideas/signatures are provided, avoid repeating the same artifact category or condition phrasing.',
+    'Novelty must not change the topic/title; it only changes the artifact/condition choice within the same topic.',
   ].join('\n');
   const GLOBAL_RULES = [
-    'OUTPUT CONTRACT',
-    '- Output JSON only. No markdown. No commentary.',
-    '- Match the schema exactly; output every required field with non-empty content.',
-    '- Do not add extra keys.',
-    `- Required keys (exact): ${requiredKeys}`,
-    '- Each field must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
-    '- No continuation sections (Follow-up, Next post, Tomorrow, Part 2, Next, Up next).',
-    '- Keep one coherent moment across fields: same topic, same artifact/cue, and same operational consequence.',
-    '- Keep tone plain and specific; avoid motivational or slogan language.',
+    'OUTPUT',
+    'Return JSON only and match the requested schema exactly.',
+    'No extra keys. No labels inside field values.',
+    'CONTENT',
+    'Keep one coherent moment across all fields: same topic, artifact, condition, and operational next move.',
+    'Use concrete, observable details; avoid generic slogans and vague “shifts my approach” phrasing.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
@@ -4242,6 +4162,7 @@ Generate one complete post.`;
     noveltyThesisBlock,
     `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
+    CALENDAR_ALIGNMENT_BLOCK,
     contractBlock,
   ].filter(Boolean);
   const extra = opts.extraInstructions ? `\n${opts.extraInstructions.trim()}` : '';
@@ -4969,18 +4890,18 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       ...assigned.map((item) =>
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
-      'Use the provided title as the topic label; all fields stay about that topic.',
+      'Use the provided title as the topic label for the post; keep every field about that topic.',
+      'Do not broaden or switch to a different topic.',
     ];
     return lines.join('\n');
   }
   const lines = [
     'ASSIGNED TOPIC PLAN (read-only):',
-    'Each post object should include: post_key, day, slotIndex, title.',
-    'post_key format: "day-<day>-slot-<slotIndex>" where slotIndex is 0-based within the day.',
     ...assigned.map((item) =>
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
-    'Use the provided title as the topic label; all fields stay about that topic.',
+    'Use the provided title as the topic label for the post; keep every field about that topic.',
+    'Do not broaden or switch to a different topic.',
   ];
   return lines.join('\n');
 }
@@ -5114,13 +5035,13 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     'Return JSON only. No markdown. No commentary.',
     'Output a single JSON object matching the same schema shape as the provided post payload.',
     'Do not add extra keys.',
-    'Keep one coherent moment across all fields.',
+    'Keep the same topic/title; change the artifact condition and wording to be fresh.',
     `Niche/Style: ${nicheStyle}`,
     `Day to regenerate: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
     presetGuidelines ? `Preset Guidelines:\n${presetGuidelines}` : '',
     nicheSpecific,
-    'Current post payload (reference only — rewrite with a fresh angle):',
+    'Current post payload (reference only — do not reuse phrasing):',
     snapshot,
   ].filter(Boolean).join('\n\n');
 }
@@ -5924,8 +5845,8 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Correct a mis-ranked belief. Show the common focus, reveal the real gate, and prove it with one artifact condition. Sharp, decisive, competitive—no coaching tone.'
-    : 'Stay inside one real work moment. Point to one artifact, one inspectable condition, and the next move it changes. Observational, calm, competent—no teaching voice.';
+    ? 'Brand Brain: wrong focus → real gate → operational cost → replacement rule. Prove with one artifact condition.'
+    : 'Regular: one real work moment. One artifact, one inspectable condition, one next move it changes.';
 }
 
 function normalizeSignatureText(value = '') {
@@ -6021,12 +5942,20 @@ function inferConsequenceCue(text = '') {
 }
 
 function buildPostSignature(post = {}) {
+  const reelObj =
+    post?.reelScript && typeof post.reelScript === 'object'
+      ? [post.reelScript.hook, post.reelScript.body, post.reelScript.cta].filter(Boolean).join(' ')
+      : '';
   const source = [
     toPlainString(post?.title || ''),
     toPlainString(post?.hook || ''),
-    toPlainString(post?.body || ''),
-    toPlainString(post?.reelBody || ''),
-  ].filter(Boolean).join(' ');
+    toPlainString(post?.caption || ''),
+    toPlainString(post?.script || ''),
+    toPlainString(reelObj || ''),
+    toPlainString(post?.designNotes || ''),
+  ]
+    .filter(Boolean)
+    .join(' ');
   const artifact = inferArtifactName(source);
   const condition = inferConditionCue(source);
   const consequence = inferConsequenceCue(source);
@@ -9034,6 +8963,8 @@ async function generateTopicPlan({
     'Do not include extra keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle.',
+    'Title must be a concrete topic label; avoid generic titles.',
+    'Angle is a short label for the decision dynamic.',
     'Use each provided title as the topic label for its post.',
     'Assigned slots:',
     ...slotLines,
@@ -10693,6 +10624,8 @@ const server = http.createServer((req, res) => {
     `Generate exactly ${expectedCount} items for these post_keys:`,
     postKeys.join(', '),
     'Each item must include: post_key, topic_signature, angle.',
+    'topic_signature must capture: artifact + condition + consequence in a short phrase.',
+    'angle is a short label for the decision dynamic.',
     'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
     'Avoid framing angles as tips, reminders, or broad advice.',
     'topic_signature should be concise and distinctive for each post.',
@@ -10922,10 +10855,10 @@ const server = http.createServer((req, res) => {
       ? Number(payload.maxTokens)
       : 900;
     const requestTimeoutMs = payload?.requestTimeoutMs;
-    const temperature = Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : 0.8;
+    const temperature = Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : 0.6;
     const presencePenalty = Number.isFinite(Number(payload?.presencePenalty))
       ? Number(payload.presencePenalty)
-      : (Number.isFinite(Number(payload?.presence_penalty)) ? Number(payload.presence_penalty) : 0.4);
+      : (Number.isFinite(Number(payload?.presence_penalty)) ? Number(payload.presence_penalty) : 0.15);
     const calendarId = toPlainString(payload?.calendarId || payload?.id || '');
     const usedSignatures = [];
     const acceptedPosts = [];
