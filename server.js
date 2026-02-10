@@ -4213,13 +4213,14 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     .replaceAll('{asset}', ctaAsset);
   return [
     'CREATIVE BRIEF',
-    'This post should center on a real moment inside the workflow.',
+    'This post should center on one real work moment.',
     normalizedMode === 'brand_brain'
-      ? 'Frame it as correction: wrong focus → real constraint → operational cost. Prove it with an artifact cue.'
-      : 'Stay inside the work moment. Choose one transaction artifact and one inspectable condition on it. No productivity/self-help framing or generic momentum language.',
+      ? 'Use corrective framing: wrong focus to real gate, then show the operational cost and why the old optimization looks naive once the artifact cue is visible.'
+      : 'Keep it observational and watchable: one transaction artifact, one inspectable condition, and one next-move change with no advice voice.',
     'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
-    'The signal should naturally cause a competent professional to change sequence, timing, leverage, or verification — without announcing the change.',
-    'If the signal is environmental or behavioral, it must function as a filter or constraint, not a vibe or preference.',
+    'Let that signal naturally shift sequence, timing, leverage, or verification without announcing a lesson.',
+    'If the signal is environmental or behavioral, frame it as a filter or constraint rather than a vibe or preference.',
+    'Avoid generic slogan language such as don’t overlook, let’s dive, or always.',
     '',
     'Situation:',
     `${angle}`,
@@ -4229,7 +4230,7 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     '',
     'CTA intent:',
     'Choose a natural platform-native action (save, bookmark, share, comment, replay) that fits the moment.',
-    'The CTA should feel like a continuation of attention at the exact moment the next move becomes obvious.',
+    'The CTA should feel like a continuation of attention right when the next move becomes clear.',
   ].join('\n');
 }
 
@@ -4339,8 +4340,8 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : '';
   const noveltyThesisBlock = [
     'NOVELTY (most important)',
-    'Use RECENT IDEAS and RECENT SIGNATURES as memory. Choose a different gate category, artifact, and cadence than recent output. If recent posts cluster in one category, switch categories rather than rewording the same gate.',
-    'Anchor this post to ONE named artifact and ONE inspectable condition on that artifact, then keep the same moment, condition, and consequence across all fields.',
+    'Use RECENT IDEAS and RECENT SIGNATURES as memory. Move to a different artifact category and a fresh cadence when recent output clusters around the same pattern.',
+    'Keep one named artifact and one inspectable condition at the center, then carry that same moment and consequence across fields.',
   ].join('\n');
   const GLOBAL_RULES = [
     'OUTPUT CONTRACT',
@@ -4356,7 +4357,9 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Do not introduce a second gate. Keep one artifact, one condition, and one consequence throughout.',
     '- Use ONE specific moment. Every field must point to the same moment + same artifact + same condition + same consequence.',
     '- The CTA must be exactly aligned to the CTA direction in the CREATIVE BRIEF. Do not swap assets (no defaulting to checklist/template).',
-    '- CTA alignment: keep CTA, reelCta, and caption aligned on the same action direction from the CREATIVE BRIEF (save, bookmark, share, comment, replay, compare, or notice) without switching actions mid-post.',
+    '- Keep tone plain and specific; avoid motivational or slogan cadence.',
+    '- Favor concrete nouns and observable details over abstract language.',
+    '- Regular reads as an observation, while Brand Brain clearly re-ranks a wrong focus into a real gate across fields.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
@@ -6221,8 +6224,8 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Correct a mis-ranked belief by making the old optimization feel unsafe or naive once the real gate is revealed.'
-    : 'Stay inside a real work moment: one specific cue on a real artifact, and how it changes the next move. No productivity/self-help framing.';
+    ? 'Correct a mis-ranked belief. Show the common focus, reveal the real gate, and prove it with one artifact condition. Sharp, decisive, competitive—no coaching tone.'
+    : 'Stay inside one real work moment. Point to one artifact, one inspectable condition, and the next move it changes. Observational, calm, competent—no teaching voice.';
 }
 
 function normalizeSignatureText(value = '') {
