@@ -2568,14 +2568,14 @@ async function generateAndValidateSinglePost({
       ? [
         'The previous output failed structural validation.',
         'Return valid JSON matching the schema exactly.',
-        'Keep the same topic and moment.',
+        'Keep the same topic/title and the same moment.',
       ].join('\n')
       : '';
     const brandBrainExecutionReminder = calendarMode === 'brand_brain'
       ? [
         'Brand Brain execution reminder:',
-        'Keep the post corrective and competitive, not neutral education.',
-        'Move from wrong focus to real gate to operational cost to replacement rule.',
+        'Wrong focus → real gate → operational cost → replacement rule.',
+        'Prove with one concrete artifact condition.',
       ].join('\n')
       : '';
     const mergedInstructions = [retryLine, baseInstructions, brandBrainExecutionReminder, extraInstructions].filter(Boolean).join('\n');
@@ -2745,7 +2745,7 @@ async function generateAndValidateSinglePost({
           extraInstructions = [
             'The previous output failed structural validation.',
             'Return valid JSON matching the schema exactly.',
-            'Do not change content intent.',
+            'Keep the same topic/title and the same moment.',
           ].join('\n');
           continue;
         }
@@ -3730,13 +3730,13 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
 
 const CALENDAR_ALIGNMENT_BLOCK = [
   'CALENDAR ALIGNMENT',
-  'Goal: one publishable short-form post grounded in a real work moment.',
-  'Topic fidelity: keep every field about the provided title/topic.',
-  'Coherence: use one concrete artifact, one inspectable condition, and one operational next move across all fields.',
-  'Specificity: prefer observable details; avoid generic slogans and vague “shifts my approach” language.',
-  'Novelty: avoid repeating recent artifacts/conditions/signatures when provided.',
-  'Mode separation: Regular = observational; Brand Brain = corrective re-ranking with cost and replacement rule.',
-  'Output: match the requested JSON schema exactly; no extra keys; no labels inside fields.',
+  'Goal: one publishable short-form post inside a real work moment.',
+  'Topic fidelity: every field stays about the provided title/topic.',
+  'Coherence: one concrete artifact + one inspectable condition + one operational next move across all fields.',
+  'Specificity: use observable details; avoid vague “shifts my approach” phrasing.',
+  'Novelty: if recent items are provided, vary artifact/condition wording without changing the topic.',
+  'Mode: Regular = observational. Brand Brain = corrective re-ranking with cost and replacement rule.',
+  'Output: return JSON only; match schema exactly; no extra keys; no labels inside fields.',
 ].join('\n');
 
 const TOPIC_LOCK_CONTRACT_BLOCK = '';
@@ -4020,7 +4020,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'Return JSON only and match the requested schema exactly.',
     'No extra keys. No labels inside field values.',
     'CONTENT',
-    'Keep one coherent moment across all fields: same topic, artifact, condition, and operational next move.',
+    'Write one coherent moment across all fields: same topic, same artifact, same condition, same next move.',
     'Use concrete, observable details; avoid generic slogans and vague “shifts my approach” phrasing.',
   ].join('\n');
 
@@ -4890,8 +4890,8 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       ...assigned.map((item) =>
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
-      'Use the provided title as the topic label for the post; keep every field about that topic.',
-      'Do not broaden or switch to a different topic.',
+      'Use the provided title as the topic label for the post.',
+      'Every field must stay about that topic.',
     ];
     return lines.join('\n');
   }
@@ -4900,8 +4900,8 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
     ...assigned.map((item) =>
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
-    'Use the provided title as the topic label for the post; keep every field about that topic.',
-    'Do not broaden or switch to a different topic.',
+    'Use the provided title as the topic label for the post.',
+    'Every field must stay about that topic.',
   ];
   return lines.join('\n');
 }
@@ -5035,7 +5035,7 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     'Return JSON only. No markdown. No commentary.',
     'Output a single JSON object matching the same schema shape as the provided post payload.',
     'Do not add extra keys.',
-    'Keep the same topic/title; change the artifact condition and wording to be fresh.',
+    'Keep the same topic/title. Rewrite with a different artifact condition and new wording.',
     `Niche/Style: ${nicheStyle}`,
     `Day to regenerate: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
@@ -5298,7 +5298,7 @@ function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
   const niche = String(nicheStyle || 'General').trim() || 'General';
   const audience = brandContext ? `Audience: ${brandContext.split('\n')[0]}` : 'Audience: General';
   const offer = 'Offer: N/A';
-  return `\n=== NICHE PROFILE (SOURCE OF TRUTH) ===\nNiche: ${niche}\n${audience}\n${offer}\nHard rules:\n- Every line MUST be directly relevant to the niche above.\n- NEVER include concepts from unrelated niches.\n- If uncertain, stay generic within the niche.\n- Avoid beauty/med-spa language unless the niche is beauty/med-spa.\n- Avoid discount-code vibes unless the niche explicitly uses it.\n=== END NICHE PROFILE ===\n`;
+  return `\n=== NICHE PROFILE (SOURCE OF TRUTH) ===\nNiche: ${niche}\n${audience}\n${offer}\nHard rules:\n- Every line MUST be directly relevant to the niche above.\n- NEVER include concepts from unrelated niches.\n- Avoid beauty/med-spa language unless the niche is beauty/med-spa.\n- Avoid discount-code vibes unless the niche explicitly uses it.\n=== END NICHE PROFILE ===\n`;
 }
 
 function deriveNicheKeyword(nicheStyle = '') {
@@ -8963,9 +8963,9 @@ async function generateTopicPlan({
     'Do not include extra keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'Each item must include: slot, day, postIndex, title, angle.',
-    'Title must be a concrete topic label; avoid generic titles.',
-    'Angle is a short label for the decision dynamic.',
-    'Use each provided title as the topic label for its post.',
+    'Title: a specific topic label for this niche (no generic phrasing).',
+    'Angle: a short label describing the decision dynamic.',
+    'Use each title as the topic label for its post.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
