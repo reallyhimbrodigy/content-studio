@@ -4347,173 +4347,129 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-INTENT  
-Free-tier content calendar for consistent posters who want reliably good post ideas.
-This is not a lesson, not a warning, not a story, and not an ad.
-It reads like: “Here is the specific detail that decides this moment, what it means, and what it changes.”
+ROLE  
+Generate one short-form video post for Instagram / TikTok in a specific professional niche.
 
-PRIMARY GOAL  
-Surface one real-world decision gate that is useful, concrete, and easy to apply.
-The viewer should walk away thinking: “That’s a detail I didn’t realize mattered.”
+WHAT THIS CONTENT IS  
+This is content for people who post consistently and want to keep doing so without embarrassment.
 
-HOW TO CHOOSE THE IDEA (CRITICAL)  
-Choose a decision gate that changes what happens next in a real workflow.
-Prefer gates that affect leverage, eligibility, options, or outcomes *before* failure is obvious.
-Avoid defaulting to trivial completion states (missing signatures, blank fields, generic approvals) unless the Creative Brief explicitly centers on that topic.
+It must be:
+- ENTERTAINING to watch  
+- Grounded in real work  
+- Calm, competent, and credible  
 
-CORE WRITING PRINCIPLES  
-- Generate ONE post only.  
-- Anchor the entire post to ONE real, domain-native artifact.  
-- Focus on ONE specific, inspectable condition on that artifact.  
-- Explain ONE downstream operational consequence that condition causes.  
-- Every field must refer to the same moment, same artifact, same condition, and same consequence.  
+This is not teaching.  
+This is not advice.  
+This is not an ad.
 
-CLARITY STANDARD  
-The viewer should be able to point to the exact place on the artifact being discussed.
-If the condition cannot be visually highlighted, the idea is not specific enough.
+It should feel like a clean, watchable observation someone smart would nod at.
 
-VOICE  
-Plain, grounded, and specific.
-No hype. No PSA tone. No anonymous anecdotes.
-No tutorial framing and no step-by-step walkthroughs.
-Write in observational language: what is there → what it indicates → what it changes.
+HOW TO THINK ABOUT THE IDEA  
+Find a moment in real work where:
+- One small detail quietly decides what happens next  
+- Most people look past it  
+- But once you notice it, your behavior changes  
 
-FIELD INSTRUCTIONS  
+The detail must change what a competent professional does next, not just how they interpret the situation.  
+The moment should sit so close to the viewer’s real work that it affects what they do next without them realizing they adjusted.
 
-title  
-Name the gate plainly (what decision is being gated).
+Not a mistake.  
+Not a warning.  
+Not a rule.
 
-hook  
-ONE line. Includes: artifact + condition (in encoding) + immediate implication. No generic opener.
+A detail that reframes the moment.
 
-body  
-Exactly 3 sentences. No list formatting.
-Sentence 1: artifact + where + condition in the required encoding (LOCATION + OPERATOR + VALUE/STATE).
-Sentence 2: what that condition indicates in plain language (single interpretation).
-Sentence 3: the downstream operational change it causes (eligibility/approval/leverage/restriction/inability to proceed). Do not use “delay” as the whole consequence.
+HOW TO WRITE IT  
+Anchor the post to something real people recognize.
 
-cta  
-One clear action that matches the CREATIVE BRIEF CTA direction exactly and references the same artifact.
+Describe:
+- what’s there  
+- what it actually means  
+- what that changes in practice  
 
-reelHook  
-Hook-only spoken line (same meaning as hook).
+Write from inside the moment, not above it — as if the viewer is already holding the artifact.  
+End on a consequence that affects action, leverage, or sequencing — not just perception.
 
-reelBody  
-Body-only spoken lines (same meaning as body). Still exactly 3 sentences.
+ENTERTAINMENT STANDARD  
+The video should hold attention because:
+- the moment is familiar  
+- the detail is specific  
+- the implication clicks  
 
-reelCta  
-CTA-only spoken line. Must match CTA field verbatim.
-
-caption  
-One tight paragraph restating artifact + condition encoding + implication. No coaching verbs.
-
-designNotes  
-Show the artifact and visually mark the condition at the stated location (zoom/underline/callout).
-
-engagementLoop  
-One question tied to the gate that invites experience or preference. Not fear-based.
-
-hashtags  
-5–8 strings. No leading #. No duplicates. Mix broad + niche + intent.
+Not because of fear, authority, or hype.
 
 GOALS / EXPECTATIONS — REGULAR CALENDAR  
-This calendar is for users who post consistently and want solid, dependable content ideas.
-The output should feel competent, practical, and publishable every day.
-It should build credibility and clarity, not dominate competitors or force belief flips.
-Do not optimize for aggressive hooks or contrarian positioning.
-Success means steady usefulness without embarrassment or noise.`;
+This calendar exists to help users post consistently with confidence.  
+Every post should feel safe, clean, and publishable.  
+The content should build credibility and clarity, not dominance.  
+A perfect post collapses observer distance and quietly changes the viewer’s next action.  
+Success means entertaining, useful insights that never feel embarrassing to post.
+
+Generate one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-INTENT  
-Paid-tier content calendar for users who want to outperform competitors with short-form video.
-This is not advice content.
-It reads like a realization followed by a rule replacement.
+ROLE  
+Generate one short-form video designed to win attention and outperform competitors on Instagram / TikTok.
 
-PRIMARY GOAL  
-Create a belief flip that re-ranks what actually gates the outcome.
-Expose what people focus on — then show the real gate that professionals exploit.
+WHAT THIS CONTENT IS  
+This is competitive content.
 
-HOW TO CHOOSE THE IDEA (CRITICAL)  
-Select a gate that creates a “you were optimizing the wrong thing” moment.
-Prefer hidden constraints, overlooked mechanics, or second-order effects.
-Avoid trivial gates (missing signatures, basic status checks) unless the Creative Brief explicitly requires them.
+It exists to expose a blind spot and replace it with a better rule.
 
-CORE WRITING PRINCIPLES  
-- Generate ONE post only.  
-- Anchor the entire post to ONE real, domain-native artifact.  
-- Focus on ONE specific, inspectable condition on that artifact.  
-- Show ONE downstream operational consequence beyond generic time or money loss.  
-- Every field must refer to the same moment, same artifact, same condition, and same consequence.  
+It should feel like:  
+“Oh. I’ve been optimizing the wrong thing.”
 
-VOICE  
-Direct, sharp, and non-instructional.
-No teaching tone. No checklists. No anecdotes. No PSA framing.
-This should feel corrective, not friendly.
+This is not advice.  
+This is not education.  
+This is not friendly.
 
-BELIEF FLIP REQUIREMENT (NON-NEGOTIABLE)  
-The hook must explicitly contrast:
-- What people think gates the outcome  
-vs  
-- What actually gates the outcome  
+HOW TO THINK ABOUT THE IDEA  
+Start with something people confidently believe determines success.
 
-The real gate must be expressed as:
-artifact + specific condition + immediate implication.
+Then identify:
+- the real constraint professionals actually optimize  
+- the signal that decides the outcome early  
+- where this shows up in the real world  
 
-BODY LOGIC  
-The body must flow naturally through:
-1) The wrong assumption people optimize for  
-2) Why that assumption fails  
-3) The operational consequence that actually matters  
-4) Micro-proof: the exact artifact detail that makes this undeniable  
+The wrong belief should feel reasonable at first — and slightly embarrassing by the end.  
+The wrong belief should signal inexperience or outdated thinking once exposed.
 
-FIELD INSTRUCTIONS  
+This must be a re-ranking, not a reminder.
 
-title  
-Name the hidden failure plainly.
+HOW TO WRITE IT  
+Lead with contrast.  
+Wrong focus → real gate.
 
-hook  
-ONE line, declarative.
-Contain the belief flip and the real gate.
-Write it like a punchline, not a template.
+Then:
+- show why the common belief fails  
+- show what it costs operationally  
+- prove it with a concrete, undeniable detail  
 
-body  
-2–4 sentences.
-State the wrong assumption, why it breaks, what it costs operationally, and prove it with the artifact condition.
-No step-by-step instructions.
+Write with certainty.  
+No teaching tone.  
+No softening.
 
-cta  
-One action that matches the CREATIVE BRIEF direction exactly.
-Use commitment tone only if the brief requires it.
-Reference the same artifact.
+The replacement rule should feel obvious in hindsight and dangerous to ignore.  
+The new rule should feel like something professionals already know but don’t say out loud.
 
-reelHook  
-Hook-only spoken line.
+ENTERTAINMENT STANDARD  
+Retention comes from:
+- tension  
+- correction  
+- recognition of a blind spot  
 
-reelBody  
-Body-only spoken lines.
-
-reelCta  
-CTA-only spoken line and must match CTA verbatim.
-
-caption  
-One tight paragraph sharpening the new rule created by the belief flip.
-
-designNotes  
-Show the artifact and visually highlight the proof condition (zoom, underline, callout).
-
-engagementLoop  
-One question that challenges the prior assumption (not fear-based).
-
-hashtags  
-5–8 strings, no leading #, no duplicates; mix broad + niche + intent.
+Not from clarity alone.
 
 GOALS / EXPECTATIONS — BRAND BRAIN CALENDAR  
-This calendar is for users who want to win attention and outperform competitors.
-Each post must create cognitive tension by exposing a mis-ranked belief.
-The content should feel sharp, corrective, and algorithm-native.
-If a post could be safely swapped into the Regular calendar, it failed.
-Success means belief disruption that drives replays, retention, and competitive edge.`;
+This calendar exists to create winning, algorithm-native content.  
+Each post must disrupt a belief and re-rank priorities.  
+The content should feel sharp, corrective, and competitive.  
+A perfect post makes the old optimization feel naïve and the new one non-optional.  
+If a post could be safely swapped into the Regular calendar, it failed.  
+A perfect post makes continuing to optimize the old signal feel irresponsible.
+
+Generate one complete post.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
