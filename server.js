@@ -2531,7 +2531,10 @@ async function generateAndValidateSinglePost({
   });
   const lens = getModeLens(calendarMode);
   const recentSignatures = Array.isArray(usedSignatures) ? usedSignatures.slice(-10) : [];
-  const pillarStyle = CALENDAR_PILLAR_STYLE_RULES[assignedPillarKey] || '';
+  const pillarRules = calendarMode === 'brand_brain'
+    ? BRAND_BRAIN_PILLAR_STYLE_RULES
+    : REGULAR_PILLAR_STYLE_RULES;
+  const pillarStyle = pillarRules[assignedPillarKey] || '';
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const baseInstructions = [
@@ -6158,11 +6161,40 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
 const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
-const CALENDAR_PILLAR_STYLE_RULES = {
-  education: 'Teach a concept with a checklist or steps. Include a clear takeaway.',
-  social_proof: 'Use a client story with process steps and outcome (no fake names).',
-  promotion: 'Present a clear offer (who it is for, what it includes, next step).',
-  lifestyle: 'Vivid day-in-life or neighborhood vibe anchored to a real decision.',
+const REGULAR_PILLAR_STYLE_RULES = {
+  education: `Guide attention toward a specific mechanism that quietly decides the next move.
+Favor moments where noticing the detail naturally causes a different action to happen sooner, faster, or at all.
+Entertainment comes from inevitability clicking into place.`,
+
+  social_proof: `Guide attention toward patterns professionals respond to consistently, even when no one acknowledges them out loud.
+Favor moments where behavior reliably diverges — some things get prioritized, others drift.
+Entertainment comes from recognizing which side of that split you’re usually on.`,
+
+  lifestyle: `Guide attention toward a lifestyle cue that acts as a filter, not a preference.
+Favor signals that quietly decide whether buyers lean in or disengage, even when the home looks right on paper.
+Entertainment comes from realizing why some showings go nowhere.`,
+
+  promotion: `Guide attention toward a moment worth saving because it consistently decides momentum.
+Favor details that, once noticed, are hard to unsee and immediately change how the rest is evaluated.
+Entertainment comes from usefulness compounding over time.`,
+};
+
+const BRAND_BRAIN_PILLAR_STYLE_RULES = {
+  education: `Guide attention toward a belief that works at a beginner level but fails quietly at a competitive one.
+Favor moments where continuing to optimize the old belief creates hidden drag.
+Entertainment comes from realizing the old rule no longer applies.`,
+
+  social_proof: `Guide attention toward the behavior that separates insiders from everyone else.
+Favor signals professionals respond to automatically, and amateurs ignore or misread.
+Entertainment comes from recognizing a status tell.`,
+
+  lifestyle: `Guide attention toward a lifestyle signal people publicly chase that privately filters deals.
+Favor constraints that don’t show up in photos but decide outcomes in person.
+Entertainment comes from exposing the mismatch between image and reality.`,
+
+  promotion: `Guide attention toward the move that creates separation without asking for attention.
+Favor signals that make outcomes feel decided before competition reacts.
+Entertainment comes from realizing winning doesn’t look like trying harder.`,
 };
 
 function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0, calendarId = '' } = {}) {
