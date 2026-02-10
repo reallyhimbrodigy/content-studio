@@ -2571,7 +2571,14 @@ async function generateAndValidateSinglePost({
         'Do not change content intent.',
       ].join('\n')
       : '';
-    const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
+    const brandBrainExecutionReminder = calendarMode === 'brand_brain'
+      ? [
+        'Brand Brain execution reminder:',
+        'Keep the post corrective and competitive, not neutral education.',
+        'Make sure the message clearly moves from wrong focus to real gate to operational cost to replacement rule.',
+      ].join('\n')
+      : '';
+    const mergedInstructions = [retryLine, baseInstructions, brandBrainExecutionReminder, extraInstructions].filter(Boolean).join('\n');
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
@@ -4046,32 +4053,32 @@ const REGULAR_BRIEF = {
     'The detail that stops wasted showings',
   ],
   angles: [
-    'MLS vs tax record mismatch changes pricing leverage',
-    'HOA line item that changes buyer eligibility',
-    'Inspection wording that resets the negotiation timeline',
-    'Permit history detail that changes renovation confidence',
-    'Survey / boundary note that changes what’s negotiable',
-    'Showing feedback phrase that changes the next showing script',
-    'Days-on-market + price history that changes offer sequencing',
-    'Condo docs restriction that changes buyer fit instantly',
-    'Appraisal condition that changes what you ask for next',
-    'Offer summary term that changes leverage more than price',
-    'Listing photo omission that changes what you verify first',
-    'First buyer question that reveals the real gate',
-    'Noise/parking/commute friction cue that filters demand in person',
-    'Insurance/flood/assessment note that changes the risk posture',
+    'Offer terms line that changes negotiation leverage',
+    'Inspection report note that changes repair strategy',
+    'HOA clause that changes buyer eligibility',
+    'Permit record detail that changes renovation confidence',
+    'Survey boundary marker that changes what is negotiable',
+    'Appraisal condition that changes contract sequencing',
+    'Disclosure line that changes risk posture',
+    'DOM plus price-history pattern that changes offer timing',
+    'Condo reserve signal that changes financing confidence',
+    'Insurance eligibility cue that changes buyer fit',
+    'Listing sheet omission that changes verification order',
+    'Title exception line that changes deal certainty',
+    'Assessment notice detail that changes decision urgency',
+    'Feedback phrase that changes the next showing approach',
   ],
   proofTypes: [
-    'MLS detail line',
-    'tax record line',
-    'HOA/condo docs clause',
-    'inspection report note',
-    'permit record check',
-    'survey/boundary marker',
+    'offer terms line item',
+    'inspection report line',
+    'HOA or condo clause',
+    'permit record entry',
+    'survey boundary marker',
     'price history snapshot',
-    'offer term comparison',
-    'showing feedback snippet',
-    'before/after framing shift',
+    'DOM signal snapshot',
+    'appraisal note line',
+    'disclosure clause line',
+    'title exception line',
   ],
   ctaAssets: [
     'save',
@@ -4209,7 +4216,7 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     'This post should center on a real moment inside the workflow.',
     normalizedMode === 'brand_brain'
       ? 'Frame it as correction: wrong focus → real constraint → operational cost. Prove it with an artifact cue.'
-      : 'Stay inside the work moment. No productivity/self-help framing. No generic checklist/momentum language.',
+      : 'Stay inside the work moment. Choose one transaction artifact and one inspectable condition on it. No productivity/self-help framing or generic momentum language.',
     'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
     'The signal should naturally cause a competent professional to change sequence, timing, leverage, or verification — without announcing the change.',
     'If the signal is environmental or behavioral, it must function as a filter or constraint, not a vibe or preference.',
@@ -4344,10 +4351,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     '- Each field must contain only that field content; do not include labels like "Hook:", "Body:", or "CTA:".',
     '- Do NOT output: post_key, day, slotIndex, pillar, format, mode, schema_version. The server adds those.',
     '- No continuation sections (Follow-up, Next post, Tomorrow, Part 2, Next, Up next).',
+    '- Keep one named artifact and one inspectable condition consistent across title, hook, body, reelHook, reelBody, caption, and designNotes.',
     '- ONE MOMENT RULE: All fields must describe the same specific moment + same named artifact + same inspectable condition + same operational consequence.',
     '- Do not introduce a second gate. Keep one artifact, one condition, and one consequence throughout.',
     '- Use ONE specific moment. Every field must point to the same moment + same artifact + same condition + same consequence.',
     '- The CTA must be exactly aligned to the CTA direction in the CREATIVE BRIEF. Do not swap assets (no defaulting to checklist/template).',
+    '- CTA alignment: keep CTA, reelCta, and caption aligned on the same action direction from the CREATIVE BRIEF (save, bookmark, share, comment, replay, compare, or notice) without switching actions mid-post.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
