@@ -2565,7 +2565,11 @@ async function generateAndValidateSinglePost({
     });
     currentStage = 'assign_pillar';
       const retryLine = attempt === 2
-      ? `Output JSON only, schema exactly.`
+      ? [
+        'The previous output failed structural validation.',
+        'Return valid JSON matching the schema exactly.',
+        'Do not change content intent.',
+      ].join('\n')
       : '';
     const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
@@ -2731,7 +2735,11 @@ async function generateAndValidateSinglePost({
               wrongTypes.length ? `wrong type fields: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
               emptyFields.length ? `empty fields: ${emptyFields.join(', ')}` : '',
             ].filter(Boolean).join('; ');
-          extraInstructions = `Your output failed because: ${retrySummary || 'schema mismatch'}. Output JSON only, schema exactly.`;
+          extraInstructions = [
+            'The previous output failed structural validation.',
+            'Return valid JSON matching the schema exactly.',
+            'Do not change content intent.',
+          ].join('\n');
           continue;
         }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -4072,21 +4080,13 @@ const REGULAR_BRIEF = {
     'simple benchmark',
   ],
   ctaAssets: [
-    'one-page checklist',
-    'timeline template',
-    'risk audit',
-    'decision rubric',
-    'workflow template',
-    'priority map',
-    'review checklist',
-    'handoff template',
-    'comparison sheet',
-    'readiness scorecard',
-    'process outline',
-    'quick reference card',
-    'clarity worksheet',
-    'implementation plan',
-    'quality checklist',
+    'save',
+    'bookmark',
+    'share',
+    'comment',
+    'replay',
+    'compare',
+    'notice',
   ],
   ctaFormats: [
     'Save this and use it',
@@ -4150,21 +4150,13 @@ const BRAND_BRAIN_BRIEF = {
     'signal vs noise contrast',
   ],
   ctaAssets: [
-    'diagnostic checklist',
-    'risk audit',
-    'offer readiness rubric',
-    'objection script',
-    'positioning worksheet',
-    'constraint map',
-    'tradeoff guide',
-    'decision matrix',
-    'mechanism brief',
-    'conversion teardown',
-    'message map',
-    'execution checklist',
-    'priority reset template',
-    'failure mode worksheet',
-    'high-stakes playbook',
+    'save',
+    'bookmark',
+    'share',
+    'comment',
+    'replay',
+    'compare',
+    'notice',
   ],
   ctaFormats: [
     'Grab the {asset}',
@@ -4226,10 +4218,19 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     .replaceAll('{word}', wordToken)
     .replaceAll('{asset}', ctaAsset);
   return [
-    'CREATIVE BRIEF:',
-    `- Situation: ${angle}`,
-    `- Proof focus: ${proofType}`,
-    `- CTA direction: ${ctaAsset} via ${ctaFormat}`,
+    'CREATIVE BRIEF',
+    'This post should center on a real moment inside the workflow.',
+    'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
+    '',
+    'Situation:',
+    `${angle}`,
+    '',
+    'Proof focus:',
+    `${proofType}`,
+    '',
+    'CTA intent:',
+    'Choose a natural platform-native action (save, bookmark, share, comment, replay) that fits the moment.',
+    'The CTA should feel like a continuation of attention, not a task or tool.',
   ].join('\n');
 }
 
@@ -4285,7 +4286,16 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const schema = getCalendarPostSchema(mode, startDay, endDay);
   const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}` : '';
+  const brandBlock = brandContext
+    ? [
+      'BRAND CONTEXT',
+      'Reflect the brand’s perspective through what it pays attention to.',
+      'Do not add teaching tone, marketing language, or generic positioning.',
+      'Brand influence should show up in which signals matter, not how loudly they are explained.',
+      '',
+      brandContext.trim(),
+    ].join('\n')
+    : '';
   const targetPillar = opts.pillar || opts.targetPillar || '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
@@ -6214,7 +6224,7 @@ function getModeLens(mode = 'regular') {
     : 'Explain the simplest mental model to reduce confusion.';
 }
 
-function normalizeStemText(value = '') {
+function normalizeSignatureText(value = '') {
   return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -6222,21 +6232,63 @@ function normalizeStemText(value = '') {
     .trim();
 }
 
-function stemFromText(value = '', minWords = 6, maxWords = 10) {
-  const words = normalizeStemText(value).split(' ').filter(Boolean);
-  if (!words.length) return '';
-  const takeCount = Math.min(words.length, Math.max(minWords, maxWords));
-  return words.slice(0, takeCount).join(' ');
+function inferGateTypeCue(text = '') {
+  const normalized = normalizeSignatureText(text);
+  const cueRules = [
+    { cue: 'timing cue', terms: ['deadline', 'window', 'timing', 'schedule', 'due', 'clock'] },
+    { cue: 'pricing signal', terms: ['price', 'pricing', 'fee', 'cost', 'rate', 'premium'] },
+    { cue: 'leverage signal', terms: ['leverage', 'negotiat', 'concession', 'counter', 'terms'] },
+    { cue: 'handoff risk', terms: ['handoff', 'handover', 'transition', 'dependency', 'coordination'] },
+    { cue: 'inspection leverage', terms: ['inspection', 'inspect', 'defect', 'repair', 'condition report'] },
+    { cue: 'listing framing', terms: ['listing', 'headline', 'positioning', 'description', 'framing'] },
+    { cue: 'lifestyle friction', terms: ['lifestyle', 'commute', 'parking', 'noise', 'walkability', 'neighborhood'] },
+  ];
+  for (const rule of cueRules) {
+    if (rule.terms.some((term) => normalized.includes(term))) {
+      return rule.cue;
+    }
+  }
+  return 'decision signal';
+}
+
+function inferArtifactName(text = '') {
+  const normalized = normalizeSignatureText(text);
+  const artifactRules = [
+    ['title commitment', 'title commitment'],
+    ['inspection report', 'inspection report'],
+    ['flood map', 'flood map'],
+    ['hoa addendum', 'hoa addendum'],
+    ['estoppel letter', 'estoppel letter'],
+    ['special assessment', 'assessment notice'],
+    ['reserve', 'reserve note'],
+    ['schedule b', 'schedule b line'],
+    ['permit', 'permit record'],
+    ['survey', 'survey'],
+    ['insurance', 'insurance policy'],
+    ['appraisal', 'appraisal report'],
+    ['disclosure', 'disclosure'],
+    ['clause', 'clause'],
+    ['policy', 'policy'],
+    ['report', 'report'],
+    ['form', 'form'],
+    ['document', 'document'],
+  ];
+  for (const [term, label] of artifactRules) {
+    if (normalized.includes(term)) return label;
+  }
+  return 'core artifact';
 }
 
 function buildPostSignature(post = {}) {
-  return {
-    day: Number.isFinite(Number(post?.day)) ? Number(post.day) : null,
-    pillar: toPlainString(post?.pillar || ''),
-    titleStem: stemFromText(post?.title || '', 6, 10),
-    hookStem: stemFromText(post?.reelHook || '', 8, 12),
-    ctaStem: stemFromText(post?.reelCta || '', 6, 10),
-  };
+  const source = [
+    toPlainString(post?.title || ''),
+    toPlainString(post?.hook || ''),
+    toPlainString(post?.body || ''),
+    toPlainString(post?.reelBody || ''),
+  ].filter(Boolean).join(' ');
+  const artifact = inferArtifactName(source);
+  const gateType = inferGateTypeCue(source);
+  return `${artifact} | ${gateType}`;
 }
 
 function seedFromString(value = '') {
@@ -6868,20 +6920,16 @@ function normalizeDesignNotesInput(input) {
   return { value: normalized, changed, before: beforeText.slice(0, 120), after: normalized.slice(0, 120) };
 }
 
-function normalizeSignatureText(value = '') {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function buildPostSignature(post = {}) {
-  const topicSig = toPlainString(post?.topic_signature || '');
-  const title = toPlainString(post?.title || '');
-  const caption = toPlainString(post?.caption || '').slice(0, 120);
-  const basis = topicSig || `${title} ${caption}`.trim();
-  return normalizeSignatureText(basis);
+  const source = [
+    toPlainString(post?.title || ''),
+    toPlainString(post?.hook || ''),
+    toPlainString(post?.body || ''),
+    toPlainString(post?.reelBody || ''),
+  ].filter(Boolean).join(' ');
+  const artifact = inferArtifactName(source);
+  const gateType = inferGateTypeCue(source);
+  return `${artifact} | ${gateType}`;
 }
 
 function hasNumberedTopThree(text = '') {
@@ -9190,7 +9238,17 @@ async function generateTopicPlan({
   pillarSchedule,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext ? `Brand context: ${brandContext.trim()}\n` : '';
+  const brandBlock = brandContext
+    ? [
+      'BRAND CONTEXT',
+      'Reflect the brand’s perspective through what it pays attention to.',
+      'Do not add teaching tone, marketing language, or generic positioning.',
+      'Brand influence should show up in which signals matter, not how loudly they are explained.',
+      '',
+      brandContext.trim(),
+      '',
+    ].join('\n')
+    : '';
   const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
   const pushWarning = (detail) => {
     if (!context) return;
@@ -10899,17 +10957,27 @@ const server = http.createServer((req, res) => {
         postKeys.push(postKey(day, slotIndex));
       }
     }
-    const planPrompt = [
-      'Return JSON only.',
-      `Niche: ${nicheStyle}`,
-      `Generate exactly ${expectedCount} items for these post_keys:`,
-      postKeys.join(', '),
-      'Each item must include: post_key, topic_signature, angle.',
-      `angle must be one of: ${CALENDAR_ANGLE_OPTIONS.join(', ')}.`,
-      'topic_signature: 4-7 words, no locations or named entities unless provided in the niche.',
-      'No placeholders. No empty strings.',
-      'Do not include any other keys.',
-    ].join('\n');
+  const planPrompt = [
+    'Return JSON only.',
+    `Niche: ${nicheStyle}`,
+    `Generate exactly ${expectedCount} items for these post_keys:`,
+    postKeys.join(', '),
+    'Each item must include: post_key, topic_signature, angle.',
+    'ANGLE SELECTION GUIDANCE',
+    'Choose angles that describe a moment where momentum forks.',
+    'Favor signals, thresholds, filters, or cues that cause one path to advance and another to stall.',
+    '',
+    'Good angles feel like:',
+    '- something that moves first',
+    '- something that quietly filters outcomes',
+    '- something that changes how the next action is taken',
+    '- something that becomes obvious only after noticing it',
+    '',
+    'Avoid framing angles as tips, steps, reminders, or general advice.',
+    'topic_signature: 4-7 words, no locations or named entities unless provided in the niche.',
+    'No placeholders. No empty strings.',
+    'Do not include any other keys.',
+  ].join('\n');
     const planSchema = {
       type: 'object',
       additionalProperties: false,
