@@ -4068,16 +4068,16 @@ const REGULAR_BRIEF = {
     'The reset step that prevents drift',
   ],
   proofTypes: [
-    'micro case',
     'before after contrast',
     'numbers snapshot',
-    'common objection',
-    'rule of thumb',
-    'quick teardown',
-    'mistake timeline',
-    'decision checklist',
-    'friction map',
     'simple benchmark',
+    'micro case',
+    'quick teardown',
+    'common objection',
+    'mispriced signal',
+    'silent disqualifier',
+    'leverage shift',
+    'signal vs noise contrast',
   ],
   ctaAssets: [
     'save',
@@ -4089,15 +4089,14 @@ const REGULAR_BRIEF = {
     'notice',
   ],
   ctaFormats: [
-    'Save this',
-    'Bookmark this',
-    'Share this with someone buying in Miami',
-    'Comment {word}',
-    'Replay this before your next showing',
-    'Compare this on your next listing',
-    'Notice this next time you review offers',
-    'Send this to your partner',
-    'Keep this open during your next decision',
+    'Save this for your next showing',
+    'Bookmark this for your next listing review',
+    'Replay this before you tour the next property',
+    'Compare this on the next two listings you open',
+    'Notice this the next time you review an offer',
+    'Share this with someone house hunting in Miami',
+    'Keep this in mind at your next open house',
+    'Save this so you don’t miss it in the moment',
   ],
 };
 const BRAND_BRAIN_BRIEF = {
@@ -4138,16 +4137,16 @@ const BRAND_BRAIN_BRIEF = {
     'The mechanism behind repeated deal collapse',
   ],
   proofTypes: [
-    'micro case',
-    'before after contrast',
-    'numbers snapshot',
-    'objection reversal',
-    'rule of thumb',
-    'decision autopsy',
-    'tradeoff table',
-    'failure timeline',
-    'mechanism breakdown',
     'signal vs noise contrast',
+    'decision autopsy',
+    'failure timeline',
+    'tradeoff table',
+    'mechanism breakdown',
+    'numbers snapshot',
+    'mispriced signal',
+    'confidence trap',
+    'status tell',
+    'objection reversal',
   ],
   ctaAssets: [
     'save',
@@ -4159,15 +4158,13 @@ const BRAND_BRAIN_BRIEF = {
     'notice',
   ],
   ctaFormats: [
-    'Save this',
-    'Bookmark this',
-    'Comment {word}',
-    'DM {word}',
-    'Replay this before your next move',
-    'Compare this before you commit',
-    'Notice this in your next review',
+    'Replay this before you commit',
+    'Save this so you stop optimizing the wrong signal',
+    'Bookmark this for your next pricing decision',
+    'Compare this against your last deal',
+    'Notice this in your next listing review',
     'Share this with your team',
-    'Keep this in your notes',
+    'Save this and test it on the next showing',
   ],
 };
 const HOOK_ARCHETYPES = [
@@ -4220,6 +4217,9 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
   return [
     'CREATIVE BRIEF',
     'This post should center on a real moment inside the workflow.',
+    normalizedMode === 'brand_brain'
+      ? 'Frame it as correction: wrong focus → real gate. No coaching tone.'
+      : 'Stay inside the work moment. Avoid productivity/self-help framing.',
     'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
     '',
     'Situation:',
@@ -4250,20 +4250,20 @@ function buildRecentTitlesList(titles = [], limit = 10) {
 }
 
 const PROMPT_ANGLE_OPTIONS = [
-  'The overlooked step that causes rework later',
-  'The default assumption that creates avoidable risk',
-  'The sequence error that slows progress',
-  'The quick check that prevents a costly miss',
-  'The hidden dependency behind repeated confusion',
-  'The comparison point that changes the decision',
-  'The timing cue that protects better outcomes',
-  'The boundary that keeps the process stable',
-  'The signal that appears before failure',
-  'The small correction with outsized payoff',
-  'The quality gate most people skip',
-  'The tradeoff that looks harmless but is not',
-  'The handoff detail that prevents downstream mistakes',
-  'The early choice that shapes everything after',
+  'The cue that changes the next move',
+  'The detail that quietly changes leverage',
+  'The signal that separates “still live” from “already dead”',
+  'The mismatch that makes the next step fail later',
+  'The early tell that decides the outcome before it feels decided',
+  'The overlooked threshold that flips the decision',
+  'The proof point hiding in plain sight',
+  'The assumption that sounds reasonable but breaks in practice',
+  'The condition that forces a different sequence',
+  'The small signal that makes the “obvious” choice wrong',
+  'The mispriced signal professionals overweight',
+  'The hidden constraint that shows up only in the artifact',
+  'The handoff detail that changes who’s responsible next',
+  'The moment where momentum forks',
 ];
 
 function pickAngleForPostKey(postKeyValue = '') {
@@ -6220,8 +6220,8 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Expose the hidden mechanism causing failure and reframe it.'
-    : 'Explain the simplest mental model to reduce confusion.';
+    ? 'Correct a mis-ranked belief: show the wrong focus, reveal the real gate, and prove it with an undeniable signal.'
+    : 'Stay inside a real work moment: highlight one specific cue on a real artifact and show how it changes the next move.';
 }
 
 function normalizeSignatureText(value = '') {
