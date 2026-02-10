@@ -4032,52 +4032,46 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
 const PROMPT_VERSION = 'calendar_minimal_v2';
 const REGULAR_BRIEF = {
   hookArchetypes: [
-    'Counterintuitive truth',
-    'Costly mistake',
-    'Hidden step',
-    'Do this instead',
-    'Myth bust',
-    'Common misread',
-    'Early warning sign',
-    'Simple decision rule',
-    'Before and after shift',
-    'Checklist blindspot',
-    'False shortcut',
-    'One change that helps',
+    'The line everyone skims',
+    'The pause that decides it',
+    'The mismatch that changes leverage',
+    'The quiet cue before a pivot',
+    'The detail that resets sequence',
+    'The question that filters buyers',
+    'The document line that moves time',
+    'The condition that changes the next move',
+    'The signal hiding in plain sight',
+    'The one cue that makes comps irrelevant',
+    'The artifact that changes the pitch',
+    'The detail that stops wasted showings',
   ],
   angles: [
-    'The prep step that prevents rework later',
-    'The ordering mistake that creates avoidable delays',
-    'The quality check that catches issues early',
-    'The planning choice that protects momentum',
-    'The handoff detail that avoids confusion',
-    'The assumption check that improves decisions',
-    'The baseline signal that guides better actions',
-    'The small correction that prevents bigger loss',
-    'The review pass that raises confidence',
-    'The scope boundary that keeps work clean',
-    'The comparison lens that clarifies options',
-    'The timing marker that prevents rushed choices',
-    'The checklist item that reduces repeated mistakes',
-    'The workflow simplification that improves consistency',
-    'The prioritization move that cuts noise',
-    'The risk note that saves time later',
-    'The context clue that changes the approach',
-    'The feedback loop that stabilizes outcomes',
-    'The decision gate that improves quality',
-    'The reset step that prevents drift',
+    'MLS vs tax record mismatch changes pricing leverage',
+    'HOA line item that changes buyer eligibility',
+    'Inspection wording that resets the negotiation timeline',
+    'Permit history detail that changes renovation confidence',
+    'Survey / boundary note that changes what’s negotiable',
+    'Showing feedback phrase that changes the next showing script',
+    'Days-on-market + price history that changes offer sequencing',
+    'Condo docs restriction that changes buyer fit instantly',
+    'Appraisal condition that changes what you ask for next',
+    'Offer summary term that changes leverage more than price',
+    'Listing photo omission that changes what you verify first',
+    'First buyer question that reveals the real gate',
+    'Noise/parking/commute friction cue that filters demand in person',
+    'Insurance/flood/assessment note that changes the risk posture',
   ],
   proofTypes: [
-    'before after contrast',
-    'numbers snapshot',
-    'simple benchmark',
-    'micro case',
-    'quick teardown',
-    'common objection',
-    'mispriced signal',
-    'silent disqualifier',
-    'leverage shift',
-    'signal vs noise contrast',
+    'MLS detail line',
+    'tax record line',
+    'HOA/condo docs clause',
+    'inspection report note',
+    'permit record check',
+    'survey/boundary marker',
+    'price history snapshot',
+    'offer term comparison',
+    'showing feedback snippet',
+    'before/after framing shift',
   ],
   ctaAssets: [
     'save',
@@ -4089,64 +4083,58 @@ const REGULAR_BRIEF = {
     'notice',
   ],
   ctaFormats: [
-    'Save this for your next showing',
-    'Bookmark this for your next listing review',
-    'Replay this before you tour the next property',
-    'Compare this on the next two listings you open',
-    'Notice this the next time you review an offer',
-    'Share this with someone house hunting in Miami',
-    'Keep this in mind at your next open house',
-    'Save this so you don’t miss it in the moment',
+    'Notice this before you talk numbers',
+    'Compare this before you set comps',
+    'Save this for your next listing review',
+    'Replay this before your next showing',
+    'Bookmark this for inspection day',
+    'Notice this in the condo docs',
+    'Compare MLS vs tax record next time',
+    'Save this before you write the offer',
+    'Replay this when you read feedback',
+    'Share this with a buyer in Miami',
   ],
 };
 const BRAND_BRAIN_BRIEF = {
   hookArchetypes: [
-    'Pattern interrupt',
-    'Cost of inaction',
-    'Assumption reversal',
-    'Hidden constraint',
-    'Tradeoff reveal',
-    'Failure mechanism',
-    'Contrarian proof',
-    'Why obvious fails',
-    'Leverage point',
-    'Second-order consequence',
-    'False confidence check',
-    'Uncomfortable truth',
+    'The metric you’re optimizing is wrong',
+    'The ‘obvious’ move backfires',
+    'Why the clean version loses',
+    'The constraint buyers act on',
+    'The signal pros notice instantly',
+    'The comfort move that kills leverage',
+    'The hidden tax nobody prices',
+    'The reason demand evaporates in person',
+    'The trust break that costs offers',
+    'The framing error that forces price cuts',
+    'The status tell amateurs miss',
+    'The second-order consequence you’re ignoring',
   ],
   angles: [
-    'The obvious move fails under hidden constraints',
-    'One assumption quietly destroys the outcome',
-    'The wrong metric drives expensive decisions',
-    'Speed without structure creates hidden losses',
-    'The tradeoff no one prices in time',
-    'A small miss compounds into larger failure',
-    'Popular advice masks the real mechanism',
-    'Late correction doubles the cost to recover',
-    'Surface fixes hide the root cause',
-    'Weak proof collapses trust at decision time',
-    'Generic positioning attracts the wrong fit',
-    'Option overload lowers conversion quality',
-    'The default sequence creates avoidable backfire',
-    'A silent bottleneck blocks progress repeatedly',
-    'False urgency forces poor tradeoffs',
-    'The risk signal appears before the visible failure',
-    'Comfort choices reduce long-term upside',
-    'Missing boundaries invite expensive drift',
-    'Attention fragmentation creates execution tax',
-    'The mechanism behind repeated deal collapse',
+    'Optimizing layout instead of livability friction loses conversions',
+    'Price drops without framing erode trust and reduce serious offers',
+    'Chasing finishes while HOA tolerance filters buyers kills momentum',
+    'Waterfront/vibes sells online but exposure friction kills in person',
+    'Speed without verification creates credibility loss at decision time',
+    'Over-indexing on comps ignores eligibility gates that decide outcomes',
+    'Marketing polish without artifact proof collapses confidence late',
+    'The default sequence makes the buyer’s hesitation irreversible',
+    'The ‘safe’ neutral pitch fails against sharper re-ranking competitors',
+    'Ignoring the real constraint forces endless follow-ups that never convert',
+    'Optimizing for clicks instead of the in-person gate wastes showings',
+    'Fixing surface objections hides the mechanism causing collapse',
   ],
   proofTypes: [
     'signal vs noise contrast',
+    'constraint vs belief contrast',
+    'operational cost snapshot',
+    'artifact clause teardown',
     'decision autopsy',
     'failure timeline',
-    'tradeoff table',
-    'mechanism breakdown',
-    'numbers snapshot',
-    'mispriced signal',
-    'confidence trap',
-    'status tell',
-    'objection reversal',
+    'tradeoff table (compressed)',
+    'before/after leverage shift',
+    'status tell example',
+    'mispriced signal example',
   ],
   ctaAssets: [
     'save',
@@ -4163,8 +4151,10 @@ const BRAND_BRAIN_BRIEF = {
     'Bookmark this for your next pricing decision',
     'Compare this against your last deal',
     'Notice this in your next listing review',
-    'Share this with your team',
     'Save this and test it on the next showing',
+    'Share this with your team',
+    'Compare this before you drop price',
+    'Replay this before you blame the market',
   ],
 };
 const HOOK_ARCHETYPES = [
@@ -4218,8 +4208,8 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     'CREATIVE BRIEF',
     'This post should center on a real moment inside the workflow.',
     normalizedMode === 'brand_brain'
-      ? 'Frame it as correction: wrong focus → real gate. No coaching tone.'
-      : 'Stay inside the work moment. Avoid productivity/self-help framing.',
+      ? 'Frame it as correction: wrong focus → real constraint → operational cost. Prove it with an artifact cue.'
+      : 'Stay inside the work moment. No productivity/self-help framing. No generic checklist/momentum language.',
     'Choose one concrete signal, cue, or condition that quietly decides what happens next.',
     '',
     'Situation:',
@@ -6220,8 +6210,8 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Correct a mis-ranked belief: show the wrong focus, reveal the real gate, and prove it with an undeniable signal.'
-    : 'Stay inside a real work moment: highlight one specific cue on a real artifact and show how it changes the next move.';
+    ? 'Correct a mis-ranked belief: show the wrong focus, reveal the real constraint, quantify the operational cost, and prove it with an undeniable cue on a real artifact.'
+    : 'Stay inside a real work moment: one specific cue on a real artifact, and how it changes the next move. No productivity/self-help framing.';
 }
 
 function normalizeSignatureText(value = '') {
@@ -6279,6 +6269,43 @@ function inferArtifactName(text = '') {
   return 'core artifact';
 }
 
+function inferConditionCue(text = '') {
+  const normalized = normalizeSignatureText(text);
+  const rules = [
+    { cue: 'mismatch', terms: ['mismatch', 'doesnt match', 'not match', 'inconsistent', 'conflict'] },
+    { cue: 'restriction', terms: ['restriction', 'limit', 'cap', 'not allowed', 'prohibited'] },
+    { cue: 'wording', terms: ['wording', 'language', 'phrase', 'label', 'term'] },
+    { cue: 'omission', terms: ['missing', 'omission', 'left out', 'omitted', 'absent'] },
+    { cue: 'history', terms: ['history', 'days on market', 'price history', 'past', 'timeline'] },
+    { cue: 'pause', terms: ['pause', 'hesitation', 'stall', 'hold', 'wait'] },
+    { cue: 'question', terms: ['question', 'ask', 'asked', 'objection', 'concern'] },
+    { cue: 'clause', terms: ['clause', 'section', 'schedule', 'line item', 'exception'] },
+    { cue: 'gap', terms: ['gap', 'difference', 'delta', 'shortfall', 'spread'] },
+    { cue: 'note', terms: ['note', 'remark', 'comment', 'flag', 'annotation'] },
+  ];
+  for (const rule of rules) {
+    if (rule.terms.some((term) => normalized.includes(term))) return rule.cue;
+  }
+  return 'condition';
+}
+
+function inferConsequenceCue(text = '') {
+  const normalized = normalizeSignatureText(text);
+  const rules = [
+    { cue: 'pricing leverage', terms: ['price', 'pricing', 'comp', 'concession', 'negotiat', 'leverage'] },
+    { cue: 'sequence shift', terms: ['sequence', 'order', 'next move', 'what next', 'repriorit'] },
+    { cue: 'timeline stall', terms: ['delay', 'stall', 'slow', 'timeline', 'window', 'deadline'] },
+    { cue: 'trust erosion', terms: ['trust', 'confidence', 'credibility', 'skeptic', 'doubt'] },
+    { cue: 'eligibility filter', terms: ['eligible', 'eligibility', 'qualify', 'qualification', 'fit'] },
+    { cue: 'conversion drop', terms: ['convert', 'conversion', 'drop off', 'fall through', 'no offer'] },
+    { cue: 'deal drift', terms: ['drift', 'deal dies', 'dead deal', 'falls apart', 'renegotiat'] },
+  ];
+  for (const rule of rules) {
+    if (rule.terms.some((term) => normalized.includes(term))) return rule.cue;
+  }
+  return 'next move';
+}
+
 function buildPostSignature(post = {}) {
   const source = [
     toPlainString(post?.title || ''),
@@ -6287,8 +6314,9 @@ function buildPostSignature(post = {}) {
     toPlainString(post?.reelBody || ''),
   ].filter(Boolean).join(' ');
   const artifact = inferArtifactName(source);
-  const gateType = inferGateTypeCue(source);
-  return `${artifact} | ${gateType}`;
+  const condition = inferConditionCue(source);
+  const consequence = inferConsequenceCue(source);
+  return `${artifact} | ${condition} | ${consequence}`;
 }
 
 function seedFromString(value = '') {
@@ -6918,18 +6946,6 @@ function normalizeDesignNotesInput(input) {
   const normalized = items.map((item) => `- ${item}`).join('\n');
   const changed = beforeText.trim() !== normalized.trim();
   return { value: normalized, changed, before: beforeText.slice(0, 120), after: normalized.slice(0, 120) };
-}
-
-function buildPostSignature(post = {}) {
-  const source = [
-    toPlainString(post?.title || ''),
-    toPlainString(post?.hook || ''),
-    toPlainString(post?.body || ''),
-    toPlainString(post?.reelBody || ''),
-  ].filter(Boolean).join(' ');
-  const artifact = inferArtifactName(source);
-  const gateType = inferGateTypeCue(source);
-  return `${artifact} | ${gateType}`;
 }
 
 function hasNumberedTopThree(text = '') {
