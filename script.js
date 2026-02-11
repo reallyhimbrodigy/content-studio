@@ -864,9 +864,6 @@ function normalizeContentCard(card) {
       };
     })(),
     engagementScripts: (() => {
-      if (typeof base.engagementLoop === 'string' && base.engagementLoop.trim()) {
-        return base.engagementLoop;
-      }
       return base.engagementScripts;
     })(),
   };
@@ -8567,7 +8564,6 @@ const REQUIRED_POST_TEXT_FIELDS = [
   'cta',
   'caption',
   'designNotes',
-  'engagementLoop',
 ];
 
 function isNonEmptyText(value) {
@@ -8625,8 +8621,6 @@ function validateRenderablePost(post = {}) {
   if (!(Array.isArray(hashtags) || typeof hashtags === 'string')) missing.push('hashtags');
   const designNotes = getFieldValue(post, ['designNotes', 'design_notes', 'design']);
   if (typeof designNotes !== 'string') missing.push('designNotes');
-  const engagementLoop = getFieldValue(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
-  if (!isNonEmptyText(engagementLoop)) missing.push('engagementLoop');
   const postKey = getFieldValue(post, ['post_key', 'postKey']);
   const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : null;
   const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
@@ -9123,7 +9117,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     analytics: Array.isArray(base.analytics) ? base.analytics : (base.analytics ? [base.analytics] : []),
     engagementScripts: typeof base.engagementScripts === 'string'
       ? clean(base.engagementScripts)
-      : (base.engagementScripts || clean(base.engagementLoop || '') || {}),
+      : (base.engagementScripts || {}),
     promoSlot: typeof base.promoSlot === 'boolean' ? base.promoSlot : !!base.weeklyPromo,
     weeklyPromo: typeof base.weeklyPromo === 'string' ? (base.promoSlot ? base.weeklyPromo : '') : '',
     reelHook: typeof base.reelHook === 'string' ? clean(base.reelHook) : '',

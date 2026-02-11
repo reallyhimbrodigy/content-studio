@@ -3283,7 +3283,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       'reelCta',
       'caption',
       'designNotes',
-      'engagementLoop',
       'hashtags',
     ],
     properties: {
@@ -3296,7 +3295,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       reelCta: { type: 'string', minLength: 1 },
       caption: { type: 'string', minLength: 1 },
       designNotes: { type: 'string', minLength: 1 },
-      engagementLoop: { type: 'string', minLength: 1 },
       hashtags: {
         type: 'array',
         minItems: 1,
@@ -3347,7 +3345,6 @@ function normalizeToMinimalShape(raw = {}) {
     reelCta: stripTrailingFollowUpSection(raw.reelCta),
     caption: stripTrailingFollowUpSection(raw.caption),
     designNotes: stripTrailingFollowUpSection(raw.designNotes),
-    engagementLoop: stripTrailingFollowUpSection(raw.engagementLoop),
     hashtags: raw.hashtags,
   };
   return cleaned;
@@ -3379,7 +3376,6 @@ function validateMinimalShape(post = {}) {
     'reelCta',
     'caption',
     'designNotes',
-    'engagementLoop',
     'hashtags',
   ];
   for (const key of required) {
@@ -3390,7 +3386,7 @@ function validateMinimalShape(post = {}) {
   if (missing.length) {
     return fail('SCHEMA_FAIL', missing[0], '');
   }
-  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'engagementLoop'];
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes'];
   for (const key of stringFields) {
     if (typeof post[key] !== 'string') {
       wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
@@ -3454,7 +3450,6 @@ function runCalendarSchemaSelfTest() {
     reelCta: 'Sample reel CTA',
     caption: 'Sample caption',
     designNotes: 'Sample design notes',
-    engagementLoop: 'Sample engagement loop',
     hashtags: ['sample'],
   };
   const serverFields = {
@@ -3499,7 +3494,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: 2-4 sentences; each 6-12 words; plain language.',
       '- Caption: minimal adjectives; no filler transitions.',
       '- CTA: 3-6 words, neutral informational line, no imperative.',
-      '- Engagement Loop: commentReply <= 16 words; dmReply <= 18 words; calm tone; no requests.',
       '- Reel Script: 4 lines (Hook + 2 body + CTA); each 6-12 words.',
       '- Reel Script: no emojis; no exclamation marks.',
       '- Global: informal, minimal hype.',
@@ -3514,7 +3508,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: 3-5 lines; each 4-9 words; one idea per line.',
       '- Caption: energetic verbs; no long sentences.',
       '- CTA: 2-5 words, neutral informational line.',
-      '- Engagement Loop: commentReply <= 12 words; dmReply <= 14 words; brisk tone; no requests.',
       '- Reel Script: 4 beats with line breaks; each beat 5-10 words.',
       '- Reel Script: one short sentence per beat.',
       '- Global: confident, higher tempo.',
@@ -3529,8 +3522,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: 2-3 sentences; each 8-14 words; zero hedging.',
       '- Caption: no motivational fluff.',
       '- CTA: 3-7 words; neutral informational line; no exclamation.',
-      '- Engagement Loop: commentReply <= 14 words; dmReply <= 16 words; practical tone; no requests.',
-      '- Engagement Loop: question optional, keep it short.',
       '- Reel Script: 3 steps with line breaks (statement -> key point -> CTA).',
       '- Reel Script: each step 7-12 words.',
       '- Global: present tense; no soft qualifiers.',
@@ -3544,8 +3535,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: exactly 3 parts (belief -> counterpoint -> takeaway).',
       '- Caption: each part 1 sentence, 8-14 words.',
       '- CTA: 4-8 words; neutral continuation line.',
-      '- Engagement Loop: commentReply <= 14 words; neutral reflection statement.',
-      '- Engagement Loop: dmReply <= 16 words; neutral clarification.',
       '- Reel Script: 3 beats with line breaks; each 8-14 words.',
       '- Reel Script: one sentence per beat.',
       '- Global: calm, precise tone.',
@@ -3559,7 +3548,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: 3-4 sentences; setup -> friction -> takeaway.',
       '- Caption: each 8-14 words; narrative flow.',
       '- CTA: 4-8 words; neutral continuation line.',
-      '- Engagement Loop: commentReply <= 16 words; dmReply <= 18 words; warm tone; no requests.',
       '- Reel Script: 3 beats with line breaks; each 8-14 words.',
       '- Reel Script: one sentence per beat.',
       '- Global: conversational, lightly detailed.',
@@ -3574,8 +3562,6 @@ const VOICE_LOCK_PRESET_GUIDES = {
       '- Caption: 2-4 sentences; each 7-13 words.',
       '- Caption: explain simply; no hype.',
       '- CTA: 4-8 words; neutral continuation line.',
-      '- Engagement Loop: commentReply <= 16 words; dmReply <= 18 words; no requests.',
-      '- Engagement Loop: one optional question max.',
       '- Reel Script: 3 beats with line breaks; each 7-12 words.',
       '- Reel Script: one sentence per beat.',
       '- Global: warm, conversational; mild hedging allowed.',
@@ -3596,14 +3582,9 @@ const VOICE_LOCK_FIELDS = [
   'Hook',
   'Caption/Main body',
   'CTA',
-  'Engagement Loop',
   'Reel Script',
   'Execution Notes (wording only)',
 ];
-
-function buildVoiceLockInstructionBlock({ mode, presetKey, sample }) {
-  return '';
-}
 
 function resolveVoiceLockConfig(input = {}, isPro = false) {
   const wantsEnabled = Boolean(input?.voiceLockEnabled);
@@ -3657,7 +3638,7 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
     enabled: true,
     mode,
     preset: presetKey,
-    instructionBlock: buildVoiceLockInstructionBlock({ mode, presetKey, sample }),
+    instructionBlock: '',
     fields: VOICE_LOCK_FIELDS,
     reason: 'enabled',
   };
@@ -3701,10 +3682,6 @@ function normalizeTargetAudiencePresetKey(value = '') {
   return null;
 }
 
-function buildTargetAudienceInstructionBlock({ presetKey }) {
-  return '';
-}
-
 function resolveTargetAudienceConfig(input = {}, isPro = false) {
   const raw = input?.targetAudience && typeof input.targetAudience === 'object' ? input.targetAudience : {};
   const wantsEnabled = Boolean(raw.enabled);
@@ -3721,21 +3698,10 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   return {
     enabled: true,
     preset: presetKey,
-    instructionBlock: buildTargetAudienceInstructionBlock({ presetKey }),
+    instructionBlock: '',
     reason: 'enabled',
   };
 }
-
-const CALENDAR_ALIGNMENT_BLOCK = [
-  'CALENDAR ALIGNMENT',
-  'Goal: generate one publishable short-form post for the given niche and mode.',
-  'Topic fidelity: every field stays on the provided title/topic.',
-  'Coherence: use one concrete artifact, one inspectable condition, and one next move across all fields.',
-  'Specificity: use observable details and concrete phrasing.',
-  'Novelty: vary wording and artifact/condition choice without changing the topic.',
-  'Mode: Regular = observational. Brand Brain = corrective and competitive.',
-  'Output: return valid JSON matching the schema exactly; field values contain content only.',
-].join('\n');
 
 const TOPIC_LOCK_CONTRACT_BLOCK = '';
 const FIELD_REGROUNDING_INSTRUCTION = '';
@@ -3756,52 +3722,6 @@ const BRAND_BRAIN_KEY_CONTRACT_TOP = '';
 const CALENDAR_HARD_SEPARATION_BLOCK = '';
 const REGULAR_CONTENT_QUALITY_RULES_BLOCK = '';
 const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = '';
-
-function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan = null) {
-  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
-  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const requestedSpecMap = buildRequestedSpecMap({
-    startDay: safeStart,
-    days: safeDays,
-    postsPerDay: perDay,
-    topicPlan,
-  });
-  const lines = [
-    'REQUESTED POST IDS',
-    'If post_key/day/slotIndex/title are present in the request context, copy them exactly into the output fields.',
-    'Use the provided identifiers as written.',
-    'Requested IDs:',
-  ].filter(Boolean);
-  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-    const day = safeStart + dayOffset;
-    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      const key = postKey(day, slotIndex);
-      const spec = requestedSpecMap.get(key) || {};
-      const title = toPlainString(spec.title || '');
-      const titleSegment = title ? ` | title: ${title}` : '';
-      lines.push(`post_key: ${key} | day: ${day} | slotIndex: ${slotIndex}${titleSegment}`);
-    }
-  }
-  return lines.join('\n');
-}
-
-function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
-  const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
-  const safeDays = Math.max(1, Number.isFinite(Number(days)) ? Number(days) : 1);
-  const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  const lines = [
-    'POST KEYS',
-    'Copy these identifiers exactly where the schema includes them:',
-  ];
-  for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-    const day = safeStart + dayOffset;
-    for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-      lines.push(`post_key: ${postKey(day, slotIndex)} | day: ${day} | slotIndex: ${slotIndex}`);
-    }
-  }
-  return lines.join('\n');
-}
 
 function buildRecentTitlesList(titles = [], limit = 10) {
   if (!Array.isArray(titles) || !titles.length) return [];
@@ -3905,7 +3825,7 @@ Return one complete post.`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts. Each post includes title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Return valid JSON matching the schema exactly.`;
+  return `Calendar schema: ${expectedCount} posts. Each post includes title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, hashtags[]. Return valid JSON matching the schema exactly.`;
 }
 
 function safeStringify(value) {
@@ -5828,7 +5748,6 @@ function applyCalendarPostAliases(post = {}) {
       }
     }
   };
-  copyAliasString('engagementLoop', 'engagement_loop');
   copyAliasString('designNotes', 'design_notes');
   copyAliasString('reelScript', 'reel_script');
   copyAliasObject('reelScript', 'reel_script');
@@ -6218,7 +6137,6 @@ function buildRequiredFieldDiagnostics(post = {}, mode = 'regular') {
 }
 
 const NONCORE_OPTIONAL_FIELDS = new Set([
-  'engagementLoop',
   'engagementScripts',
   'engagementScripts.commentReply',
   'engagementScripts.dmReply',
@@ -7019,7 +6937,6 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
     'designNotes',
     'storyPrompt',
     'cta',
-    'engagementLoop',
     'engagementScripts',
     'dmReply',
     'details',
@@ -7389,7 +7306,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   }
   const hashtagsText = getField(post, ['hashtags']);
   const designNotesText = getField(post, ['designNotes', 'design_notes']);
-  const engagementLoopText = getField(post, ['engagementLoop', 'engagement_loop', 'engagementScripts']);
   const coreFailedFields = [];
   const noncoreFailedFields = [];
   const snippets = {};
@@ -7423,13 +7339,6 @@ function assertPostTopicBound(post = {}, requestedSpec = {}, fallbackMustAvoid =
   if (!designNotesOk) {
     noncoreFailedFields.push('designNotes');
     snippets.designNotes = designNotesText ? designNotesText.slice(0, 60) : '';
-  }
-  const engagementLoopSignals = getFieldBindingSignals(engagementLoopText, fingerprint);
-  const engagementLoopOk = isNonEmptyString(engagementLoopText)
-    && (engagementLoopSignals.offerHit || engagementLoopSignals.anchorHits >= 1);
-  if (!engagementLoopOk) {
-    noncoreFailedFields.push('engagementLoop');
-    snippets.engagementLoop = engagementLoopText ? engagementLoopText.slice(0, 60) : '';
   }
   if (!coreFailedFields.length && !noncoreFailedFields.length) {
     return { ok: true, failedFields: [], noncoreFailedFields: [], details: {} };
