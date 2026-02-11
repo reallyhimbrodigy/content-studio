@@ -4,7 +4,16 @@ const url = require('url');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const promptPresets = require('./assets/prompt-presets.json');
+let promptPresets = [];
+try {
+  // Optional dependency: file may not exist (deleted or not shipped)
+  // Keep behavior stable by defaulting to empty presets.
+  // eslint-disable-next-line global-require, import/no-dynamic-require
+  promptPresets = require('./assets/prompt-presets.json');
+  if (!Array.isArray(promptPresets)) promptPresets = [];
+} catch (err) {
+  promptPresets = [];
+}
 const JSZip = require('jszip');
 const {
   supabaseAdmin,
@@ -8357,7 +8366,7 @@ const enrichRegenPost = (post = {}, dayIndex = 0) => {
 function getPresetGuidelines(nicheStyle = '') {
   const s = String(nicheStyle || '').toLowerCase();
   if (!s) return null;
-  for (const preset of promptPresets) {
+  for (const preset of (Array.isArray(promptPresets) ? promptPresets : [])) {
     const patterns = Array.isArray(preset.patterns) ? preset.patterns : [];
     const matches = patterns.some((pattern) => {
       try {
