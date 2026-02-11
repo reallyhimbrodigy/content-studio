@@ -8625,8 +8625,6 @@ function validateRenderablePost(post = {}) {
   if (!isNonEmptyText(pillar)) missing.push('pillar');
   const format = getFieldValue(post, ['format', 'postFormat']);
   if (!isNonEmptyText(format)) missing.push('format');
-  const schemaVersion = getFieldValue(post, ['schema_version', 'schemaVersion']);
-  if (!isNonEmptyText(schemaVersion) || schemaVersion !== 'v1') missing.push('schema_version');
   const hook = getFieldValue(post, ['hook', 'headline']);
   if (!isNonEmptyText(hook)) missing.push('hook');
   const body = getFieldValue(post, ['body']);
@@ -9479,7 +9477,6 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       })
       .filter(Boolean);
     const hasMissingFields = renderFailures.length > 0;
-    const hasSchemaVersionMismatch = hasMissingFields && renderFailures.some((item) => Array.isArray(item?.missing) && item.missing.includes('schema_version'));
     const hasPlaceholders = allPosts.some((post) => isPlaceholderPost(post));
     const postKeys = allPosts.map((post) => post?.post_key || post?.postKey || '').filter(Boolean);
     const uniquePostKeys = postKeys.length ? new Set(postKeys).size : null;
@@ -9503,9 +9500,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
           ? 'duplicate_post_keys'
           : hasDuplicateSlots
             ? 'duplicate_slots'
-            : hasSchemaVersionMismatch
-              ? 'schema_version_mismatch'
-              : hasMissingFields
+            : hasMissingFields
               ? 'missing_required_fields'
               : 'placeholder_detected';
       const requestIds = orderedResults.map((result) => result?.requestId).filter(Boolean);

@@ -3219,7 +3219,6 @@ function normalizeAndValidateCalendarPost({ rawModelJson, serverFields, schema }
     pillar: serverFields.pillar,
     format: serverFields.format,
     mode: serverFields.mode,
-    schema_version: 'v1',
   };
   const validation = validateMinimalShape(candidate);
   if (!validation.ok) {
@@ -3240,6 +3239,7 @@ function runCalendarSchemaSelfTest() {
     caption: 'Sample caption',
     designNotes: 'Sample design notes',
     hashtags: ['sample'],
+    engagementLoop: 'legacy-value-should-be-dropped',
   };
   const serverFields = {
     post_key: 'day-1-slot-0',
@@ -3250,11 +3250,26 @@ function runCalendarSchemaSelfTest() {
     mode: 'regular',
   };
   const ok = normalizeAndValidateCalendarPost({ rawModelJson: sample, serverFields });
-  const missing = normalizeAndValidateCalendarPost({ rawModelJson: {}, serverFields });
+  const missingBody = normalizeAndValidateCalendarPost({
+    rawModelJson: {
+      title: 'Sample title',
+      hook: 'Sample hook',
+      cta: 'Sample CTA',
+      reelHook: 'Sample reel hook',
+      reelBody: 'Sample reel body',
+      reelCta: 'Sample reel CTA',
+      caption: 'Sample caption',
+      designNotes: 'Sample design notes',
+      hashtags: ['sample'],
+    },
+    serverFields,
+  });
   console.log('[Calendar][SelfTest]', {
     ok: ok.ok,
-    missing_ok: missing.ok,
-    missing_reason: missing.reason,
+    strips_unknown: !Object.prototype.hasOwnProperty.call(ok?.post || {}, 'engagementLoop'),
+    missing_ok: missingBody.ok,
+    missing_reason: missingBody.reason,
+    missing_fields: missingBody?.missing_fields || [],
   });
 }
 
