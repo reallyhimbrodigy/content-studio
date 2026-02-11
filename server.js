@@ -2309,17 +2309,20 @@ async function generateAndValidateSinglePost({
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const baseInstructions = [
-    'POST CONTEXT:',
+    'INPUT CONTEXT',
     `post_key: ${post_key}`,
     `day: ${day}`,
     `slotIndex: ${slotIndex}`,
+    `mode: ${calendarMode}`,
     `pillar: ${assignedPillarKey}`,
+    `niche: ${nicheStyle}`,
     plannedTitle ? `planned_title: ${plannedTitle}` : '',
     plannedAngle ? `planned_angle: ${plannedAngle}` : '',
-    `Schema name: ${schemaLabel}`,
-    `Niche: ${nicheStyle}`,
-    pillarStyle ? `Pillar style: ${pillarStyle}` : '',
-    `ANGLE_SEED: ${angleSeed}`,
+    pillarStyle ? `pillar_style: ${pillarStyle}` : '',
+    `angle_seed: ${angleSeed}`,
+    '',
+    'Use silently. Do not describe this context.',
+    'Return valid JSON matching the schema exactly.',
   ].filter(Boolean).join('\n');
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -2334,12 +2337,7 @@ async function generateAndValidateSinglePost({
       usedSignaturesCount: recentSignatures.length,
     });
     currentStage = 'assign_pillar';
-      const retryLine = attempt === 2
-      ? [
-        'Return valid JSON matching the schema exactly.',
-        'Keep the same topic/title and the same moment.',
-      ].join('\n')
-      : '';
+      const retryLine = '';
     const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
       currentStage = 'openai_request';
@@ -2528,10 +2526,7 @@ async function generateAndValidateSinglePost({
               wrongTypes.length ? `wrong type fields: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
               emptyFields.length ? `empty fields: ${emptyFields.join(', ')}` : '',
             ].filter(Boolean).join('; ');
-          extraInstructions = [
-            'Return valid JSON matching the schema exactly.',
-            'Keep the same topic/title and the same moment.',
-          ].join('\n');
+          extraInstructions = '';
           continue;
         }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -3281,14 +3276,20 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Goal: produce a competitive post that changes what the viewer prioritizes.',
-    'Start from the common focus people default to in this niche.',
-    'Shift to the gate signal that decides outcomes in practice.',
-    'Tie the gate signal to an operational cost when missed.',
-    'State the replacement priority as the new rule for action.',
-    'Hold one topic and one moment across all fields.',
-    'Return valid JSON matching the requested schema exactly.',
+    'Purpose: produce a competitive post that changes what the audience prioritizes.',
+    'Start by naming the tempting-but-wrong focus.',
+    'Then name the real deciding signal.',
+    'State the cost of missing that signal in practice.',
+    'Finish with the replacement rule the audience should follow next time.',
+    'Keep one topic and one moment across every field.',
+    'Return valid JSON matching the schema exactly.',
   ].join('\n');
+}
+
+function getModeLens(mode = 'regular') {
+  return mode === 'brand_brain'
+    ? 'Brand Brain lens: correct a mispriority by naming the real signal, its cost, and the replacement rule.'
+    : 'Regular lens: document one real moment where a specific condition changes the next move.';
 }
 
 const VOICE_LOCK_PRESET_GUIDES = {
@@ -3564,6 +3565,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBlock = brandContext
     ? [
       'BRAND CONTEXT',
+      'Use this context to choose what you notice, not to add slogans.',
+      'Let it influence which details matter and which trade-offs are highlighted.',
+      'Do not add generic brand claims.',
+      '',
       brandContext.trim(),
     ].join('\n')
     : '';
@@ -3583,60 +3588,50 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `format: ${targetFormat}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
+    'Do not describe this context; use it silently.',
   ].filter(Boolean).join('\n');
   const GLOBAL_RULES = [
     'OUTPUT',
     'Return valid JSON matching the requested schema exactly.',
-    'Use only the schema keys; keep values as content.',
-    'CONTENT',
-    'Write one cohesive moment across all fields.',
-    'Anchor the moment in one concrete artifact.',
-    'Include one inspectable condition about that artifact.',
-    'Let the condition determine the next move.',
-    'Keep all fields about the provided topic/title.',
-    'Use concrete, observable phrasing.',
+    'Use only schema keys; values are content only.',
+    '',
+    'MOMENT',
+    'A moment is: artifact + condition + next move.',
+    'Pick one artifact and one condition; let it force one next move.',
+    'Every field must express the same moment in its own format.',
+    '',
+    'LANGUAGE',
+    'Use concrete, inspectable details.',
+    'Avoid generic marketing lines, generic inspiration, or filler.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-Goal: produce one clear, publishable short-form post for this niche.
-Center on one real work moment.
-Anchor the post to one concrete artifact and one inspectable condition.
-Let the condition change the next move, and keep that same moment consistent across every field.
+Write like field notes from a real moment.
+No preaching. No “best practices”. No motivational framing.
+Show what happened, what was noticed, and what changed next.
 
-Write with plain, direct phrasing.
-Make each field do a distinct job:
-
-title: names the topic clearly
-hook: drops into the moment
-body: explains the condition and why it matters
-cta: one natural next step tied to the moment
-reelHook / reelBody / reelCta: spoken versions of hook / body / cta
-caption: reinforces the same moment in text form
-designNotes: describes what to show to make the moment legible
-hashtags[]: specific to the topic and moment
+title: names the specific situation.
+hook: drops into the moment without hype.
+body: states the condition and what it changes.
+cta: one simple next step, stated plainly.
+reelHook/reelBody/reelCta: spoken versions of hook/body/cta.
+caption/designNotes/hashtags: stay inside the same moment; no generic promotion.
 
 Return one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: produce one competitive short-form post that changes what the viewer prioritizes.
-Center on one real work moment.
-Anchor the post to one concrete artifact and one inspectable condition.
-Use that condition to expose the wrong focus, reveal the real gate, show the operational cost, and state the replacement rule.
-Keep the same moment consistent across every field.
+Write like a decisive correction that creates separation.
+No “day in the life”. No friendly guiding tone. No generic tips.
+Force a priority shift: tempting focus → real signal → cost → replacement rule.
 
-Write with direct, decisive phrasing.
-Make each field do a distinct job:
-
-title: names the failure point or mis-priority
-hook: frames the re-rank inside the moment
-body: shows the mechanism, cost, and replacement rule
-cta: one next step that applies the replacement rule
-reelHook / reelBody / reelCta: spoken versions of hook / body / cta
-caption: reinforces the same re-rank in text form
-designNotes: describes what to show to prove the condition
-hashtags[]: specific to the topic and moment
+title: names the wrong focus or misread signal.
+hook: calls out the wrong focus and turns the frame.
+body: names the real signal, the cost, and the replacement rule.
+cta: one action that applies the replacement rule.
+reelHook/reelBody/reelCta: spoken versions of hook/body/cta.
+caption/designNotes/hashtags: reinforce the same correction and the same moment.
 
 Return one complete post.`;
 
@@ -3654,7 +3649,9 @@ Return one complete post.`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts. Each post includes title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, hashtags[]. Return valid JSON matching the schema exactly.`;
+  return `Schema: ${expectedCount} items.
+Each item includes: title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, hashtags[].
+Return valid JSON matching the schema exactly.`;
 }
 
 function safeStringify(value) {
@@ -4370,22 +4367,22 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
   if (!assigned.length) return '';
   if (compact) {
     const lines = [
-      'ASSIGNED TOPIC PLAN (read-only):',
+      'ASSIGNED TOPIC (read-only)',
       ...assigned.map((item) =>
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
-      'Use the provided title as the topic label for the post.',
-      'Keep every field on that topic.',
+      'Use this as the topic label.',
+      'Every field must stay inside that moment.',
     ];
     return lines.join('\n');
   }
   const lines = [
-    'ASSIGNED TOPIC PLAN (read-only):',
+    'ASSIGNED TOPIC PLAN (read-only)',
     ...assigned.map((item) =>
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
-    'Use the provided title as the topic label for the post.',
-    'Keep every field on that topic.',
+    'Use title as the topic label.',
+    'Every field must stay inside the same moment.',
   ];
   return lines.join('\n');
 }
@@ -4499,14 +4496,15 @@ function sanitizePostForPrompt(post = {}) {
 function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return [
-    'Goal: keep the same topic/title and produce a fresh coherent moment.',
-    'Return valid JSON matching the same schema shape as the provided post payload.',
-    'Use only the schema keys.',
-    'Keep the same topic/title. Change the artifact condition and wording.',
+    'Rewrite the post while preserving the same topic label and the same moment.',
+    'Change wording and the specific artifact/condition details, but keep the same kind of moment.',
+    'Do not add new topics, new claims, or generic promotion.',
+    'Return valid JSON matching the same schema keys as the reference.',
+    'Use only schema keys; values are content only.',
     `Niche: ${nicheStyle}`,
     `Day: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
-    'Reference post payload:',
+    'Reference post payload (do not reuse phrasing):',
     snapshot,
   ].filter(Boolean).join('\n\n');
 }
@@ -5273,39 +5271,17 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
 const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
 const REGULAR_PILLAR_STYLE_RULES = {
-  education: `Guide attention toward a specific mechanism that quietly decides the next move.
-Favor moments where noticing the detail naturally causes a different action to happen sooner, faster, or at all.
-Entertainment comes from inevitability clicking into place.`,
-
-  social_proof: `Guide attention toward patterns professionals respond to consistently, even when no one acknowledges them out loud.
-Favor moments where behavior reliably diverges — some things get prioritized, others drift.
-Entertainment comes from recognizing which side of that split you’re usually on.`,
-
-  lifestyle: `Guide attention toward a lifestyle cue that acts as a filter, not a preference.
-Favor signals that quietly decide whether buyers lean in or disengage, even when the home looks right on paper.
-Entertainment comes from realizing why some showings go nowhere.`,
-
-  promotion: `Guide attention toward a moment worth saving because it consistently decides momentum.
-Favor details that, once noticed, are hard to unsee and immediately change how the rest is evaluated.
-Entertainment comes from usefulness compounding over time.`,
+  education: `Choose one mechanism visible in the moment. Name the detail that changes the next move.`,
+  social_proof: `Choose one observable behavior difference. Show who reacts and what they do next.`,
+  lifestyle: `Choose one lived-in cue that filters interest in practice. Show the reaction shift.`,
+  promotion: `Choose one moment where a specific detail increases momentum. Show the leverage point.`,
 };
 
 const BRAND_BRAIN_PILLAR_STYLE_RULES = {
-  education: `Guide attention toward a belief that works at a beginner level but fails quietly at a competitive one.
-Favor moments where continuing to optimize the old belief creates hidden drag.
-Entertainment comes from realizing the old rule no longer applies.`,
-
-  social_proof: `Guide attention toward the behavior that separates insiders from everyone else.
-Favor signals professionals respond to automatically, and amateurs ignore or misread.
-Entertainment comes from recognizing a status tell.`,
-
-  lifestyle: `Guide attention toward a lifestyle signal people publicly chase that privately filters deals.
-Favor constraints that don’t show up in photos but decide outcomes in person.
-Entertainment comes from exposing the mismatch between image and reality.`,
-
-  promotion: `Guide attention toward the move that creates separation without asking for attention.
-Favor signals that make outcomes feel decided before competition reacts.
-Entertainment comes from realizing winning doesn’t look like trying harder.`,
+  education: `Choose one widely believed rule that fails. Replace it with the real deciding signal.`,
+  social_proof: `Choose one status tell professionals read. Show the cost of missing it.`,
+  lifestyle: `Choose one public desire that misleads. Replace it with the private filter that decides outcomes.`,
+  promotion: `Choose one wrong tactic people default to. Replace it with the separating move that actually wins.`,
 };
 
 function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0, calendarId = '' } = {}) {
@@ -8342,9 +8318,8 @@ async function generateTopicPlan({
   const brandBlock = brandContext
     ? [
       'BRAND CONTEXT',
-      'Reflect the brand’s perspective through what it pays attention to.',
-      'Use a brand-native perspective with direct, grounded language.',
-      'Brand influence should show up in which signals matter, not how loudly they are explained.',
+      'Use this context to choose what details matter and what trade-offs are highlighted.',
+      'Do not add generic brand claims or slogans.',
       '',
       brandContext.trim(),
       '',
@@ -8397,19 +8372,19 @@ async function generateTopicPlan({
     (slot) => `Slot ${slot.slot} | Day ${slot.day} | postIndex ${slot.postIndex}`
   );
   const prompt = [
-    `You are a content calendar topic planner${cleanNiche}.`,
+    'You are planning topics for short-form posts.',
     brandBlock.trim(),
     requestLabel.trim(),
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
-    'Goal: produce a topic plan that keeps each post on one clear topic.',
+    'Goal: produce a plan where each post stays on one clear topic AND one concrete moment.',
     'Return valid JSON matching the schema exactly.',
-    'Use the schema keys.',
-    `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
+    'Use only schema keys.',
+    `Create exactly ${totalPosts} items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'For each item, set slot/day/postIndex to the assigned values.',
-    'Each item includes: slot, day, postIndex, title, angle.',
-    'Title: a specific topic label for this niche with concrete phrasing.',
-    'Angle: a short label describing the decision dynamic.',
-    'Use each title as the topic label for its post.',
+    'Each item includes:',
+    '- title: specific topic label (plain, concrete phrasing)',
+    '- angle: short decision dynamic label',
+    'Avoid abstract topics that could fit any business.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
@@ -10067,14 +10042,14 @@ const server = http.createServer((req, res) => {
     `Niche: ${nicheStyle}`,
     `Generate exactly ${expectedCount} items for these post_keys:`,
     postKeys.join(', '),
-    'Each item must include: post_key, topic_signature, angle.',
-    'topic_signature captures: artifact + condition + consequence in a short phrase.',
-    'angle is a short label for the decision dynamic.',
-    'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
-    'Frame angles as concrete decision dynamics with practical impact.',
-    'topic_signature should be concise and distinctive for each post.',
+    'Each item includes:',
+    '- post_key',
+    '- topic_signature: artifact + condition + next move (short phrase)',
+    '- angle: short decision dynamic label',
+    '',
+    'topic_signature must be concrete and specific enough to anchor the full post.',
     'Use concrete values in every field.',
-    'Use the schema keys.',
+    'Use only the schema keys.',
   ].join('\n');
     const planSchema = {
       type: 'object',
@@ -10873,12 +10848,12 @@ const server = http.createServer((req, res) => {
           missing: entry.missing,
         }));
         const repairPrompt = [
-          'You are a JSON repair tool.',
+          'You repair JSON structure only.',
           'Return valid JSON matching the schema exactly.',
-          'You must keep the exact number of posts and the same order.',
-          'Fill only the missing fields listed per post while preserving existing fields.',
-          'Fill missing fields only; preserve existing values, order, and count.',
-          'Use concrete values in missing fields.',
+          'Keep the exact number of items and the same order.',
+          'Fill only the missing fields listed per item.',
+          'Preserve all existing field values.',
+          'Use concrete values for missing fields; do not add new topics.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
           `Original JSON: ${JSON.stringify(repairPayload)}`,
         ].join('\n');
