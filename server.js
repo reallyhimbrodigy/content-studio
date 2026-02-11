@@ -3599,29 +3599,44 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-Goal: publish a clear, grounded post for this niche.
+Goal: produce one clear, publishable short-form post for this niche.
+Center on one real work moment.
+Anchor the post to one concrete artifact and one inspectable condition.
+Let the condition change the next move, and keep that same moment consistent across every field.
 
-Write about one real work moment.
-Use one artifact and one inspectable condition from that moment.
-Let the condition drive the next move.
+Write with plain, direct phrasing.
+Make each field do a distinct job:
 
-Keep every field aligned to the same moment and topic.
-Write in direct, plain language.
+title: names the topic clearly
+hook: drops into the moment
+body: explains the condition and why it matters
+cta: one natural next step tied to the moment
+reelHook / reelBody / reelCta: spoken versions of hook / body / cta
+caption: reinforces the same moment in text form
+designNotes: describes what to show to make the moment legible
+hashtags[]: specific to the topic and moment
 
 Return one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: publish a competitive post that reorders priorities in this niche.
+Goal: produce one competitive short-form post that changes what the viewer prioritizes.
+Center on one real work moment.
+Anchor the post to one concrete artifact and one inspectable condition.
+Use that condition to expose the wrong focus, reveal the real gate, show the operational cost, and state the replacement rule.
+Keep the same moment consistent across every field.
 
-Use one real work moment.
-Use one artifact and one inspectable condition from that moment.
-Name the default focus, then shift to the gate signal that decides outcomes.
-Connect the gate signal to an operational cost.
-State the replacement priority as the action rule.
+Write with direct, decisive phrasing.
+Make each field do a distinct job:
 
-Keep every field aligned to the same moment and topic.
-Write with decisive, corrective clarity.
+title: names the failure point or mis-priority
+hook: frames the re-rank inside the moment
+body: shows the mechanism, cost, and replacement rule
+cta: one next step that applies the replacement rule
+reelHook / reelBody / reelCta: spoken versions of hook / body / cta
+caption: reinforces the same re-rank in text form
+designNotes: describes what to show to prove the condition
+hashtags[]: specific to the topic and moment
 
 Return one complete post.`;
 
