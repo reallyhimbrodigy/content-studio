@@ -3916,7 +3916,6 @@ function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', form
     .replaceAll('{word}', wordToken)
     .replaceAll('{asset}', ctaAsset);
   return [
-    'CREATIVE BRIEF',
     'Center the post on one real work moment.',
     'Choose one concrete artifact and one inspectable condition.',
     'Let that condition change the next move.',
@@ -5304,12 +5303,12 @@ Niche: ${niche}
 ${audience}
 ${offer}
 Guidance:
-- Keep all content directly relevant to the niche above.
-- Avoid concepts from unrelated niches.
+- Keep content directly relevant to the niche above.
+- Avoid unrelated niche concepts.
 - Avoid beauty/med-spa language unless the niche is beauty/med-spa.
 - Avoid discount-code vibes unless the niche explicitly uses it.
 === END NICHE PROFILE ===
-`;
+`.trim();
 }
 
 function deriveNicheKeyword(nicheStyle = '') {
