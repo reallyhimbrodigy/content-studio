@@ -3483,11 +3483,11 @@ function buildBrandBrainDirective(settings = {}) {
   return [
     'BRAND BRAIN DIRECTIVE',
     'Goal: produce competitive short-form content that wins attention.',
-    'Expose a common optimization that fails in real conditions.',
+    'Surface the common optimization people rely on.',
     'Name the real gate signal and the operational cost of missing it.',
     'State the replacement rule as the new priority.',
-    'Keep one topic and one moment across all fields.',
-    'Return JSON only and match the requested schema exactly.',
+    'Hold one topic and one moment across all fields.',
+    'Return valid JSON matching the requested schema exactly.',
   ].join('\n');
 }
 
@@ -3729,12 +3729,12 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
 const CALENDAR_ALIGNMENT_BLOCK = [
   'CALENDAR ALIGNMENT',
   'Goal: generate one publishable short-form post for the given niche and mode.',
-  'Topic fidelity: every field stays about the provided title/topic.',
+  'Topic fidelity: every field stays on the provided title/topic.',
   'Coherence: use one concrete artifact, one inspectable condition, and one next move across all fields.',
-  'Specificity: use observable details; keep phrasing concrete.',
-  'Novelty: vary wording and artifact/condition selection without changing the topic.',
+  'Specificity: use observable details and concrete phrasing.',
+  'Novelty: vary wording and artifact/condition choice without changing the topic.',
   'Mode: Regular = observational. Brand Brain = corrective and competitive.',
-  'Output: return valid JSON matching the schema exactly; keep field values as content.',
+  'Output: return valid JSON matching the schema exactly; field values contain content only.',
 ].join('\n');
 
 const TOPIC_LOCK_CONTRACT_BLOCK = '';
@@ -3803,124 +3803,6 @@ function buildCompactPostKeyBlock(startDay, days, postsPerDay) {
   return lines.join('\n');
 }
 
-const PROMPT_VERSION = 'calendar_minimal_v2';
-const REGULAR_BRIEF = {
-  hookArchetypes: [
-    'Observation-first framing',
-    'Signal-before-explanation framing',
-    'Decision-gate framing',
-  ],
-  angles: [
-    'A real work moment where one condition changes the next move',
-    'A concrete gate signal that quietly changes sequence',
-    'An artifact-level cue that changes leverage or verification',
-  ],
-  proofTypes: [
-    'artifact cue',
-    'condition marker',
-    'observable signal',
-  ],
-  ctaAssets: [
-    'save',
-    'bookmark',
-    'share',
-    'comment',
-    'replay',
-    'compare',
-    'notice',
-  ],
-  ctaFormats: [
-    'Continue attention at the decision moment',
-    'Save or bookmark when this cue appears again',
-    'Use a platform-native continuation action',
-  ],
-};
-const BRAND_BRAIN_BRIEF = {
-  hookArchetypes: [
-    'Corrective re-ranking framing',
-    'Constraint-first framing',
-    'Operational consequence framing',
-  ],
-  angles: [
-    'A wrong focus that loses to the real gate signal',
-    'A hidden constraint that changes outcomes earlier than expected',
-    'A mis-ranked belief corrected by an artifact-level cue',
-  ],
-  proofTypes: [
-    're-ranking proof',
-    'constraint proof',
-    'operational consequence proof',
-  ],
-  ctaAssets: [
-    'save',
-    'bookmark',
-    'share',
-    'comment',
-    'replay',
-    'compare',
-    'notice',
-  ],
-  ctaFormats: [
-    'Continue attention where the old focus fails',
-    'Use a platform-native continuation action',
-    'Carry the correction into the next decision moment',
-  ],
-};
-const HOOK_ARCHETYPES = [
-  'The mistake that caused the loss',
-  'The hidden step most people miss',
-  'Why your current approach fails',
-  'The truth people skip',
-  'The one change that fixed it',
-  'What I wish I knew earlier',
-  'The fastest way to stop this',
-  'The signal everyone ignores',
-  'The tradeoff no one mentions',
-  'The common move that backfires',
-  'The check that changes outcomes',
-  'The pattern behind repeated failure',
-];
-const CTA_WORD_TOKENS = [];
-
-function mulberry32(seed = 1) {
-  let state = Number(seed) >>> 0;
-  return () => {
-    state = (state + 0x6D2B79F5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pick(rng, arr = []) {
-  if (!Array.isArray(arr) || !arr.length) return '';
-  const idx = Math.floor(rng() * arr.length);
-  return arr[idx] || arr[0];
-}
-
-// Deterministic by mode+post key (+pillar/format) so the same slot gets the same brief every run.
-function buildCreativeBrief({ post_key = '', mode = 'regular', pillar = '', format = 'reel' } = {}) {
-  const normalizedMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-  const library = normalizedMode === 'brand_brain' ? BRAND_BRAIN_BRIEF : REGULAR_BRIEF;
-  const seedKey = `${toPlainString(post_key || '')}|${normalizedMode}|${toPlainString(pillar || '')}|${toPlainString(format || 'reel')}`;
-  const rng = mulberry32(seedFromString(seedKey));
-  const angle = pick(rng, library.angles);
-  const proofType = pick(rng, library.proofTypes);
-  const ctaAsset = pick(rng, library.ctaAssets);
-  let ctaFormat = pick(rng, library.ctaFormats);
-  const wordToken = pick(rng, CTA_WORD_TOKENS) || 'GUIDE';
-  ctaFormat = String(ctaFormat || '')
-    .replaceAll('{word}', wordToken)
-    .replaceAll('{asset}', ctaAsset);
-  return [
-    'Center the post on one real work moment.',
-    'Choose one concrete artifact and one inspectable condition.',
-    'Let that condition change the next move.',
-    'Prefer specific, plain phrasing over generic slogans.',
-  ].join('\n');
-}
-
 function buildRecentTitlesList(titles = [], limit = 10) {
   if (!Array.isArray(titles) || !titles.length) return [];
   const seen = new Set();
@@ -3953,8 +3835,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const mode = String(opts.calendarMode || (opts.brandBrainDirective ? 'brand_brain' : 'regular')).toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
-  const schema = getCalendarPostSchema(mode, startDay, endDay);
-  const requiredKeys = Object.keys(schema.properties || {}).join(', ');
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext
     ? [
@@ -3966,20 +3846,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
       brandContext.trim(),
     ].join('\n')
     : '';
-  const targetPillar = opts.pillar || opts.targetPillar || '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
   const postKeyValue = opts.post_key || opts.postKey || '';
   const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
   const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
-  const recentTitles = buildRecentTitlesList(opts.recentTitles || [], 10);
-  const creativeBriefText = buildCreativeBrief({
-    mode,
-    pillar: targetPillar || 'default',
-    format: targetFormat,
-    post_key: resolvedPostKey,
-  });
   const contextLines = [
     'CONTEXT',
     `mode: ${mode}`,
@@ -3988,30 +3860,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `day: ${startDay}`,
     `slotIndex: ${slotIndex}`,
     `format: ${targetFormat}`,
-    targetPillar ? `pillar: ${targetPillar}` : null,
+    opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
   ].filter(Boolean).join('\n');
-  const creativeBriefBlock = [
-    'CREATIVE BRIEF',
-    creativeBriefText,
-  ].join('\n');
-  const recentIdeasBlock = recentTitles.length
-    ? [
-      'RECENT IDEAS (for novelty)',
-      ...recentTitles.map((title, idx) => `${idx + 1}. ${title}`),
-      'Use fresh concepts and phrasing relative to these items.',
-    ].join('\n')
-    : '';
-  const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
-  const recentSignatureLine = usedSignatures.length
-    ? `RECENT SIGNATURES (for novelty): ${usedSignatures.join(' | ')}`
-    : '';
-  const noveltyThesisBlock = [
-    'NOVELTY',
-    'When recent ideas/signatures are provided, vary artifact category and condition phrasing.',
-    'Keep novelty within the same topic/title by changing the artifact/condition choice.',
-  ].join('\n');
   const GLOBAL_RULES = [
     'OUTPUT',
     'Return valid JSON matching the requested schema exactly.',
@@ -4024,30 +3876,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
 Goal: produce one clear, publishable short-form post for this niche.
-Use an observational tone and keep the writing grounded in one real work moment.
-Keep all fields aligned to the same topic, artifact, condition, and next move.
-Write concise, specific copy without hype, slogans, or filler.
-Separate fields cleanly:
-- title names the topic
-- hook sets the moment
-- body explains the condition and implication
-- cta gives one action
-- reelHook/reelBody/reelCta mirror hook/body/cta as spoken lines
-- caption/designNotes/engagementLoop/hashtags stay on the same topic.`;
+Use an observational tone grounded in one real work moment.
+Keep fields aligned to the same topic, artifact, condition, and next move.
+Write concise, specific copy in plain language.
+
+Return one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
 Goal: produce one competitive short-form post that re-ranks a wrong focus into the real gate.
 Use a corrective, decisive tone that feels meaningfully different from Regular mode.
-Keep all fields aligned to one topic, one moment, one artifact condition, and one consequence.
+Keep fields aligned to one topic, one moment, one artifact condition, and one consequence.
 Show the wrong optimization, the real gate signal, the operational cost, and the replacement rule.
-Separate fields cleanly:
-- title names the failure point
-- hook frames the re-rank
-- body explains the mechanism and cost
-- cta gives one action
-- reelHook/reelBody/reelCta mirror hook/body/cta as spoken lines
-- caption/designNotes/engagementLoop/hashtags reinforce the same core moment.`;
+
+Return one complete post.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
@@ -4055,13 +3897,7 @@ Separate fields cleanly:
     brandBlock,
     contextLines,
     plannedAngle ? `ANGLE_LABEL: ${plannedAngle}` : '',
-    creativeBriefBlock,
-    recentIdeasBlock,
-    recentSignatureLine,
-    noveltyThesisBlock,
-    `PROMPT_VERSION: ${PROMPT_VERSION}`,
     GLOBAL_RULES,
-    CALENDAR_ALIGNMENT_BLOCK,
     contractBlock,
   ].filter(Boolean);
   const extra = opts.extraInstructions ? `\n${opts.extraInstructions.trim()}` : '';
@@ -4790,7 +4626,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
       'Use the provided title as the topic label for the post.',
-      'Every field must stay about that topic.',
+      'Keep every field on that topic.',
     ];
     return lines.join('\n');
   }
@@ -4800,7 +4636,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
     'Use the provided title as the topic label for the post.',
-    'Every field must stay about that topic.',
+    'Keep every field on that topic.',
   ];
   return lines.join('\n');
 }
@@ -5736,7 +5572,7 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Brand Brain: challenge the wrong optimization, show the real gate, show the cost, and state the replacement rule.'
+    ? 'Brand Brain: challenge the wrong optimization, show the real gate, show the cost, state the replacement rule.'
     : 'Regular: show one real work moment where one inspectable condition changes the next move.';
 }
 
@@ -8351,10 +8187,6 @@ const enrichRegenPost = (post = {}, dayIndex = 0) => {
 };
 
 
-function getPresetGuidelines(nicheStyle = '') {
-  return null;
-}
-
 function extractFirstJsonObject(text = '') {
   if (!text) return null;
   const start = text.indexOf('{');
@@ -8839,10 +8671,10 @@ async function generateTopicPlan({
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
     'Goal: produce a topic plan that keeps each post on one clear topic.',
     'Return valid JSON matching the schema exactly.',
-    'Use only the schema keys.',
+    'Use the schema keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'For each item, set slot/day/postIndex to the assigned values.',
-    'Each item must include: slot, day, postIndex, title, angle.',
+    'Each item includes: slot, day, postIndex, title, angle.',
     'Title: a specific topic label for this niche with concrete phrasing.',
     'Angle: a short label describing the decision dynamic.',
     'Use each title as the topic label for its post.',
@@ -10509,8 +10341,8 @@ const server = http.createServer((req, res) => {
     'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
     'Frame angles as concrete decision dynamics with practical impact.',
     'topic_signature should be concise and distinctive for each post.',
-    'Use concrete values for every field.',
-    'Use only the schema keys.',
+    'Use concrete values in every field.',
+    'Use the schema keys.',
   ].join('\n');
     const planSchema = {
       type: 'object',
