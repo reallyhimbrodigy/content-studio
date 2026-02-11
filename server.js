@@ -17,13 +17,8 @@ const {
 } = require('./services/supabase-admin');
 const cron = require('node-cron');
 let uploadAssetFromUrl = async () => null;
-let buildCloudinaryUrl = () => '';
+let buildAssetUrl = () => '';
 let generateBrandedBackgroundImage = async () => null;
-try {
-  ({ uploadAssetFromUrl, buildCloudinaryUrl, generateBrandedBackgroundImage } = require('./services/cloudinary'));
-} catch (err) {
-  console.log('[Assets] Cloudinary service unavailable; asset helpers disabled.');
-}
 const { getBrandBrainForUser } = require('./services/brand-brain');
 let getPhylloPosts = async () => [];
 let getPhylloPostMetrics = async () => null;
@@ -57,18 +52,17 @@ const {
 } = require('./server/lib/billboardHot100');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
-const createPlacidRender = async () => ({ id: null, status: 'disabled' });
-const resolvePlacidTemplateId = () => null;
-const validatePlacidTemplateConfig = async () => {};
-const isPlacidConfigured = () => false;
+const createDesignRender = async () => ({ id: null, status: 'disabled' });
+const resolveDesignTemplateId = () => null;
+const validateDesignTemplateConfig = async () => {};
+const isDesignPipelineConfigured = () => false;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
-const STABILITY_API_KEY = process.env.STABILITY_API_KEY || '';
-const STORY_TEMPLATE_ID = process.env.PLACID_STORY_TEMPLATE_ID || '';
-const CAROUSEL_TEMPLATE_ID = process.env.PLACID_CAROUSEL_TEMPLATE_ID || '';
+const STORY_TEMPLATE_ID = process.env.DESIGN_STORY_TEMPLATE_ID || '';
+const CAROUSEL_TEMPLATE_ID = process.env.DESIGN_CAROUSEL_TEMPLATE_ID || '';
 const ALLOWED_DESIGN_ASSET_TYPES = ['story', 'carousel'];
-// NOTE: Placid and Cloudinary secrets must never be exposed client-side.
+// NOTE: Asset service secrets must never be exposed client-side.
 const PHYLLO_ENVIRONMENT = process.env.PHYLLO_ENVIRONMENT || 'production';
 const PHYLLO_WEBHOOK_SIGNING_SECRET = process.env.PHYLLO_WEBHOOK_SIGNING_SECRET || '';
 const PHYLLO_WEBHOOK_ENV = process.env.PHYLLO_WEBHOOK_ENV || 'production';
@@ -313,9 +307,6 @@ async function syncAccountMetricsForAnalytics(acct = {}, since = new Date(), unt
 if (!OPENAI_API_KEY) {
   console.warn('Warning: OPENAI_API_KEY is not set.');
 }
-if (!STABILITY_API_KEY) {
-  console.warn('Warning: STABILITY_API_KEY is not set. /api/design/generate will return 501.');
-}
 
 // Simple local data directory for brand brains
 const DATA_DIR = path.join(__dirname, 'data');
@@ -402,20 +393,7 @@ function chunkText(input, maxLen = 800) {
   return chunks;
 }
 
-const CAROUSEL_SLIDE_BLUEPRINTS = [
-  { key: 'hook', title: 'Slide 1 · Hook', role: 'Hook', instructions: 'Deliver a bold hook or question that stops the scroll.', order: 1 },
-  { key: 'value_one', title: 'Slide 2 · Value', role: 'Value 1', instructions: 'Share the strongest proof point, stat, or insight tied to the concept.', order: 2 },
-  { key: 'value_two', title: 'Slide 3 · Value', role: 'Value 2', instructions: 'Add a complementary tip or detail that reinforces the hook.', order: 3 },
-  { key: 'engagement', title: 'Slide 4 · Engagement', role: 'Engagement', instructions: 'Prompt the viewer to comment, save, or DM. Reference the concept directly.', order: 4 },
-  { key: 'cta', title: 'Slide 5 · CTA', role: 'CTA', instructions: 'End with a clear CTA button or sticker that drives action.', order: 5 },
-];
-
-const CAROUSEL_OUTPUT_FORMATS = [
-  { key: 'instagram', label: 'Instagram', platform: 'Instagram', aspectRatio: '1:1', width: 1080, height: 1080 },
-  { key: 'tiktok', label: 'TikTok', platform: 'TikTok', aspectRatio: '9:16', width: 1080, height: 1920 },
-];
-
-// Template ID resolution is handled by services/placid.js resolvePlacidTemplateId()
+// Template ID resolution is handled by resolveDesignTemplateId()
 
 function getDesignAssetTypeLabel(type) {
   switch (String(type || '').toLowerCase()) {
@@ -426,54 +404,6 @@ function getDesignAssetTypeLabel(type) {
     default:
       return 'Asset';
   }
-}
-
-function stabilityMultipartRequest({ path: apiPath, method = 'POST', fields = [] }) {
-  return new Promise((resolve, reject) => {
-    const boundary = '----promptly' + Math.random().toString(16).slice(2);
-    const body = fields
-      .map((field) => {
-        let disposition = `Content-Disposition: form-data; name="${field.name}"`;
-        if (field.filename) disposition += `; filename="${field.filename}"`;
-        const typeLine = `Content-Type: ${field.contentType || 'text/plain; charset=utf-8'}`;
-        const value = field.value === undefined || field.value === null ? '' : String(field.value);
-        return `--${boundary}\r\n${disposition}\r\n${typeLine}\r\n\r\n${value}\r\n`;
-      })
-      .join('') + `--${boundary}--\r\n`;
-    const bodyBuffer = Buffer.from(body, 'utf8');
-    const options = {
-      hostname: 'api.stability.ai',
-      path: apiPath,
-      method,
-      headers: {
-        'Authorization': `Bearer ${STABILITY_API_KEY}`,
-        'Accept': 'application/json',
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': bodyBuffer.length,
-      },
-    };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const parsed = JSON.parse(data || '{}');
-            resolve(parsed);
-          } catch (err) {
-            reject(err);
-          }
-        } else {
-          const err = new Error(`Stability API error ${res.statusCode}: ${data}`);
-          err.statusCode = res.statusCode;
-          reject(err);
-        }
-      });
-    });
-    req.on('error', reject);
-    req.write(bodyBuffer);
-    req.end();
-  });
 }
 
 function downloadBinary(urlString) {
@@ -1504,9 +1434,9 @@ function mapDesignAssetRow(row) {
   if (!row) return null;
   const data = row.data || {};
   const linkedDay = data.linked_day || parseLinkedDayFromKey(row.calendar_day_id);
-  const cloudinaryUrl = row.cloudinary_public_id ? buildCloudinaryUrl(row.cloudinary_public_id) : '';
-  const imageUrl = row.image_url || cloudinaryUrl;
-  const previewUrl = data.preview_url || imageUrl || cloudinaryUrl;
+  const assetUrl = row.image_url ? buildAssetUrl(row.image_url) : '';
+  const imageUrl = row.image_url || assetUrl;
+  const previewUrl = data.preview_url || imageUrl;
   const errorMessage = data.error_message || '';
   const notesForAi = data.notes_for_ai ?? data.notes ?? '';
   return {
@@ -1529,9 +1459,9 @@ function mapDesignAssetRow(row) {
     previewInlineUrl: previewUrl,
     downloadUrl: previewUrl,
     image_url: imageUrl,
-    cloudinaryUrl,
+    imageUrl,
     designUrl: `/design.html?asset=${encodeURIComponent(row.id)}`,
-    cloudinaryPublicId: row.cloudinary_public_id || '',
+    imagePublicId: row.image_url || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     data,
@@ -1669,41 +1599,13 @@ async function fetchBrandBrainRow(userId) {
   }
 }
 
-async function maybeAttachGeneratedBackground(designData, brandProfile) {
-  if (!STABILITY_API_KEY || designData.background_image) return designData;
-  const promptParts = [
-    'High-quality, abstract social media background graphic',
-    designData.title || '',
-    designData.campaign || '',
-    brandProfile?.voice ? `Brand voice: ${brandProfile.voice}` : '',
-    brandProfile?.primaryColor ? `Primary color ${brandProfile.primaryColor}` : '',
-    brandProfile?.secondaryColor ? `Secondary color ${brandProfile.secondaryColor}` : '',
-  ].filter(Boolean);
-  const prompt = promptParts.join('. ');
-  if (!prompt) return designData;
-  try {
-    const aspectRatio = resolveBackgroundAspectForType(designData.type);
-    const buffer = await generateStabilityImage(prompt, aspectRatio);
-    if (buffer && buffer.length) {
-      const dataUri = `data:image/png;base64,${buffer.toString('base64')}`;
-      const upload = await uploadAssetFromUrl({ url: dataUri });
-      if (upload?.secureUrl) {
-        return Object.assign({}, designData, { background_image: upload.secureUrl });
-      }
-    }
-  } catch (err) {
-    console.warn('Optional background generation failed', { message: err?.message });
-  }
-  return designData;
-}
-
 async function loadCalendarDay(calendarDayId, userId) {
   // TODO: Wire to Supabase calendar data. For now, return null so type-specific
   // defaults rely on request payload.
   return null;
 }
 
-function safePlacidText(value, max = 300) {
+function safeDesignText(value, max = 300) {
   if (!value) return '';
   return String(value).replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -1732,13 +1634,13 @@ function mergeBrandProfileIntoDesignData(designData = {}, brandProfile = null, f
   return next;
 }
 
-// NOTE: Placid template currently only binds title, subtitle, cta, logo, background_image, brand_color, and platform.
+// NOTE: design provider template currently only binds title, subtitle, cta, logo, background_image, brand_color, and platform.
 // Brand metadata still lives in design_assets.data for future template bindings.
-function buildPlacidPayload(data = {}) {
+function buildDesignPayload(data = {}) {
   return {
-    title: safePlacidText(data.title, 120),
-    subtitle: safePlacidText(data.subtitle, 360),
-    cta: safePlacidText(data.cta, 80),
+    title: safeDesignText(data.title, 120),
+    subtitle: safeDesignText(data.subtitle, 360),
+    cta: safeDesignText(data.cta, 80),
     brand_color: data.brand_color || data.brand_primary_color || '#ffffff',
     platform: data.platform || 'instagram',
     logo: data.logo || data.brand_logo_url || '',
@@ -1782,11 +1684,11 @@ async function handleCreateDesignAsset(req, res) {
     requestBody.cta = cta;
     requestBody.backgroundImageUrl = backgroundImage;
 
-    const templateId = resolvePlacidTemplateId(type);
+    const templateId = resolveDesignTemplateId(type);
     if (!templateId) {
       console.error('[DesignAssets] Missing template id for type', type);
       return sendJson(res, 501, {
-        error: 'Design pipeline not configured: missing Placid template id for this asset type.',
+        error: 'Design pipeline not configured: missing design provider template id for this asset type.',
         status: 'failed',
       });
     }
@@ -1826,8 +1728,7 @@ async function handleCreateDesignAsset(req, res) {
         });
         console.log('[DesignAssets] Generated branded background', { background_image: designData.background_image });
       } catch (err) {
-        console.warn('Branded background generation failed, falling back to existing logic', err?.message);
-        designData = await maybeAttachGeneratedBackground(designData, brandProfile);
+        console.warn('Branded background generation failed', err?.message);
       }
     }
 
@@ -1968,12 +1869,12 @@ async function handlePatchDesignAsset(req, res, assetId) {
   };
   if (regenerate) {
     baseUpdate.status = 'rendering';
-    baseUpdate.placid_render_id = null;
-    baseUpdate.cloudinary_public_id = null;
+    baseUpdate.render_job_id = null;
+    baseUpdate.image_url = null;
     baseUpdate.data = {
       ...mergedData,
       preview_url: null,
-      cloudinary_public_id: null,
+      image_url: null,
       error_code: null,
     };
   }
@@ -2046,17 +1947,17 @@ async function handleDebugDesignTest(req, res) {
   }
   const debugTemplateId = STORY_TEMPLATE_ID || CAROUSEL_TEMPLATE_ID;
   if (!debugTemplateId) {
-    return sendJson(res, 501, { error: 'No Placid template id is configured for debug render' });
+    return sendJson(res, 501, { error: 'No design provider template id is configured for debug render' });
   }
   try {
-    const payload = buildPlacidPayload({
+    const payload = buildDesignPayload({
       title: 'Debug Title',
       subtitle: 'Debug Subtitle',
       cta: 'Tap to learn more',
       brand_color: '#ffffff',
       platform: 'instagram',
     });
-    const render = await createPlacidRender({
+    const render = await createDesignRender({
       templateId: debugTemplateId,
       data: payload,
     });
@@ -2076,11 +1977,11 @@ async function handleDebugDesignTest(req, res) {
   }
 }
 
-async function handlePlacidTemplateDebug(req, res) {
+async function handleDesignTemplateDebug(req, res) {
   const types = ['story', 'carousel'];
   const results = [];
   for (const type of types) {
-    const templateId = resolvePlacidTemplateId(type);
+    const templateId = resolveDesignTemplateId(type);
     if (!templateId) {
       results.push({ type, templateId: null, ok: false, error: 'No template id configured' });
       continue;
@@ -2092,7 +1993,7 @@ async function handlePlacidTemplateDebug(req, res) {
         cta: 'Learn more',
         background_image: '',
       };
-      const render = await createPlacidRender({ templateId, data: testPayload });
+      const render = await createDesignRender({ templateId, data: testPayload });
       results.push({ type, templateId, ok: true, renderId: render.renderId || render.id, status: render.status });
     } catch (err) {
       results.push({
@@ -2129,147 +2030,19 @@ async function handleDebugDesignAssets(req, res) {
   }
 }
 
-async function handleDebugPlacidConfig(req, res) {
+async function handleDebugDesignConfig(req, res) {
   return sendJson(res, 200, {
     configured: {
-      PLACID_API_KEY: process.env.PLACID_API_KEY ? 'SET' : 'MISSING',
-      PLACID_STORY_TEMPLATE_ID: STORY_TEMPLATE_ID || 'NOT SET',
-      PLACID_CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID || 'NOT SET',
+      DESIGN_API_KEY: process.env.DESIGN_API_KEY ? 'SET' : 'MISSING',
+      DESIGN_STORY_TEMPLATE_ID: STORY_TEMPLATE_ID || 'NOT SET',
+      DESIGN_CAROUSEL_TEMPLATE_ID: CAROUSEL_TEMPLATE_ID || 'NOT SET',
     },
     resolvedTemplateIds: {
-      story: resolvePlacidTemplateId('story'),
-      carousel: resolvePlacidTemplateId('carousel'),
+      story: resolveDesignTemplateId('story'),
+      carousel: resolveDesignTemplateId('carousel'),
     },
-    note: 'Check your Placid dashboard at https://placid.app to get valid template IDs'
+    note: 'Check your design provider dashboard to get valid template IDs'
   });
-}
-
-async function generateStabilityImage(prompt, aspectRatio = '9:16') {
-  const json = await stabilityMultipartRequest({
-    path: '/v2beta/stable-image/generate/sd3',
-    method: 'POST',
-    fields: [
-      { name: 'prompt', value: prompt },
-      { name: 'text_prompts[0][text]', value: prompt },
-      { name: 'mode', value: 'text-to-image' },
-      { name: 'aspect_ratio', value: aspectRatio },
-      { name: 'output_format', value: 'png' },
-    ],
-  });
-  const artifact = json && Array.isArray(json.artifacts) ? json.artifacts[0] : null;
-  if (artifact && artifact.base64) {
-    return Buffer.from(artifact.base64, 'base64');
-  }
-  if (typeof json?.image === 'string') {
-    return Buffer.from(json.image, 'base64');
-  }
-  throw new Error(
-    `Stability image generation returned unexpected payload: ${JSON.stringify(json).slice(0, 200)}`
-  );
-}
-
-function buildCarouselSlidePrompt({
-  slide,
-  format,
-  tone,
-  concept,
-  captionCue,
-  cta,
-  notes,
-  brandPalette = {},
-  fonts = {},
-  niche = '',
-}) {
-  const paletteLine = [brandPalette.primary, brandPalette.secondary, brandPalette.accent].filter(Boolean).join(', ');
-  const fontLine = [fonts.heading, fonts.body].filter(Boolean).join(' + ');
-  const lines = [
-    `Design slide ${slide.order} of a ${format.label} carousel (${format.width}x${format.height}).`,
-    `Slide role: ${slide.instructions}`,
-    concept ? `Concept or theme: ${concept}.` : '',
-    captionCue ? `Caption cue or hook: ${captionCue}.` : '',
-    niche ? `Audience: ${niche}.` : '',
-    cta ? `CTA to reinforce eventually: ${cta}.` : '',
-    notes ? `Creative notes: ${notes}.` : '',
-    tone ? `Visual tone: ${tone}.` : '',
-    paletteLine ? `Use the brand palette (${paletteLine}) for backgrounds and accents.` : '',
-    fontLine ? `Typography should use ${fontLine}.` : '',
-    'Keep copy on this slide under 15 English words with generous negative space.',
-    'Maintain the same gradient/texture system used across the other slides.',
-    format.aspectRatio === '9:16'
-      ? 'Ensure safe margins for TikTok/Stories with vertical composition.'
-      : 'Ensure square composition centered for Instagram carousel.',
-    slide.key === 'engagement' ? 'Incorporate a sticker-style prompt asking viewers to comment, DM, or save.' : '',
-    slide.key === 'cta' ? 'Include a button-style CTA and a subtle urgency line (e.g., “Spots filling fast”).' : '',
-  ];
-  return lines.filter(Boolean).join(' ');
-}
-
-async function generateCarouselSlides({
-  tone,
-  notes,
-  concept,
-  captionCue,
-  cta,
-  niche,
-  brandPalette,
-  fonts,
-}) {
-  const slides = [];
-  const timestamp = Date.now();
-  const baseSlug = slugify(concept || captionCue || 'carousel');
-  for (const slideDef of CAROUSEL_SLIDE_BLUEPRINTS) {
-    for (const format of CAROUSEL_OUTPUT_FORMATS) {
-      const prompt = buildCarouselSlidePrompt({
-        slide: slideDef,
-        format,
-        tone,
-        concept,
-        captionCue,
-        cta,
-        notes,
-        brandPalette,
-        fonts,
-        niche,
-      });
-      const buffer = await generateStabilityImage(prompt, format.aspectRatio);
-      const filename = `${timestamp}-${baseSlug}-${slideDef.key}-${format.key}.png`;
-      const target = path.join(DESIGN_ASSETS_DIR, filename);
-      fs.writeFileSync(target, buffer);
-      const downloadUrl = `/data/design-assets/${filename}`;
-      slides.push({
-        id: `${timestamp}-${slideDef.key}-${format.key}`,
-        label: `${slideDef.title} · ${format.label}`,
-        role: slideDef.role,
-        slideNumber: slideDef.order,
-        platform: format.platform,
-        aspectRatio: format.aspectRatio,
-        width: format.width,
-        height: format.height,
-        downloadUrl,
-        previewUrl: downloadUrl,
-      });
-    }
-  }
-  if (!slides.length) throw new Error('No carousel slides were generated');
-  const zipName = `${timestamp}-${baseSlug}-carousel.zip`;
-  const zipPath = path.join(DESIGN_ASSETS_DIR, zipName);
-  const zip = new JSZip();
-  slides.forEach((slide, idx) => {
-    const fileName = slide.downloadUrl.split('/').pop();
-    if (!fileName) return;
-    const absolute = path.join(DESIGN_ASSETS_DIR, fileName);
-    if (!fs.existsSync(absolute)) return;
-    const zipLabel = `${String(slide.slideNumber || idx + 1).padStart(2, '0')}-${slugify(slide.label || `slide-${idx + 1}`)}.png`;
-    zip.file(zipLabel, fs.readFileSync(absolute));
-  });
-  const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-  fs.writeFileSync(zipPath, zipBuffer);
-  return {
-    slides,
-    bundleUrl: `/data/design-assets/${zipName}`,
-    previewUrl: slides[0]?.previewUrl || '',
-    downloadUrl: slides[0]?.downloadUrl || '',
-  };
 }
 
 function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandKit, concept, cta, brandPalette = {}, fonts = {} }) {
@@ -2595,7 +2368,6 @@ async function generateAndValidateSinglePost({
         plannedAngle,
         recentTitles,
         angleSeed,
-        lens,
         usedSignatures: recentSignatures,
       });
       reachedOpenAI = true;
@@ -2659,6 +2431,31 @@ async function generateAndValidateSinglePost({
       });
       return post;
       } catch (err) {
+        if (currentStage === 'openai_request') {
+          const responseData = err?.response?.data ?? err?.error?.message ?? err?.openaiDetails ?? null;
+          let responsePreview = '';
+          if (responseData != null) {
+            try {
+              responsePreview = (typeof responseData === 'string'
+                ? responseData
+                : JSON.stringify(responseData)).slice(0, 1000);
+            } catch {
+              responsePreview = String(responseData).slice(0, 1000);
+            }
+          }
+          console.warn('[Calendar][Job][OpenAIRequestError]', {
+            requestId,
+            mode: calendarMode,
+            post_key,
+            stage: currentStage,
+            name: err?.name || null,
+            message: String(err?.message || '').slice(0, 1000),
+            status: err?.status || err?.statusCode || err?.response?.status || null,
+            code: err?.code || null,
+            stack: String(err?.stack || '').slice(0, 500),
+            response: responsePreview || null,
+          });
+        }
         if (!err?.details) {
           const baseDetails = {
             field: `stage:${currentStage}`,
@@ -9651,9 +9448,9 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.cloudinary.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
+  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
   res.setHeader('Content-Security-Policy', baseCsp);
-  // Cloudinary is allowed in img-src so asset previews work.
+  // Asset service is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
   if ((req.headers.host || '').includes('usepromptly.app')) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
@@ -12356,15 +12153,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/debug/placid-templates' && req.method === 'GET') {
+  if (parsed.pathname === '/api/debug/design-templates' && req.method === 'GET') {
     if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
-    handlePlacidTemplateDebug(req, res);
+    handleDesignTemplateDebug(req, res);
     return;
   }
 
-  if (parsed.pathname === '/api/debug/placid-config' && req.method === 'GET') {
+  if (parsed.pathname === '/api/debug/design-config' && req.method === 'GET') {
     if (!ENABLE_DESIGN_LAB) return sendJson(res, 410, { error: 'Design Lab has been removed.' });
-    handleDebugPlacidConfig(req, res);
+    handleDebugDesignConfig(req, res);
     return;
   }
 
@@ -12376,134 +12173,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (parsed.pathname === '/api/design/generate' && req.method === 'POST') {
-    if (!ENABLE_DESIGN_LAB) {
-      return sendJson(res, 410, { error: 'Design Lab has been removed.' });
-    }
-    if (!STABILITY_API_KEY) {
-      res.writeHead(501, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'Design generation not configured', hint: 'Set STABILITY_API_KEY on the server.' }));
-    }
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', async () => {
-      try {
-        const payload = JSON.parse(body || '{}');
-        const {
-          assetType = 'story template',
-          tone = 'bold',
-          notes = '',
-          day = '',
-          caption = '',
-          captionCue = '',
-          concept = '',
-          niche = '',
-          aspectRatio = '9:16',
-          userId = '',
-          cta: payloadCta = '',
-          brandPalette: palettePayload = {},
-          fonts: fontsPayload = {},
-          primaryColor: payloadPrimary = '',
-          secondaryColor: payloadSecondary = '',
-          accentColor: payloadAccent = '',
-          headingFont: payloadHeading = '',
-          bodyFont: payloadBody = '',
-        } = payload;
-        const brandProfile = userId ? loadBrand(userId) : null;
-        const brandKit = brandProfile?.kit || null;
-        const palette = {
-          primary: palettePayload.primaryColor || payloadPrimary || brandKit?.primaryColor || '#ffffff',
-          secondary: palettePayload.secondaryColor || payloadSecondary || brandKit?.secondaryColor || '#ffffff',
-          accent: palettePayload.accentColor || payloadAccent || brandKit?.accentColor || '#ffffff',
-        };
-        const fonts = {
-          heading: fontsPayload.heading || payloadHeading || brandKit?.headingFont || 'Inter Bold',
-          body: fontsPayload.body || payloadBody || brandKit?.bodyFont || 'Source Sans Pro',
-        };
-        const wantsCarousel = /carousel/i.test(String(assetType || ''));
-        if (wantsCarousel) {
-          try {
-            const carouselResult = await generateCarouselSlides({
-              tone,
-              notes,
-              concept: concept || captionCue || caption || '',
-              captionCue: captionCue || caption || '',
-              cta: payloadCta || '',
-              niche,
-              brandPalette: palette,
-              fonts,
-            });
-            const response = {
-              id: `${Date.now()}-${slugify(assetType)}`,
-              day,
-              title: `${assetType || 'Carousel'}${day ? ` · Day ${day}` : ''}`,
-              type: assetType,
-              typeLabel: assetType,
-              status: 'Ready',
-              downloadUrl: carouselResult.downloadUrl,
-              bundleUrl: carouselResult.bundleUrl,
-              previewUrl: carouselResult.previewUrl,
-              slides: carouselResult.slides,
-              previewText: notes || caption || '',
-              accentColor: palette.accent,
-            };
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(response));
-            return;
-          } catch (err) {
-            console.error('Stability generation failed:', err);
-            res.writeHead(502, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Stability generation failed', detail: err.message || String(err) }));
-            return;
-          }
-        }
-        const captionText = captionCue || caption || '';
-        const prompt = buildDesignPrompt({
-          assetType,
-          tone,
-          notes,
-          day,
-          caption: captionText,
-          niche,
-          brandKit,
-          concept: concept || captionText,
-          cta: payloadCta,
-          brandPalette: palette,
-          fonts,
-        });
-        let buffer;
-        let extension;
-        try {
-          buffer = await generateStabilityImage(prompt, aspectRatio);
-          extension = '.png';
-        } catch (err) {
-          console.error('Stability generation failed:', err);
-          res.writeHead(502, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Stability generation failed', detail: err.message || String(err) }));
-        }
-        const safeName = `${Date.now()}-${slugify(assetType || 'asset')}${extension}`;
-        const target = path.join(DESIGN_ASSETS_DIR, safeName);
-        fs.writeFileSync(target, buffer);
-        const response = {
-          id: safeName,
-          day,
-          title: `${assetType || 'AI Asset'}${day ? ` · Day ${day}` : ''}`,
-          type: assetType,
-          typeLabel: assetType,
-          status: 'Ready',
-          downloadUrl: `/data/design-assets/${safeName}`,
-          previewUrl: `/data/design-assets/${safeName}`,
-          previewText: notes || caption || '',
-          bundleUrl: '',
-          slides: [],
-          accentColor: palette.accent,
-        };
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON', detail: err.message || String(err) }));
-      }
-    });
+    return sendJson(res, 410, { error: 'Design Lab has been removed.' });
     return;
   }
 

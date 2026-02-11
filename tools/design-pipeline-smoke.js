@@ -26,7 +26,7 @@ async function main() {
     attempt += 1;
     await advanceDesignAssetPipeline();
     const refreshed = await getDesignAssetById(asset.id);
-    console.log(`[Smoke] Attempt ${attempt} status=${refreshed.status} render=${refreshed.placid_render_id} preview=${refreshed.data?.preview_url || ''}`);
+    console.log(`[Smoke] Attempt ${attempt} status=${refreshed.status} render=${refreshed.render_job_id} preview=${refreshed.data?.preview_url || ''}`);
     if (refreshed.status === 'ready') {
       console.log('[Smoke] SUCCESS');
       process.exit(0);

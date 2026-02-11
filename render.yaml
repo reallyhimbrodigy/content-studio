@@ -4,7 +4,7 @@ services:
     runtime: node
     branch: main
     rootDir: .
-    buildCommand: npm install --omit=dev && npm run test:stability
+    buildCommand: npm install --omit=dev
     startCommand: npm start
     autoDeploy: true
     envVars:
@@ -22,10 +22,6 @@ services:
       - key: STRIPE_PRICE_ID
         sync: false
       - key: STRIPE_PRICE_LOOKUP_KEY
-        sync: false
-      - key: STABILITY_API_KEY
-        sync: false
-      - key: STABILITY_SANDBOX_API_KEY
         sync: false
       - key: NODE_VERSION
         value: 20

@@ -37,18 +37,6 @@ Notes
 - The test will call your running local server at `http://localhost:8000` and requires a working OpenAI proxy backend (the server and OPENAI_API_KEY must be configured).
 - Playwright is intentionally optional — it's not required to run the app, but it's a useful smoke test for CI.
 
-### Stability sandbox check
-
-There is also a lightweight integration check that pings Stability's sandbox endpoint with the exact multipart payload our server sends:
-
-```bash
-# export your sandbox (or production) key first
-export STABILITY_SANDBOX_API_KEY=your_sandbox_key
-npm run test:stability
-```
-
-If no sandbox key is set the script exits cleanly and prints "skipped", which allows it to run safely during CI/deploys.
-
 ## Brand Brain (new feature)
 
 **What it does:** Store your brand voice, guidelines, key messages, and examples. Future calendar generations will match your brand automatically.
@@ -61,10 +49,10 @@ If no sandbox key is set the script exits cleanly and prints "skipped", which al
 
 ### Brand Design uploads
 
-Creators can now lock in logos, color palette, and typography once, and every Stability-generated asset will inherit those rules automatically.
+Creators can now lock in logos, color palette, and typography once, and every generated asset will inherit those rules automatically.
 
 - Open **Brand Brain → Brand Design** to set primary/secondary/accent colors, heading/body fonts, and an optional logo upload (PNG/JPG/SVG, ≤600 KB).
-- Data is stored alongside the Brand Brain profile (`data/brands/{user}.json`), and the `/api/design/generate` endpoint injects kit directives into every Stability prompt.
+- Data is stored alongside the Brand Brain profile (`data/brands/{user}.json`), and the design generation endpoint injects kit directives into every design prompt.
 - Assets triggered from calendar cards remember the originating day and appear inside the Design tab + calendar card chips, so text + visuals stay linked.
 
 **Technical details:**
@@ -243,36 +231,3 @@ Notes
 - Set `OPENAI_API_KEY` on the host; do not commit it to the repo.
  - Gzip is performed at the app layer; most CDNs will also compress. Response includes `Vary: Accept-Encoding`.
  - For stricter CSP, move remaining inline styles into external CSS and remove `'unsafe-inline'` from `style-src`.
-
-## AI Design Lab (Stability integration)
-
-Promptly now includes a Pro-only “Design” tab so customers can request AI-generated graphics/templates tied to their calendar posts.
-
-### Frontend flow
-- `script.js` wires the Design tab + modal (search for `design-lab`) so users can select a calendar entry and submit asset requests.
-- Submissions send `POST /api/design/generate` with `{ assetType, tone, notes, day, caption, niche, aspectRatio }`.
-- Successful responses are rendered into `#design-grid` with download + “Copy brief” buttons so users can immediately grab assets.
-
-### Backend endpoint
-- Implemented in `server.js` around `/api/design/generate`.
-- Builds a descriptive Stability prompt via `buildDesignPrompt` using the selected post + custom notes.
-- Image-style requests hit `/v2beta/stable-image/generate/sd3`.
-- Buffers are saved to `data/design-assets/<timestamp>-<slug>.{png|mp4}`, and the response returns `{ downloadUrl: "/data/design-assets/..." }`.
-- Static serving already exposes `/data/design-assets/*`, so downloads work once the file lands on disk.
-
-### Environment variables
-| Variable | Purpose |
-|----------|---------|
-| `STABILITY_API_KEY` | Required bearer token for Stability |
-| `PUBLIC_BASE_URL` (optional) | Set if you need fully-qualified download URLs |
-
-Set `STABILITY_API_KEY` before `npm start`. Without it, the endpoint returns HTTP 501 and the UI shows “Design generation not configured”.
-
-### Local smoke test
-```bash
-curl -X POST http://localhost:8000/api/design/generate \
-  -H "Content-Type: application/json" \
-  -d '{"assetType":"Story Template","tone":"bold","notes":"Add launch CTA","day":3,"caption":"Behind the scenes","niche":"Beauty brand"}'
-```
-
-Expect JSON containing a `downloadUrl`, and a file will appear under `data/design-assets/`.

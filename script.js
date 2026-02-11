@@ -1134,7 +1134,7 @@ async function createDesignAssetFromCalendar(context, type) {
       linkedDay: payload.linkedDay,
       day: payload.linkedDay,
       status: 'rendering',
-      previewText: 'Rendering in Placid…',
+      previewText: 'Rendering in design provider…',
       designUrl: `/design.html?asset=${encodeURIComponent(assetId)}`,
       origin: 'remote',
       createdAt: new Date().toISOString(),
@@ -1247,7 +1247,7 @@ function openAssetEditorModal(asset) {
       '';
     assetEditorNotesInput.value = notesForAi;
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.imageUrl || '';
   if (previewSource && assetEditorPreviewImage) {
     assetEditorPreviewImage.src = previewSource;
     assetEditorPreviewImage.style.display = 'block';
@@ -1614,14 +1614,14 @@ function normalizeDesignAsset(asset = {}) {
   normalized.previewUrl = normalized.previewUrl || normalized.previewInlineUrl || '';
   normalized.campaign = normalized.campaign || '';
   normalized.calendarDayId = normalized.calendarDayId || '';
-  normalized.cloudinaryPublicId = normalized.cloudinaryPublicId || '';
-  normalized.image_url = normalized.image_url || normalized.cloudinaryUrl || '';
-  normalized.cloudinaryUrl = normalized.cloudinaryUrl || normalized.image_url || '';
-  if (!normalized.previewInlineUrl && (normalized.cloudinaryUrl || normalized.image_url)) {
-    normalized.previewInlineUrl = normalized.cloudinaryUrl || normalized.image_url;
+  normalized.imagePublicId = normalized.imagePublicId || '';
+  normalized.image_url = normalized.image_url || normalized.imageUrl || '';
+  normalized.imageUrl = normalized.imageUrl || normalized.image_url || '';
+  if (!normalized.previewInlineUrl && (normalized.imageUrl || normalized.image_url)) {
+    normalized.previewInlineUrl = normalized.imageUrl || normalized.image_url;
   }
-  if (!normalized.previewUrl && (normalized.cloudinaryUrl || normalized.image_url)) {
-    normalized.previewUrl = normalized.cloudinaryUrl || normalized.image_url;
+  if (!normalized.previewUrl && (normalized.imageUrl || normalized.image_url)) {
+    normalized.previewUrl = normalized.imageUrl || normalized.image_url;
   }
   normalized.data = normalized.data || null;
   if (normalized.data) {
@@ -4201,7 +4201,7 @@ function renderDesignEditor() {
       designEditorStatusBadge.classList.add('is-muted');
     }
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
+  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.imageUrl || '';
   if (designEditorPreviewImg) {
     if (previewSource) {
       designEditorPreviewImg.src = previewSource;
@@ -4491,7 +4491,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
       return { kind: 'carousel', slides, url: first.previewUrl || first.downloadUrl || '' };
     }
   }
-  const inline = asset.previewInlineUrl || asset.image_url || asset.cloudinaryUrl || '';
+  const inline = asset.previewInlineUrl || asset.image_url || asset.imageUrl || '';
   if (inline) {
     const lower = inline.slice(0, 30).toLowerCase();
     if (lower.includes('video')) {
@@ -4499,7 +4499,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
     }
     return { kind: 'image', url: inline };
   }
-  const url = asset.previewUrl || asset.image_url || asset.cloudinaryUrl || '';
+  const url = asset.previewUrl || asset.image_url || asset.imageUrl || '';
   if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
     const lower = url.slice(0, 30).toLowerCase();
     if (lower.includes('video')) return { kind: 'video', url };
@@ -7022,7 +7022,7 @@ async function triggerCalendarAssetGeneration(entry, entryDay, triggerButton, op
       linkedDay: resolvedDay,
       day: resolvedDay,
       status: result.status || 'rendering',
-      previewText: 'Rendering in Placid…',
+      previewText: 'Rendering in design provider…',
       designUrl: `/design.html?asset=${encodeURIComponent(result.id)}`,
       origin: 'remote',
       createdAt: new Date().toISOString(),
@@ -10471,9 +10471,9 @@ function sanitizeAssetForStorage(asset = {}) {
     lastEdited: asset.lastEdited || '',
     concept: asset.concept || '',
     bundleUrl: asset.bundleUrl || '',
-    cloudinaryPublicId: asset.cloudinaryPublicId || '',
-    cloudinaryUrl: asset.cloudinaryUrl || asset.image_url || '',
-    image_url: asset.image_url || asset.cloudinaryUrl || '',
+    imagePublicId: asset.imagePublicId || '',
+    imageUrl: asset.imageUrl || asset.image_url || '',
+    image_url: asset.image_url || asset.imageUrl || '',
     origin: asset.origin || 'local',
     data: asset.data || null,
     slides: sanitizeSlidesForStorage(asset.slides),
