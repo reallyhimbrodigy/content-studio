@@ -3281,10 +3281,11 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Goal: produce competitive short-form content that wins attention.',
-    'Surface the common optimization people rely on.',
-    'Name the real gate signal and the operational cost of missing it.',
-    'State the replacement rule as the new priority.',
+    'Goal: produce a competitive post that changes what the viewer prioritizes.',
+    'Start from the common focus people default to in this niche.',
+    'Shift to the gate signal that decides outcomes in practice.',
+    'Tie the gate signal to an operational cost when missed.',
+    'State the replacement priority as the new rule for action.',
     'Hold one topic and one moment across all fields.',
     'Return valid JSON matching the requested schema exactly.',
   ].join('\n');
@@ -3588,25 +3589,39 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'Return valid JSON matching the requested schema exactly.',
     'Use only the schema keys; keep values as content.',
     'CONTENT',
-    'Write one coherent moment across all fields: same topic, same artifact, same condition, same next move.',
-    'Use concrete, observable details and clear phrasing.',
+    'Write one cohesive moment across all fields.',
+    'Anchor the moment in one concrete artifact.',
+    'Include one inspectable condition about that artifact.',
+    'Let the condition determine the next move.',
+    'Keep all fields about the provided topic/title.',
+    'Use concrete, observable phrasing.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-Goal: produce one clear, publishable short-form post for this niche.
-Use an observational tone grounded in one real work moment.
-Keep fields aligned to the same topic, artifact, condition, and next move.
-Write concise, specific copy in plain language.
+Goal: publish a clear, grounded post for this niche.
+
+Write about one real work moment.
+Use one artifact and one inspectable condition from that moment.
+Let the condition drive the next move.
+
+Keep every field aligned to the same moment and topic.
+Write in direct, plain language.
 
 Return one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: produce one competitive short-form post that re-ranks a wrong focus into the real gate.
-Use a corrective, decisive tone that feels meaningfully different from Regular mode.
-Keep fields aligned to one topic, one moment, one artifact condition, and one consequence.
-Show the wrong optimization, the real gate signal, the operational cost, and the replacement rule.
+Goal: publish a competitive post that reorders priorities in this niche.
+
+Use one real work moment.
+Use one artifact and one inspectable condition from that moment.
+Name the default focus, then shift to the gate signal that decides outcomes.
+Connect the gate signal to an operational cost.
+State the replacement priority as the action rule.
+
+Keep every field aligned to the same moment and topic.
+Write with decisive, corrective clarity.
 
 Return one complete post.`;
 
@@ -4472,11 +4487,11 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
     'Goal: keep the same topic/title and produce a fresh coherent moment.',
     'Return valid JSON matching the same schema shape as the provided post payload.',
     'Use only the schema keys.',
-    'Keep the same topic/title. Rewrite with a different artifact condition and new wording.',
+    'Keep the same topic/title. Change the artifact condition and wording.',
     `Niche: ${nicheStyle}`,
     `Day: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
-    'Reference post payload (do not reuse phrasing):',
+    'Reference post payload:',
     snapshot,
   ].filter(Boolean).join('\n\n');
 }
