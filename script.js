@@ -921,6 +921,7 @@ let activeAssetDetailId = null;
 let pendingAssetDetailId = null;
 let isDesignRegenerating = false;
 let currentDesignAsset = null;
+const DESIGN_PLACEHOLDER_IMAGE_URL = '/assets/og-banner.svg';
 if (designSelectionCount) designSelectionCount.textContent = '0 selected';
 
 function getLastTemplateId() {
@@ -1590,6 +1591,21 @@ function hydrateDesignAssetsFromStorage(force = false) {
   }
 }
 
+function isCloudinaryUrl(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized.includes('cloudinary.com') || normalized.includes('res.cloudinary.com');
+}
+
+function sanitizeDesignImageUrl(value = '') {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  return isCloudinaryUrl(normalized) ? '' : normalized;
+}
+
+function resolveDesignImageUrl(value = '') {
+  return sanitizeDesignImageUrl(value) || DESIGN_PLACEHOLDER_IMAGE_URL;
+}
+
 function normalizeDesignAsset(asset = {}) {
   const normalized = { ...asset };
   normalized.id = String(normalized.id || Date.now());
@@ -1610,18 +1626,18 @@ function normalizeDesignAsset(asset = {}) {
   normalized.notesForAi = normalizedNotes || '';
   normalized.notes = normalized.notes || normalizedNotes || '';
   normalized.prompt = normalized.prompt || '';
-  normalized.previewInlineUrl = normalized.previewInlineUrl || normalized.previewUrl || '';
-  normalized.previewUrl = normalized.previewUrl || normalized.previewInlineUrl || '';
+  normalized.previewInlineUrl = sanitizeDesignImageUrl(normalized.previewInlineUrl || normalized.previewUrl || '');
+  normalized.previewUrl = sanitizeDesignImageUrl(normalized.previewUrl || normalized.previewInlineUrl || '');
   normalized.campaign = normalized.campaign || '';
   normalized.calendarDayId = normalized.calendarDayId || '';
   normalized.imagePublicId = normalized.imagePublicId || '';
-  normalized.image_url = normalized.image_url || normalized.imageUrl || '';
-  normalized.imageUrl = normalized.imageUrl || normalized.image_url || '';
+  normalized.image_url = sanitizeDesignImageUrl(normalized.image_url || normalized.imageUrl || '');
+  normalized.imageUrl = sanitizeDesignImageUrl(normalized.imageUrl || normalized.image_url || '');
   if (!normalized.previewInlineUrl && (normalized.imageUrl || normalized.image_url)) {
-    normalized.previewInlineUrl = normalized.imageUrl || normalized.image_url;
+    normalized.previewInlineUrl = sanitizeDesignImageUrl(normalized.imageUrl || normalized.image_url);
   }
   if (!normalized.previewUrl && (normalized.imageUrl || normalized.image_url)) {
-    normalized.previewUrl = normalized.imageUrl || normalized.image_url;
+    normalized.previewUrl = sanitizeDesignImageUrl(normalized.imageUrl || normalized.image_url);
   }
   normalized.data = normalized.data || null;
   if (normalized.data) {
@@ -4201,7 +4217,7 @@ function renderDesignEditor() {
       designEditorStatusBadge.classList.add('is-muted');
     }
   }
-  const previewSource = asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.imageUrl || '';
+  const previewSource = resolveDesignImageUrl(asset.previewInlineUrl || asset.previewUrl || asset.image_url || asset.imageUrl || '');
   if (designEditorPreviewImg) {
     if (previewSource) {
       designEditorPreviewImg.src = previewSource;
@@ -4464,8 +4480,8 @@ function normalizeSlides(slides = []) {
   return slides
     .map((slide, idx) => {
       if (!slide) return null;
-      const downloadUrl = slide.downloadUrl || slide.url || '';
-      const previewUrl = slide.previewUrl || downloadUrl;
+      const downloadUrl = sanitizeDesignImageUrl(slide.downloadUrl || slide.url || '');
+      const previewUrl = sanitizeDesignImageUrl(slide.previewUrl || downloadUrl);
       const label = slide.label || slide.role || `Slide ${idx + 1}`;
       return {
         id: String(slide.id || `${Date.now()}-${idx}`),
@@ -4491,7 +4507,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
       return { kind: 'carousel', slides, url: first.previewUrl || first.downloadUrl || '' };
     }
   }
-  const inline = asset.previewInlineUrl || asset.image_url || asset.imageUrl || '';
+  const inline = sanitizeDesignImageUrl(asset.previewInlineUrl || asset.image_url || asset.imageUrl || '');
   if (inline) {
     const lower = inline.slice(0, 30).toLowerCase();
     if (lower.includes('video')) {
@@ -4499,7 +4515,7 @@ function buildAssetPreviewDescriptor(asset = {}) {
     }
     return { kind: 'image', url: inline };
   }
-  const url = asset.previewUrl || asset.image_url || asset.imageUrl || '';
+  const url = sanitizeDesignImageUrl(asset.previewUrl || asset.image_url || asset.imageUrl || '');
   if (url && (url.startsWith('data:') || url.startsWith('blob:'))) {
     const lower = url.slice(0, 30).toLowerCase();
     if (lower.includes('video')) return { kind: 'video', url };
@@ -4520,7 +4536,7 @@ function buildCarouselSliderHtml(slides = [], options = {}) {
   const contextClass = options.context ? ` design-slider--${options.context}` : '';
   const slidesHtml = normalized
     .map((slide, idx) => {
-      const url = escapeHtml(slide.previewUrl || slide.downloadUrl || '');
+      const url = escapeHtml(resolveDesignImageUrl(slide.previewUrl || slide.downloadUrl || ''));
       const alt = escapeHtml(slide.label || `Slide ${idx + 1}`);
       const caption = escapeHtml(slide.label || slide.role || `Slide ${idx + 1}`);
       return `
