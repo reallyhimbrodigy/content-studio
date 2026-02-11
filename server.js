@@ -4,16 +4,6 @@ const url = require('url');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-let promptPresets = [];
-try {
-  // Optional dependency: file may not exist (deleted or not shipped)
-  // Keep behavior stable by defaulting to empty presets.
-  // eslint-disable-next-line global-require, import/no-dynamic-require
-  promptPresets = require('./assets/prompt-presets.json');
-  if (!Array.isArray(promptPresets)) promptPresets = [];
-} catch (err) {
-  promptPresets = [];
-}
 const JSZip = require('jszip');
 const {
   supabaseAdmin,
@@ -2575,7 +2565,6 @@ async function generateAndValidateSinglePost({
     currentStage = 'assign_pillar';
       const retryLine = attempt === 2
       ? [
-        'The previous output failed structural validation.',
         'Return valid JSON matching the schema exactly.',
         'Keep the same topic/title and the same moment.',
       ].join('\n')
@@ -2751,7 +2740,6 @@ async function generateAndValidateSinglePost({
               emptyFields.length ? `empty fields: ${emptyFields.join(', ')}` : '',
             ].filter(Boolean).join('; ');
           extraInstructions = [
-            'The previous output failed structural validation.',
             'Return valid JSON matching the schema exactly.',
             'Keep the same topic/title and the same moment.',
           ].join('\n');
@@ -3743,10 +3731,10 @@ const CALENDAR_ALIGNMENT_BLOCK = [
   'Goal: generate one publishable short-form post for the given niche and mode.',
   'Topic fidelity: every field stays about the provided title/topic.',
   'Coherence: use one concrete artifact, one inspectable condition, and one next move across all fields.',
-  'Specificity: use observable details; avoid generic claims and vague phrasing.',
+  'Specificity: use observable details; keep phrasing concrete.',
   'Novelty: vary wording and artifact/condition selection without changing the topic.',
   'Mode: Regular = observational. Brand Brain = corrective and competitive.',
-  'Output: return JSON only; match schema exactly; no extra keys; field values contain content only.',
+  'Output: return valid JSON matching the schema exactly; keep field values as content.',
 ].join('\n');
 
 const TOPIC_LOCK_CONTRACT_BLOCK = '';
@@ -3782,7 +3770,7 @@ function buildRequestedPostIdentityBlock(startDay, days, postsPerDay, topicPlan 
   const lines = [
     'REQUESTED POST IDS',
     'If post_key/day/slotIndex/title are present in the request context, copy them exactly into the output fields.',
-    'Do not invent or rename identifiers.',
+    'Use the provided identifiers as written.',
     'Requested IDs:',
   ].filter(Boolean);
   for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
@@ -3972,7 +3960,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? [
       'BRAND CONTEXT',
       'Reflect the brand’s perspective through what it pays attention to.',
-      'Do not add teaching tone, marketing language, or generic positioning.',
+      'Use a brand-native perspective with direct, grounded language.',
       'Brand influence should show up in which signals matter, not how loudly they are explained.',
       '',
       brandContext.trim(),
@@ -4010,27 +3998,27 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   ].join('\n');
   const recentIdeasBlock = recentTitles.length
     ? [
-      'RECENT IDEAS (avoid repeating)',
+      'RECENT IDEAS (for novelty)',
       ...recentTitles.map((title, idx) => `${idx + 1}. ${title}`),
-      'Do not reuse these concepts or phrasings.',
+      'Use fresh concepts and phrasing relative to these items.',
     ].join('\n')
     : '';
   const usedSignatures = Array.isArray(opts.usedSignatures) ? opts.usedSignatures.slice(-10) : [];
   const recentSignatureLine = usedSignatures.length
-    ? `RECENT SIGNATURES (do not reuse): ${usedSignatures.join(' | ')}`
+    ? `RECENT SIGNATURES (for novelty): ${usedSignatures.join(' | ')}`
     : '';
   const noveltyThesisBlock = [
     'NOVELTY',
-    'If recent ideas/signatures are provided, avoid repeating the same artifact category or condition phrasing.',
-    'Novelty must not change the topic/title; it only changes the artifact/condition choice within the same topic.',
+    'When recent ideas/signatures are provided, vary artifact category and condition phrasing.',
+    'Keep novelty within the same topic/title by changing the artifact/condition choice.',
   ].join('\n');
   const GLOBAL_RULES = [
     'OUTPUT',
-    'Return JSON only and match the requested schema exactly.',
-    'No extra keys. No labels inside field values.',
+    'Return valid JSON matching the requested schema exactly.',
+    'Use only the schema keys; keep values as content.',
     'CONTENT',
     'Write one coherent moment across all fields: same topic, same artifact, same condition, same next move.',
-    'Use concrete, observable details; avoid generic slogans and vague “shifts my approach” language.',
+    'Use concrete, observable details and clear phrasing.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
@@ -4927,8 +4915,8 @@ function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return [
     'Goal: keep the same topic/title and produce a fresh coherent moment.',
-    'Return JSON only and match the same schema shape as the provided post payload.',
-    'Do not add extra keys.',
+    'Return valid JSON matching the same schema shape as the provided post payload.',
+    'Use only the schema keys.',
     'Keep the same topic/title. Rewrite with a different artifact condition and new wording.',
     `Niche: ${nicheStyle}`,
     `Day: ${day}`,
@@ -8364,19 +8352,6 @@ const enrichRegenPost = (post = {}, dayIndex = 0) => {
 
 
 function getPresetGuidelines(nicheStyle = '') {
-  const s = String(nicheStyle || '').toLowerCase();
-  if (!s) return null;
-  for (const preset of (Array.isArray(promptPresets) ? promptPresets : [])) {
-    const patterns = Array.isArray(preset.patterns) ? preset.patterns : [];
-    const matches = patterns.some((pattern) => {
-      try {
-        return new RegExp(pattern, 'i').test(s);
-      } catch (err) {
-        return s.includes(String(pattern || '').toLowerCase());
-      }
-    });
-    if (matches) return preset;
-  }
   return null;
 }
 
@@ -8804,7 +8779,7 @@ async function generateTopicPlan({
     ? [
       'BRAND CONTEXT',
       'Reflect the brand’s perspective through what it pays attention to.',
-      'Do not add teaching tone, marketing language, or generic positioning.',
+      'Use a brand-native perspective with direct, grounded language.',
       'Brand influence should show up in which signals matter, not how loudly they are explained.',
       '',
       brandContext.trim(),
@@ -8863,12 +8838,12 @@ async function generateTopicPlan({
     requestLabel.trim(),
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
     'Goal: produce a topic plan that keeps each post on one clear topic.',
-    'Return JSON only and match the schema exactly.',
-    'No extra keys.',
+    'Return valid JSON matching the schema exactly.',
+    'Use only the schema keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'For each item, set slot/day/postIndex to the assigned values.',
     'Each item must include: slot, day, postIndex, title, angle.',
-    'Title: a specific topic label for this niche (no generic phrasing).',
+    'Title: a specific topic label for this niche with concrete phrasing.',
     'Angle: a short label describing the decision dynamic.',
     'Use each title as the topic label for its post.',
     'Assigned slots:',
@@ -10532,10 +10507,10 @@ const server = http.createServer((req, res) => {
     'topic_signature captures: artifact + condition + consequence in a short phrase.',
     'angle is a short label for the decision dynamic.',
     'Choose angles that describe concrete decision moments and meaningful shifts in what happens next.',
-    'Avoid framing angles as tips, reminders, or broad advice.',
+    'Frame angles as concrete decision dynamics with practical impact.',
     'topic_signature should be concise and distinctive for each post.',
-    'No placeholders. No empty strings.',
-    'Do not include any extra keys.',
+    'Use concrete values for every field.',
+    'Use only the schema keys.',
   ].join('\n');
     const planSchema = {
       type: 'object',
@@ -11335,11 +11310,11 @@ const server = http.createServer((req, res) => {
         }));
         const repairPrompt = [
           'You are a JSON repair tool.',
-          'Return ONLY valid JSON. No markdown. No commentary.',
+          'Return valid JSON matching the schema exactly.',
           'You must keep the exact number of posts and the same order.',
-          'Fill ONLY the missing fields listed per post; do not change existing fields.',
+          'Fill only the missing fields listed per post while preserving existing fields.',
           'Fill missing fields only; preserve existing values, order, and count.',
-          'Do not use placeholders.',
+          'Use concrete values in missing fields.',
           `Missing fields report: ${JSON.stringify(missingSummary)}`,
           `Original JSON: ${JSON.stringify(repairPayload)}`,
         ].join('\n');
