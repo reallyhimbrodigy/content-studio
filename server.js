@@ -2573,7 +2573,6 @@ async function generateAndValidateSinglePost({
       : '';
     const brandBrainExecutionReminder = calendarMode === 'brand_brain'
       ? [
-        'Brand Brain execution reminder:',
         'Wrong focus → real gate → operational cost → replacement rule.',
         'Prove with one concrete artifact condition.',
       ].join('\n')
@@ -3486,10 +3485,12 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Write competitively: wrong focus → real gate → operational cost → replacement rule.',
-    'Use one concrete artifact condition as proof.',
-    'Stay decisive; no neutral explainer voice.',
-    'Output must match the requested JSON schema exactly.',
+    'Goal: produce competitive short-form content that wins attention.',
+    'Expose a common optimization that fails in real conditions.',
+    'Name the real gate signal and the operational cost of missing it.',
+    'State the replacement rule as the new priority.',
+    'Keep one topic and one moment across all fields.',
+    'Return JSON only and match the requested schema exactly.',
   ].join('\n');
 }
 
@@ -3730,12 +3731,12 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
 
 const CALENDAR_ALIGNMENT_BLOCK = [
   'CALENDAR ALIGNMENT',
-  'Goal: one publishable short-form post inside a real work moment.',
+  'Goal: generate one publishable short-form post for the given niche and mode.',
   'Topic fidelity: every field stays about the provided title/topic.',
-  'Coherence: one concrete artifact + one inspectable condition + one operational next move across all fields.',
-  'Specificity: use observable details; avoid vague “shifts my approach” phrasing.',
-  'Novelty: if recent items are provided, vary artifact/condition wording without changing the topic.',
-  'Mode: Regular = observational. Brand Brain = corrective re-ranking with cost and replacement rule.',
+  'Coherence: use one concrete artifact, one inspectable condition, and one next move across all fields.',
+  'Specificity: use observable details; avoid generic claims and vague phrasing.',
+  'Novelty: vary wording and artifact/condition selection without changing the topic.',
+  'Mode: Regular = observational. Brand Brain = corrective and competitive.',
   'Output: return JSON only; match schema exactly; no extra keys; field values contain content only.',
 ].join('\n');
 
@@ -3989,7 +3990,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     resolvedPostKey ? `post_key: ${resolvedPostKey}` : null,
     `day: ${startDay}`,
     `slotIndex: ${slotIndex}`,
-    'format: reel',
+    `format: ${targetFormat}`,
     targetPillar ? `pillar: ${targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     plannedAngle ? `planned_angle: ${plannedAngle}` : null,
@@ -4020,134 +4021,36 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'No extra keys. No labels inside field values.',
     'CONTENT',
     'Write one coherent moment across all fields: same topic, same artifact, same condition, same next move.',
-    'Use concrete, observable details; avoid generic slogans and vague “shifts my approach” phrasing.',
+    'Use concrete, observable details; avoid generic slogans and vague “shifts my approach” language.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-ROLE  
-Generate one short-form video post for Instagram / TikTok in a specific professional niche.
-
-WHAT THIS CONTENT IS  
-This is content for people who post consistently and want to keep doing so without embarrassment.
-
-It must be:
-- ENTERTAINING to watch  
-- Grounded in real work  
-- Calm, competent, and credible  
-
-This is not teaching.  
-This is not advice.  
-This is not an ad.
-
-It should feel like a clean, watchable observation someone smart would nod at.
-
-HOW TO THINK ABOUT THE IDEA  
-Find a moment in real work where:
-- One small detail quietly decides what happens next  
-- Most people look past it  
-- But once you notice it, your behavior changes  
-
-The detail must change what a competent professional does next, not just how they interpret the situation.  
-The moment should sit so close to the viewer’s real work that it affects what they do next without them realizing they adjusted.
-
-Not a mistake.  
-Not a warning.  
-Not a rule.
-
-A detail that reframes the moment.
-
-HOW TO WRITE IT  
-Anchor the post to something real people recognize.
-
-Describe:
-- what’s there  
-- what it actually means  
-- what that changes in practice  
-
-Write from inside the moment, not above it — as if the viewer is already holding the artifact.  
-End on a consequence that affects action, leverage, or sequencing — not just perception.
-
-ENTERTAINMENT STANDARD  
-The video should hold attention because:
-- the moment is familiar  
-- the detail is specific  
-- the implication clicks  
-
-Not because of fear, authority, or hype.
-
-GOALS / EXPECTATIONS — REGULAR CALENDAR  
-This calendar exists to help users post consistently with confidence.  
-Every post should feel safe, clean, and publishable.  
-The content should build credibility and clarity, not dominance.  
-A perfect post collapses observer distance and quietly changes the viewer’s next action.  
-Success means entertaining, useful insights that never feel embarrassing to post.
-
-Generate one complete post.`;
+Goal: produce one clear, publishable short-form post for this niche.
+Use an observational tone and keep the writing grounded in one real work moment.
+Keep all fields aligned to the same topic, artifact, condition, and next move.
+Write concise, specific copy without hype, slogans, or filler.
+Separate fields cleanly:
+- title names the topic
+- hook sets the moment
+- body explains the condition and implication
+- cta gives one action
+- reelHook/reelBody/reelCta mirror hook/body/cta as spoken lines
+- caption/designNotes/engagementLoop/hashtags stay on the same topic.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-ROLE  
-Generate one short-form video designed to win attention and outperform competitors on Instagram / TikTok.
-
-WHAT THIS CONTENT IS  
-This is competitive content.
-
-It exists to expose a blind spot and replace it with a better rule.
-
-It should feel like:  
-“Oh. I’ve been optimizing the wrong thing.”
-
-This is not advice.  
-This is not education.  
-This is not friendly.
-
-HOW TO THINK ABOUT THE IDEA  
-Start with something people confidently believe determines success.
-
-Then identify:
-- the real constraint professionals actually optimize  
-- the signal that decides the outcome early  
-- where this shows up in the real world  
-
-The wrong belief should feel reasonable at first — and slightly embarrassing by the end.  
-The wrong belief should signal inexperience or outdated thinking once exposed.
-
-This must be a re-ranking, not a reminder.
-
-HOW TO WRITE IT  
-Lead with contrast.  
-Wrong focus → real gate.
-
-Then:
-- show why the common belief fails  
-- show what it costs operationally  
-- prove it with a concrete, undeniable detail  
-
-Write with certainty.  
-No teaching tone.  
-No softening.
-
-The replacement rule should feel obvious in hindsight and dangerous to ignore.  
-The new rule should feel like something professionals already know but don’t say out loud.
-
-ENTERTAINMENT STANDARD  
-Retention comes from:
-- tension  
-- correction  
-- recognition of a blind spot  
-
-Not from clarity alone.
-
-GOALS / EXPECTATIONS — BRAND BRAIN CALENDAR  
-This calendar exists to create winning, algorithm-native content.  
-Each post must disrupt a belief and re-rank priorities.  
-The content should feel sharp, corrective, and competitive.  
-A perfect post makes the old optimization feel naïve and the new one non-optional.  
-If a post could be safely swapped into the Regular calendar, it failed.  
-A perfect post makes continuing to optimize the old signal feel irresponsible.
-
-Generate one complete post.`;
+Goal: produce one competitive short-form post that re-ranks a wrong focus into the real gate.
+Use a corrective, decisive tone that feels meaningfully different from Regular mode.
+Keep all fields aligned to one topic, one moment, one artifact condition, and one consequence.
+Show the wrong optimization, the real gate signal, the operational cost, and the replacement rule.
+Separate fields cleanly:
+- title names the failure point
+- hook frames the re-rank
+- body explains the mechanism and cost
+- cta gives one action
+- reelHook/reelBody/reelCta mirror hook/body/cta as spoken lines
+- caption/designNotes/engagementLoop/hashtags reinforce the same core moment.`;
 
   const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
   const promptParts = [
@@ -4169,7 +4072,7 @@ Generate one complete post.`;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
-  return `Calendar schema: ${expectedCount} posts with title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Return valid JSON; each field is non-empty.`;
+  return `Calendar schema: ${expectedCount} posts. Each post includes title, hook, body, cta, reelHook, reelBody, reelCta, caption, designNotes, engagementLoop, hashtags[]. Return valid JSON matching the schema exactly.`;
 }
 
 function safeStringify(value) {
@@ -4890,7 +4793,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
       'Use the provided title as the topic label for the post.',
-      'Keep every field about that topic.',
+      'Every field must stay about that topic.',
     ];
     return lines.join('\n');
   }
@@ -4900,7 +4803,7 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
       `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
     ),
     'Use the provided title as the topic label for the post.',
-    'Keep every field about that topic.',
+    'Every field must stay about that topic.',
   ];
   return lines.join('\n');
 }
@@ -5012,35 +4915,16 @@ function sanitizePostForPrompt(post = {}) {
 }
 
 function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
-  const preset = getPresetGuidelines(nicheStyle);
-  const presetGuidelines = (() => {
-    if (!preset) return '';
-    if (Array.isArray(preset.presetGuidelines)) return preset.presetGuidelines.join('\n');
-    return preset.presetGuidelines || '';
-  })();
-  const presetBlock = presetGuidelines
-    ? `\n\nPreset Guidelines for this niche:\n${presetGuidelines}\n\n`
-    : '\n';
-  const nicheRules = Array.isArray(preset?.nicheRules) && preset.nicheRules.length
-    ? preset.nicheRules.join('\n')
-    : '';
-  const brandBlock = brandContext
-    ? `\n\nBrand Context: ${brandContext}\n\n`
-    : '\n';
-  const nicheSpecific = nicheRules ? `Niche-specific notes:\n${nicheRules}` : '';
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return [
-    'You are regenerating one calendar post.',
-    'Return JSON only. No markdown. No commentary.',
-    'Output a single JSON object matching the same schema shape as the provided post payload.',
+    'Goal: keep the same topic/title and produce a fresh coherent moment.',
+    'Return JSON only and match the same schema shape as the provided post payload.',
     'Do not add extra keys.',
     'Keep the same topic/title. Rewrite with a different artifact condition and new wording.',
-    `Niche/Style: ${nicheStyle}`,
-    `Day to regenerate: ${day}`,
+    `Niche: ${nicheStyle}`,
+    `Day: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
-    presetGuidelines ? `Preset Guidelines:\n${presetGuidelines}` : '',
-    nicheSpecific,
-    'Current post payload (reference only — do not reuse phrasing):',
+    'Reference post payload (do not reuse phrasing):',
     snapshot,
   ].filter(Boolean).join('\n\n');
 }
@@ -5295,20 +5179,20 @@ function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
 
 function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
   const niche = String(nicheStyle || 'General').trim() || 'General';
-  const audience = brandContext ? `Audience: ${brandContext.split('\n')[0]}` : 'Audience: General';
-  const offer = 'Offer: N/A';
-  return `
-=== NICHE PROFILE (SOURCE OF TRUTH) ===
-Niche: ${niche}
-${audience}
-${offer}
-Guidance:
-- Keep content directly relevant to the niche above.
-- Avoid unrelated niche concepts.
-- Avoid beauty/med-spa language unless the niche is beauty/med-spa.
-- Avoid discount-code vibes unless the niche explicitly uses it.
-=== END NICHE PROFILE ===
-`.trim();
+  const audienceLine = brandContext
+    ? `Audience: ${String(brandContext).split('\n')[0].trim()}`
+    : 'Audience: General';
+
+  return [
+    'NICHE PROFILE',
+    `Niche: ${niche}`,
+    audienceLine,
+    'Rules:',
+    '- Keep all content directly relevant to the niche.',
+    '- Avoid concepts from unrelated niches.',
+    '- Avoid beauty/med-spa language unless the niche is beauty/med-spa.',
+    '- Avoid discount-code language unless the niche uses it.',
+  ].join('\n');
 }
 
 function deriveNicheKeyword(nicheStyle = '') {
@@ -5855,8 +5739,8 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
 
 function getModeLens(mode = 'regular') {
   return mode === 'brand_brain'
-    ? 'Brand Brain: wrong focus → real gate → operational cost → replacement rule. Prove with one artifact condition.'
-    : 'Regular: one real work moment. One artifact, one inspectable condition, one next move it changes.';
+    ? 'Brand Brain: challenge the wrong optimization, show the real gate, show the cost, and state the replacement rule.'
+    : 'Regular: show one real work moment where one inspectable condition changes the next move.';
 }
 
 function normalizeSignatureText(value = '') {
@@ -8969,13 +8853,15 @@ async function generateTopicPlan({
     brandBlock.trim(),
     requestLabel.trim(),
     brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
-    'Return ONLY valid JSON matching the schema. No markdown. No commentary.',
-    'Do not include extra keys.',
+    'Goal: produce a topic plan that keeps each post on one clear topic.',
+    'Return JSON only and match the schema exactly.',
+    'No extra keys.',
     `Create exactly ${totalPosts} topic items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
+    'For each item, set slot/day/postIndex to the assigned values.',
     'Each item must include: slot, day, postIndex, title, angle.',
-    'Title: specific topic label for this niche (avoid generic phrasing).',
-    'Angle: short label for the decision dynamic.',
-    'Use the title as the topic label for the post.',
+    'Title: a specific topic label for this niche (no generic phrasing).',
+    'Angle: a short label describing the decision dynamic.',
+    'Use each title as the topic label for its post.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
