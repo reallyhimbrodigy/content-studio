@@ -2528,7 +2528,6 @@ async function generateAndValidateSinglePost({
     slotIndex,
     calendarId,
   });
-  const lens = getModeLens(calendarMode);
   const recentSignatures = Array.isArray(usedSignatures) ? usedSignatures.slice(-10) : [];
   const pillarRules = calendarMode === 'brand_brain'
     ? BRAND_BRAIN_PILLAR_STYLE_RULES
@@ -2548,7 +2547,6 @@ async function generateAndValidateSinglePost({
     `Niche: ${nicheStyle}`,
     pillarStyle ? `Pillar style: ${pillarStyle}` : '',
     `ANGLE_SEED: ${angleSeed}`,
-    `LENS: ${lens}`,
   ].filter(Boolean).join('\n');
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -2569,13 +2567,7 @@ async function generateAndValidateSinglePost({
         'Keep the same topic/title and the same moment.',
       ].join('\n')
       : '';
-    const brandBrainExecutionReminder = calendarMode === 'brand_brain'
-      ? [
-        'Wrong focus → real gate → operational cost → replacement rule.',
-        'Prove with one concrete artifact condition.',
-      ].join('\n')
-      : '';
-    const mergedInstructions = [retryLine, baseInstructions, brandBrainExecutionReminder, extraInstructions].filter(Boolean).join('\n');
+    const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
@@ -3759,10 +3751,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const brandBlock = brandContext
     ? [
       'BRAND CONTEXT',
-      'Reflect the brand’s perspective through what it pays attention to.',
-      'Use a brand-native perspective with direct, grounded language.',
-      'Brand influence should show up in which signals matter, not how loudly they are explained.',
-      '',
       brandContext.trim(),
     ].join('\n')
     : '';
@@ -3782,7 +3770,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `format: ${targetFormat}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    plannedAngle ? `planned_angle: ${plannedAngle}` : null,
   ].filter(Boolean).join('\n');
   const GLOBAL_RULES = [
     'OUTPUT',
@@ -5488,12 +5475,6 @@ function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0,
     String(calendarId || ''),
   ].join('|');
   return crypto.createHash('sha1').update(raw).digest('hex').slice(0, 12);
-}
-
-function getModeLens(mode = 'regular') {
-  return mode === 'brand_brain'
-    ? 'Brand Brain: challenge the wrong optimization, show the real gate, show the cost, state the replacement rule.'
-    : 'Regular: show one real work moment where one inspectable condition changes the next move.';
 }
 
 function normalizeSignatureText(value = '') {
