@@ -2321,8 +2321,8 @@ async function generateAndValidateSinglePost({
     pillarStyle ? `pillar_style: ${pillarStyle}` : '',
     `angle_seed: ${angleSeed}`,
     '',
-    'Use silently. Do not describe this context.',
-    'Return valid JSON matching the schema exactly.',
+    'Use this context internally while writing the post.',
+    'Return valid JSON that matches the schema exactly.',
   ].filter(Boolean).join('\n');
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -3276,13 +3276,9 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Purpose: produce a competitive post that changes what the audience prioritizes.',
-    'Start by naming the tempting-but-wrong focus.',
-    'Then name the real deciding signal.',
-    'State the cost of missing that signal in practice.',
-    'Finish with the replacement rule the audience should follow next time.',
-    'Keep one topic and one moment across every field.',
-    'Return valid JSON matching the schema exactly.',
+    'Purpose: create a competitive post that changes what the audience prioritizes.',
+    'Sequence: state the tempting priority, state the deciding signal, state the practical cost, state the replacement rule.',
+    'Write the sequence as one concrete moment tied to one artifact and one condition.',
   ].join('\n');
 }
 
@@ -3564,13 +3560,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const brandBlock = brandContext
     ? [
-      'BRAND CONTEXT',
-      'Use this context to choose what you notice, not to add slogans.',
-      'Let it influence which details matter and which trade-offs are highlighted.',
-      'Do not add generic brand claims.',
-      '',
-      brandContext.trim(),
-    ].join('\n')
+        'BRAND CONTEXT',
+        'Apply this context as an attention filter for which signals and trade-offs matter.',
+        'Express the context through concrete operational details in the post.',
+        '',
+        brandContext.trim(),
+      ].join('\n')
     : '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
@@ -3588,50 +3583,62 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `format: ${targetFormat}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    'Do not describe this context; use it silently.',
+    'Use context as internal guidance. Output post content only.',
   ].filter(Boolean).join('\n');
   const GLOBAL_RULES = [
     'OUTPUT',
-    'Return valid JSON matching the requested schema exactly.',
-    'Use only schema keys; values are content only.',
+    'Return valid JSON that matches the requested schema exactly.',
+    'Use only schema keys. Values contain only the content.',
     '',
     'MOMENT',
-    'A moment is: artifact + condition + next move.',
-    'Pick one artifact and one condition; let it force one next move.',
-    'Every field must express the same moment in its own format.',
+    'Choose one artifact and one condition that forces one next move.',
+    'Keep the same artifact, condition, and next move across every field.',
+    'Express the same moment in each field using that field’s format.',
     '',
-    'LANGUAGE',
-    'Use concrete, inspectable details.',
-    'Avoid generic marketing lines, generic inspiration, or filler.',
+    'DETAIL',
+    'Use specific, inspectable details that could be observed in the moment.',
+    'Use plain, direct language with high information density.',
   ].join('\n');
 
 const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
 
-Write like field notes from a real moment.
-No preaching. No “best practices”. No motivational framing.
-Show what happened, what was noticed, and what changed next.
+Voice: field notes from a real work moment. Observational, specific, grounded.
 
-title: names the specific situation.
-hook: drops into the moment without hype.
-body: states the condition and what it changes.
-cta: one simple next step, stated plainly.
-reelHook/reelBody/reelCta: spoken versions of hook/body/cta.
-caption/designNotes/hashtags: stay inside the same moment; no generic promotion.
+Content: one artifact + one condition + one next move.
+Tone: calm, literal, practical.
+
+Field intent:
+title: name the specific situation in concrete terms.
+hook: drop into the moment immediately with the key detail.
+body: state the condition and the next move it forces.
+cta: one simple next step stated plainly.
+reelHook: spoken hook with the same key detail.
+reelBody: spoken body with the same condition and next move.
+reelCta: spoken cta with the same next step.
+caption: short written version of the same moment.
+designNotes: visual guidance that depicts the same artifact and condition.
+hashtags: specific tags that match the same topic and moment.
 
 Return one complete post.`;
 
 const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
 
-Write like a decisive correction that creates separation.
-No “day in the life”. No friendly guiding tone. No generic tips.
-Force a priority shift: tempting focus → real signal → cost → replacement rule.
+Voice: decisive correction that creates separation. Compressed, high-signal, non-gentle.
 
-title: names the wrong focus or misread signal.
-hook: calls out the wrong focus and turns the frame.
-body: names the real signal, the cost, and the replacement rule.
-cta: one action that applies the replacement rule.
-reelHook/reelBody/reelCta: spoken versions of hook/body/cta.
-caption/designNotes/hashtags: reinforce the same correction and the same moment.
+Content: one artifact + one condition + one priority shift inside that moment.
+Structure: tempting priority → deciding signal → practical cost → replacement rule.
+
+Field intent:
+title: name the tempting priority or misread signal in concrete terms.
+hook: open with the tempting priority and flip the frame immediately.
+body: state the deciding signal, the practical cost, and the replacement rule.
+cta: one action that applies the replacement rule next time.
+reelHook: spoken hook with the same flip.
+reelBody: spoken body with the same signal, cost, and rule.
+reelCta: spoken cta with the same action.
+caption: short written version of the same correction inside the same moment.
+designNotes: visuals that show the artifact, condition, and signal clearly.
+hashtags: specific tags aligned to the same correction and topic.
 
 Return one complete post.`;
 
@@ -4367,22 +4374,22 @@ function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, co
   if (!assigned.length) return '';
   if (compact) {
     const lines = [
-      'ASSIGNED TOPIC (read-only)',
+      'ASSIGNED TOPIC',
       ...assigned.map((item) =>
         `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
       ),
-      'Use this as the topic label.',
-      'Every field must stay inside that moment.',
+      'Use the provided title as the topic label for the post.',
+      'Write one concrete moment that stays on that topic.',
     ];
     return lines.join('\n');
   }
   const lines = [
-    'ASSIGNED TOPIC PLAN (read-only)',
+    'ASSIGNED TOPIC PLAN',
     ...assigned.map((item) =>
-      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | Topic: ${item.title} | angle: ${item.angle}`
+      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
     ),
-    'Use title as the topic label.',
-    'Every field must stay inside the same moment.',
+    'Use the provided title as the topic label for the post.',
+    'Write one concrete moment that stays on that topic.',
   ];
   return lines.join('\n');
 }
@@ -4496,15 +4503,14 @@ function sanitizePostForPrompt(post = {}) {
 function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
   const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
   return [
-    'Rewrite the post while preserving the same topic label and the same moment.',
-    'Change wording and the specific artifact/condition details, but keep the same kind of moment.',
-    'Do not add new topics, new claims, or generic promotion.',
-    'Return valid JSON matching the same schema keys as the reference.',
-    'Use only schema keys; values are content only.',
+    'Rewrite the post with fresh wording while preserving the same topic label and the same moment type.',
+    'Keep the same artifact category and the same kind of condition-to-next-move linkage.',
+    'Refresh the specific artifact and condition details so the moment feels new.',
+    'Return valid JSON using the same schema keys as the reference payload.',
     `Niche: ${nicheStyle}`,
     `Day: ${day}`,
     brandContext ? `Brand Context:\n${brandContext}` : '',
-    'Reference post payload (do not reuse phrasing):',
+    'Reference post payload:',
     snapshot,
   ].filter(Boolean).join('\n\n');
 }
@@ -8317,13 +8323,12 @@ async function generateTopicPlan({
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const brandBlock = brandContext
     ? [
-      'BRAND CONTEXT',
-      'Use this context to choose what details matter and what trade-offs are highlighted.',
-      'Do not add generic brand claims or slogans.',
-      '',
-      brandContext.trim(),
-      '',
-    ].join('\n')
+        'BRAND CONTEXT',
+        'Apply this context to select which signals and trade-offs the topics emphasize.',
+        '',
+        brandContext.trim(),
+        '',
+      ].join('\n')
     : '';
   const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
   const pushWarning = (detail) => {
@@ -8375,16 +8380,17 @@ async function generateTopicPlan({
     'You are planning topics for short-form posts.',
     brandBlock.trim(),
     requestLabel.trim(),
-    brandBrainEnabled && brandBrainDirective ? `Brand Brain directives:\n${brandBrainDirective.trim()}` : '',
-    'Goal: produce a plan where each post stays on one clear topic AND one concrete moment.',
+    brandBrainEnabled && brandBrainDirective ? `\n${brandBrainDirective.trim()}` : '',
+    'Goal: produce a plan where each post has one clear topic label and one concrete moment anchor.',
     'Return valid JSON matching the schema exactly.',
     'Use only schema keys.',
     `Create exactly ${totalPosts} items for days ${startDay}..${startDay + Math.max(1, Number(days) || 1) - 1}.`,
     'For each item, set slot/day/postIndex to the assigned values.',
     'Each item includes:',
-    '- title: specific topic label (plain, concrete phrasing)',
-    '- angle: short decision dynamic label',
-    'Avoid abstract topics that could fit any business.',
+    '- title: specific topic label with concrete phrasing tied to the niche',
+    '- angle: short label describing the decision dynamic',
+    'Title quality: names an artifact and a condition in plain language.',
+    'Angle quality: names the shift in what happens next.',
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
