@@ -3541,26 +3541,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
-  const plannedAngle = opts.plannedAngle || '';
-  const postKeyValue = opts.post_key || opts.postKey || '';
-  const slotIndex = Number.isFinite(Number(opts.slotIndex)) ? Number(opts.slotIndex) : 0;
-  const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
-  const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
-    resolvedPostKey ? `post_key: ${resolvedPostKey}` : null,
-    `day: ${startDay}`,
-    `slotIndex: ${slotIndex}`,
-    `format: ${targetFormat}`,
+    `calendar_index: ${startDay}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    plannedAngle ? `planned_angle: ${plannedAngle}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    opts.angleSeed ? `angle_seed: ${opts.angleSeed}` : null,
-    brandContext ? 'brand_context:' : null,
-    brandContext ? brandContext.trim() : null,
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
