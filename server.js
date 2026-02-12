@@ -2066,7 +2066,17 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
     'Use bold, legible typography and high-contrast layering suitable for mobile.',
     paletteTokens.length ? `Stick to this palette: ${paletteTokens.join(', ')}.` : '',
     fontTokens.length ? `Typography should pair ${fontTokens.join(' + ')}.` : '',
-    brandKit ? describeBrandKitForPrompt(brandKit, { includeLogo: true }) : '',
+    brandKit
+      ? [
+          [brandKit.primaryColor, brandKit.secondaryColor, brandKit.accentColor].filter(Boolean).length
+            ? `palette: ${[brandKit.primaryColor, brandKit.secondaryColor, brandKit.accentColor].filter(Boolean).join(', ')}`
+            : '',
+          [brandKit.headingFont, brandKit.bodyFont].filter(Boolean).length
+            ? `typography: ${[brandKit.headingFont, brandKit.bodyFont].filter(Boolean).join(' / ')}`
+            : '',
+          brandKit.logoDataUrl ? 'logo: include safe area for brand mark' : '',
+        ].filter(Boolean).join(' ')
+      : '',
   ].filter(Boolean);
   return pieces.join(' ');
 }
@@ -2268,7 +2278,6 @@ async function generateAndValidateSinglePost({
   temperature,
   presencePenalty,
   qualityState,
-  extraInstructions,
   recentTitles = [],
   calendarId = '',
   usedSignatures = [],
@@ -2334,7 +2343,6 @@ async function generateAndValidateSinglePost({
         compactPrompt: true,
         temperature,
         presencePenalty,
-        extraInstructions: '',
         brandBrainDirective,
         calendarMode,
         singlePost: true,
@@ -3372,7 +3380,6 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
       enabled: false,
       mode: 'preset',
       preset: 'direct',
-      instructionBlock: '',
       fields: VOICE_LOCK_FIELDS,
       reason: 'disabled',
     };
@@ -3382,7 +3389,6 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
       enabled: false,
       mode: 'preset',
       preset: 'direct',
-      instructionBlock: '',
       fields: VOICE_LOCK_FIELDS,
       reason: 'not_pro',
     };
@@ -3397,7 +3403,6 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
       enabled: false,
       mode: 'preset',
       preset: 'direct',
-      instructionBlock: '',
       fields: VOICE_LOCK_FIELDS,
       reason: 'missing_preset',
     };
@@ -3407,7 +3412,6 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
       enabled: false,
       mode: 'preset',
       preset: 'direct',
-      instructionBlock: '',
       fields: VOICE_LOCK_FIELDS,
       reason: 'unknown_preset',
     };
@@ -3417,7 +3421,6 @@ function resolveVoiceLockConfig(input = {}, isPro = false) {
     enabled: true,
     mode,
     preset: presetKey,
-    instructionBlock: '',
     fields: VOICE_LOCK_FIELDS,
     reason: 'enabled',
   };
@@ -3465,19 +3468,18 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
   const raw = input?.targetAudience && typeof input.targetAudience === 'object' ? input.targetAudience : {};
   const wantsEnabled = Boolean(raw.enabled);
   if (!wantsEnabled) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'disabled' };
+    return { enabled: false, preset: null, reason: 'disabled' };
   }
   if (!isPro) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'not_pro' };
+    return { enabled: false, preset: null, reason: 'not_pro' };
   }
   const presetKey = normalizeTargetAudiencePresetKey(raw.preset);
   if (!presetKey) {
-    return { enabled: false, preset: null, instructionBlock: '', reason: 'missing_preset' };
+    return { enabled: false, preset: null, reason: 'missing_preset' };
   }
   return {
     enabled: true,
     preset: presetKey,
-    instructionBlock: '',
     reason: 'enabled',
   };
 }
@@ -3508,9 +3510,7 @@ function pickAngleForPostKey(postKeyValue = '') {
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
-  const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
-  const endDay = startDay + days - 1;
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
@@ -3573,8 +3573,7 @@ Return one complete post.`;
     contextLines,
     mainPrompt,
   ].filter(Boolean);
-  const extra = opts.extraInstructions ? `\n${opts.extraInstructions.trim()}` : '';
-  return `${promptParts.join('\n')}${extra}`;
+  return promptParts.join('\n');
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
@@ -8180,15 +8179,6 @@ async function generateTopicPlan({
   pillarSchedule,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
-  const brandBlock = brandContext
-    ? [
-        'BRAND CONTEXT',
-        'Apply this context to select which signals and trade-offs the topics emphasize.',
-        '',
-        brandContext.trim(),
-        '',
-      ].join('\n')
-    : '';
   const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
   const pushWarning = (detail) => {
     if (!context) return;
@@ -8237,7 +8227,6 @@ async function generateTopicPlan({
   );
   const prompt = [
     'You are planning topics for short-form posts.',
-    brandBlock.trim(),
     requestLabel.trim(),
     brandBrainEnabled && brandBrainDirective ? `\n${brandBrainDirective.trim()}` : '',
     'Goal: produce a plan where each post has one clear topic label and one concrete moment anchor.',
@@ -8530,7 +8519,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return JSON.parse(trimmed.slice(start, end + 1));
   };
 
-  const attemptRequest = async (extraInstructions = '', useSchema = true, overrides = {}) => {
+  const attemptRequest = async (useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
     const attemptNumber = Number.isFinite(Number(overrides.attempt)) ? Number(overrides.attempt) : 1;
     const attemptMaxTokens = Number.isFinite(Number(overrides.maxTokens)) ? Number(overrides.maxTokens) : maxTokens;
@@ -8546,7 +8535,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       startDay: chunkStartDay,
       postsPerDay,
       singlePost: useSinglePost,
-      extraInstructions: '',
       isPro: Boolean(opts.isPro),
       requestId: loggingContext?.requestId || '',
     };
@@ -8710,7 +8698,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   try {
     let firstResponse = null;
     try {
-      firstResponse = await attemptRequest('', true);
+      firstResponse = await attemptRequest(true);
     } catch (err) {
       if (!allowFailover || !shouldFailover(err)) throw err;
       const fallbackMaxTokens = maxTokens;
@@ -8723,7 +8711,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         timeoutMs: requestTimeoutMs,
         attempt: 2,
       });
-      firstResponse = await attemptRequest('', true, {
+      firstResponse = await attemptRequest(true, {
         attempt: 2,
         maxTokens: fallbackMaxTokens,
         temperature: fallbackTemperature,
@@ -9262,39 +9250,6 @@ async function stripeApiRequest({ method = 'GET', path: requestPath, body, secre
     if (payload) req.write(payload);
     req.end();
   });
-}
-
-function describeBrandKitForPrompt(kit, { includeLogo } = {}) {
-  if (!kit) return '';
-  const lines = [];
-  const palette = [kit.primaryColor, kit.secondaryColor, kit.accentColor].filter(Boolean);
-  if (palette.length) {
-    lines.push(`Palette: ${palette.join(', ')}`);
-  }
-  const fonts = [kit.headingFont, kit.bodyFont].filter(Boolean);
-  if (fonts.length) {
-    lines.push(`Typography: ${fonts.join(' / ')}`);
-  }
-  if (includeLogo && kit.logoDataUrl) {
-    lines.push('Logo: Include safe area for brand mark.');
-  }
-  return lines.length ? lines.join('\n') : '';
-}
-
-function summarizeBrandForPrompt(brand) {
-  if (!brand) return '';
-  let out = '';
-  if (brand.chunks && brand.chunks.length > 0) {
-    for (const c of brand.chunks) {
-      if ((out + '\n' + c.text).length > 2400) break;
-      out += (out ? '\n' : '') + c.text;
-    }
-  }
-  const kitSummary = describeBrandKitForPrompt(brand.kit, { includeLogo: false });
-  if (kitSummary) {
-    out += (out ? '\n\n' : '') + `Brand design:\n${kitSummary}`;
-  }
-  return out.trim();
 }
 
 function isBrandKitPath(pathname) {
@@ -10076,8 +10031,7 @@ const server = http.createServer((req, res) => {
     const brandBrainEnabled = calendarMode === 'brand_brain' || Boolean(brandBrainDirective);
     calendarMode = brandBrainEnabled ? 'brand_brain' : 'regular';
 
-    const brand = userId ? loadBrand(userId) : null;
-    const brandContext = summarizeBrandForPrompt(brand);
+    const brandContext = '';
 
     const slots = [];
     for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
@@ -10228,8 +10182,7 @@ const server = http.createServer((req, res) => {
       throw err;
     }
     const classification = categorizeNiche(nicheStyle);
-    const brand = userId ? loadBrand(userId) : null;
-    const brandContext = summarizeBrandForPrompt(brand);
+    const brandContext = '';
     const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
     const isProUser = Boolean(payload?.isPro);
     const forceRegular = String(payload?.calendarMode || '').toLowerCase() === 'regular';
@@ -10336,7 +10289,6 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const extraInstructionsBlock = '';
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
@@ -10355,7 +10307,6 @@ const server = http.createServer((req, res) => {
         reduceVerbosity: true,
         compactPrompt: forceCompactPrompt,
         temperature: Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined,
-        extraInstructions: extraInstructionsBlock,
         topicPlan,
         brandBrainDirective,
         voiceLock: voiceLockConfig,
@@ -11424,8 +11375,7 @@ const server = http.createServer((req, res) => {
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : 0.2;
         const schemaLabel = selectedMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
 
-        const brand = user.id ? loadBrand(user.id) : null;
-        const brandContext = summarizeBrandForPrompt(brand);
+        const brandContext = '';
         let brandBrainDirective = '';
         if (selectedMode === 'brand_brain') {
           const brandBrainSettings = user.id ? await fetchBrandBrainSettings(user.id) : null;
