@@ -2270,6 +2270,8 @@ async function generateAndValidateSinglePost({
   post_key,
   plannedTitle,
   plannedAngle,
+  topicSignature = '',
+  angleLabel = '',
   pillarKey,
   requestId,
   loggingContext = {},
@@ -2354,6 +2356,8 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
+        topicSignature,
+        angleLabel,
         pillarStyle,
         recentTitles,
         angleSeed,
@@ -3538,6 +3542,50 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
+  const topicSignature = String(opts.topicSignature || '').trim();
+  const angleLabel = String(opts.angleLabel || '').trim();
+  const normalizePipeAnchor = (raw = '') => raw
+    .split('|')
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(' | ');
+  const splitDelimiters = ['->', '→', '=>', '/', '-', ';'];
+  const toShortNounPhrase = (text = '') => {
+    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    const count = Math.min(7, Math.max(3, words.length));
+    return words.slice(0, count).join(' ');
+  };
+  let momentAnchor = '';
+  if (topicSignature.includes('|')) {
+    momentAnchor = normalizePipeAnchor(topicSignature);
+  } else if (topicSignature) {
+    for (const delim of splitDelimiters) {
+      if (!topicSignature.includes(delim)) continue;
+      const parts = topicSignature
+        .split(delim)
+        .map((part) => String(part || '').trim())
+        .filter(Boolean);
+      if (parts.length >= 3) {
+        momentAnchor = parts.slice(0, 3).join(' | ');
+        break;
+      }
+    }
+  }
+  if (!momentAnchor) {
+    const pillarKey = String(opts.pillar || opts.targetPillar || '').toLowerCase().trim();
+    const fallbackArtifactByPillar = {
+      education: 'checklist',
+      social_proof: 'DM thread',
+      lifestyle: 'walkthrough clip',
+      promotion: 'listing page',
+    };
+    const artifact = toShortNounPhrase(plannedTitle) || fallbackArtifactByPillar[pillarKey] || 'checklist';
+    const condition = angleLabel || 'visible condition';
+    const nextMove = 'next move';
+    momentAnchor = `${artifact} | ${condition} | ${nextMove}`;
+  }
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
@@ -3546,6 +3594,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
+    topicSignature ? `topic_signature: ${topicSignature}` : null,
+    angleLabel ? `angle: ${angleLabel}` : null,
+    `moment_anchor: ${momentAnchor}`,
+    'Use moment_anchor as the single scene. Every field must describe the same scene.',
     'Apply this context to select one concrete moment and align every field.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
@@ -10146,6 +10198,8 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
+        topicSignature: planItem.topic_signature || '',
+        angleLabel: planItem.angle || '',
         pillarKey: pillarForSlot,
         requestId,
         loggingContext,
@@ -11424,6 +11478,8 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
+            topicSignature: plannedTitle || '',
+            angleLabel: plannedAngle || '',
             pillarKey: scheduledPillar,
             requestId,
             loggingContext: { requestId, day, slotIndex, post_key: postKeyValue },
