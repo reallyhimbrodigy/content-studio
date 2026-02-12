@@ -3292,9 +3292,9 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Create a competitive post that changes audience priority.',
-    'State the current focus, name the deciding signal, state the practical cost, and state the replacement rule.',
-    'Anchor the sequence in one concrete moment with one artifact and one condition.',
+    'Plan posts that create a priority shift inside one filmable moment.',
+    'Encode the shift as: current focus → deciding signal → practical cost → replacement rule.',
+    'Make the moment concrete using artifact + condition + next move.',
   ].join('\n');
 }
 
@@ -3542,50 +3542,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
-  const topicSignature = String(opts.topicSignature || '').trim();
-  const angleLabel = String(opts.angleLabel || '').trim();
-  const normalizePipeAnchor = (raw = '') => raw
-    .split('|')
-    .map((part) => String(part || '').trim())
-    .filter(Boolean)
-    .slice(0, 3)
-    .join(' | ');
-  const splitDelimiters = ['->', '→', '=>', '/', '-', ';'];
-  const toShortNounPhrase = (text = '') => {
-    const words = String(text || '').trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return '';
-    const count = Math.min(7, Math.max(3, words.length));
-    return words.slice(0, count).join(' ');
-  };
-  let momentAnchor = '';
-  if (topicSignature.includes('|')) {
-    momentAnchor = normalizePipeAnchor(topicSignature);
-  } else if (topicSignature) {
-    for (const delim of splitDelimiters) {
-      if (!topicSignature.includes(delim)) continue;
-      const parts = topicSignature
-        .split(delim)
-        .map((part) => String(part || '').trim())
-        .filter(Boolean);
-      if (parts.length >= 3) {
-        momentAnchor = parts.slice(0, 3).join(' | ');
-        break;
-      }
-    }
-  }
-  if (!momentAnchor) {
-    const pillarKey = String(opts.pillar || opts.targetPillar || '').toLowerCase().trim();
-    const fallbackArtifactByPillar = {
-      education: 'checklist',
-      social_proof: 'DM thread',
-      lifestyle: 'walkthrough clip',
-      promotion: 'listing page',
-    };
-    const artifact = toShortNounPhrase(plannedTitle) || fallbackArtifactByPillar[pillarKey] || 'checklist';
-    const condition = angleLabel || 'visible condition';
-    const nextMove = 'next move';
-    momentAnchor = `${artifact} | ${condition} | ${nextMove}`;
-  }
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
@@ -3593,51 +3549,48 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `calendar_index: ${startDay}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
+    opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
+    opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    topicSignature ? `topic_signature: ${topicSignature}` : null,
-    angleLabel ? `angle: ${angleLabel}` : null,
-    `moment_anchor: ${momentAnchor}`,
-    'Use moment_anchor as the single scene. Every field must describe the same scene.',
-    'Apply this context to select one concrete moment and align every field.',
+    'Use planned_title and topic_signature as the single moment to express across every field.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-Goal: produce one clear, publishable short-form post for this niche.
-Center the post on one real moment the audience can visualize.
-Anchor the moment to one concrete artifact and one inspectable condition.
-Use the condition to set the next move and carry that same moment across every field.
-Keep the writing concrete, specific, and entertaining enough to hold attention.
+Goal: produce one publishable short-form post that holds attention and stays anchored to one filmable moment.
+Use topic_signature as the exact moment: artifact + condition + next move.
+Express that same moment consistently across every field so nothing drifts into generic copy.
 
 Field intent:
 
-title: name the topic in concrete terms tied to the moment
-hook: open inside the moment with a specific detail
-body: explain the condition, its meaning, and the next move
-cta: state one natural next step connected to the same moment
-reelHook / reelBody / reelCta: deliver spoken versions of hook, body, and cta
-caption: reinforce the same moment with concise, high-signal phrasing
-designNotes: describe visuals that make the artifact and condition legible
+title: use planned_title when provided; otherwise name the same moment clearly
+hook: open inside the moment with the artifact and the condition in one sharp line
+body: state what the condition signals and what the next move is in that moment
+cta: state one natural next step that follows from the same moment
+reelHook / reelBody / reelCta: spoken delivery of hook → meaning → next move, as short beats
+caption: reinforce the same moment with compact, high-signal phrasing
+designNotes: describe what to show so the artifact, condition, and next move are immediately visible
 hashtags[]: select tags that match the same topic and moment
+
+Write Reel delivery as a quick sequence of spoken beats that match the visual beats in designNotes.
 
 Return one complete post.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: produce a competitive short-form post that shifts what the viewer prioritizes.
-Center the post on one concrete moment with one artifact and one inspectable condition.
-Use that condition to drive a priority shift through signal, cost, and replacement rule.
-Shape the moment for platform performance with pattern break, retention, curiosity, payoff, replay value, and share momentum.
-Keep the same moment consistent across every field.
+Goal: produce a winning short-form ad that reorders audience priority inside one filmable moment.
+Use topic_signature as the exact moment: artifact + condition + next move.
+Drive a priority shift through: current focus → deciding signal → practical cost → replacement rule, all expressed inside the same moment.
+Shape for platform performance by executing: pattern break → curiosity → proof inside the moment → payoff → share-trigger takeaway.
 
 Field intent:
 
-title: name the current mis-priority and the decisive focus
-hook: open with the shift in priority inside the moment
-body: show the deciding signal, practical cost, and replacement rule
-cta: state one action that applies the replacement rule
-reelHook / reelBody / reelCta: deliver spoken versions of hook, body, and cta
-caption: reinforce the same shift with concise persuasive language
-designNotes: describe visuals that prove the signal inside the moment
+title: use planned_title when provided; otherwise name the mis-priority and the decisive focus in concrete terms
+hook: open inside the moment with the priority shift and the deciding signal
+body: show the signal, the cost it prevents, and the replacement rule as the next move in that moment
+cta: state one action that applies the replacement rule immediately
+reelHook / reelBody / reelCta: spoken delivery of the shift as short beats that land cleanly
+caption: reinforce the priority shift with concise persuasive language tied to the same moment
+designNotes: describe visuals that prove the deciding signal inside the moment
 hashtags[]: select tags that match the same topic and priority shift
 
 Return one complete post.`;
@@ -9937,12 +9890,16 @@ const server = http.createServer((req, res) => {
   const planPrompt = [
     'Return valid JSON matching the schema exactly.',
     `Niche: ${nicheStyle}`,
-    `Generate exactly ${expectedCount} items for these post_keys:`,
+    'Generate exactly the requested number of items for these post_keys:',
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- topic_signature: short moment anchor using artifact + condition + next move',
-    '- angle: short decision-dynamic label',
+    '- topic_signature: a filmable moment written as artifact + condition + next move (short phrase)',
+    '- angle: a short decision-dynamic label that explains why the next move happens',
+    'Write topic_signature so a viewer can picture the scene instantly.',
+    'Choose an artifact that belongs to the niche and can be shown on screen.',
+    'Choose a condition that is inspectable in the moment.',
+    'Choose a next move that logically follows from the condition.',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
@@ -11447,6 +11404,7 @@ const server = http.createServer((req, res) => {
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
+        const plannedTopicSignature = toPlainString(body?.topic_signature || body?.topicSignature || '') || plannedTitle;
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : undefined;
@@ -11478,7 +11436,7 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
-            topicSignature: plannedTitle || '',
+            topicSignature: plannedTopicSignature,
             angleLabel: plannedAngle || '',
             pillarKey: scheduledPillar,
             requestId,
