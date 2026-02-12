@@ -3264,11 +3264,6 @@ function buildBrandBrainDirective(settings = {}) {
   ].join('\n');
 }
 
-function getModeLens(mode = 'regular') {
-  return mode === 'brand_brain'
-    ? 'Brand Brain lens: correct a mispriority by naming the real signal, its cost, and the replacement rule.'
-    : 'Regular lens: document one real moment where a specific condition changes the next move.';
-}
 
 const VOICE_LOCK_PRESET_GUIDES = {
   'no-ai-polish': {
@@ -3486,26 +3481,6 @@ function resolveTargetAudienceConfig(input = {}, isPro = false) {
     reason: 'enabled',
   };
 }
-
-const TOPIC_LOCK_CONTRACT_BLOCK = '';
-const FIELD_REGROUNDING_INSTRUCTION = '';
-const FIELD_REGROUNDING_BLOCK = '';
-const SHORT_FORM_CONTENT_CONTRACT_BLOCK = '';
-const TITLE_ANCHOR_ECHO_BLOCK = '';
-const LIFESTYLE_REDEFINITION_BLOCK = '';
-const QUALITY_ALIGNMENT_BLOCK = '';
-const REGULAR_CALENDAR_CEILING_CONTRACT_BLOCK = '';
-const BRAND_BRAIN_UNFAIR_ADVANTAGE_CONTRACT_BLOCK = '';
-const COMPACT_REQUIRED_KEYS_LINE_REGULAR = '';
-const COMPACT_REQUIRED_KEYS_LINE_BRAND = '';
-const COMPACT_LENGTH_LIMITS_BLOCK = '';
-const COMPACT_SHARED_CONTRACT_BLOCK = '';
-const COMPACT_REGULAR_MODE_BLOCK = '';
-const COMPACT_BRAND_BRAIN_MODE_BLOCK = '';
-const BRAND_BRAIN_KEY_CONTRACT_TOP = '';
-const CALENDAR_HARD_SEPARATION_BLOCK = '';
-const REGULAR_CONTENT_QUALITY_RULES_BLOCK = '';
-const BRAND_BRAIN_DIFFERENTIATION_RULES_BLOCK = '';
 
 function buildRecentTitlesList(titles = [], limit = 10) {
   if (!Array.isArray(titles) || !titles.length) return [];
@@ -4312,35 +4287,6 @@ function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pill
   return slots;
 }
 
-function buildTopicPlanBlock(topics = [], { chunkStartDay = 1, chunkDays = 1, compact = false } = {}) {
-  const dayStart = Number.isFinite(Number(chunkStartDay)) ? Number(chunkStartDay) : 1;
-  const dayEnd = dayStart + Math.max(1, Number(chunkDays) || 1) - 1;
-  const assigned = Array.isArray(topics)
-    ? topics.filter((item) => item.day >= dayStart && item.day <= dayEnd)
-    : [];
-  if (!assigned.length) return '';
-  if (compact) {
-    const lines = [
-      'ASSIGNED TOPIC',
-      ...assigned.map((item) =>
-        `post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
-      ),
-      'Use the provided title as the topic label for the post.',
-      'Write one concrete moment that stays on that topic.',
-    ];
-    return lines.join('\n');
-  }
-  const lines = [
-    'ASSIGNED TOPIC PLAN',
-    ...assigned.map((item) =>
-      `Day ${item.day} | slotIndex ${item.postIndex} | post_key ${postKey(item.day, item.postIndex)} | title: ${item.title} | angle: ${item.angle}`
-    ),
-    'Use the provided title as the topic label for the post.',
-    'Write one concrete moment that stays on that topic.',
-  ];
-  return lines.join('\n');
-}
-
 function sanitizeJsonContent(content = '') {
   if (typeof content !== 'string') return '';
   const firstBrace = content.indexOf('{');
@@ -4446,22 +4392,6 @@ function sanitizePostForPrompt(post = {}) {
   sanitized.day = post.day;
   return sanitized;
 }
-
-function buildSingleDayPrompt(nicheStyle, day, post, brandContext) {
-  const snapshot = JSON.stringify(sanitizePostForPrompt(post), null, 2);
-  return [
-    'Rewrite the post with fresh wording while preserving the same topic label and the same moment type.',
-    'Keep the same artifact category and the same kind of condition-to-next-move linkage.',
-    'Refresh the specific artifact and condition details so the moment feels new.',
-    'Return valid JSON using the same schema keys as the reference payload.',
-    `Niche: ${nicheStyle}`,
-    `Day: ${day}`,
-    brandContext ? `Brand Context:\n${brandContext}` : '',
-    'Reference post payload:',
-    snapshot,
-  ].filter(Boolean).join('\n\n');
-}
-
 
 function parseStrategyPercent(value) {
   if (value === null || value === undefined) return NaN;
@@ -4708,24 +4638,6 @@ function sanitizeLettersOnly(value = '', minLen = 4, maxLen = 10) {
   const truncated = letters.slice(0, maxLen);
   if (truncated.length < minLen) return '';
   return truncated;
-}
-
-function buildNicheProfileBlock(nicheStyle = '', brandContext = '') {
-  const niche = String(nicheStyle || 'General').trim() || 'General';
-  const audienceLine = brandContext
-    ? `Audience: ${String(brandContext).split('\n')[0].trim()}`
-    : 'Audience: General';
-
-  return [
-    'NICHE PROFILE',
-    `Niche: ${niche}`,
-    audienceLine,
-    'Rules:',
-    '- Keep all content directly relevant to the niche.',
-    '- Avoid concepts from unrelated niches.',
-    '- Avoid beauty/med-spa language unless the niche is beauty/med-spa.',
-    '- Avoid discount-code language unless the niche uses it.',
-  ].join('\n');
 }
 
 function deriveNicheKeyword(nicheStyle = '') {
