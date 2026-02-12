@@ -2364,6 +2364,7 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
+        pillarStyle,
         recentTitles,
         angleSeed,
         usedSignatures: recentSignatures,
@@ -3554,19 +3555,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const days = Math.max(1, Math.min(30, Number(opts.days || 30)));
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const endDay = startDay + days - 1;
-  const mode = String(opts.calendarMode || (opts.brandBrainDirective ? 'brand_brain' : 'regular')).toLowerCase() === 'brand_brain'
+  const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
-  const brandBlock = brandContext
-    ? [
-        'BRAND CONTEXT',
-        'Apply this context as an attention filter for which signals and trade-offs matter.',
-        'Express the context through concrete operational details in the post.',
-        '',
-        brandContext.trim(),
-      ].join('\n')
-    : '';
   const plannedTitle = opts.plannedTitle || '';
   const plannedAngle = opts.plannedAngle || '';
   const postKeyValue = opts.post_key || opts.postKey || '';
@@ -3574,7 +3566,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const resolvedPostKey = postKeyValue || postKey(startDay, slotIndex);
   const targetFormat = toPlainString(opts.format || 'reel') || 'reel';
   const contextLines = [
-    'CONTEXT',
+    'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
     resolvedPostKey ? `post_key: ${resolvedPostKey}` : null,
@@ -3583,73 +3575,59 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `format: ${targetFormat}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    'Use context as internal guidance. Output post content only.',
+    plannedAngle ? `planned_angle: ${plannedAngle}` : null,
+    opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
+    opts.angleSeed ? `angle_seed: ${opts.angleSeed}` : null,
+    brandContext ? 'brand_context:' : null,
+    brandContext ? brandContext.trim() : null,
   ].filter(Boolean).join('\n');
-  const GLOBAL_RULES = [
-    'OUTPUT',
-    'Return valid JSON that matches the requested schema exactly.',
-    'Use only schema keys. Values contain only the content.',
-    '',
-    'MOMENT',
-    'Choose one artifact and one condition that forces one next move.',
-    'Keep the same artifact, condition, and next move across every field.',
-    'Express the same moment in each field using that field’s format.',
-    '',
-    'DETAIL',
-    'Use specific, inspectable details that could be observed in the moment.',
-    'Use plain, direct language with high information density.',
-  ].join('\n');
+  const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-const REGULAR_ALL_FIELDS_PROMPT = `MODE: REGULAR
+Goal: produce one clear, publishable short-form post for this niche.
+Center on one real work moment.
+Anchor the post to one concrete artifact and one inspectable condition.
+Let the condition change the next move, and keep that same moment consistent across every field.
 
-Voice: field notes from a real work moment. Observational, specific, grounded.
+Write with plain, direct phrasing.
+Make each field do a distinct job:
 
-Content: one artifact + one condition + one next move.
-Tone: calm, literal, practical.
-
-Field intent:
-title: name the specific situation in concrete terms.
-hook: drop into the moment immediately with the key detail.
-body: state the condition and the next move it forces.
-cta: one simple next step stated plainly.
-reelHook: spoken hook with the same key detail.
-reelBody: spoken body with the same condition and next move.
-reelCta: spoken cta with the same next step.
-caption: short written version of the same moment.
-designNotes: visual guidance that depicts the same artifact and condition.
-hashtags: specific tags that match the same topic and moment.
+title: names the topic clearly
+hook: drops into the moment
+body: explains the condition and why it matters
+cta: one natural next step tied to the moment
+reelHook / reelBody / reelCta: spoken versions of hook / body / cta
+caption: reinforces the same moment in text form
+designNotes: describes what to show to make the moment legible
+hashtags[]: specific to the topic and moment
 
 Return one complete post.`;
 
-const BRAND_BRAIN_ALL_FIELDS_PROMPT = `MODE: BRAND_BRAIN
+  const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Voice: decisive correction that creates separation. Compressed, high-signal, non-gentle.
+Goal: produce one competitive short-form post that changes what the viewer prioritizes.
+Center on one real work moment.
+Anchor the post to one concrete artifact and one inspectable condition.
+Use that condition to expose the wrong focus, reveal the real gate, show the operational cost, and state the replacement rule.
+Keep the same moment consistent across every field.
 
-Content: one artifact + one condition + one priority shift inside that moment.
-Structure: tempting priority → deciding signal → practical cost → replacement rule.
+Write with direct, decisive phrasing.
+Make each field do a distinct job:
 
-Field intent:
-title: name the tempting priority or misread signal in concrete terms.
-hook: open with the tempting priority and flip the frame immediately.
-body: state the deciding signal, the practical cost, and the replacement rule.
-cta: one action that applies the replacement rule next time.
-reelHook: spoken hook with the same flip.
-reelBody: spoken body with the same signal, cost, and rule.
-reelCta: spoken cta with the same action.
-caption: short written version of the same correction inside the same moment.
-designNotes: visuals that show the artifact, condition, and signal clearly.
-hashtags: specific tags aligned to the same correction and topic.
+title: names the failure point or mis-priority
+hook: frames the re-rank inside the moment
+body: shows the mechanism, cost, and replacement rule
+cta: one next step that applies the replacement rule
+reelHook / reelBody / reelCta: spoken versions of hook / body / cta
+caption: reinforces the same re-rank in text form
+designNotes: describes what to show to prove the condition
+hashtags[]: specific to the topic and moment
 
 Return one complete post.`;
 
-  const contractBlock = mode === 'brand_brain' ? BRAND_BRAIN_ALL_FIELDS_PROMPT : REGULAR_ALL_FIELDS_PROMPT;
+  const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   const promptParts = [
-    'You are generating ONE calendar post.',
-    brandBlock,
     contextLines,
-    plannedAngle ? `ANGLE_LABEL: ${plannedAngle}` : '',
-    GLOBAL_RULES,
-    contractBlock,
+    mainPrompt,
   ].filter(Boolean);
   const extra = opts.extraInstructions ? `\n${opts.extraInstructions.trim()}` : '';
   return `${promptParts.join('\n')}${extra}`;
@@ -10477,28 +10455,7 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const planBlock = buildTopicPlanBlock(topicPlan, {
-        chunkStartDay,
-        chunkDays,
-        compact: forceCompactPrompt,
-      });
-      const extraInstructionsBlock = [planBlock, payload?.extraInstructions].filter(Boolean).join('\n');
-      if (planBlock) {
-        const planTitles = planBlock
-          .split('\n')
-          .filter((line) => line.includes(' | title: '))
-          .map((line) => line.split(' | title: ')[1] || '')
-          .map((part) => part.split(' | angle: ')[0] || '')
-          .filter(Boolean);
-        if (planTitles.length) {
-          console.log('[Calendar][Plan][Title]', {
-            requestId: chunkContext?.requestId || 'unknown',
-            chunkIndex,
-            startDay: chunkStartDay,
-            titles: planTitles,
-          });
-        }
-      }
+      const extraInstructionsBlock = [payload?.extraInstructions].filter(Boolean).join('\n');
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
