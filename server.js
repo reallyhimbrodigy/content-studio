@@ -2308,22 +2308,6 @@ async function generateAndValidateSinglePost({
   const pillarStyle = pillarRules[assignedPillarKey] || '';
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
-  const baseInstructions = [
-    'INPUT CONTEXT',
-    `post_key: ${post_key}`,
-    `day: ${day}`,
-    `slotIndex: ${slotIndex}`,
-    `mode: ${calendarMode}`,
-    `pillar: ${assignedPillarKey}`,
-    `niche: ${nicheStyle}`,
-    plannedTitle ? `planned_title: ${plannedTitle}` : '',
-    plannedAngle ? `planned_angle: ${plannedAngle}` : '',
-    pillarStyle ? `pillar_style: ${pillarStyle}` : '',
-    `angle_seed: ${angleSeed}`,
-    '',
-    'Use this context internally while writing the post.',
-    'Return valid JSON that matches the schema exactly.',
-  ].filter(Boolean).join('\n');
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let reachedOpenAI = false;
@@ -2337,8 +2321,6 @@ async function generateAndValidateSinglePost({
       usedSignaturesCount: recentSignatures.length,
     });
     currentStage = 'assign_pillar';
-      const retryLine = '';
-    const mergedInstructions = [retryLine, baseInstructions, extraInstructions].filter(Boolean).join('\n');
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
@@ -2352,7 +2334,7 @@ async function generateAndValidateSinglePost({
         compactPrompt: true,
         temperature,
         presencePenalty,
-        extraInstructions: mergedInstructions,
+        extraInstructions: '',
         brandBrainDirective,
         calendarMode,
         singlePost: true,
@@ -2527,7 +2509,6 @@ async function generateAndValidateSinglePost({
               wrongTypes.length ? `wrong type fields: ${wrongTypes.map((item) => item.key || item).join(', ')}` : '',
               emptyFields.length ? `empty fields: ${emptyFields.join(', ')}` : '',
             ].filter(Boolean).join('; ');
-          extraInstructions = '';
           continue;
         }
       const failErr = new Error('CALENDAR_POST_GENERATION_FAILED');
@@ -8665,7 +8646,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       startDay: chunkStartDay,
       postsPerDay,
       singlePost: useSinglePost,
-      extraInstructions,
+      extraInstructions: '',
       isPro: Boolean(opts.isPro),
       requestId: loggingContext?.requestId || '',
     };
@@ -10455,7 +10436,7 @@ const server = http.createServer((req, res) => {
     async function fetchChunk(chunkDays, chunkStartDay, chunkIndex, chunkPostsPerDay) {
       const chunkContext = { ...loggingContext, chunkIndex, chunkStartDay };
       const chunkMaxTokens = Math.max(chunkMinTokens, chunkBaseTokens);
-      const extraInstructionsBlock = [payload?.extraInstructions].filter(Boolean).join('\n');
+      const extraInstructionsBlock = '';
       console.log('[Calendar][Server][Perf] callOpenAI start', {
         requestId: chunkContext?.requestId || 'unknown',
         chunkIndex,
