@@ -2270,7 +2270,6 @@ async function generateAndValidateSinglePost({
   post_key,
   plannedTitle,
   plannedAngle,
-  momentAnchor,
   pillarKey,
   requestId,
   loggingContext = {},
@@ -2316,7 +2315,6 @@ async function generateAndValidateSinglePost({
     ? BRAND_BRAIN_PILLAR_STYLE_RULES
     : REGULAR_PILLAR_STYLE_RULES;
   const pillarStyle = pillarRules[assignedPillarKey] || '';
-  const resolvedMomentAnchor = toPlainString(momentAnchor || plannedTitle || plannedAngle || '');
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const maxAttempts = 2;
@@ -2356,7 +2354,6 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
-        momentAnchor: resolvedMomentAnchor,
         pillarStyle,
         recentTitles,
         angleSeed,
@@ -2415,24 +2412,6 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       const post = validation.post;
-      const qualityValidation = validatePostQuality(post, {
-        mode: calendarMode,
-        nicheStyle,
-        momentAnchor: resolvedMomentAnchor,
-      });
-      if (!qualityValidation.ok) {
-        const err = new Error('CALENDAR_QUALITY_FAIL');
-        err.code = 'CALENDAR_QUALITY_FAIL';
-        err.statusCode = 422;
-        err.details = {
-          reason: 'QUALITY_FAIL',
-          failed_fields: qualityValidation.failed_fields || [],
-          diagnostics: qualityValidation.diagnostics || {},
-          day,
-          post_key,
-        };
-        throw err;
-      }
       console.log('[Calendar][Job] success', {
         requestId,
         mode: calendarMode,
@@ -2500,19 +2479,7 @@ async function generateAndValidateSinglePost({
           };
           throw failErr;
         }
-        if (err?.code === 'CALENDAR_QUALITY_FAIL') {
-          console.warn('[Calendar][QualityFail]', {
-            requestId,
-            mode: calendarMode,
-            post_key,
-            day,
-            index: slotIndex,
-            moment_anchor: resolvedMomentAnchor ? String(resolvedMomentAnchor).slice(0, 180) : null,
-            failed_fields: err?.details?.failed_fields || [],
-            reason: err?.details?.reason || 'QUALITY_FAIL',
-          });
-          throw err;
-        }
+        if (err?.code === 'CALENDAR_QUALITY_FAIL') throw err;
         if (err?.code === 'SCHEMA_MISMATCH' || err?.code === 'PARSE_FAILED') {
           reachedOpenAI = true;
         }
@@ -2530,14 +2497,23 @@ async function generateAndValidateSinglePost({
         if (reason === 'SCHEMA_CONTRACT_VIOLATION') reason = 'SCHEMA_FAIL';
         if (reason === 'SCHEMA_MISMATCH') reason = 'SCHEMA_FAIL';
         if (reason === 'QUALITY_FAIL') {
+          const qualityFields = Array.isArray(err?.details?.failed_fields) ? err.details.failed_fields : [];
+          const fieldShapes = {};
+          qualityFields.forEach((field) => {
+            const value = rawCandidate && typeof rawCandidate === 'object' ? rawCandidate[field] : undefined;
+            fieldShapes[field] = {
+              type: Array.isArray(value) ? 'array' : typeof value,
+              length: typeof value === 'string' ? value.length : (Array.isArray(value) ? value.length : null),
+            };
+          });
           console.warn('[Calendar][QualityFail]', {
             requestId,
             mode: calendarMode,
             post_key,
             day,
             index: slotIndex,
-            moment_anchor: resolvedMomentAnchor ? String(resolvedMomentAnchor).slice(0, 180) : null,
-            failed_fields: err?.details?.failed_fields || [],
+            failed_fields: qualityFields,
+            field_shapes: fieldShapes,
             reason: err?.details?.reason || 'QUALITY_FAIL',
           });
         }
@@ -3562,7 +3538,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
-  const momentAnchor = opts.momentAnchor || '';
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
@@ -3570,7 +3545,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `calendar_index: ${startDay}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    momentAnchor ? `moment_anchor: ${momentAnchor}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     'Apply this context to select one concrete moment and align every field.',
   ].filter(Boolean).join('\n');
@@ -3580,7 +3554,6 @@ Goal: produce one clear, publishable short-form post for this niche.
 Center the post on one real moment the audience can visualize.
 Anchor the moment to one concrete artifact and one inspectable condition.
 Use the condition to set the next move and carry that same moment across every field.
-Treat moment_anchor as the authoritative anchor for every field.
 Keep the writing concrete, specific, and entertaining enough to hold attention.
 
 Field intent:
@@ -3603,7 +3576,6 @@ Center the post on one concrete moment with one artifact and one inspectable con
 Use that condition to drive a priority shift through signal, cost, and replacement rule.
 Shape the moment for platform performance with pattern break, retention, curiosity, payoff, replay value, and share momentum.
 Keep the same moment consistent across every field.
-Treat moment_anchor as the authoritative anchor for every field.
 
 Field intent:
 
@@ -6561,405 +6533,8 @@ function countTermHits(text = '', terms = []) {
   return hits;
 }
 
-const QUALITY_STOPWORDS = new Set([
-  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'about', 'over', 'under',
-  'when', 'then', 'than', 'they', 'them', 'their', 'there', 'here', 'will', 'would', 'could',
-  'should', 'have', 'has', 'had', 'does', 'did', 'are', 'was', 'were', 'been', 'being', 'also',
-  'very', 'just', 'more', 'most', 'some', 'such', 'only', 'same', 'each', 'across', 'inside',
-  'outside', 'where', 'what', 'which', 'while', 'because', 'through', 'around', 'after', 'before',
-  'between', 'during', 'upon',
-]);
-
-const GENERIC_HASHTAG_BLACKLIST = new Set([
-  '#fyp',
-  '#viral',
-  '#trending',
-  '#explore',
-  '#explorepage',
-  '#motivation',
-  '#success',
-  '#mindset',
-  '#entrepreneur',
-  '#business',
-]);
-
-const ARTIFACT_NOUN_CUES = [
-  'doc', 'docs', 'sheet', 'spreadsheet', 'dashboard', 'checkout', 'cart', 'invoice', 'receipt', 'dm', 'inbox',
-  'email', 'call', 'meeting', 'proposal', 'contract', 'landing', 'ad', 'creative', 'caption', 'hook', 'script',
-  'offer', 'price', 'trial', 'demo', 'review', 'ticket', 'bug', 'deploy', 'log', 'metric', 'chart', 'graph',
-  'clip', 'camera', 'mic', 'teleprompter', 'calendar', 'brief',
-];
-
-const CONDITION_CUES = [
-  'if', 'when', 'after', 'before', 'once', 'until', 'because', 'but', 'despite', 'while', 'as soon as', 'the moment',
-];
-
-const NEXT_MOVE_CUES = [
-  'so', 'then', 'therefore', 'next', 'we', 'i', 'do', 'switch', 'choose', 'send', 'change', 'move', 'cut', 'ship',
-  'post', 'call', 'book', 'start', 'stop', 'pick',
-];
-
-const VISUAL_CUES = [
-  'screen', 'shot', 'clip', 'frame', 'show', 'cut', 'overlay', 'text', 'b-roll', 'camera', 'scene', 'hands',
-  'dashboard', 'inbox', 'doc', 'sheet', 'checkout', 'call', 'meeting', 'receipt', 'chart', 'graph',
-];
-
-const CONTRAST_CUES = [
-  'but', 'instead', 'not', 'only', 'until', 'turns out', 'the part', 'most people', 'everyone',
-];
-
-const CURIOSITY_CUES = [
-  'here’s', 'watch', 'what happens', 'the moment', 'the difference', 'the reason', 'the tell', 'the signal',
-];
-
-const META_FILLER_PHRASES = [
-  'in this reel', "today i'm", "let's dive", "don't miss out", 'game changer', 'level up', 'unlocks', 'super excited',
-];
-
-const REGULAR_TEACHING_PHRASES = ['tip', 'tips', 'how to', 'best practice', 'should', 'you need to', 'make sure'];
-
-const BRAND_BRAIN_CUE_GROUPS = {
-  tempting: ['people focus', 'most people', 'the tempting', 'everyone chases', 'common move', 'default'],
-  signal: ['the signal', 'the tell', 'the gate', 'what decides', 'the real indicator'],
-  cost: ['cost', 'lose', 'waste', 'miss', 'burn', 'pay', 'risk'],
-  replacement: ['rule', 'replace', 'do this', 'instead', 'from now on', 'the move'],
-};
-
-const PLAN_SHIFT_CUES = ['trade', 'switch', 'choose', 'drop', 'keep', 'prioritize', 'rank', 'filter', 'decide'];
-
-function tokenizeLite(text = '') {
-  return String(text || '')
-    .toLowerCase()
-    .match(/[a-z0-9]+/g)?.filter((word) => word.length >= 4) || [];
-}
-
-function tokenizeQualityWords(text = '') {
-  return tokenizeLite(text);
-}
-
-function tokenizeAllWords(text = '') {
-  return String(text || '').toLowerCase().match(/[a-z0-9]+/g) || [];
-}
-
-function toTokenSet(tokens = []) {
-  return new Set((Array.isArray(tokens) ? tokens : []).filter(Boolean));
-}
-
-function countTokenOverlap(tokensA = [], tokenSetB = new Set()) {
-  if (!Array.isArray(tokensA) || !tokensA.length || !(tokenSetB instanceof Set) || !tokenSetB.size) return 0;
-  const uniqA = new Set(tokensA);
-  let count = 0;
-  uniqA.forEach((token) => {
-    if (tokenSetB.has(token)) count += 1;
-  });
-  return count;
-}
-
-function contentTokenRatio(text = '') {
-  const all = tokenizeAllWords(text);
-  if (!all.length) return 0;
-  const content = all.filter((token) => token.length >= 4 && !QUALITY_STOPWORDS.has(token));
-  return content.length / all.length;
-}
-
-function containsAny(text = '', phrases = []) {
-  const lower = String(text || '').toLowerCase();
-  return (Array.isArray(phrases) ? phrases : []).some((phrase) => phrase && lower.includes(String(phrase).toLowerCase()));
-}
-
-function countConcreteSignals(text = '') {
-  const source = String(text || '');
-  if (!source) return 0;
-  let score = 0;
-  score += (source.match(/\b\d+(?:\.\d+)?\b/g) || []).length;
-  score += (source.match(/[%$£€]/g) || []).length;
-  score += (source.match(/\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s?(?:am|pm)\b/gi) || []).length;
-  score += (source.match(/\b(?:sec|secs|second|seconds|min|mins|minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\b/gi) || []).length;
-  score += (source.match(/\b[A-Z][a-zA-Z0-9]{2,}\b/g) || []).length;
-  const tokens = tokenizeLite(source);
-  const artifactHits = tokens.filter((token) => ARTIFACT_NOUN_CUES.includes(token)).length;
-  score += artifactHits;
-  return score;
-}
-
-function jaccardTokenOverlap(textA = '', textB = '') {
-  const setA = new Set(tokenizeLite(textA));
-  const setB = new Set(tokenizeLite(textB));
-  if (!setA.size && !setB.size) return 1;
-  if (!setA.size || !setB.size) return 0;
-  let intersection = 0;
-  setA.forEach((token) => {
-    if (setB.has(token)) intersection += 1;
-  });
-  const union = new Set([...setA, ...setB]).size || 1;
-  return intersection / union;
-}
-
-function redundancyScore(post = {}) {
-  const pairs = [
-    ['hook', 'reelHook'],
-    ['body', 'reelBody'],
-    ['cta', 'reelCta'],
-  ];
-  const values = pairs.map(([a, b]) => jaccardTokenOverlap(post?.[a] || '', post?.[b] || ''));
-  const avg = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-  return Number(avg.toFixed(3));
-}
-
-function validatePostQuality(post = {}, ctx = {}) {
-  const mode = String(ctx?.mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-  const failedFields = new Set();
-  const reasons = [];
-  const diagnostics = {
-    token_overlap: {},
-    anchor_tokens: [],
-    title_tokens: [],
-    content_ratios: {},
-    subscores: {},
-    redundancy: 0,
-    concrete_signal_count: 0,
-  };
-
-  const anchorTokens = tokenizeQualityWords(ctx?.momentAnchor || '');
-  const anchorTokenSet = toTokenSet(anchorTokens);
-  diagnostics.anchor_tokens = Array.from(anchorTokenSet);
-
-  const titleTokens = tokenizeQualityWords(post?.title || '');
-  const titleTokenSet = toTokenSet(titleTokens);
-  diagnostics.title_tokens = Array.from(titleTokenSet);
-
-  const bodyText = String(post?.body || '');
-  const reelBodyText = String(post?.reelBody || '');
-  const captionText = String(post?.caption || '');
-  const concreteSignalCount = countConcreteSignals(`${bodyText}\n${reelBodyText}\n${captionText}`);
-  diagnostics.concrete_signal_count = concreteSignalCount;
-  const concreteMin = mode === 'brand_brain' ? 8 : 6;
-  let concreteness = 0;
-  if (concreteSignalCount >= concreteMin) {
-    concreteness += 20;
-  } else {
-    reasons.push('low_concreteness');
-    failedFields.add('body');
-    failedFields.add('caption');
-  }
-  const artifactHits = tokenizeLite(`${post?.title || ''} ${bodyText} ${captionText}`).filter((token) =>
-    ARTIFACT_NOUN_CUES.includes(token)
-  ).length;
-  concreteness += Math.min(10, artifactHits);
-  diagnostics.subscores.concreteness = Math.min(30, concreteness);
-
-  let coherence = 0;
-  if (anchorTokenSet.size) {
-    ['title', 'hook', 'body', 'caption', 'designNotes'].forEach((field) => {
-      const fieldTokens = tokenizeQualityWords(post?.[field] || '');
-      const overlap = countTokenOverlap(fieldTokens, anchorTokenSet);
-      diagnostics.token_overlap[`anchor:${field}`] = overlap;
-      if (overlap < 1) failedFields.add(field);
-    });
-  }
-
-  ['hook', 'body', 'caption'].forEach((field) => {
-    const fieldTokens = tokenizeQualityWords(post?.[field] || '');
-    const overlap = countTokenOverlap(fieldTokens, titleTokenSet);
-    diagnostics.token_overlap[`title:${field}`] = overlap;
-    if (titleTokenSet.size && overlap < 1) failedFields.add(field);
-  });
-  const hasConditionCue = containsAny(bodyText, CONDITION_CUES);
-  const hasNextMoveCue = containsAny(bodyText, NEXT_MOVE_CUES);
-  if (hasConditionCue) coherence += 8;
-  if (hasNextMoveCue) coherence += 8;
-  if (!hasConditionCue || !hasNextMoveCue) {
-    reasons.push('weak_condition_next_move_link');
-    failedFields.add('body');
-  }
-  const hasVisualCue = containsAny(String(post?.designNotes || ''), VISUAL_CUES);
-  if (hasVisualCue) coherence += 5;
-  if (!hasVisualCue) {
-    reasons.push('design_notes_not_visual');
-    failedFields.add('designNotes');
-  }
-
-  ['title', 'hook', 'body', 'caption'].forEach((field) => {
-    const ratio = contentTokenRatio(post?.[field] || '');
-    diagnostics.content_ratios[field] = Number(ratio.toFixed(3));
-    if (ratio < 0.35) failedFields.add(field);
-  });
-  if (
-    ['title', 'hook', 'body', 'caption'].some(
-      (field) => (diagnostics.content_ratios?.[field] || 0) < 0.35
-    )
-  ) {
-    reasons.push('abstract_filler');
-  }
-
-  const hashtags = Array.isArray(post?.hashtags) ? post.hashtags : [];
-  const cleanHashtags = hashtags
-    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
-    .filter(Boolean);
-  const hashtagTokens = cleanHashtags.flatMap((tag) => tokenizeQualityWords(tag));
-  const combinedAnchorTitle = new Set([...anchorTokenSet, ...titleTokenSet]);
-  const hashtagOverlap = countTokenOverlap(hashtagTokens, combinedAnchorTitle);
-  diagnostics.token_overlap['hashtags:anchor_or_title'] = hashtagOverlap;
-  const hashtagSource = hashtags.map((tag) => String(tag || '').trim().toLowerCase());
-  const hashtagStartsWithHash = hashtagSource.every((tag) => tag.startsWith('#'));
-  const allGenericHashtags = hashtagSource.length > 0 && hashtagSource.every((tag) => GENERIC_HASHTAG_BLACKLIST.has(tag));
-  if (
-    !cleanHashtags.length ||
-    cleanHashtags.length < 3 ||
-    cleanHashtags.length > 12 ||
-    !hashtagStartsWithHash ||
-    allGenericHashtags ||
-    !hashtagOverlap
-  ) {
-    failedFields.add('hashtags');
-    reasons.push('hashtags_low_signal');
-  } else {
-    coherence += 4;
-  }
-  diagnostics.subscores.coherence = Math.min(25, coherence);
-
-  let entertainment = 0;
-  const hookText = String(post?.hook || '');
-  const hasHookTension = containsAny(hookText, CONTRAST_CUES) || containsAny(hookText, CURIOSITY_CUES);
-  const hookTokenSet = new Set(tokenizeLite(hookText));
-  const hookArtifactOverlap = countTokenOverlap(Array.from(hookTokenSet), new Set([...titleTokenSet, ...toTokenSet(tokenizeLite(bodyText))]));
-  if (hasHookTension) entertainment += 8;
-  if (hookArtifactOverlap > 0) entertainment += 7;
-  if (!hasHookTension || !hookArtifactOverlap) {
-    reasons.push('weak_hook_tension');
-    failedFields.add('hook');
-  }
-  const reelBodyTokens = tokenizeLite(String(post?.reelBody || ''));
-  const reelHookTokens = tokenizeLite(String(post?.reelHook || ''));
-  const reelNewTokenCount = reelBodyTokens.filter((token) => !new Set(reelHookTokens).has(token)).length;
-  if (reelNewTokenCount >= 4) entertainment += 6;
-  else {
-    reasons.push('weak_reel_progression');
-    failedFields.add('reelBody');
-  }
-  const ctaActionCues = ['start', 'ship', 'book', 'send', 'switch', 'choose', 'run', 'test', 'post', 'share', 'try'];
-  if (containsAny(String(post?.reelCta || ''), ctaActionCues)) entertainment += 4;
-  else {
-    reasons.push('weak_reel_cta_action');
-    failedFields.add('reelCta');
-  }
-  diagnostics.redundancy = redundancyScore(post);
-  if (diagnostics.redundancy > 0.8) {
-    reasons.push('high_redundancy');
-    failedFields.add('reelHook');
-    failedFields.add('reelBody');
-    failedFields.add('reelCta');
-  } else {
-    entertainment += 4;
-  }
-  const allCoreText = [post?.title, post?.hook, post?.body, post?.caption, post?.reelHook, post?.reelBody].map((v) => String(v || '')).join('\n');
-  if (containsAny(allCoreText, META_FILLER_PHRASES)) {
-    reasons.push('meta_filler');
-    failedFields.add('hook');
-    failedFields.add('caption');
-  }
-  diagnostics.subscores.entertainment = Math.min(25, entertainment);
-
-  let modeSeparation = 0;
-  if (mode === 'regular') {
-    const regularText = [post?.hook, post?.body, post?.caption].map((v) => String(v || '')).join('\n').toLowerCase();
-    const hits = REGULAR_TEACHING_PHRASES.reduce((sum, phrase) => sum + (regularText.includes(phrase) ? 1 : 0), 0);
-    if (hits <= 1) modeSeparation = 20;
-    else {
-      modeSeparation = 8;
-      reasons.push('regular_teaching_drift');
-      failedFields.add('body');
-      failedFields.add('caption');
-    }
-  } else {
-    const brandText = [post?.hook, post?.body, post?.caption, post?.reelBody].map((v) => String(v || '')).join('\n').toLowerCase();
-    const groupPresence = {
-      tempting: containsAny(brandText, BRAND_BRAIN_CUE_GROUPS.tempting),
-      signal: containsAny(brandText, BRAND_BRAIN_CUE_GROUPS.signal),
-      cost: containsAny(brandText, BRAND_BRAIN_CUE_GROUPS.cost),
-      replacement: containsAny(brandText, BRAND_BRAIN_CUE_GROUPS.replacement),
-    };
-    diagnostics.brand_brain_sequence = groupPresence;
-    if (Object.values(groupPresence).every(Boolean)) {
-      modeSeparation = 20;
-    } else {
-      modeSeparation = 6;
-      reasons.push('missing_brand_brain_sequence');
-      failedFields.add('hook');
-      failedFields.add('body');
-      failedFields.add('caption');
-      failedFields.add('reelBody');
-    }
-  }
-  diagnostics.subscores.mode_separation = modeSeparation;
-
-  const score =
-    diagnostics.subscores.concreteness +
-    diagnostics.subscores.coherence +
-    diagnostics.subscores.entertainment +
-    diagnostics.subscores.mode_separation;
-  diagnostics.score = score;
-  const minScore = mode === 'brand_brain' ? 85 : 80;
-  diagnostics.min_score = minScore;
-  diagnostics.mode = mode;
-
-  if (score < minScore) reasons.push('below_quality_threshold');
-
-  if (!failedFields.size && score >= minScore) {
-    return { ok: true, score, reasons: [], failed_fields: [], subscores: diagnostics.subscores, diagnostics };
-  }
-  return {
-    ok: false,
-    reason: 'QUALITY_FAIL',
-    score,
-    reasons: Array.from(new Set(reasons)),
-    failed_fields: Array.from(failedFields),
-    subscores: diagnostics.subscores,
-    diagnostics,
-  };
-}
-
 function validateCalendarPostQuality(post = {}, ctx = {}, state = {}) {
-  return validatePostQuality(post, {
-    mode: ctx?.mode,
-    nicheStyle: ctx?.nicheStyle,
-    momentAnchor: ctx?.momentAnchor || '',
-  });
-}
-
-function scoreTopicPlanQuality(items = []) {
-  const failures = [];
-  (Array.isArray(items) ? items : []).forEach((item, index) => {
-    const title = toPlainString(item?.title || '');
-    const angle = toPlainString(item?.angle || '');
-    const titleTokens = tokenizeLite(title);
-    const hasArtifactCue = titleTokens.some((token) => ARTIFACT_NOUN_CUES.includes(token));
-    if (!hasArtifactCue) failures.push({ index, field: 'title', reason: 'missing_artifact_cue' });
-    const angleTokens = String(angle || '').trim().split(/\s+/).filter(Boolean);
-    if (!angleTokens.length || angleTokens.length > 8) {
-      failures.push({ index, field: 'angle', reason: 'invalid_angle_length' });
-    }
-    const hasShiftCue = containsAny(angle, PLAN_SHIFT_CUES);
-    if (!hasShiftCue) failures.push({ index, field: 'angle', reason: 'missing_shift_cue' });
-  });
-  return { ok: failures.length === 0, failures };
-}
-
-function scoreCalendarPlanQuality(items = []) {
-  const failures = [];
-  (Array.isArray(items) ? items : []).forEach((item, index) => {
-    const topicSignature = toPlainString(item?.topic_signature || '');
-    const hasConditionCue = containsAny(topicSignature, CONDITION_CUES);
-    const hasNextMoveCue = containsAny(topicSignature, NEXT_MOVE_CUES);
-    if (!hasConditionCue || !hasNextMoveCue) {
-      failures.push({
-        index,
-        field: 'topic_signature',
-        reason: 'missing_condition_or_next_move',
-      });
-    }
-  });
-  return { ok: failures.length === 0, failures };
+  return { ok: true };
 }
 
 function logCalendarPostReject(reason, ctx = {}) {
@@ -8798,14 +8373,6 @@ async function generateTopicPlan({
     titleSet.add(normalizedTitle);
     if (signature) signatureSet.add(signature);
   }
-  const topicPlanQuality = scoreTopicPlanQuality(topics);
-  if (!topicPlanQuality.ok) {
-    const err = new Error('CALENDAR_PLAN_QUALITY_FAIL');
-    err.code = 'CALENDAR_PLAN_QUALITY_FAIL';
-    err.statusCode = 422;
-    err.details = { stage: 'topic_plan', failures: topicPlanQuality.failures.slice(0, 20) };
-    throw err;
-  }
   return topics;
 }
 
@@ -10322,8 +9889,7 @@ const server = http.createServer((req, res) => {
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- moment_anchor: short moment anchor using artifact + condition + next move',
-    '- topic_signature: short phrase aligned to the same moment anchor',
+    '- topic_signature: short moment anchor using artifact + condition + next move',
     '- angle: short decision-dynamic label',
     'Use concrete values in every field.',
     'Use only schema keys.',
@@ -10340,10 +9906,9 @@ const server = http.createServer((req, res) => {
           items: {
             type: 'object',
             additionalProperties: false,
-            required: ['post_key', 'moment_anchor', 'topic_signature', 'angle'],
+            required: ['post_key', 'topic_signature', 'angle'],
             properties: {
               post_key: { type: 'string', minLength: 1 },
-              moment_anchor: { type: 'string', minLength: 1 },
               topic_signature: { type: 'string', minLength: 1 },
               angle: { type: 'string', minLength: 1 },
             },
@@ -10429,8 +9994,6 @@ const server = http.createServer((req, res) => {
       if (key) seen.add(key);
       const topicSignature = toPlainString(item?.topic_signature || '');
       if (!topicSignature) missing.push('topic_signature');
-      const momentAnchor = toPlainString(item?.moment_anchor || '');
-      if (!momentAnchor) missing.push('moment_anchor');
       const angle = toPlainString(item?.angle || '');
       if (!angle) missing.push('angle');
       if (missing.length) details.push({ index, missing });
@@ -10441,14 +10004,6 @@ const server = http.createServer((req, res) => {
       err.statusCode = 422;
       err.details = details;
       err.payload = { expectedCount, actualCount: plan.length };
-      throw err;
-    }
-    const planQuality = scoreCalendarPlanQuality(plan);
-    if (!planQuality.ok) {
-      const err = new Error('CALENDAR_PLAN_QUALITY_FAIL');
-      err.code = 'CALENDAR_PLAN_QUALITY_FAIL';
-      err.statusCode = 422;
-      err.details = { stage: 'calendar_plan', failures: planQuality.failures.slice(0, 20) };
       throw err;
     }
     console.log('[Calendar][Plan]', {
@@ -10524,7 +10079,6 @@ const server = http.createServer((req, res) => {
           Number.isFinite(Number(item?.day)) ? Number(item.day) : safeStart,
           Number.isFinite(Number(item?.postIndex)) ? Number(item.postIndex) : 0
         ),
-        moment_anchor: toPlainString(item?.moment_anchor || item?.momentAnchor || item?.topic_signature || item?.title || ''),
         topic_signature: toPlainString(item?.title || item?.topic_signature || ''),
         angle: toPlainString(item?.angle || ''),
       }));
@@ -10546,7 +10100,6 @@ const server = http.createServer((req, res) => {
       if (!key || planByKey.has(key)) return;
       planByKey.set(key, {
         post_key: key,
-        moment_anchor: toPlainString(item?.moment_anchor || item?.momentAnchor || item?.topic_signature || ''),
         topic_signature: toPlainString(item?.topic_signature || ''),
         angle: toPlainString(item?.angle || ''),
       });
@@ -10593,7 +10146,6 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
-        momentAnchor: toPlainString(planItem.moment_anchor || planItem.topic_signature || ''),
         pillarKey: pillarForSlot,
         requestId,
         loggingContext,
@@ -11441,7 +10993,6 @@ const server = http.createServer((req, res) => {
       const validation = validateCalendarPostQuality(post, {
         mode: calendarMode,
         nicheStyle,
-        momentAnchor: toPlainString(post?.moment_anchor || post?.topic_signature || ''),
         day,
         slotIndex,
         post_key: postKeyValue,
@@ -11842,7 +11393,6 @@ const server = http.createServer((req, res) => {
 
         const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
-        const momentAnchor = toPlainString(body?.moment_anchor || body?.momentAnchor || plannedTitle || plannedAngle || '');
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : undefined;
@@ -11874,7 +11424,6 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
-            momentAnchor,
             pillarKey: scheduledPillar,
             requestId,
             loggingContext: { requestId, day, slotIndex, post_key: postKeyValue },
