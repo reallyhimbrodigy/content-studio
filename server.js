@@ -2271,6 +2271,7 @@ async function generateAndValidateSinglePost({
   plannedTitle,
   plannedAngle,
   topicSignature = '',
+  momentAnchor = '',
   angleLabel = '',
   pillarKey,
   requestId,
@@ -2357,6 +2358,7 @@ async function generateAndValidateSinglePost({
         plannedTitle,
         plannedAngle,
         topicSignature,
+        momentAnchor,
         angleLabel,
         pillarStyle,
         recentTitles,
@@ -2451,7 +2453,7 @@ async function generateAndValidateSinglePost({
         }
         if (!err?.details) {
           const baseDetails = {
-            field: `stage:${currentStage}`,
+            field: currentStage === 'validate' ? 'schema' : `stage:${currentStage}`,
             stage: currentStage,
             day,
             post_key,
@@ -2462,7 +2464,7 @@ async function generateAndValidateSinglePost({
             err.details = { ...baseDetails, reason: 'SCHEMA_FAIL' };
           }
         } else if (!err.details.field) {
-          err.details.field = `stage:${currentStage}`;
+          err.details.field = currentStage === 'validate' ? 'schema' : `stage:${currentStage}`;
           err.details.stage = currentStage;
           err.details.day = day;
           err.details.post_key = post_key;
@@ -2483,7 +2485,6 @@ async function generateAndValidateSinglePost({
           };
           throw failErr;
         }
-        if (err?.code === 'CALENDAR_QUALITY_FAIL') throw err;
         if (err?.code === 'SCHEMA_MISMATCH' || err?.code === 'PARSE_FAILED') {
           reachedOpenAI = true;
         }
@@ -2500,27 +2501,7 @@ async function generateAndValidateSinglePost({
         if (reason === 'PARSE_FAILED') reason = 'PARSE_FAIL';
         if (reason === 'SCHEMA_CONTRACT_VIOLATION') reason = 'SCHEMA_FAIL';
         if (reason === 'SCHEMA_MISMATCH') reason = 'SCHEMA_FAIL';
-        if (reason === 'QUALITY_FAIL') {
-          const qualityFields = Array.isArray(err?.details?.failed_fields) ? err.details.failed_fields : [];
-          const fieldShapes = {};
-          qualityFields.forEach((field) => {
-            const value = rawCandidate && typeof rawCandidate === 'object' ? rawCandidate[field] : undefined;
-            fieldShapes[field] = {
-              type: Array.isArray(value) ? 'array' : typeof value,
-              length: typeof value === 'string' ? value.length : (Array.isArray(value) ? value.length : null),
-            };
-          });
-          console.warn('[Calendar][QualityFail]', {
-            requestId,
-            mode: calendarMode,
-            post_key,
-            day,
-            index: slotIndex,
-            failed_fields: qualityFields,
-            field_shapes: fieldShapes,
-            reason: err?.details?.reason || 'QUALITY_FAIL',
-          });
-        }
+        if (reason === 'QUALITY_FAIL') reason = 'SCHEMA_FAIL';
         console.log('[Calendar][Job] fail', {
           requestId,
           mode: calendarMode,
@@ -3292,9 +3273,9 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Plan posts that create a priority shift inside one filmable moment.',
-    'Encode the shift as: current focus → deciding signal → practical cost → replacement rule.',
-    'Make the moment concrete using artifact + condition + next move.',
+    'Build posts that win distribution by creating immediate curiosity and a clear payoff inside a real moment.',
+    'Use one artifact and one inspectable condition to drive a priority shift through signal, cost, and replacement rule.',
+    'Write the sequence as a filmable moment that can be delivered as spoken beats.',
   ].join('\n');
 }
 
@@ -3549,49 +3530,56 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `calendar_index: ${startDay}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
-    opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    'Use planned_title and topic_signature as the single moment to express across every field.',
+    (opts.momentAnchor || opts.topicSignature) ? `moment_anchor: ${String(opts.momentAnchor || opts.topicSignature).trim()}` : null,
+    'Use POST_CONTEXT to choose one specific filmable moment.',
+    'Generate every field as a translation of moment_anchor.',
+    'Keep the same artifact, condition, and next move across the entire post.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-Goal: produce one publishable short-form post that holds attention and stays anchored to one filmable moment.
-Use topic_signature as the exact moment: artifact + condition + next move.
-Express that same moment consistently across every field so nothing drifts into generic copy.
+Goal: produce consistently good short-form content for this niche that feels native to TikTok/Instagram.
+Generate from moment_anchor as the source of truth.
+
+Write as a sequence of audience-facing beats:
+Open inside the moment.
+Make the artifact visible.
+Name the condition the audience can verify.
+Show the next move the condition causes.
 
 Field intent:
-
-title: use planned_title when provided; otherwise name the same moment clearly
-hook: open inside the moment with the artifact and the condition in one sharp line
-body: state what the condition signals and what the next move is in that moment
-cta: state one natural next step that follows from the same moment
-reelHook / reelBody / reelCta: spoken delivery of hook → meaning → next move, as short beats
-caption: reinforce the same moment with compact, high-signal phrasing
-designNotes: describe what to show so the artifact, condition, and next move are immediately visible
-hashtags[]: select tags that match the same topic and moment
-
-Write Reel delivery as a quick sequence of spoken beats that match the visual beats in designNotes.
+title: name the specific moment topic in concrete terms
+hook: spoken opening that drops into the moment immediately
+body: the condition, what it changes, and the next move
+cta: the natural continuation action from the same moment
+reelHook / reelBody / reelCta: spoken delivery beats that match the same moment
+caption: tight written version of the same beats
+designNotes: what to show so the artifact and condition are obvious
+hashtags[]: tags that match the same moment topic
 
 Return one complete post.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: produce a winning short-form ad that reorders audience priority inside one filmable moment.
-Use topic_signature as the exact moment: artifact + condition + next move.
-Drive a priority shift through: current focus → deciding signal → practical cost → replacement rule, all expressed inside the same moment.
-Shape for platform performance by executing: pattern break → curiosity → proof inside the moment → payoff → share-trigger takeaway.
+Goal: produce a winning short-form ad that outperforms average niche content by driving retention, replays, shares, and saves.
+Generate from moment_anchor as the source of truth.
+Use the moment to re-rank what the viewer prioritizes.
+
+Write as a sequence of audience-facing beats:
+Open with a pattern-break detail inside the moment.
+Name the decisive signal inside the moment.
+State the practical cost that follows from ignoring that signal.
+State the replacement rule as the next move in the same moment.
 
 Field intent:
-
-title: use planned_title when provided; otherwise name the mis-priority and the decisive focus in concrete terms
-hook: open inside the moment with the priority shift and the deciding signal
-body: show the signal, the cost it prevents, and the replacement rule as the next move in that moment
-cta: state one action that applies the replacement rule immediately
-reelHook / reelBody / reelCta: spoken delivery of the shift as short beats that land cleanly
-caption: reinforce the priority shift with concise persuasive language tied to the same moment
-designNotes: describe visuals that prove the deciding signal inside the moment
-hashtags[]: select tags that match the same topic and priority shift
+title: name the mis-priority and the decisive focus in concrete terms
+hook: spoken opening that expresses the priority shift inside the moment
+body: signal, cost, and replacement rule tied to the same artifact and condition
+cta: one action that applies the replacement rule immediately
+reelHook / reelBody / reelCta: spoken delivery beats that match the same moment
+caption: concise persuasive version of the same shift
+designNotes: what to show so the signal is proven on screen
+hashtags[]: tags that match the same topic and priority shift
 
 Return one complete post.`;
 
@@ -9890,16 +9878,15 @@ const server = http.createServer((req, res) => {
   const planPrompt = [
     'Return valid JSON matching the schema exactly.',
     `Niche: ${nicheStyle}`,
-    'Generate exactly the requested number of items for these post_keys:',
+    'Generate exactly ' + expectedCount + ' items for these post_keys:',
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- topic_signature: a filmable moment written as artifact + condition + next move (short phrase)',
-    '- angle: a short decision-dynamic label that explains why the next move happens',
-    'Write topic_signature so a viewer can picture the scene instantly.',
-    'Choose an artifact that belongs to the niche and can be shown on screen.',
-    'Choose a condition that is inspectable in the moment.',
-    'Choose a next move that logically follows from the condition.',
+    '- topic_signature',
+    '- angle',
+    'Write topic_signature as a filmable moment anchor that can be turned into on-screen visuals and spoken beats.',
+    'Topic_signature includes one artifact, one inspectable condition, and the next move that condition triggers.',
+    'Angle names the decision dynamic that makes the moment compelling to watch and share.',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
@@ -10156,6 +10143,7 @@ const server = http.createServer((req, res) => {
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
         topicSignature: planItem.topic_signature || '',
+        momentAnchor: planItem.topic_signature || '',
         angleLabel: planItem.angle || '',
         pillarKey: pillarForSlot,
         requestId,
@@ -11437,6 +11425,7 @@ const server = http.createServer((req, res) => {
             plannedTitle,
             plannedAngle,
             topicSignature: plannedTopicSignature,
+            momentAnchor: plannedTopicSignature,
             angleLabel: plannedAngle || '',
             pillarKey: scheduledPillar,
             requestId,
