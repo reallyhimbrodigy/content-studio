@@ -2271,7 +2271,7 @@ async function generateAndValidateSinglePost({
   plannedTitle,
   plannedAngle,
   topicSignature = '',
-  momentAnchor = '',
+  momentAnchor = null,
   momentSpec = '',
   renderStyle = '',
   beatShape = '',
@@ -2339,6 +2339,15 @@ async function generateAndValidateSinglePost({
     });
     currentStage = 'assign_pillar';
     try {
+      if (momentAnchor && typeof momentAnchor === 'object') {
+        const anchorPreview = formatMomentAnchorLine(momentAnchor);
+        console.log('[Calendar][Anchor]', {
+          requestId,
+          post_key,
+          mode: calendarMode,
+          moment_anchor: anchorPreview.slice(0, 220),
+        });
+      }
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: 1,
@@ -3550,6 +3559,46 @@ function deriveVariation(post_key = '') {
   };
 }
 
+function parseTopicSignature(sig = '') {
+  const raw = String(sig || '').trim();
+  if (!raw) {
+    return { artifact: '', condition: '', next_move: '' };
+  }
+  const splitAndClean = (text, delimiter) => text
+    .split(delimiter)
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  let parts = [];
+  if (raw.includes('|')) {
+    parts = splitAndClean(raw, '|');
+  } else {
+    const fallbackDelimiters = ['-', ';', ','];
+    for (const delim of fallbackDelimiters) {
+      const candidate = splitAndClean(raw, delim);
+      if (candidate.length >= 3) {
+        parts = candidate;
+        break;
+      }
+    }
+  }
+  if (!parts.length) {
+    return { artifact: raw, condition: '', next_move: '' };
+  }
+  return {
+    artifact: parts[0] || '',
+    condition: parts[1] || '',
+    next_move: parts[2] || '',
+  };
+}
+
+function formatMomentAnchorLine(momentAnchor = {}) {
+  const anchor = (momentAnchor && typeof momentAnchor === 'object') ? momentAnchor : {};
+  const artifact = String(anchor.artifact || '').trim();
+  const condition = String(anchor.condition || '').trim();
+  const nextMove = String(anchor.next_move || '').trim();
+  return `moment_anchor: artifact=${artifact} | condition=${condition} | next_move=${nextMove}`;
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
@@ -3557,6 +3606,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
+  const momentAnchorLine = opts.momentAnchor ? formatMomentAnchorLine(opts.momentAnchor) : '';
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
@@ -3565,14 +3615,16 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.postKey ? `post_key: ${opts.postKey}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
+    opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
+    momentAnchorLine || null,
     opts.momentSpec ? `moment_spec: ${opts.momentSpec}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     opts.renderStyle ? `render_style: ${opts.renderStyle}` : null,
     opts.beatShape ? `beat_shape: ${opts.beatShape}` : null,
     opts.revealOrder ? `reveal_order: ${opts.revealOrder}` : null,
     opts.pov ? `pov: ${opts.pov}` : null,
-    'Render a native short-form post using POST_CONTEXT + moment_spec + variation keys. Keep every field aligned to the same on-screen moment.',
+    'Use moment_anchor as the single source of specificity for every field. Reel beats dramatize trigger and proof, land next_move, and in Brand Brain express wrong_focus to deciding_signal to cost to replacement_rule in the same moment.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
@@ -10207,6 +10259,14 @@ const server = http.createServer((req, res) => {
       }
       const variation = deriveVariation(slot.post_key);
       const momentSpec = toPlainString(planItem.topic_signature || '');
+      const parsedAnchor = parseTopicSignature(momentSpec);
+      const momentAnchor = {
+        artifact: parsedAnchor.artifact,
+        condition: parsedAnchor.condition,
+        next_move: parsedAnchor.next_move,
+        angle: toPlainString(planItem.angle || ''),
+        topic_signature: momentSpec,
+      };
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
@@ -10221,7 +10281,7 @@ const server = http.createServer((req, res) => {
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
         topicSignature: momentSpec,
-        momentAnchor: momentSpec,
+        momentAnchor,
         momentSpec,
         renderStyle: variation.render_style,
         beatShape: variation.beat_shape,
@@ -11497,6 +11557,14 @@ const server = http.createServer((req, res) => {
         plannedTopicSignature = toPlainString(onePlanItem.topic_signature || '') || plannedTopicSignature;
         plannedAngle = toPlainString(onePlanItem.angle || '') || plannedAngle;
         plannedTitle = plannedTopicSignature || plannedTitle;
+        const parsedAnchor = parseTopicSignature(plannedTopicSignature);
+        const momentAnchor = {
+          artifact: parsedAnchor.artifact,
+          condition: parsedAnchor.condition,
+          next_move: parsedAnchor.next_move,
+          angle: plannedAngle || '',
+          topic_signature: plannedTopicSignature,
+        };
         const variation = deriveVariation(postKeyValue);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
@@ -11530,7 +11598,7 @@ const server = http.createServer((req, res) => {
             plannedTitle,
             plannedAngle,
             topicSignature: plannedTopicSignature,
-            momentAnchor: plannedTopicSignature,
+            momentAnchor,
             momentSpec: plannedTopicSignature,
             renderStyle: variation.render_style,
             beatShape: variation.beat_shape,
