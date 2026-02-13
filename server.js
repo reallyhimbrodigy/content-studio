@@ -3616,6 +3616,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
+    opts.plannedAngle ? 'Use planned_angle to shape the post’s strategy and emphasis across every field.' : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     momentAnchorLine || null,
     opts.momentSpec ? `moment_spec: ${opts.momentSpec}` : null,
@@ -3629,6 +3630,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
 Goal: generate one short-form post that feels native to TikTok/Instagram and is immediately usable.
+Make the viewer feel like they learned one usable move from the moment.
 Choose one specific, real-world moment the niche actually experiences.
 Write from MOMENT_SPEC as the source of truth.
 Make the moment concrete by naming what is being looked at or handled, the observed condition, and the next move it causes.
@@ -3651,6 +3653,7 @@ Return one complete post.`;
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
 Goal: generate a short-form post that wins attention and changes what the viewer prioritizes, using one concrete moment.
+Make the viewer feel their old priority is wrong and the replacement rule is obvious from the moment.
 Pick one real moment the niche experiences, then use it to flip the viewer’s focus: what they usually look at vs the signal that actually decides outcomes.
 Write from MOMENT_SPEC as the source of truth.
 Express the priority flip inside the same MOMENT_SPEC beats as: current focus → deciding signal → practical cost → replacement rule.
@@ -9957,7 +9960,7 @@ const server = http.createServer((req, res) => {
       ? postKeysOverride.map((item) => toPlainString(item || '')).filter(Boolean)
       : null;
     const expectedCount = overrideKeys && overrideKeys.length ? overrideKeys.length : safeDays * perDay;
-    const plannerMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'BRAND_BRAIN' : 'REGULAR';
+    const plannerMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
     const postKeys = overrideKeys && overrideKeys.length ? overrideKeys.slice() : [];
     if (!postKeys.length) {
       for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
@@ -9967,27 +9970,65 @@ const server = http.createServer((req, res) => {
         }
       }
     }
-  const planPrompt = [
-    'Return valid JSON matching the schema exactly.',
-    `Niche: ${nicheStyle}`,
-    `Mode: ${plannerMode}`,
-    'Generate exactly the requested number of items for these post_keys:',
-    postKeys.join(', '),
-    'Each item includes:',
-    '- post_key',
-    '- topic_signature: a compact MOMENT_SPEC single-line string',
-    '- angle: a short decision-dynamic label tied to the same scene',
-    'For REGULAR topic_signature, format as: artifact=... | trigger=... | proof=... | next_move=...',
-    'For BRAND_BRAIN topic_signature, format as: artifact=... | trigger=... | proof=... | next_move=... | wrong_focus=... | deciding_signal=... | cost=... | replacement_rule=...',
-    'Artifact is the visible thing in the scene.',
-    'Trigger is the observed condition that changes the decision.',
-    'Proof is on-screen evidence that makes the trigger undeniable.',
-    'Next_move is the immediate practical action in response.',
-    'Write topic_signature as a single-line scene a viewer can picture immediately.',
-    extraInstruction ? extraInstruction : '',
-    'Use concrete values in every field.',
-    'Use only schema keys.',
-  ].join('\n');
+    const REGULAR_PLAN_PROMPT = [
+      'Return valid JSON matching the schema exactly.',
+      '',
+      `Niche: ${nicheStyle}`,
+      '',
+      'Generate exactly the requested number of items for these post_keys:',
+      '',
+      postKeys.join(', '),
+      '',
+      'Each item includes:',
+      '',
+      '- post_key',
+      '',
+      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
+      '',
+      '- angle: the practical takeaway the viewer gains from that moment',
+      '',
+      'Write artifact as a specific thing the camera can show.',
+      '',
+      'Write condition as the single observed detail that changes what happens next.',
+      '',
+      'Write next_move as the immediate action taken because of that detail.',
+      '',
+      'Write angle as a helpful outcome the viewer can apply immediately.',
+      '',
+      'Use concrete values in every field.',
+      '',
+      'Use only schema keys.',
+    ].join('\n');
+    const BRAND_BRAIN_PLAN_PROMPT = [
+      'Return valid JSON matching the schema exactly.',
+      '',
+      `Niche: ${nicheStyle}`,
+      '',
+      'Generate exactly the requested number of items for these post_keys:',
+      '',
+      postKeys.join(', '),
+      '',
+      'Each item includes:',
+      '',
+      '- post_key',
+      '',
+      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
+      '',
+      '- angle: a priority flip written as current_focus → deciding_signal → replacement_rule',
+      '',
+      'Write artifact as a specific thing the camera can show.',
+      '',
+      'Write condition as the single observed detail that proves what matters.',
+      '',
+      'Write next_move as the immediate action taken because of that detail.',
+      '',
+      'Write angle so it clearly reorders what the viewer should prioritize.',
+      '',
+      'Use concrete values in every field.',
+      '',
+      'Use only schema keys.',
+    ].join('\n');
+    const planPrompt = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const planSchema = {
       type: 'object',
       additionalProperties: false,
@@ -10267,6 +10308,12 @@ const server = http.createServer((req, res) => {
         angle: toPlainString(planItem.angle || ''),
         topic_signature: momentSpec,
       };
+      console.log('[Calendar][PlanItem]', {
+        post_key: slot.post_key,
+        mode: calendarMode,
+        topic_signature: momentSpec,
+        angle: toPlainString(planItem.angle || ''),
+      });
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
