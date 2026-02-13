@@ -3531,7 +3531,10 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    'Use this context to pick one concrete moment a viewer can picture, then make every field express that same moment with different wording.',
+    'Apply this context to select one concrete moment and align every field.',
+    'moment_anchor: treat planned_title + pillar_style + niche as inputs to pick one specific on-screen moment.',
+    'Define the moment as: artifact (what is seen) + condition (what makes it matter) + next_move (what the viewer does next).',
+    'Use that same moment as the spine for title, hook, body, caption, reel script, designNotes, and hashtags.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
