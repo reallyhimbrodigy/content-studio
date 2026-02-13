@@ -9538,6 +9538,19 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const uniqueSlotPairs = slotPairs.length ? new Set(slotPairs).size : null;
     const hasDuplicatePostKeys = uniquePostKeys !== null && uniquePostKeys !== totalPosts;
     const hasDuplicateSlots = uniqueSlotPairs !== null && uniqueSlotPairs !== totalPosts;
+    console.log('[Calendar][AggregateCheck]', {
+      rawPostCount,
+      totalPosts,
+      hasFullCount,
+      hasMissingFields,
+      renderFailuresCount: renderFailures.length,
+      renderFailures,
+      hasPlaceholders,
+      hasDuplicatePostKeys,
+      uniquePostKeys,
+      hasDuplicateSlots,
+      uniqueSlotPairs,
+    });
     if (!hasFullCount || hasMissingFields || hasPlaceholders || hasDuplicatePostKeys || hasDuplicateSlots) {
     const reason = !hasFullCount
         ? 'count_mismatch'
@@ -9548,7 +9561,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
             : hasMissingFields
               ? 'missing_required_fields'
               : 'placeholder_detected';
-      const requestIds = orderedResults.map((result) => result?.requestId).filter(Boolean);
+      const requestIds = allPosts.map((result) => result?.requestId).filter(Boolean);
       const uniqueRequestIds = requestIds.length ? Array.from(new Set(requestIds)) : [];
       if (hasMissingFields) {
         console.error('[Calendar] missing_required_fields sample', {

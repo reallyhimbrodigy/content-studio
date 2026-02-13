@@ -2272,7 +2272,6 @@ async function generateAndValidateSinglePost({
   plannedAngle,
   promoting = '',
   topicSignature = '',
-  momentAnchor = null,
   momentSpec = '',
   renderStyle = '',
   beatShape = '',
@@ -2340,18 +2339,6 @@ async function generateAndValidateSinglePost({
     });
     currentStage = 'assign_pillar';
     try {
-      if (momentAnchor && typeof momentAnchor === 'object') {
-        console.log('[Calendar][Anchor]', {
-          requestId,
-          post_key,
-          mode: calendarMode,
-          moment_anchor: {
-            artifact: toPlainString(momentAnchor.artifact || ''),
-            condition: toPlainString(momentAnchor.condition || ''),
-            next_move: toPlainString(momentAnchor.next_move || ''),
-          },
-        });
-      }
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
         days: 1,
@@ -2377,7 +2364,6 @@ async function generateAndValidateSinglePost({
         plannedAngle,
         promoting,
         topicSignature,
-        momentAnchor,
         momentSpec,
         renderStyle,
         beatShape,
@@ -3561,38 +3547,6 @@ function deriveVariation(post_key = '') {
     beat_shape: pickFrom(base >>> 3, ['two_beat', 'three_beat', 'four_beat']),
     reveal_order: pickFrom(base >>> 7, ['artifact_first', 'condition_first', 'consequence_first']),
     pov: pickFrom(base >>> 11, ['agent', 'buyer', 'narrator']),
-  };
-}
-
-function parseTopicSignature(sig = '') {
-  const raw = String(sig || '').trim();
-  if (!raw) {
-    return { artifact: '', condition: '', next_move: '' };
-  }
-  const splitAndClean = (text, delimiter) => text
-    .split(delimiter)
-    .map((part) => String(part || '').trim())
-    .filter(Boolean);
-  let parts = [];
-  if (raw.includes('|')) {
-    parts = splitAndClean(raw, '|');
-  } else {
-    const fallbackDelimiters = ['-', ';', ','];
-    for (const delim of fallbackDelimiters) {
-      const candidate = splitAndClean(raw, delim);
-      if (candidate.length >= 3) {
-        parts = candidate;
-        break;
-      }
-    }
-  }
-  if (!parts.length) {
-    return { artifact: raw, condition: '', next_move: '' };
-  }
-  return {
-    artifact: parts[0] || '',
-    condition: parts[1] || '',
-    next_move: parts[2] || '',
   };
 }
 
@@ -10280,14 +10234,6 @@ const server = http.createServer((req, res) => {
       }
       const variation = deriveVariation(slot.post_key);
       const momentSpec = toPlainString(planItem.topic_signature || '');
-      const parsedAnchor = parseTopicSignature(momentSpec);
-      const momentAnchor = {
-        artifact: parsedAnchor.artifact,
-        condition: parsedAnchor.condition,
-        next_move: parsedAnchor.next_move,
-        angle: toPlainString(planItem.angle || ''),
-        topic_signature: momentSpec,
-      };
       console.log('[Calendar][PlanItem]', {
         post_key: slot.post_key,
         mode: calendarMode,
@@ -10309,7 +10255,6 @@ const server = http.createServer((req, res) => {
         plannedAngle: planItem.angle,
         promoting,
         topicSignature: momentSpec,
-        momentAnchor,
         momentSpec,
         renderStyle: variation.render_style,
         beatShape: variation.beat_shape,
@@ -11587,14 +11532,6 @@ const server = http.createServer((req, res) => {
         plannedTopicSignature = toPlainString(onePlanItem.topic_signature || '') || plannedTopicSignature;
         plannedAngle = toPlainString(onePlanItem.angle || '') || plannedAngle;
         plannedTitle = plannedTopicSignature || plannedTitle;
-        const parsedAnchor = parseTopicSignature(plannedTopicSignature);
-        const momentAnchor = {
-          artifact: parsedAnchor.artifact,
-          condition: parsedAnchor.condition,
-          next_move: parsedAnchor.next_move,
-          angle: plannedAngle || '',
-          topic_signature: plannedTopicSignature,
-        };
         const variation = deriveVariation(postKeyValue);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
@@ -11629,7 +11566,6 @@ const server = http.createServer((req, res) => {
             plannedAngle,
             promoting,
             topicSignature: plannedTopicSignature,
-            momentAnchor,
             momentSpec: plannedTopicSignature,
             renderStyle: variation.render_style,
             beatShape: variation.beat_shape,
