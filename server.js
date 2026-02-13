@@ -2289,6 +2289,7 @@ async function generateAndValidateSinglePost({
   recentTitles = [],
   calendarId = '',
   usedSignatures = [],
+  enableMomentRewrite = true,
 }) {
   let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
@@ -2437,6 +2438,64 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       const post = validation.post;
+      let parsedMomentSpecForRewrite = null;
+      if (typeof momentSpec === 'string' && momentSpec.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(momentSpec);
+          if (parsed && typeof parsed === 'object' && parsed.artifact && parsed.observed_condition && parsed.next_move) {
+            parsedMomentSpecForRewrite = parsed;
+          }
+        } catch {}
+      }
+      if (enableMomentRewrite && parsedMomentSpecForRewrite) {
+        try {
+          const rewriteDraft = {
+            title: post.title,
+            hook: post.hook,
+            body: post.body,
+            cta: post.cta,
+            reelHook: post.reelHook,
+            reelBody: post.reelBody,
+            reelCta: post.reelCta,
+            caption: post.caption,
+            designNotes: post.designNotes,
+            hashtags: Array.isArray(post.hashtags) ? post.hashtags.slice() : [],
+          };
+          const rewrittenRaw = await rewritePostFromMomentSpec({
+            mode: calendarMode,
+            nicheStyle,
+            momentSpec: JSON.stringify(parsedMomentSpecForRewrite),
+            postDraft: rewriteDraft,
+            requestId,
+            postKey: post_key,
+          });
+          if (rewrittenRaw && typeof rewrittenRaw === 'object') {
+            const rewrittenValidation = normalizeAndValidateCalendarPost({
+              rawModelJson: rewrittenRaw,
+              serverFields,
+              schema,
+            });
+            if (rewrittenValidation.ok) {
+              console.log('[Calendar][Rewrite] success', { requestId, post_key, mode: calendarMode });
+              return rewrittenValidation.post;
+            }
+            console.warn('[Calendar][Rewrite] invalid_output', {
+              requestId,
+              post_key,
+              mode: calendarMode,
+              reason: rewrittenValidation.reason || 'SCHEMA_FAIL',
+              field: rewrittenValidation.field || 'unknown',
+            });
+          }
+        } catch (rewriteErr) {
+          console.warn('[Calendar][Rewrite] skipped', {
+            requestId,
+            post_key,
+            mode: calendarMode,
+            error: rewriteErr?.message || rewriteErr,
+          });
+        }
+      }
       console.log('[Calendar][Job] success', {
         requestId,
         mode: calendarMode,
@@ -3600,7 +3659,6 @@ function formatMomentAnchorLine(momentAnchor = {}) {
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
-  const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
@@ -3611,64 +3669,39 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
-    `calendar_index: ${startDay}`,
     opts.postKey ? `post_key: ${opts.postKey}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
-    opts.plannedAngle ? 'Use planned_angle to shape the post’s strategy and emphasis across every field.' : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     momentAnchorLine || null,
     opts.momentSpec ? `moment_spec: ${opts.momentSpec}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    opts.renderStyle ? `render_style: ${opts.renderStyle}` : null,
-    opts.beatShape ? `beat_shape: ${opts.beatShape}` : null,
-    opts.revealOrder ? `reveal_order: ${opts.revealOrder}` : null,
-    opts.pov ? `pov: ${opts.pov}` : null,
-    'Use moment_anchor as the single source of specificity for every field. Reel beats dramatize trigger and proof, land next_move, and in Brand Brain express wrong_focus to deciding_signal to cost to replacement_rule in the same moment.',
+    'moment_spec is the source of truth for what happens on screen and what is said.',
+    'Every output field is a different surface rendering of the same moment_spec.',
+    'Render title, hook, body, cta, reel, caption, designNotes, and hashtags from the same moment progression.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-Goal: generate one short-form post that feels native to TikTok/Instagram and is immediately usable.
-Make the viewer feel like they learned one usable move from the moment.
-Choose one specific, real-world moment the niche actually experiences.
-Write from MOMENT_SPEC as the source of truth.
-Make the moment concrete by naming what is being looked at or handled, the observed condition, and the next move it causes.
-Write for attention: open mid-action, reveal the key detail fast, then land a clear takeaway and next step.
-Write as a sequence that can be performed on-camera, grounded in the MOMENT_SPEC beats.
-
-Field intent (same moment, different surfaces):
-
-title: a concrete label for the moment
-hook: the opening beat of MOMENT_SPEC with the key visible detail
-body: the observed condition, what it means, and the next move in the same scene
-cta: the natural continuation action that follows from the same next move
-reelHook / reelBody / reelCta: spoken delivery mapped directly from MOMENT_SPEC beats
-caption: a tight reinforcement of the same moment progression and takeaway
-designNotes: what to show on-screen so artifact, observed_condition, and next_move are obvious instantly
-hashtags[]: tags that match the exact topic and moment
+Render one complete short-form post from moment_spec.
+Use moment_spec.artifact and moment_spec.observed_condition to anchor title and hook.
+Use moment_spec.observed_condition, moment_spec.meaning, and moment_spec.next_move to drive body and cta.
+Use moment_spec.beats.spoken to shape reelHook, reelBody, and reelCta as a spoken progression.
+Use moment_spec.beats.on_screen and moment_spec.proof.visual to write designNotes as a filmable visual plan.
+Write caption as a tight recap of the same artifact, condition, meaning, and next move.
+Write hashtags[] for the specific artifact-condition topic and niche.
 
 Return one complete post.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: generate a short-form post that wins attention and changes what the viewer prioritizes, using one concrete moment.
-Make the viewer feel their old priority is wrong and the replacement rule is obvious from the moment.
-Pick one real moment the niche experiences, then use it to flip the viewer’s focus: what they usually look at vs the signal that actually decides outcomes.
-Write from MOMENT_SPEC as the source of truth.
-Express the priority flip inside the same MOMENT_SPEC beats as: current focus → deciding signal → practical cost → replacement rule.
-Write for platform performance as on-screen progression: pattern-break inside the moment, signal reveal, cost consequence, replacement rule, next step.
-
-Field intent (same moment, different surfaces):
-
-title: the mis-priority and the decisive focus, stated concretely
-hook: the flip stated in the opening beat of the same moment
-body: deciding signal, cost, and replacement rule carried through the same moment progression
-cta: one next move that applies the replacement rule in the same scene
-reelHook / reelBody / reelCta: spoken delivery mapped directly from MOMENT_SPEC beats
-caption: a concise reinforcement of the same priority flip and rule
-designNotes: what to show so the deciding signal and consequence are proven on-screen inside the same moment
-hashtags[]: tags that match the exact topic and flip
+Render one complete short-form post from moment_spec.
+Use moment_spec.artifact and moment_spec.observed_condition to anchor title and hook.
+Use moment_spec.observed_condition, moment_spec.meaning, and moment_spec.next_move to drive body and cta.
+Integrate moment_spec.brand_brain.wrong_focus, deciding_signal, cost, and replacement_rule into body and caption while staying inside the same moment.
+Use moment_spec.beats.spoken to shape reelHook, reelBody, and reelCta as a spoken progression.
+Use moment_spec.beats.on_screen and moment_spec.proof.visual to write designNotes as a filmable visual plan.
+Write hashtags[] for the specific artifact-condition topic, niche, and priority flip.
 
 Return one complete post.`;
 
@@ -9942,6 +9975,196 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
+  const REGULAR_MOMENT_SPEC_PROMPT = [
+    'Generate one filmable short-form moment spec for this post.',
+    'Ground it in a specific niche moment with concrete observable detail.',
+    'Define artifact, observed_condition, meaning, and next_move as one continuous progression.',
+    'Write beats.on_screen as concise visual progression and beats.spoken as concise spoken progression.',
+    'Write proof.visual and proof.consequence as clear evidence and resulting change in the same moment.',
+    'Return JSON mapped to the provided keys.',
+  ].join('\n');
+
+  const BRAND_BRAIN_MOMENT_SPEC_PROMPT = [
+    'Generate one filmable short-form moment spec for this post.',
+    'Ground it in a specific niche moment with concrete observable detail.',
+    'Define artifact, observed_condition, meaning, and next_move as one continuous progression.',
+    'Write beats.on_screen as concise visual progression and beats.spoken as concise spoken progression.',
+    'Write proof.visual and proof.consequence as clear evidence and resulting change in the same moment.',
+    'Set brand_brain.wrong_focus, deciding_signal, cost, and replacement_rule from the same moment progression.',
+    'Return JSON mapped to the provided keys.',
+  ].join('\n');
+
+  async function generateMomentSpec({
+    mode,
+    nicheStyle,
+    postKey,
+    pillar,
+    plannedTitle,
+    plannedAngle,
+    topicSignature,
+    pillarStyle,
+    seed,
+    requestId,
+  }) {
+    if (!OPENAI_API_KEY) {
+      const err = new Error('OPENAI_API_KEY not set');
+      err.statusCode = 500;
+      throw err;
+    }
+    const resolvedMode = String(mode || '').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
+    const prompt = [
+      resolvedMode === 'brand_brain' ? BRAND_BRAIN_MOMENT_SPEC_PROMPT : REGULAR_MOMENT_SPEC_PROMPT,
+      `mode: ${resolvedMode}`,
+      `niche: ${toPlainString(nicheStyle || 'unspecified')}`,
+      postKey ? `post_key: ${toPlainString(postKey)}` : null,
+      pillar ? `pillar: ${toPlainString(pillar)}` : null,
+      plannedTitle ? `planned_title: ${toPlainString(plannedTitle)}` : null,
+      plannedAngle ? `planned_angle: ${toPlainString(plannedAngle)}` : null,
+      topicSignature ? `topic_signature: ${toPlainString(topicSignature)}` : null,
+      pillarStyle ? `pillar_style: ${toPlainString(pillarStyle)}` : null,
+      seed ? `seed: ${toPlainString(seed)}` : null,
+    ].filter(Boolean).join('\n');
+    const brandBrainSchema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['wrong_focus', 'deciding_signal', 'cost', 'replacement_rule'],
+      properties: {
+        wrong_focus: { type: 'string', minLength: 1 },
+        deciding_signal: { type: 'string', minLength: 1 },
+        cost: { type: 'string', minLength: 1 },
+        replacement_rule: { type: 'string', minLength: 1 },
+      },
+    };
+    const momentSchema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['moment_spec'],
+      properties: {
+        moment_spec: {
+          type: 'object',
+          additionalProperties: false,
+          required: resolvedMode === 'brand_brain'
+            ? ['artifact', 'observed_condition', 'meaning', 'next_move', 'beats', 'proof', 'brand_brain']
+            : ['artifact', 'observed_condition', 'meaning', 'next_move', 'beats', 'proof'],
+          properties: {
+            artifact: { type: 'string', minLength: 1 },
+            observed_condition: { type: 'string', minLength: 1 },
+            meaning: { type: 'string', minLength: 1 },
+            next_move: { type: 'string', minLength: 1 },
+            beats: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['on_screen', 'spoken'],
+              properties: {
+                on_screen: { type: 'string', minLength: 1 },
+                spoken: { type: 'string', minLength: 1 },
+              },
+            },
+            proof: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['visual', 'consequence'],
+              properties: {
+                visual: { type: 'string', minLength: 1 },
+                consequence: { type: 'string', minLength: 1 },
+              },
+            },
+            brand_brain: brandBrainSchema,
+          },
+        },
+      },
+    };
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 800,
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'calendar_moment_spec', strict: true, schema: momentSchema },
+      },
+    });
+    const options = {
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    };
+    const completion = await withTimeout(
+      withOpenAiSlot(() => openAIRequest(options, payload)),
+      15000,
+      { requestId, phase: 'moment_spec' }
+    );
+    const messageContent = completion?.choices?.[0]?.message?.content;
+    const text = typeof messageContent === 'string'
+      ? messageContent
+      : Array.isArray(messageContent)
+        ? messageContent
+          .map((item) => (typeof item === 'string' ? item : item?.text || item?.value || item?.content || ''))
+          .join('')
+        : '';
+    const parsed = text ? JSON.parse(text) : null;
+    return parsed && parsed.moment_spec && typeof parsed.moment_spec === 'object' ? parsed : null;
+  }
+
+  async function rewritePostFromMomentSpec({ mode, nicheStyle, momentSpec, postDraft, requestId, postKey }) {
+    if (!OPENAI_API_KEY) {
+      const err = new Error('OPENAI_API_KEY not set');
+      err.statusCode = 500;
+      throw err;
+    }
+    const resolvedMode = String(mode || '').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
+    const rewritePrompt = [
+      `mode: ${resolvedMode}`,
+      `niche: ${toPlainString(nicheStyle || 'unspecified')}`,
+      postKey ? `post_key: ${toPlainString(postKey)}` : null,
+      'Rewrite the post so every field renders the same moment_spec with tight field-level alignment.',
+      'moment_spec is the source of truth.',
+      'Return one complete post object with the same schema keys.',
+      `moment_spec: ${toPlainString(momentSpec || '')}`,
+      `post_draft: ${JSON.stringify(postDraft || {})}`,
+    ].filter(Boolean).join('\n');
+    const schema = buildCalendarPostSchema(1, 30, resolvedMode);
+    const payload = JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: rewritePrompt }],
+      temperature: 0.2,
+      max_tokens: 900,
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'calendar_post_rewrite', strict: true, schema },
+      },
+    });
+    const options = {
+      hostname: 'api.openai.com',
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    };
+    const completion = await withTimeout(
+      withOpenAiSlot(() => openAIRequest(options, payload)),
+      15000,
+      { requestId, phase: 'moment_rewrite' }
+    );
+    const messageContent = completion?.choices?.[0]?.message?.content;
+    const text = typeof messageContent === 'string'
+      ? messageContent
+      : Array.isArray(messageContent)
+        ? messageContent
+          .map((item) => (typeof item === 'string' ? item : item?.text || item?.value || item?.content || ''))
+          .join('')
+        : '';
+    return text ? JSON.parse(text) : null;
+  }
+
   async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
@@ -9983,9 +10206,9 @@ const server = http.createServer((req, res) => {
       '',
       '- post_key',
       '',
-      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
+      '- topic_signature: moment seed written as artifact + observed condition + next_move in a short filmable scene descriptor',
       '',
-      '- angle: the practical takeaway the viewer gains from that moment',
+      '- angle: viewer takeaway label',
       '',
       'Write artifact as a specific thing the camera can show.',
       '',
@@ -10012,9 +10235,9 @@ const server = http.createServer((req, res) => {
       '',
       '- post_key',
       '',
-      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
+      '- topic_signature: moment seed written as artifact + observed condition + next_move in a short filmable scene descriptor',
       '',
-      '- angle: a priority flip written as current_focus → deciding_signal → replacement_rule',
+      '- angle: priority flip label written as current_focus → deciding_signal → replacement_rule',
       '',
       'Write artifact as a specific thing the camera can show.',
       '',
@@ -10298,23 +10521,75 @@ const server = http.createServer((req, res) => {
         err.details = { reason: 'SCHEMA_MISMATCH', day: slot.day, post_key: slot.post_key };
         throw err;
       }
-      const variation = deriveVariation(slot.post_key);
-      const momentSpec = toPlainString(planItem.topic_signature || '');
-      const parsedAnchor = parseTopicSignature(momentSpec);
-      const momentAnchor = {
-        artifact: parsedAnchor.artifact,
-        condition: parsedAnchor.condition,
-        next_move: parsedAnchor.next_move,
-        angle: toPlainString(planItem.angle || ''),
-        topic_signature: momentSpec,
-      };
+      const topicSignature = toPlainString(planItem.topic_signature || '');
+      const plannedAngle = toPlainString(planItem.angle || '');
       console.log('[Calendar][PlanItem]', {
         post_key: slot.post_key,
         mode: calendarMode,
-        topic_signature: momentSpec,
-        angle: toPlainString(planItem.angle || ''),
+        topic_signature: topicSignature,
+        angle: plannedAngle,
       });
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
+      const pillarRules = calendarMode === 'brand_brain'
+        ? BRAND_BRAIN_PILLAR_STYLE_RULES
+        : REGULAR_PILLAR_STYLE_RULES;
+      const pillarStyle = pillarRules[pillarForSlot] || '';
+      const angleSeed = buildAngleSeed({
+        mode: calendarMode,
+        pillar: pillarForSlot,
+        day: slot.day,
+        slotIndex: slot.slotIndex,
+        calendarId,
+      });
+      let momentSpecObject = null;
+      try {
+        const generated = await generateMomentSpec({
+          mode: calendarMode,
+          nicheStyle,
+          postKey: slot.post_key,
+          pillar: pillarForSlot,
+          plannedTitle: topicSignature,
+          plannedAngle,
+          topicSignature,
+          pillarStyle,
+          seed: angleSeed,
+          requestId,
+        });
+        momentSpecObject = generated?.moment_spec && typeof generated.moment_spec === 'object'
+          ? generated.moment_spec
+          : null;
+        if (momentSpecObject) {
+          console.log('[Calendar][MomentSpec] success', {
+            requestId,
+            post_key: slot.post_key,
+            mode: calendarMode,
+          });
+        }
+      } catch (momentErr) {
+        console.warn('[Calendar][MomentSpec] skipped', {
+          requestId,
+          post_key: slot.post_key,
+          mode: calendarMode,
+          error: momentErr?.message || momentErr,
+        });
+      }
+      const fallbackAnchor = parseTopicSignature(topicSignature);
+      const momentAnchor = momentSpecObject
+        ? {
+          artifact: toPlainString(momentSpecObject.artifact || ''),
+          condition: toPlainString(momentSpecObject.observed_condition || ''),
+          next_move: toPlainString(momentSpecObject.next_move || ''),
+          angle: plannedAngle,
+          topic_signature: topicSignature,
+        }
+        : {
+          artifact: fallbackAnchor.artifact,
+          condition: fallbackAnchor.condition,
+          next_move: fallbackAnchor.next_move,
+          angle: plannedAngle,
+          topic_signature: topicSignature,
+        };
+      const momentSpec = momentSpecObject ? JSON.stringify(momentSpecObject) : topicSignature;
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
         nicheStyle,
@@ -10325,16 +10600,12 @@ const server = http.createServer((req, res) => {
         slotIndex: slot.slotIndex,
         postsPerDay,
         post_key: slot.post_key,
-        plannedTitle: planItem.topic_signature,
-        plannedAngle: planItem.angle,
-        topicSignature: momentSpec,
+        plannedTitle: topicSignature,
+        plannedAngle,
+        topicSignature,
         momentAnchor,
         momentSpec,
-        renderStyle: variation.render_style,
-        beatShape: variation.beat_shape,
-        revealOrder: variation.reveal_order,
-        pov: variation.pov,
-        angleLabel: planItem.angle || '',
+        angleLabel: plannedAngle || '',
         pillarKey: pillarForSlot,
         requestId,
         loggingContext,
@@ -10346,6 +10617,7 @@ const server = http.createServer((req, res) => {
         calendarId,
         usedSignatures,
         qualityState: { signatureMap: new Map() },
+        enableMomentRewrite: true,
       });
     };
     const results = [];
