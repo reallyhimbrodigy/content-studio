@@ -3532,26 +3532,28 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     'Apply this context to select one concrete moment and align every field.',
-    'moment_anchor: treat planned_title + pillar_style + niche as inputs to pick one specific on-screen moment.',
-    'Define the moment as: artifact (what is seen) + condition (what makes it matter) + next_move (what the viewer does next).',
-    'Use that same moment as the spine for title, hook, body, caption, reel script, designNotes, and hashtags.',
+    'First derive MOMENT_SPEC internally from planned_title + pillar_style + niche.',
+    'MOMENT_SPEC includes: artifact (what is visibly on screen or handled), observed_condition (the specific detail noticed), next_move (the immediate action taken because of the condition), scene (where/when/who in one short concrete line), and beats (3–5 short beats describing what happens on-screen).',
+    'Generate every field as a surface expression of the same MOMENT_SPEC.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
 Goal: generate one short-form post that feels native to TikTok/Instagram and is immediately usable.
 Choose one specific, real-world moment the niche actually experiences.
-Make the moment concrete by naming: what is being looked at/handled, what changed/was noticed, and what happens next because of it.
-Write for attention: open mid-action, reveal the key detail fast, then land a clear takeaway and next step without sounding like an ad.
+Write from MOMENT_SPEC as the source of truth.
+Make the moment concrete by naming what is being looked at or handled, the observed condition, and the next move it causes.
+Write for attention: open mid-action, reveal the key detail fast, then land a clear takeaway and next step.
+Write as a sequence that can be performed on-camera, grounded in the MOMENT_SPEC beats.
 
 Field intent (same moment, different surfaces):
 
 title: a concrete label for the moment
-hook: the first beat of the moment with the key detail
-body: the meaning of the detail and the next move, explained plainly
-cta: the next move stated naturally in the same scene
-reelHook / reelBody / reelCta: spoken delivery of the same beats, matching how people talk on short-form video
-caption: a tight reinforcement of the same moment and takeaway
-designNotes: what to show on-screen so the artifact + detail are obvious instantly
+hook: the opening beat of MOMENT_SPEC with the key visible detail
+body: the observed condition, what it means, and the next move in the same scene
+cta: the natural continuation action that follows from the same next move
+reelHook / reelBody / reelCta: spoken delivery mapped directly from MOMENT_SPEC beats
+caption: a tight reinforcement of the same moment progression and takeaway
+designNotes: what to show on-screen so artifact, observed_condition, and next_move are obvious instantly
 hashtags[]: tags that match the exact topic and moment
 
 Return one complete post.`;
@@ -3560,18 +3562,19 @@ Return one complete post.`;
 
 Goal: generate a short-form post that wins attention and changes what the viewer prioritizes, using one concrete moment.
 Pick one real moment the niche experiences, then use it to flip the viewer’s focus: what they usually look at vs the signal that actually decides outcomes.
-Make the flip legible inside the moment by naming: the tempting focus, the deciding signal, the practical cost of missing it, and the replacement rule.
-Write for platform performance: open with a pattern-break inside the moment, deliver the signal fast, make the cost vivid, then land the replacement rule and next step.
+Write from MOMENT_SPEC as the source of truth.
+Express the priority flip inside the same MOMENT_SPEC beats as: current focus → deciding signal → practical cost → replacement rule.
+Write for platform performance as on-screen progression: pattern-break inside the moment, signal reveal, cost consequence, replacement rule, next step.
 
 Field intent (same moment, different surfaces):
 
 title: the mis-priority and the decisive focus, stated concretely
-hook: the flip stated inside the moment
-body: signal → cost → replacement rule, all anchored to the same moment
-cta: one next move that applies the replacement rule in practice
-reelHook / reelBody / reelCta: spoken delivery of the same beats, matching short-form cadence
-caption: a concise reinforcement of the flip and rule
-designNotes: what to show so the signal is proven on-screen inside the moment
+hook: the flip stated in the opening beat of the same moment
+body: deciding signal, cost, and replacement rule carried through the same moment progression
+cta: one next move that applies the replacement rule in the same scene
+reelHook / reelBody / reelCta: spoken delivery mapped directly from MOMENT_SPEC beats
+caption: a concise reinforcement of the same priority flip and rule
+designNotes: what to show so the deciding signal and consequence are proven on-screen inside the same moment
 hashtags[]: tags that match the exact topic and flip
 
 Return one complete post.`;
@@ -9876,8 +9879,12 @@ const server = http.createServer((req, res) => {
     'Each item includes:',
     '- post_key',
     '- topic_signature: a short concrete moment anchor written as artifact + observed condition + next move',
-    '- angle: a short decision-dynamic label that supports a compelling short-form moment',
-    'Write each topic_signature so a viewer can picture the scene immediately.',
+    '- angle: a short decision-dynamic label that captures the tension driving what happens next',
+    'Write each topic_signature as a scene someone can film immediately.',
+    'Artifact is a specific visible object, screen, document, or feature relevant to the niche.',
+    'Observed condition is a specific detail someone can point to in that scene.',
+    'Next move is the immediate action taken in response to the observed condition.',
+    'Angle expresses the decision tension that makes the moment watchable and actionable.',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
