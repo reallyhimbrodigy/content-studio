@@ -3612,7 +3612,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
+    opts.plannedAngle ? `angle: ${opts.plannedAngle}` : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `You are writing one short-form video (TikTok / Instagram Reel) for a {niche} creator.
@@ -6665,27 +6665,6 @@ function validatePostCompleteness(post = {}, mode = 'regular') {
     .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
     .filter(Boolean);
   if (validHashtags.length < MIN_HASHTAGS) missing.push('hashtags');
-
-  checkString(post.script, 'script');
-  const reelValue = post.reelScript;
-  if (reelValue && typeof reelValue === 'object' && !Array.isArray(reelValue)) {
-    const hasParts = ['hook', 'beat1', 'beat2', 'beat3', 'cta', 'onScreenText', 'brollNotes']
-      .every((key) => reelValue[key] !== undefined && reelValue[key] !== null);
-    if (!hasParts) missing.push('reelScript');
-  } else {
-    checkString(reelValue, 'reelScript');
-  }
-  const engagementValue = post.engagementScripts;
-  if (engagementValue && typeof engagementValue === 'object' && !Array.isArray(engagementValue)) {
-    const hasArrays = ['commentPrompts', 'dmScripts', 'replyTemplates']
-      .every((key) => Array.isArray(engagementValue[key]) && engagementValue[key].length > 0);
-    if (!hasArrays) missing.push('engagementScripts');
-  } else {
-    checkString(engagementValue, 'engagementScripts');
-  }
-  checkString(post.topicCapsule, 'topicCapsule');
-  const detailsAudio = post?.details && typeof post.details === 'object' ? post.details.suggestedAudio : '';
-  checkString(detailsAudio, 'details.suggestedAudio');
 
   return missing;
 }
@@ -9983,7 +9962,7 @@ const server = http.createServer((req, res) => {
     }
     const cleanPromoting = toPlainString(promoting || '');
     const hasPromoting = plannerMode === 'brand_brain' && Boolean(cleanPromoting.trim());
-    const REGULAR_PLAN_PROMPT = [
+  const REGULAR_PLAN_PROMPT = [
       `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
       '',
       'Each post is a piece of entertainment that belongs on TikTok or Instagram Reels. The creator is building an audience by being consistently worth watching. They are someone in the {niche} space who makes content people enjoy and choose to follow.',
@@ -9994,6 +9973,7 @@ const server = http.createServer((req, res) => {
       '  "topic_signature": "One sentence describing the specific, filmable moment this video captures. Name real details — objects, settings, reactions, situations.",',
       '  "angle": "What makes this video entertaining or worth watching, stated in one sentence."',
       '}',
+      `Use exactly these post_key values, one per item: ${postKeys.join(', ')}`,
       '',
       'Every topic_signature is something a person can film on their phone.',
       'Every angle describes why a viewer would watch this to the end and share it.',
@@ -10018,6 +9998,7 @@ const server = http.createServer((req, res) => {
         ? `  "angle": "One sentence describing how this video leads the viewer toward wanting ${cleanPromoting} by the end."`
         : '  "angle": "One sentence describing how this video leads the viewer toward promotion by the end."',
       '}',
+      `Use exactly these post_key values, one per item: ${postKeys.join(', ')}`,
       '',
       'Every topic_signature is an entertaining video concept a person can film on their phone.',
       'Every angle describes the path from entertainment to promotion within this video.',

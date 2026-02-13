@@ -9341,6 +9341,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         totalDays,
         runId: runToken,
         isFirst: job.day === 1 && job.slot === 0,
+        calendarMode: isBrandBrainEnabledForGeneration() ? 'brand_brain' : 'regular',
+        brandBrainEnabled: isBrandBrainEnabledForGeneration(),
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
