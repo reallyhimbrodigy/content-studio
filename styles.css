@@ -3889,6 +3889,10 @@ a.ghost:hover {
   transition: all 0.2s ease;
 }
 
+#niche-style-input {
+  min-height: 60px;
+}
+
 .generate-input:focus {
   outline: none;
   border-color: rgba(255, 255, 255, 0.6);
@@ -5730,6 +5734,10 @@ footer,
   .generate-input {
     font-size: 1rem;
     padding: 0.875rem 1rem;
+  }
+
+  #niche-style-input {
+    min-height: 56px;
   }
   
   /* Larger touch targets for buttons */
