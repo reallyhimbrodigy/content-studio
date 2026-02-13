@@ -3530,11 +3530,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `calendar_index: ${startDay}`,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
+    opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     'Apply this context to select one concrete moment and align every field.',
     'First derive MOMENT_SPEC internally from planned_title + pillar_style + niche.',
     'MOMENT_SPEC includes: artifact (what is visibly on screen or handled), observed_condition (the specific detail noticed), next_move (the immediate action taken because of the condition), scene (where/when/who in one short concrete line), and beats (3–5 short beats describing what happens on-screen).',
-    'Generate every field as a surface expression of the same MOMENT_SPEC.',
+    'Generate every field as a surface expression of the same MOMENT_SPEC; reel script dramatizes trigger and proof, lands next_move, and in Brand Brain carries wrong_focus → deciding_signal → cost → replacement_rule inside the same MOMENT_SPEC.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
@@ -9864,6 +9865,7 @@ const server = http.createServer((req, res) => {
     const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
     const expectedCount = safeDays * perDay;
+    const plannerMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'BRAND_BRAIN' : 'REGULAR';
     const postKeys = [];
     for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
       const day = safeStart + dayOffset;
@@ -9874,17 +9876,21 @@ const server = http.createServer((req, res) => {
   const planPrompt = [
     'Return valid JSON matching the schema exactly.',
     `Niche: ${nicheStyle}`,
+    `Mode: ${plannerMode}`,
     'Generate exactly the requested number of items for these post_keys:',
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- topic_signature: a short concrete moment anchor written as artifact + observed condition + next move',
+    '- topic_signature: a compact MOMENT_SPEC string',
     '- angle: a short decision-dynamic label that captures the tension driving what happens next',
-    'Write each topic_signature as a scene someone can film immediately.',
-    'Artifact is a specific visible object, screen, document, or feature relevant to the niche.',
-    'Observed condition is a specific detail someone can point to in that scene.',
-    'Next move is the immediate action taken in response to the observed condition.',
-    'Angle expresses the decision tension that makes the moment watchable and actionable.',
+    'For REGULAR topic_signature, use: artifact=... | trigger=... | proof=... | next_move=...',
+    'For BRAND_BRAIN topic_signature, use: artifact=... | trigger=... | proof=... | next_move=... | wrong_focus=... | deciding_signal=... | cost=... | replacement_rule=...',
+    'Write each topic_signature as a single-line scene someone can film immediately.',
+    'Artifact is what is visibly on-screen.',
+    'Trigger is the observed condition that changes the decision.',
+    'Proof is on-screen evidence that makes the trigger undeniable.',
+    'Next_move is the immediate practical action.',
+    'In BRAND_BRAIN mode, wrong_focus, deciding_signal, cost, and replacement_rule are applied to that same scene and moment.',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
