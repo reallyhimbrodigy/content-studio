@@ -112,6 +112,9 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const upgradeClose = document.getElementById("upgrade-close");
   const upgradeBtn = document.getElementById("upgrade-btn");
   const nicheInput = document.getElementById("niche-style-input");
+  const promotingInputWrap = document.getElementById('promoting-input-wrap');
+  const promotingInput = document.getElementById('promoting-input');
+  const brandBrainEnabledToggle = document.getElementById('brand-brain-enabled');
   const feedbackEl = document.getElementById("niche-feedback");
   const exportBtn = document.getElementById("export-calendar");
   const exportCsvBtn = document.getElementById("export-csv");
@@ -1845,6 +1848,7 @@ async function refreshBrandBrain() {
     const userId = await getCurrentUserId();
     if (!userId) {
       brandModal.dataset.locked = 'true';
+      syncPromotingInputVisibility();
       return { ok: true, skipped: 'no_user' };
     }
     const userIsPro = isProTier();
@@ -1861,6 +1865,7 @@ async function refreshBrandBrain() {
         { brand_brain_enabled: false },
         { replace: false, targetEmail: activeUserEmail || undefined }
       );
+      syncPromotingInputVisibility();
       return { ok: true, skipped: 'not_pro' };
     }
 
@@ -1872,6 +1877,7 @@ async function refreshBrandBrain() {
     const settings = data?.settings || data?.data || {};
     toggleInput.checked = Boolean(settings.enabled);
     toggleInput.disabled = false;
+    syncPromotingInputVisibility();
     const statusPill = document.getElementById('brand-brain-status-pill');
     if (statusPill) {
       statusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
@@ -3604,6 +3610,26 @@ function buildTargetAudienceRequestPayload() {
       preset,
     },
   };
+}
+
+function isBrandBrainEnabledForGeneration() {
+  return Boolean(brandBrainEnabledToggle?.checked);
+}
+
+function getPromotingValue() {
+  return String(promotingInput?.value || '').trim();
+}
+
+function syncPromotingInputVisibility() {
+  if (!promotingInputWrap) return;
+  promotingInputWrap.style.display = isBrandBrainEnabledForGeneration() ? '' : 'none';
+}
+
+function buildPromotingRequestPayload() {
+  if (!isBrandBrainEnabledForGeneration()) return null;
+  const promoting = getPromotingValue();
+  if (!promoting) return null;
+  return { promoting };
 }
 
 async function getAccountAuthUser() {
@@ -5913,6 +5939,11 @@ if (upgradeBtn) {
 // Export function for other parts of the app to trigger upgrade modal
 window.showUpgradeModal = showUpgradeModal;
 
+if (brandBrainEnabledToggle) {
+  brandBrainEnabledToggle.addEventListener('change', syncPromotingInputVisibility);
+}
+syncPromotingInputVisibility();
+
 // Library tab handler
 
 // Brand Brain panel
@@ -5926,6 +5957,12 @@ initBrandBrainPanel({
   requireProOrOpenUpgrade,
   emitAnalytics,
 });
+if (brandBtn) {
+  brandBtn.addEventListener('click', () => {
+    setTimeout(syncPromotingInputVisibility, 50);
+    setTimeout(syncPromotingInputVisibility, 500);
+  });
+}
 
 function handleCalendarCardExpansion(card, expanded) {
   if (!card) return;
@@ -6911,6 +6948,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
     if (regenDaySupported) {
       const voiceLockPayload = buildVoiceLockRequestPayload();
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
+      const promotingPayload = buildPromotingRequestPayload();
       const resp = await fetchWithAuth('/api/regen-day', {
         method: 'POST',
         body: JSON.stringify({
@@ -6923,6 +6961,7 @@ async function handleRegenerateDay(entry, entryDay, triggerEl, options = {}) {
           postsPerDay,
           ...(voiceLockPayload || {}),
           ...(targetAudiencePayload || {}),
+          ...(promotingPayload || {}),
         }),
       });
       if (resp.status === 404) {
@@ -7074,6 +7113,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
   }
   const voiceLockPayload = buildVoiceLockRequestPayload();
   const targetAudiencePayload = buildTargetAudienceRequestPayload();
+  const promotingPayload = buildPromotingRequestPayload();
   const resp = await fetchWithAuth('/api/calendar/regenerate', {
     method: 'POST',
     body: JSON.stringify({
@@ -7083,6 +7123,7 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
       userId: currentUser || undefined,
       ...(voiceLockPayload || {}),
       ...(targetAudiencePayload || {}),
+      ...(promotingPayload || {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
@@ -9305,6 +9346,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
       if (targetAudiencePayload) Object.assign(payload, targetAudiencePayload);
+      const promotingPayload = buildPromotingRequestPayload();
+      if (promotingPayload) Object.assign(payload, promotingPayload);
       console.log(`[Calendar] job ${job.day}-${job.slot} start (attempt ${attempt})`);
       const response = await fetchWithAuth('/api/calendar/regenerate_one', {
         method: 'POST',

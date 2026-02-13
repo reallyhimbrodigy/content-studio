@@ -2270,6 +2270,7 @@ async function generateAndValidateSinglePost({
   post_key,
   plannedTitle,
   plannedAngle,
+  promoting = '',
   topicSignature = '',
   momentAnchor = null,
   momentSpec = '',
@@ -2374,6 +2375,7 @@ async function generateAndValidateSinglePost({
         slotIndex,
         plannedTitle,
         plannedAngle,
+        promoting,
         topicSignature,
         momentAnchor,
         momentSpec,
@@ -3600,10 +3602,13 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
+  const promoting = toPlainString(opts.promoting || '');
+  const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
+    hasPromoting ? `promoting: ${promoting}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
@@ -3643,16 +3648,16 @@ hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
 
 Write the way this creator talks. Short, casual, specific to THIS video.`;
 
-  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a {niche} creator who sells {niche} products/services.
+  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a {niche} creator${hasPromoting ? ` who is promoting: ${promoting}.` : '.'}
 
 THE VIDEO CONCEPT: {topic_signature}
 HOW IT PROMOTES: {angle}
 PILLAR: {pillar}
 PILLAR STYLE: {pillar_style}
 
-This is a 15-60 second video that works as entertainment AND as an ad. The algorithm pushes it because viewers watch it, engage with it, and share it. The creator wins because by the end, the viewer wants their product or service.
+This is a 15-60 second video that works as entertainment AND as an ad. The algorithm pushes it because viewers watch it, engage with it, and share it.${hasPromoting ? ` The creator wins because by the end, the viewer wants ${promoting}.` : ''}
 
-The video leads with entertainment. The promotion lives inside the content — it arrives naturally as part of the video, so the viewer receives it willingly. By the final seconds, the viewer understands what the creator offers and feels pulled toward it.
+The video leads with entertainment. The promotion lives inside the content — it arrives naturally as part of the video, so the viewer receives it willingly.${hasPromoting ? ` By the final seconds, the viewer understands ${promoting} and feels pulled toward it.` : ' By the final seconds, the viewer understands what the creator offers and feels pulled toward it.'}
 
 Write each field:
 
@@ -3660,23 +3665,23 @@ title — Short plain-language label for this video.
 
 hook — The first thing spoken on camera. Under 15 words. This is pure entertainment — it earns attention the same way any viral video does. Written the way the creator actually speaks.
 
-body — The spoken script. 4-7 short sentences. Open with the entertainment. Let the promotion arrive organically inside the content so the viewer receives it as part of the experience. By the final sentences, the viewer understands what the creator sells and wants it. Written as natural speech.
+body — The spoken script. 4-7 short sentences. Open with the entertainment. Let the promotion arrive organically inside the content so the viewer receives it as part of the experience.${hasPromoting ? ` By the final sentences, the viewer understands ${promoting} and wants it.` : ' By the final sentences, the viewer understands the offer and wants it.'} Written as natural speech.
 
-cta — One sentence that moves the viewer toward the creator's product or service. It feels like the natural next step from what they just watched.
+cta — One sentence that moves the viewer toward ${hasPromoting ? promoting : 'the creator'}. It feels like the natural next step from what they just watched.
 
 reelHook — On-screen text for the first 1-2 seconds. Under 10 words. Earns attention through entertainment value.
 
 reelBody — 2-4 short text overlays during the video. Early overlays support the entertainment. Later overlays land the promotion.
 
-reelCta — Final on-screen text. One short phrase that drives the viewer toward the creator's product or service.
+reelCta — Final on-screen text. One short phrase that drives the viewer toward ${hasPromoting ? promoting : 'the creator'}.
 
-caption — 1-2 sentences written casually. Reinforces the promotion as a personal opinion or perspective the creator holds.
+caption — 1-2 sentences written casually. Reinforces the promotion as a personal opinion or perspective the creator holds${hasPromoting ? ` about ${promoting}` : ''}.
 
 designNotes — Brief filming direction: the visual concept, how the entertainment and promotion work together on screen, any specific shots or transitions that sell it.
 
 hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
 
-Write as this creator — someone who knows how to entertain an audience and knows their product is worth promoting. Confident, natural, specific to THIS video.`;
+Write as this creator — someone who knows how to entertain an audience and knows ${hasPromoting ? `${promoting} is worth promoting` : 'their offer is worth promoting'}. Confident, natural, specific to THIS video.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   const promptParts = [
@@ -9948,7 +9953,7 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-  async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
+  async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -9976,6 +9981,8 @@ const server = http.createServer((req, res) => {
         }
       }
     }
+    const cleanPromoting = toPlainString(promoting || '');
+    const hasPromoting = plannerMode === 'brand_brain' && Boolean(cleanPromoting.trim());
     const REGULAR_PLAN_PROMPT = [
       `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
       '',
@@ -9995,15 +10002,21 @@ const server = http.createServer((req, res) => {
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
-      `You are planning 30 days of short-form video ads for a ${nicheStyle} creator who sells ${nicheStyle} products/services.`,
+      hasPromoting
+        ? `You are planning 30 days of short-form video ads for a ${nicheStyle} creator who is promoting: ${cleanPromoting}.`
+        : `You are planning 30 days of short-form video ads for a ${nicheStyle} creator.`,
       '',
-      'Each post is an entertaining video that TikTok and Instagram\'s algorithm will push to a wide audience. It is also an ad — by the end, the viewer wants what this creator is selling. The video earns attention as entertainment first and delivers the promotion inside that entertainment.',
+      hasPromoting
+        ? `Each post is an entertaining video that TikTok and Instagram's algorithm will push to a wide audience. It is also an ad — by the end, the viewer wants ${cleanPromoting}. The video earns attention as entertainment first and delivers the promotion inside that entertainment.`
+        : 'Each post is an entertaining video that TikTok and Instagram\'s algorithm will push to a wide audience. It is also an ad. The video earns attention as entertainment first and delivers the promotion inside that entertainment.',
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence describing the specific, filmable entertainment concept for this video. Name real details — situations, reactions, visual moments that hold attention.",',
-      '  "angle": "One sentence describing how this video leads the viewer toward wanting the creator\'s product or service by the end."',
+      hasPromoting
+        ? `  "angle": "One sentence describing how this video leads the viewer toward wanting ${cleanPromoting} by the end."`
+        : '  "angle": "One sentence describing how this video leads the viewer toward promotion by the end."',
       '}',
       '',
       'Every topic_signature is an entertaining video concept a person can film on their phone.',
@@ -10140,6 +10153,7 @@ const server = http.createServer((req, res) => {
     const { nicheStyle, userId } = payload;
     const loggingContext = payload?.context || {};
     const requestId = String(loggingContext?.requestId || payload?.requestId || '');
+    const promoting = toPlainString(payload?.promoting || '');
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -10205,6 +10219,7 @@ const server = http.createServer((req, res) => {
         requestId,
         mode: calendarMode,
         nicheStyle,
+        promoting,
         days: safeDays,
         startDay: safeStart,
         postsPerDay,
@@ -10227,6 +10242,7 @@ const server = http.createServer((req, res) => {
           requestId,
           mode: calendarMode,
           nicheStyle,
+          promoting,
           days: safeDays,
           startDay: safeStart,
           postsPerDay,
@@ -10310,6 +10326,7 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
+        promoting,
         topicSignature: momentSpec,
         momentAnchor,
         momentSpec,
@@ -11546,6 +11563,7 @@ const server = http.createServer((req, res) => {
         }
 
         const nicheStyle = body?.nicheStyle || body?.niche || body?.niche_style || '';
+        const promoting = toPlainString(body?.promoting || '');
         const day = Number.isFinite(Number(body?.day)) ? Number(body.day) : 1;
         const slotIndex = Number.isFinite(Number(body?.slot)) ? Number(body.slot) : (
           Number.isFinite(Number(body?.slotIndex)) ? Number(body.slotIndex) : 0
@@ -11571,6 +11589,7 @@ const server = http.createServer((req, res) => {
           requestId,
           mode: selectedMode,
           nicheStyle: plannerNiche,
+          promoting,
           days: 1,
           startDay: day,
           postsPerDay: 1,
@@ -11627,6 +11646,7 @@ const server = http.createServer((req, res) => {
             post_key: postKeyValue,
             plannedTitle,
             plannedAngle,
+            promoting,
             topicSignature: plannedTopicSignature,
             momentAnchor,
             momentSpec: plannedTopicSignature,
@@ -12586,6 +12606,7 @@ const server = http.createServer((req, res) => {
               voiceLockPreset: body?.voiceLockPreset,
               voiceLockSample: body?.voiceLockSample,
               targetAudience: body?.targetAudience,
+              promoting: body?.promoting,
             });
           } catch (genErr) {
             throw genErr;

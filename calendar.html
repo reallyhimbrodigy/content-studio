@@ -243,16 +243,26 @@
           </p>
           <div class="hero__cta">
             <div class="generate-controls">
-              <label for="niche-style-input" class="input-label">What’s your niche or business?</label>
+              <label for="niche-style-input" class="input-label">Describe your business in one sentence</label>
               <input
                 id="niche-style-input"
                 class="generate-input"
                 type="text"
-                placeholder="e.g., fitness coaches, playful tech content, sustainable fashion..."
+                placeholder="e.g. Miami realtor helping first-time buyers find their first home"
                 aria-label="Niche and style"
                 aria-required="true"
                 required
               />
+              <div id="promoting-input-wrap" style="display:none;">
+                <label for="promoting-input" class="input-label">What are you promoting?</label>
+                <input
+                  id="promoting-input"
+                  class="generate-input"
+                  type="text"
+                  placeholder="e.g. My free home-buying consultation"
+                  aria-label="What are you promoting?"
+                />
+              </div>
               <button id="generate-calendar" class="secondary primary-large" data-analytics="calendar_generate">
                 <span class="spinner" aria-hidden="true" style="display:none"></span>
                 <span class="btn-text">Generate My 30-Day Calendar</span>
