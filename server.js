@@ -3555,26 +3555,14 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     ? 'brand_brain'
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
-  const plannedTitle = opts.plannedTitle || '';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
-  const contextLines = [
-    'POST_CONTEXT',
-    `mode: ${mode}`,
-    `niche: ${cleanNiche}`,
-    hasPromoting ? `promoting: ${promoting}` : null,
-    opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
-    opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    plannedTitle ? `planned_title: ${plannedTitle}` : null,
-    opts.plannedAngle ? `angle: ${opts.plannedAngle}` : null,
-    opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
-  ].filter(Boolean).join('\n');
-  const REGULAR_MAIN_PROMPT = `You are writing one short-form video (TikTok / Instagram Reel) for a {niche} creator.
+  const REGULAR_MAIN_PROMPT = `You are writing one short-form video (TikTok / Instagram Reel) for a ${cleanNiche} creator.
 
-THE VIDEO CONCEPT: {topic_signature}
-WHAT MAKES IT WORK: {angle}
-PILLAR: {pillar}
-PILLAR STYLE: {pillar_style}
+THE VIDEO CONCEPT: ${opts.topicSignature || ''}
+WHAT MAKES IT WORK: ${opts.plannedAngle || ''}
+PILLAR: ${opts.pillar || opts.targetPillar || ''}
+PILLAR STYLE: ${opts.pillarStyle || ''}
 
 This is a 15-60 second video made to entertain. The creator is building a following by posting content people genuinely enjoy watching. This video should feel like something a viewer finds on their For You Page, watches to the end, and follows the creator because of.
 
@@ -3602,12 +3590,12 @@ hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
 
 Write the way this creator talks. Short, casual, specific to THIS video.`;
 
-  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a {niche} creator${hasPromoting ? ` who is promoting: ${promoting}.` : '.'}
+  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a ${cleanNiche} creator${hasPromoting ? ` who is promoting: ${promoting}.` : '.'}
 
-THE VIDEO CONCEPT: {topic_signature}
-HOW IT PROMOTES: {angle}
-PILLAR: {pillar}
-PILLAR STYLE: {pillar_style}
+THE VIDEO CONCEPT: ${opts.topicSignature || ''}
+HOW IT PROMOTES: ${opts.plannedAngle || ''}
+PILLAR: ${opts.pillar || opts.targetPillar || ''}
+PILLAR STYLE: ${opts.pillarStyle || ''}
 
 This is a 15-60 second video that works as entertainment AND as an ad. The algorithm pushes it because viewers watch it, engage with it, and share it.${hasPromoting ? ` The creator wins because by the end, the viewer wants ${promoting}.` : ''}
 
@@ -3638,11 +3626,7 @@ hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
 Write as this creator — someone who knows how to entertain an audience and knows ${hasPromoting ? `${promoting} is worth promoting` : 'their offer is worth promoting'}. Confident, natural, specific to THIS video.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
-  const promptParts = [
-    contextLines,
-    mainPrompt,
-  ].filter(Boolean);
-  return promptParts.join('\n');
+  return mainPrompt;
 }
 
 function buildCalendarSchemaBlock(expectedCount) {
