@@ -7658,7 +7658,7 @@ const stripProFields = (post) => {
 };
 
 const validateNiche = (val) => {
-  if (!val || !val.trim()) return { ok: false, msg: "Please enter a niche or style." };
+  if (!val || !val.trim()) return { ok: false, msg: "Please describe your business to get started." };
   if (val.trim().length < 2) return { ok: false, msg: "Please provide at least 2 characters." };
   if (val.trim().length > 60) return { ok: false, msg: "Please keep it under 60 characters." };
   // disallow only punctuation
