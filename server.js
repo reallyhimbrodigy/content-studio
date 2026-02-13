@@ -2340,12 +2340,15 @@ async function generateAndValidateSinglePost({
     currentStage = 'assign_pillar';
     try {
       if (momentAnchor && typeof momentAnchor === 'object') {
-        const anchorPreview = formatMomentAnchorLine(momentAnchor);
         console.log('[Calendar][Anchor]', {
           requestId,
           post_key,
           mode: calendarMode,
-          moment_anchor: anchorPreview.slice(0, 220),
+          moment_anchor: {
+            artifact: toPlainString(momentAnchor.artifact || ''),
+            condition: toPlainString(momentAnchor.condition || ''),
+            next_move: toPlainString(momentAnchor.next_move || ''),
+          },
         });
       }
       currentStage = 'openai_request';
@@ -3591,83 +3594,89 @@ function parseTopicSignature(sig = '') {
   };
 }
 
-function formatMomentAnchorLine(momentAnchor = {}) {
-  const anchor = (momentAnchor && typeof momentAnchor === 'object') ? momentAnchor : {};
-  const artifact = String(anchor.artifact || '').trim();
-  const condition = String(anchor.condition || '').trim();
-  const nextMove = String(anchor.next_move || '').trim();
-  return `moment_anchor: artifact=${artifact} | condition=${condition} | next_move=${nextMove}`;
-}
-
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
-  const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const plannedTitle = opts.plannedTitle || '';
-  const momentAnchorLine = opts.momentAnchor ? formatMomentAnchorLine(opts.momentAnchor) : '';
   const contextLines = [
     'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
-    `calendar_index: ${startDay}`,
-    opts.postKey ? `post_key: ${opts.postKey}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
+    opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
-    opts.plannedAngle ? 'planned_angle is the strategy for how this moment wins attention and what the viewer walks away with.' : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
-    momentAnchorLine || null,
-    opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    'Select one filmable real-world moment for this post and keep it consistent across every field.',
-    'moment_anchor defines the moment as: artifact (on-screen), condition (observed detail), next_move (immediate action).',
-    'Use planned_title + planned_angle + pillar_style + topic_signature to choose the most specific version of the moment.',
-    'Render title, hook, body, reel script, caption, designNotes, and hashtags from the same moment.',
   ].filter(Boolean).join('\n');
-  const REGULAR_MAIN_PROMPT = `MODE: REGULAR
+  const REGULAR_MAIN_PROMPT = `You are writing one short-form video (TikTok / Instagram Reel) for a {niche} creator.
 
-Goal: produce one entertaining short-form post that feels native to TikTok/Instagram and is immediately usable for this niche.
-Deliver one clear, practical takeaway the viewer can apply, learned directly from the on-screen moment.
-Write as if this is spoken on camera while the moment is happening.
+THE VIDEO CONCEPT: {topic_signature}
+WHAT MAKES IT WORK: {angle}
+PILLAR: {pillar}
+PILLAR STYLE: {pillar_style}
 
-Source of truth: POST_CONTEXT moment_anchor (and planned_title / planned_angle / topic_signature / pillar_style when present).
-Build every field from that same moment and that same strategy.
+This is a 15-60 second video made to entertain. The creator is building a following by posting content people genuinely enjoy watching. This video should feel like something a viewer finds on their For You Page, watches to the end, and follows the creator because of.
 
-Field intent:
+Write each field:
 
-title: label the moment in concrete terms the niche would recognize
-hook: the first spoken line that drops into the moment and reveals the condition
-body: the meaning of the condition and the practical move that follows
-cta: the natural continuation action that follows from next_move
-reelHook / reelBody / reelCta: spoken delivery of hook/body/cta as on-camera lines with clear pauses
-caption: tight reinforcement of the takeaway anchored to the moment
-designNotes: what to show so artifact and condition are instantly obvious on screen
-hashtags[]: tags that match the exact topic and moment
+title — Short plain-language label for this video.
 
-Return one complete post.`;
+hook — The first thing spoken on camera. Under 15 words. Pulls the viewer in immediately. Written the way the creator actually speaks.
 
-  const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
+body — The spoken script. 3-6 short sentences. This is the video — deliver the entertainment, the story, the moment. Every sentence holds attention. Written as natural speech.
 
-Goal: produce one competitive short-form ad that wins attention and changes what the viewer prioritizes.
-Use one filmable moment to make the viewer switch from a tempting focus to the deciding signal, then land the replacement rule that wins.
-Write as if this is spoken on camera while the moment is happening, with the moment proving the claim.
+cta — One casual sentence at the end that gives the viewer a reason to follow or engage. Connected to what just happened in this video.
 
-Source of truth: POST_CONTEXT moment_anchor (and planned_title / planned_angle / topic_signature / pillar_style when present).
-Build every field from that same moment and that same priority shift.
+reelHook — On-screen text for the first 1-2 seconds. Under 10 words. Stops a scroller.
 
-Field intent:
+reelBody — 1-3 short text overlays that appear during the video to reinforce key moments.
 
-title: name the mis-priority and the decisive focus in concrete terms
-hook: the opening spoken line that triggers the priority switch inside the moment
-body: reveal the deciding signal, state the practical cost it controls, and state the replacement rule as the new priority
-cta: one next action that applies the replacement rule in the same scene
-reelHook / reelBody / reelCta: spoken delivery that makes the flip obvious from the moment
-caption: concise reinforcement of the new priority and rule anchored to the same proof
-designNotes: what to show so the deciding signal is visible and believable on screen
-hashtags[]: tags that match the exact topic and priority flip
+reelCta — Final on-screen text. One short phrase.
 
-Return one complete post.`;
+caption — 1-2 sentences written casually. Adds personality or context to this specific video.
+
+designNotes — Brief filming direction: where the creator is, what the viewer sees, any visual moments or transitions.
+
+hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
+
+Write the way this creator talks. Short, casual, specific to THIS video.`;
+
+  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a {niche} creator who sells {niche} products/services.
+
+THE VIDEO CONCEPT: {topic_signature}
+HOW IT PROMOTES: {angle}
+PILLAR: {pillar}
+PILLAR STYLE: {pillar_style}
+
+This is a 15-60 second video that works as entertainment AND as an ad. The algorithm pushes it because viewers watch it, engage with it, and share it. The creator wins because by the end, the viewer wants their product or service.
+
+The video leads with entertainment. The promotion lives inside the content — it arrives naturally as part of the video, so the viewer receives it willingly. By the final seconds, the viewer understands what the creator offers and feels pulled toward it.
+
+Write each field:
+
+title — Short plain-language label for this video.
+
+hook — The first thing spoken on camera. Under 15 words. This is pure entertainment — it earns attention the same way any viral video does. Written the way the creator actually speaks.
+
+body — The spoken script. 4-7 short sentences. Open with the entertainment. Let the promotion arrive organically inside the content so the viewer receives it as part of the experience. By the final sentences, the viewer understands what the creator sells and wants it. Written as natural speech.
+
+cta — One sentence that moves the viewer toward the creator's product or service. It feels like the natural next step from what they just watched.
+
+reelHook — On-screen text for the first 1-2 seconds. Under 10 words. Earns attention through entertainment value.
+
+reelBody — 2-4 short text overlays during the video. Early overlays support the entertainment. Later overlays land the promotion.
+
+reelCta — Final on-screen text. One short phrase that drives the viewer toward the creator's product or service.
+
+caption — 1-2 sentences written casually. Reinforces the promotion as a personal opinion or perspective the creator holds.
+
+designNotes — Brief filming direction: the visual concept, how the entertainment and promotion work together on screen, any specific shots or transitions that sell it.
+
+hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
+
+Write as this creator — someone who knows how to entertain an audience and knows their product is worth promoting. Confident, natural, specific to THIS video.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   const promptParts = [
@@ -9968,62 +9977,39 @@ const server = http.createServer((req, res) => {
       }
     }
     const REGULAR_PLAN_PROMPT = [
-      'Return valid JSON matching the schema exactly.',
+      `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
       '',
-      `Niche: ${nicheStyle}`,
+      'Each post is a piece of entertainment that belongs on TikTok or Instagram Reels. The creator is building an audience by being consistently worth watching. They are someone in the {niche} space who makes content people enjoy and choose to follow.',
       '',
-      'Generate exactly the requested number of items for these post_keys:',
+      'Return JSON only. Each item:',
+      '{',
+      '  "post_key": "<key>",',
+      '  "topic_signature": "One sentence describing the specific, filmable moment this video captures. Name real details — objects, settings, reactions, situations.",',
+      '  "angle": "What makes this video entertaining or worth watching, stated in one sentence."',
+      '}',
       '',
-      postKeys.join(', '),
-      '',
-      'Each item includes:',
-      '',
-      '- post_key',
-      '',
-      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
-      '',
-      '- angle: one clear strategy sentence stating what the viewer notices, what it means, and the practical move they can apply',
-      '',
-      'Write artifact as a specific thing the camera can show in the niche.',
-      '',
-      'Write condition as the single observed detail that changes what happens next.',
-      '',
-      'Write next_move as the immediate action taken because of that detail.',
-      '',
-      'Write angle so it drives entertaining execution and a useful takeaway from the same moment.',
-      '',
-      'Use concrete values in every field.',
-      '',
-      'Use only schema keys.',
+      'Every topic_signature is something a person can film on their phone.',
+      'Every angle describes why a viewer would watch this to the end and share it.',
+      'Each of the 30 days is a different video concept.',
+      `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
+
     const BRAND_BRAIN_PLAN_PROMPT = [
-      'Return valid JSON matching the schema exactly.',
+      `You are planning 30 days of short-form video ads for a ${nicheStyle} creator who sells ${nicheStyle} products/services.`,
       '',
-      `Niche: ${nicheStyle}`,
+      'Each post is an entertaining video that TikTok and Instagram\'s algorithm will push to a wide audience. It is also an ad — by the end, the viewer wants what this creator is selling. The video earns attention as entertainment first and delivers the promotion inside that entertainment.',
       '',
-      'Generate exactly the requested number of items for these post_keys:',
+      'Return JSON only. Each item:',
+      '{',
+      '  "post_key": "<key>",',
+      '  "topic_signature": "One sentence describing the specific, filmable entertainment concept for this video. Name real details — situations, reactions, visual moments that hold attention.",',
+      '  "angle": "One sentence describing how this video leads the viewer toward wanting the creator\'s product or service by the end."',
+      '}',
       '',
-      postKeys.join(', '),
-      '',
-      'Each item includes:',
-      '',
-      '- post_key',
-      '',
-      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
-      '',
-      '- angle: one clear strategy sentence written as current_focus → deciding_signal → replacement_rule, proven by the observed condition in the same moment',
-      '',
-      'Write artifact as a specific thing the camera can show in the niche.',
-      '',
-      'Write condition as the single observed detail that proves what matters.',
-      '',
-      'Write next_move as the immediate action taken because of that detail.',
-      '',
-      'Write angle so it creates a real priority shift and a rule the viewer can apply.',
-      '',
-      'Use concrete values in every field.',
-      '',
-      'Use only schema keys.',
+      'Every topic_signature is an entertaining video concept a person can film on their phone.',
+      'Every angle describes the path from entertainment to promotion within this video.',
+      'Each of the 30 days is a different video concept.',
+      `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
     const planPrompt = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const planSchema = {
