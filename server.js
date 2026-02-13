@@ -2341,6 +2341,7 @@ async function generateAndValidateSinglePost({
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
+        model: 'gpt-4o',
         days: 1,
         startDay: day,
         postsPerDay: 1,
@@ -9870,7 +9871,7 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-  async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
+async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '', usedSignatures = [] }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -9900,6 +9901,9 @@ const server = http.createServer((req, res) => {
     }
     const cleanPromoting = toPlainString(promoting || '');
     const hasPromoting = plannerMode === 'brand_brain' && Boolean(cleanPromoting.trim());
+    const cleanUsedSignatures = Array.isArray(usedSignatures)
+      ? usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
+      : [];
     const singlePostKey = toPlainString(postKeys[0] || '');
   const REGULAR_PLAN_PROMPT = [
       `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
@@ -9944,7 +9948,11 @@ const server = http.createServer((req, res) => {
       'Each of the 30 days is a different video concept.',
       `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
-    const planPrompt = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
+    const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
+    const usedSignaturesLine = cleanUsedSignatures.length
+      ? `These topics have already been used for other days. Pick a completely different concept: ${cleanUsedSignatures.join('; ')}`
+      : '';
+    const planPrompt = [planPromptBase, usedSignaturesLine].filter(Boolean).join('\n');
     const planSchema = {
       type: 'object',
       additionalProperties: false,
@@ -10015,7 +10023,7 @@ const server = http.createServer((req, res) => {
     };
     let response = null;
     const planTokensUsed = planMaxTokens;
-    response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.4 });
+    response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.9 });
     const content = extractContentText(response);
     let parsed = null;
     try {
@@ -11488,12 +11496,16 @@ const server = http.createServer((req, res) => {
         let plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         let plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
         let plannedTopicSignature = toPlainString(body?.topic_signature || body?.topicSignature || '') || plannedTitle;
+        const plannerUsedSignatures = Array.isArray(body?.usedSignatures)
+          ? body.usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
+          : [];
         const plannerNiche = nicheStyle || 'General';
         const onePlan = await generateCalendarPlan({
           requestId,
           mode: selectedMode,
           nicheStyle: plannerNiche,
           promoting,
+          usedSignatures: plannerUsedSignatures,
           days: 1,
           startDay: day,
           postsPerDay: 1,

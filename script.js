@@ -6018,6 +6018,7 @@ const createCard = (post) => {
       idea,
       title,
       type,
+      body,
       caption,
       description,
       hashtags,
@@ -6192,10 +6193,10 @@ const createCard = (post) => {
       return [];
     };
     const tagArr = normalizeTags().map((h) => h.trim()).filter(Boolean);
+    const displayTags = tagArr.slice(0, 5).map((h) => (h.startsWith('#') ? h : `#${h}`));
+    const hashtagsText = displayTags.join(' ');
     if (tagArr.length) {
-      const displayTags = tagArr.slice(0, 5).map((h) => (h.startsWith('#') ? h : `#${h}`));
-      const remaining = tagArr.length - displayTags.length;
-      hashtagsEl.textContent = displayTags.join(' ');
+      hashtagsEl.textContent = hashtagsText;
     }
 
     const createDetailRow = (label, value, className, options = {}) => {
@@ -6371,9 +6372,7 @@ const createCard = (post) => {
     };
 
     const formatLabel = typeof format === 'string' ? format.trim() : '';
-    const formatEl = formatLabel && formatLabel.toLowerCase() === 'reel'
-      ? null
-      : createDetailRow('Format', format, 'calendar-card__format');
+    const formatEl = null;
 
     const designNotesText = designNotes || '';
     const designNotesEl = designNotesText ? createDetailRow('Design Notes', designNotesText, 'calendar-card__design') : null;
@@ -6430,18 +6429,7 @@ const createCard = (post) => {
       row.append(labelEl, textEl);
       return row;
     };
-    const executionNoteLines = [];
-    if (formatLabel && formatLabel.toLowerCase() !== 'reel') {
-      executionNoteLines.push(createExecutionNoteLine('Format', formatLabel));
-    }
-    const executionNotesEl = executionNoteLines.length
-      ? (() => {
-          const container = document.createElement('div');
-          container.className = 'calendar-card__execution-notes';
-          container.append(...executionNoteLines);
-          return container;
-        })()
-      : null;
+    const executionNotesEl = null;
 
     const createPrimaryCtaRow = (value) => {
       const row = document.createElement('div');
@@ -6456,16 +6444,16 @@ const createCard = (post) => {
     const collapsedCtaEl = null;
 
     const buildReelScript = () => {
-      const label = 'Reel Script';
+      const sourceLabel = 'Reel Script';
       const structured = {
         hook: videoScript.hook || '',
         body: videoScript.body || '',
         cta: videoScript.cta || '',
       };
       if (!structured.hook && !structured.body && !structured.cta) return null;
-      structured.hook = stripLeadingSectionLabelLine(structured.hook || '', label);
-      structured.body = stripLeadingSectionLabelLine(structured.body || '', label);
-      structured.cta = stripLeadingSectionLabelLine(structured.cta || '', label);
+      structured.hook = stripLeadingSectionLabelLine(structured.hook || '', sourceLabel);
+      structured.body = stripLeadingSectionLabelLine(structured.body || '', sourceLabel);
+      structured.cta = stripLeadingSectionLabelLine(structured.cta || '', sourceLabel);
       structured.hook = stripLeadingSectionLabelPrefix(structured.hook || '');
       structured.body = stripLeadingSectionLabelPrefix(structured.body || '');
       structured.cta = stripLeadingSectionLabelPrefix(structured.cta || '');
@@ -6474,7 +6462,7 @@ const createCard = (post) => {
       const header = document.createElement('div');
       header.className = 'detail-row__top';
       const labelEl = document.createElement('strong');
-      labelEl.textContent = `${label}:`;
+      labelEl.textContent = `Reel Fields:`;
       const scriptParts = [];
       const addLine = (prefix, text) => {
         const line = document.createElement('div');
@@ -6499,9 +6487,9 @@ const createCard = (post) => {
       header.append(labelEl, copyBtn);
       const bodyWrap = document.createElement('div');
       bodyWrap.className = 'detail-text calendar-card__video-script';
-      addLine('Hook', structured.hook || '');
-      addLine('Body', structured.body || '');
-      addLine('CTA', structured.cta || '');
+      addLine('Reel Hook', structured.hook || '');
+      addLine('Reel Body', structured.body || '');
+      addLine('Reel CTA', structured.cta || '');
       row.append(header, bodyWrap);
       const copyText = scriptParts.join('\n');
       copyBtn.addEventListener('click', async () => {
@@ -6515,6 +6503,12 @@ const createCard = (post) => {
       return row;
     };
     const videoScriptEl = buildReelScript();
+    const titleDetailEl = createDetailRow('Title', title || '', 'calendar-card__title-detail');
+    const hookDetailEl = createDetailRow('Hook', typeof entry.hook === 'string' ? entry.hook.trim() : hookDisplayText, 'calendar-card__hook-detail');
+    const bodyDetailEl = createDetailRow('Body', typeof body === 'string' ? body.trim() : '', 'calendar-card__body-detail');
+    const ctaDetailEl = createDetailRow('CTA', cta || '', 'calendar-card__cta-detail');
+    const captionDetailEl = createDetailRow('Caption', canonicalCaption, 'calendar-card__caption-detail');
+    const hashtagsDetailEl = createDetailRow('Hashtags', hashtagsText || (typeof hashtags === 'string' ? hashtags.trim() : ''), 'calendar-card__hashtags-detail');
 
     const variantText =
       entry.variants && (entry.variants.igCaption || entry.variants.tiktokCaption || entry.variants.linkedinCaption)
@@ -6564,7 +6558,7 @@ const createCard = (post) => {
     const safeText = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
     const dayLabel = `Day ${String(entryDay).padStart(2, '0')}${entries.length > 1 ? ` • Post ${idx + 1}` : ''}`;
     fullTextParts.push(dayLabel);
-    if (idea || title) fullTextParts.push(`Idea: ${safeText(idea || title)}`);
+    if (idea || title) fullTextParts.push(`Title: ${safeText(title || idea)}`);
     if (type) fullTextParts.push(`Type: ${type}`);
     if (caption) fullTextParts.push(`Caption: ${safeText(caption)}`);
     if (Array.isArray(hashtags) && hashtags.length) {
@@ -6572,7 +6566,6 @@ const createCard = (post) => {
     } else if (typeof hashtags === 'string' && hashtags.trim()) {
       fullTextParts.push(`Hashtags: ${hashtags}`);
     }
-    if (format) fullTextParts.push(`Format: ${format}`);
     if (cta) fullTextParts.push(`CTA: ${safeText(cta)}`);
     if (designNotes) fullTextParts.push(`Design Notes: ${safeText(designNotes)}`);
     if (repurpose && Array.isArray(repurpose) && repurpose.length) fullTextParts.push(`Repurpose: ${repurpose.join(' • ')}`);
@@ -6580,10 +6573,10 @@ const createCard = (post) => {
     if (weeklyPromo) fullTextParts.push(`Promo: ${weeklyPromo}`);
     if (videoScript && (videoScript.hook || videoScript.body || videoScript.cta)) {
       const scriptLines = [];
-      if (videoScript.hook) scriptLines.push(safeText(videoScript.hook));
-      if (videoScript.body) scriptLines.push(safeText(videoScript.body));
-      if (videoScript.cta) scriptLines.push(safeText(videoScript.cta));
-      fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
+      if (videoScript.hook) scriptLines.push(`Reel Hook: ${safeText(videoScript.hook)}`);
+      if (videoScript.body) scriptLines.push(`Reel Body: ${safeText(videoScript.body)}`);
+      if (videoScript.cta) scriptLines.push(`Reel CTA: ${safeText(videoScript.cta)}`);
+      fullTextParts.push(scriptLines.join('\n'));
     }
     if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
       if (Array.isArray(engagementScripts.commentPrompts) && engagementScripts.commentPrompts.length) {
@@ -6711,12 +6704,6 @@ const createCard = (post) => {
     topRow.className = 'pc-card-top';
     typeEl.classList.add('pc-chip', 'pc-chip--pillar');
     if (typeEl.textContent.trim()) topRow.appendChild(typeEl);
-    if (format) {
-      const formatChip = document.createElement('span');
-      formatChip.className = 'pc-chip pc-chip--format';
-      formatChip.textContent = format;
-      topRow.appendChild(formatChip);
-    }
     const titleWrap = document.createElement('div');
     titleWrap.className = 'pc-card-title';
     titleWrap.appendChild(ideaEl);
@@ -6774,12 +6761,16 @@ const createCard = (post) => {
       return acc;
     };
 
-    const captionAcc = buildAccordion('Caption', [captionRow, hashtagsEl]);
-    const scriptAcc = buildAccordion('Reel Script', videoScriptEl);
+    const captionAcc = buildAccordion('Caption', [captionDetailEl, hashtagsDetailEl]);
+    const scriptAcc = buildAccordion('Reel Hook / Reel Body / Reel CTA', videoScriptEl);
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
     const detailsAcc = buildAccordion('Details', [
       infoRows,
+      titleDetailEl,
+      hookDetailEl,
+      bodyDetailEl,
+      ctaDetailEl,
       formatEl,
       executionNotesEl,
       promoSlotEl,
@@ -9253,6 +9244,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         jobs.push({ day, slot, post_key: `day-${day}-slot-${slot}` });
       }
     }
+    const usedTopicSignatures = [];
     console.log(`[Calendar][Pool] jobs=${jobs.length} concurrency=${POOL_CONCURRENCY}`);
     let completedPosts = 0;
     let generatedCalendarId = null;
@@ -9343,6 +9335,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         isFirst: job.day === 1 && job.slot === 0,
         calendarMode: isBrandBrainEnabledForGeneration() ? 'brand_brain' : 'regular',
         brandBrainEnabled: isBrandBrainEnabledForGeneration(),
+        usedSignatures: usedTopicSignatures.slice(-24),
       };
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
@@ -9432,6 +9425,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (!isActiveRun()) return null;
       try {
         const post = await fetchSinglePost(job, 1);
+        const signature = String(post?.topic_signature || post?.title || '').trim();
+        if (signature) usedTopicSignatures.push(signature);
         completedPosts += 1;
         updateProgress();
         console.log(`[Calendar] job ${idx + 1}/${jobs.length} success day=${job.day} slot=${job.slot}`);
@@ -9441,6 +9436,8 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         if (err?.code === 'CALENDAR_POST_GENERATION_FAILED' && ['PARSE_FAILED', 'PARSE_FAIL', 'SCHEMA_MISMATCH', 'SCHEMA_FAIL', 'SCHEMA_CONTRACT_VIOLATION'].includes(String(retryReason || ''))) {
           console.log(`[Calendar] job ${idx + 1}/${jobs.length} retry day=${job.day} slot=${job.slot}`);
           const post = await fetchSinglePost(job, 2);
+          const signature = String(post?.topic_signature || post?.title || '').trim();
+          if (signature) usedTopicSignatures.push(signature);
           completedPosts += 1;
           updateProgress();
           console.log(`[Calendar] job ${idx + 1}/${jobs.length} success day=${job.day} slot=${job.slot}`);
