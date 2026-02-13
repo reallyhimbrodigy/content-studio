@@ -2289,7 +2289,6 @@ async function generateAndValidateSinglePost({
   recentTitles = [],
   calendarId = '',
   usedSignatures = [],
-  enableMomentRewrite = true,
 }) {
   let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
@@ -2438,64 +2437,6 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       const post = validation.post;
-      let parsedMomentSpecForRewrite = null;
-      if (typeof momentSpec === 'string' && momentSpec.trim().startsWith('{')) {
-        try {
-          const parsed = JSON.parse(momentSpec);
-          if (parsed && typeof parsed === 'object' && parsed.artifact && parsed.observed_condition && parsed.next_move) {
-            parsedMomentSpecForRewrite = parsed;
-          }
-        } catch {}
-      }
-      if (enableMomentRewrite && parsedMomentSpecForRewrite) {
-        try {
-          const rewriteDraft = {
-            title: post.title,
-            hook: post.hook,
-            body: post.body,
-            cta: post.cta,
-            reelHook: post.reelHook,
-            reelBody: post.reelBody,
-            reelCta: post.reelCta,
-            caption: post.caption,
-            designNotes: post.designNotes,
-            hashtags: Array.isArray(post.hashtags) ? post.hashtags.slice() : [],
-          };
-          const rewrittenRaw = await rewritePostFromMomentSpec({
-            mode: calendarMode,
-            nicheStyle,
-            momentSpec: JSON.stringify(parsedMomentSpecForRewrite),
-            postDraft: rewriteDraft,
-            requestId,
-            postKey: post_key,
-          });
-          if (rewrittenRaw && typeof rewrittenRaw === 'object') {
-            const rewrittenValidation = normalizeAndValidateCalendarPost({
-              rawModelJson: rewrittenRaw,
-              serverFields,
-              schema,
-            });
-            if (rewrittenValidation.ok) {
-              console.log('[Calendar][Rewrite] success', { requestId, post_key, mode: calendarMode });
-              return rewrittenValidation.post;
-            }
-            console.warn('[Calendar][Rewrite] invalid_output', {
-              requestId,
-              post_key,
-              mode: calendarMode,
-              reason: rewrittenValidation.reason || 'SCHEMA_FAIL',
-              field: rewrittenValidation.field || 'unknown',
-            });
-          }
-        } catch (rewriteErr) {
-          console.warn('[Calendar][Rewrite] skipped', {
-            requestId,
-            post_key,
-            mode: calendarMode,
-            error: rewriteErr?.message || rewriteErr,
-          });
-        }
-      }
       console.log('[Calendar][Job] success', {
         requestId,
         mode: calendarMode,
@@ -3659,6 +3600,7 @@ function formatMomentAnchorLine(momentAnchor = {}) {
 }
 
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
+  const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
@@ -3669,39 +3611,61 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     'POST_CONTEXT',
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
+    `calendar_index: ${startDay}`,
     opts.postKey ? `post_key: ${opts.postKey}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.plannedAngle ? `planned_angle: ${opts.plannedAngle}` : null,
+    opts.plannedAngle ? 'planned_angle is the strategy for how this moment wins attention and what the viewer walks away with.' : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
     momentAnchorLine || null,
-    opts.momentSpec ? `moment_spec: ${opts.momentSpec}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    'moment_spec is the source of truth for what happens on screen and what is said.',
-    'Every output field is a different surface rendering of the same moment_spec.',
-    'Render title, hook, body, cta, reel, caption, designNotes, and hashtags from the same moment progression.',
+    'Select one filmable real-world moment for this post and keep it consistent across every field.',
+    'moment_anchor defines the moment as: artifact (on-screen), condition (observed detail), next_move (immediate action).',
+    'Use planned_title + planned_angle + pillar_style + topic_signature to choose the most specific version of the moment.',
+    'Render title, hook, body, reel script, caption, designNotes, and hashtags from the same moment.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-Render one complete short-form post from moment_spec.
-Use moment_spec.artifact and moment_spec.observed_condition to anchor title and hook.
-Use moment_spec.observed_condition, moment_spec.meaning, and moment_spec.next_move to drive body and cta.
-Use moment_spec.beats.spoken to shape reelHook, reelBody, and reelCta as a spoken progression.
-Use moment_spec.beats.on_screen and moment_spec.proof.visual to write designNotes as a filmable visual plan.
-Write caption as a tight recap of the same artifact, condition, meaning, and next move.
-Write hashtags[] for the specific artifact-condition topic and niche.
+Goal: produce one entertaining short-form post that feels native to TikTok/Instagram and is immediately usable for this niche.
+Deliver one clear, practical takeaway the viewer can apply, learned directly from the on-screen moment.
+Write as if this is spoken on camera while the moment is happening.
+
+Source of truth: POST_CONTEXT moment_anchor (and planned_title / planned_angle / topic_signature / pillar_style when present).
+Build every field from that same moment and that same strategy.
+
+Field intent:
+
+title: label the moment in concrete terms the niche would recognize
+hook: the first spoken line that drops into the moment and reveals the condition
+body: the meaning of the condition and the practical move that follows
+cta: the natural continuation action that follows from next_move
+reelHook / reelBody / reelCta: spoken delivery of hook/body/cta as on-camera lines with clear pauses
+caption: tight reinforcement of the takeaway anchored to the moment
+designNotes: what to show so artifact and condition are instantly obvious on screen
+hashtags[]: tags that match the exact topic and moment
 
 Return one complete post.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Render one complete short-form post from moment_spec.
-Use moment_spec.artifact and moment_spec.observed_condition to anchor title and hook.
-Use moment_spec.observed_condition, moment_spec.meaning, and moment_spec.next_move to drive body and cta.
-Integrate moment_spec.brand_brain.wrong_focus, deciding_signal, cost, and replacement_rule into body and caption while staying inside the same moment.
-Use moment_spec.beats.spoken to shape reelHook, reelBody, and reelCta as a spoken progression.
-Use moment_spec.beats.on_screen and moment_spec.proof.visual to write designNotes as a filmable visual plan.
-Write hashtags[] for the specific artifact-condition topic, niche, and priority flip.
+Goal: produce one competitive short-form ad that wins attention and changes what the viewer prioritizes.
+Use one filmable moment to make the viewer switch from a tempting focus to the deciding signal, then land the replacement rule that wins.
+Write as if this is spoken on camera while the moment is happening, with the moment proving the claim.
+
+Source of truth: POST_CONTEXT moment_anchor (and planned_title / planned_angle / topic_signature / pillar_style when present).
+Build every field from that same moment and that same priority shift.
+
+Field intent:
+
+title: name the mis-priority and the decisive focus in concrete terms
+hook: the opening spoken line that triggers the priority switch inside the moment
+body: reveal the deciding signal, state the practical cost it controls, and state the replacement rule as the new priority
+cta: one next action that applies the replacement rule in the same scene
+reelHook / reelBody / reelCta: spoken delivery that makes the flip obvious from the moment
+caption: concise reinforcement of the new priority and rule anchored to the same proof
+designNotes: what to show so the deciding signal is visible and believable on screen
+hashtags[]: tags that match the exact topic and priority flip
 
 Return one complete post.`;
 
@@ -5272,17 +5236,17 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
 const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
 const REGULAR_PILLAR_STYLE_RULES = {
-  education: `Choose one mechanism visible in the moment. Name the detail that changes the next move.`,
-  social_proof: `Choose one observable behavior difference. Show who reacts and what they do next.`,
-  lifestyle: `Choose one lived-in cue that filters interest in practice. Show the reaction shift.`,
-  promotion: `Choose one moment where a specific detail increases momentum. Show the leverage point.`,
+  education: 'Choose a real moment where one observed detail explains what to do next.',
+  social_proof: 'Choose a real moment where other people’s reaction reveals what matters and what happens next.',
+  lifestyle: 'Choose a real moment where a lived-in cue reveals fit and changes the next move.',
+  promotion: 'Choose a real moment where a specific detail creates momentum and changes what happens next.',
 };
 
 const BRAND_BRAIN_PILLAR_STYLE_RULES = {
-  education: `Choose one widely believed rule that fails. Replace it with the real deciding signal.`,
-  social_proof: `Choose one status tell professionals read. Show the cost of missing it.`,
-  lifestyle: `Choose one public desire that misleads. Replace it with the private filter that decides outcomes.`,
-  promotion: `Choose one wrong tactic people default to. Replace it with the separating move that actually wins.`,
+  education: 'Choose a real moment where a popular rule loses to the deciding signal, then state the replacement rule.',
+  social_proof: 'Choose a real moment where a status tell is visible, the cost is controlled by it, and the replacement rule wins.',
+  lifestyle: 'Choose a real moment where a public desire misleads, the private deciding signal appears, and the replacement rule follows.',
+  promotion: 'Choose a real moment where the default tactic fails, the deciding signal appears, and the separating move becomes obvious.',
 };
 
 function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0, calendarId = '' } = {}) {
@@ -9975,196 +9939,6 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-  const REGULAR_MOMENT_SPEC_PROMPT = [
-    'Generate one filmable short-form moment spec for this post.',
-    'Ground it in a specific niche moment with concrete observable detail.',
-    'Define artifact, observed_condition, meaning, and next_move as one continuous progression.',
-    'Write beats.on_screen as concise visual progression and beats.spoken as concise spoken progression.',
-    'Write proof.visual and proof.consequence as clear evidence and resulting change in the same moment.',
-    'Return JSON mapped to the provided keys.',
-  ].join('\n');
-
-  const BRAND_BRAIN_MOMENT_SPEC_PROMPT = [
-    'Generate one filmable short-form moment spec for this post.',
-    'Ground it in a specific niche moment with concrete observable detail.',
-    'Define artifact, observed_condition, meaning, and next_move as one continuous progression.',
-    'Write beats.on_screen as concise visual progression and beats.spoken as concise spoken progression.',
-    'Write proof.visual and proof.consequence as clear evidence and resulting change in the same moment.',
-    'Set brand_brain.wrong_focus, deciding_signal, cost, and replacement_rule from the same moment progression.',
-    'Return JSON mapped to the provided keys.',
-  ].join('\n');
-
-  async function generateMomentSpec({
-    mode,
-    nicheStyle,
-    postKey,
-    pillar,
-    plannedTitle,
-    plannedAngle,
-    topicSignature,
-    pillarStyle,
-    seed,
-    requestId,
-  }) {
-    if (!OPENAI_API_KEY) {
-      const err = new Error('OPENAI_API_KEY not set');
-      err.statusCode = 500;
-      throw err;
-    }
-    const resolvedMode = String(mode || '').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-    const prompt = [
-      resolvedMode === 'brand_brain' ? BRAND_BRAIN_MOMENT_SPEC_PROMPT : REGULAR_MOMENT_SPEC_PROMPT,
-      `mode: ${resolvedMode}`,
-      `niche: ${toPlainString(nicheStyle || 'unspecified')}`,
-      postKey ? `post_key: ${toPlainString(postKey)}` : null,
-      pillar ? `pillar: ${toPlainString(pillar)}` : null,
-      plannedTitle ? `planned_title: ${toPlainString(plannedTitle)}` : null,
-      plannedAngle ? `planned_angle: ${toPlainString(plannedAngle)}` : null,
-      topicSignature ? `topic_signature: ${toPlainString(topicSignature)}` : null,
-      pillarStyle ? `pillar_style: ${toPlainString(pillarStyle)}` : null,
-      seed ? `seed: ${toPlainString(seed)}` : null,
-    ].filter(Boolean).join('\n');
-    const brandBrainSchema = {
-      type: 'object',
-      additionalProperties: false,
-      required: ['wrong_focus', 'deciding_signal', 'cost', 'replacement_rule'],
-      properties: {
-        wrong_focus: { type: 'string', minLength: 1 },
-        deciding_signal: { type: 'string', minLength: 1 },
-        cost: { type: 'string', minLength: 1 },
-        replacement_rule: { type: 'string', minLength: 1 },
-      },
-    };
-    const momentSchema = {
-      type: 'object',
-      additionalProperties: false,
-      required: ['moment_spec'],
-      properties: {
-        moment_spec: {
-          type: 'object',
-          additionalProperties: false,
-          required: resolvedMode === 'brand_brain'
-            ? ['artifact', 'observed_condition', 'meaning', 'next_move', 'beats', 'proof', 'brand_brain']
-            : ['artifact', 'observed_condition', 'meaning', 'next_move', 'beats', 'proof'],
-          properties: {
-            artifact: { type: 'string', minLength: 1 },
-            observed_condition: { type: 'string', minLength: 1 },
-            meaning: { type: 'string', minLength: 1 },
-            next_move: { type: 'string', minLength: 1 },
-            beats: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['on_screen', 'spoken'],
-              properties: {
-                on_screen: { type: 'string', minLength: 1 },
-                spoken: { type: 'string', minLength: 1 },
-              },
-            },
-            proof: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['visual', 'consequence'],
-              properties: {
-                visual: { type: 'string', minLength: 1 },
-                consequence: { type: 'string', minLength: 1 },
-              },
-            },
-            brand_brain: brandBrainSchema,
-          },
-        },
-      },
-    };
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-      max_tokens: 800,
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'calendar_moment_spec', strict: true, schema: momentSchema },
-      },
-    });
-    const options = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-    };
-    const completion = await withTimeout(
-      withOpenAiSlot(() => openAIRequest(options, payload)),
-      15000,
-      { requestId, phase: 'moment_spec' }
-    );
-    const messageContent = completion?.choices?.[0]?.message?.content;
-    const text = typeof messageContent === 'string'
-      ? messageContent
-      : Array.isArray(messageContent)
-        ? messageContent
-          .map((item) => (typeof item === 'string' ? item : item?.text || item?.value || item?.content || ''))
-          .join('')
-        : '';
-    const parsed = text ? JSON.parse(text) : null;
-    return parsed && parsed.moment_spec && typeof parsed.moment_spec === 'object' ? parsed : null;
-  }
-
-  async function rewritePostFromMomentSpec({ mode, nicheStyle, momentSpec, postDraft, requestId, postKey }) {
-    if (!OPENAI_API_KEY) {
-      const err = new Error('OPENAI_API_KEY not set');
-      err.statusCode = 500;
-      throw err;
-    }
-    const resolvedMode = String(mode || '').toLowerCase() === 'brand_brain' ? 'brand_brain' : 'regular';
-    const rewritePrompt = [
-      `mode: ${resolvedMode}`,
-      `niche: ${toPlainString(nicheStyle || 'unspecified')}`,
-      postKey ? `post_key: ${toPlainString(postKey)}` : null,
-      'Rewrite the post so every field renders the same moment_spec with tight field-level alignment.',
-      'moment_spec is the source of truth.',
-      'Return one complete post object with the same schema keys.',
-      `moment_spec: ${toPlainString(momentSpec || '')}`,
-      `post_draft: ${JSON.stringify(postDraft || {})}`,
-    ].filter(Boolean).join('\n');
-    const schema = buildCalendarPostSchema(1, 30, resolvedMode);
-    const payload = JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: rewritePrompt }],
-      temperature: 0.2,
-      max_tokens: 900,
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'calendar_post_rewrite', strict: true, schema },
-      },
-    });
-    const options = {
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-    };
-    const completion = await withTimeout(
-      withOpenAiSlot(() => openAIRequest(options, payload)),
-      15000,
-      { requestId, phase: 'moment_rewrite' }
-    );
-    const messageContent = completion?.choices?.[0]?.message?.content;
-    const text = typeof messageContent === 'string'
-      ? messageContent
-      : Array.isArray(messageContent)
-        ? messageContent
-          .map((item) => (typeof item === 'string' ? item : item?.text || item?.value || item?.content || ''))
-          .join('')
-        : '';
-    return text ? JSON.parse(text) : null;
-  }
-
   async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
@@ -10206,17 +9980,17 @@ const server = http.createServer((req, res) => {
       '',
       '- post_key',
       '',
-      '- topic_signature: moment seed written as artifact + observed condition + next_move in a short filmable scene descriptor',
+      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
       '',
-      '- angle: viewer takeaway label',
+      '- angle: one clear strategy sentence stating what the viewer notices, what it means, and the practical move they can apply',
       '',
-      'Write artifact as a specific thing the camera can show.',
+      'Write artifact as a specific thing the camera can show in the niche.',
       '',
       'Write condition as the single observed detail that changes what happens next.',
       '',
       'Write next_move as the immediate action taken because of that detail.',
       '',
-      'Write angle as a helpful outcome the viewer can apply immediately.',
+      'Write angle so it drives entertaining execution and a useful takeaway from the same moment.',
       '',
       'Use concrete values in every field.',
       '',
@@ -10235,17 +10009,17 @@ const server = http.createServer((req, res) => {
       '',
       '- post_key',
       '',
-      '- topic_signature: moment seed written as artifact + observed condition + next_move in a short filmable scene descriptor',
+      '- topic_signature: one filmable on-screen moment written as artifact + observed condition + next_move',
       '',
-      '- angle: priority flip label written as current_focus → deciding_signal → replacement_rule',
+      '- angle: one clear strategy sentence written as current_focus → deciding_signal → replacement_rule, proven by the observed condition in the same moment',
       '',
-      'Write artifact as a specific thing the camera can show.',
+      'Write artifact as a specific thing the camera can show in the niche.',
       '',
       'Write condition as the single observed detail that proves what matters.',
       '',
       'Write next_move as the immediate action taken because of that detail.',
       '',
-      'Write angle so it clearly reorders what the viewer should prioritize.',
+      'Write angle so it creates a real priority shift and a rule the viewer can apply.',
       '',
       'Use concrete values in every field.',
       '',
@@ -10521,75 +10295,23 @@ const server = http.createServer((req, res) => {
         err.details = { reason: 'SCHEMA_MISMATCH', day: slot.day, post_key: slot.post_key };
         throw err;
       }
-      const topicSignature = toPlainString(planItem.topic_signature || '');
-      const plannedAngle = toPlainString(planItem.angle || '');
+      const variation = deriveVariation(slot.post_key);
+      const momentSpec = toPlainString(planItem.topic_signature || '');
+      const parsedAnchor = parseTopicSignature(momentSpec);
+      const momentAnchor = {
+        artifact: parsedAnchor.artifact,
+        condition: parsedAnchor.condition,
+        next_move: parsedAnchor.next_move,
+        angle: toPlainString(planItem.angle || ''),
+        topic_signature: momentSpec,
+      };
       console.log('[Calendar][PlanItem]', {
         post_key: slot.post_key,
         mode: calendarMode,
-        topic_signature: topicSignature,
-        angle: plannedAngle,
+        topic_signature: momentSpec,
+        angle: toPlainString(planItem.angle || ''),
       });
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
-      const pillarRules = calendarMode === 'brand_brain'
-        ? BRAND_BRAIN_PILLAR_STYLE_RULES
-        : REGULAR_PILLAR_STYLE_RULES;
-      const pillarStyle = pillarRules[pillarForSlot] || '';
-      const angleSeed = buildAngleSeed({
-        mode: calendarMode,
-        pillar: pillarForSlot,
-        day: slot.day,
-        slotIndex: slot.slotIndex,
-        calendarId,
-      });
-      let momentSpecObject = null;
-      try {
-        const generated = await generateMomentSpec({
-          mode: calendarMode,
-          nicheStyle,
-          postKey: slot.post_key,
-          pillar: pillarForSlot,
-          plannedTitle: topicSignature,
-          plannedAngle,
-          topicSignature,
-          pillarStyle,
-          seed: angleSeed,
-          requestId,
-        });
-        momentSpecObject = generated?.moment_spec && typeof generated.moment_spec === 'object'
-          ? generated.moment_spec
-          : null;
-        if (momentSpecObject) {
-          console.log('[Calendar][MomentSpec] success', {
-            requestId,
-            post_key: slot.post_key,
-            mode: calendarMode,
-          });
-        }
-      } catch (momentErr) {
-        console.warn('[Calendar][MomentSpec] skipped', {
-          requestId,
-          post_key: slot.post_key,
-          mode: calendarMode,
-          error: momentErr?.message || momentErr,
-        });
-      }
-      const fallbackAnchor = parseTopicSignature(topicSignature);
-      const momentAnchor = momentSpecObject
-        ? {
-          artifact: toPlainString(momentSpecObject.artifact || ''),
-          condition: toPlainString(momentSpecObject.observed_condition || ''),
-          next_move: toPlainString(momentSpecObject.next_move || ''),
-          angle: plannedAngle,
-          topic_signature: topicSignature,
-        }
-        : {
-          artifact: fallbackAnchor.artifact,
-          condition: fallbackAnchor.condition,
-          next_move: fallbackAnchor.next_move,
-          angle: plannedAngle,
-          topic_signature: topicSignature,
-        };
-      const momentSpec = momentSpecObject ? JSON.stringify(momentSpecObject) : topicSignature;
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
         nicheStyle,
@@ -10600,12 +10322,16 @@ const server = http.createServer((req, res) => {
         slotIndex: slot.slotIndex,
         postsPerDay,
         post_key: slot.post_key,
-        plannedTitle: topicSignature,
-        plannedAngle,
-        topicSignature,
+        plannedTitle: planItem.topic_signature,
+        plannedAngle: planItem.angle,
+        topicSignature: momentSpec,
         momentAnchor,
         momentSpec,
-        angleLabel: plannedAngle || '',
+        renderStyle: variation.render_style,
+        beatShape: variation.beat_shape,
+        revealOrder: variation.reveal_order,
+        pov: variation.pov,
+        angleLabel: planItem.angle || '',
         pillarKey: pillarForSlot,
         requestId,
         loggingContext,
@@ -10617,7 +10343,6 @@ const server = http.createServer((req, res) => {
         calendarId,
         usedSignatures,
         qualityState: { signatureMap: new Map() },
-        enableMomentRewrite: true,
       });
     };
     const results = [];
