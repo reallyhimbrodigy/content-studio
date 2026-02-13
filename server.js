@@ -3273,9 +3273,9 @@ function buildBrandBrainDirective(settings = {}) {
   if (!settings || !settings.enabled) return '';
   return [
     'BRAND BRAIN DIRECTIVE',
-    'Build posts that win distribution by creating immediate curiosity and a clear payoff inside a real moment.',
-    'Use one artifact and one inspectable condition to drive a priority shift through signal, cost, and replacement rule.',
-    'Write the sequence as a filmable moment that can be delivered as spoken beats.',
+    'Create a post that flips priority inside one concrete moment.',
+    'Express the flip as: current focus → deciding signal → practical cost → replacement rule.',
+    'Keep all four parts inside the same moment with one artifact and one condition.',
   ].join('\n');
 }
 
@@ -3531,55 +3531,45 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    (opts.momentAnchor || opts.topicSignature) ? `moment_anchor: ${String(opts.momentAnchor || opts.topicSignature).trim()}` : null,
-    'Use POST_CONTEXT to choose one specific filmable moment.',
-    'Generate every field as a translation of moment_anchor.',
-    'Keep the same artifact, condition, and next move across the entire post.',
+    'Use this context to pick one concrete moment a viewer can picture, then make every field express that same moment with different wording.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
-Goal: produce consistently good short-form content for this niche that feels native to TikTok/Instagram.
-Generate from moment_anchor as the source of truth.
+Goal: generate one short-form post that feels native to TikTok/Instagram and is immediately usable.
+Choose one specific, real-world moment the niche actually experiences.
+Make the moment concrete by naming: what is being looked at/handled, what changed/was noticed, and what happens next because of it.
+Write for attention: open mid-action, reveal the key detail fast, then land a clear takeaway and next step without sounding like an ad.
 
-Write as a sequence of audience-facing beats:
-Open inside the moment.
-Make the artifact visible.
-Name the condition the audience can verify.
-Show the next move the condition causes.
+Field intent (same moment, different surfaces):
 
-Field intent:
-title: name the specific moment topic in concrete terms
-hook: spoken opening that drops into the moment immediately
-body: the condition, what it changes, and the next move
-cta: the natural continuation action from the same moment
-reelHook / reelBody / reelCta: spoken delivery beats that match the same moment
-caption: tight written version of the same beats
-designNotes: what to show so the artifact and condition are obvious
-hashtags[]: tags that match the same moment topic
+title: a concrete label for the moment
+hook: the first beat of the moment with the key detail
+body: the meaning of the detail and the next move, explained plainly
+cta: the next move stated naturally in the same scene
+reelHook / reelBody / reelCta: spoken delivery of the same beats, matching how people talk on short-form video
+caption: a tight reinforcement of the same moment and takeaway
+designNotes: what to show on-screen so the artifact + detail are obvious instantly
+hashtags[]: tags that match the exact topic and moment
 
 Return one complete post.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `MODE: BRAND_BRAIN
 
-Goal: produce a winning short-form ad that outperforms average niche content by driving retention, replays, shares, and saves.
-Generate from moment_anchor as the source of truth.
-Use the moment to re-rank what the viewer prioritizes.
+Goal: generate a short-form post that wins attention and changes what the viewer prioritizes, using one concrete moment.
+Pick one real moment the niche experiences, then use it to flip the viewer’s focus: what they usually look at vs the signal that actually decides outcomes.
+Make the flip legible inside the moment by naming: the tempting focus, the deciding signal, the practical cost of missing it, and the replacement rule.
+Write for platform performance: open with a pattern-break inside the moment, deliver the signal fast, make the cost vivid, then land the replacement rule and next step.
 
-Write as a sequence of audience-facing beats:
-Open with a pattern-break detail inside the moment.
-Name the decisive signal inside the moment.
-State the practical cost that follows from ignoring that signal.
-State the replacement rule as the next move in the same moment.
+Field intent (same moment, different surfaces):
 
-Field intent:
-title: name the mis-priority and the decisive focus in concrete terms
-hook: spoken opening that expresses the priority shift inside the moment
-body: signal, cost, and replacement rule tied to the same artifact and condition
-cta: one action that applies the replacement rule immediately
-reelHook / reelBody / reelCta: spoken delivery beats that match the same moment
-caption: concise persuasive version of the same shift
-designNotes: what to show so the signal is proven on screen
-hashtags[]: tags that match the same topic and priority shift
+title: the mis-priority and the decisive focus, stated concretely
+hook: the flip stated inside the moment
+body: signal → cost → replacement rule, all anchored to the same moment
+cta: one next move that applies the replacement rule in practice
+reelHook / reelBody / reelCta: spoken delivery of the same beats, matching short-form cadence
+caption: a concise reinforcement of the flip and rule
+designNotes: what to show so the signal is proven on-screen inside the moment
+hashtags[]: tags that match the exact topic and flip
 
 Return one complete post.`;
 
@@ -9878,15 +9868,13 @@ const server = http.createServer((req, res) => {
   const planPrompt = [
     'Return valid JSON matching the schema exactly.',
     `Niche: ${nicheStyle}`,
-    'Generate exactly ' + expectedCount + ' items for these post_keys:',
+    'Generate exactly the requested number of items for these post_keys:',
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- topic_signature',
-    '- angle',
-    'Write topic_signature as a filmable moment anchor that can be turned into on-screen visuals and spoken beats.',
-    'Topic_signature includes one artifact, one inspectable condition, and the next move that condition triggers.',
-    'Angle names the decision dynamic that makes the moment compelling to watch and share.',
+    '- topic_signature: a short concrete moment anchor written as artifact + observed condition + next move',
+    '- angle: a short decision-dynamic label that supports a compelling short-form moment',
+    'Write each topic_signature so a viewer can picture the scene immediately.',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
