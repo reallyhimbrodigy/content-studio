@@ -9916,6 +9916,7 @@ const server = http.createServer((req, res) => {
     }
     const cleanPromoting = toPlainString(promoting || '');
     const hasPromoting = plannerMode === 'brand_brain' && Boolean(cleanPromoting.trim());
+    const singlePostKey = toPlainString(postKeys[0] || '');
   const REGULAR_PLAN_PROMPT = [
       `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
       '',
@@ -9927,7 +9928,7 @@ const server = http.createServer((req, res) => {
       '  "topic_signature": "One sentence describing the specific, filmable moment this video captures. Name real details — objects, settings, reactions, situations.",',
       '  "angle": "What makes this video entertaining or worth watching, stated in one sentence."',
       '}',
-      `Use exactly these post_key values, one per item: ${postKeys.join(', ')}`,
+      `Return exactly one item. Use "post_key": "${singlePostKey}" where "${singlePostKey}" is the value provided.`,
       '',
       'Every topic_signature is something a person can film on their phone.',
       'Every angle describes why a viewer would watch this to the end and share it.',
@@ -9952,7 +9953,7 @@ const server = http.createServer((req, res) => {
         ? `  "angle": "One sentence describing how this video leads the viewer toward wanting ${cleanPromoting} by the end."`
         : '  "angle": "One sentence describing how this video leads the viewer toward promotion by the end."',
       '}',
-      `Use exactly these post_key values, one per item: ${postKeys.join(', ')}`,
+      `Return exactly one item. Use "post_key": "${singlePostKey}" where "${singlePostKey}" is the value provided.`,
       '',
       'Every topic_signature is an entertaining video concept a person can film on their phone.',
       'Every angle describes the path from entertainment to promotion within this video.',
@@ -10048,23 +10049,16 @@ const server = http.createServer((req, res) => {
       err.statusCode = 422;
       throw err;
     }
-    const seen = new Set();
-    const keySet = new Set(postKeys);
     const details = [];
     plan.forEach((item, index) => {
       const missing = [];
-      const key = toPlainString(item?.post_key || '');
-      if (!key) missing.push('post_key');
-      if (key && !keySet.has(key)) missing.push('post_key_invalid');
-      if (key && seen.has(key)) missing.push('post_key_duplicate');
-      if (key) seen.add(key);
       const topicSignature = toPlainString(item?.topic_signature || '');
       if (!topicSignature) missing.push('topic_signature');
       const angle = toPlainString(item?.angle || '');
       if (!angle) missing.push('angle');
       if (missing.length) details.push({ index, missing });
     });
-    if (plan.length !== expectedCount || seen.size !== expectedCount || details.length) {
+    if (plan.length !== expectedCount || details.length) {
       const err = new Error('PLAN_SCHEMA_MISMATCH');
       err.code = 'PLAN_SCHEMA_MISMATCH';
       err.statusCode = 422;
@@ -11522,8 +11516,8 @@ const server = http.createServer((req, res) => {
           postKeysOverride: [postKeyValue],
         });
         const onePlanItems = Array.isArray(onePlan?.plan) ? onePlan.plan : [];
-        const onePlanItem = onePlanItems.find((item) => toPlainString(item?.post_key || '') === postKeyValue) || onePlanItems[0] || null;
-        if (!onePlanItem) {
+        const onePlanItem = onePlanItems[0] || null;
+        if (!onePlanItem || !onePlanItem.topic_signature) {
           const err = new Error('PLAN_SCHEMA_MISMATCH');
           err.code = 'PLAN_SCHEMA_MISMATCH';
           err.statusCode = 422;
