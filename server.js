@@ -2272,6 +2272,11 @@ async function generateAndValidateSinglePost({
   plannedAngle,
   topicSignature = '',
   momentAnchor = '',
+  momentSpec = '',
+  renderStyle = '',
+  beatShape = '',
+  revealOrder = '',
+  pov = '',
   angleLabel = '',
   pillarKey,
   requestId,
@@ -2359,6 +2364,11 @@ async function generateAndValidateSinglePost({
         plannedAngle,
         topicSignature,
         momentAnchor,
+        momentSpec,
+        renderStyle,
+        beatShape,
+        revealOrder,
+        pov,
         angleLabel,
         pillarStyle,
         recentTitles,
@@ -3516,6 +3526,30 @@ function pickAngleForPostKey(postKeyValue = '') {
   return PROMPT_ANGLE_OPTIONS[h % PROMPT_ANGLE_OPTIONS.length];
 }
 
+function stableHash(str = '') {
+  const text = String(str || '');
+  let h = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function pickFrom(hash, arr = []) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr[Math.abs(Number(hash) || 0) % arr.length];
+}
+
+function deriveVariation(post_key = '') {
+  const base = stableHash(post_key);
+  return {
+    render_style: pickFrom(base, ['audit', 'walkthrough', 'before_after', 'objection_reply', 'screen_record', 'pov_story']),
+    beat_shape: pickFrom(base >>> 3, ['two_beat', 'three_beat', 'four_beat']),
+    reveal_order: pickFrom(base >>> 7, ['artifact_first', 'condition_first', 'consequence_first']),
+    pov: pickFrom(base >>> 11, ['agent', 'buyer', 'narrator']),
+  };
+}
+
 function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const startDay = Math.max(1, Math.min(30, Number(opts.startDay || 1)));
   const mode = String(opts.calendarMode || 'regular').toLowerCase() === 'brand_brain'
@@ -3528,14 +3562,17 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
     `mode: ${mode}`,
     `niche: ${cleanNiche}`,
     `calendar_index: ${startDay}`,
+    opts.postKey ? `post_key: ${opts.postKey}` : null,
     opts.pillar || opts.targetPillar ? `pillar: ${opts.pillar || opts.targetPillar}` : null,
     plannedTitle ? `planned_title: ${plannedTitle}` : null,
     opts.topicSignature ? `topic_signature: ${opts.topicSignature}` : null,
+    opts.momentSpec ? `moment_spec: ${opts.momentSpec}` : null,
     opts.pillarStyle ? `pillar_style: ${opts.pillarStyle}` : null,
-    'Apply this context to select one concrete moment and align every field.',
-    'First derive MOMENT_SPEC internally from planned_title + pillar_style + niche.',
-    'MOMENT_SPEC includes: artifact (what is visibly on screen or handled), observed_condition (the specific detail noticed), next_move (the immediate action taken because of the condition), scene (where/when/who in one short concrete line), and beats (3–5 short beats describing what happens on-screen).',
-    'Generate every field as a surface expression of the same MOMENT_SPEC; reel script dramatizes trigger and proof, lands next_move, and in Brand Brain carries wrong_focus → deciding_signal → cost → replacement_rule inside the same MOMENT_SPEC.',
+    opts.renderStyle ? `render_style: ${opts.renderStyle}` : null,
+    opts.beatShape ? `beat_shape: ${opts.beatShape}` : null,
+    opts.revealOrder ? `reveal_order: ${opts.revealOrder}` : null,
+    opts.pov ? `pov: ${opts.pov}` : null,
+    'Render a native short-form post using POST_CONTEXT + moment_spec + variation keys. Keep every field aligned to the same on-screen moment.',
   ].filter(Boolean).join('\n');
   const REGULAR_MAIN_PROMPT = `MODE: REGULAR
 
@@ -9850,7 +9887,7 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-  async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay }) {
+  async function generateCalendarPlan({ requestId, mode, nicheStyle, days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '' }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -9864,13 +9901,18 @@ const server = http.createServer((req, res) => {
     const safeDays = Number.isFinite(Number(days)) && Number(days) > 0 ? Number(days) : 1;
     const safeStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const perDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-    const expectedCount = safeDays * perDay;
+    const overrideKeys = Array.isArray(postKeysOverride)
+      ? postKeysOverride.map((item) => toPlainString(item || '')).filter(Boolean)
+      : null;
+    const expectedCount = overrideKeys && overrideKeys.length ? overrideKeys.length : safeDays * perDay;
     const plannerMode = String(mode || 'regular').toLowerCase() === 'brand_brain' ? 'BRAND_BRAIN' : 'REGULAR';
-    const postKeys = [];
-    for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
-      const day = safeStart + dayOffset;
-      for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
-        postKeys.push(postKey(day, slotIndex));
+    const postKeys = overrideKeys && overrideKeys.length ? overrideKeys.slice() : [];
+    if (!postKeys.length) {
+      for (let dayOffset = 0; dayOffset < safeDays; dayOffset += 1) {
+        const day = safeStart + dayOffset;
+        for (let slotIndex = 0; slotIndex < perDay; slotIndex += 1) {
+          postKeys.push(postKey(day, slotIndex));
+        }
       }
     }
   const planPrompt = [
@@ -9881,16 +9923,16 @@ const server = http.createServer((req, res) => {
     postKeys.join(', '),
     'Each item includes:',
     '- post_key',
-    '- topic_signature: a compact MOMENT_SPEC string',
-    '- angle: a short decision-dynamic label that captures the tension driving what happens next',
-    'For REGULAR topic_signature, use: artifact=... | trigger=... | proof=... | next_move=...',
-    'For BRAND_BRAIN topic_signature, use: artifact=... | trigger=... | proof=... | next_move=... | wrong_focus=... | deciding_signal=... | cost=... | replacement_rule=...',
-    'Write each topic_signature as a single-line scene someone can film immediately.',
-    'Artifact is what is visibly on-screen.',
+    '- topic_signature: a compact MOMENT_SPEC single-line string',
+    '- angle: a short decision-dynamic label tied to the same scene',
+    'For REGULAR topic_signature, format as: artifact=... | trigger=... | proof=... | next_move=...',
+    'For BRAND_BRAIN topic_signature, format as: artifact=... | trigger=... | proof=... | next_move=... | wrong_focus=... | deciding_signal=... | cost=... | replacement_rule=...',
+    'Artifact is the visible thing in the scene.',
     'Trigger is the observed condition that changes the decision.',
     'Proof is on-screen evidence that makes the trigger undeniable.',
-    'Next_move is the immediate practical action.',
-    'In BRAND_BRAIN mode, wrong_focus, deciding_signal, cost, and replacement_rule are applied to that same scene and moment.',
+    'Next_move is the immediate practical action in response.',
+    'Write topic_signature as a single-line scene a viewer can picture immediately.',
+    extraInstruction ? extraInstruction : '',
     'Use concrete values in every field.',
     'Use only schema keys.',
   ].join('\n');
@@ -10093,6 +10135,36 @@ const server = http.createServer((req, res) => {
       });
       planItems = Array.isArray(planResult?.plan) ? planResult.plan : [];
     }
+    const hasDuplicateTopicSignatures = (items = []) => {
+      const seen = new Set();
+      for (const item of items) {
+        const sig = toPlainString(item?.topic_signature || '').toLowerCase();
+        if (!sig) continue;
+        if (seen.has(sig)) return true;
+        seen.add(sig);
+      }
+      return false;
+    };
+    if (!Array.isArray(payload?.topicPlan) && hasDuplicateTopicSignatures(planItems)) {
+      try {
+        const rerun = await generateCalendarPlan({
+          requestId,
+          mode: calendarMode,
+          nicheStyle,
+          days: safeDays,
+          startDay: safeStart,
+          postsPerDay,
+          extraInstruction: 'Avoid reusing the same artifact category or the same decision dynamic across items in this batch.',
+        });
+        const rerunPlan = Array.isArray(rerun?.plan) ? rerun.plan : [];
+        if (rerunPlan.length) planItems = rerunPlan;
+      } catch (rerunErr) {
+        console.warn('[Calendar][Plan] dedupe rerun skipped', {
+          requestId,
+          error: rerunErr?.message || rerunErr,
+        });
+      }
+    }
 
     const planByKey = new Map();
     planItems.forEach((item) => {
@@ -10133,6 +10205,8 @@ const server = http.createServer((req, res) => {
         err.details = { reason: 'SCHEMA_MISMATCH', day: slot.day, post_key: slot.post_key };
         throw err;
       }
+      const variation = deriveVariation(slot.post_key);
+      const momentSpec = toPlainString(planItem.topic_signature || '');
       const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
@@ -10146,8 +10220,13 @@ const server = http.createServer((req, res) => {
         post_key: slot.post_key,
         plannedTitle: planItem.topic_signature,
         plannedAngle: planItem.angle,
-        topicSignature: planItem.topic_signature || '',
-        momentAnchor: planItem.topic_signature || '',
+        topicSignature: momentSpec,
+        momentAnchor: momentSpec,
+        momentSpec,
+        renderStyle: variation.render_style,
+        beatShape: variation.beat_shape,
+        revealOrder: variation.reveal_order,
+        pov: variation.pov,
         angleLabel: planItem.angle || '',
         pillarKey: pillarForSlot,
         requestId,
@@ -11394,9 +11473,31 @@ const server = http.createServer((req, res) => {
           ? bodyPillar
           : pickPillarKeyForPostKey(postKeyValue);
 
-        const plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
-        const plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
-        const plannedTopicSignature = toPlainString(body?.topic_signature || body?.topicSignature || '') || plannedTitle;
+        let plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
+        let plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
+        let plannedTopicSignature = toPlainString(body?.topic_signature || body?.topicSignature || '') || plannedTitle;
+        const plannerNiche = nicheStyle || 'General';
+        const onePlan = await generateCalendarPlan({
+          requestId,
+          mode: selectedMode,
+          nicheStyle: plannerNiche,
+          days: 1,
+          startDay: day,
+          postsPerDay: 1,
+          postKeysOverride: [postKeyValue],
+        });
+        const onePlanItems = Array.isArray(onePlan?.plan) ? onePlan.plan : [];
+        const onePlanItem = onePlanItems.find((item) => toPlainString(item?.post_key || '') === postKeyValue) || onePlanItems[0] || null;
+        if (!onePlanItem) {
+          const err = new Error('PLAN_SCHEMA_MISMATCH');
+          err.code = 'PLAN_SCHEMA_MISMATCH';
+          err.statusCode = 422;
+          throw err;
+        }
+        plannedTopicSignature = toPlainString(onePlanItem.topic_signature || '') || plannedTopicSignature;
+        plannedAngle = toPlainString(onePlanItem.angle || '') || plannedAngle;
+        plannedTitle = plannedTopicSignature || plannedTitle;
+        const variation = deriveVariation(postKeyValue);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : undefined;
@@ -11430,6 +11531,11 @@ const server = http.createServer((req, res) => {
             plannedAngle,
             topicSignature: plannedTopicSignature,
             momentAnchor: plannedTopicSignature,
+            momentSpec: plannedTopicSignature,
+            renderStyle: variation.render_style,
+            beatShape: variation.beat_shape,
+            revealOrder: variation.reveal_order,
+            pov: variation.pov,
             angleLabel: plannedAngle || '',
             pillarKey: scheduledPillar,
             requestId,
