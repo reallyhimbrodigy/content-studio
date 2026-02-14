@@ -9235,7 +9235,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const POOL_CONCURRENCY = 6;
+    const POOL_CONCURRENCY = 10;
     const jobs = [];
     for (let day = 1; day <= totalDays; day += 1) {
       for (let slot = 0; slot < normalizedFrequency; slot += 1) {

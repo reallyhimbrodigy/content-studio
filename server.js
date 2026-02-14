@@ -8616,7 +8616,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const payloadObj = {
       model: attemptModel,
       input: [{ role: 'user', content: prompt }],
-      max_output_tokens: Math.max(2000, attemptMaxTokens),
+      max_output_tokens: Math.max(3000, attemptMaxTokens),
       text: { format: responseTextFormat },
     };
     if (Number.isFinite(Number(attemptPresencePenalty))) {
@@ -9990,7 +9990,7 @@ const server = http.createServer((req, res) => {
     const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
     const runPlanRequest = async ({ maxTokens }) => {
       const payload = JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4.1',
         messages: [{ role: 'user', content: planPrompt }],
         max_tokens: maxTokens,
         response_format: {
