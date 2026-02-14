@@ -10202,7 +10202,7 @@ const server = http.createServer((req, res) => {
 
     const maxTokens = Number.isFinite(Number(payload?.maxTokens)) && Number(payload.maxTokens) > 0
       ? Number(payload.maxTokens)
-      : 900;
+      : 1500;
     const requestTimeoutMs = payload?.requestTimeoutMs;
     const temperature = Number.isFinite(Number(payload?.temperature)) ? Number(payload.temperature) : undefined;
     const presencePenalty = Number.isFinite(Number(payload?.presencePenalty))
@@ -11531,7 +11531,7 @@ const server = http.createServer((req, res) => {
           plannedTitle = plannedTopicSignature;
         }
         const variation = deriveVariation(postKeyValue);
-        const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
+        const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1500;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
         const temperature = Number.isFinite(Number(body?.temperature)) ? Number(body.temperature) : undefined;
         const schemaLabel = selectedMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
