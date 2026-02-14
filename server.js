@@ -2341,7 +2341,7 @@ async function generateAndValidateSinglePost({
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
-        model: 'gpt-4o',
+        model: 'gpt-5-mini',
         days: 1,
         startDay: day,
         postsPerDay: 1,
@@ -10012,7 +10012,7 @@ const server = http.createServer((req, res) => {
     const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
     const runPlanRequest = async ({ maxTokens, temperature }) => {
       const payload = JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-5-mini',
         messages: [{ role: 'user', content: planPrompt }],
         temperature,
         max_tokens: maxTokens,
