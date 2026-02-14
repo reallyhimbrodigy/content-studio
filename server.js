@@ -9976,9 +9976,9 @@ const server = http.createServer((req, res) => {
         },
       },
     };
-    const buildRequestOptions = (payloadText, useResponsesApi = false) => ({
+    const buildRequestOptions = (payloadText) => ({
       hostname: 'api.openai.com',
-      path: useResponsesApi ? '/v1/responses' : '/v1/chat/completions',
+      path: '/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -9989,24 +9989,17 @@ const server = http.createServer((req, res) => {
     const planStart = Date.now();
     const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
     const runPlanRequest = async ({ maxTokens }) => {
-      const responseFormat = {
-        type: 'json_schema',
-        json_schema: { name: 'calendar_plan', strict: true, schema: planSchema },
-      };
-      const responseTextFormat = {
-        name: responseFormat?.json_schema?.name,
-        type: responseFormat?.type,
-        strict: responseFormat?.json_schema?.strict,
-        schema: responseFormat?.json_schema?.schema,
-      };
       const payload = JSON.stringify({
-        model: 'gpt-5-mini',
-        input: [{ role: 'user', content: planPrompt }],
-        max_output_tokens: maxTokens,
-        text: { format: responseTextFormat },
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: planPrompt }],
+        max_tokens: maxTokens,
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'calendar_plan', strict: true, schema: planSchema },
+        },
       });
       return withTimeout(
-        withOpenAiSlot(() => openAIResponsesRequest(buildRequestOptions(payload, true), payload)),
+        withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
         60000,
         { requestId, phase: 'plan' }
       );
@@ -10014,15 +10007,11 @@ const server = http.createServer((req, res) => {
     let response = null;
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
-    const extracted = extractStructuredCalendarOutput(response);
-    const content = typeof extracted?.text === 'string' ? extracted.text : '';
+    const content = toPlainString(response?.choices?.[0]?.message?.content || '');
     let parsed = null;
     try {
-      parsed = extracted?.parsed;
-      if (!parsed && content) {
-        const jsonSegment = extractJsonChunk(content) || content;
-        parsed = JSON.parse(jsonSegment);
-      }
+      const jsonSegment = extractJsonChunk(content) || content;
+      parsed = JSON.parse(jsonSegment);
     } catch {
       const err = new Error('PLAN_PARSE_FAILED');
       err.code = 'PLAN_PARSE_FAILED';
