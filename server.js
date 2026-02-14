@@ -10009,7 +10009,7 @@ const server = http.createServer((req, res) => {
       return '';
     };
     const planStart = Date.now();
-    const planMaxTokens = expectedCount >= 30 ? 4000 : 900;
+    const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
     const runPlanRequest = async ({ maxTokens, temperature }) => {
       const payload = JSON.stringify({
         model: 'gpt-4o-mini',

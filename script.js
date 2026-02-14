@@ -9308,6 +9308,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     };
     const plannerPromotingPayload = buildPromotingRequestPayload();
     if (plannerPromotingPayload) Object.assign(plannerPayload, plannerPromotingPayload);
+    const plannerStartedAt = performance.now();
     const plannerResponse = await fetchWithAuth('/api/calendar/plan', {
       method: 'POST',
       headers: {
@@ -9324,6 +9325,11 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       plannerErr.payload = plannerJson;
       throw plannerErr;
     }
+    const plannerCompletedAt = performance.now();
+    const plannerMs = Math.round(plannerCompletedAt - plannerStartedAt);
+    console.log('[Calendar][Timing] Planner complete', {
+      elapsedMs: Math.round(plannerCompletedAt - tStart),
+    });
     const planByPostKey = new Map(
       plannerJson.plan
         .map((item) => ({
@@ -9519,6 +9525,13 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       }
       throw err;
     }
+    const postsCompletedAt = performance.now();
+    const postsMs = Math.round(postsCompletedAt - plannerCompletedAt);
+    console.log('[Calendar][Timing] All posts complete', {
+      elapsedMs: Math.round(postsCompletedAt - tStart),
+      plannerMs,
+      postsMs,
+    });
 
     if (!isActiveRun()) {
       return { posts: [], calendarId: generatedCalendarId, cancelled: true };
