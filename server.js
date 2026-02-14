@@ -9002,10 +9002,14 @@ async function upsertBrandBrainPreference(userId, text) {
 
 const BRAND_BRAIN_DEFAULT_SETTINGS = {
   enabled: false,
+  promoting: '',
 };
 
 function normalizeBrandBrainSettings(input = {}) {
-  return { enabled: Boolean(input?.enabled) };
+  return {
+    enabled: Boolean(input?.enabled),
+    promoting: toPlainString(input?.promoting || '').trim(),
+  };
 }
 
 async function fetchBrandBrainSettings(userId) {
@@ -9028,7 +9032,8 @@ async function fetchBrandBrainSettings(userId) {
     }
     if (!settings || typeof settings !== 'object') settings = {};
     const enabled = Boolean(settings?.brand_brain_enabled);
-    return normalizeBrandBrainSettings({ enabled });
+    const promoting = toPlainString(settings?.brand_brain_promoting || '').trim();
+    return normalizeBrandBrainSettings({ enabled, promoting });
   } catch (err) {
     console.error('[BrandBrain] settings fetch failed', err?.message || err);
     return null;
@@ -9048,7 +9053,11 @@ async function upsertBrandBrainSettings(userId, settings) {
     const current = data?.profile_settings && typeof data.profile_settings === 'object'
       ? data.profile_settings
       : {};
-    const nextSettings = { ...current, brand_brain_enabled: payload.enabled };
+    const nextSettings = {
+      ...current,
+      brand_brain_enabled: payload.enabled,
+      brand_brain_promoting: payload.promoting,
+    };
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('profiles')
       .update({ profile_settings: nextSettings, updated_at: new Date().toISOString() })
@@ -9057,7 +9066,8 @@ async function upsertBrandBrainSettings(userId, settings) {
       .maybeSingle();
     if (updateError) throw updateError;
     const enabled = Boolean(updated?.profile_settings?.brand_brain_enabled);
-    return normalizeBrandBrainSettings({ enabled });
+    const promoting = toPlainString(updated?.profile_settings?.brand_brain_promoting || '').trim();
+    return normalizeBrandBrainSettings({ enabled, promoting });
   } catch (err) {
     console.error('[BrandBrain] settings upsert failed', err?.message || err);
     return null;

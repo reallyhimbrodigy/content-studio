@@ -1,9 +1,13 @@
 const DEFAULT_SETTINGS = {
   enabled: false,
+  promoting: '',
 };
 
 function normalizeSettings(raw = {}) {
-  return { enabled: Boolean(raw?.enabled) };
+  return {
+    enabled: Boolean(raw?.enabled),
+    promoting: String(raw?.promoting || '').trim(),
+  };
 }
 
 export function initBrandBrainPanel({
@@ -22,6 +26,8 @@ export function initBrandBrainPanel({
 
   const statusPill = document.getElementById('brand-brain-status-pill');
   const toggleInput = document.getElementById('brand-brain-enabled');
+  const promotingInput = document.getElementById('promoting-input');
+  const promotingWrap = document.getElementById('promoting-input-wrap');
   const saveIndicator = document.getElementById('brand-brain-save-indicator');
   const applyIndicator = document.getElementById('brand-brain-apply-indicator');
   const closeBtn = document.getElementById('brand-brain-close');
@@ -50,8 +56,15 @@ let saveTimer = null;
     brandModal.dataset.locked = locked ? 'true' : 'false';
   };
 
+  const syncPromotingVisibility = (enabled) => {
+    if (!promotingWrap) return;
+    promotingWrap.style.display = enabled ? '' : 'none';
+  };
+
   const applySettingsToUI = (settings) => {
     if (toggleInput) toggleInput.checked = settings.enabled;
+    if (promotingInput) promotingInput.value = settings.promoting || '';
+    syncPromotingVisibility(settings.enabled);
     updateStatus(settings);
   };
 
@@ -123,7 +136,10 @@ let saveTimer = null;
       updateSaveIndicator('Saving...');
       const resp = await fetchWithAuth('/api/brand-brain/settings', {
         method: 'POST',
-        body: JSON.stringify({ enabled: settings.enabled }),
+        body: JSON.stringify({
+          enabled: settings.enabled,
+          promoting: settings.promoting || '',
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.status === 402 || data?.error === 'upgrade_required') {
@@ -155,6 +171,14 @@ let saveTimer = null;
     persistSettings(currentSettings, { immediate: true });
   };
 
+  const handlePromotingChange = () => {
+    currentSettings = normalizeSettings({
+      ...currentSettings,
+      promoting: promotingInput?.value || '',
+    });
+    persistSettings(currentSettings, { immediate: false });
+  };
+
   const openPanel = async () => {
     if (typeof requireProOrOpenUpgrade === 'function') {
       const gate = requireProOrOpenUpgrade('brand_brain_open');
@@ -172,6 +196,12 @@ let saveTimer = null;
   };
 
   const closePanel = () => {
+    currentSettings = normalizeSettings({
+      ...currentSettings,
+      enabled: Boolean(toggleInput?.checked),
+      promoting: promotingInput?.value || '',
+    });
+    persistSettings(currentSettings, { immediate: true });
     brandModal.style.display = 'none';
     document.documentElement.style.overflow = document.documentElement.dataset.prevOverflow || '';
     document.body.style.overflow = document.body.dataset.prevOverflow || '';
@@ -182,6 +212,11 @@ let saveTimer = null;
 
   if (toggleInput) {
     toggleInput.addEventListener('change', handleToggleChange);
+  }
+  if (promotingInput) {
+    promotingInput.addEventListener('input', handlePromotingChange);
+    promotingInput.addEventListener('change', handlePromotingChange);
+    promotingInput.addEventListener('blur', () => persistSettings(currentSettings, { immediate: true }));
   }
 
   applySettingsToUI(currentSettings);
