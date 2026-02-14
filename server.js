@@ -10020,7 +10020,7 @@ const server = http.createServer((req, res) => {
       });
       return withTimeout(
         withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
-        15000,
+        60000,
         { requestId, phase: 'plan' }
       );
     };
@@ -10068,7 +10068,7 @@ const server = http.createServer((req, res) => {
       elapsedMs: Date.now() - planStart,
       planCount: plan.length,
       maxTokens: planTokensUsed,
-      timeoutMs: 15000,
+      timeoutMs: 60000,
     });
     return { plan };
   }
