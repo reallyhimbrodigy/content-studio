@@ -9986,39 +9986,6 @@ const server = http.createServer((req, res) => {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
     });
-    const extractContentText = (json) => {
-      if (typeof json?.output_text === 'string') return json.output_text;
-      if (Array.isArray(json?.output)) {
-        const outputText = json.output
-          .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
-          .map((chunk) => {
-            if (chunk?.type === 'output_text' && typeof chunk?.text === 'string') return chunk.text;
-            if (typeof chunk?.text === 'string') return chunk.text;
-            return '';
-          })
-          .filter(Boolean)
-          .join('');
-        if (outputText) return outputText;
-      }
-      const messageContent = json?.choices?.[0]?.message?.content;
-      if (!messageContent) return '';
-      if (typeof messageContent === 'string') return messageContent;
-      if (Array.isArray(messageContent)) {
-        return messageContent
-          .map((item) => {
-            if (typeof item === 'string') return item;
-            if (typeof item?.text === 'string') return item.text;
-            if (typeof item?.value === 'string') return item.value;
-            if (typeof item?.content === 'string') return item.content;
-            return '';
-          })
-          .filter(Boolean)
-          .join('');
-      }
-      if (typeof messageContent?.text === 'string') return messageContent.text;
-      if (typeof messageContent?.value === 'string') return messageContent.value;
-      return '';
-    };
     const planStart = Date.now();
     const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
     const runPlanRequest = async ({ maxTokens }) => {
@@ -10047,12 +10014,15 @@ const server = http.createServer((req, res) => {
     let response = null;
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
-    const content = extractContentText(response);
+    const extracted = extractStructuredCalendarOutput(response);
+    const content = typeof extracted?.text === 'string' ? extracted.text : '';
     let parsed = null;
     try {
-      parsed = (response?.output_parsed && typeof response.output_parsed === 'object')
-        ? response.output_parsed
-        : (typeof content === 'string' ? JSON.parse(content) : content);
+      parsed = extracted?.parsed;
+      if (!parsed && content) {
+        const jsonSegment = extractJsonChunk(content) || content;
+        parsed = JSON.parse(jsonSegment);
+      }
     } catch {
       const err = new Error('PLAN_PARSE_FAILED');
       err.code = 'PLAN_PARSE_FAILED';
