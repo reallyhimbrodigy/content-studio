@@ -10035,7 +10035,7 @@ const server = http.createServer((req, res) => {
       const payload = JSON.stringify({
         model: 'gpt-5-mini',
         input: [{ role: 'user', content: planPrompt }],
-        max_completion_tokens: maxTokens,
+        max_output_tokens: maxTokens,
         text: { format: responseTextFormat },
       });
       return withTimeout(
