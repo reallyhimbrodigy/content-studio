@@ -9976,9 +9976,9 @@ const server = http.createServer((req, res) => {
         },
       },
     };
-    const buildRequestOptions = (payloadText) => ({
+    const buildRequestOptions = (payloadText, useResponsesApi = false) => ({
       hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
+      path: useResponsesApi ? '/v1/responses' : '/v1/chat/completions',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -9987,6 +9987,19 @@ const server = http.createServer((req, res) => {
       },
     });
     const extractContentText = (json) => {
+      if (typeof json?.output_text === 'string') return json.output_text;
+      if (Array.isArray(json?.output)) {
+        const outputText = json.output
+          .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+          .map((chunk) => {
+            if (chunk?.type === 'output_text' && typeof chunk?.text === 'string') return chunk.text;
+            if (typeof chunk?.text === 'string') return chunk.text;
+            return '';
+          })
+          .filter(Boolean)
+          .join('');
+        if (outputText) return outputText;
+      }
       const messageContent = json?.choices?.[0]?.message?.content;
       if (!messageContent) return '';
       if (typeof messageContent === 'string') return messageContent;
@@ -10008,26 +10021,38 @@ const server = http.createServer((req, res) => {
     };
     const planStart = Date.now();
     const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
-    const runPlanRequest = async ({ maxTokens, temperature }) => {
+    const runPlanRequest = async ({ maxTokens }) => {
+      const responseFormat = {
+        type: 'json_schema',
+        json_schema: { name: 'calendar_plan', strict: true, schema: planSchema },
+      };
+      const responseTextFormat = {
+        name: responseFormat?.json_schema?.name,
+        type: responseFormat?.type,
+        strict: responseFormat?.json_schema?.strict,
+        schema: responseFormat?.json_schema?.schema,
+      };
       const payload = JSON.stringify({
         model: 'gpt-5-mini',
-        messages: [{ role: 'user', content: planPrompt }],
+        input: [{ role: 'user', content: planPrompt }],
         max_completion_tokens: maxTokens,
-        response_format: { type: 'json_schema', json_schema: { name: 'calendar_plan', strict: true, schema: planSchema } },
+        text: { format: responseTextFormat },
       });
       return withTimeout(
-        withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
+        withOpenAiSlot(() => openAIResponsesRequest(buildRequestOptions(payload, true), payload)),
         60000,
         { requestId, phase: 'plan' }
       );
     };
     let response = null;
     const planTokensUsed = planMaxTokens;
-    response = await runPlanRequest({ maxTokens: planMaxTokens, temperature: 0.9 });
+    response = await runPlanRequest({ maxTokens: planMaxTokens });
     const content = extractContentText(response);
     let parsed = null;
     try {
-      parsed = typeof content === 'string' ? JSON.parse(content) : content;
+      parsed = (response?.output_parsed && typeof response.output_parsed === 'object')
+        ? response.output_parsed
+        : (typeof content === 'string' ? JSON.parse(content) : content);
     } catch {
       const err = new Error('PLAN_PARSE_FAILED');
       err.code = 'PLAN_PARSE_FAILED';
