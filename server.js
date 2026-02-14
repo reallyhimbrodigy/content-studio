@@ -8278,7 +8278,6 @@ async function generateTopicPlan({
   const payload = JSON.stringify({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
     max_completion_tokens: 900,
     response_format: {
       type: 'json_schema',
@@ -8617,7 +8616,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const payloadObj = {
       model: attemptModel,
       input: [{ role: 'user', content: prompt }],
-      temperature: attemptTemperature,
       max_completion_tokens: attemptMaxTokens,
       text: { format: responseTextFormat },
     };
@@ -10014,7 +10012,6 @@ const server = http.createServer((req, res) => {
       const payload = JSON.stringify({
         model: 'gpt-5-mini',
         messages: [{ role: 'user', content: planPrompt }],
-        temperature,
         max_completion_tokens: maxTokens,
         response_format: { type: 'json_schema', json_schema: { name: 'calendar_plan', strict: true, schema: planSchema } },
       });
@@ -10783,7 +10780,6 @@ const server = http.createServer((req, res) => {
           const payload = JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: repairPrompt }],
-            temperature: 0.2,
             max_completion_tokens: Math.max(chunkMinTokens, chunkBaseTokens),
             response_format: {
               type: 'json_schema',
