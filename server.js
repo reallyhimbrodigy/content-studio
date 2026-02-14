@@ -3281,13 +3281,7 @@ if (process.env.CALENDAR_SCHEMA_SELFTEST === '1') {
 }
 
 function buildBrandBrainDirective(settings = {}) {
-  if (!settings || !settings.enabled) return '';
-  return [
-    'BRAND BRAIN DIRECTIVE',
-    'Create a post that flips priority inside one concrete moment.',
-    'Express the flip as: current focus → deciding signal → practical cost → replacement rule.',
-    'Keep all four parts inside the same moment with one artifact and one condition.',
-  ].join('\n');
+  return '';
 }
 
 
@@ -3558,73 +3552,61 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
-  const REGULAR_MAIN_PROMPT = `You are writing one short-form video (TikTok / Instagram Reel) for a ${cleanNiche} creator.
+  const REGULAR_MAIN_PROMPT = `You are a ${cleanNiche} creator. Write one short-form video for TikTok / Instagram Reels.
 
-THE VIDEO CONCEPT: ${opts.topicSignature || ''}
-WHAT MAKES IT WORK: ${opts.plannedAngle || ''}
+THE VIDEO: ${opts.topicSignature || ''}
+WHY IT WORKS: ${opts.plannedAngle || ''}
 PILLAR: ${opts.pillar || opts.targetPillar || ''}
-PILLAR STYLE: ${opts.pillarStyle || ''}
 
-This is a 15-60 second video made to entertain. The creator is building a following by posting content people genuinely enjoy watching. This video should feel like something a viewer finds on their For You Page, watches to the end, and follows the creator because of.
+This creator films on their phone. They talk the way they actually talk — not like a script, not like a presentation. They're the kind of person you'd follow because every video feels like they're talking directly to you about something real.
 
-Write each field:
+title — What this video is about in a few words.
 
-title — Short plain-language label for this video.
+hook — The first thing out of their mouth. It sounds like they just grabbed their phone because they had to tell someone this.
 
-hook — The first thing spoken on camera. Under 15 words. Pulls the viewer in immediately. Written the way the creator actually speaks.
+body — The spoken script for the video. Short sentences. This is how the creator actually talks — specific, natural, like they're telling a friend. Every sentence earns the next one.
 
-body — The spoken script. 3-6 short sentences. This is the video — deliver the entertainment, the story, the moment. Every sentence holds attention. Written as natural speech.
+cta — One casual line at the end. It comes from what just happened in the video.
 
-cta — One casual sentence at the end that gives the viewer a reason to follow or engage. Connected to what just happened in this video.
+reelHook — On-screen text that stops a scroller. A few words.
 
-reelHook — On-screen text for the first 1-2 seconds. Under 10 words. Stops a scroller.
+reelBody — Short text overlays that appear during the video. They add to the story.
 
-reelBody — 1-3 short text overlays that appear during the video to reinforce key moments.
+reelCta — Final on-screen text. Short.
 
-reelCta — Final on-screen text. One short phrase.
+caption — Something the creator would actually type under this video. Casual, personal.
 
-caption — 1-2 sentences written casually. Adds personality or context to this specific video.
+designNotes — How to film this. Simple, realistic — where the creator is, what the viewer sees. This is a phone video, not a commercial.
 
-designNotes — Brief filming direction: where the creator is, what the viewer sees, any visual moments or transitions.
+hashtags — 5-8 relevant hashtags.`;
 
-hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
+  const BRAND_BRAIN_MAIN_PROMPT = `You are a ${cleanNiche} creator. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
-Write the way this creator talks. Short, casual, specific to THIS video.`;
-
-  const BRAND_BRAIN_MAIN_PROMPT = `You are writing one short-form video ad (TikTok / Instagram Reel) for a ${cleanNiche} creator${hasPromoting ? ` who is promoting: ${promoting}.` : '.'}
-
-THE VIDEO CONCEPT: ${opts.topicSignature || ''}
+THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 PILLAR: ${opts.pillar || opts.targetPillar || ''}
-PILLAR STYLE: ${opts.pillarStyle || ''}
 
-This is a 15-60 second video that works as entertainment AND as an ad. The algorithm pushes it because viewers watch it, engage with it, and share it.${hasPromoting ? ` The creator wins because by the end, the viewer wants ${promoting}.` : ''}
+This video is entertainment that happens to make the viewer want something. The creator films on their phone and talks the way they actually talk. The promotion lands because the video earned the viewer's attention first.${hasPromoting ? ` By the end, the viewer wants ${promoting} — not because they were pitched, but because the video made it feel obvious.` : ''}
 
-The video leads with entertainment. The promotion lives inside the content — it arrives naturally as part of the video, so the viewer receives it willingly.${hasPromoting ? ` By the final seconds, the viewer understands ${promoting} and feels pulled toward it.` : ' By the final seconds, the viewer understands what the creator offers and feels pulled toward it.'}
+title — What this video is about in a few words.
 
-Write each field:
+hook — The first thing out of their mouth. Pure entertainment. It sounds like they just grabbed their phone because they had to tell someone this.
 
-title — Short plain-language label for this video.
+body — The spoken script. Short sentences, natural speech. The video opens with something worth watching. The promotion arrives inside that — it feels like part of the story, not a pivot.${hasPromoting ? ` By the end, ${promoting} feels like the obvious next step.` : ''}
 
-hook — The first thing spoken on camera. Under 15 words. This is pure entertainment — it earns attention the same way any viral video does. Written the way the creator actually speaks.
+cta — One line that moves the viewer toward${hasPromoting ? ` ${promoting}` : ' the offer'}. It feels earned, not forced.
 
-body — The spoken script. 4-7 short sentences. Open with the entertainment. Let the promotion arrive organically inside the content so the viewer receives it as part of the experience.${hasPromoting ? ` By the final sentences, the viewer understands ${promoting} and wants it.` : ' By the final sentences, the viewer understands the offer and wants it.'} Written as natural speech.
+reelHook — On-screen text that stops a scroller. A few words. Entertainment first.
 
-cta — One sentence that moves the viewer toward ${hasPromoting ? promoting : 'the creator'}. It feels like the natural next step from what they just watched.
+reelBody — Text overlays during the video. They support the story and land the promotion naturally.
 
-reelHook — On-screen text for the first 1-2 seconds. Under 10 words. Earns attention through entertainment value.
+reelCta — Final on-screen text. Short. Drives action.
 
-reelBody — 2-4 short text overlays during the video. Early overlays support the entertainment. Later overlays land the promotion.
+caption — Something the creator would actually type. Casual, personal.${hasPromoting ? ` Mentions ${promoting} like it's their own opinion, not an ad.` : ''}
 
-reelCta — Final on-screen text. One short phrase that drives the viewer toward ${hasPromoting ? promoting : 'the creator'}.
+designNotes — How to film this. Simple, realistic — phone video, not a production. Where the creator is, what the viewer sees.
 
-caption — 1-2 sentences written casually. Reinforces the promotion as a personal opinion or perspective the creator holds${hasPromoting ? ` about ${promoting}` : ''}.
-
-designNotes — Brief filming direction: the visual concept, how the entertainment and promotion work together on screen, any specific shots or transitions that sell it.
-
-hashtags — 5-8 relevant hashtags mixing broad and niche-specific.
-
-Write as this creator — someone who knows how to entertain an audience and knows ${hasPromoting ? `${promoting} is worth promoting` : 'their offer is worth promoting'}. Confident, natural, specific to THIS video.`;
+hashtags — 5-8 relevant hashtags.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;
@@ -9917,46 +9899,42 @@ const server = http.createServer((req, res) => {
       ? 'Return exactly 30 items, one for each day. Use post_key values "day-1-slot-0" through "day-30-slot-0".'
       : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
     const REGULAR_PLAN_PROMPT = [
-      `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
+      `You are a ${nicheStyle} creator planning 30 days of short-form videos for TikTok and Reels.`,
       '',
-      'Each post is a piece of entertainment that belongs on TikTok or Instagram Reels. The creator is building an audience by being consistently worth watching. They are someone in the {niche} space who makes content people enjoy and choose to follow.',
+      `Each video is something you'd actually film on your phone — a real moment, a quick story, a thing you noticed, an opinion you have, a situation you lived. These are not lessons or presentations. They're the kind of videos that make someone say "I need to follow this person."`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence describing the specific, filmable moment this video captures. Name real details — objects, settings, reactions, situations.",',
-      '  "angle": "What makes this video entertaining or worth watching, stated in one sentence."',
+      '  "topic_signature": "One sentence — the specific moment or situation this video captures.",',
+      '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      'Every topic_signature is something a person can film on their phone.',
-      'Every angle describes why a viewer would watch this to the end and share it.',
-      'Each of the 30 days is a different video concept.',
+      `Every video is different. Pull from different parts of this creator's world — what they see, what they deal with, what surprises them, what frustrates them, what they love.`,
       `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are planning 30 days of short-form video ads for a ${nicheStyle} creator who is promoting: ${cleanPromoting}.`
-        : `You are planning 30 days of short-form video ads for a ${nicheStyle} creator.`,
+        ? `You are a ${nicheStyle} creator planning 30 days of short-form video ads for TikTok and Reels. You are promoting: ${cleanPromoting}.`
+        : `You are a ${nicheStyle} creator planning 30 days of short-form video ads for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Each post is an entertaining video that TikTok and Instagram's algorithm will push to a wide audience. It is also an ad — by the end, the viewer wants ${cleanPromoting}. The video earns attention as entertainment first and delivers the promotion inside that entertainment.`
-        : 'Each post is an entertaining video that TikTok and Instagram\'s algorithm will push to a wide audience. It is also an ad. The video earns attention as entertainment first and delivers the promotion inside that entertainment.',
+        ? `Each video works as entertainment first. Someone scrolling should stop, watch, and enjoy it — and by the end, they want what the creator is offering. That means by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
+        : `Each video works as entertainment first. Someone scrolling should stop, watch, and enjoy it — and by the end, they want what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence describing the specific, filmable entertainment concept for this video. Name real details — situations, reactions, visual moments that hold attention.",',
+      '  "topic_signature": "One sentence — the specific moment or situation this video captures.",',
       hasPromoting
-        ? `  "angle": "One sentence describing how this video leads the viewer toward wanting ${cleanPromoting} by the end."`
-        : '  "angle": "One sentence describing how this video leads the viewer toward promotion by the end."',
+        ? `  "angle": "One sentence — how watching this video leads someone toward ${cleanPromoting}."`
+        : '  "angle": "One sentence — how watching this video leads someone toward the offer."',
       '}',
       plannerCountLine,
       '',
-      'Every topic_signature is an entertaining video concept a person can film on their phone.',
-      'Every angle describes the path from entertainment to promotion within this video.',
-      'Each of the 30 days is a different video concept.',
+      `Every video is different. Pull from different parts of this creator's world.`,
       `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
