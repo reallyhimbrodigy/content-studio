@@ -9871,7 +9871,7 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '', usedSignatures = [] }) {
+  async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '', usedSignatures = [] }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -9905,7 +9905,10 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
       ? usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
       : [];
     const singlePostKey = toPlainString(postKeys[0] || '');
-  const REGULAR_PLAN_PROMPT = [
+    const plannerCountLine = expectedCount === 30 && perDay === 1 && safeStart === 1
+      ? 'Return exactly 30 items, one for each day. Use post_key values "day-1-slot-0" through "day-30-slot-0".'
+      : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
+    const REGULAR_PLAN_PROMPT = [
       `You are planning 30 days of short-form video content for a ${nicheStyle} creator.`,
       '',
       'Each post is a piece of entertainment that belongs on TikTok or Instagram Reels. The creator is building an audience by being consistently worth watching. They are someone in the {niche} space who makes content people enjoy and choose to follow.',
@@ -9916,7 +9919,7 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
       '  "topic_signature": "One sentence describing the specific, filmable moment this video captures. Name real details — objects, settings, reactions, situations.",',
       '  "angle": "What makes this video entertaining or worth watching, stated in one sentence."',
       '}',
-      `Return exactly one item. Use "post_key": "${singlePostKey}" where "${singlePostKey}" is the value provided.`,
+      plannerCountLine,
       '',
       'Every topic_signature is something a person can film on their phone.',
       'Every angle describes why a viewer would watch this to the end and share it.',
@@ -9941,7 +9944,7 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
         ? `  "angle": "One sentence describing how this video leads the viewer toward wanting ${cleanPromoting} by the end."`
         : '  "angle": "One sentence describing how this video leads the viewer toward promotion by the end."',
       '}',
-      `Return exactly one item. Use "post_key": "${singlePostKey}" where "${singlePostKey}" is the value provided.`,
+      plannerCountLine,
       '',
       'Every topic_signature is an entertaining video concept a person can film on their phone.',
       'Every angle describes the path from entertainment to promotion within this video.',
@@ -10006,7 +10009,7 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
       return '';
     };
     const planStart = Date.now();
-    const planMaxTokens = 900;
+    const planMaxTokens = expectedCount >= 30 ? 4000 : 900;
     const runPlanRequest = async ({ maxTokens, temperature }) => {
       const payload = JSON.stringify({
         model: 'gpt-4o-mini',
@@ -11496,32 +11499,37 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
         let plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         let plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
         let plannedTopicSignature = toPlainString(body?.topic_signature || body?.topicSignature || '') || plannedTitle;
-        const plannerUsedSignatures = Array.isArray(body?.usedSignatures)
-          ? body.usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
-          : [];
-        const plannerNiche = nicheStyle || 'General';
-        const onePlan = await generateCalendarPlan({
-          requestId,
-          mode: selectedMode,
-          nicheStyle: plannerNiche,
-          promoting,
-          usedSignatures: plannerUsedSignatures,
-          days: 1,
-          startDay: day,
-          postsPerDay: 1,
-          postKeysOverride: [postKeyValue],
-        });
-        const onePlanItems = Array.isArray(onePlan?.plan) ? onePlan.plan : [];
-        const onePlanItem = onePlanItems[0] || null;
-        if (!onePlanItem || !onePlanItem.topic_signature) {
-          const err = new Error('PLAN_SCHEMA_MISMATCH');
-          err.code = 'PLAN_SCHEMA_MISMATCH';
-          err.statusCode = 422;
-          throw err;
+        const hasProvidedPlan = Boolean(plannedTopicSignature && plannedAngle);
+        if (!hasProvidedPlan) {
+          const plannerUsedSignatures = Array.isArray(body?.usedSignatures)
+            ? body.usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
+            : [];
+          const plannerNiche = nicheStyle || 'General';
+          const onePlan = await generateCalendarPlan({
+            requestId,
+            mode: selectedMode,
+            nicheStyle: plannerNiche,
+            promoting,
+            usedSignatures: plannerUsedSignatures,
+            days: 1,
+            startDay: day,
+            postsPerDay: 1,
+            postKeysOverride: [postKeyValue],
+          });
+          const onePlanItems = Array.isArray(onePlan?.plan) ? onePlan.plan : [];
+          const onePlanItem = onePlanItems[0] || null;
+          if (!onePlanItem || !onePlanItem.topic_signature) {
+            const err = new Error('PLAN_SCHEMA_MISMATCH');
+            err.code = 'PLAN_SCHEMA_MISMATCH';
+            err.statusCode = 422;
+            throw err;
+          }
+          plannedTopicSignature = toPlainString(onePlanItem.topic_signature || '') || plannedTopicSignature;
+          plannedAngle = toPlainString(onePlanItem.angle || '') || plannedAngle;
+          plannedTitle = plannedTopicSignature || plannedTitle;
+        } else if (!plannedTitle) {
+          plannedTitle = plannedTopicSignature;
         }
-        plannedTopicSignature = toPlainString(onePlanItem.topic_signature || '') || plannedTopicSignature;
-        plannedAngle = toPlainString(onePlanItem.angle || '') || plannedAngle;
-        plannedTitle = plannedTopicSignature || plannedTitle;
         const variation = deriveVariation(postKeyValue);
         const maxTokens = Number.isFinite(Number(body?.maxTokens)) && Number(body.maxTokens) > 0 ? Number(body.maxTokens) : 1400;
         const requestTimeoutMs = Number.isFinite(Number(body?.requestTimeoutMs)) ? Number(body.requestTimeoutMs) : undefined;
@@ -11631,6 +11639,55 @@ async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '
           return sendJson(res, status, { error: err?.message || 'Internal Server Error', requestId });
         }
         return sendJson(res, status, { error: err?.message || 'REGENERATE_ONE_FAILED', requestId });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/calendar/plan' && req.method === 'POST') {
+    (async () => {
+      const requestId = generateRequestId('plan');
+      res.setHeader('x-request-id', requestId);
+      try {
+        const user = await requireSupabaseUser(req);
+        req.user = user;
+        const body = await readJsonBody(req);
+        if (body && typeof body === 'object') body.userId = user.id;
+        const plannerMode = (body?.calendarMode === 'brand_brain' || body?.mode === 'brand_brain' || body?.brandBrainEnabled)
+          ? 'brand_brain'
+          : 'regular';
+        const nicheStyle = toPlainString(body?.nicheStyle || body?.niche || body?.niche_style || '');
+        const promoting = toPlainString(body?.promoting || '');
+        const days = Number.isFinite(Number(body?.totalDays))
+          ? Number(body.totalDays)
+          : (Number.isFinite(Number(body?.days)) ? Number(body.days) : 30);
+        const postsPerDay = Math.max(1, Number.isFinite(Number(body?.postsPerDay)) ? Number(body.postsPerDay) : 1);
+        const startDay = Number.isFinite(Number(body?.startDay))
+          ? Number(body.startDay)
+          : (Number.isFinite(Number(body?.day)) ? Number(body.day) : 1);
+        const usedSignatures = Array.isArray(body?.usedSignatures)
+          ? body.usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
+          : [];
+        const planResult = await generateCalendarPlan({
+          requestId,
+          mode: plannerMode,
+          nicheStyle: nicheStyle || 'General',
+          promoting,
+          days,
+          startDay,
+          postsPerDay,
+          usedSignatures,
+        });
+        return sendJson(res, 200, {
+          plan: Array.isArray(planResult?.plan) ? planResult.plan : [],
+          requestId,
+        });
+      } catch (err) {
+        const status = err?.statusCode || err?.status || 500;
+        if (status >= 500) {
+          return sendJson(res, status, { error: err?.message || 'Internal Server Error', requestId });
+        }
+        return sendJson(res, status, { error: err?.message || 'PLAN_FAILED', requestId });
       }
     })();
     return;

@@ -6461,8 +6461,6 @@ const createCard = (post) => {
       row.className = 'calendar-card__video calendar-card__detail-row';
       const header = document.createElement('div');
       header.className = 'detail-row__top';
-      const labelEl = document.createElement('strong');
-      labelEl.textContent = `Reel Fields:`;
       const scriptParts = [];
       const addLine = (prefix, text) => {
         const line = document.createElement('div');
@@ -6484,12 +6482,12 @@ const createCard = (post) => {
         <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
         <rect x="4" y="5.5" width="8" height="10" rx="2"/>
       </svg>`;
-      header.append(labelEl, copyBtn);
+      header.append(copyBtn);
       const bodyWrap = document.createElement('div');
       bodyWrap.className = 'detail-text calendar-card__video-script';
-      addLine('Reel Hook', structured.hook || '');
-      addLine('Reel Body', structured.body || '');
-      addLine('Reel CTA', structured.cta || '');
+      addLine('Hook', structured.hook || '');
+      addLine('Body', structured.body || '');
+      addLine('CTA', structured.cta || '');
       row.append(header, bodyWrap);
       const copyText = scriptParts.join('\n');
       copyBtn.addEventListener('click', async () => {
@@ -6762,7 +6760,7 @@ const createCard = (post) => {
     };
 
     const captionAcc = buildAccordion('Caption', [captionDetailEl, hashtagsDetailEl]);
-    const scriptAcc = buildAccordion('Reel Hook / Reel Body / Reel CTA', videoScriptEl);
+    const scriptAcc = buildAccordion('Reel Script', videoScriptEl);
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
     const detailsAcc = buildAccordion('Details', [
@@ -9210,7 +9208,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       runSignal.addEventListener('abort', () => batchAbortController.abort(), { once: true });
     }
   }
-  let abortScheduling = false;
+    let abortScheduling = false;
   const optionsRunId = typeof options.runId === 'number' ? options.runId : null;
   const thisRunId = optionsRunId || currentGenerationRunId || Date.now();
   const isActiveRun = () => window.__calendarGenActiveRunId === runToken && currentGenerationRunId === thisRunId;
@@ -9294,6 +9292,57 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       return results;
     };
 
+    if (typeof payloadUserId === 'undefined') {
+      payloadUserId = await payloadUserIdPromise;
+    }
+    const plannerPayload = {
+      nicheStyle,
+      userId: payloadUserId,
+      totalDays,
+      days: totalDays,
+      startDay: 1,
+      postsPerDay: normalizedFrequency,
+      calendarMode: isBrandBrainEnabledForGeneration() ? 'brand_brain' : 'regular',
+      brandBrainEnabled: isBrandBrainEnabledForGeneration(),
+      usedSignatures: usedTopicSignatures.slice(-24),
+    };
+    const plannerPromotingPayload = buildPromotingRequestPayload();
+    if (plannerPromotingPayload) Object.assign(plannerPayload, plannerPromotingPayload);
+    const plannerResponse = await fetchWithAuth('/api/calendar/plan', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(plannerPayload),
+      signal: batchSignal,
+    });
+    const plannerJson = await plannerResponse.json().catch(() => null);
+    if (!plannerResponse.ok || !plannerJson || !Array.isArray(plannerJson.plan)) {
+      const plannerErr = new Error(plannerJson?.error || `planner_failed_${plannerResponse.status}`);
+      plannerErr.status = plannerResponse.status;
+      plannerErr.payload = plannerJson;
+      throw plannerErr;
+    }
+    const planByPostKey = new Map(
+      plannerJson.plan
+        .map((item) => ({
+          key: String(item?.post_key || '').trim(),
+          topic_signature: String(item?.topic_signature || '').trim(),
+          angle: String(item?.angle || '').trim(),
+        }))
+        .filter((item) => item.key)
+        .map((item) => [item.key, item])
+    );
+    const missingPlanKeys = jobs
+      .map((job) => job.post_key)
+      .filter((key) => !planByPostKey.has(key));
+    if (missingPlanKeys.length) {
+      const plannerErr = new Error('planner_missing_post_keys');
+      plannerErr.payload = { missingPlanKeys: missingPlanKeys.slice(0, 10) };
+      throw plannerErr;
+    }
+
     const updateProgress = () => {
       const btn = document.getElementById('generate-calendar');
       const textSpan = btn?.querySelector('.btn-text');
@@ -9337,6 +9386,13 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         brandBrainEnabled: isBrandBrainEnabledForGeneration(),
         usedSignatures: usedTopicSignatures.slice(-24),
       };
+      const planned = planByPostKey.get(job.post_key);
+      if (planned?.topic_signature && planned?.angle) {
+        payload.topic_signature = planned.topic_signature;
+        payload.angle = planned.angle;
+        payload.plannedTitle = planned.topic_signature;
+        payload.plannedAngle = planned.angle;
+      }
       const voiceLockPayload = buildVoiceLockRequestPayload();
       if (voiceLockPayload) Object.assign(payload, voiceLockPayload);
       const targetAudiencePayload = buildTargetAudienceRequestPayload();
