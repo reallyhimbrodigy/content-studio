@@ -6479,7 +6479,7 @@ const createCard = (post) => {
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'detail-copy-btn';
-      copyBtn.setAttribute('aria-label', `Copy ${label}`);
+      copyBtn.setAttribute('aria-label', 'Copy Reel Fields');
       copyBtn.innerHTML = `<svg class="detail-copy-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
         <path d="M6 7.5V4.5C6 3.39543 6.89543 2.5 8 2.5H14C15.1046 2.5 16 3.39543 16 4.5V12.5C16 13.6046 15.1046 14.5 14 14.5H11"/>
         <rect x="4" y="5.5" width="8" height="10" rx="2"/>
