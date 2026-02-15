@@ -7,7 +7,8 @@
     "start": "node server.js",
     "export-logos": "node tools/export-logos.js",
     "test:e2e": "npx playwright test tests/e2e.spec.js",
-    "build:css": "node build.js"
+    "build:css": "node build.js",
+    "test:analysis": "node test-analysis.js"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
@@ -27,5 +28,6 @@
   },
   "engines": {
     "node": ">=18 <22"
-  }
+  },
+  "type": "module"
 }

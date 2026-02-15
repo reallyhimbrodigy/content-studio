@@ -9975,7 +9975,7 @@ const server = http.createServer((req, res) => {
       },
     });
     const planStart = Date.now();
-    const planMaxTokens = expectedCount >= 30 ? 2500 : 900;
+    const planMaxTokens = expectedCount >= 30 ? 1800 : 900;
     const runPlanRequest = async ({ maxTokens }) => {
       const payload = JSON.stringify({
         model: 'gpt-4.1-mini',
