@@ -8475,7 +8475,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const payloadObj = {
       model: attemptModel,
       input: [{ role: 'user', content: prompt }],
-      max_output_tokens: Math.max(3000, attemptMaxTokens),
+      max_output_tokens: Math.max(4000, attemptMaxTokens),
       text: { format: responseTextFormat },
     };
     if (Number.isFinite(Number(attemptPresencePenalty))) {
