@@ -2278,7 +2278,6 @@ async function generateAndValidateSinglePost({
   revealOrder = '',
   pov = '',
   angleLabel = '',
-  pillarKey,
   requestId,
   loggingContext = {},
   maxTokens,
@@ -4274,7 +4273,7 @@ function containsMustAvoidToken(text = '', mustAvoid = []) {
   return false;
 }
 
-function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pillarSchedule = null) {
+function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1) {
   const slots = [];
   const perDay = Math.max(1, Number(postsPerDay) || 1);
   for (let i = 0; i < totalPosts; i += 1) {
@@ -5136,25 +5135,9 @@ function ensureEngagementScriptsFallback(post = {}, nicheStyle = '') {
 }
 
 const CALENDAR_PILLARS = ['Education', 'Social Proof', 'Promotion', 'Lifestyle'];
-const CALENDAR_PILLAR_KEYS = ['education', 'social_proof', 'promotion', 'lifestyle'];
-const REGULAR_PILLAR_STYLE_RULES = {
-  education: 'Choose a real moment where one observed detail explains what to do next.',
-  social_proof: 'Choose a real moment where other people’s reaction reveals what matters and what happens next.',
-  lifestyle: 'Choose a real moment where a lived-in cue reveals fit and changes the next move.',
-  promotion: 'Choose a real moment where a specific detail creates momentum and changes what happens next.',
-};
-
-const BRAND_BRAIN_PILLAR_STYLE_RULES = {
-  education: 'Choose a real moment where a popular rule loses to the deciding signal, then state the replacement rule.',
-  social_proof: 'Choose a real moment where a status tell is visible, the cost is controlled by it, and the replacement rule wins.',
-  lifestyle: 'Choose a real moment where a public desire misleads, the private deciding signal appears, and the replacement rule follows.',
-  promotion: 'Choose a real moment where the default tactic fails, the deciding signal appears, and the separating move becomes obvious.',
-};
-
-function buildAngleSeed({ mode = 'regular', pillar = '', day = 1, slotIndex = 0, calendarId = '' } = {}) {
+function buildAngleSeed({ mode = 'regular', day = 1, slotIndex = 0, calendarId = '' } = {}) {
   const raw = [
     String(mode || 'regular'),
-    String(pillar || ''),
     Number.isFinite(Number(day)) ? Number(day) : 1,
     Number.isFinite(Number(slotIndex)) ? Number(slotIndex) : 0,
     String(calendarId || ''),
@@ -5297,45 +5280,16 @@ function makePrng(seed) {
 }
 
 function pickPillarKeyForPostKey(postKeyValue = '') {
-  const rand = makePrng(seedFromString(`pillar|${String(postKeyValue || '')}`));
-  const idx = Math.floor(rand() * CALENDAR_PILLAR_KEYS.length);
-  return CALENDAR_PILLAR_KEYS[idx] || CALENDAR_PILLAR_KEYS[0];
+  return '';
 }
 
 function computePillarTargets(totalSlots) {
-  const total = Math.max(0, Number.isFinite(Number(totalSlots)) ? Number(totalSlots) : 0);
-  const base = CALENDAR_PILLARS.length ? Math.floor(total / CALENDAR_PILLARS.length) : 0;
-  const rem = CALENDAR_PILLARS.length ? total % CALENDAR_PILLARS.length : 0;
-  const targets = {};
-  CALENDAR_PILLARS.forEach((pillar, idx) => {
-    targets[pillar] = base + (idx < rem ? 1 : 0);
-  });
-  return targets;
+  return {};
 }
 
 function buildPillarSchedule(totalSlots, rand = null) {
   const total = Math.max(0, Number.isFinite(Number(totalSlots)) ? Number(totalSlots) : 0);
-  const targets = computePillarTargets(total);
-  const remaining = { ...targets };
-  const sequence = [];
-  let prev = null;
-  while (sequence.length < total) {
-    let candidates = CALENDAR_PILLARS.filter((pillar) => remaining[pillar] > 0 && pillar !== prev);
-    if (!candidates.length) {
-      candidates = CALENDAR_PILLARS.filter((pillar) => remaining[pillar] > 0);
-    }
-    const maxRemaining = Math.max(...candidates.map((pillar) => remaining[pillar]));
-    const top = candidates.filter((pillar) => remaining[pillar] === maxRemaining);
-    let pick = top[0];
-    if (top.length > 1 && typeof rand === 'function') {
-      const idx = Math.floor(rand() * top.length);
-      pick = top[idx] || top[0];
-    }
-    sequence.push(pick);
-    remaining[pick] -= 1;
-    prev = pick;
-  }
-  return sequence;
+  return Array.from({ length: total }, () => '');
 }
 
 function postKey(day, slotIndex) {
@@ -5579,49 +5533,19 @@ function assignPostKeys(posts = [], startDay = 1, postsPerDay = 1) {
 }
 
 function normalizeCalendarPillar(value = '') {
-  const text = toPlainString(value || '');
-  if (!text) return '';
-  const exact = CALENDAR_PILLARS.find((pillar) => pillar.toLowerCase() === text.toLowerCase());
-  if (exact) return exact;
-  const lowered = text.toLowerCase();
-  if (lowered.includes('social') && lowered.includes('proof')) return 'Social Proof';
-  if (lowered.includes('promo') || lowered.includes('offer')) return 'Promotion';
-  if (lowered.includes('life')) return 'Lifestyle';
-  if (lowered.includes('educ')) return 'Education';
   return '';
 }
 
 function getCalendarPillarForDay(day) {
-  const numericDay = Number.isFinite(Number(day)) ? Number(day) : 1;
-  const index = Math.max(0, numericDay - 1) % CALENDAR_PILLARS.length;
-  return CALENDAR_PILLARS[index];
+  return '';
 }
 
 function isPillarDistributionBalanced(posts = []) {
-  const counts = CALENDAR_PILLARS.reduce((acc, pillar) => {
-    acc[pillar] = 0;
-    return acc;
-  }, {});
-  posts.forEach((post) => {
-    const normalized = normalizeCalendarPillar(post?.pillar);
-    if (normalized) counts[normalized] += 1;
-  });
-  const values = CALENDAR_PILLARS.map((pillar) => counts[pillar]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const hasAll = values.every((value) => value > 0);
-  return hasAll && max - min <= 1;
+  return true;
 }
 
-function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1, pillarSchedule = null) {
-  return posts.map((post, idx) => {
-    if (!post || typeof post !== 'object') return post;
-    const day = Number.isFinite(Number(post.day))
-      ? Number(post.day)
-      : computePostDayIndex(idx, startDay, postsPerDay);
-    const pillar = pillarSchedule && pillarSchedule[idx] ? pillarSchedule[idx] : getCalendarPillarForDay(day);
-    return { ...post, pillar };
-  });
+function applyPillarSchedule(posts = [], startDay = 1, postsPerDay = 1) {
+  return Array.isArray(posts) ? posts : [];
 }
 
 function ensureCtaFallback(post = {}) {
@@ -5631,12 +5555,9 @@ function ensureCtaFallback(post = {}) {
     sanitizeCtaText(post.call_to_action) ||
     sanitizeCtaText(post.cta_text);
   if (normalizedCta) return normalizedCta;
-  const pillar = String(post.pillar || '').toLowerCase();
   const format = String(post.format || post.platform || '').toLowerCase();
   const promoSlot = !!post.promoSlot;
-  if (promoSlot || pillar.includes('promo')) return 'Book now';
-  if (pillar.includes('social proof') || pillar.includes('proof')) return 'See the proof';
-  if (pillar.includes('engagement')) return 'Share your take';
+  if (promoSlot) return 'Book now';
   if (format.includes('story') || format.includes('reel')) return 'Watch this';
   if (format.includes('static')) return 'Check it out';
   return 'Learn more';
@@ -5645,7 +5566,6 @@ function ensureCtaFallback(post = {}) {
 const MIN_HASHTAGS = 0;
 // Contract: required fields for regenerated posts (mirrors validatePostCompleteness).
 const REQUIRED_POST_FIELDS_REGULAR = [
-  'pillar',
   'title',
   'hook',
   'caption',
@@ -5668,7 +5588,6 @@ const REQUIRED_POST_FIELDS_BRAND = [
 ];
 
 const REQUIRED_POST_FIELD_TYPES_REGULAR = {
-  pillar: 'string',
   title: 'string',
   hook: 'string',
   caption: 'string',
@@ -6564,7 +6483,6 @@ const ALLOWED_CALENDAR_POST_KEYS = (() => {
     'angle',
     'topicCapsule',
     'format',
-    'pillar',
     'hook',
     'reelScript',
     'script',
@@ -7297,11 +7215,10 @@ function ensureRegenDaySignatureAngle(post = {}, dayNumber = 1) {
     next.topic_signature = signature || `day-${String(dayNumber).padStart(2, '0')}`;
   }
   if (!isNonEmptyString(next.angle)) {
-    const pillar = toPlainString(next.pillar || '').toLowerCase();
     const format = toPlainString(next.format || next.type || '').toLowerCase();
     const hook = toPlainString(next.hook || '');
     const hookSnippet = hook.split(/[.!?]/)[0].trim();
-    const combined = [pillar, format].filter(Boolean).join(' ').trim();
+    const combined = [format].filter(Boolean).join(' ').trim();
     next.angle = hookSnippet || combined || 'general angle';
   }
   return next;
@@ -7336,9 +7253,8 @@ function deriveTopicSignature(post = {}) {
     }
   }
   const title = toPlainString(post.title);
-  const pillar = toPlainString(post.pillar);
   const format = toPlainString(post.format);
-  const combined = [title, pillar, format].filter(Boolean).join('|');
+  const combined = [title, format].filter(Boolean).join('|');
   if (combined) {
     return { value: hashTopicSignature(combined), source: 'title' };
   }
@@ -7393,7 +7309,6 @@ function ensureBrandBrainSignatureAngle(post = {}, loggingContext = {}) {
     const capsule = next.topicCapsule || next.topic_capsule;
     const sources = {
       title: Boolean(toPlainString(next.title)),
-      pillar: Boolean(toPlainString(next.pillar)),
       format: Boolean(toPlainString(next.format)),
       topicCapsule: capsule && typeof capsule === 'object',
       topicCapsuleSummary: Boolean(toPlainString(capsule?.summary)),
@@ -7653,7 +7568,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
   const resolvedDay = typeof post.day === 'number' ? post.day : fallbackDay;
   const postKeyValue = toPlainString(post.post_key || post.postKey || '');
   const slotIndexValue = Number.isFinite(Number(post.slotIndex)) ? Number(post.slotIndex) : null;
-  const resolvedPillar = normalizeCalendarPillar(post.pillar) || getCalendarPillarForDay(resolvedDay);
   const rawDesignNotes = post.designNotes ?? post.design_notes ?? post.designNotesRaw;
   const normalizedDesignNotes = normalizeDesignNotesInput(rawDesignNotes);
   const normalized = {
@@ -7672,7 +7586,6 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     format: 'reel',
     formatIntent: toPlainString(post.formatIntent || ''),
     cta: toPlainString(post.cta || ''),
-    pillar: resolvedPillar,
     designNotes: normalizedDesignNotes.value || '',
     repurpose,
     analytics,
@@ -8081,7 +7994,6 @@ function extractCalendarOutput(resp) {
     if (typeof value.post_key !== 'string') return false;
     if (!('day' in value)) return false;
     if (typeof value.title !== 'string') return false;
-    if (typeof value.pillar !== 'string') return false;
     return true;
   };
   let json = null;
@@ -8149,7 +8061,6 @@ async function generateTopicPlan({
   requestId,
   brandBrainDirective,
   context,
-  pillarSchedule,
 }) {
   const cleanNiche = nicheStyle ? ` for ${nicheStyle}` : '';
   const requestLabel = requestId ? `RequestId: ${requestId}\n` : '';
@@ -8158,7 +8069,7 @@ async function generateTopicPlan({
     if (!Array.isArray(context.warnings)) context.warnings = [];
     context.warnings.push({ code: 'TOPIC_PLAN_SKIPPED', detail });
   };
-  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay, pillarSchedule);
+  const assignedSlots = buildTopicPlanSlots(totalPosts, startDay, postsPerDay);
   const schema = {
     type: 'object',
     additionalProperties: false,
@@ -10045,14 +9956,6 @@ const server = http.createServer((req, res) => {
       }
     }
 
-    const seedSource = `${requestId || 'req'}|${nicheStyle || ''}|${safeStart}`;
-    const rand = makePrng(seedFromString(seedSource));
-    const pillarSchedule = buildPillarSchedule(totalPosts, rand);
-    const scheduleByKey = new Map();
-    slots.forEach((slot, idx) => {
-      scheduleByKey.set(slot.post_key, pillarSchedule[idx]);
-    });
-
     let planItems = null;
     if (Array.isArray(payload?.topicPlan) && payload.topicPlan.length) {
       planItems = payload.topicPlan.map((item) => ({
@@ -10154,7 +10057,6 @@ const server = http.createServer((req, res) => {
         topic_signature: momentSpec,
         angle: toPlainString(planItem.angle || ''),
       });
-      const pillarForSlot = pickPillarKeyForPostKey(slot.post_key);
       const recentTitles = buildRecentTitlesList(acceptedPosts.map((post) => post?.title || ''), 10);
       return generateAndValidateSinglePost({
         nicheStyle,
@@ -10175,7 +10077,6 @@ const server = http.createServer((req, res) => {
         revealOrder: variation.reveal_order,
         pov: variation.pov,
         angleLabel: planItem.angle || '',
-        pillarKey: pillarForSlot,
         requestId,
         loggingContext,
         maxTokens,
@@ -10287,15 +10188,6 @@ const server = http.createServer((req, res) => {
     const fallbackStart = Number.isFinite(Number(startDay)) ? Number(startDay) : 1;
     const daysToGenerate = safeDays || (targetCount ? Math.max(1, Math.ceil(targetCount / perDay)) : 1);
     const totalPosts = targetCount || (daysToGenerate * perDay);
-    const seedSource = `${requestId || 'req'}|${nicheStyle || ''}|${fallbackStart}`;
-    const baseSeed = seedFromString(seedSource);
-    const rand = makePrng(baseSeed);
-    const pillarSchedule = buildPillarSchedule(totalPosts, rand);
-    if (requestId && !CALENDAR_VARIETY_LOGGED_REQUESTS.has(requestId)) {
-      console.log('[Calendar][Variety] seed=%s requestId=%s firstTypes=%j', baseSeed, requestId, pillarSchedule.slice(0, 5));
-      CALENDAR_VARIETY_LOGGED_REQUESTS.add(requestId);
-      if (CALENDAR_VARIETY_LOGGED_REQUESTS.size > 5000) CALENDAR_VARIETY_LOGGED_REQUESTS.clear();
-    }
     let topicPlan = Array.isArray(payload?.topicPlan) ? payload.topicPlan : null;
     if (!payload?.skipTopicPlan && !topicPlan) {
       try {
@@ -10310,7 +10202,6 @@ const server = http.createServer((req, res) => {
           requestId: loggingContext?.requestId || null,
           brandBrainDirective,
           context: loggingContext,
-          pillarSchedule,
         });
       } catch (err) {
         console.warn('[Calendar] topic plan failed; continuing without plan', {
@@ -11006,13 +10897,6 @@ const server = http.createServer((req, res) => {
         samples: stillMissing.slice(0, 2),
       });
     }
-    posts = applyPillarSchedule(posts, startDay, perDay, pillarSchedule);
-    console.log('[Calendar] pillar schedule enforced', {
-      requestId: loggingContext?.requestId,
-      startDay,
-      days,
-      postsPerDay: perDay,
-    });
     const qualityState = { signatureMap: new Map() };
     posts.forEach((post, idx) => {
       const day = Number.isFinite(Number(post?.day)) ? Number(post.day) : computePostDayIndex(idx, startDay, perDay);
@@ -11414,11 +11298,6 @@ const server = http.createServer((req, res) => {
           : (Number.isFinite(Number(body?.days)) ? Number(body.days) : 30);
         const totalPosts = totalDays * postsPerDay;
         const scheduleIndex = (day - 1) * postsPerDay + slotIndex;
-        const bodyPillarRaw = typeof body?.pillar === 'string' ? body.pillar : (typeof body?.plannedPillar === 'string' ? body.plannedPillar : '');
-        const bodyPillar = bodyPillarRaw ? bodyPillarRaw.toLowerCase().trim() : '';
-        const scheduledPillar = CALENDAR_PILLAR_KEYS.includes(bodyPillar)
-          ? bodyPillar
-          : pickPillarKeyForPostKey(postKeyValue);
 
         let plannedTitle = toPlainString(body?.plannedTitle || body?.title || '');
         let plannedAngle = toPlainString(body?.plannedAngle || body?.angle || '');
@@ -11494,7 +11373,6 @@ const server = http.createServer((req, res) => {
             revealOrder: variation.reveal_order,
             pov: variation.pov,
             angleLabel: plannedAngle || '',
-            pillarKey: scheduledPillar,
             requestId,
             loggingContext: { requestId, day, slotIndex, post_key: postKeyValue },
             maxTokens,
