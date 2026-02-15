@@ -3521,12 +3521,12 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
-  const REGULAR_MAIN_PROMPT = `You are a ${cleanNiche} creator. Write one short-form video for TikTok / Instagram Reels.
+  const REGULAR_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
 
-This creator films on their phone. They talk the way they actually talk — not like a script, not like a presentation. They're the kind of person you'd follow because every video feels like they're talking directly to you about something real.
+Every video is the creator talking directly to camera. They talk the way they actually talk — short, specific, like they're telling a friend. They're the kind of person you'd follow because every video feels like a real conversation.
 
 title — What this video is about in a few words.
 
@@ -3544,16 +3544,16 @@ reelCta — Final on-screen text. Short.
 
 caption — Something the creator would actually type under this video. Casual, personal.
 
-designNotes — How to film this. Simple, realistic — where the creator is, what the viewer sees. This is a phone video, not a commercial.
+designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
 hashtags — 5-8 relevant hashtags.`;
 
-  const BRAND_BRAIN_MAIN_PROMPT = `You are a ${cleanNiche} creator. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
+  const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-This video is entertainment that happens to make the viewer want something. The creator films on their phone and talks the way they actually talk. The promotion lands because the video earned the viewer's attention first.${hasPromoting ? ` By the end, the viewer wants ${promoting} — not because they were pitched, but because the video made it feel obvious.` : ''}
+Every video is the creator talking directly to camera. The video is entertainment that happens to make the viewer want something. The promotion lands because the video earned the viewer's attention first.${hasPromoting ? ` By the end, the viewer wants ${promoting} — not because they were pitched, but because the video made it feel obvious.` : ''}
 
 title — What this video is about in a few words.
 
@@ -3571,7 +3571,7 @@ reelCta — Final on-screen text. Short. Drives action.
 
 caption — Something the creator would actually type. Casual, personal.${hasPromoting ? ` Mentions ${promoting} like it's their own opinion, not an ad.` : ''}
 
-designNotes — How to film this. Simple, realistic — phone video, not a production. Where the creator is, what the viewer sees.
+designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
 hashtags — 5-8 relevant hashtags.`;
 
@@ -9768,14 +9768,14 @@ const server = http.createServer((req, res) => {
       ? 'Return exactly 30 items, one for each day. Use post_key values "day-1-slot-0" through "day-30-slot-0".'
       : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
     const REGULAR_PLAN_PROMPT = [
-      `You are a ${nicheStyle} creator planning 30 days of short-form videos for TikTok and Reels.`,
+      `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form videos for TikTok and Reels.`,
       '',
       `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations. They're the kind of videos that make someone say "I need to follow this person."`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific moment or situation this video captures.",',
+      '  "topic_signature": "One sentence — what the creator is talking about in this video.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
@@ -9785,8 +9785,8 @@ const server = http.createServer((req, res) => {
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a ${nicheStyle} creator planning 30 days of short-form video ads for TikTok and Reels. You are promoting: ${cleanPromoting}.`
-        : `You are a ${nicheStyle} creator planning 30 days of short-form video ads for TikTok and Reels.`,
+        ? `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels. You are promoting: ${cleanPromoting}.`
+        : `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels.`,
       '',
       hasPromoting
         ? `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience — and by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
@@ -9795,7 +9795,7 @@ const server = http.createServer((req, res) => {
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific moment or situation this video captures.",',
+      '  "topic_signature": "One sentence — what the creator is talking about in this video.",',
       hasPromoting
         ? `  "angle": "One sentence — how watching this video leads someone toward ${cleanPromoting}."`
         : '  "angle": "One sentence — how watching this video leads someone toward the offer."',
