@@ -59,10 +59,6 @@ if (
 }
 if (isCalendarPage) {
 const grid = document.getElementById("calendar-grid");
-  const pillarFilterBtn = document.getElementById("pillar-filter-btn");
-  const pillarFilterMenu = document.getElementById("pillar-filter-menu");
-  const pillarFilterLabel = document.getElementById("pillar-filter-label");
-  const filterDropdownItems = document.querySelectorAll(".filter-dropdown-item");
   const userEmailEl = document.getElementById("user-email");
   const userTierBadge = document.getElementById("user-tier-badge");
   const signOutBtn = document.getElementById("sign-out-btn");
@@ -2357,25 +2353,16 @@ const ASSET_PRESETS = {
     note: 'Testimonial card featuring quote, avatar placeholder, and star accents.'
   }
 };
-const TYPE_TO_PILLAR = {
+const TYPE_TO_PRESET = {
   educational: 'education',
   promotional: 'promotion',
   lifestyle: 'lifestyle',
   interactive: 'lifestyle'
 };
 
-function normalizePillar(entry = {}) {
-  const rawPillar = String(entry.pillar || '').toLowerCase().trim();
-  if (rawPillar && ASSET_PRESETS[rawPillar]) return rawPillar;
-  const typeKey = TYPE_TO_PILLAR[String(entry.type || '').toLowerCase().trim()];
-  if (typeKey && ASSET_PRESETS[typeKey]) return typeKey;
-  const fallback = rawPillar || typeKey || '';
-  return fallback;
-}
-
 function deriveAssetPreset(entry = {}) {
-  const pillarKey = normalizePillar(entry);
-  let preset = pillarKey && ASSET_PRESETS[pillarKey] ? ASSET_PRESETS[pillarKey] : null;
+  const typeKey = TYPE_TO_PRESET[String(entry.type || '').toLowerCase().trim()];
+  let preset = typeKey && ASSET_PRESETS[typeKey] ? ASSET_PRESETS[typeKey] : null;
   if (!preset) {
     const format = String(entry.format || '').toLowerCase();
     if (format.includes('story')) {
@@ -5975,7 +5962,6 @@ const createCard = (post) => {
   const dayValue = typeof post.day === 'number' ? post.day : (primary.day || '');
   const card = document.createElement('article');
   card.className = 'calendar-card';
-  card.dataset.pillar = primary.pillar || '';
   card.dataset.day = dayValue != null ? String(dayValue) : '';
   const resolvedCalendarId =
     primary.calendar_day_id ||
@@ -6024,7 +6010,6 @@ const createCard = (post) => {
       hashtags,
       format,
       cta,
-      pillar,
       designNotes,
       repurpose,
       analytics,
@@ -6040,10 +6025,6 @@ const createCard = (post) => {
     };
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
     // No inline audio overrides; display server-provided post.audio only.
-
-    if (!card.dataset.pillar && pillar) {
-      card.dataset.pillar = pillar;
-    }
 
     const buildSuggestedAudioText = (audio) => {
       if (!audio || typeof audio !== 'string') return '';
@@ -6106,11 +6087,6 @@ const createCard = (post) => {
     const ideaEl = document.createElement('h3');
     ideaEl.className = 'calendar-card__title';
     ideaEl.textContent = title || '';
-
-    const typeEl = document.createElement('span');
-    typeEl.className = 'calendar-card__type';
-    const pillarLabel = card.dataset.pillar;
-    typeEl.textContent = pillarLabel ? pillarLabel.charAt(0).toUpperCase() + pillarLabel.slice(1) : '';
 
     const captionRow = document.createElement('div');
     captionRow.className = 'calendar-card__caption-row';
@@ -6700,8 +6676,6 @@ const createCard = (post) => {
     cardBody.className = 'pc-card';
     const topRow = document.createElement('div');
     topRow.className = 'pc-card-top';
-    typeEl.classList.add('pc-chip', 'pc-chip--pillar');
-    if (typeEl.textContent.trim()) topRow.appendChild(typeEl);
     const titleWrap = document.createElement('div');
     titleWrap.className = 'pc-card-title';
     titleWrap.appendChild(ideaEl);
@@ -7128,7 +7102,6 @@ async function regenerateDayFallback({ day, nicheStyle, currentUser, cache }) {
   }
   const fallbackPost = data.posts[0];
   fallbackPost.day = day;
-  if (cache && cache.pillar && !fallbackPost.pillar) fallbackPost.pillar = cache.pillar;
   return fallbackPost;
 }
 
@@ -7416,69 +7389,6 @@ function updatePostFrequencyUI() {
 }
 
 updatePostFrequencyUI();
-
-// Filter dropdown functionality
-let currentFilter = 'all';
-
-const applyFilter = (filter) => {
-  currentFilter = filter;
-  
-  // Update dropdown items active state
-  filterDropdownItems.forEach((item) => {
-    if (item.dataset.filter === filter) {
-      item.classList.add('active');
-    } else {
-      item.classList.remove('active');
-    }
-  });
-
-  // Update button label
-  const filterText = filter === 'all' ? 'All pillars' : filter;
-  if (pillarFilterLabel) pillarFilterLabel.textContent = filterText;
-
-  // Apply filter to calendar
-  if (filter === 'all') {
-    renderCards(currentCalendar);
-  } else {
-    renderCards(currentCalendar.filter((post) => post.pillar === filter));
-  }
-
-  // Close dropdown
-  if (pillarFilterMenu) pillarFilterMenu.style.display = 'none';
-  if (pillarFilterBtn) pillarFilterBtn.setAttribute('aria-expanded', 'false');
-};
-
-// Toggle dropdown
-if (pillarFilterBtn && pillarFilterMenu) {
-  pillarFilterBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = pillarFilterMenu.style.display === 'block';
-    pillarFilterMenu.style.display = isOpen ? 'none' : 'block';
-    pillarFilterBtn.setAttribute('aria-expanded', String(!isOpen));
-  });
-
-  // Handle dropdown item clicks
-  filterDropdownItems.forEach((item) => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      applyFilter(item.dataset.filter);
-    });
-  });
-
-  // Close dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.filter-dropdown')) {
-      pillarFilterMenu.style.display = 'none';
-      pillarFilterBtn.setAttribute('aria-expanded', 'false');
-    }
-  });
-
-  console.log("✓ Filter dropdown initialized");
-} else {
-  if (calendarSection) {
-    console.warn('Filter controls unavailable; skipping pillar dropdown setup.');
-  }
-}
 
 // Start with empty grid (no pre-made posts)
 try {
@@ -8152,7 +8062,7 @@ function buildICS(posts){
     const y2=endDate.getFullYear(); const m2=String(endDate.getMonth()+1).padStart(2,'0'); const d2=String(endDate.getDate()).padStart(2,'0'); const h2=String(endDate.getHours()).padStart(2,'0'); const mi2=String(endDate.getMinutes()).padStart(2,'0');
     const dtend = `${y2}${m2}${d2}T${h2}${mi2}00`;
     const uid = `post-${Y}${M}${D}-${p.day}@promptly`;
-    const summary = (p.idea || `${p.pillar||''} post`).replace(/\r?\n/g,' ').slice(0,60);
+    const summary = (p.idea || `Post`).replace(/\r?\n/g,' ').slice(0,60);
     const tags = Array.isArray(p.hashtags)? p.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (p.hashtags||'');
     const desc = [p.caption||'', tags||'', p.cta?`CTA: ${p.cta}`:''].filter(Boolean).join('\\n\\n');
     lines.push('BEGIN:VEVENT');
@@ -8168,12 +8078,12 @@ function buildICS(posts){
 }
 
 function buildCsvRows(posts){
-  const headers = ['Day','ScheduledAt','Pillar','Type','Format','Idea','Caption','Hashtags','CTA','WeeklyPromo','CombinedText'];
+  const headers = ['Day','ScheduledAt','Type','Format','Idea','Caption','Hashtags','CTA','WeeklyPromo','CombinedText'];
   const schedule = suggestSchedule(posts);
   const rows = posts.map((p, idx)=>{
     const hashtags = Array.isArray(p.hashtags) ? p.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (p.hashtags||'');
     const combined = [p.caption||'', hashtags||'', p.cta?`CTA: ${p.cta}`:''].filter(Boolean).join('\n\n');
-    return [p.day||idx+1, schedule[idx]||'', p.pillar||'', p.type||'', p.format||'', p.idea||'', (p.caption||'').replace(/\s+/g,' ').trim(), hashtags, p.cta||'', p.weeklyPromo||'', combined.replace(/\r?\n/g,' \u21B5 ')];
+    return [p.day||idx+1, schedule[idx]||'', p.type||'', p.format||'', p.idea||'', (p.caption||'').replace(/\s+/g,' ').trim(), hashtags, p.cta||'', p.weeklyPromo||'', combined.replace(/\r?\n/g,' \u21B5 ')];
   });
   return { headers, rows };
 }
@@ -8208,16 +8118,10 @@ function suggestSchedule(posts){
   base.setHours(0,0,0,0);
   // start tomorrow
   base.setDate(base.getDate()+1);
-  const timeByPillar = {
-    'Education': '09:00',
-    'Social Proof': '12:00',
-    'Promotion': '19:00',
-    'Lifestyle': '10:00',
-  };
   return posts.map((p, i)=>{
     const d = new Date(base);
     d.setDate(base.getDate() + i);
-    const t = timeByPillar[p.pillar] || '11:00';
+    const t = '11:00';
     const [hh,mm] = t.split(':').map(Number);
     d.setHours(hh, mm, 0, 0);
     // format ISO-like local string YYYY-MM-DD HH:mm
@@ -8272,8 +8176,6 @@ function buildPostHTML(post){
   const clean = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
   const day = post.day || '';
   const title = clean(post.title || '');
-  const pillar = post.pillar || '';
-  const type = pillar || '';
   const format = post.format || '';
   const caption = clean(post.caption || '');
   const hashtags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
@@ -8391,10 +8293,9 @@ function buildPostHTML(post){
   const detailsBlocks = detailBlocks.filter(Boolean).join('');
 
   const cardHTML = `
-    <article class="calendar-card" data-pillar="${escapeHtml(pillar)}">
+    <article class="calendar-card">
       <div class="calendar-card__day">${String(day).padStart(2,'0')}</div>
       <h3 class="calendar-card__title">${escapeHtml(title)}</h3>
-      ${type?`<span class="calendar-card__type">${escapeHtml(type.charAt(0).toUpperCase()+type.slice(1))}</span>`:''}
       <p class="calendar-card__caption">${nl2br(caption)}</p>
       <details>
         <summary>Details</summary>
@@ -8445,20 +8346,6 @@ function buildPostHTML(post){
       position: relative;
       isolation: isolate;
       box-shadow: 0 24px 36px rgba(0, 0, 0, 0.25);
-    }
-    .calendar-card::after {
-      content: attr(data-pillar);
-      position: absolute;
-      top: 1.25rem;
-      right: 1.25rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 0.25rem 0.75rem;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
-      color: rgba(255, 255, 255, 0.7);
     }
     .calendar-card__day { font-size: 3rem; font-weight: 700; letter-spacing: -0.04em; color: rgba(255, 255, 255, 0.18); }
     .calendar-card__title { font-size: 1.15rem; margin: 0; }
@@ -8651,8 +8538,6 @@ function validateRenderablePost(post = {}) {
   if (!post || typeof post !== 'object') return { ok: false, missing: ['post'] };
   const title = getFieldValue(post, ['title', 'topic']);
   if (!isNonEmptyText(title)) missing.push('title');
-  const pillar = getFieldValue(post, ['pillar', 'contentPillar', 'category', 'type']);
-  if (!isNonEmptyText(pillar)) missing.push('pillar');
   const format = getFieldValue(post, ['format', 'postFormat']);
   if (!isNonEmptyText(format)) missing.push('format');
   const hook = getFieldValue(post, ['hook', 'headline']);
@@ -8989,7 +8874,6 @@ function applyTopicBlueprint(post, blueprint, keyword, slotNumber) {
   if (blueprint.idea) post.idea = blueprint.idea(normalized, helpers);
   if (blueprint.caption) post.caption = blueprint.caption(normalized, helpers);
   if (blueprint.designNotes) post.designNotes = blueprint.designNotes;
-  if (blueprint.pillar) post.pillar = blueprint.pillar;
   if (blueprint.cta) post.cta = typeof blueprint.cta === 'function' ? blueprint.cta(normalized, helpers) : blueprint.cta;
   if (blueprint.repurpose) post.repurpose = mergeUnique(post.repurpose, blueprint.repurpose);
   if (blueprint.analytics) post.analytics = mergeUnique(post.analytics, blueprint.analytics);
@@ -9155,7 +9039,6 @@ function normalizePost(p, idx = 0, startDay = 1) {
     hashtags: Array.isArray(base.hashtags) ? base.hashtags : (base.hashtags ? String(base.hashtags).split(/\s+|,\s*/).filter(Boolean) : []),
     format: base.format || '',
     cta: clean(base.cta || ''),
-    pillar: base.pillar || '',
     designNotes: clean(base.designNotes || ''),
     repurpose: Array.isArray(base.repurpose) ? base.repurpose : (base.repurpose ? [base.repurpose] : []),
     analytics: Array.isArray(base.analytics) ? base.analytics : (base.analytics ? [base.analytics] : []),
@@ -10434,7 +10317,7 @@ function renderPublishHub(){
       badge.textContent = 'Posted';
       title.appendChild(badge);
     }
-    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `${post.pillar || ''} • ${post.format || ''}`;
+    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `${post.format || ''}`;
     const text = document.createElement('div');
     const tags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
     text.innerHTML = `<div>${(post.caption||'').replace(/\n/g,'<br/>')}</div>${tags?`<div style="margin-top:0.3rem;color:var(--text-secondary)">${tags}</div>`:''}`;

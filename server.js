@@ -2292,37 +2292,13 @@ async function generateAndValidateSinglePost({
 }) {
   let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
-  const normalizePillarKey = (value) => {
-    const raw = typeof value === 'string' ? value.toLowerCase().trim() : '';
-    return CALENDAR_PILLAR_KEYS.includes(raw) ? raw : '';
-  };
-  const resolvedPillarKey = normalizePillarKey(pillarKey);
-  let assignedPillarKey = resolvedPillarKey || pickPillarKeyForPostKey(post_key);
-  const safePostsPerDay = Math.max(1, Number.isFinite(Number(postsPerDay)) ? Number(postsPerDay) : 1);
-  let previousPillar = 'none';
-  if (slotIndex > 0) {
-    previousPillar = pickPillarKeyForPostKey(postKey(day, slotIndex - 1));
-  } else if (day > 1) {
-    previousPillar = pickPillarKeyForPostKey(postKey(day - 1, safePostsPerDay - 1));
-  }
-  if (previousPillar !== 'none' && assignedPillarKey === previousPillar) {
-    const idx = CALENDAR_PILLAR_KEYS.indexOf(assignedPillarKey);
-    if (idx >= 0) {
-      assignedPillarKey = CALENDAR_PILLAR_KEYS[(idx + 1) % CALENDAR_PILLAR_KEYS.length];
-    }
-  }
   const angleSeed = buildAngleSeed({
     mode: calendarMode,
-    pillar: assignedPillarKey,
     day,
     slotIndex,
     calendarId,
   });
   const recentSignatures = Array.isArray(usedSignatures) ? usedSignatures.slice(-10) : [];
-  const pillarRules = calendarMode === 'brand_brain'
-    ? BRAND_BRAIN_PILLAR_STYLE_RULES
-    : REGULAR_PILLAR_STYLE_RULES;
-  const pillarStyle = pillarRules[assignedPillarKey] || '';
   currentStage = 'build_schema';
   const schema = getCalendarPostSchema(calendarMode, day, day);
   const maxAttempts = 2;
@@ -2337,7 +2313,7 @@ async function generateAndValidateSinglePost({
       ANGLE_SEED: angleSeed,
       usedSignaturesCount: recentSignatures.length,
     });
-    currentStage = 'assign_pillar';
+    currentStage = 'assign_context';
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
@@ -2357,7 +2333,6 @@ async function generateAndValidateSinglePost({
         singlePost: true,
         allowFailover: false,
         schemaOverride: schema,
-        previousPillar,
         postKey: post_key,
         slotIndex,
         plannedTitle,
@@ -2401,7 +2376,6 @@ async function generateAndValidateSinglePost({
         day,
         slotIndex,
         post_key,
-        pillar: assignedPillarKey,
         format: 'reel',
         mode: calendarMode,
       };
@@ -3217,7 +3191,6 @@ function normalizeAndValidateCalendarPost({ rawModelJson, serverFields, schema }
     post_key: serverFields.post_key,
     day: serverFields.day,
     slotIndex: serverFields.slotIndex,
-    pillar: serverFields.pillar,
     format: serverFields.format,
     mode: serverFields.mode,
   };
@@ -3246,7 +3219,6 @@ function runCalendarSchemaSelfTest() {
     post_key: 'day-1-slot-0',
     day: 1,
     slotIndex: 0,
-    pillar: 'education',
     format: 'reel',
     mode: 'regular',
   };
@@ -4312,7 +4284,6 @@ function buildTopicPlanSlots(totalPosts = 0, startDay = 1, postsPerDay = 1, pill
       slot: i,
       day,
       postIndex,
-      pillar: pillarSchedule && pillarSchedule[i] ? pillarSchedule[i] : getCalendarPillarForDay(day),
     });
   }
   return slots;
@@ -4413,7 +4384,7 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [] } = {}) {
 }
 
 function sanitizePostForPrompt(post = {}) {
-  const fields = ['idea','title','type','hook','caption','format','pillar','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
+  const fields = ['idea','title','type','hook','caption','format','designNotes','repurpose','hashtags','cta','script','instagram_caption','tiktok_caption','linkedin_caption','audio'];
   const sanitized = {};
   const clone = { ...post };
   if (!clone.script && clone.videoScript) clone.script = clone.videoScript;
@@ -4617,7 +4588,7 @@ function logDuplicateStrategyValues(posts = []) {
 
 
 function deriveFallbackDeliverable(post = {}, classification = 'creator') {
-  const text = [post.type, post.pillar, post.idea, post.caption]
+  const text = [post.type, post.idea, post.caption]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
@@ -4711,7 +4682,7 @@ function deterministicKeywordFallback(post = {}, classification = 'creator', nic
   if (nicheKeyword && isKeywordValid(nicheKeyword, post) && !used.has(nicheKeyword)) {
     return nicheKeyword;
   }
-  const text = [nicheStyle, post.idea, post.title, post.pillar, post.type].filter(Boolean).join(' ').toLowerCase();
+  const text = [nicheStyle, post.idea, post.title, post.type].filter(Boolean).join(' ').toLowerCase();
   for (const entry of FALLBACK_KEYWORD_MAP) {
     if (entry.match.test(text)) {
       for (const candidate of entry.keywords) {
@@ -4735,7 +4706,7 @@ function deterministicKeywordFallback(post = {}, classification = 'creator', nic
 }
 
 function deriveFallbackKeyword(post = {}, classification = 'creator', nicheStyle = '', deliverable = '', used = new Set()) {
-  const source = [post.idea, post.title, post.caption, post.pillar, nicheStyle].filter(Boolean).join(' ');
+  const source = [post.idea, post.title, post.caption, nicheStyle].filter(Boolean).join(' ');
   const tokens = (String(source || '').toUpperCase().match(/[A-Z0-9]+/g) || []).filter(Boolean);
   const filtered = tokens.filter((token) => !(token === 'MEAL' && deliverable !== 'my meal plan'));
   const candidate = filtered.find((token) => token.length >= 3 && token.length <= 10 && isKeywordValid(token, post) && !used.has(token));
