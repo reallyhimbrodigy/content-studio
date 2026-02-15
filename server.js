@@ -3534,25 +3534,25 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
 
-Every video is the creator talking directly to camera. They talk the way they actually talk — short, specific, like they're telling a friend. They're the kind of person you'd follow because every video feels like a real conversation.
+The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds.
 
-title — What this video is about in a few words.
+title — A few words describing what this video is about.
 
-hook — The first thing out of their mouth. It sounds like they just grabbed their phone because they had to tell someone this.
+hook — The first sentence out of their mouth. It drops the viewer into the middle of a thought. Each hook across a 30-day calendar sounds different from the others.
 
-body — The spoken script for the video. Short sentences. This is how the creator actually talks — specific, natural, like they're telling a friend. Every sentence earns the next one.
+body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take — they go on small tangents, they use filler words, they talk the way people actually talk.
 
-cta — One casual line at the end. It comes from what just happened in the video.
+cta — The last thing they say. It connects to what they just talked about.
 
-reelHook — On-screen text that stops a scroller. A few words.
+reelHook — On-screen text version of the hook. A few words.
 
-reelBody — Short text overlays that appear during the video. They add to the story.
+reelBody — Short text overlays that appear during the video.
 
 reelCta — Final on-screen text. Short.
 
-caption — Something the creator would actually type under this video. Casual, personal.
+caption — What the creator types under the video. Casual, sounds like them.
 
-designNotes — Where the creator is standing or sitting, and what is visible behind them.
+designNotes — Where the creator is and what is behind them.
 
 hashtags — 5-8 relevant hashtags.`;
 
@@ -3561,25 +3561,25 @@ hashtags — 5-8 relevant hashtags.`;
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-Every video is the creator talking directly to camera. The video is entertainment that happens to make the viewer want something. The promotion lands because the video earned the viewer's attention first.${hasPromoting ? ` By the end, the viewer wants ${promoting} — not because they were pitched, but because the video made it feel obvious.` : ''}
+${hasPromoting ? `The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds. It is entertaining on its own. By the end, ${promoting} feels like the obvious next step — the viewer arrives there because of what they just watched.` : `The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds. It is entertaining on its own. By the end, the viewer wants what the creator is offering — they arrive there because of what they just watched.`}
 
-title — What this video is about in a few words.
+title — A few words describing what this video is about.
 
-hook — The first thing out of their mouth. Pure entertainment. It sounds like they just grabbed their phone because they had to tell someone this.
+hook — The first sentence out of their mouth. Pure entertainment. It drops the viewer into the middle of a thought. Each hook across a 30-day calendar sounds different from the others.
 
-body — The spoken script. Short sentences, natural speech. The video opens with something worth watching. The promotion arrives inside that — it feels like part of the story, not a pivot.${hasPromoting ? ` By the end, ${promoting} feels like the obvious next step.` : ''}
+${hasPromoting ? `body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take. The promotion shows up inside the story — it feels like part of what they are saying, and by the end ${promoting} feels like the natural next move.` : `body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take. The promotion shows up inside the story — it feels like part of what they are saying.`}
 
-cta — One line that moves the viewer toward${hasPromoting ? ` ${promoting}` : ' the offer'}. It feels earned, not forced.
+cta — The last thing they say. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' the offer'} and connects to what they just talked about.
 
-reelHook — On-screen text that stops a scroller. A few words. Entertainment first.
+reelHook — On-screen text version of the hook. A few words.
 
-reelBody — Text overlays during the video. They support the story and land the promotion naturally.
+reelBody — Short text overlays that appear during the video.
 
 reelCta — Final on-screen text. Short.
 
-caption — Something the creator would actually type. Casual, personal.
+caption — What the creator types under the video. Casual, sounds like them.
 
-designNotes — Where the creator is standing or sitting, and what is visible behind them.
+designNotes — Where the creator is and what is behind them.
 
 hashtags — 5-8 relevant hashtags.`;
 
@@ -9778,17 +9778,17 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations. They're the kind of videos that make someone say "I need to follow this person."`,
+      `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the creator is talking about in this video.",',
-      '  "angle": "One sentence — why someone watches this to the end."',
+      '  "topic_signature": "One specific sentence — a detail or situation from this creator\'s actual daily life that they would talk about on camera.",',
+      '  "angle": "One sentence — what makes this video interesting enough to watch to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video is different. Pull from different parts of this creator's world — what they see, what they deal with, what surprises them, what frustrates them, what they love.`,
+      `Every video is a different topic. Cover the full range of this creator's world — the work, the opinions, the frustrations, the wins, the things that surprise them, the things only they would know.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9797,20 +9797,20 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations or listicles. They're entertaining videos that make someone say "I need to follow this person" — and by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
-        : `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations or listicles. They're entertaining videos that make someone say "I need to follow this person" — and by the end, the viewer wants what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
+        ? `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice. Each video is entertaining on its own. The promotion connects naturally by the end because the topic makes the viewer realize they want ${cleanPromoting}.`
+        : `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice. Each video is entertaining on its own. The promotion connects naturally by the end because the topic makes the viewer realize they want what the creator is offering.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the creator is talking about in this video.",',
+      '  "topic_signature": "One specific sentence — a detail or situation from this creator\'s actual daily life that they would talk about on camera.",',
       hasPromoting
-        ? `  "angle": "One sentence — how watching this video leads someone toward ${cleanPromoting}."`
-        : '  "angle": "One sentence — how watching this video leads someone toward the offer."',
+        ? '  "angle": "One sentence — what makes this video interesting enough to watch to the end."'
+        : '  "angle": "One sentence — what makes this video interesting enough to watch to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video is different. Pull from different parts of this creator's world.`,
+      `Every video is a different topic. Cover the full range of this creator's world.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
