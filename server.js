@@ -9770,7 +9770,7 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a ${nicheStyle} creator planning 30 days of short-form videos for TikTok and Reels.`,
       '',
-      `Each video is something you'd actually film on your phone — a real moment, a quick story, a thing you noticed, an opinion you have, a situation you lived. These are not lessons or presentations. They're the kind of videos that make someone say "I need to follow this person."`,
+      `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations. They're the kind of videos that make someone say "I need to follow this person."`,
       '',
       'Return JSON only. Each item:',
       '{',
@@ -9789,8 +9789,8 @@ const server = http.createServer((req, res) => {
         : `You are a ${nicheStyle} creator planning 30 days of short-form video ads for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Each video works as entertainment first. Someone scrolling should stop, watch, and enjoy it — and by the end, they want what the creator is offering. That means by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
-        : `Each video works as entertainment first. Someone scrolling should stop, watch, and enjoy it — and by the end, they want what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
+        ? `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience — and by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
+        : `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience — and by the end, the viewer wants what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
       '',
       'Return JSON only. Each item:',
       '{',
