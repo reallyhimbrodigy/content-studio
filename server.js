@@ -8472,7 +8472,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       schema: format?.json_schema?.schema,
     });
     const responseTextFormat = toTextFormat(responseFormat);
-    const systemMessage = 'You write exactly what a person would say out loud. Every script you write is a transcript of spoken words — one continuous block of speech. You write the way people talk when they are telling someone what happened.';
+    const systemMessage = 'You write exactly what a person would say out loud. Every script you write is a transcript of spoken words. You write in complete sentences that flow into each other as one continuous paragraph. When you write a CTA, you write one sentence that connects back to what the creator just said.';
     const payloadObj = {
       model: attemptModel,
       input: [
@@ -9782,17 +9782,17 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out.`,
+      `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific situation and why the creator knows about it.",',
+      '  "topic_signature": "One sentence — the specific thing the creator saw, learned, or noticed.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic. Cover the full range of what this creator sees, knows, and has access to because of their position in their niche.`,
+      `Every video covers a different topic. Cover the full range of what this creator sees, learns, and notices because of their position in their niche.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9801,18 +9801,18 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions ${cleanPromoting} because it connects to what happened.`
-        : `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`,
+        ? `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche. At the end of the video, ${cleanPromoting} connects to what the creator just talked about.`
+        : `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche. At the end of the video, what the creator is offering connects to what the creator just talked about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific situation and why the creator knows about it.",',
+      '  "topic_signature": "One sentence — the specific thing the creator saw, learned, or noticed.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic. Cover the full range of what this creator sees, knows, and has access to because of their position in their niche.`,
+      `Every video covers a different topic. Cover the full range of what this creator sees, learns, and notices because of their position in their niche.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
