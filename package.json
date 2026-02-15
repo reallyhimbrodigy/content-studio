@@ -10,12 +10,19 @@
     "build:css": "node build.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.81.1",
-    "axios": "^1.6.8",
+    "@deepgram/sdk": "^4.11.3",
+    "@supabase/supabase-js": "^2.95.3",
+    "axios": "^1.13.5",
+    "fluent-ffmpeg": "^2.1.3",
     "jszip": "^3.10.1",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "openai": "^6.22.0",
+    "react-dropzone": "^15.0.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.28",
+    "@types/uuid": "^10.0.0",
     "sharp": "^0.32.4"
   },
   "engines": {
