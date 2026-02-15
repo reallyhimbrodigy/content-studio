@@ -6738,17 +6738,6 @@ const createCard = (post) => {
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
     const detailsAcc = buildAccordion('Details', [
-      infoRows,
-      titleDetailEl,
-      hookDetailEl,
-      bodyDetailEl,
-      ctaDetailEl,
-      formatEl,
-      executionNotesEl,
-      promoSlotEl,
-      weeklyPromoEl,
-      assetsEl,
-      ...proDetailNodes,
       ...hiddenDetailNodes,
     ]);
 
