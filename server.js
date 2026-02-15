@@ -3529,59 +3529,59 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
-  const REGULAR_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
+const REGULAR_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
 
-The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds.
+The creator is talking directly to camera telling a story from their work. The video is 30-60 seconds.
 
-title — A few words describing what this video is about.
+title — What this video is about in a few words.
 
-hook — The first sentence out of their mouth. It drops the viewer into the middle of a thought. Each hook across a 30-day calendar sounds different from the others.
+hook — The first sentence the creator says out loud. It introduces the person and the situation but leaves out what happened. The viewer has to keep watching to find out what happened.
 
-body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take — they go on small tangents, they use filler words, they talk the way people actually talk.
+body — The creator tells what happened. Written as the words that come out of the creator's mouth. The body answers what the hook set up — the person, what they did, and what happened because of it.
 
-cta — The last thing they say. It connects to what they just talked about.
+cta — The last sentence the creator says.
 
-reelHook — On-screen text version of the hook. A few words.
+reelHook — On-screen text version of the hook.
 
-reelBody — Short text overlays that appear during the video.
+reelBody — Text phrases that appear on screen during the video. They follow the story.
 
-reelCta — Final on-screen text. Short.
+reelCta — Final on-screen text.
 
-caption — What the creator types under the video. Casual, sounds like them.
+caption — What the creator types under the video.
 
 designNotes — Where the creator is and what is behind them.
 
-hashtags — 5-8 relevant hashtags.`;
+hashtags — 5-8 hashtags.`;
 
-  const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
+const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds. It is entertaining on its own. By the end, ${promoting} feels like the obvious next step — the viewer arrives there because of what they just watched.` : `The creator is talking directly to camera. They speak the way they actually speak — casual, specific, like they are telling someone they know. The video is 30-60 seconds. It is entertaining on its own. By the end, the viewer wants what the creator is offering — they arrive there because of what they just watched.`}
+${hasPromoting ? `The creator is talking directly to camera telling a story from their work. The video is 30-60 seconds. At the end of the story, the creator shows or mentions ${promoting} because it connects to what happened in the story.` : `The creator is talking directly to camera telling a story from their work. The video is 30-60 seconds. At the end of the story, the creator shows or mentions what they are offering because it connects to what happened in the story.`}
 
-title — A few words describing what this video is about.
+title — What this video is about in a few words.
 
-hook — The first sentence out of their mouth. Pure entertainment. It drops the viewer into the middle of a thought. Each hook across a 30-day calendar sounds different from the others.
+hook — The first sentence the creator says out loud. It introduces the person and the situation but leaves out what happened. The viewer has to keep watching to find out what happened.
 
-${hasPromoting ? `body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take. The promotion shows up inside the story — it feels like part of what they are saying, and by the end ${promoting} feels like the natural next move.` : `body — What the creator says after the hook. 4-8 sentences. They are speaking out loud, not reading. It sounds like a person telling a story or sharing a take. The promotion shows up inside the story — it feels like part of what they are saying.`}
+${hasPromoting ? `body — The creator tells what happened. Written as the words that come out of the creator's mouth. The body answers what the hook set up — the person, what they did, and what happened because of it. At the end, the creator shows or mentions ${promoting} because it connects to the story.` : `body — The creator tells what happened. Written as the words that come out of the creator's mouth. The body answers what the hook set up — the person, what they did, and what happened because of it. At the end, the creator shows or mentions what they are offering because it connects to the story.`}
 
-cta — The last thing they say. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' the offer'} and connects to what they just talked about.
+cta — The last sentence the creator says. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' what the creator is offering'}.
 
-reelHook — On-screen text version of the hook. A few words.
+reelHook — On-screen text version of the hook.
 
-reelBody — Short text overlays that appear during the video.
+reelBody — Text phrases that appear on screen during the video. They follow the story.
 
-reelCta — Final on-screen text. Short.
+reelCta — Final on-screen text.
 
-caption — What the creator types under the video. Casual, sounds like them.
+caption — What the creator types under the video.
 
 designNotes — Where the creator is and what is behind them.
 
-hashtags — 5-8 relevant hashtags.`;
+hashtags — 5-8 hashtags.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;
@@ -9776,41 +9776,39 @@ const server = http.createServer((req, res) => {
       ? 'Return exactly 30 items, one for each day. Use post_key values "day-1-slot-0" through "day-30-slot-0".'
       : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
     const REGULAR_PLAN_PROMPT = [
-      `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form videos for TikTok and Reels.`,
+      `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice.`,
+      `Every video is the creator talking directly to camera telling a story from their work. A story means there is a person, something that person wanted or did, and what happened because of it.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One specific sentence — a detail or situation from this creator\'s actual daily life that they would talk about on camera.",',
-      '  "angle": "One sentence — what makes this video interesting enough to watch to the end."',
+      '  "topic_signature": "A sentence starting with \'The creator tells the story of...\' — one person from their work and the situation that person was in.",',
+      '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video is a different topic. Cover the full range of this creator's world — the work, the opinions, the frustrations, the wins, the things that surprise them, the things only they would know.`,
+      `Every video tells a different story about a different person from this creator's work.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels. You are promoting: ${cleanPromoting}.`
-        : `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels.`,
+        ? `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. You are promoting: ${cleanPromoting}.`
+        : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice. Each video is entertaining on its own. The promotion connects naturally by the end because the topic makes the viewer realize they want ${cleanPromoting}.`
-        : `Every video is the creator talking directly to camera about something specific from their daily life in this niche. The topics should be things only someone who actually does this work would think to talk about — the small details, the weird situations, the insider knowledge, the strong opinions, the funny patterns they notice. Each video is entertaining on its own. The promotion connects naturally by the end because the topic makes the viewer realize they want what the creator is offering.`,
+        ? `Every video is the creator talking directly to camera telling a story from their work. A story means there is a person, something that person wanted or did, and what happened because of it. The story leads to a moment where the creator shows or mentions ${cleanPromoting} because it connects to what happened in the story.`
+        : `Every video is the creator talking directly to camera telling a story from their work. A story means there is a person, something that person wanted or did, and what happened because of it. The story leads to a moment where the creator shows or mentions what they are offering because it connects to what happened in the story.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One specific sentence — a detail or situation from this creator\'s actual daily life that they would talk about on camera.",',
-      hasPromoting
-        ? '  "angle": "One sentence — what makes this video interesting enough to watch to the end."'
-        : '  "angle": "One sentence — what makes this video interesting enough to watch to the end."',
+      '  "topic_signature": "A sentence starting with \'The creator tells the story of...\' — one person from their work and the situation that person was in.",',
+      '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video is a different topic. Cover the full range of this creator's world.`,
+      `Every video tells a different story about a different person from this creator's work.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
