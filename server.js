@@ -3054,7 +3054,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       'caption',
       'designNotes',
       'hashtags',
-      'suggestedAudio',
     ],
     properties: {
       title: { type: 'string', minLength: 1 },
@@ -3071,7 +3070,6 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         minItems: 1,
         items: { type: 'string', minLength: 1 },
       },
-      suggestedAudio: { type: 'string', minLength: 1 },
     },
   };
   return baseSchema;
@@ -3150,7 +3148,6 @@ function validateMinimalShape(post = {}) {
     'caption',
     'designNotes',
     'hashtags',
-    'suggestedAudio',
   ];
   for (const key of required) {
     if (!Object.prototype.hasOwnProperty.call(post, key)) {
@@ -3160,7 +3157,7 @@ function validateMinimalShape(post = {}) {
   if (missing.length) {
     return fail('SCHEMA_FAIL', missing[0], '');
   }
-  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'suggestedAudio'];
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes'];
   for (const key of stringFields) {
     if (typeof post[key] !== 'string') {
       wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
@@ -3557,9 +3554,7 @@ caption — Something the creator would actually type under this video. Casual, 
 
 designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
-hashtags — 5-8 relevant hashtags.
-
-suggestedAudio — A specific trending sound or song that fits this video. Include the artist and title.`;
+hashtags — 5-8 relevant hashtags.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
@@ -3586,9 +3581,7 @@ caption — Something the creator would actually type. Casual, personal.
 
 designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
-hashtags — 5-8 relevant hashtags.
-
-suggestedAudio — A specific trending sound or song that fits this video. Include the artist and title.`;
+hashtags — 5-8 relevant hashtags.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;

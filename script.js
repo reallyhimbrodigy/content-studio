@@ -6739,11 +6739,7 @@ const createCard = (post) => {
     const scriptAcc = buildAccordion('Reel Script', videoScriptEl);
     const designAcc = buildAccordion('Design Notes', designNotesEl);
     const engagementAcc = buildAccordion('Engagement Loop', engagementRow);
-    const detailsAcc = buildAccordion('Details', [
-      ...hiddenDetailNodes,
-    ]);
-
-    [captionAcc, scriptAcc, designAcc, engagementAcc, detailsAcc]
+    [captionAcc, scriptAcc, designAcc, engagementAcc]
       .filter(Boolean)
       .forEach((acc) => accordions.appendChild(acc));
 
@@ -8282,10 +8278,7 @@ function buildPostHTML(post){
       <div class="calendar-card__day">${String(day).padStart(2,'0')}</div>
       <h3 class="calendar-card__title">${escapeHtml(title)}</h3>
       <p class="calendar-card__caption">${nl2br(caption)}</p>
-      <details>
-        <summary>Details</summary>
-        <div class="details-body">${detailsBlocks}</div>
-      </details>
+      <div class="details-body">${detailsBlocks}</div>
     </article>
   `;
 
