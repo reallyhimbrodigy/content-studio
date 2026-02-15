@@ -8985,7 +8985,7 @@ function isValidSuggestedAudio(audio = '') {
 }
 
 function normalizeSuggestedAudio(post = {}) {
-  const candidate = post.suggestedAudio || post.suggested_audio;
+  const candidate = post.suggestedAudio || post.suggested_audio || post?.details?.suggestedAudio;
   if (!candidate) return '';
   if (typeof candidate !== 'string') return '';
   const cleaned = sanitizeSuggestedAudioText(candidate);
@@ -8999,7 +8999,7 @@ function normalizeSuggestedAudio(post = {}) {
 }
 
 function hasSuggestedAudio(post) {
-  return isValidSuggestedAudio(post?.suggestedAudio);
+  return isValidSuggestedAudio(normalizeSuggestedAudio(post));
 }
 
 function getSuggestedAudioTitle(post) {

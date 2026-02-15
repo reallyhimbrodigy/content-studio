@@ -2400,6 +2400,13 @@ async function generateAndValidateSinglePost({
         throw err;
       }
       const post = validation.post;
+      const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
+      const normalizedAudio = normalizeSuggestedAudioValue(post?.suggestedAudio, fallbackAudio);
+      post.details = {
+        ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
+        suggestedAudio: normalizedAudio,
+      };
+      delete post.suggestedAudio;
       console.log('[Calendar][Job] success', {
         requestId,
         mode: calendarMode,
@@ -3111,6 +3118,7 @@ function normalizeToMinimalShape(raw = {}) {
     caption: stripTrailingFollowUpSection(raw.caption),
     designNotes: stripTrailingFollowUpSection(raw.designNotes),
     hashtags: raw.hashtags,
+    suggestedAudio: stripTrailingFollowUpSection(raw.suggestedAudio ?? raw?.details?.suggestedAudio),
   };
   return cleaned;
 }
@@ -3142,6 +3150,7 @@ function validateMinimalShape(post = {}) {
     'caption',
     'designNotes',
     'hashtags',
+    'suggestedAudio',
   ];
   for (const key of required) {
     if (!Object.prototype.hasOwnProperty.call(post, key)) {
@@ -3151,7 +3160,7 @@ function validateMinimalShape(post = {}) {
   if (missing.length) {
     return fail('SCHEMA_FAIL', missing[0], '');
   }
-  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes'];
+  const stringFields = ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'suggestedAudio'];
   for (const key of stringFields) {
     if (typeof post[key] !== 'string') {
       wrongTypes.push({ key, expected: 'string', got: typeof post[key] });
