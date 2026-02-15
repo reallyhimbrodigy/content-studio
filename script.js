@@ -6356,8 +6356,12 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
-    const suggestedAudioText = buildSuggestedAudioText(entry.suggestedAudio);
-    const audioRowText = suggestedAudioText || '';
+    const suggestedAudioRaw =
+      entry?.suggestedAudio ||
+      entry?.suggested_audio ||
+      (entry?.details && typeof entry.details === 'object' ? entry.details.suggestedAudio : '');
+    const suggestedAudioText = buildSuggestedAudioText(suggestedAudioRaw);
+    const audioRowText = suggestedAudioText || 'No audio suggestion';
     // Audio completeness is summarized once per generation run.
     const engagementParts = [];
     if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
@@ -6659,11 +6663,9 @@ const createCard = (post) => {
       if (text) proDetailNodes.push(createDetailRow('Hashtag sets', text, 'calendar-card__hashtag-sets'));
     }
     const hiddenDetailNodes = [];
-    if (audioRowText) {
-      hiddenDetailNodes.push(
-        createDetailRow('Suggested Audio', audioRowText, 'calendar-card__audio suggested-audio')
-      );
-    }
+    hiddenDetailNodes.push(
+      createDetailRow('Suggested Audio', audioRowText, 'calendar-card__audio suggested-audio')
+    );
     const engagementRow = (() => {
       const parts = [];
       if (engagementEl) parts.push(engagementEl);

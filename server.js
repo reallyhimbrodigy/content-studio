@@ -3047,6 +3047,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
       'caption',
       'designNotes',
       'hashtags',
+      'suggestedAudio',
     ],
     properties: {
       title: { type: 'string', minLength: 1 },
@@ -3063,6 +3064,7 @@ function buildCalendarPostSchema(minDay = 1, maxDay = 30, mode = 'regular') {
         minItems: 1,
         items: { type: 'string', minLength: 1 },
       },
+      suggestedAudio: { type: 'string', minLength: 1 },
     },
   };
   return baseSchema;
@@ -3546,7 +3548,9 @@ caption — Something the creator would actually type under this video. Casual, 
 
 designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
-hashtags — 5-8 relevant hashtags.`;
+hashtags — 5-8 relevant hashtags.
+
+suggestedAudio — A specific trending sound or song that fits this video. Include the artist and title.`;
 
   const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
@@ -3567,13 +3571,15 @@ reelHook — On-screen text that stops a scroller. A few words. Entertainment fi
 
 reelBody — Text overlays during the video. They support the story and land the promotion naturally.
 
-reelCta — Final on-screen text. Short. Drives action.
+reelCta — Final on-screen text. Short.
 
-caption — Something the creator would actually type. Casual, personal.${hasPromoting ? ` Mentions ${promoting} like it's their own opinion, not an ad.` : ''}
+caption — Something the creator would actually type. Casual, personal.
 
 designNotes — Where the creator is standing or sitting, and what is visible behind them.
 
-hashtags — 5-8 relevant hashtags.`;
+hashtags — 5-8 relevant hashtags.
+
+suggestedAudio — A specific trending sound or song that fits this video. Include the artist and title.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;
@@ -9789,8 +9795,8 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. You are planning 30 days of short-form video ads for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience — and by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
-        : `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience — and by the end, the viewer wants what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
+        ? `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations or listicles. They're entertaining videos that make someone say "I need to follow this person" — and by the end, the viewer wants ${cleanPromoting}. The promotion never feels forced. It arrives because the video earned it.`
+        : `Every video is the creator talking directly to camera. They are not filming other people. They are not capturing reactions. They are talking to their audience about something from their world — a story, an opinion, something they noticed, something that happened, something they know. These are not lessons or presentations or listicles. They're entertaining videos that make someone say "I need to follow this person" — and by the end, the viewer wants what the creator is offering. The promotion never feels forced. It arrives because the video earned it.`,
       '',
       'Return JSON only. Each item:',
       '{',
