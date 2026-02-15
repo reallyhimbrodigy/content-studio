@@ -7468,7 +7468,6 @@ function clearCalendarUI() {
   currentNiche = '';
   setCurrentCalendarId(null);
   renderCards(currentCalendar);
-  applyFilter("all");
   syncHubControls();
   if (hub) renderPublishHub();
   updateTabs();
@@ -7501,7 +7500,6 @@ if (loadCalendarData && loadCalendarData !== 'undefined') {
     currentNiche = loadedNiche;
     if (nicheInput) nicheInput.value = loadedNiche || '';
     renderCards(currentCalendar);
-    applyFilter("all");
     syncCalendarUIAfterDataChange();
     persistCurrentCalendarState();
     ensurePlatformVariantsForCurrentCalendar('library');
@@ -7923,11 +7921,7 @@ async function ensurePlatformVariantsForCurrentCalendar(reason = 'auto') {
       userIsPro,
     });
     currentCalendar = merged;
-    if (currentFilter === 'all') {
-      renderCards(currentCalendar);
-    } else {
-      applyFilter(currentFilter);
-    }
+    renderCards(currentCalendar);
     persistCurrentCalendarState();
     syncCalendarUIAfterDataChange();
     if (shouldShowFeedback) {
@@ -9711,7 +9705,6 @@ async function onGenerateCalendarClick() {
     }
     currentNiche = niche;
     renderCards(currentCalendar);
-    applyFilter("all");
     activeTab = 'plan';
     syncCalendarUIAfterDataChange({ scrollToCalendar: true });
     persistCurrentCalendarState();
