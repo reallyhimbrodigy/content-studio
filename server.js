@@ -2358,7 +2358,6 @@ async function generateAndValidateSinglePost({
         allowFailover: false,
         schemaOverride: schema,
         previousPillar,
-        targetPillar: assignedPillarKey,
         postKey: post_key,
         slotIndex,
         plannedTitle,
@@ -2371,7 +2370,6 @@ async function generateAndValidateSinglePost({
         revealOrder,
         pov,
         angleLabel,
-        pillarStyle,
         recentTitles,
         angleSeed,
         usedSignatures: recentSignatures,
@@ -3556,7 +3554,6 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
-PILLAR: ${opts.pillar || opts.targetPillar || ''}
 
 This creator films on their phone. They talk the way they actually talk — not like a script, not like a presentation. They're the kind of person you'd follow because every video feels like they're talking directly to you about something real.
 
@@ -3584,7 +3581,6 @@ hashtags — 5-8 relevant hashtags.`;
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
-PILLAR: ${opts.pillar || opts.targetPillar || ''}
 
 This video is entertainment that happens to make the viewer want something. The creator films on their phone and talks the way they actually talk. The promotion lands because the video earned the viewer's attention first.${hasPromoting ? ` By the end, the viewer wants ${promoting} — not because they were pitched, but because the video made it feel obvious.` : ''}
 
@@ -9903,7 +9899,6 @@ const server = http.createServer((req, res) => {
       plannerCountLine,
       '',
       `Every video is different. Pull from different parts of this creator's world — what they see, what they deal with, what surprises them, what frustrates them, what they love.`,
-      `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9926,7 +9921,6 @@ const server = http.createServer((req, res) => {
       plannerCountLine,
       '',
       `Every video is different. Pull from different parts of this creator's world.`,
-      `Distribute across these pillars: ${CALENDAR_PILLARS.join(', ')}`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
