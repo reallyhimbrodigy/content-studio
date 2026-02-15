@@ -3518,7 +3518,7 @@ function deriveVariation(post_key = '') {
     render_style: pickFrom(base, ['audit', 'walkthrough', 'before_after', 'objection_reply', 'screen_record', 'pov_story']),
     beat_shape: pickFrom(base >>> 3, ['two_beat', 'three_beat', 'four_beat']),
     reveal_order: pickFrom(base >>> 7, ['artifact_first', 'condition_first', 'consequence_first']),
-    pov: pickFrom(base >>> 11, ['agent', 'buyer', 'narrator']),
+    pov: pickFrom(base >>> 11, ['creator', 'customer', 'narrator']),
   };
 }
 
@@ -3538,11 +3538,11 @@ The creator is talking directly to camera. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It tells the viewer what this video is about but leaves out the answer. The viewer keeps watching to get the answer.
+hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
 
-body — Everything the creator says after the hook. Written as the words that come out of the creator's mouth. The body delivers what the hook set up.
+body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out.
 
-cta — The last sentence the creator says.
+cta — The last sentence the creator says. It ends the video.
 
 reelHook — On-screen text version of the hook.
 
@@ -3561,13 +3561,13 @@ const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. W
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions ${promoting} because it connects to what the viewer just watched.` : `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions what they are offering because it connects to what the viewer just watched.`}
+${hasPromoting ? `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions ${promoting} because it connects to what happened in the video.` : `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions what they are offering because it connects to what happened in the video.`}
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It tells the viewer what this video is about but leaves out the answer. The viewer keeps watching to get the answer.
+hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
 
-${hasPromoting ? `body — Everything the creator says after the hook. Written as the words that come out of the creator's mouth. The body delivers what the hook set up. At the end, the creator shows or mentions ${promoting} because it connects to what they just said.` : `body — Everything the creator says after the hook. Written as the words that come out of the creator's mouth. The body delivers what the hook set up. At the end, the creator shows or mentions what they are offering because it connects to what they just said.`}
+${hasPromoting ? `body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
 
 cta — The last sentence the creator says. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' what the creator is offering'}.
 
