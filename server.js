@@ -9778,17 +9778,17 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out.`,
+      `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific situation. Who was involved and what they did.",',
+      '  "topic_signature": "One sentence — the specific situation and why the creator knows about it.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different situation from this creator's niche.`,
+      `Every video covers a different topic. Cover the full range of what this creator sees, knows, and has access to because of their position in their niche.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9797,18 +9797,18 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions ${cleanPromoting} because it connects to what happened.`
-        : `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`,
+        ? `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions ${cleanPromoting} because it connects to what happened.`
+        : `Every video is the creator talking directly to camera about a specific thing they know about because of their position in their niche. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific situation. Who was involved and what they did.",',
+      '  "topic_signature": "One sentence — the specific situation and why the creator knows about it.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different situation from this creator's niche.`,
+      `Every video covers a different topic. Cover the full range of what this creator sees, knows, and has access to because of their position in their niche.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
