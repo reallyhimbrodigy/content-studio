@@ -3538,9 +3538,9 @@ The creator is talking directly to camera. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out.
+hook — The first sentence the creator says out loud. It is a first person statement about something the creator personally experienced, discovered, or believes.
 
-body — Everything the creator says after the hook. The body tells how the situation in the hook turned out.
+body — Everything the creator says after the hook. The creator continues talking about their personal experience.
 
 cta — The last sentence of the script. The creator shares what happens next or what they are going to do about it.
 
@@ -3565,9 +3565,9 @@ ${hasPromoting ? `The creator is talking directly to camera. The video is 30-60 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out.
+hook — The first sentence the creator says out loud. It is a first person statement about something the creator personally experienced, discovered, or believes.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their personal experience. At the end, the creator shows or mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their personal experience. At the end, the creator shows or mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script.${hasPromoting ? ` The creator shares what happens next and mentions ${promoting}.` : ' The creator shares what happens next and mentions what they are offering.'}
 
@@ -9782,12 +9782,12 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information.`,
+      `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the video is about. It is interesting to a general audience.",',
+      '  "topic_signature": "One sentence — something the creator personally experienced, discovered, or believes.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
@@ -9801,13 +9801,13 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information. At the end of the video, ${cleanPromoting} connects to what the creator just talked about.`
-        : `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information. At the end of the video, what the creator is offering connects to what the creator just talked about.`,
+        ? `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
+        : `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the video is about. It is interesting to a general audience.",',
+      '  "topic_signature": "One sentence — something the creator personally experienced, discovered, or believes.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
