@@ -3540,7 +3540,7 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
 
-body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out.
+body — Everything the creator says after the hook. The body tells how the situation in the hook turned out.
 
 cta — The last sentence the creator says. It ends the video.
 
@@ -3567,7 +3567,7 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
 
-${hasPromoting ? `body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. Written as one continuous block of spoken words — the way someone talks when they are telling another person what happened. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
 
 cta — The last sentence the creator says. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' what the creator is offering'}.
 
@@ -8472,9 +8472,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       schema: format?.json_schema?.schema,
     });
     const responseTextFormat = toTextFormat(responseFormat);
+    const systemMessage = 'You write exactly what a person would say out loud. Every script you write is a transcript of spoken words — one continuous block of speech. You write the way people talk when they are telling someone what happened.';
     const payloadObj = {
       model: attemptModel,
-      input: [{ role: 'user', content: prompt }],
+      input: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: prompt },
+      ],
       max_output_tokens: Math.max(4000, attemptMaxTokens),
       text: { format: responseTextFormat },
     };
