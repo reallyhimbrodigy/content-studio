@@ -3538,15 +3538,15 @@ The creator is talking directly to camera. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
+hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out.
 
 body — Everything the creator says after the hook. The body tells how the situation in the hook turned out.
 
-cta — The last sentence the creator says. It ends the video.
+cta — The last sentence the creator says. It wraps up what they were talking about.
 
 reelHook — On-screen text version of the hook.
 
-reelBody — Three to four text phrases that appear on screen during the video.
+reelBody — Three to four short sentences that appear on screen during the video. They follow what the creator is saying.
 
 reelCta — Final on-screen text.
 
@@ -3565,15 +3565,15 @@ ${hasPromoting ? `The creator is talking directly to camera. The video is 30-60 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out. The viewer keeps watching to find out how it turned out.
+hook — The first sentence the creator says out loud. It is a statement that describes a situation but leaves out how it turned out.
 
 ${hasPromoting ? `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
 
-cta — The last sentence the creator says. It points the viewer toward${hasPromoting ? ` ${promoting}` : ' what the creator is offering'}.
+cta — The last sentence the creator says.${hasPromoting ? ` It wraps up what they were talking about and mentions ${promoting}.` : ' It wraps up what they were talking about and mentions what the creator is offering.'}
 
 reelHook — On-screen text version of the hook.
 
-reelBody — Three to four text phrases that appear on screen during the video.
+reelBody — Three to four short sentences that appear on screen during the video. They follow what the creator is saying.
 
 reelCta — Final on-screen text.
 
