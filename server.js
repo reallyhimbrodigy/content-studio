@@ -3542,7 +3542,7 @@ hook — The first sentence the creator says out loud. It is a statement that de
 
 body — Everything the creator says after the hook. The body tells how the situation in the hook turned out.
 
-cta — The last sentence the creator says. It wraps up what they were talking about.
+cta — The last sentence of the script. The creator shares what happens next or what they are going to do about it.
 
 reelHook — On-screen text version of the hook.
 
@@ -3569,7 +3569,7 @@ hook — The first sentence the creator says out loud. It is a statement that de
 
 ${hasPromoting ? `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions ${promoting} because it connects to what happened.` : `body — Everything the creator says after the hook. The body tells how the situation in the hook turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`}
 
-cta — The last sentence the creator says.${hasPromoting ? ` It wraps up what they were talking about and mentions ${promoting}.` : ' It wraps up what they were talking about and mentions what the creator is offering.'}
+cta — The last sentence of the script.${hasPromoting ? ` The creator shares what happens next and mentions ${promoting}.` : ' The creator shares what happens next and mentions what they are offering.'}
 
 reelHook — On-screen text version of the hook.
 
@@ -9782,17 +9782,17 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche.`,
+      `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific thing the creator saw, learned, or noticed.",',
+      '  "topic_signature": "One sentence — what the video is about. It is interesting to a general audience.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic. Cover the full range of what this creator sees, learns, and notices because of their position in their niche.`,
+      `Every video covers a different topic.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9801,18 +9801,18 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche. At the end of the video, ${cleanPromoting} connects to what the creator just talked about.`
-        : `Every video is the creator talking directly to camera about something they have seen, learned, or noticed because of their position in their niche. At the end of the video, what the creator is offering connects to what the creator just talked about.`,
+        ? `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information. At the end of the video, ${cleanPromoting} connects to what the creator just talked about.`
+        : `Every video is the creator talking directly to camera. The video is interesting to a general audience. The creator's position in their niche is what gives them access to this information. At the end of the video, what the creator is offering connects to what the creator just talked about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — the specific thing the creator saw, learned, or noticed.",',
+      '  "topic_signature": "One sentence — what the video is about. It is interesting to a general audience.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic. Cover the full range of what this creator sees, learns, and notices because of their position in their niche.`,
+      `Every video covers a different topic.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
