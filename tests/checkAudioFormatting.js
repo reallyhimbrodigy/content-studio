@@ -6,10 +6,10 @@ if (!sample || !sample.title || !sample.artist) {
 }
 const line = `${sample.title} - ${sample.artist}`;
 if (!/^.+ - .+$/.test(line)) {
-  throw new Error('Suggested audio format must use hyphen separator.');
+  throw new Error('Audio format must use hyphen separator.');
 }
 if (/https?:\\/\\//i.test(line) || /@/.test(line)) {
-  throw new Error('Suggested audio text must not include links or handles.');
+  throw new Error('Audio text must not include links or handles.');
 }
 
 console.log('Audio formatting check passed.');

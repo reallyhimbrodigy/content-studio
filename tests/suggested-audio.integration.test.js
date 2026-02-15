@@ -1,4 +1,4 @@
-const { ensureSuggestedAudioForPosts } = require('../server');
+const { ensureAudioForPosts } = require('../server');
 const { getEvergreenFallbackList } = require('../server/lib/billboardHot100');
 
 const posts = Array.from({ length: 5 }, (_, idx) => ({
@@ -12,7 +12,7 @@ const posts = Array.from({ length: 5 }, (_, idx) => ({
 }));
 
 const audioEntries = getEvergreenFallbackList();
-const stats = ensureSuggestedAudioForPosts(posts, { audioEntries });
+const stats = ensureAudioForPosts(posts, { audioEntries });
 
 const assert = (condition, message) => {
   if (!condition) {
@@ -26,9 +26,9 @@ assert(stats.total === posts.length, 'expected stats total match');
 assert(stats.missingAudio === 0, 'expected no missing audio after assignment');
 
 posts.forEach((post, idx) => {
-  assert(post.suggestedAudio, `post ${idx + 1} missing suggestedAudio`);
-  assert(/.+ - .+/.test(post.suggestedAudio), `Audio string format missing for day ${post.day}`);
-  assert(!/https?:\/\//i.test(post.suggestedAudio), `Audio string contains URL for day ${post.day}`);
+  assert(post.audio, `post ${idx + 1} missing audio`);
+  assert(/.+ - .+/.test(post.audio), `Audio string format missing for day ${post.day}`);
+  assert(!/https?:\/\//i.test(post.audio), `Audio string contains URL for day ${post.day}`);
 });
 
-console.log('Suggested audio assignment integration test passed.');
+console.log('Audio assignment integration test passed.');

@@ -6026,9 +6026,9 @@ const createCard = (post) => {
     const entryDay = typeof entry.day === 'number' ? entry.day : dayValue;
     // No inline audio overrides; display server-provided post.audio only.
 
-    const buildSuggestedAudioText = (audio) => {
+    const buildAudioText = (audio) => {
       if (!audio || typeof audio !== 'string') return '';
-      const cleaned = sanitizeSuggestedAudioText(audio);
+      const cleaned = sanitizeAudioText(audio);
       const parts = cleaned.split(/\s+-\s+/);
       if (parts.length >= 2) {
         const title = parts.shift().trim();
@@ -6356,12 +6356,12 @@ const createCard = (post) => {
     const repurposeText = repurpose ? (Array.isArray(repurpose) ? repurpose.join(' • ') : repurpose) : '';
     const repurposeEl = repurposeText || '';
 
-    const suggestedAudioRaw =
-      entry?.suggestedAudio ||
-      entry?.suggested_audio ||
-      (entry?.details && typeof entry.details === 'object' ? entry.details.suggestedAudio : '');
-    const suggestedAudioText = buildSuggestedAudioText(suggestedAudioRaw);
-    const audioRowText = suggestedAudioText || 'No audio suggestion';
+    const audioRaw =
+      entry?.audio ||
+      entry?.audio ||
+      (entry?.details && typeof entry.details === 'object' ? entry.details.audio : '');
+    const audioText = buildAudioText(audioRaw);
+    const audioRowText = audioText || 'No audio suggestion';
     // Audio completeness is summarized once per generation run.
     const engagementParts = [];
     if (engagementScripts && typeof engagementScripts === 'object' && !Array.isArray(engagementScripts)) {
@@ -6585,7 +6585,6 @@ const createCard = (post) => {
       if (entry.hashtagSets.broad) fullTextParts.push(`Broad Hashtags: ${(entry.hashtagSets.broad || []).join(' ')}`);
       if (entry.hashtagSets.niche) fullTextParts.push(`Niche/Local Hashtags: ${(entry.hashtagSets.niche || []).join(' ')}`);
     }
-    if (audioRowText) fullTextParts.push(`Suggested audio: ${safeText(audioRowText)}`);
     const fullText = stripTrailingFollowUpSection(fullTextParts.join('\n\n'));
 
     btnCopyFull.addEventListener('click', async () => {
@@ -6664,7 +6663,7 @@ const createCard = (post) => {
     }
     const hiddenDetailNodes = [];
     hiddenDetailNodes.push(
-      createDetailRow('Suggested Audio', audioRowText, 'calendar-card__audio suggested-audio')
+      createDetailRow('Suggested Audio', audioRowText, 'calendar-card__audio audio')
     );
     const engagementRow = (() => {
       const parts = [];
@@ -7867,9 +7866,9 @@ async function generateVariantsForPosts(posts, { nicheStyle = '', userId, userIs
       if (!byDay.has(post.day)) return post;
       const variants = byDay.get(post.day);
       const mergedVariants = { ...post.variants, ...variants };
-      return { ...post, variants: mergedVariants, suggestedAudio: post.suggestedAudio };
+      return { ...post, variants: mergedVariants, audio: post.audio };
     });
-    const variantAudioCount = merged.filter(hasSuggestedAudio).length;
+    const variantAudioCount = merged.filter(hasAudio).length;
     console.log('[Calendar] variants audio preserved', { variantAudioCount });
   }
 
@@ -8080,10 +8079,10 @@ function toCsv(headers, rows){
   return [headers.join(','), ...rows.map(r=>r.map(esc).join(','))].join('\n');
 }
 
-function formatSuggestedAudioDisplay(post = {}) {
-  const audio = post?.suggestedAudio;
+function formatAudioDisplay(post = {}) {
+  const audio = post?.audio;
   if (!audio || typeof audio !== 'string') return '';
-  const cleaned = sanitizeSuggestedAudioText(audio);
+  const cleaned = sanitizeAudioText(audio);
   const parts = cleaned.split(/\s+-\s+/);
   if (parts.length >= 2) {
     const title = parts.shift().trim();
@@ -8191,7 +8190,7 @@ function buildPostHTML(post){
     (engagementComment||engagementDm) ? `<div class="calendar-card__engagement"><strong>Engagement Scripts</strong>${engagementComment?`<div><em>Comment:</em> ${escapeHtml(engagementComment)}</div>`:''}${engagementDm?`<div><em>DM:</em> ${escapeHtml(engagementDm)}</div>`:''}</div>` : '',
     (promoSlot||weeklyPromo) ? `<div class="calendar-card__promo"><strong>Weekly Promo Slot:</strong> ${weeklyPromo?escapeHtml(weeklyPromo):'Yes'}</div>` : '',
     (cleanedHook||cleanedBody||cleanedCta) ? `<div class="calendar-card__video"><strong>${videoLabel}</strong>${cleanedHook?`<div>${escapeHtml(cleanedHook)}</div>`:''}${cleanedBody?`<div><em>Body:</em> ${nl2br(cleanedBody)}</div>`:''}${cleanedCta?`<div><em>CTA:</em> ${escapeHtml(cleanedCta)}</div>`:''}</div>` : '',
-    (post.suggestedAudio ? `<div class="calendar-card__audio"><strong>Suggested Audio:</strong> ${escapeHtml(String(post.suggestedAudio))}</div>` : ''),
+    (post.audio ? `<div class="calendar-card__audio"><strong>Suggested Audio:</strong> ${escapeHtml(String(post.audio))}</div>` : ''),
     (post.variants && (post.variants.igCaption || post.variants.tiktokCaption || post.variants.linkedinCaption))
       ? `<div class="calendar-card__variants">`
         + `${post.variants.igCaption?`<div><em>Instagram:</em> ${escapeHtml(post.variants.igCaption)}</div>`:''}`
@@ -8264,10 +8263,10 @@ function buildPostHTML(post){
       + `</div>`
     );
   }
-    if (post.suggestedAudio) {
-      const audioHtmlText = formatSuggestedAudioDisplay(post);
+    if (post.audio) {
+      const audioHtmlText = formatAudioDisplay(post);
       if (audioHtmlText) {
-        detailBlocks.push(`<div class="calendar-card__audio suggested-audio"><strong>Suggested audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
+        detailBlocks.push(`<div class="calendar-card__audio audio"><strong>Audio</strong><div>${escapeHtml(audioHtmlText)}</div></div>`);
       }
     }
 
@@ -8963,7 +8962,7 @@ function ensureGlobalVariety(posts) {
 }
 
 // Normalize a post to ensure required fields exist
-function sanitizeSuggestedAudioText(value = '') {
+function sanitizeAudioText(value = '') {
   return String(value || '')
     .replace(/^(tiktok|instagram)\s*:\s*/i, '')
     .replace(/\bhttps?:\/\/\S+/gi, '')
@@ -8972,16 +8971,16 @@ function sanitizeSuggestedAudioText(value = '') {
     .trim();
 }
 
-function isValidSuggestedAudio(audio = '') {
+function isValidAudio(audio = '') {
   if (!audio || typeof audio !== 'string') return false;
   return /.+\s-\s.+/.test(audio);
 }
 
-function normalizeSuggestedAudio(post = {}) {
-  const candidate = post.suggestedAudio || post.suggested_audio || post?.details?.suggestedAudio;
+function normalizeAudio(post = {}) {
+  const candidate = post.audio || post.audio || post?.details?.audio;
   if (!candidate) return '';
   if (typeof candidate !== 'string') return '';
-  const cleaned = sanitizeSuggestedAudioText(candidate);
+  const cleaned = sanitizeAudioText(candidate);
   const parts = cleaned.split(/\s+-\s+/);
   if (parts.length >= 2) {
     const title = parts.shift().trim();
@@ -8991,12 +8990,12 @@ function normalizeSuggestedAudio(post = {}) {
   return '';
 }
 
-function hasSuggestedAudio(post) {
-  return isValidSuggestedAudio(normalizeSuggestedAudio(post));
+function hasAudio(post) {
+  return isValidAudio(normalizeAudio(post));
 }
 
-function getSuggestedAudioTitle(post) {
-  const audio = normalizeSuggestedAudio(post);
+function getAudioTitle(post) {
+  const audio = normalizeAudio(post);
   return audio || '';
 }
 
@@ -9035,7 +9034,7 @@ function normalizePost(p, idx = 0, startDay = 1) {
     },
     variants: base.variants || undefined,
     audio: base.audio || '',
-    suggestedAudio: normalizeSuggestedAudio(base),
+    audio: normalizeAudio(base),
   };
   // Back-compat: if old single engagementScript field exists, map into engagementScripts.commentReply
   if (!out.engagementScripts) out.engagementScripts = { commentReply: '', dmReply: '' };
@@ -9403,21 +9402,21 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const rawPostCount = allPosts.length;
     // Normalize every post to ensure required fields
     const normalized = allPosts.map((p, i) => normalizePost(p, i, 1)).slice(0, totalPosts);
-    const preAudioCount = normalized.filter(hasSuggestedAudio).length;
+    const preAudioCount = normalized.filter(hasAudio).length;
     console.log(`[Calendar] audio pre render run ${thisRunId}`, { preAudioCount });
     allPosts = normalized.map((post, idx) => {
       const dayIndex = Math.floor(idx / normalizedFrequency) + 1;
       const slot = (idx % normalizedFrequency) + 1;
       return { ...post, day: dayIndex, slot };
     });
-    const assignedAudioCount = allPosts.filter(hasSuggestedAudio).length;
+    const assignedAudioCount = allPosts.filter(hasAudio).length;
     const audioSample = allPosts
-      .filter(hasSuggestedAudio)
+      .filter(hasAudio)
       .slice(0, 2)
       .map((post) => ({
         day: post.day,
         title: post.title,
-        audioTitle: getSuggestedAudioTitle(post),
+        audioTitle: getAudioTitle(post),
       }));
     console.log(`[Calendar] audio assigned run ${thisRunId}`, {
       assignedAudioCount,
@@ -9528,9 +9527,9 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     renderGateEnabled = false;
     expectedCalendarPostCount = null;
     requestAnimationFrame(() => {
-      const audioNodes = document.querySelectorAll('.suggested-audio');
+      const audioNodes = document.querySelectorAll('.audio');
       const totalPosts = allPosts.length;
-      const validAudioCount = allPosts.filter(hasSuggestedAudio).length;
+      const validAudioCount = allPosts.filter(hasAudio).length;
       const fallbackAudioCount = 0;
       console.log(`[Calendar] audio render summary run ${thisRunId}`, {
         totalPosts,
@@ -9539,7 +9538,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         fallbackAudioCount,
         renderedAudioRows: audioNodes.length,
       });
-      console.log(`[Calendar] DOM suggested audio nodes run ${thisRunId}`, { nodeCount: audioNodes.length });
+      console.log(`[Calendar] DOM audio nodes run ${thisRunId}`, { nodeCount: audioNodes.length });
     });
     console.log('[Calendar] rendered posts', allPosts.length);
     console.log(`[Calendar] run ${thisRunId} complete, total posts:`, allPosts.length);

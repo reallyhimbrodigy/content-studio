@@ -2401,12 +2401,12 @@ async function generateAndValidateSinglePost({
       }
       const post = validation.post;
       const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-      const normalizedAudio = normalizeSuggestedAudioValue(post?.suggestedAudio, fallbackAudio);
+      const normalizedAudio = normalizeAudioValue(post?.audio, fallbackAudio);
       post.details = {
         ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-        suggestedAudio: normalizedAudio,
+        audio: normalizedAudio,
       };
-      delete post.suggestedAudio;
+      delete post.audio;
       console.log('[Calendar][Job] success', {
         requestId,
         mode: calendarMode,
@@ -2554,7 +2554,7 @@ async function getCachedHot100(options = {}) {
     const err = new Error('BILLBOARD_FETCH_FAILED');
     err.code = 'CALENDAR_POST_GENERATION_FAILED';
     err.statusCode = 422;
-    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.audio' };
     throw err;
   }
   hot100Cache.set(key, { fetchedAt: Date.now(), value: fresh });
@@ -2568,7 +2568,7 @@ async function getHot100TracksSafe(requestId = '', minCount = 30) {
     const err = new Error('BILLBOARD_FETCH_FAILED');
     err.code = 'CALENDAR_POST_GENERATION_FAILED';
     err.statusCode = 422;
-    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.audio' };
     throw err;
   }
   return tracks;
@@ -2589,7 +2589,7 @@ async function getHot100AudioForPostKey(postKeyValue = '', requestId = '') {
     const err = new Error('BILLBOARD_FETCH_FAILED');
     err.code = 'CALENDAR_POST_GENERATION_FAILED';
     err.statusCode = 422;
-    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.audio' };
     throw err;
   }
   const entry = tracks[Math.floor(Math.random() * tracks.length)] || tracks[0];
@@ -2598,7 +2598,7 @@ async function getHot100AudioForPostKey(postKeyValue = '', requestId = '') {
     const err = new Error('BILLBOARD_FETCH_FAILED');
     err.code = 'CALENDAR_POST_GENERATION_FAILED';
     err.statusCode = 422;
-    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.audio' };
     throw err;
   }
   return audioString;
@@ -3116,7 +3116,7 @@ function normalizeToMinimalShape(raw = {}) {
     caption: stripTrailingFollowUpSection(raw.caption),
     designNotes: stripTrailingFollowUpSection(raw.designNotes),
     hashtags: raw.hashtags,
-    suggestedAudio: stripTrailingFollowUpSection(raw.suggestedAudio ?? raw?.details?.suggestedAudio),
+    audio: stripTrailingFollowUpSection(raw.audio ?? raw?.details?.audio),
   };
   return cleaned;
 }
@@ -4346,18 +4346,18 @@ function sanitizeAudioText(value = '') {
   return text;
 }
 
-function isValidSuggestedAudio(audio = '') {
+function isValidAudio(audio = '') {
   if (!audio || typeof audio !== 'string') return false;
   return /.+\s-\s.+/.test(audio);
 }
 
-function getSuggestedAudioValue(post = {}) {
+function getAudioValue(post = {}) {
   if (!post || typeof post !== 'object') return '';
-  const candidate = post?.details?.suggestedAudio ?? post?.suggestedAudio ?? post?.suggested_audio;
+  const candidate = post?.details?.audio ?? post?.audio ?? post?.audio;
   return typeof candidate === 'string' ? candidate : '';
 }
 
-function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [] } = {}) {
+function ensureAudioForPosts(posts = [], { audioEntries = [] } = {}) {
   if (!Array.isArray(posts) || !posts.length) {
     return { total: 0, missingAudio: 0 };
   }
@@ -4367,7 +4367,7 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [] } = {}) {
     const err = new Error('BILLBOARD_FETCH_FAILED');
     err.code = 'CALENDAR_POST_GENERATION_FAILED';
     err.statusCode = 422;
-    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.suggestedAudio' };
+    err.details = { reason: 'BILLBOARD_FETCH_FAILED', field: 'details.audio' };
     throw err;
   }
   const picks = [];
@@ -4380,12 +4380,12 @@ function ensureSuggestedAudioForPosts(posts = [], { audioEntries = [] } = {}) {
     const audioString = normalizeAudioString(entry?.title || '', entry?.artist || '');
     post.details = {
       ...(post.details && typeof post.details === 'object' && !Array.isArray(post.details) ? post.details : {}),
-      suggestedAudio: audioString,
+      audio: audioString,
     };
-    if (Object.prototype.hasOwnProperty.call(post, 'suggestedAudio')) {
-      delete post.suggestedAudio;
+    if (Object.prototype.hasOwnProperty.call(post, 'audio')) {
+      delete post.audio;
     }
-    if (!isValidSuggestedAudio(audioString)) stats.missingAudio += 1;
+    if (!isValidAudio(audioString)) stats.missingAudio += 1;
   });
   return stats;
 }
@@ -6578,10 +6578,10 @@ function sanitizePostForSchema(schema, post) {
     const rawDetails = cleaned.details;
     if (rawDetails && typeof rawDetails === 'object' && !Array.isArray(rawDetails)) {
       cleaned.details = {
-        suggestedAudio: coerceToString(rawDetails.suggestedAudio || ''),
+        audio: coerceToString(rawDetails.audio || ''),
       };
     } else if (typeof rawDetails === 'string') {
-      cleaned.details = { suggestedAudio: rawDetails.trim() };
+      cleaned.details = { audio: rawDetails.trim() };
     } else {
       cleaned.details = {};
     }
@@ -6619,11 +6619,11 @@ function coerceCalendarPostTypes(post) {
     post.designNotes = post.designNotes.join('\n');
   }
   if (post.details && typeof post.details !== 'object') {
-    post.details = { suggestedAudio: String(post.details) };
+    post.details = { audio: String(post.details) };
   }
   if (post.details && typeof post.details === 'object' && !Array.isArray(post.details)) {
-    if (post.details.suggestedAudio && typeof post.details.suggestedAudio !== 'string') {
-      post.details.suggestedAudio = String(post.details.suggestedAudio);
+    if (post.details.audio && typeof post.details.audio !== 'string') {
+      post.details.audio = String(post.details.audio);
     }
   }
   if (post.topicCapsule && typeof post.topicCapsule === 'object' && !Array.isArray(post.topicCapsule)) {
@@ -7062,7 +7062,7 @@ function runTopicBindSelfTest() {
   console.assert(freeFail, '[TopicBinding][SelfTest] off-topic free valuation caption should fail.');
 }
 
-function stripSuggestedAudioLinks(value = '') {
+function stripAudioLinks(value = '') {
   let text = String(value || '').trim();
   if (!text) return '';
   text = text.replace(/\([^)]*(https?:\/\/|link:)[^)]*\)/gi, '');
@@ -7073,8 +7073,8 @@ function stripSuggestedAudioLinks(value = '') {
   return text;
 }
 
-function splitSuggestedAudioTitleArtist(text = '') {
-  const cleaned = stripSuggestedAudioLinks(text).trim();
+function splitAudioTitleArtist(text = '') {
+  const cleaned = stripAudioLinks(text).trim();
   if (!cleaned) return { title: '', artist: '' };
   const parts = cleaned.split(/\s+—\s+|\s+-\s+/);
   if (parts.length <= 1) return { title: cleaned, artist: '' };
@@ -7083,33 +7083,33 @@ function splitSuggestedAudioTitleArtist(text = '') {
   return { title, artist };
 }
 
-function normalizeSuggestedAudioFromText(text = '') {
-  return splitSuggestedAudioTitleArtist(String(text || ''));
+function normalizeAudioFromText(text = '') {
+  return splitAudioTitleArtist(String(text || ''));
 }
 
-function sanitizeSuggestedAudioEntry(entry = {}) {
-  const title = stripSuggestedAudioLinks(entry.title || entry.name || entry.sound || entry.track || '');
-  const artist = stripSuggestedAudioLinks(entry.artist || entry.creator || entry.by || '');
+function sanitizeAudioEntry(entry = {}) {
+  const title = stripAudioLinks(entry.title || entry.name || entry.sound || entry.track || '');
+  const artist = stripAudioLinks(entry.artist || entry.creator || entry.by || '');
   return { title, artist };
 }
 
-function normalizeSuggestedAudioValue(candidate, fallbackEntry = null) {
+function normalizeAudioValue(candidate, fallbackEntry = null) {
   const fallback = fallbackEntry || getEvergreenFallbackList()[0] || { title: 'Original audio', artist: 'voiceover' };
   const fallbackString = normalizeAudioString(fallback.title, fallback.artist);
   if (!candidate) {
     return fallbackString;
   }
   if (typeof candidate === 'string') {
-    const parsed = normalizeSuggestedAudioFromText(candidate);
+    const parsed = normalizeAudioFromText(candidate);
     return normalizeAudioString(parsed.title || fallback.title, parsed.artist || fallback.artist);
   }
   if (candidate && typeof candidate === 'object') {
     const hasDirect = candidate.title || candidate.name || candidate.track;
     if (hasDirect) {
-      const sanitized = sanitizeSuggestedAudioEntry(candidate);
+      const sanitized = sanitizeAudioEntry(candidate);
       return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
     }
-    const sanitized = sanitizeSuggestedAudioEntry(candidate);
+    const sanitized = sanitizeAudioEntry(candidate);
     return normalizeAudioString(sanitized.title || fallback.title, sanitized.artist || fallback.artist);
   }
   return fallbackString;
@@ -7200,15 +7200,15 @@ function ensureRegenRequiredFields(rawPost = {}, nicheStyle = '', dayNumber = 1,
   normalized.videoScript = normalized.videoScript && normalized.videoScript.hook ? normalized.videoScript : scriptBase;
   normalized.reelScript = normalized.reelScript || scriptBase;
   const fallbackAudio = getEvergreenFallbackList()[0] || { title: 'Top track', artist: 'Billboard Hot 100' };
-  const normalizedAudio = normalizeSuggestedAudioValue(
-    normalized.suggestedAudio || rawPost.suggestedAudio || rawPost.suggested_audio,
+  const normalizedAudio = normalizeAudioValue(
+    normalized.audio || rawPost.audio || rawPost.audio,
     fallbackAudio
   );
   normalized.details = {
     ...(normalized.details && typeof normalized.details === 'object' && !Array.isArray(normalized.details) ? normalized.details : {}),
-    suggestedAudio: normalizedAudio,
+    audio: normalizedAudio,
   };
-  delete normalized.suggestedAudio;
+  delete normalized.audio;
   const inferredMode = toPlainString(normalized?.calendarMode || normalized?.mode || '') === 'brand_brain'
     ? 'brand_brain'
     : 'regular';
@@ -7475,9 +7475,9 @@ function guaranteeRequiredFields(post = {}, nicheStyle = '', dayNumber = 1) {
 function runRegenNormalizationSelfTest() {
   if (isProduction) return;
   const sample = 'Calm Down — Rema (link: https://tiktok.com)';
-  const parsed = normalizeSuggestedAudioFromText(sample);
+  const parsed = normalizeAudioFromText(sample);
   if (!parsed.title || !parsed.artist) {
-    console.warn('[Calendar][Test] suggested audio normalize failed', { parsed });
+    console.warn('[Calendar][Test] audio normalize failed', { parsed });
   }
   const repaired = ensureRegenRequiredFields({ day: 1, idea: 'Test idea' }, 'Test niche', 1);
   if (repaired.missingFields.length) {
@@ -7519,15 +7519,15 @@ function withTimeout(promise, ms, meta = {}) {
   });
 }
 
-function extractSuggestedAudioFromPost(post = {}) {
+function extractAudioFromPost(post = {}) {
   if (!post || typeof post !== 'object') return null;
-  const candidate = post?.details?.suggestedAudio ?? post.suggestedAudio ?? post.suggested_audio;
+  const candidate = post?.details?.audio ?? post.audio ?? post.audio;
   if (!candidate) return null;
   if (typeof candidate === 'string') {
     return candidate.trim();
   }
   if (typeof candidate === 'object') {
-    const normalized = normalizeSuggestedAudioValue(candidate);
+    const normalized = normalizeAudioValue(candidate);
     return normalized || null;
   }
   return null;
@@ -7609,7 +7609,7 @@ function normalizePost(post, idx = 0, startDay = 1, forcedDay, nicheStyle = '', 
     audio: toPlainString(post.audio || ''),
     strategy: post.strategy || {},
     details: {
-      suggestedAudio: extractSuggestedAudioFromPost(post) || '',
+      audio: extractAudioFromPost(post) || '',
     },
   };
   if (normalizedDesignNotes.changed) {
@@ -9778,17 +9778,17 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera. The video opens with something the viewer wants to know more about, and the rest of the video delivers it.`,
+      `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the video is about and what the viewer wants to know.",',
+      '  "topic_signature": "One sentence — the specific situation. Who was involved and what they did.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic from this creator's niche.`,
+      `Every video covers a different situation from this creator's niche.`,
     ].join('\n');
 
     const BRAND_BRAIN_PLAN_PROMPT = [
@@ -9797,18 +9797,18 @@ const server = http.createServer((req, res) => {
         : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera. The video opens with something the viewer wants to know more about, and the rest of the video delivers it. At the end, the creator shows or mentions ${cleanPromoting} because it connects to what the viewer just watched.`
-        : `Every video is the creator talking directly to camera. The video opens with something the viewer wants to know more about, and the rest of the video delivers it. At the end, the creator shows or mentions what they are offering because it connects to what the viewer just watched.`,
+        ? `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions ${cleanPromoting} because it connects to what happened.`
+        : `Every video is the creator talking directly to camera about a specific thing that happened in their work. The video opens by describing the situation, and the rest of the video tells how it turned out. At the end, the creator shows or mentions what they are offering because it connects to what happened.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — what the video is about and what the viewer wants to know.",',
+      '  "topic_signature": "One sentence — the specific situation. Who was involved and what they did.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
       '',
-      `Every video covers a different topic from this creator's niche.`,
+      `Every video covers a different situation from this creator's niche.`,
     ].join('\n');
     const planPromptBase = (plannerMode === 'brand_brain') ? BRAND_BRAIN_PLAN_PROMPT : REGULAR_PLAN_PROMPT;
     const usedSignaturesLine = cleanUsedSignatures.length
@@ -10981,20 +10981,20 @@ const server = http.createServer((req, res) => {
       requestId: loggingContext?.requestId,
       minCount: 30,
     });
-    const audioStats = ensureSuggestedAudioForPosts(posts, {
+    const audioStats = ensureAudioForPosts(posts, {
       audioEntries: billboardEntries,
       requestId: loggingContext?.requestId,
       chunkStartDay: startDay,
       postsPerDay: perDay,
     });
-    const invalidAudio = posts.find((post) => !post || !isValidSuggestedAudio(getSuggestedAudioValue(post)));
+    const invalidAudio = posts.find((post) => !post || !isValidAudio(getAudioValue(post)));
     if (invalidAudio) {
       const err = new Error('CALENDAR_POST_GENERATION_FAILED');
       err.code = 'CALENDAR_POST_GENERATION_FAILED';
       err.statusCode = 422;
       err.details = {
         reason: 'AUDIO_SOURCE_INVALID',
-        field: 'details.suggestedAudio',
+        field: 'details.audio',
         snippet: 'hot100_invalid',
       };
       throw err;
@@ -11003,7 +11003,7 @@ const server = http.createServer((req, res) => {
       .slice(0, 2)
       .map((post) => ({
         day: post.day,
-        audio: getSuggestedAudioValue(post),
+        audio: getAudioValue(post),
       }))
       .filter((entry) => entry.audio);
     const postProcessingMs = Date.now() - validationStart;
@@ -11034,16 +11034,16 @@ const server = http.createServer((req, res) => {
     });
     if (!isProduction) {
       const holidayHits = posts.filter((post) => {
-        const value = getSuggestedAudioValue(post) || '';
-        const parsed = normalizeSuggestedAudioFromText(value);
+        const value = getAudioValue(post) || '';
+        const parsed = normalizeAudioFromText(value);
         return parsed?.title && isHolidayTrack(parsed.title, parsed.artist);
       });
       if (holidayHits.length) {
         const sample = holidayHits.slice(0, 2).map((post) => ({
           day: post.day,
-          audio: getSuggestedAudioValue(post),
+          audio: getAudioValue(post),
         }));
-        throw new Error(`Holiday audio detected in suggestedAudio: ${JSON.stringify(sample)}`);
+        throw new Error(`Holiday audio detected in audio: ${JSON.stringify(sample)}`);
       }
     }
     if (forceSinglePostPerDayForModel && requestedPostsPerDay > 1) {
@@ -14787,5 +14787,5 @@ module.exports = {
   ensurePinnedFieldsValid,
   dedupePinnedComments,
   buildPrompt,
-  ensureSuggestedAudioForPosts,
+  ensureAudioForPosts,
 };
