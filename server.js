@@ -3573,11 +3573,11 @@ cta — The last sentence of the script. The creator says what they are going to
 
 reelHook — On-screen text version of the hook.
 
-reelBody — Three to four short sentences that appear on screen during the video. They follow what the creator is saying.
+reelBody — Three to four short sentences that appear on screen during the video. They follow the story the creator is telling.
 
-reelCta — Final on-screen text.
+reelCta — On-screen text version of the CTA.
 
-caption — One to two sentences. What the creator types under the video.
+caption — One to two sentences. What the creator types under the video. It connects to the story.
 
 designNotes — One sentence. Where the creator is and what is behind them.
 
@@ -9787,7 +9787,7 @@ const server = http.createServer((req, res) => {
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
+      '  "topic_signature": "One sentence — something that changed or went wrong while the creator was doing their work in this space.",',
       '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
       '}',
       plannerCountLine,
@@ -9807,7 +9807,7 @@ const server = http.createServer((req, res) => {
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
+      '  "topic_signature": "One sentence — something that changed or went wrong while the creator was doing their work in this space.",',
       '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
       '}',
       plannerCountLine,
