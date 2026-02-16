@@ -3556,12 +3556,12 @@ designNotes — One sentence. Where the creator is and what is behind them.
 
 hashtags — 5-8 hashtags.`;
 
-const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.${hasPromoting ? ` The creator also offers: ${promoting}.` : ''}
+const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
@@ -9797,11 +9797,11 @@ const server = http.createServer((req, res) => {
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. The creator also offers: ${cleanPromoting}.`
+        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
+        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space.`
         : `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
