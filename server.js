@@ -3559,8 +3559,7 @@ hashtags — 5-8 hashtags.`;
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
-${hasPromoting ? `THE CREATOR ALSO OFFERS: ${promoting}
-HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW IT PROMOTES: ${opts.plannedAngle || ''}`}
+${hasPromoting ? `HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW IT PROMOTES: ${opts.plannedAngle || ''}`}
 
 ${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
@@ -9798,11 +9797,11 @@ const server = http.createServer((req, res) => {
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`
+        ? `You are a creator in this space: ${nicheStyle}. The creator also offers: ${cleanPromoting}. Plan 30 short-form videos for TikTok and Reels.`
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space.`
+        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. The angle describes how the story connects to what the creator offers.`
         : `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
@@ -9890,10 +9889,6 @@ const server = http.createServer((req, res) => {
       err.code = 'PLAN_MISSING';
       err.statusCode = 422;
       throw err;
-    }
-    if (plannerMode === 'brand_brain') {
-      const plannerResults = plan;
-      console.log('BRAND BRAIN PLANNER OUTPUT (first 3):', JSON.stringify(plannerResults.slice(0, 3), null, 2));
     }
     const details = [];
     plan.forEach((item, index) => {
