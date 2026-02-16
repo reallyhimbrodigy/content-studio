@@ -3451,7 +3451,7 @@ function applyVoiceLockUI(settings) {
 }
 
 function syncVoiceLockFromSettings() {
-  if (!voiceLockModal) return;
+  if (!voiceLockToggle || !voiceLockPresetSelect) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
@@ -3548,7 +3548,7 @@ function applyTargetAudienceUI(settings) {
 }
 
 function syncTargetAudienceFromSettings() {
-  if (!targetAudienceModal) return;
+  if (!targetAudienceToggle || !targetAudiencePresetSelect) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
@@ -5948,6 +5948,8 @@ if (brandBtn) {
   brandBtn.addEventListener('click', () => {
     setTimeout(syncPromotingInputVisibility, 50);
     setTimeout(syncPromotingInputVisibility, 500);
+    setTimeout(syncVoiceLockFromSettings, 60);
+    setTimeout(syncTargetAudienceFromSettings, 70);
   });
 }
 
