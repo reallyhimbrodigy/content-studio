@@ -3561,15 +3561,15 @@ const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}.
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera about their own experience from doing their work. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about their own experience from doing their work. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion from doing their work.
+hook — The first sentence the creator says out loud. It is a first person statement about something that happened while the creator was doing their work.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
-cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next. The thing they are doing next is related to ${promoting}.` : ' The creator says what they are going to do next. The thing they are doing next is related to what they are offering.'}
+cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next, and that thing is ${promoting}.` : ' The creator says what they are going to do next, and that thing is what they are offering.'}
 
 reelHook — On-screen text version of the hook.
 
