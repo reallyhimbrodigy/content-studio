@@ -3352,6 +3352,12 @@ function normalizeVoiceLockPresetKey(value = '') {
   const raw = String(value || '').trim().toLowerCase();
   const key = raw.replace(/\s+/g, '-');
   if (VOICE_LOCK_PRESET_GUIDES[key]) return key;
+  if (key === 'conversational') return 'casual';
+  if (key === 'confident') return 'direct';
+  if (key === 'raw') return 'no-ai-polish';
+  if (key === 'witty') return 'contrarian';
+  if (key === 'calm') return 'story-first';
+  if (key === 'intense') return 'punchy';
   if (key === 'friendly-expert' || key === 'friendly') return 'casual';
   return null;
 }
@@ -3452,6 +3458,13 @@ function normalizeTargetAudiencePresetKey(value = '') {
   const raw = String(value || '').trim().toLowerCase();
   const key = raw.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   if (TARGET_AUDIENCE_PRESET_GUIDES[key]) return key;
+  if (key === 'young-adults') return 'young-adults-18-25';
+  if (key === 'parents') return 'parents-families';
+  if (key === 'professionals') return 'working-professionals';
+  if (key === 'small-business-owners') return 'entrepreneurs-founders';
+  if (key === 'retirees') return 'working-professionals';
+  if (key === 'first-timers') return 'beginners';
+  if (key === 'side-hustlers') return 'freelancers-solopreneurs';
   return null;
 }
 

@@ -3186,7 +3186,7 @@ const PLAN_DETAILS = {
     limits: '',
   },
 };
-const VOICE_LOCK_PRESETS = ['Direct', 'Casual', 'Punchy', 'Story-first', 'Contrarian', 'No-AI-polish'];
+const VOICE_LOCK_PRESETS = ['Conversational', 'Confident', 'Raw', 'Witty', 'Calm', 'Intense'];
 const VOICE_LOCK_DEFAULTS = {
   enabled: false,
   preset: '',
@@ -3194,15 +3194,13 @@ const VOICE_LOCK_DEFAULTS = {
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
 const TARGET_AUDIENCE_PRESETS = [
   'Students',
-  'Young Adults (18–25)',
-  'Early Career Professionals',
-  'Working Professionals',
-  'Parents / Families',
-  'Entrepreneurs / Founders',
-  'Creators',
-  'Freelancers / Solopreneurs',
-  'Beginners',
-  'Experienced / Advanced',
+  'Young Adults',
+  'Parents',
+  'Professionals',
+  'Small Business Owners',
+  'Retirees',
+  'First-Timers',
+  'Side Hustlers',
 ];
 const TARGET_AUDIENCE_DEFAULTS = {
   enabled: false,
