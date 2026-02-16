@@ -3529,20 +3529,20 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
-const REGULAR_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
+const REGULAR_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
 
-The creator is talking directly to camera. The video is 30-60 seconds.
+The creator is talking directly to camera about their own experience. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about something the creator personally experienced, discovered, or believes.
+hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion.
 
-body — Everything the creator says after the hook. The creator continues talking about their personal experience.
+body — Everything the creator says after the hook. The creator continues talking about their own experience.
 
-cta — The last sentence of the script. The creator shares what happens next or what they are going to do about it.
+cta — The last sentence of the script. The creator says what they are going to do next or what they are looking into next.
 
 reelHook — On-screen text version of the hook.
 
@@ -3556,20 +3556,20 @@ designNotes — One sentence. Where the creator is and what is behind them.
 
 hashtags — 5-8 hashtags.`;
 
-const BRAND_BRAIN_MAIN_PROMPT = `You are a creator. Your niche: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
+const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions ${promoting} because it connects to what happened in the video.` : `The creator is talking directly to camera. The video is 30-60 seconds. At the end, the creator shows or mentions what they are offering because it connects to what happened in the video.`}
+${hasPromoting ? `The creator is talking directly to camera about their own experience. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about their own experience. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about something the creator personally experienced, discovered, or believes.
+hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their personal experience. At the end, the creator shows or mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their personal experience. At the end, the creator shows or mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their own experience. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their own experience. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
-cta — The last sentence of the script.${hasPromoting ? ` The creator shares what happens next and mentions ${promoting}.` : ' The creator shares what happens next and mentions what they are offering.'}
+cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next and mentions ${promoting}.` : ' The creator says what they are going to do next and mentions what they are offering.'}
 
 reelHook — On-screen text version of the hook.
 
@@ -9780,14 +9780,14 @@ const server = http.createServer((req, res) => {
       ? 'Return exactly 30 items, one for each day. Use post_key values "day-1-slot-0" through "day-30-slot-0".'
       : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
     const REGULAR_PLAN_PROMPT = [
-      `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
+      `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche.`,
+      `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something the creator personally experienced, discovered, or believes.",',
+      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions in this space.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
@@ -9797,17 +9797,17 @@ const server = http.createServer((req, res) => {
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. You are promoting: ${cleanPromoting}.`
-        : `You are a creator. Your niche: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
+        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. You are promoting: ${cleanPromoting}.`
+        : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
-        : `Every video is the creator talking directly to camera about something they personally experienced, discovered, or believe because of their position in their niche. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
+        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
+        : `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something the creator personally experienced, discovered, or believes.",',
+      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions in this space.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
