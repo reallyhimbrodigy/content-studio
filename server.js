@@ -3568,7 +3568,7 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook describes the impact. The body reveals what caused it.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they offer because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
