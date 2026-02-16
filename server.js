@@ -3534,13 +3534,13 @@ const REGULAR_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Wri
 THE VIDEO: ${opts.topicSignature || ''}
 WHY IT WORKS: ${opts.plannedAngle || ''}
 
-The creator is talking directly to camera about their own experience. The video is 30-60 seconds.
+The creator is talking directly to camera about their own experience from doing their work. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion.
+hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion from doing their work.
 
-body — Everything the creator says after the hook. The creator continues talking about their own experience.
+body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work.
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are looking into next.
 
@@ -3561,15 +3561,15 @@ const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}.
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera about their own experience. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about their own experience. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `The creator is talking directly to camera about their own experience from doing their work. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about their own experience from doing their work. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion.
+hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion from doing their work.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their own experience. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their own experience. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
-cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next and mentions ${promoting}.` : ' The creator says what they are going to do next and mentions what they are offering.'}
+cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next. The thing they are doing next is related to ${promoting}.` : ' The creator says what they are going to do next. The thing they are doing next is related to what they are offering.'}
 
 reelHook — On-screen text version of the hook.
 
@@ -9782,12 +9782,12 @@ const server = http.createServer((req, res) => {
     const REGULAR_PLAN_PROMPT = [
       `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
-      `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space.`,
+      `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions in this space.",',
+      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
@@ -9801,13 +9801,13 @@ const server = http.createServer((req, res) => {
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
-        : `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
+        ? `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. At the end of the video, ${cleanPromoting} connects to what the creator was talking about.`
+        : `Every video is the creator talking directly to camera about their own personal journey, mistakes, discoveries, or opinions from doing their work in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions in this space.",',
+      '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
       '  "angle": "One sentence — why someone watches this to the end."',
       '}',
       plannerCountLine,
