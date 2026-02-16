@@ -3556,7 +3556,7 @@ designNotes — One sentence. Where the creator is and what is behind them.
 
 hashtags — 5-8 hashtags.`;
 
-const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video ad for TikTok / Instagram Reels.${hasPromoting ? ` You are promoting: ${promoting}.` : ''}
+const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.${hasPromoting ? ` The creator also offers: ${promoting}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
@@ -9797,7 +9797,7 @@ const server = http.createServer((req, res) => {
 
     const BRAND_BRAIN_PLAN_PROMPT = [
       hasPromoting
-        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. You are promoting: ${cleanPromoting}.`
+        ? `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels. The creator also offers: ${cleanPromoting}.`
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
