@@ -9891,6 +9891,10 @@ const server = http.createServer((req, res) => {
       err.statusCode = 422;
       throw err;
     }
+    if (plannerMode === 'brand_brain') {
+      const plannerResults = plan;
+      console.log('BRAND BRAIN PLANNER OUTPUT (first 3):', JSON.stringify(plannerResults.slice(0, 3), null, 2));
+    }
     const details = [];
     plan.forEach((item, index) => {
       const missing = [];
