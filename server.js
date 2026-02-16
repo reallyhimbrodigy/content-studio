@@ -3538,7 +3538,7 @@ The creator is talking directly to camera about a moment from their day-to-day. 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud, in first person. The hook describes the impact. The body reveals what caused it.
+hook — The first sentence the creator says out loud, in first person. The hook describes what the creator expected to go one way that went another. The body reveals what happened.
 
 body — Everything the creator says after the hook. The creator continues the story.
 
@@ -3565,7 +3565,7 @@ ${hasPromoting ? `The creator is talking directly to camera about a moment from 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud, in first person. The hook describes the impact. The body reveals what caused it.
+hook — The first sentence the creator says out loud, in first person. The hook describes what the creator expected to go one way that went another. The body reveals what happened.
 
 ${hasPromoting ? `body — Everything the creator says after the hook. The creator continues the story.` : `body — Everything the creator says after the hook. The creator continues the story. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
@@ -9788,7 +9788,7 @@ const server = http.createServer((req, res) => {
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence — a specific moment from the creator\'s day-to-day in this space.",',
-      '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
+      '  "angle": "One sentence — what the creator expected to go one way that went another."',
       '}',
       plannerCountLine,
       '',
@@ -9808,7 +9808,7 @@ const server = http.createServer((req, res) => {
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence — a specific moment from the creator\'s day-to-day in this space.",',
-      '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
+      '  "angle": "One sentence — what the creator expected to go one way that went another."',
       '}',
       plannerCountLine,
       '',
