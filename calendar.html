@@ -99,7 +99,7 @@
       .page-calendar .app-hero .hero-controls .brand-brain-btn {
         flex: 1 1 0;
         min-width: 0;
-        max-width: calc((100% - 20px) / 3);
+        max-width: 100%;
         height: 36px;
         padding: 10px 10px;
         border-radius: 999px;
@@ -831,113 +831,33 @@
     <div id="brand-modal" class="brand-brain-overlay" style="display:none">
       <div class="brand-brain-panel" role="dialog" aria-modal="true">
         <header class="brand-brain-header">
-          <div class="brand-brain-header-left">
-            <h3>Brand Brain (Pro)</h3>
-            <span class="brand-brain-badge">Pro</span>
-          </div>
-          <span id="brand-brain-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-        </header>
-        <p class="brand-brain-subtitle">When enabled, Brand Brain applies sales psychology and platform distribution patterns to strengthen hooks, retention, saves, shares, and conversion intent across your calendar.</p>
-
-        <div class="brand-brain-toggle-row" data-pro-lock="1">
+          <h3>Brand Brain</h3>
           <label class="brand-brain-switch">
             <input type="checkbox" id="brand-brain-enabled" />
             <span class="brand-brain-switch__slider"></span>
           </label>
-          <div class="brand-brain-toggle-copy">
-            <div class="brand-brain-toggle-label">Enabled</div>
-            <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
+        </header>
+        <div id="brand-brain-content" style="display:none;">
+          <div id="promoting-input-wrap" class="brand-brain-section">
+            <label class="brand-brain-label" for="promoting-input">PROMOTING</label>
+            <input
+              type="text"
+              id="promoting-input"
+              placeholder="e.g. My free consultation"
+              aria-label="What are you promoting?"
+            />
           </div>
-          <span class="brand-brain-locked-pill">Pro</span>
-        </div>
-        <div id="promoting-input-wrap" class="brand-brain-section" style="display:none;">
-          <label class="brand-brain-label" for="promoting-input">What product or service are you promoting?</label>
-          <input
-            type="text"
-            id="promoting-input"
-            placeholder="e.g. My free home-buying consultation"
-            aria-label="What are you promoting?"
-          />
-        </div>
-
-        <div class="brand-brain-section">
-          <label class="brand-brain-label">VOICE LOCK</label>
-          <div class="brand-brain-toggle-row" data-pro-lock="1">
-            <label class="brand-brain-switch">
-              <input type="checkbox" id="voice-lock-enabled" />
-              <span class="brand-brain-switch__slider"></span>
-            </label>
-            <div class="brand-brain-toggle-copy">
-              <div class="brand-brain-toggle-label">Enabled</div>
-              <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-            </div>
-            <span class="brand-brain-locked-pill" id="voice-lock-locked-pill">Pro</span>
+          <div class="brand-brain-section">
+            <label class="brand-brain-label">VOICE</label>
+            <div id="voice-lock-chips" class="brand-brain-chip-row"></div>
           </div>
-          <div class="brand-brain-save">
-            <span id="voice-lock-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-          </div>
-          <div class="brand-brain-locked-copy" id="voice-lock-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
-          <div id="voice-lock-controls" class="brand-brain-section" data-pro-lock="1">
-            <label class="brand-brain-label" for="voice-lock-preset">Preset</label>
-            <div class="voice-lock-select-wrap" id="voice-lock-preset-wrap">
-              <select id="voice-lock-preset" class="voice-lock-select">
-                <option value="Direct">Direct</option>
-                <option value="Casual">Casual</option>
-                <option value="Punchy">Punchy</option>
-                <option value="Story-first">Story-first</option>
-                <option value="Contrarian">Contrarian</option>
-                <option value="No-AI-polish">No-AI-polish</option>
-              </select>
-            </div>
+          <div class="brand-brain-section">
+            <label class="brand-brain-label">AUDIENCE</label>
+            <div id="target-audience-chips" class="brand-brain-chip-row"></div>
           </div>
         </div>
-
-        <div class="brand-brain-section">
-          <label class="brand-brain-label">TARGET AUDIENCE</label>
-          <div class="brand-brain-toggle-row" data-pro-lock="1">
-            <label class="brand-brain-switch">
-              <input type="checkbox" id="target-audience-enabled" />
-              <span class="brand-brain-switch__slider"></span>
-            </label>
-            <div class="brand-brain-toggle-copy">
-              <div class="brand-brain-toggle-label">Enabled</div>
-              <div class="brand-brain-toggle-subtext">Applied to next generation.</div>
-            </div>
-            <span class="brand-brain-locked-pill" id="target-audience-locked-pill">Pro</span>
-          </div>
-          <div class="brand-brain-save">
-            <span id="target-audience-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-          </div>
-          <div class="brand-brain-locked-copy" id="target-audience-locked-copy">Pro required to enable. Unlock to target your audience.</div>
-          <div id="target-audience-controls" class="brand-brain-section" data-pro-lock="1">
-            <label class="brand-brain-label" for="target-audience-preset">Preset</label>
-            <div class="target-audience-select-wrap" id="target-audience-preset-wrap">
-              <select id="target-audience-preset" class="target-audience-select">
-                <option value="Students">Students</option>
-                <option value="Young Adults (18–25)">Young Adults (18–25)</option>
-                <option value="Early Career Professionals">Early Career Professionals</option>
-                <option value="Working Professionals">Working Professionals</option>
-                <option value="Parents / Families">Parents / Families</option>
-                <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
-                <option value="Creators">Creators</option>
-                <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
-                <option value="Beginners">Beginners</option>
-                <option value="Experienced / Advanced">Experienced / Advanced</option>
-              </select>
-            </div>
-            <div class="settings-actions__buttons">
-              <button type="button" class="primary" id="target-audience-save">Save</button>
-            </div>
-          </div>
-          <div id="target-audience-feedback" class="input-feedback" aria-live="polite"></div>
-        </div>
-        <div class="brand-brain-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
 
         <div class="brand-brain-footer">
-          <div class="brand-brain-save">
-            <span id="brand-brain-save-indicator"></span>
-            <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
-          </div>
           <button id="brand-brain-close" class="ghost" data-analytics="modal_close">Close</button>
         </div>
       </div>

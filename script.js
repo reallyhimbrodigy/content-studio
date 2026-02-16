@@ -109,6 +109,7 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const upgradeBtn = document.getElementById("upgrade-btn");
   const nicheInput = document.getElementById("niche-style-input");
   const promotingInputWrap = document.getElementById('promoting-input-wrap');
+  const brandBrainContent = document.getElementById('brand-brain-content');
   const promotingInput = document.getElementById('promoting-input');
   const brandBrainEnabledToggle = document.getElementById('brand-brain-enabled');
   const feedbackEl = document.getElementById("niche-feedback");
@@ -120,26 +121,18 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const voiceLockBtn = document.getElementById('voice-lock-btn');
   const voiceLockModal = document.getElementById('voice-lock-modal');
   const voiceLockCloseBtn = document.getElementById('voice-lock-close-btn');
-  const voiceLockStatusPill = document.getElementById('voice-lock-status-pill');
-  const voiceLockLockedCopy = document.getElementById('voice-lock-locked-copy');
-  const voiceLockLockedPill = document.getElementById('voice-lock-locked-pill');
   const voiceLockToggle = document.getElementById('voice-lock-enabled');
-  const voiceLockControls = document.getElementById('voice-lock-controls');
   const voiceLockPresetSelect = document.getElementById('voice-lock-preset');
-  const voiceLockPresetWrap = document.getElementById('voice-lock-preset-wrap');
   const targetAudienceBtn = document.getElementById('target-audience-btn');
   const targetAudienceModal = document.getElementById('target-audience-modal');
   const targetAudienceCloseBtn = document.getElementById('target-audience-close-btn');
-  const targetAudienceStatusPill = document.getElementById('target-audience-status-pill');
-  const targetAudienceLockedCopy = document.getElementById('target-audience-locked-copy');
-  const targetAudienceLockedPill = document.getElementById('target-audience-locked-pill');
   const targetAudienceToggle = document.getElementById('target-audience-enabled');
-  const targetAudienceControls = document.getElementById('target-audience-controls');
   const targetAudiencePresetSelect = document.getElementById('target-audience-preset');
-  const targetAudiencePresetWrap = document.getElementById('target-audience-preset-wrap');
   const targetAudienceSaveBtn = document.getElementById('target-audience-save');
   const targetAudienceResetBtn = document.getElementById('target-audience-reset');
   const targetAudienceFeedback = document.getElementById('target-audience-feedback');
+  const voiceLockChips = document.getElementById('voice-lock-chips');
+  const targetAudienceChips = document.getElementById('target-audience-chips');
   const brandText = document.getElementById("brand-text");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
@@ -3197,7 +3190,7 @@ const PLAN_DETAILS = {
 const VOICE_LOCK_PRESETS = ['Direct', 'Casual', 'Punchy', 'Story-first', 'Contrarian', 'No-AI-polish'];
 const VOICE_LOCK_DEFAULTS = {
   enabled: false,
-  preset: 'Direct',
+  preset: '',
 };
 let voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
 const TARGET_AUDIENCE_PRESETS = [
@@ -3214,7 +3207,7 @@ const TARGET_AUDIENCE_PRESETS = [
 ];
 const TARGET_AUDIENCE_DEFAULTS = {
   enabled: false,
-  preset: 'Students',
+  preset: '',
 };
 let targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
 let lastTargetAudienceFocusEl = null;
@@ -3398,10 +3391,11 @@ function applyProfileSettings() {
 }
 
 function normalizeVoiceLockSettings(raw = {}) {
-  const preset = VOICE_LOCK_PRESETS.includes(raw.preset) ? raw.preset : VOICE_LOCK_DEFAULTS.preset;
+  const preset = VOICE_LOCK_PRESETS.includes(raw.preset) ? raw.preset : '';
+  const enabled = Boolean(raw.enabled) && Boolean(preset);
   return {
-    enabled: Boolean(raw.enabled),
-    preset,
+    enabled,
+    preset: enabled ? preset : '',
   };
 }
 
@@ -3416,42 +3410,41 @@ function readVoiceLockSettingsFromProfile() {
   });
 }
 
-function setVoiceLockControlsState(enabled) {
-  if (voiceLockControls) voiceLockControls.style.display = enabled ? '' : 'none';
-  const disabled = !enabled;
-  const inputs = [voiceLockPresetSelect].filter(Boolean);
-  inputs.forEach((input) => {
-    input.disabled = disabled;
+function renderOptionChips(container, options = [], selectedValue = '', disabled = false, onSelect = null) {
+  if (!container) return;
+  const selected = String(selectedValue || '').trim();
+  container.innerHTML = '';
+  options.forEach((option) => {
+    const value = String(option || '').trim();
+    if (!value) return;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'brand-brain-chip';
+    chip.textContent = value;
+    chip.dataset.value = value;
+    chip.dataset.selected = selected === value ? 'true' : 'false';
+    chip.setAttribute('aria-pressed', chip.dataset.selected === 'true' ? 'true' : 'false');
+    chip.disabled = disabled;
+    chip.addEventListener('click', () => {
+      if (chip.disabled || typeof onSelect !== 'function') return;
+      onSelect(value, selected === value);
+    });
+    container.appendChild(chip);
   });
-  if (voiceLockPresetWrap) {
-    voiceLockPresetWrap.style.display = enabled ? '' : 'none';
-  }
-}
-
-function setVoiceLockLockedState(locked) {
-  if (voiceLockModal) voiceLockModal.dataset.locked = locked ? 'true' : 'false';
-  if (voiceLockLockedCopy) voiceLockLockedCopy.style.display = locked ? '' : 'none';
-  if (voiceLockLockedPill) voiceLockLockedPill.style.display = locked ? '' : 'none';
-  if (voiceLockToggle) voiceLockToggle.disabled = locked;
-  if (locked) {
-    setVoiceLockControlsState(false);
-  } else {
-    setVoiceLockControlsState(voiceLockSettings.enabled);
-  }
 }
 
 function applyVoiceLockUI(settings) {
-  if (voiceLockToggle) voiceLockToggle.checked = settings.enabled;
-  if (voiceLockPresetSelect) voiceLockPresetSelect.value = settings.preset;
-  if (voiceLockStatusPill) {
-    voiceLockStatusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
-    voiceLockStatusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
-  }
-  setVoiceLockControlsState(settings.enabled);
+  renderOptionChips(
+    voiceLockChips,
+    VOICE_LOCK_PRESETS,
+    settings.preset,
+    !isProTier(),
+    handleVoiceLockChipSelection
+  );
 }
 
 function syncVoiceLockFromSettings() {
-  if (!voiceLockToggle || !voiceLockPresetSelect) return;
+  if (!voiceLockChips) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
@@ -3460,19 +3453,11 @@ function syncVoiceLockFromSettings() {
       { voice_lock_enabled: false, voice_lock_preset: VOICE_LOCK_DEFAULTS.preset },
       { replace: false, targetEmail: activeUserEmail || undefined }
     );
-    setVoiceLockLockedState(true);
+    renderOptionChips(voiceLockChips, VOICE_LOCK_PRESETS, '', true);
     return;
   }
   voiceLockSettings = readVoiceLockSettingsFromProfile();
   applyVoiceLockUI(voiceLockSettings);
-  setVoiceLockLockedState(false);
-}
-
-function collectVoiceLockSettingsFromUI() {
-  return normalizeVoiceLockSettings({
-    enabled: voiceLockToggle?.checked,
-    preset: voiceLockPresetSelect?.value || VOICE_LOCK_DEFAULTS.preset,
-  });
 }
 
 async function persistVoiceLockSettings(nextSettings) {
@@ -3490,17 +3475,35 @@ async function persistVoiceLockSettings(nextSettings) {
   }
 }
 
+async function handleVoiceLockChipSelection(value, isSelected) {
+  const gate = requireProOrOpenUpgrade('voice_lock_toggle');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
+    syncVoiceLockFromSettings();
+    return;
+  }
+  const nextSettings = normalizeVoiceLockSettings({
+    enabled: !isSelected,
+    preset: isSelected ? '' : value,
+  });
+  voiceLockSettings = nextSettings;
+  applyVoiceLockUI(nextSettings);
+  await persistVoiceLockSettings(nextSettings);
+}
+
 function buildVoiceLockRequestPayload() {
-  if (!isProTier() || !voiceLockSettings?.enabled) return null;
+  if (!isBrandBrainEnabledForGeneration() || !isProTier() || !voiceLockSettings?.enabled) return null;
   const preset = String(voiceLockSettings.preset || '').trim();
+  if (!preset) return null;
   return { voiceLockEnabled: true, voiceLockPreset: preset };
 }
 
 function normalizeTargetAudienceSettings(raw = {}) {
-  const preset = TARGET_AUDIENCE_PRESETS.includes(raw.preset) ? raw.preset : TARGET_AUDIENCE_DEFAULTS.preset;
+  const preset = TARGET_AUDIENCE_PRESETS.includes(raw.preset) ? raw.preset : '';
+  const enabled = Boolean(raw.enabled) && Boolean(preset);
   return {
-    enabled: Boolean(raw.enabled),
-    preset,
+    enabled,
+    preset: enabled ? preset : '',
   };
 }
 
@@ -3513,42 +3516,18 @@ function readTargetAudienceSettingsFromProfile() {
   });
 }
 
-function setTargetAudienceControlsState(enabled) {
-  if (targetAudienceControls) targetAudienceControls.style.display = enabled ? '' : 'none';
-  const disabled = !enabled;
-  const inputs = [targetAudiencePresetSelect].filter(Boolean);
-  inputs.forEach((input) => {
-    input.disabled = disabled;
-  });
-  if (targetAudiencePresetWrap) {
-    targetAudiencePresetWrap.style.display = enabled ? '' : 'none';
-  }
-}
-
-function setTargetAudienceLockedState(locked) {
-  if (targetAudienceModal) targetAudienceModal.dataset.locked = locked ? 'true' : 'false';
-  if (targetAudienceLockedCopy) targetAudienceLockedCopy.style.display = locked ? '' : 'none';
-  if (targetAudienceLockedPill) targetAudienceLockedPill.style.display = locked ? '' : 'none';
-  if (targetAudienceToggle) targetAudienceToggle.disabled = locked;
-  if (locked) {
-    setTargetAudienceControlsState(false);
-  } else {
-    setTargetAudienceControlsState(targetAudienceSettings.enabled);
-  }
-}
-
 function applyTargetAudienceUI(settings) {
-  if (targetAudienceToggle) targetAudienceToggle.checked = settings.enabled;
-  if (targetAudiencePresetSelect) targetAudiencePresetSelect.value = settings.preset;
-  if (targetAudienceStatusPill) {
-    targetAudienceStatusPill.textContent = settings.enabled ? 'Enabled' : 'Disabled';
-    targetAudienceStatusPill.dataset.state = settings.enabled ? 'enabled' : 'disabled';
-  }
-  setTargetAudienceControlsState(settings.enabled);
+  renderOptionChips(
+    targetAudienceChips,
+    TARGET_AUDIENCE_PRESETS,
+    settings.preset,
+    !isProTier(),
+    handleTargetAudienceChipSelection
+  );
 }
 
 function syncTargetAudienceFromSettings() {
-  if (!targetAudienceToggle || !targetAudiencePresetSelect) return;
+  if (!targetAudienceChips) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
@@ -3557,19 +3536,11 @@ function syncTargetAudienceFromSettings() {
       { target_audience_enabled: false, target_audience_preset: TARGET_AUDIENCE_DEFAULTS.preset },
       { replace: false, targetEmail: activeUserEmail || undefined }
     );
-    setTargetAudienceLockedState(true);
+    renderOptionChips(targetAudienceChips, TARGET_AUDIENCE_PRESETS, '', true);
     return;
   }
   targetAudienceSettings = readTargetAudienceSettingsFromProfile();
   applyTargetAudienceUI(targetAudienceSettings);
-  setTargetAudienceLockedState(false);
-}
-
-function collectTargetAudienceSettingsFromUI() {
-  return normalizeTargetAudienceSettings({
-    enabled: targetAudienceToggle?.checked,
-    preset: targetAudiencePresetSelect?.value || TARGET_AUDIENCE_DEFAULTS.preset,
-  });
 }
 
 async function persistTargetAudienceSettings(nextSettings) {
@@ -3587,8 +3558,24 @@ async function persistTargetAudienceSettings(nextSettings) {
   }
 }
 
+async function handleTargetAudienceChipSelection(value, isSelected) {
+  const gate = requireProOrOpenUpgrade('target_audience_toggle');
+  if (!gate.allowed) {
+    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
+    syncTargetAudienceFromSettings();
+    return;
+  }
+  const nextSettings = normalizeTargetAudienceSettings({
+    enabled: !isSelected,
+    preset: isSelected ? '' : value,
+  });
+  targetAudienceSettings = nextSettings;
+  applyTargetAudienceUI(nextSettings);
+  await persistTargetAudienceSettings(nextSettings);
+}
+
 function buildTargetAudienceRequestPayload() {
-  if (!isProTier() || !targetAudienceSettings?.enabled) return null;
+  if (!isBrandBrainEnabledForGeneration() || !isProTier() || !targetAudienceSettings?.enabled) return null;
   const preset = String(targetAudienceSettings.preset || '').trim();
   if (!preset) return null;
   return {
@@ -3608,8 +3595,9 @@ function getPromotingValue() {
 }
 
 function syncPromotingInputVisibility() {
-  if (!promotingInputWrap) return;
-  promotingInputWrap.style.display = isBrandBrainEnabledForGeneration() ? '' : 'none';
+  const enabled = isBrandBrainEnabledForGeneration();
+  if (brandBrainContent) brandBrainContent.style.display = enabled ? '' : 'none';
+  if (promotingInputWrap) promotingInputWrap.style.display = enabled ? '' : 'none';
 }
 
 function buildPromotingRequestPayload() {
@@ -5588,110 +5576,6 @@ if (postFrequencySelect) {
   });
 }
 
-const handleVoiceLockChange = () => {
-  const gate = requireProOrOpenUpgrade('voice_lock_toggle');
-  if (!gate.allowed) {
-    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
-    if (voiceLockToggle) voiceLockToggle.checked = false;
-    voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
-    applyVoiceLockUI(voiceLockSettings);
-    setVoiceLockLockedState(true);
-    closeVoiceLockModal();
-    return;
-  }
-  const nextSettings = collectVoiceLockSettingsFromUI();
-  voiceLockSettings = nextSettings;
-  applyVoiceLockUI(nextSettings);
-  persistVoiceLockSettings(nextSettings);
-};
-
-const handleTargetAudienceToggleChange = () => {
-  const gate = requireProOrOpenUpgrade('target_audience_toggle');
-  if (!gate.allowed) {
-    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
-    if (targetAudienceToggle) targetAudienceToggle.checked = false;
-    targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
-    applyTargetAudienceUI(targetAudienceSettings);
-    setTargetAudienceLockedState(true);
-    closeTargetAudienceModal();
-    return;
-  }
-  setTargetAudienceControlsState(!!targetAudienceToggle?.checked);
-  if (targetAudienceStatusPill) {
-    const enabled = !!targetAudienceToggle?.checked;
-    targetAudienceStatusPill.textContent = enabled ? 'Enabled' : 'Disabled';
-    targetAudienceStatusPill.dataset.state = enabled ? 'enabled' : 'disabled';
-  }
-};
-
-const handleTargetAudienceSave = async () => {
-  const gate = requireProOrOpenUpgrade('target_audience_save');
-  if (!gate.allowed) {
-    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
-    syncTargetAudienceFromSettings();
-    closeTargetAudienceModal();
-    return;
-  }
-  if (targetAudienceFeedback) {
-    targetAudienceFeedback.textContent = 'Saving...';
-    targetAudienceFeedback.classList.remove('error');
-  }
-  const nextSettings = collectTargetAudienceSettingsFromUI();
-  targetAudienceSettings = nextSettings;
-  applyTargetAudienceUI(nextSettings);
-  await persistTargetAudienceSettings(nextSettings);
-  if (targetAudienceFeedback) {
-    targetAudienceFeedback.textContent = 'Saved';
-    setTimeout(() => {
-      if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
-    }, 1200);
-  }
-  closeTargetAudienceModal();
-};
-
-const handleTargetAudienceReset = async () => {
-  const gate = requireProOrOpenUpgrade('target_audience_reset');
-  if (!gate.allowed) {
-    if (gate.reason === 'ENTITLEMENTS_LOADING') return;
-    syncTargetAudienceFromSettings();
-    closeTargetAudienceModal();
-    return;
-  }
-  const resetSettings = { ...TARGET_AUDIENCE_DEFAULTS, enabled: false };
-  targetAudienceSettings = resetSettings;
-  applyTargetAudienceUI(resetSettings);
-  await persistTargetAudienceSettings(resetSettings);
-  if (targetAudienceFeedback) targetAudienceFeedback.textContent = '';
-  closeTargetAudienceModal();
-};
-
-if (voiceLockToggle) {
-  voiceLockToggle.addEventListener('change', handleVoiceLockChange);
-}
-
-if (voiceLockPresetSelect) {
-  voiceLockPresetSelect.addEventListener('change', handleVoiceLockChange);
-}
-
-if (targetAudienceToggle) {
-  targetAudienceToggle.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudiencePresetSelect) {
-  targetAudiencePresetSelect.addEventListener('change', handleTargetAudienceToggleChange);
-}
-
-if (targetAudienceSaveBtn) {
-  targetAudienceSaveBtn.addEventListener('click', () => {
-    handleTargetAudienceSave();
-  });
-}
-
-if (targetAudienceResetBtn) {
-  targetAudienceResetBtn.addEventListener('click', () => {
-    handleTargetAudienceReset();
-  });
-}
 
 if (accountForm) {
   accountForm.addEventListener('submit', async (event) => {
