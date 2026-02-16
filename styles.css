@@ -6560,8 +6560,16 @@ body.modal-open {
   font-weight: 600;
 }
 
+#brand-modal .brand-brain-description {
+  margin: 20px 0 0;
+  color: #888;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
 #brand-modal #brand-brain-content {
-  margin: 0;
+  margin-top: 20px;
 }
 
 #brand-modal .brand-brain-section {
@@ -6592,32 +6600,38 @@ body.modal-open {
   color: #555;
 }
 
-#brand-modal .brand-brain-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+#brand-modal .brand-brain-select-wrap {
+  position: relative;
+  width: 100%;
 }
 
-#brand-modal .brand-brain-chip {
+#brand-modal .brand-brain-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
   background: #1a1a1a;
   border: 1px solid #333;
-  border-radius: 20px;
-  color: #aaa;
-  font-size: 13px;
-  line-height: 1;
-  padding: 8px 16px;
-  cursor: pointer;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  padding: 12px 44px 12px 16px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #555 50%),
+    linear-gradient(135deg, #555 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) calc(50% - 2px),
+    calc(100% - 14px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
-#brand-modal .brand-brain-chip[data-selected="true"] {
-  background: #fff;
-  color: #000;
-  border-color: #fff;
+#brand-modal .brand-brain-select.is-empty {
+  color: #555;
 }
 
-#brand-modal .brand-brain-chip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+#brand-modal .brand-brain-select option {
+  background: #1a1a1a;
+  color: #fff;
 }
 
 #brand-modal .brand-brain-footer {

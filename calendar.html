@@ -837,6 +837,9 @@
             <span class="brand-brain-switch__slider"></span>
           </label>
         </header>
+        <p id="brand-brain-description" class="brand-brain-description">
+          Brand Brain shapes your calendar around your business. Set what you're promoting, who you're talking to, and how you sound — and every post will reflect it.
+        </p>
         <div id="brand-brain-content" style="display:none;">
           <div id="promoting-input-wrap" class="brand-brain-section">
             <label class="brand-brain-label" for="promoting-input">PROMOTING</label>
@@ -849,11 +852,35 @@
           </div>
           <div class="brand-brain-section">
             <label class="brand-brain-label">VOICE</label>
-            <div id="voice-lock-chips" class="brand-brain-chip-row"></div>
+            <div class="brand-brain-select-wrap">
+              <select id="voice-lock-preset" class="brand-brain-select">
+                <option value="">Select a voice</option>
+                <option value="Direct">Direct</option>
+                <option value="Casual">Casual</option>
+                <option value="Punchy">Punchy</option>
+                <option value="Story-first">Story-first</option>
+                <option value="Contrarian">Contrarian</option>
+                <option value="No-AI-polish">No-AI-polish</option>
+              </select>
+            </div>
           </div>
           <div class="brand-brain-section">
             <label class="brand-brain-label">AUDIENCE</label>
-            <div id="target-audience-chips" class="brand-brain-chip-row"></div>
+            <div class="brand-brain-select-wrap">
+              <select id="target-audience-preset" class="brand-brain-select">
+                <option value="">Select an audience</option>
+                <option value="Students">Students</option>
+                <option value="Young Adults (18–25)">Young Adults (18–25)</option>
+                <option value="Early Career Professionals">Early Career Professionals</option>
+                <option value="Working Professionals">Working Professionals</option>
+                <option value="Parents / Families">Parents / Families</option>
+                <option value="Entrepreneurs / Founders">Entrepreneurs / Founders</option>
+                <option value="Creators">Creators</option>
+                <option value="Freelancers / Solopreneurs">Freelancers / Solopreneurs</option>
+                <option value="Beginners">Beginners</option>
+                <option value="Experienced / Advanced">Experienced / Advanced</option>
+              </select>
+            </div>
           </div>
         </div>
 

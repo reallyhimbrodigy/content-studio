@@ -110,6 +110,7 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const nicheInput = document.getElementById("niche-style-input");
   const promotingInputWrap = document.getElementById('promoting-input-wrap');
   const brandBrainContent = document.getElementById('brand-brain-content');
+  const brandBrainDescription = document.getElementById('brand-brain-description');
   const promotingInput = document.getElementById('promoting-input');
   const brandBrainEnabledToggle = document.getElementById('brand-brain-enabled');
   const feedbackEl = document.getElementById("niche-feedback");
@@ -131,8 +132,6 @@ const landingSampleActionButtons = document.querySelectorAll('.landing-samples__
   const targetAudienceSaveBtn = document.getElementById('target-audience-save');
   const targetAudienceResetBtn = document.getElementById('target-audience-reset');
   const targetAudienceFeedback = document.getElementById('target-audience-feedback');
-  const voiceLockChips = document.getElementById('voice-lock-chips');
-  const targetAudienceChips = document.getElementById('target-audience-chips');
   const brandText = document.getElementById("brand-text");
   const brandSaveBtn = document.getElementById("brand-save-btn");
   const brandCancelBtn = document.getElementById("brand-cancel-btn");
@@ -3410,41 +3409,15 @@ function readVoiceLockSettingsFromProfile() {
   });
 }
 
-function renderOptionChips(container, options = [], selectedValue = '', disabled = false, onSelect = null) {
-  if (!container) return;
-  const selected = String(selectedValue || '').trim();
-  container.innerHTML = '';
-  options.forEach((option) => {
-    const value = String(option || '').trim();
-    if (!value) return;
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'brand-brain-chip';
-    chip.textContent = value;
-    chip.dataset.value = value;
-    chip.dataset.selected = selected === value ? 'true' : 'false';
-    chip.setAttribute('aria-pressed', chip.dataset.selected === 'true' ? 'true' : 'false');
-    chip.disabled = disabled;
-    chip.addEventListener('click', () => {
-      if (chip.disabled || typeof onSelect !== 'function') return;
-      onSelect(value, selected === value);
-    });
-    container.appendChild(chip);
-  });
-}
-
 function applyVoiceLockUI(settings) {
-  renderOptionChips(
-    voiceLockChips,
-    VOICE_LOCK_PRESETS,
-    settings.preset,
-    !isProTier(),
-    handleVoiceLockChipSelection
-  );
+  if (!voiceLockPresetSelect) return;
+  voiceLockPresetSelect.value = settings.preset || '';
+  voiceLockPresetSelect.disabled = !isProTier();
+  voiceLockPresetSelect.classList.toggle('is-empty', !settings.preset);
 }
 
 function syncVoiceLockFromSettings() {
-  if (!voiceLockChips) return;
+  if (!voiceLockPresetSelect) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     voiceLockSettings = { ...VOICE_LOCK_DEFAULTS };
@@ -3453,7 +3426,6 @@ function syncVoiceLockFromSettings() {
       { voice_lock_enabled: false, voice_lock_preset: VOICE_LOCK_DEFAULTS.preset },
       { replace: false, targetEmail: activeUserEmail || undefined }
     );
-    renderOptionChips(voiceLockChips, VOICE_LOCK_PRESETS, '', true);
     return;
   }
   voiceLockSettings = readVoiceLockSettingsFromProfile();
@@ -3475,16 +3447,17 @@ async function persistVoiceLockSettings(nextSettings) {
   }
 }
 
-async function handleVoiceLockChipSelection(value, isSelected) {
+async function handleVoiceLockSelectChange() {
   const gate = requireProOrOpenUpgrade('voice_lock_toggle');
   if (!gate.allowed) {
     if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     syncVoiceLockFromSettings();
     return;
   }
+  const value = String(voiceLockPresetSelect?.value || '').trim();
   const nextSettings = normalizeVoiceLockSettings({
-    enabled: !isSelected,
-    preset: isSelected ? '' : value,
+    enabled: Boolean(value),
+    preset: value,
   });
   voiceLockSettings = nextSettings;
   applyVoiceLockUI(nextSettings);
@@ -3517,17 +3490,14 @@ function readTargetAudienceSettingsFromProfile() {
 }
 
 function applyTargetAudienceUI(settings) {
-  renderOptionChips(
-    targetAudienceChips,
-    TARGET_AUDIENCE_PRESETS,
-    settings.preset,
-    !isProTier(),
-    handleTargetAudienceChipSelection
-  );
+  if (!targetAudiencePresetSelect) return;
+  targetAudiencePresetSelect.value = settings.preset || '';
+  targetAudiencePresetSelect.disabled = !isProTier();
+  targetAudiencePresetSelect.classList.toggle('is-empty', !settings.preset);
 }
 
 function syncTargetAudienceFromSettings() {
-  if (!targetAudienceChips) return;
+  if (!targetAudiencePresetSelect) return;
   profileSettings = enforceFreeLocks(profileSettings);
   if (!isProTier()) {
     targetAudienceSettings = { ...TARGET_AUDIENCE_DEFAULTS };
@@ -3536,7 +3506,6 @@ function syncTargetAudienceFromSettings() {
       { target_audience_enabled: false, target_audience_preset: TARGET_AUDIENCE_DEFAULTS.preset },
       { replace: false, targetEmail: activeUserEmail || undefined }
     );
-    renderOptionChips(targetAudienceChips, TARGET_AUDIENCE_PRESETS, '', true);
     return;
   }
   targetAudienceSettings = readTargetAudienceSettingsFromProfile();
@@ -3558,16 +3527,17 @@ async function persistTargetAudienceSettings(nextSettings) {
   }
 }
 
-async function handleTargetAudienceChipSelection(value, isSelected) {
+async function handleTargetAudienceSelectChange() {
   const gate = requireProOrOpenUpgrade('target_audience_toggle');
   if (!gate.allowed) {
     if (gate.reason === 'ENTITLEMENTS_LOADING') return;
     syncTargetAudienceFromSettings();
     return;
   }
+  const value = String(targetAudiencePresetSelect?.value || '').trim();
   const nextSettings = normalizeTargetAudienceSettings({
-    enabled: !isSelected,
-    preset: isSelected ? '' : value,
+    enabled: Boolean(value),
+    preset: value,
   });
   targetAudienceSettings = nextSettings;
   applyTargetAudienceUI(nextSettings);
@@ -3597,6 +3567,7 @@ function getPromotingValue() {
 function syncPromotingInputVisibility() {
   const enabled = isBrandBrainEnabledForGeneration();
   if (brandBrainContent) brandBrainContent.style.display = enabled ? '' : 'none';
+  if (brandBrainDescription) brandBrainDescription.style.display = enabled ? 'none' : '';
   if (promotingInputWrap) promotingInputWrap.style.display = enabled ? '' : 'none';
 }
 
@@ -5814,6 +5785,18 @@ if (brandBrainEnabledToggle) {
   brandBrainEnabledToggle.addEventListener('change', syncPromotingInputVisibility);
 }
 syncPromotingInputVisibility();
+
+if (voiceLockPresetSelect) {
+  voiceLockPresetSelect.addEventListener('change', () => {
+    handleVoiceLockSelectChange();
+  });
+}
+
+if (targetAudiencePresetSelect) {
+  targetAudiencePresetSelect.addEventListener('change', () => {
+    handleTargetAudienceSelectChange();
+  });
+}
 
 // Library tab handler
 

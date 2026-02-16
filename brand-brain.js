@@ -27,6 +27,7 @@ export function initBrandBrainPanel({
   const statusPill = document.getElementById('brand-brain-status-pill');
   const toggleInput = document.getElementById('brand-brain-enabled');
   const contentWrap = document.getElementById('brand-brain-content');
+  const descriptionEl = document.getElementById('brand-brain-description');
   const promotingInput = document.getElementById('promoting-input');
   const promotingWrap = document.getElementById('promoting-input-wrap');
   const saveIndicator = document.getElementById('brand-brain-save-indicator');
@@ -59,6 +60,7 @@ let saveTimer = null;
 
   const syncPromotingVisibility = (enabled) => {
     if (contentWrap) contentWrap.style.display = enabled ? '' : 'none';
+    if (descriptionEl) descriptionEl.style.display = enabled ? 'none' : '';
     if (!promotingWrap) return;
     promotingWrap.style.display = enabled ? '' : 'none';
   };
