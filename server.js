@@ -2288,6 +2288,7 @@ async function generateAndValidateSinglePost({
   recentTitles = [],
   calendarId = '',
   usedSignatures = [],
+  voiceLock = '',
 }) {
   let currentStage = 'init';
   const schemaLabel = calendarMode === 'brand_brain' ? 'calendar_post_brandbrain' : 'calendar_post_regular';
@@ -2347,6 +2348,7 @@ async function generateAndValidateSinglePost({
         recentTitles,
         angleSeed,
         usedSignatures: recentSignatures,
+        voiceLock,
       });
       reachedOpenAI = true;
       structuredOutputUsed = Boolean(result.usedStructuredOutput);
@@ -3529,7 +3531,22 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
   const cleanNiche = nicheStyle ? `${nicheStyle}` : 'unspecified';
   const promoting = toPlainString(opts.promoting || '');
   const hasPromoting = mode === 'brand_brain' && Boolean(promoting.trim());
+  const voiceLock = (() => {
+    const value = opts.voiceLock;
+    if (!value) return '';
+    if (typeof value === 'string') return toPlainString(value);
+    if (typeof value !== 'object') return '';
+    if (value.enabled === false) return '';
+    const presetKey = normalizeVoiceLockPresetKey(value.preset || '');
+    if (presetKey) {
+      return toPlainString(VOICE_LOCK_PRESET_GUIDES[presetKey]?.label || presetKey);
+    }
+    const customSample = toPlainString(value.sample || value.voiceLockSample || '');
+    if (customSample) return 'Custom';
+    return toPlainString(value.label || '');
+  })();
 const REGULAR_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
+${voiceLock ? `The creator's voice: ${voiceLock}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 THE ANGLE: ${opts.plannedAngle || ''}
@@ -3557,6 +3574,7 @@ designNotes — One sentence. Where the creator is and what is behind them.
 hashtags — 5-8 hashtags.`;
 
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
+${voiceLock ? `The creator's voice: ${voiceLock}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
 ${hasPromoting ? `HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW THIS CONNECTS: ${opts.plannedAngle || ''}`}
@@ -9742,7 +9760,7 @@ const server = http.createServer((req, res) => {
   // Calendar API endpoints
   // ---------------------------------------------------------------------------
 
-  async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '', usedSignatures = [] }) {
+  async function generateCalendarPlan({ requestId, mode, nicheStyle, promoting = '', targetAudience = '', days, startDay, postsPerDay, postKeysOverride = null, extraInstruction = '', usedSignatures = [] }) {
     if (!nicheStyle) {
       const err = new Error('nicheStyle required');
       err.statusCode = 400;
@@ -9771,6 +9789,17 @@ const server = http.createServer((req, res) => {
       }
     }
     const cleanPromoting = toPlainString(promoting || '');
+    const cleanTargetAudience = (() => {
+      if (!targetAudience) return '';
+      if (typeof targetAudience === 'string') return toPlainString(targetAudience);
+      if (typeof targetAudience !== 'object') return '';
+      if (targetAudience.enabled === false) return '';
+      const presetKey = normalizeTargetAudiencePresetKey(targetAudience.preset || '');
+      if (presetKey) {
+        return toPlainString(TARGET_AUDIENCE_PRESET_GUIDES[presetKey]?.label || presetKey);
+      }
+      return toPlainString(targetAudience.label || '');
+    })();
     const hasPromoting = plannerMode === 'brand_brain' && Boolean(cleanPromoting.trim());
     const cleanUsedSignatures = Array.isArray(usedSignatures)
       ? usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
@@ -9781,6 +9810,7 @@ const server = http.createServer((req, res) => {
       : `Return exactly ${expectedCount} items. Use these post_key values: ${postKeys.join(', ')}`;
     const REGULAR_PLAN_PROMPT = [
       `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
+      cleanTargetAudience ? `The audience: ${cleanTargetAudience}.` : '',
       '',
       `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`,
       '',
@@ -9799,6 +9829,7 @@ const server = http.createServer((req, res) => {
       hasPromoting
         ? `You are a creator in this space: ${nicheStyle}. The creator also offers: ${cleanPromoting}. Plan 30 short-form videos for TikTok and Reels.`
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
+      cleanTargetAudience ? `The audience: ${cleanTargetAudience}.` : '',
       '',
       hasPromoting
         ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`
@@ -9943,6 +9974,14 @@ const server = http.createServer((req, res) => {
     const totalPosts = safeDays * postsPerDay;
 
     const isProUser = Boolean(payload?.isPro);
+    const voiceLockConfig = resolveVoiceLockConfig(payload, isProUser);
+    const targetAudienceConfig = resolveTargetAudienceConfig(payload, isProUser);
+    const voiceLockValue = voiceLockConfig.enabled
+      ? toPlainString(VOICE_LOCK_PRESET_GUIDES[voiceLockConfig.preset]?.label || voiceLockConfig.preset || '')
+      : '';
+    const targetAudienceValue = targetAudienceConfig.enabled
+      ? toPlainString(TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset || '')
+      : '';
     let calendarMode = String(payload?.calendarMode || '').toLowerCase();
     if (calendarMode !== 'brand_brain' && calendarMode !== 'regular') calendarMode = '';
     const brandBrainSettings = userId ? await fetchBrandBrainSettings(userId) : null;
@@ -9984,6 +10023,7 @@ const server = http.createServer((req, res) => {
         mode: calendarMode,
         nicheStyle,
         promoting,
+        targetAudience: targetAudienceValue,
         days: safeDays,
         startDay: safeStart,
         postsPerDay,
@@ -10007,6 +10047,7 @@ const server = http.createServer((req, res) => {
           mode: calendarMode,
           nicheStyle,
           promoting,
+          targetAudience: targetAudienceValue,
           days: safeDays,
           startDay: safeStart,
           postsPerDay,
@@ -10099,6 +10140,7 @@ const server = http.createServer((req, res) => {
         calendarId,
         usedSignatures,
         qualityState: { signatureMap: new Map() },
+        voiceLock: voiceLockValue,
       });
     };
     const results = [];
@@ -11299,6 +11341,14 @@ const server = http.createServer((req, res) => {
 
         const nicheStyle = body?.nicheStyle || body?.niche || body?.niche_style || '';
         const promoting = toPlainString(body?.promoting || '');
+        const voiceLockConfig = resolveVoiceLockConfig(body, isPro);
+        const targetAudienceConfig = resolveTargetAudienceConfig(body, isPro);
+        const voiceLockValue = voiceLockConfig.enabled
+          ? toPlainString(VOICE_LOCK_PRESET_GUIDES[voiceLockConfig.preset]?.label || voiceLockConfig.preset || '')
+          : '';
+        const targetAudienceValue = targetAudienceConfig.enabled
+          ? toPlainString(TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset || '')
+          : '';
         const day = Number.isFinite(Number(body?.day)) ? Number(body.day) : 1;
         const slotIndex = Number.isFinite(Number(body?.slot)) ? Number(body.slot) : (
           Number.isFinite(Number(body?.slotIndex)) ? Number(body.slotIndex) : 0
@@ -11325,6 +11375,7 @@ const server = http.createServer((req, res) => {
             mode: selectedMode,
             nicheStyle: plannerNiche,
             promoting,
+            targetAudience: targetAudienceValue,
             usedSignatures: plannerUsedSignatures,
             days: 1,
             startDay: day,
@@ -11394,6 +11445,7 @@ const server = http.createServer((req, res) => {
             calendarId,
             usedSignatures: [],
             qualityState: { signatureMap: new Map() },
+            voiceLock: voiceLockValue,
           });
           if (!isPro && body?.isFirst === true) {
             await incrementFeatureUsage(supabaseAdmin, user.id, CALENDAR_EXPORT_FEATURE_KEY);
@@ -11482,11 +11534,17 @@ const server = http.createServer((req, res) => {
         const usedSignatures = Array.isArray(body?.usedSignatures)
           ? body.usedSignatures.map((item) => toPlainString(item || '')).filter(Boolean).slice(-24)
           : [];
+        const isPro = isUserPro(req);
+        const targetAudienceConfig = resolveTargetAudienceConfig(body, isPro);
+        const targetAudienceValue = targetAudienceConfig.enabled
+          ? toPlainString(TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset || '')
+          : '';
         const planResult = await generateCalendarPlan({
           requestId,
           mode: plannerMode,
           nicheStyle: nicheStyle || 'General',
           promoting,
+          targetAudience: targetAudienceValue,
           days,
           startDay,
           postsPerDay,
