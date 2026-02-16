@@ -3569,7 +3569,7 @@ hook — The first sentence the creator says out loud. The hook describes the im
 
 ${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
-cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next or what they are working on next. ${promoting} is how they are doing it.` : ' The creator says what they are going to do next or what they are working on next. What they are offering is how they are doing it.'}
+cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
 reelHook — On-screen text version of the hook.
 
