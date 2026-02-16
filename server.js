@@ -3538,7 +3538,7 @@ The creator is talking directly to camera about their own experience from doing 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. The hook describes the impact. The body reveals what caused it.
+hook — The first sentence the creator says out loud, in first person. The hook describes the impact. The body reveals what caused it.
 
 body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work.
 
@@ -3559,15 +3559,16 @@ hashtags — 5-8 hashtags.`;
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
+${hasPromoting ? `THE CREATOR ALSO OFFERS: ${promoting}` : ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
 ${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. The hook describes the impact. The body reveals what caused it.
+hook — The first sentence the creator says out loud, in first person. The hook describes the impact. The body reveals what caused it.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they offer because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
