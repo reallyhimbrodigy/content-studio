@@ -3538,7 +3538,7 @@ The creator is talking directly to camera about their own experience from doing 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about the creator's own experience, mistake, discovery, or opinion from doing their work.
+hook — The first sentence the creator says out loud. The hook describes the impact. The body reveals what caused it.
 
 body — Everything the creator says after the hook. The creator continues talking about their own experience from doing their work.
 
@@ -3565,11 +3565,11 @@ ${hasPromoting ? `The creator is talking directly to camera about something that
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud. It is a first person statement about something that happened while the creator was doing their work.
+hook — The first sentence the creator says out loud. The hook describes the impact. The body reveals what caused it.
 
 ${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
 
-cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next, and that thing is ${promoting}.` : ' The creator says what they are going to do next, and that thing is what they are offering.'}
+cta — The last sentence of the script.${hasPromoting ? ` The creator says what they are going to do next or what they are working on next. ${promoting} is how they are doing it.` : ' The creator says what they are going to do next or what they are working on next. What they are offering is how they are doing it.'}
 
 reelHook — On-screen text version of the hook.
 
