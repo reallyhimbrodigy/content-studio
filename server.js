@@ -3538,9 +3538,9 @@ The creator is talking directly to camera about a moment from their day-to-day. 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud, in first person. The hook describes what the creator expected to go one way that went another. The body reveals what happened.
+hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-body — Everything the creator says after the hook. The creator continues the story.
+body — Everything the creator says after the hook. The creator continues the story with details.
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are looking into next.
 
@@ -3565,9 +3565,9 @@ ${hasPromoting ? `The creator is talking directly to camera about a moment from 
 
 title — A few words describing what the video is about.
 
-hook — The first sentence the creator says out loud, in first person. The hook describes what the creator expected to go one way that went another. The body reveals what happened.
+hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues the story.` : `body — Everything the creator says after the hook. The creator continues the story. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues the story with details.` : `body — Everything the creator says after the hook. The creator continues the story with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
