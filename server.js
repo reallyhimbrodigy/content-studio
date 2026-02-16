@@ -3546,7 +3546,7 @@ cta — The last sentence of the script. The creator says what they are going to
 
 reelHook — On-screen text version of the hook.
 
-reelBody — Three to four short sentences that appear on screen during the video. They follow what the creator is saying.
+reelBody — A few sentences that appear on screen. Shorter version of the body field above.
 
 reelCta — Final on-screen text.
 
@@ -3573,7 +3573,7 @@ cta — The last sentence of the script. The creator says what they are going to
 
 reelHook — On-screen text version of the hook.
 
-reelBody — Three to four short sentences that appear on screen. Shorter version of the body field above.
+reelBody — A few sentences that appear on screen. Shorter version of the body field above.
 
 reelCta — Shorter version of the cta field above.
 
