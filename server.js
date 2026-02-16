@@ -3532,7 +3532,7 @@ function buildPrompt(nicheStyle, brandContext, opts = {}) {
 const REGULAR_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
-WHY IT WORKS: ${opts.plannedAngle || ''}
+THE ANGLE: ${opts.plannedAngle || ''}
 
 The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.
 
@@ -3540,7 +3540,7 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-body — Everything the creator says after the hook. The creator continues the story with details.
+body — Everything the creator says after the hook. The creator reveals what happened, with details.
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are looking into next.
 
@@ -3548,9 +3548,9 @@ reelHook — On-screen text version of the hook.
 
 reelBody — A few sentences that appear on screen. Shorter version of the body field above.
 
-reelCta — Final on-screen text.
+reelCta — Shorter version of the cta field above.
 
-caption — One to two sentences. What the creator types under the video.
+caption — One to two sentences. What the creator types under the video about the story.
 
 designNotes — One sentence. Where the creator is and what is behind them.
 
@@ -3559,15 +3559,15 @@ hashtags — 5-8 hashtags.`;
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 
 THE VIDEO: ${opts.topicSignature || ''}
-${hasPromoting ? `HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW IT PROMOTES: ${opts.plannedAngle || ''}`}
+${hasPromoting ? `HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW THIS CONNECTS: ${opts.plannedAngle || ''}`}
 
-${hasPromoting ? `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.` : `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.` : `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.`}
 
 title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues the story with details.` : `body — Everything the creator says after the hook. The creator continues the story with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator reveals what happened, with details.` : `body — Everything the creator says after the hook. The creator reveals what happened, with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
@@ -9801,14 +9801,16 @@ const server = http.createServer((req, res) => {
         : `You are a creator in this space: ${nicheStyle}. Plan 30 short-form videos for TikTok and Reels.`,
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. The angle describes how the story connects to what the creator offers.`
-        : `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. At the end of the video, what the creator is offering connects to what the creator was talking about.`,
+        ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`
+        : `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. During the story, what the creator is offering connects to what the creator was talking about.`,
       '',
       'Return JSON only. Each item:',
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence — a specific moment from the creator\'s day-to-day in this space.",',
-      '  "angle": "One sentence — what the creator expected to go one way that went another."',
+      hasPromoting
+        ? '  "angle": "One sentence — what the creator expected to go one way that went another, and how that connects to what the creator offers."'
+        : '  "angle": "One sentence — what the creator expected to go one way that went another."',
       '}',
       plannerCountLine,
       '',
