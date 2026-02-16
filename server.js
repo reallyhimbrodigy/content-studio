@@ -3561,13 +3561,13 @@ const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}.
 THE VIDEO: ${opts.topicSignature || ''}
 HOW IT PROMOTES: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions ${promoting} because it connects to what they were talking about.` : `The creator is talking directly to camera about something that happened while doing their work. The video is 30-60 seconds. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud. The hook describes the impact. The body reveals what caused it.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. At the end, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions ${promoting} because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator continues talking about what happened while they were doing their work. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
@@ -9788,7 +9788,7 @@ const server = http.createServer((req, res) => {
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
-      '  "angle": "One sentence — why someone watches this to the end."',
+      '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
       '}',
       plannerCountLine,
       '',
@@ -9808,7 +9808,7 @@ const server = http.createServer((req, res) => {
       '{',
       '  "post_key": "<key>",',
       '  "topic_signature": "One sentence — something from the creator\'s own personal journey, mistakes, discoveries, or opinions from doing their work in this space.",',
-      '  "angle": "One sentence — why someone watches this to the end."',
+      '  "angle": "One sentence — the impact the creator experienced. The cause is revealed in the video."',
       '}',
       plannerCountLine,
       '',
