@@ -8962,7 +8962,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
     const normalizedFrequency = Math.max(parseInt(postsPerDay, 10) || 1, 1);
     const totalDays = 30;
     const totalPosts = totalDays * normalizedFrequency;
-    const POOL_CONCURRENCY = 10;
+    const POOL_CONCURRENCY = 2;
     const jobs = [];
     for (let day = 1; day <= totalDays; day += 1) {
       for (let slot = 0; slot < normalizedFrequency; slot += 1) {
@@ -9088,7 +9088,7 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
       if (pText) pText.textContent = `${progress} of ${totalPosts} posts created (${percent}%)`;
     };
 
-    const fetchSinglePost = async (job, attempt = 1) => {
+    const fetchSinglePost = async (job, attempt = 1, transientRetry = 0) => {
       if (!isActiveRun()) {
         return { cancelled: true };
       }
@@ -9142,6 +9142,17 @@ async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {})
         body: JSON.stringify(payload),
         signal: batchSignal,
       });
+      if ([502, 503, 504].includes(response.status)) {
+        if (transientRetry < 2) {
+          console.warn(`[Calendar] transient ${response.status} for day=${job.day} slot=${job.slot}; retry ${transientRetry + 1}/2 in 3000ms`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          return fetchSinglePost(job, attempt, transientRetry + 1);
+        }
+        const transientErr = new Error(`upstream_${response.status}`);
+        transientErr.status = response.status;
+        transientErr.code = 'upstream_5xx';
+        throw transientErr;
+      }
       const reqIdHeader = response.headers.get('x-request-id') || null;
       let parsedDetail = null;
       let parseFailed = false;
