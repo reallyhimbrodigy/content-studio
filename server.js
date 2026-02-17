@@ -8249,9 +8249,46 @@ function normalizeCalendarModelOutput(rawParsed, expectedCount, context = {}, ra
     } else if (rawParsed.post && typeof rawParsed.post === 'object') {
       posts = [rawParsed.post];
       shape = 'post-wrapper';
+    } else if (rawParsed.title && rawParsed.hook) {
+      posts = [rawParsed];
+      shape = 'direct-post-object';
     } else {
+      const arrayKey = Object.keys(rawParsed).find((key) => Array.isArray(rawParsed[key]));
+      if (arrayKey) {
+        posts = rawParsed[arrayKey];
+        shape = `array-key:${arrayKey}`;
+      }
+    }
+    if (!posts) {
       posts = [rawParsed];
       shape = 'single-object';
+    }
+  }
+  if (Array.isArray(posts) && Number.isFinite(Number(expectedCount)) && Number(expectedCount) === 1 && posts.length > 1) {
+    const firstObject = posts.find((item) => item && typeof item === 'object');
+    if (firstObject) {
+      posts = [firstObject];
+      shape = `${shape}|first-object-only`;
+    }
+  }
+  if (Number.isFinite(Number(expectedCount)) && Number(expectedCount) === 1 && posts && !Array.isArray(posts)) {
+    posts = [posts];
+    shape = `${shape}|wrapped-single`;
+  }
+  if (Number.isFinite(Number(expectedCount)) && Number(expectedCount) === 1 && Array.isArray(posts) && posts.length === 1) {
+    const candidate = posts[0];
+    if (candidate && typeof candidate === 'object' && Array.isArray(candidate.posts) && candidate.posts.length) {
+      posts = [candidate.posts[0]];
+      shape = `${shape}|nested-posts-first`;
+    } else if (candidate && typeof candidate === 'object') {
+      const arrayKey = Object.keys(candidate).find((key) => Array.isArray(candidate[key]) && candidate[key].length > 0);
+      if (arrayKey) {
+        const nested = candidate[arrayKey].find((item) => item && typeof item === 'object');
+        if (nested) {
+          posts = [nested];
+          shape = `${shape}|nested-array-key:${arrayKey}`;
+        }
+      }
     }
   }
   if (!Array.isArray(posts)) {
@@ -8554,13 +8591,26 @@ async function generateTopicPlan({
     return null;
   }
   const content = toPlainString(json?.text || '');
+  const responseText = content;
+  console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
   let parsed = null;
   try {
-    parsed = content ? JSON.parse(content) : null;
+    const jsonSegment = extractJsonChunk(responseText) || responseText;
+    parsed = jsonSegment ? JSON.parse(jsonSegment) : null;
   } catch {
     parsed = null;
   }
-  const topics = Array.isArray(parsed?.topics) ? parsed.topics : null;
+  let topics = null;
+  if (Array.isArray(parsed?.topics)) {
+    topics = parsed.topics;
+  } else if (Array.isArray(parsed)) {
+    topics = parsed;
+  } else if (parsed && typeof parsed === 'object' && parsed.slot != null && parsed.title) {
+    topics = [parsed];
+  } else if (parsed && typeof parsed === 'object') {
+    const arrayKey = Object.keys(parsed).find((key) => Array.isArray(parsed[key]));
+    if (arrayKey) topics = parsed[arrayKey];
+  }
   if (!topics) {
     pushWarning({ reason: 'missing_topics' });
     return null;
@@ -10331,27 +10381,37 @@ const server = http.createServer((req, res) => {
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
     const content = toPlainString(response?.text || '');
+    const responseText = content;
+    console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
     let parsed = null;
     try {
-      const jsonSegment = extractJsonChunk(content) || content;
+      const jsonSegment = extractJsonChunk(responseText) || responseText;
       parsed = JSON.parse(jsonSegment);
     } catch {
       console.log('[Calendar][Plan] 422 reason:', {
         requestId,
         code: 'PLAN_PARSE_FAILED',
         message: 'Failed to parse planner JSON',
-        contentPreview: String(content || '').slice(0, 500),
+        contentPreview: String(responseText || '').slice(0, 500),
       });
       const err = new Error('PLAN_PARSE_FAILED');
       err.code = 'PLAN_PARSE_FAILED';
       err.statusCode = 422;
       throw err;
     }
-    const plan = Array.isArray(parsed?.plan)
-      ? parsed.plan
-      : (Array.isArray(parsed)
-        ? parsed
-        : (Array.isArray(parsed?.items) ? parsed.items : null));
+    let plan = null;
+    if (parsed?.plan && Array.isArray(parsed.plan)) {
+      plan = parsed.plan;
+    } else if (Array.isArray(parsed)) {
+      plan = parsed;
+    } else if (parsed && typeof parsed === 'object' && parsed.post_key && parsed.topic_signature) {
+      plan = [parsed];
+    } else if (parsed && typeof parsed === 'object') {
+      const arrayKey = Object.keys(parsed).find((k) => Array.isArray(parsed[k]));
+      if (arrayKey) {
+        plan = parsed[arrayKey];
+      }
+    }
     if (!plan) {
       console.log('[Calendar][Plan] 422 reason:', {
         requestId,
