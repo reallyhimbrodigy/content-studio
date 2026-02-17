@@ -8115,7 +8115,9 @@ function findFirstJsonSegment(text = '') {
 function parsePostsFromModelText(rawText, { expectedPosts, chunkStartDay, chunkEndDay, postsPerDay } = {}) {
   const text = String(rawText || '').trim();
   if (!text) return null;
-  const cleaned = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
+  let responseText = text;
+  responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const cleaned = responseText.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
@@ -8194,7 +8196,9 @@ function safeJsonParse(raw = '') {
   if (!raw) return null;
   let text = String(raw).trim();
   if (!text) return null;
-  text = text.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
+  let responseText = text;
+  responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  text = responseText.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/i, '').trim();
   const firstBrace = text.indexOf('{');
   if (firstBrace > 0) text = text.slice(firstBrace);
   const lastBrace = text.lastIndexOf('}');
@@ -8591,10 +8595,11 @@ async function generateTopicPlan({
     return null;
   }
   const content = toPlainString(json?.text || '');
-  const responseText = content;
+  let responseText = content;
   console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
   let parsed = null;
   try {
+    responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
     const jsonSegment = extractJsonChunk(responseText) || responseText;
     parsed = jsonSegment ? JSON.parse(jsonSegment) : null;
   } catch {
@@ -8751,7 +8756,9 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return null;
   };
   const parseJsonFromText = (text = '') => {
-    const trimmed = String(text || '').trim();
+    let responseText = String(text || '');
+    responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    const trimmed = String(responseText || '').trim();
     const start = trimmed.indexOf('{');
     const end = trimmed.lastIndexOf('}');
     if (start === -1 || end === -1 || end <= start) {
@@ -10381,10 +10388,11 @@ const server = http.createServer((req, res) => {
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
     const content = toPlainString(response?.text || '');
-    const responseText = content;
+    let responseText = content;
     console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
     let parsed = null;
     try {
+      responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       const jsonSegment = extractJsonChunk(responseText) || responseText;
       parsed = JSON.parse(jsonSegment);
     } catch {
