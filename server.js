@@ -45,12 +45,6 @@ try {
   console.log('[Phyllo] metrics disabled (module missing)');
 }
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
-const {
-  getNonHolidayHot100,
-  getEvergreenFallbackList,
-  isHolidayTrack,
-  normalizeAudioString,
-} = require('./server/lib/billboardHot100');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createDesignRender = async () => ({ id: null, status: 'disabled' });
@@ -88,6 +82,42 @@ const PHYLLO_WEBHOOK_EVENTS = (process.env.PHYLLO_WEBHOOK_EVENTS || [
   .map((item) => String(item || '').trim())
   .filter(Boolean);
 let profileSettingsSchemaWarned = false;
+
+const LOCAL_HOT100_FALLBACK = Array.from({ length: 50 }, (_, idx) => ({
+  title: `Original audio ${String(idx + 1).padStart(2, '0')}`,
+  artist: `Creator ${idx + 1}`,
+}));
+
+function normalizeAudioString(title = '', artist = '') {
+  const cleanTitle = String(title || '').trim();
+  const cleanArtist = String(artist || '').trim();
+  if (!cleanTitle && !cleanArtist) return '';
+  if (!cleanArtist) return cleanTitle;
+  if (!cleanTitle) return cleanArtist;
+  return `${cleanTitle} - ${cleanArtist}`;
+}
+
+function isHolidayTrack(title = '', artist = '') {
+  const text = `${title || ''} ${artist || ''}`.toLowerCase();
+  return /christmas|xmas|holiday|santa|jingle|winter/.test(text);
+}
+
+function getEvergreenFallbackList() {
+  return LOCAL_HOT100_FALLBACK.slice();
+}
+
+async function getNonHolidayHot100({ minCount = 30 } = {}) {
+  const required = Number.isFinite(Number(minCount)) ? Math.max(1, Number(minCount)) : 30;
+  const tracks = getEvergreenFallbackList()
+    .filter((entry) => !isHolidayTrack(entry?.title || '', entry?.artist || ''))
+    .slice(0, required);
+  return {
+    source: 'local_hot100',
+    tracks,
+    chartDate: null,
+    filteredOut: 0,
+  };
+}
 const PHYLLO_CLIENT_ID = process.env.PHYLLO_CLIENT_ID || '';
 const PHYLLO_CLIENT_SECRET = process.env.PHYLLO_CLIENT_SECRET || '';
 const PHYLLO_WORK_PLATFORM_LABELS = {
