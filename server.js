@@ -2191,7 +2191,7 @@ function buildDesignPrompt({ assetType, tone, notes, day, caption, niche, brandK
 
 const OPENAI_MAX_CONCURRENCY = (() => {
   const configured = Number(process.env.OPENAI_MAX_CONCURRENCY);
-  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 10;
+  return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 2;
 })();
 const CALENDAR_CONCURRENCY = (() => {
   const configured = Number(process.env.CALENDAR_CONCURRENCY);
@@ -3951,7 +3951,9 @@ caption — One to two sentences. What the creator types under the video about t
 
 designNotes — One sentence. Where the creator is and what is behind them.
 
-hashtags — 5-8 hashtags.`;
+hashtags — 5-8 hashtags.
+
+Return JSON only.`;
 
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 ${voiceLock ? `The creator's voice: ${voiceLock}.` : ''}
@@ -3979,7 +3981,9 @@ caption — One to two sentences. What the creator types under the video about t
 
 designNotes — One sentence. Where the creator is and what is behind them.
 
-hashtags — 5-8 hashtags.`;
+hashtags — 5-8 hashtags.
+
+Return JSON only.`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;
@@ -10958,7 +10962,7 @@ const server = http.createServer((req, res) => {
         }
       }
       const chunkCount = chunkPlan.length;
-      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 2 : 4;
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
         chunkConcurrency = 3;
       }
@@ -11006,7 +11010,7 @@ const server = http.createServer((req, res) => {
         processedDays += chunkDays;
       }
       const chunkCount = chunkPlan.length;
-      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 10 : 4;
+      let chunkConcurrency = daysToGenerate >= 10 && perDay === 1 ? 2 : 4;
       if (chunkCount >= 10 && perDay === 1 && perDayChunkSize === 1) {
         chunkConcurrency = 3;
       }
