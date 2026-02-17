@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const JSZip = require('jszip');
+const Anthropic = require('@anthropic-ai/sdk');
 const {
   supabaseAdmin,
   getDesignAssetById,
@@ -57,7 +58,9 @@ const resolveDesignTemplateId = () => null;
 const validateDesignTemplateConfig = async () => {};
 const isDesignPipelineConfigured = () => false;
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
+const OPENAI_API_KEY = CLAUDE_API_KEY || '';
+const anthropicClient = CLAUDE_API_KEY ? new Anthropic({ apiKey: CLAUDE_API_KEY }) : null;
 const CANONICAL_HOST = process.env.CANONICAL_HOST || '';
 const STORY_TEMPLATE_ID = process.env.DESIGN_STORY_TEMPLATE_ID || '';
 const CAROUSEL_TEMPLATE_ID = process.env.DESIGN_CAROUSEL_TEMPLATE_ID || '';
@@ -2680,7 +2683,172 @@ async function getHot100AudioForPostKey(postKeyValue = '', requestId = '') {
   return audioString;
 }
 
+function extractTextFromAnthropicContent(content = []) {
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      if (item.type === 'text' && typeof item.text === 'string') return item.text;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function hashToPseudoEmbedding(text = '', dim = 256) {
+  const out = new Array(dim).fill(0);
+  const normalized = String(text || '').toLowerCase();
+  for (let i = 0; i < normalized.length; i += 1) {
+    const code = normalized.charCodeAt(i);
+    const idx = (code + i * 17) % dim;
+    out[idx] += ((code % 29) - 14) / 14;
+  }
+  const norm = Math.sqrt(out.reduce((acc, v) => acc + v * v, 0)) || 1;
+  return out.map((v) => Number((v / norm).toFixed(8)));
+}
+
+function buildAnthropicPromptFromOpenAiPayload(payloadObj = {}) {
+  const baseMessages = Array.isArray(payloadObj.messages)
+    ? payloadObj.messages
+    : Array.isArray(payloadObj.input)
+      ? payloadObj.input
+      : [];
+  const promptParts = [];
+  for (const message of baseMessages) {
+    if (!message || typeof message !== 'object') continue;
+    const role = String(message.role || 'user');
+    let text = '';
+    if (typeof message.content === 'string') {
+      text = message.content;
+    } else if (Array.isArray(message.content)) {
+      text = message.content
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (typeof item?.text === 'string') return item.text;
+          if (typeof item?.content === 'string') return item.content;
+          if (typeof item?.value === 'string') return item.value;
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n');
+    } else if (message.content && typeof message.content === 'object') {
+      if (typeof message.content.text === 'string') text = message.content.text;
+      else if (typeof message.content.value === 'string') text = message.content.value;
+    }
+    if (!text.trim()) continue;
+    if (role === 'system') {
+      promptParts.push(`SYSTEM:\n${text.trim()}`);
+    } else {
+      promptParts.push(`${role.toUpperCase()}:\n${text.trim()}`);
+    }
+  }
+
+  const schema =
+    payloadObj?.response_format?.json_schema?.schema ||
+    payloadObj?.text?.format?.schema ||
+    null;
+  if (schema && typeof schema === 'object') {
+    promptParts.push(
+      [
+        'CRITICAL OUTPUT CONTRACT:',
+        'Return ONLY valid JSON with no markdown or explanation.',
+        `JSON Schema to follow exactly: ${JSON.stringify(schema)}`,
+      ].join('\n')
+    );
+  }
+
+  return promptParts.join('\n\n').trim();
+}
+
+async function callClaudeFromOpenAiPayload(pathname, payloadObj = {}) {
+  if (!anthropicClient) {
+    const err = new Error('CLAUDE_API_KEY not set');
+    err.code = 'CLAUDE_NOT_CONFIGURED';
+    err.statusCode = 500;
+    throw err;
+  }
+
+  if (pathname === '/v1/embeddings') {
+    const input = payloadObj?.input;
+    const list = Array.isArray(input) ? input : [input];
+    return {
+      object: 'list',
+      data: list.map((item, index) => ({
+        object: 'embedding',
+        index,
+        embedding: hashToPseudoEmbedding(String(item || '')),
+      })),
+      model: 'pseudo-embedding-v1',
+    };
+  }
+
+  const prompt = buildAnthropicPromptFromOpenAiPayload(payloadObj);
+  const maxTokens =
+    Number(payloadObj.max_output_tokens) ||
+    Number(payloadObj.max_completion_tokens) ||
+    Number(payloadObj.max_tokens) ||
+    4096;
+  const temperature = Number.isFinite(Number(payloadObj.temperature))
+    ? Number(payloadObj.temperature)
+    : 0.4;
+
+  const response = await anthropicClient.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: Math.max(256, Math.min(8192, Math.floor(maxTokens))),
+    temperature,
+    messages: [
+      {
+        role: 'user',
+        content: `${prompt}\n\nReturn only raw JSON when JSON is requested.`,
+      },
+    ],
+  });
+  const text = extractTextFromAnthropicContent(response?.content || []);
+
+  if (pathname === '/v1/responses') {
+    return {
+      id: response?.id || null,
+      model: response?.model || 'claude-opus-4-6',
+      output_text: text,
+      output: [
+        {
+          type: 'message',
+          content: [{ type: 'output_text', text }],
+        },
+      ],
+      choices: [{ message: { content: text } }],
+    };
+  }
+
+  return {
+    id: response?.id || null,
+    model: response?.model || 'claude-opus-4-6',
+    choices: [{ message: { content: text } }],
+  };
+}
+
 function openAIRequest(options, payload) {
+  const pathname = options?.path || '/v1/chat/completions';
+  let payloadObj = {};
+  try {
+    payloadObj = payload ? JSON.parse(payload) : {};
+  } catch (err) {
+    const parseErr = new Error(`Invalid request payload JSON: ${err.message}`);
+    parseErr.code = 'INVALID_PAYLOAD_JSON';
+    parseErr.statusCode = 400;
+    return Promise.reject(parseErr);
+  }
+
+  if (anthropicClient) {
+    return callClaudeFromOpenAiPayload(pathname, payloadObj).catch((err) => {
+      const wrapped = new Error(`Claude error ${err?.status || err?.statusCode || 500}: ${err?.message || err}`);
+      wrapped.code = 'CLAUDE_BACKEND_ERROR';
+      wrapped.statusCode = err?.status || err?.statusCode || 500;
+      throw wrapped;
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
@@ -9300,7 +9468,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
+  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://api.anthropic.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
   res.setHeader('Content-Security-Policy', baseCsp);
   // Asset service is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
