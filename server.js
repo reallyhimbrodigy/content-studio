@@ -8583,7 +8583,7 @@ async function generateTopicPlan({
   try {
     json = await withTimeout(
       claudeMessagesRequest({
-        model: 'claude-sonnet-4-5-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         system: 'Return valid JSON only.',
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 900,
@@ -8603,7 +8603,7 @@ async function generateTopicPlan({
     console.error('[OpenAI][TopicPlan] request failed', {
       requestId: requestId || null,
       mode: 'topicPlan',
-      model: 'claude-sonnet-4-5-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       responseFormat: null,
       statusCode: err?.statusCode || err?.status || null,
       ...details,
@@ -10361,7 +10361,7 @@ const server = http.createServer((req, res) => {
       return withTimeout(
         withOpenAiSlot(() =>
           claudeMessagesRequest({
-            model: 'claude-sonnet-4-5-20250514',
+            model: 'claude-sonnet-4-5-20250929',
             system: 'Return only valid JSON for the requested plan. No markdown.',
             messages: [{ role: 'user', content: planPrompt }],
             maxTokens: maxTokens,
