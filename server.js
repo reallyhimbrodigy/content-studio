@@ -2201,9 +2201,10 @@ const OPENAI_CHUNK_MAX_DAYS = (() => {
   const configured = Number(process.env.OPENAI_CHUNK_MAX_DAYS);
   return Number.isFinite(configured) && configured >= 1 ? Math.max(1, Math.floor(configured)) : 2;
 })();
+const CALENDAR_PLAN_TIMEOUT_MS = 180000;
+const CALENDAR_POST_TIMEOUT_MS = 120000;
 const OPENAI_GENERATION_TIMEOUT_MS = (() => {
-  const configured = Number(process.env.OPENAI_GENERATION_TIMEOUT_MS);
-  return Number.isFinite(configured) && configured >= 120000 ? configured : 120000;
+  return CALENDAR_POST_TIMEOUT_MS;
 })();
 const OPENAI_MAX_ATTEMPTS = (() => {
   const configured = Number(process.env.OPENAI_MAX_ATTEMPTS);
@@ -8574,19 +8575,23 @@ async function generateTopicPlan({
   ].filter(Boolean).join('\n');
   let json = null;
   try {
-    json = await claudeMessagesRequest({
-      model: 'claude-opus-4-6',
-      system: 'Return valid JSON only.',
-      messages: [{ role: 'user', content: prompt }],
-      maxTokens: 900,
-      temperature: 0.2,
-    });
+    json = await withTimeout(
+      claudeMessagesRequest({
+        model: 'claude-sonnet-4-5-20250514',
+        system: 'Return valid JSON only.',
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 900,
+        temperature: 0.2,
+      }),
+      CALENDAR_PLAN_TIMEOUT_MS,
+      { requestId, phase: 'topic_plan' }
+    );
   } catch (err) {
     const details = extractOpenAiErrorDetails(err);
     console.error('[OpenAI][TopicPlan] request failed', {
       requestId: requestId || null,
       mode: 'topicPlan',
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-5-20250514',
       responseFormat: null,
       statusCode: err?.statusCode || err?.status || null,
       ...details,
@@ -10373,14 +10378,14 @@ const server = http.createServer((req, res) => {
       return withTimeout(
         withOpenAiSlot(() =>
           claudeMessagesRequest({
-            model: 'claude-opus-4-6',
+            model: 'claude-sonnet-4-5-20250514',
             system: 'Return only valid JSON for the requested plan. No markdown.',
             messages: [{ role: 'user', content: planPrompt }],
             maxTokens: maxTokens,
             temperature: 0.2,
           })
         ),
-        60000,
+        CALENDAR_PLAN_TIMEOUT_MS,
         { requestId, phase: 'plan' }
       );
     };
@@ -10480,7 +10485,7 @@ const server = http.createServer((req, res) => {
       elapsedMs: Date.now() - planStart,
       planCount: plan.length,
       maxTokens: planTokensUsed,
-      timeoutMs: 60000,
+      timeoutMs: CALENDAR_PLAN_TIMEOUT_MS,
     });
     return { plan };
   }
