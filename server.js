@@ -1274,6 +1274,10 @@ function filterSeriesByWindow(series, days) {
 const CALENDAR_EXPORT_FEATURE_KEY = 'calendar_exports';
 
 const MAX_JSON_BODY = 1 * 1024 * 1024; // 1MB cap to prevent oversized payloads.
+const MAX_UPLOAD_BODY = 520 * 1024 * 1024; // multipart overhead for 500MB file cap
+const MAX_VIDEO_FILE_SIZE = 500 * 1024 * 1024;
+const VIDEO_ALLOWED_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
+const VIDEO_ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.avi'];
 
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -1321,6 +1325,76 @@ async function readRawBody(req) {
     });
     req.on('error', (err) => reject(err));
   });
+}
+
+async function readRawBodyWithLimit(req, maxBytes = MAX_JSON_BODY) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let length = 0;
+    req.on('data', (chunk) => {
+      length += chunk.length;
+      if (length > maxBytes) {
+        const err = new Error('Payload too large');
+        err.statusCode = 413;
+        reject(err);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks, length)));
+    req.on('error', reject);
+  });
+}
+
+function parseMultipartFormData(rawBuffer, contentType = '') {
+  const boundaryMatch = String(contentType).match(/boundary=(.+)$/i);
+  if (!boundaryMatch) {
+    const err = new Error('Invalid multipart payload: missing boundary');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const boundary = Buffer.from(`--${boundaryMatch[1]}`);
+  const parts = [];
+  let start = rawBuffer.indexOf(boundary);
+  while (start !== -1) {
+    const next = rawBuffer.indexOf(boundary, start + boundary.length);
+    if (next === -1) break;
+    const part = rawBuffer.slice(start + boundary.length + 2, next - 2);
+    if (part.length > 0) parts.push(part);
+    start = next;
+  }
+
+  const result = { fields: {}, files: {} };
+  for (const part of parts) {
+    const headerEnd = part.indexOf('\r\n\r\n');
+    if (headerEnd === -1) continue;
+
+    const headers = part.slice(0, headerEnd).toString('utf8');
+    let body = part.slice(headerEnd + 4);
+    if (body.slice(-2).toString() === '\r\n') body = body.slice(0, -2);
+
+    const nameMatch = headers.match(/name="([^"]+)"/i);
+    if (!nameMatch) continue;
+    const fieldName = nameMatch[1];
+
+    const filenameMatch = headers.match(/filename="([^"]*)"/i);
+    const contentTypeMatch = headers.match(/Content-Type:\s*([^\r\n]+)/i);
+
+    if (filenameMatch && filenameMatch[1]) {
+      result.files[fieldName] = {
+        name: filenameMatch[1],
+        type: contentTypeMatch ? contentTypeMatch[1].trim() : '',
+        size: body.length,
+        buffer: body,
+      };
+    } else {
+      result.fields[fieldName] = body.toString('utf8');
+    }
+  }
+
+  return result;
 }
 
 function parsePhylloSignatureHeader(signatureHeader) {
@@ -9226,7 +9300,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
+  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
   res.setHeader('Content-Security-Policy', baseCsp);
   // Asset service is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
@@ -9571,6 +9645,207 @@ const server = http.createServer((req, res) => {
           console.error('[ProfileSettings] handler error', err);
         }
         return sendJson(res, status, { ok: false, error: 'profile_settings_update_failed' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/upload' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+
+        const rawBody = await readRawBodyWithLimit(req, MAX_UPLOAD_BODY);
+        const { fields, files } = parseMultipartFormData(rawBody, req.headers['content-type'] || '');
+        const file = files.video;
+        const userId = String(fields.userId || '').trim();
+
+        if (!file) return sendJson(res, 400, { error: 'No video file provided' });
+        if (!userId) return sendJson(res, 400, { error: 'User ID is required' });
+        if (file.size > MAX_VIDEO_FILE_SIZE) {
+          return sendJson(res, 400, { error: 'File size exceeds 500MB limit' });
+        }
+
+        const fileExtension = String(file.name || '').toLowerCase().match(/\.[^.]*$/)?.[0] || '';
+        if (!VIDEO_ALLOWED_TYPES.includes(file.type) && !VIDEO_ALLOWED_EXTENSIONS.includes(fileExtension)) {
+          return sendJson(res, 400, { error: 'Only MP4, MOV, and AVI files are allowed' });
+        }
+
+        const timestamp = Date.now();
+        const sanitizedFilename = String(file.name || 'video.mp4')
+          .replace(/[^a-zA-Z0-9.-]/g, '_')
+          .replace(/_{2,}/g, '_');
+        const storagePath = `${userId}/${timestamp}-${sanitizedFilename}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('videos')
+          .upload(storagePath, file.buffer, {
+            contentType: file.type,
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('[VideoEditor][Upload] Supabase upload error:', uploadError);
+          return sendJson(res, 500, { error: 'Failed to upload video to storage' });
+        }
+
+        const { data: urlData } = supabaseAdmin.storage
+          .from('videos')
+          .getPublicUrl(storagePath);
+
+        return sendJson(res, 200, {
+          success: true,
+          videoUrl: urlData?.publicUrl,
+          fileName: sanitizedFilename,
+          fileSize: file.size,
+          storagePath,
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][Upload] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error during upload' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/generate' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+
+        const body = await readJsonBody(req);
+        const { videoUrl, vibeInput, userId } = body || {};
+
+        if (!videoUrl) return sendJson(res, 400, { error: 'Video URL is required' });
+        if (!vibeInput) return sendJson(res, 400, { error: 'Vibe input is required' });
+        if (!userId) return sendJson(res, 400, { error: 'User ID is required' });
+
+        let fileName = 'unknown';
+        try {
+          const urlObj = new URL(videoUrl);
+          const pathParts = urlObj.pathname.split('/');
+          fileName = pathParts[pathParts.length - 1] || 'unknown';
+        } catch (_e) {
+          fileName = String(videoUrl).split('/').pop()?.split('?')[0] || 'unknown';
+        }
+
+        const { data, error } = await supabaseAdmin
+          .from('edit_jobs')
+          .insert({
+            user_id: userId,
+            video_url: videoUrl,
+            video_filename: fileName,
+            vibe_input: vibeInput,
+            status: 'queued',
+            progress: 0,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[VideoEditor][Generate] Database error:', error);
+          return sendJson(res, 500, { error: 'Failed to create job' });
+        }
+
+        return sendJson(res, 200, { jobId: data.id });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][Generate] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  const videoJobMatch = parsed.pathname && parsed.pathname.match(/^\/api\/jobs\/([^/]+)$/i);
+  if (videoJobMatch && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+
+        const jobId = decodeURIComponent(videoJobMatch[1] || '').trim();
+        if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
+
+        const { data, error } = await supabaseAdmin
+          .from('edit_jobs')
+          .select('id, status, progress, rendered_video_url, error, updated_at, completed_at')
+          .eq('id', jobId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[VideoEditor][JobStatus] Database error:', error);
+          return sendJson(res, 500, { error: 'Failed to fetch job status' });
+        }
+        if (!data) {
+          return sendJson(res, 404, { error: 'Job not found' });
+        }
+
+        return sendJson(res, 200, data);
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][JobStatus] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/cron/process-jobs' && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+
+        const authHeader = req.headers.authorization;
+        if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+          return sendJson(res, 401, { error: 'Unauthorized' });
+        }
+
+        const { data: jobs, error } = await supabaseAdmin
+          .from('edit_jobs')
+          .select('*')
+          .eq('status', 'queued')
+          .order('created_at', { ascending: true })
+          .limit(3);
+
+        if (error) throw new Error(`Failed to fetch queued jobs: ${error.message}`);
+
+        if (!jobs || jobs.length === 0) {
+          return sendJson(res, 200, { message: 'No queued jobs', processed: 0, results: [] });
+        }
+
+        const { processEditJob } = require('./lib/video-processor/process-job');
+        const results = [];
+
+        for (const job of jobs) {
+          try {
+            console.log(`[VideoEditor][Cron] Processing job ${job.id}...`);
+            const finalVideoUrl = await processEditJob(job);
+            results.push({ jobId: job.id, success: true, videoUrl: finalVideoUrl });
+            console.log(`[VideoEditor][Cron] Job ${job.id} complete`);
+          } catch (jobError) {
+            console.error(`[VideoEditor][Cron] Job ${job.id} failed:`, jobError?.message || jobError);
+            results.push({ jobId: job.id, success: false, error: jobError?.message || 'Unknown error' });
+          }
+        }
+
+        return sendJson(res, 200, {
+          message: 'Cron job completed',
+          processed: jobs.length,
+          results,
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][Cron] Fatal error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal cron error' });
       }
     })();
     return;

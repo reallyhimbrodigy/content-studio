@@ -1,27 +1,322 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Video Editor | Promptly</title>
-    <link rel="stylesheet" href="/styles.css" />
-  </head>
-  <body class="page-editor">
-    <div class="app-shell" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;">
-      <main style="max-width: 720px; width: 100%; background: #111; border: 1px solid #333; border-radius: 12px; padding: 28px; color: #fff;">
-        <h1 style="margin: 0 0 12px; font-size: 28px;">AI Video Editor</h1>
-        <p style="margin: 0 0 12px; color: #bbb; line-height: 1.6;">
-          The <code>/editor</code> route now resolves in this static-server architecture.
-        </p>
-        <p style="margin: 0 0 20px; color: #bbb; line-height: 1.6;">
-          Note: this repository currently runs via <code>node server.js</code> and static HTML routing, not Next.js runtime routing.
-          If you want the React/Next editor experience, the app needs a full framework migration.
-        </p>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <a href="/calendar.html" style="display:inline-block; padding: 10px 14px; border: 1px solid #444; border-radius: 8px; color: #fff; text-decoration: none;">Go to Calendar</a>
-          <a href="/library.html" style="display:inline-block; padding: 10px 14px; border: 1px solid #444; border-radius: 8px; color: #fff; text-decoration: none;">Go to Library</a>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Video Editor | Promptly</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f9fafb;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function UploadZone({ onUploadComplete, userId }) {
+      const [uploading, setUploading] = useState(false);
+      const [progress, setProgress] = useState(0);
+      const [error, setError] = useState(null);
+      const [dragActive, setDragActive] = useState(false);
+
+      const uploadFile = async (file) => {
+        if (file.size > 500 * 1024 * 1024) {
+          setError('File too large. Max 500MB.');
+          return;
+        }
+
+        if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) {
+          setError('Invalid file type. Use MP4, MOV, or AVI.');
+          return;
+        }
+
+        setUploading(true);
+        setError(null);
+
+        const formData = new FormData();
+        formData.append('video', file);
+        formData.append('userId', userId);
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            setProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            const data = JSON.parse(xhr.responseText);
+            onUploadComplete(data.videoUrl, data.fileName);
+          } else {
+            setError('Upload failed');
+          }
+          setUploading(false);
+        });
+
+        xhr.addEventListener('error', () => {
+          setError('Upload failed');
+          setUploading(false);
+        });
+
+        xhr.open('POST', '/api/upload');
+        xhr.send(formData);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setDragActive(false);
+        const file = e.dataTransfer.files[0];
+        if (file) uploadFile(file);
+      };
+
+      const handleChange = (e) => {
+        const file = e.target.files[0];
+        if (file) uploadFile(file);
+      };
+
+      return (
+        <div className="w-full">
+          <div
+            className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition ${
+              dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+            } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onDrop={handleDrop}
+            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onClick={() => !uploading && document.getElementById('fileInput').click()}
+          >
+            <input
+              id="fileInput"
+              type="file"
+              accept="video/mp4,video/quicktime,video/x-msvideo"
+              onChange={handleChange}
+              style={{ display: 'none' }}
+            />
+
+            {uploading ? (
+              <div className="space-y-4">
+                <p className="text-xl font-semibold">Uploading...</p>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div
+                    className="bg-black h-3 rounded-full transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600">{progress}%</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-6xl">📤</div>
+                <p className="text-xl font-semibold">Drop your video here</p>
+                <p className="text-gray-500">or click to browse</p>
+                <p className="text-sm text-gray-400 mt-4">MP4, MOV, AVI • Max 500MB</p>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          )}
         </div>
-      </main>
-    </div>
-  </body>
+      );
+    }
+
+    function VibeInput({ onSubmit, disabled }) {
+      const [vibe, setVibe] = useState('');
+
+      const suggestions = [
+        'punchy TikTok with fast cuts and meme SFX',
+        'smooth cinematic Instagram Reels',
+        'chaotic comedy with zooms and shake effects',
+      ];
+
+      return (
+        <div className="w-full space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Describe the vibe you want:
+            </label>
+            <textarea
+              value={vibe}
+              onChange={(e) => setVibe(e.target.value)}
+              placeholder="e.g., punchy TikTok with fast cuts and meme SFX"
+              disabled={disabled}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-black"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setVibe(s)}
+                disabled={disabled}
+                className="px-3 py-1 text-sm rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => vibe.trim() && onSubmit(vibe.trim())}
+            disabled={disabled || !vibe.trim()}
+            className="w-full py-4 bg-black text-white rounded-lg font-semibold text-lg hover:bg-gray-800 disabled:opacity-50"
+          >
+            Generate Edited Video
+          </button>
+        </div>
+      );
+    }
+
+    function EditorPage() {
+      const [userId] = useState(() => `user-${Math.random().toString(36).substr(2, 9)}`);
+      const [videoUrl, setVideoUrl] = useState(null);
+      const [videoFileName, setVideoFileName] = useState(null);
+      const [jobId, setJobId] = useState(null);
+      const [status, setStatus] = useState('idle');
+      const [progress, setProgress] = useState(0);
+      const [renderedVideoUrl, setRenderedVideoUrl] = useState(null);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        if (!jobId) return;
+
+        const interval = setInterval(async () => {
+          try {
+            const response = await fetch(`/api/jobs/${jobId}`);
+            if (!response.ok) return;
+            const data = await response.json();
+
+            setStatus(data.status);
+            setProgress(data.progress || 0);
+            setRenderedVideoUrl(data.rendered_video_url || null);
+            setError(data.error || null);
+
+            if (data.status === 'complete' || data.status === 'error') {
+              clearInterval(interval);
+            }
+          } catch (err) {
+            console.error('Poll error:', err);
+          }
+        }, 2000);
+
+        return () => clearInterval(interval);
+      }, [jobId]);
+
+      const handleUploadComplete = (url, fileName) => {
+        setVideoUrl(url);
+        setVideoFileName(fileName);
+      };
+
+      const handleVibeSubmit = async (vibe) => {
+        try {
+          const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoUrl, vibeInput: vibe, userId }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data?.error || 'Failed to create job');
+          setJobId(data.jobId);
+          setStatus('queued');
+          setProgress(0);
+        } catch (err) {
+          setError(err.message || 'Failed to create job');
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <header className="bg-white border-b border-gray-200">
+            <div className="max-w-5xl mx-auto px-6 py-4">
+              <h1 className="text-2xl font-bold">🎬 AI Video Editor</h1>
+            </div>
+          </header>
+
+          <main className="max-w-5xl mx-auto px-6 py-12">
+            <div className="space-y-8">
+              <div className="text-center space-y-2">
+                <h2 className="text-4xl font-bold">Turn Raw Clips Into Viral Videos</h2>
+                <p className="text-xl text-gray-600">Upload, describe the vibe, get a fully edited video in minutes</p>
+              </div>
+
+              {!videoUrl && <UploadZone onUploadComplete={handleUploadComplete} userId={userId} />}
+
+              {videoUrl && !jobId && (
+                <div className="space-y-6">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-green-800 font-medium">✓ Video uploaded: {videoFileName}</p>
+                  </div>
+                  <VibeInput onSubmit={handleVibeSubmit} />
+                </div>
+              )}
+
+              {jobId && status !== 'complete' && status !== 'error' && (
+                <div className="bg-white border border-gray-200 rounded-lg p-8 text-center space-y-4">
+                  <div className="text-6xl">🎬</div>
+                  <h3 className="text-2xl font-semibold">Creating your video...</h3>
+                  <p className="text-gray-600">
+                    {status === 'queued' && '⏳ Queued...'}
+                    {status === 'analyzing' && '✓ Analyzing clip...'}
+                    {status === 'editing' && '✓ Generating edit recipe...'}
+                    {status === 'rendering' && '✓ Rendering video...'}
+                  </p>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="bg-black h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {status === 'complete' && renderedVideoUrl && (
+                <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-6">
+                  <h3 className="text-2xl font-bold text-center">✨ Your video is ready!</h3>
+                  <video src={renderedVideoUrl} controls className="w-full max-w-md mx-auto rounded-lg shadow-lg" />
+                  <div className="flex gap-4 justify-center">
+                    <a href={renderedVideoUrl} download className="px-6 py-3 bg-black text-white rounded-lg font-semibold">
+                      Download Video
+                    </a>
+                    <button onClick={() => window.location.reload()} className="px-6 py-3 border-2 border-black rounded-lg font-semibold">
+                      Edit Another Video
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {status === 'error' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                  <p className="text-red-800 font-medium">❌ Error: {error}</p>
+                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
+                    Try Again
+                  </button>
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<EditorPage />);
+  </script>
+</body>
 </html>
