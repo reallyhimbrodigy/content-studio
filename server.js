@@ -10336,13 +10336,29 @@ const server = http.createServer((req, res) => {
       const jsonSegment = extractJsonChunk(content) || content;
       parsed = JSON.parse(jsonSegment);
     } catch {
+      console.log('[Calendar][Plan] 422 reason:', {
+        requestId,
+        code: 'PLAN_PARSE_FAILED',
+        message: 'Failed to parse planner JSON',
+        contentPreview: String(content || '').slice(0, 500),
+      });
       const err = new Error('PLAN_PARSE_FAILED');
       err.code = 'PLAN_PARSE_FAILED';
       err.statusCode = 422;
       throw err;
     }
-    const plan = Array.isArray(parsed?.plan) ? parsed.plan : null;
+    const plan = Array.isArray(parsed?.plan)
+      ? parsed.plan
+      : (Array.isArray(parsed)
+        ? parsed
+        : (Array.isArray(parsed?.items) ? parsed.items : null));
     if (!plan) {
+      console.log('[Calendar][Plan] 422 reason:', {
+        requestId,
+        code: 'PLAN_MISSING',
+        message: 'Parsed planner payload missing plan array',
+        parsedKeys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : null,
+      });
       const err = new Error('PLAN_MISSING');
       err.code = 'PLAN_MISSING';
       err.statusCode = 422;
@@ -10358,6 +10374,13 @@ const server = http.createServer((req, res) => {
       if (missing.length) details.push({ index, missing });
     });
     if (plan.length !== expectedCount || details.length) {
+      console.log('[Calendar][Plan] 422 reason:', {
+        requestId,
+        code: 'PLAN_SCHEMA_MISMATCH',
+        expectedCount,
+        actualCount: plan.length,
+        details,
+      });
       const err = new Error('PLAN_SCHEMA_MISMATCH');
       err.code = 'PLAN_SCHEMA_MISMATCH';
       err.statusCode = 422;
@@ -11840,10 +11863,12 @@ const server = http.createServer((req, res) => {
     (async () => {
       const requestId = generateRequestId('plan');
       res.setHeader('x-request-id', requestId);
+      console.log('[Calendar][Plan] incoming request body:', JSON.stringify(req.body, null, 2));
       try {
         const user = await requireSupabaseUser(req);
         req.user = user;
         const body = await readJsonBody(req);
+        console.log('[Calendar][Plan] parsed request body:', JSON.stringify(body, null, 2));
         if (body && typeof body === 'object') body.userId = user.id;
         const plannerMode = (body?.calendarMode === 'brand_brain' || body?.mode === 'brand_brain' || body?.brandBrainEnabled)
           ? 'brand_brain'
@@ -11865,6 +11890,17 @@ const server = http.createServer((req, res) => {
         const targetAudienceValue = targetAudienceConfig.enabled
           ? toPlainString(TARGET_AUDIENCE_PRESET_GUIDES[targetAudienceConfig.preset]?.label || targetAudienceConfig.preset || '')
           : '';
+        console.log('[Calendar][Plan] planner request payload summary:', {
+          requestId,
+          plannerMode,
+          nicheStyle,
+          hasPromoting: Boolean(promoting),
+          days,
+          startDay,
+          postsPerDay,
+          usedSignaturesCount: usedSignatures.length,
+          targetAudienceValue,
+        });
         const planResult = await generateCalendarPlan({
           requestId,
           mode: plannerMode,
@@ -11882,6 +11918,22 @@ const server = http.createServer((req, res) => {
         });
       } catch (err) {
         const status = err?.statusCode || err?.status || 500;
+        if (status === 422) {
+          console.log('[Calendar][Plan] 422 reason:', {
+            requestId,
+            code: err?.code || null,
+            message: err?.message || null,
+            details: err?.details || null,
+            payload: err?.payload || null,
+          });
+        } else {
+          console.log('[Calendar][Plan] error reason:', {
+            requestId,
+            status,
+            code: err?.code || null,
+            message: err?.message || null,
+          });
+        }
         if (status >= 500) {
           return sendJson(res, status, { error: err?.message || 'Internal Server Error', requestId });
         }
