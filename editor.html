@@ -15,15 +15,16 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-      .editor-page .hero-topbar,
-      .editor-page .hero-controls {
-        display: contents;
-      }
-
       .editor-main {
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
+      }
+
+      .editor-topbar {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
       }
 
       .editor-container {
@@ -39,36 +40,10 @@
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
       }
 
-      .step-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
-      }
-
-      .step-circle {
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 700;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 auto;
-      }
-
-      .step-circle.is-active {
-        background: #fff;
-        color: #000;
-      }
-
       .step-title {
-        margin: 0;
-        font-size: 1.1rem;
-        font-weight: 700;
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 600;
         color: var(--text-primary);
       }
 
@@ -168,40 +143,6 @@
         cursor: not-allowed;
       }
 
-      .quick-vibes-label {
-        font-size: 13px;
-        color: var(--text-secondary);
-        margin: 0 0 8px;
-      }
-
-      .quick-vibes {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 20px;
-      }
-
-      .quick-vibe-btn {
-        appearance: none;
-        border: 1px solid var(--card-border);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text-primary);
-        font-size: 14px;
-        padding: 8px 16px;
-        cursor: pointer;
-      }
-
-      .quick-vibe-btn:hover {
-        background: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.34);
-      }
-
-      .quick-vibe-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
       .primary-btn {
         width: 100%;
       }
@@ -261,6 +202,24 @@
         border: 1px solid var(--card-border);
         margin: 0 auto;
       }
+
+      body.page-editor .profile-menu-item.danger {
+        background: #ef4444;
+        color: #ffffff;
+        border: none;
+      }
+
+      body.page-editor .profile-menu-item.danger:hover,
+      body.page-editor .profile-menu-item.danger:focus,
+      body.page-editor .profile-menu-item.danger:active,
+      body.page-editor .profile-menu-item.danger:focus-visible {
+        background: #dc2626;
+        color: #ffffff;
+      }
+
+      body.page-editor .profile-menu-item.danger svg {
+        color: #ffffff;
+      }
     </style>
   </head>
   <body class="page-editor">
@@ -286,43 +245,34 @@
         </aside>
 
         <div class="app-main">
-          <header class="hero app-hero">
-            <div class="hero-top">
-              <div class="hero-top__left">
-                <img src="assets/promptly-mark-white.png" alt="Promptly logo" class="logo" />
-                <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
-              </div>
-              <div id="user-menu" class="user-menu" style="display:flex; align-items:center; gap:0.75rem;">
-                <div class="hero-topbar">
-                  <div class="profile-wrapper">
-                    <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-                      <span id="profile-initial" aria-hidden="true">P</span>
-                    </button>
-                    <div id="profile-menu" class="profile-menu" style="display:none;">
-                      <div id="profile-dropdown" class="profile-dropdown">
-                        <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
-                        <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                        <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
-                        <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
-                        <button id="manage-billing-btn" class="profile-menu-item">Manage billing</button>
-                        <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
-                      </div>
+          <div class="editor-topbar">
+            <div id="user-menu" class="user-menu" style="display:flex; align-items:center; gap:0.75rem;">
+              <div class="hero-topbar">
+                <div class="profile-wrapper">
+                  <span id="user-tier-badge" class="user-tier-badge" style="display:inline-flex;">PRO</span>
+                  <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                    <span id="profile-initial" aria-hidden="true">Z</span>
+                  </button>
+                  <div id="profile-menu" class="profile-menu" style="display:none;">
+                    <div id="profile-dropdown" class="profile-dropdown">
+                      <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
+                      <button id="account-overview-btn" class="profile-menu-item">Account</button>
+                      <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
+                      <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
+                      <button id="manage-billing-btn" class="profile-menu-item">Manage billing</button>
+                      <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            <h1>AI Video Editor</h1>
-            <p class="hero-tagline">Turn raw clips into viral videos.</p>
-          </header>
-
+          </div>
           <main class="editor-main">
             <div class="editor-container" id="editor-react-root"></div>
           </main>
+          <footer class="footer"></footer>
         </div>
       </div>
-
-      <footer class="footer"></footer>
     </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
@@ -437,24 +387,47 @@
       });
 
       document.getElementById('account-overview-btn')?.addEventListener('click', () => {
-        window.location.href = '/account.html';
+        window.location.href = '/#account';
       });
       document.getElementById('profile-settings-btn')?.addEventListener('click', () => {
-        window.location.href = '/account.html';
+        window.location.href = '/#profile-settings';
       });
       document.getElementById('password-settings-btn')?.addEventListener('click', () => {
-        window.location.href = '/account.html';
+        window.location.href = 'reset-password.html';
       });
-      document.getElementById('manage-billing-btn')?.addEventListener('click', () => {
-        window.location.href = '/account.html';
+      document.getElementById('manage-billing-btn')?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        try {
+          const resp = await fetch('/api/billing/portal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ returnUrl: window.location.href })
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok && data?.url) {
+            window.location.href = data.url;
+          } else {
+            window.location.href = '/#account';
+          }
+        } catch (_) {
+          window.location.href = '/#account';
+        }
       });
-      document.getElementById('sign-out-btn')?.addEventListener('click', () => {
+      document.getElementById('sign-out-btn')?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          const sb = window?.supabase || window?.supabaseClient || null;
+          if (sb?.auth?.signOut) {
+            await sb.auth.signOut();
+          }
+        } catch (_) {}
         window.location.href = '/login.html';
       });
     </script>
 
     <script type="text/babel">
-      const { useEffect, useMemo, useState } = React;
+      const { useEffect, useState } = React;
 
       function UploadZone({ disabled, onUploadComplete, userId }) {
         const [isUploading, setIsUploading] = useState(false);
@@ -584,25 +557,12 @@
         generating,
         userId,
       }) {
-        const step1Active = !videoUrl;
-        const step2Active = Boolean(videoUrl);
-
-        const quickVibes = useMemo(() => ([
-          { label: 'Punchy TikTok', value: 'punchy TikTok with fast cuts and meme SFX' },
-          { label: 'Cinematic Reels', value: 'smooth cinematic Instagram Reels' },
-          { label: 'Comedy Chaos', value: 'chaotic comedy with zooms and shake effects' },
-          { label: 'Smooth & Minimal', value: 'smooth and minimal aesthetic with subtle transitions' },
-        ]), []);
-
         const canGenerate = Boolean(videoUrl && vibe.trim() && !generating);
 
         return (
           <section className="editor-card">
             <div>
-              <div className="step-row">
-                <span className={`step-circle ${step1Active ? 'is-active' : ''}`}>1</span>
-                <h2 className="step-title">Upload Your Clip</h2>
-              </div>
+              <h2 className="step-title">Upload Your Clip</h2>
               <div className="step-content">
                 <p className="step-help">Use a clear talking-head or storytelling clip for best results</p>
                 {!videoUrl ? (
@@ -616,10 +576,7 @@
             <div className="divider" />
 
             <div>
-              <div className="step-row">
-                <span className={`step-circle ${step2Active ? 'is-active' : ''}`}>2</span>
-                <h2 className="step-title">Describe The Vibe</h2>
-              </div>
+              <h2 className="step-title">Describe The Vibe</h2>
               <div className="step-content">
                 <textarea
                   className="vibe-textarea"
@@ -629,21 +586,6 @@
                   value={vibe}
                   onChange={(e) => setVibe(e.target.value)}
                 />
-
-                <p className="quick-vibes-label">Quick vibes:</p>
-                <div className="quick-vibes">
-                  {quickVibes.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      className="quick-vibe-btn"
-                      disabled={!videoUrl || generating}
-                      onClick={() => setVibe(item.value)}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
 
                 <button className="primary-btn secondary" disabled={!canGenerate} onClick={onGenerate}>
                   {generating ? 'Generating...' : 'Generate Edited Video'}
