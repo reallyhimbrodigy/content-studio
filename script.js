@@ -8922,7 +8922,7 @@ function normalizeCalendarSignature(value = '') {
 }
 
 async function generateCalendarWithAI(nicheStyle, postsPerDay = 1, options = {}) {
-  const CLIENT_REGEN_TIMEOUT_MS = 130000;
+  const CLIENT_REGEN_TIMEOUT_MS = 600000;
   const runSignal = options.signal;
   const runToken = options.runToken || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   window.__calendarGenActiveRunId = runToken;
