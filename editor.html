@@ -27,6 +27,13 @@
         align-items: center;
       }
 
+      .page-editor .user-tier-badge {
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        font-weight: 700;
+      }
+
       .editor-container {
         width: min(860px, 100%);
         margin: 0 auto;
@@ -407,22 +414,26 @@
           if (resp.ok && data?.url) {
             window.location.href = data.url;
           } else {
-            window.location.href = '/#account';
+            alert(data?.error || 'Billing portal is not configured yet.');
           }
         } catch (_) {
-          window.location.href = '/#account';
+          alert('Billing portal unavailable. Please try again later.');
         }
       });
       document.getElementById('sign-out-btn')?.addEventListener('click', async (event) => {
         event.preventDefault();
         event.stopPropagation();
         try {
-          const sb = window?.supabase || window?.supabaseClient || null;
-          if (sb?.auth?.signOut) {
-            await sb.auth.signOut();
+          if (typeof window.storeSignOut === 'function') {
+            await window.storeSignOut();
+          } else {
+            const sb = window?.supabase || window?.supabaseClient || null;
+            if (sb?.auth?.signOut) {
+              await sb.auth.signOut();
+            }
           }
         } catch (_) {}
-        window.location.href = '/login.html';
+        window.location.replace('auth.html');
       });
     </script>
 
