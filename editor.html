@@ -4,266 +4,609 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Video Editor | Promptly</title>
-  <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    .page-editor {
-      background: #0a0a0a;
-      color: #f5f5f5;
-      min-height: 100vh;
-      margin: 0;
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface-2: #1a1a1a;
+      --text: #ffffff;
+      --muted: #808080;
+      --muted-2: #606060;
+      --border: #1a1a1a;
+      --border-2: #404040;
+      --border-3: #606060;
     }
 
-    .editor-shell {
-      max-width: 700px;
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .page-wrap {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .top-nav {
+      background: #0a0a0a;
+      border-bottom: 1px solid #1a1a1a;
+      padding: 16px 24px;
+    }
+
+    .top-nav__inner {
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .hamburger-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      padding: 4px;
+      margin: 0;
+      cursor: pointer;
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .hamburger-btn__line {
+      width: 24px;
+      height: 2px;
+      background: #ffffff;
+      border-radius: 2px;
+      display: block;
+    }
+
+    .profile-wrap {
+      position: relative;
+    }
+
+    .profile-trigger {
+      width: 40px;
+      height: 40px;
+      border-radius: 999px;
+      border: 2px solid #2a2a2a;
+      background: #1a1a1a;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+    }
+
+    .profile-trigger:hover {
+      border-color: #404040;
+    }
+
+    .profile-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      min-width: 180px;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 8px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      z-index: 60;
+    }
+
+    .profile-menu button {
+      width: 100%;
+      text-align: left;
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #ddd;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .profile-menu button:hover {
+      background: #202020;
+      color: #fff;
+    }
+
+    .sidebar-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 65;
+    }
+
+    .side-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 260px;
+      height: 100vh;
+      background: #111;
+      border-right: 1px solid #222;
+      padding: 20px;
+      z-index: 70;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+    }
+
+    .side-drawer.is-open {
+      transform: translateX(0);
+    }
+
+    .side-drawer__title {
+      margin: 0 0 20px;
+      font-size: 14px;
+      color: #808080;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .side-drawer__link {
+      display: block;
+      text-decoration: none;
+      color: #fff;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .side-drawer__link:hover {
+      border-color: #303030;
+      background: #181818;
+    }
+
+    .side-drawer__link.is-active {
+      background: #1f1f1f;
+      border-color: #343434;
+    }
+
+    .content {
+      flex: 1;
+      padding: 40px 24px;
+    }
+
+    .content-inner {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .header-block {
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .header-title {
+      margin: 0 0 10px;
+      font-size: 42px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .header-subtitle {
+      margin: 0;
+      font-size: 18px;
+      color: #808080;
     }
 
     .editor-card {
-      background: #1a1a1a;
-      border: 1px solid #404040;
+      background: #141414;
+      border: 1px solid #1a1a1a;
       border-radius: 16px;
-      padding: 32px;
+      padding: 40px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
 
-    .editor-input,
-    .editor-textarea {
-      width: 100%;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 10px;
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .step-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #2a2a2a;
       color: #fff;
       font-size: 14px;
-      padding: 12px 14px;
-      box-sizing: border-box;
-      outline: none;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .editor-input:focus,
-    .editor-textarea:focus {
-      border-color: #7a7a7a;
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
-    }
-
-    .editor-btn-primary {
-      width: 100%;
-      background: #fff;
-      color: #000;
-      border: 1px solid #fff;
-      border-radius: 10px;
       font-weight: 700;
-      font-size: 16px;
-      padding: 12px 16px;
-      cursor: pointer;
-      transition: background 0.2s ease, transform 0.15s ease;
-    }
-
-    .editor-btn-primary:hover { background: #e8e8e8; }
-    .editor-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
-
-    .editor-btn-ghost {
-      background: transparent;
-      color: #fff;
-      border: 1px solid #666;
-      border-radius: 10px;
-      font-weight: 600;
-      font-size: 15px;
-      padding: 11px 16px;
-      cursor: pointer;
-      text-decoration: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: border-color 0.2s ease, color 0.2s ease;
+      flex: 0 0 auto;
     }
 
-    .editor-btn-ghost:hover {
-      border-color: #fff;
+    .step-circle.is-active {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .step-title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
       color: #fff;
-      text-decoration: none;
     }
 
-    .editor-dropzone {
-      background: #151515;
+    .step-content {
+      margin-left: 36px;
+    }
+
+    .step-help {
+      margin: 0 0 14px;
+      font-size: 14px;
+      color: #808080;
+      line-height: 1.5;
+    }
+
+    .upload-zone {
       border: 2px dashed #606060;
-      border-radius: 16px;
+      border-radius: 12px;
+      background: #1a1a1a;
       padding: 48px 32px;
       text-align: center;
       cursor: pointer;
       transition: border-color 0.2s ease, background 0.2s ease;
     }
 
-    .editor-dropzone.is-active {
-      border-color: #a0a0a0;
-      background: #1d1d1d;
+    .upload-zone:hover {
+      border-color: #7a7a7a;
+      background: #202020;
     }
 
-    .editor-dropzone.is-uploading {
-      opacity: 0.65;
+    .upload-zone.is-drag {
+      border-color: #9a9a9a;
+      background: #242424;
+    }
+
+    .upload-zone.is-disabled {
+      opacity: 0.6;
       cursor: not-allowed;
     }
 
-    .editor-progress-track {
+    .upload-icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+
+    .upload-title {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .upload-subtitle {
+      margin: 0;
+      font-size: 14px;
+      color: #808080;
+    }
+
+    .upload-meta {
+      margin: 12px 0 0;
+      font-size: 14px;
+      color: #808080;
+    }
+
+    .success-box {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #10b981;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .divider {
+      height: 1px;
+      background: #1a1a1a;
+      margin: 32px 0;
+    }
+
+    .vibe-textarea {
       width: 100%;
-      height: 10px;
-      background: #2c2c2c;
-      border-radius: 999px;
-      overflow: hidden;
+      background: #1a1a1a;
+      color: #fff;
+      border: 1px solid #404040;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 14px;
+      resize: vertical;
+      outline: none;
+      margin-bottom: 12px;
+      min-height: 96px;
     }
 
-    .editor-progress-fill {
-      height: 100%;
-      background: #fff;
-      transition: width 0.25s ease;
+    .vibe-textarea:focus {
+      border-color: #606060;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
     }
 
-    .editor-pill {
-      border: 1px solid #474747;
-      background: #1c1c1c;
-      color: #d0d0d0;
-      border-radius: 999px;
-      font-size: 12px;
-      padding: 6px 10px;
-      cursor: pointer;
+    .vibe-textarea:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
-    .editor-pill:hover { border-color: #7a7a7a; color: #fff; }
-
-    .editor-msg-success {
-      background: #0f2318;
-      border: 1px solid #2b7a4b;
-      color: #b4f0c8;
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-weight: 600;
-    }
-
-    .editor-msg-error {
-      background: #2a1111;
-      border: 1px solid #7a2b2b;
-      color: #ffb9b9;
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-weight: 600;
-    }
-
-    .editor-title {
-      font-size: clamp(1.9rem, 4vw, 2.45rem);
-      font-weight: 800;
-      letter-spacing: -0.02em;
+    .quick-vibes-label {
+      font-size: 13px;
+      color: #808080;
       margin: 0 0 8px;
     }
 
-    .editor-subtitle {
-      margin: 0;
-      color: #808080;
-      font-size: 15px;
-      line-height: 1.5;
+    .quick-vibes {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
     }
 
-    .editor-stage-title {
-      margin: 0;
-      font-size: 18px;
+    .quick-vibe-btn {
+      appearance: none;
+      border: 1px solid #404040;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 14px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .quick-vibe-btn:hover {
+      background: #2a2a2a;
+      border-color: #606060;
+    }
+
+    .quick-vibe-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .primary-btn {
+      width: 100%;
+      border: 1px solid #fff;
+      border-radius: 10px;
+      background: #fff;
+      color: #000;
+      font-size: 16px;
       font-weight: 700;
+      padding: 16px;
+      cursor: pointer;
+      transition: background 0.2s ease;
     }
 
-    .editor-stage-text {
-      margin: 0;
+    .primary-btn:hover {
+      background: #ececec;
+    }
+
+    .primary-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .trust-badge {
+      border-top: 1px solid #1a1a1a;
+      padding-top: 24px;
+      margin-top: 24px;
+      font-size: 13px;
+      color: #606060;
+      text-align: center;
+    }
+
+    .state-card {
+      background: #141414;
+      border: 1px solid #1a1a1a;
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: #252525;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #ffffff;
+      transition: width 0.2s ease;
+    }
+
+    .state-muted {
       color: #808080;
       font-size: 14px;
     }
 
-    .editor-main-wrap {
-      min-height: 100vh;
+    .state-title {
+      margin: 0 0 10px;
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
     }
 
-    @media (max-width: 768px) {
-      .editor-shell { padding: 16px; }
-      .editor-card { padding: 20px; }
-      .editor-dropzone { padding: 36px 16px; }
+    .state-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      border: 1px solid #404040;
+      border-radius: 10px;
+      color: #fff;
+      background: transparent;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .ghost-btn:hover {
+      border-color: #606060;
+      background: #1a1a1a;
+    }
+
+    .footer {
+      background: #0a0a0a;
+      border-top: 1px solid #1a1a1a;
+      padding: 24px;
+      margin-top: 60px;
+      text-align: center;
+      color: #808080;
+      font-size: 14px;
+    }
+
+    .footer-links {
+      margin-bottom: 10px;
+    }
+
+    .footer-link {
+      color: #ffffff;
+      text-decoration: none;
+      margin: 0 12px;
+    }
+
+    .footer-link:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 900px) {
+      .content {
+        padding: 28px 16px;
+      }
+
+      .header-title {
+        font-size: 36px;
+      }
+
+      .editor-card,
+      .state-card {
+        padding: 24px;
+      }
+
+      .upload-zone {
+        padding: 40px 20px;
+      }
     }
   </style>
 </head>
-<body class="page-editor">
-  <div class="app-shell">
-    <div class="app-layout sidebar-collapsed" id="app-layout">
-      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">
-        <span class="sidebar-toggle__bars" aria-hidden="true"></span>
-      </button>
-      <aside class="app-sidebar collapsed" id="app-sidebar">
-        <div class="sidebar-fixed-inner">
-          <nav class="sidebar-nav" aria-label="Workspace navigation">
-            <a href="/calendar.html" class="sidebar-link">
-              <span>Content Calendar</span>
-            </a>
-            <a href="/editor" class="sidebar-link is-active" aria-current="page">
-              <span>AI Editor</span>
-            </a>
-            <a href="/library.html" class="sidebar-link">
-              <span>Library</span>
-            </a>
-          </nav>
-        </div>
-      </aside>
-      <div class="app-main editor-main-wrap">
-        <div id="root"></div>
-      </div>
-    </div>
-    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
-  </div>
-
-  <script>
-    (function initSidebar() {
-      const appLayout = document.getElementById('app-layout');
-      const appSidebar = document.getElementById('app-sidebar');
-      const sidebarToggle = document.getElementById('sidebar-toggle');
-      const sidebarBackdrop = document.getElementById('sidebar-backdrop');
-      if (!appLayout || !appSidebar || !sidebarToggle || !sidebarBackdrop) return;
-
-      function isMobile() {
-        return window.matchMedia('(max-width: 960px)').matches;
-      }
-
-      function applySidebarState(collapsed) {
-        appLayout.classList.toggle('sidebar-collapsed', collapsed);
-        appSidebar.classList.toggle('collapsed', collapsed);
-        sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
-        sidebarBackdrop.classList.toggle('visible', !collapsed && isMobile());
-        document.body.classList.toggle('sidebar-open', !collapsed && isMobile());
-      }
-
-      sidebarToggle.addEventListener('click', () => {
-        const collapsed = appSidebar.classList.contains('collapsed');
-        applySidebarState(!collapsed);
-      });
-
-      sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
-      window.addEventListener('resize', () => {
-        if (!isMobile()) {
-          sidebarBackdrop.classList.remove('visible');
-          document.body.classList.remove('sidebar-open');
-        }
-      });
-
-      applySidebarState(isMobile());
-    })();
-  </script>
+<body>
+  <div class="page-wrap" id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useEffect, useMemo, useState } = React;
 
-    function UploadZone({ onUploadComplete, userId }) {
-      const [uploading, setUploading] = useState(false);
+    function TopNav({ onToggleMenu }) {
+      const [profileOpen, setProfileOpen] = useState(false);
+
+      useEffect(() => {
+        if (!profileOpen) return undefined;
+        const onClick = (event) => {
+          const wrap = document.querySelector('.profile-wrap');
+          if (wrap && !wrap.contains(event.target)) {
+            setProfileOpen(false);
+          }
+        };
+        document.addEventListener('click', onClick);
+        return () => document.removeEventListener('click', onClick);
+      }, [profileOpen]);
+
+      return (
+        <header className="top-nav">
+          <div className="top-nav__inner">
+            <button className="hamburger-btn" aria-label="Toggle navigation" onClick={onToggleMenu}>
+              <span className="hamburger-btn__line" />
+              <span className="hamburger-btn__line" />
+              <span className="hamburger-btn__line" />
+            </button>
+            <div className="profile-wrap">
+              <button className="profile-trigger" aria-label="Open profile menu" onClick={() => setProfileOpen((prev) => !prev)}>
+                Z
+              </button>
+              {profileOpen && (
+                <div className="profile-menu">
+                  <button type="button">Account</button>
+                  <button type="button">Profile</button>
+                  <button type="button">Sign out</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    function SideDrawer({ open, onClose }) {
+      if (!open) return null;
+      return (
+        <>
+          <div className="sidebar-backdrop" onClick={onClose} />
+          <aside className="side-drawer is-open" aria-label="Sidebar navigation">
+            <p className="side-drawer__title">Workspace</p>
+            <a className="side-drawer__link" href="/calendar.html">Calendar</a>
+            <a className="side-drawer__link" href="/library.html">Library</a>
+            <a className="side-drawer__link is-active" href="/editor">AI Editor</a>
+          </aside>
+        </>
+      );
+    }
+
+    function Footer() {
+      return (
+        <footer className="footer">
+          <div className="footer-links">
+            <a className="footer-link" href="/calendar.html">Calendar</a>
+            <a className="footer-link" href="/library.html">Library</a>
+            <a className="footer-link" href="/editor">AI Editor</a>
+          </div>
+          <div>© 2026 Promptly. By creators, for creators.</div>
+        </footer>
+      );
+    }
+
+    function UploadZone({ disabled, onUploadComplete, userId }) {
+      const [isUploading, setIsUploading] = useState(false);
       const [progress, setProgress] = useState(0);
       const [error, setError] = useState(null);
       const [dragActive, setDragActive] = useState(false);
 
-      const uploadFile = async (file) => {
+      const uploadFile = (file) => {
+        if (!file) return;
+
         if (file.size > 500 * 1024 * 1024) {
           setError('File too large. Max 500MB.');
           return;
@@ -274,8 +617,8 @@
           return;
         }
 
-        setUploading(true);
         setError(null);
+        setIsUploading(true);
         setProgress(0);
 
         const formData = new FormData();
@@ -295,17 +638,19 @@
             const data = JSON.parse(xhr.responseText);
             onUploadComplete(data.videoUrl, data.fileName);
           } else {
-            const data = (() => {
-              try { return JSON.parse(xhr.responseText); } catch (_e) { return {}; }
-            })();
-            setError(data.error || 'Upload failed');
+            let message = 'Upload failed';
+            try {
+              const payload = JSON.parse(xhr.responseText);
+              if (payload?.error) message = payload.error;
+            } catch (_e) {}
+            setError(message);
           }
-          setUploading(false);
+          setIsUploading(false);
         });
 
         xhr.addEventListener('error', () => {
           setError('Upload failed');
-          setUploading(false);
+          setIsUploading(false);
         });
 
         xhr.open('POST', '/api/upload');
@@ -314,118 +659,203 @@
 
       const handleDrop = (e) => {
         e.preventDefault();
+        if (disabled || isUploading) return;
         setDragActive(false);
-        const file = e.dataTransfer.files[0];
-        if (file) uploadFile(file);
+        uploadFile(e.dataTransfer.files[0]);
       };
 
       const handleChange = (e) => {
-        const file = e.target.files[0];
-        if (file) uploadFile(file);
+        if (disabled || isUploading) return;
+        uploadFile(e.target.files[0]);
       };
 
       return (
-        <div className="w-full space-y-4">
+        <div>
           <div
-            className={`editor-dropzone ${dragActive ? 'is-active' : ''} ${uploading ? 'is-uploading' : ''}`}
+            className={`upload-zone ${dragActive ? 'is-drag' : ''} ${disabled || isUploading ? 'is-disabled' : ''}`}
             onDrop={handleDrop}
-            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (disabled || isUploading) return;
+              setDragActive(true);
+            }}
             onDragLeave={() => setDragActive(false)}
-            onClick={() => !uploading && document.getElementById('editorFileInput').click()}
+            onClick={() => {
+              if (disabled || isUploading) return;
+              const input = document.getElementById('editor-file-input');
+              if (input) input.click();
+            }}
           >
             <input
-              id="editorFileInput"
+              id="editor-file-input"
               type="file"
               accept="video/mp4,video/quicktime,video/x-msvideo"
               onChange={handleChange}
               style={{ display: 'none' }}
             />
 
-            {uploading ? (
-              <div className="space-y-4">
-                <p className="text-lg font-semibold text-white">Uploading...</p>
-                <div className="editor-progress-track">
-                  <div className="editor-progress-fill" style={{ width: `${progress}%` }} />
+            {isUploading ? (
+              <div>
+                <p className="upload-title">Uploading...</p>
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${progress}%` }} />
                 </div>
-                <p className="text-sm text-gray-300">{progress}%</p>
+                <p className="upload-meta" style={{ marginTop: '10px' }}>{progress}%</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div style={{ fontSize: '48px' }}>📤</div>
-                <p style={{ fontSize: '18px' }} className="font-semibold text-white">Drop your video here</p>
-                <p style={{ fontSize: '14px' }} className="text-gray-300">or click to browse</p>
-                <p style={{ fontSize: '14px' }} className="text-gray-400 mt-3">MP4, MOV, AVI • Max 500MB</p>
+              <div>
+                <div className="upload-icon">📤</div>
+                <p className="upload-title">Drop your video here</p>
+                <p className="upload-subtitle">or click to browse</p>
+                <p className="upload-meta">MP4, MOV, AVI • Max 500MB</p>
               </div>
             )}
           </div>
-
-          {error && <div className="editor-msg-error">❌ {error}</div>}
+          {error ? <div style={{ marginTop: '10px' }} className="success-box">{error}</div> : null}
         </div>
       );
     }
 
-    function VibeInput({ onSubmit, disabled }) {
-      const [vibe, setVibe] = useState('');
+    function EditorCard({
+      videoUrl,
+      videoFileName,
+      vibe,
+      setVibe,
+      onUploadComplete,
+      onGenerate,
+      generating,
+      userId,
+    }) {
+      const step1Active = !videoUrl;
+      const step2Active = Boolean(videoUrl);
 
-      const suggestions = [
-        'punchy TikTok with fast cuts and meme SFX',
-        'smooth cinematic Instagram Reels',
-        'chaotic comedy with zooms and shake effects',
-      ];
+      const quickVibes = useMemo(() => ([
+        { label: 'Punchy TikTok', value: 'punchy TikTok with fast cuts and meme SFX' },
+        { label: 'Cinematic Reels', value: 'smooth cinematic Instagram Reels' },
+        { label: 'Comedy Chaos', value: 'chaotic comedy with zooms and shake effects' },
+        { label: 'Smooth & Minimal', value: 'smooth and minimal aesthetic with subtle transitions' },
+      ]), []);
+
+      const canGenerate = Boolean(videoUrl && vibe.trim() && !generating);
 
       return (
-        <div className="space-y-4">
+        <section className="editor-card">
           <div>
-            <label className="block text-sm font-semibold text-gray-300 mb-2">
-              Describe the vibe you want
-            </label>
-            <textarea
-              value={vibe}
-              onChange={(e) => setVibe(e.target.value)}
-              placeholder="e.g., punchy TikTok with fast cuts and meme SFX"
-              disabled={disabled}
-              className="editor-textarea"
-              rows={4}
-            />
+            <div className="step-row">
+              <span className={`step-circle ${step1Active ? 'is-active' : ''}`}>1</span>
+              <h2 className="step-title">Upload Your Clip</h2>
+            </div>
+            <div className="step-content">
+              <p className="step-help">Use a clear talking-head or storytelling clip for best results</p>
+              {!videoUrl ? (
+                <UploadZone disabled={generating} onUploadComplete={onUploadComplete} userId={userId} />
+              ) : (
+                <div className="success-box">✓ Video uploaded: {videoFileName}</div>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setVibe(s)}
-                disabled={disabled}
-                className="editor-pill"
-              >
-                {s}
+          <div className="divider" />
+
+          <div>
+            <div className="step-row">
+              <span className={`step-circle ${step2Active ? 'is-active' : ''}`}>2</span>
+              <h2 className="step-title">Describe The Vibe</h2>
+            </div>
+            <div className="step-content">
+              <textarea
+                className="vibe-textarea"
+                rows={3}
+                placeholder="e.g., punchy TikTok with fast cuts and meme SFX"
+                disabled={!videoUrl || generating}
+                value={vibe}
+                onChange={(e) => setVibe(e.target.value)}
+              />
+
+              <p className="quick-vibes-label">Quick vibes:</p>
+              <div className="quick-vibes">
+                {quickVibes.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className="quick-vibe-btn"
+                    disabled={!videoUrl || generating}
+                    onClick={() => setVibe(item.value)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <button className="primary-btn" disabled={!canGenerate} onClick={onGenerate}>
+                {generating ? 'Generating...' : 'Generate Edited Video'}
               </button>
-            ))}
+            </div>
           </div>
 
-          <button
-            onClick={() => vibe.trim() && onSubmit(vibe.trim())}
-            disabled={disabled || !vibe.trim()}
-            className="editor-btn-primary"
-          >
-            Generate Edited Video
-          </button>
-        </div>
+          <div className="trust-badge">⚡ Powered by AI • Estimated time: 60-90 seconds</div>
+        </section>
       );
     }
 
-    function EditorPage() {
-      const [userId] = useState(() => `user-${Math.random().toString(36).substr(2, 9)}`);
+    function ProcessingState({ status, progress }) {
+      return (
+        <section className="state-card">
+          <h2 className="state-title">Creating your video...</h2>
+          <p className="state-muted">
+            {status === 'queued' && 'Queued...'}
+            {status === 'analyzing' && 'Analyzing clip...'}
+            {status === 'editing' && 'Generating edit recipe...'}
+            {status === 'rendering' && 'Rendering video...'}
+          </p>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="state-muted" style={{ marginTop: '10px' }}>{progress}%</p>
+        </section>
+      );
+    }
+
+    function CompleteState({ renderedVideoUrl, onReset }) {
+      return (
+        <section className="state-card">
+          <h2 className="state-title">Your video is ready</h2>
+          <video src={renderedVideoUrl} controls className="w-full" style={{ maxWidth: '460px', borderRadius: '12px', border: '1px solid #404040', margin: '0 auto' }} />
+          <div className="state-actions">
+            <a href={renderedVideoUrl} download className="primary-btn" style={{ width: 'auto', minWidth: '170px', textDecoration: 'none' }}>
+              Download Video
+            </a>
+            <button className="ghost-btn" onClick={onReset}>Edit Another Video</button>
+          </div>
+        </section>
+      );
+    }
+
+    function ErrorState({ error, onReset }) {
+      return (
+        <section className="state-card">
+          <h2 className="state-title">Something went wrong</h2>
+          <p className="state-muted" style={{ marginBottom: '18px' }}>{error || 'Failed to process your video.'}</p>
+          <button className="ghost-btn" onClick={onReset}>Try Again</button>
+        </section>
+      );
+    }
+
+    function App() {
+      const [drawerOpen, setDrawerOpen] = useState(false);
+      const [userId] = useState(() => `user-${Math.random().toString(36).slice(2, 11)}`);
       const [videoUrl, setVideoUrl] = useState(null);
-      const [videoFileName, setVideoFileName] = useState(null);
+      const [videoFileName, setVideoFileName] = useState('');
+      const [vibe, setVibe] = useState('');
       const [jobId, setJobId] = useState(null);
       const [status, setStatus] = useState('idle');
       const [progress, setProgress] = useState(0);
       const [renderedVideoUrl, setRenderedVideoUrl] = useState(null);
       const [error, setError] = useState(null);
+      const [submitting, setSubmitting] = useState(false);
 
       useEffect(() => {
-        if (!jobId) return;
+        if (!jobId) return undefined;
 
         const interval = setInterval(async () => {
           try {
@@ -433,7 +863,7 @@
             if (!response.ok) return;
             const data = await response.json();
 
-            setStatus(data.status);
+            setStatus(data.status || 'queued');
             setProgress(data.progress || 0);
             setRenderedVideoUrl(data.rendered_video_url || null);
             setError(data.error || null);
@@ -441,114 +871,111 @@
             if (data.status === 'complete' || data.status === 'error') {
               clearInterval(interval);
             }
-          } catch (err) {
-            console.error('Poll error:', err);
+          } catch (pollError) {
+            console.error('Polling failed:', pollError);
           }
         }, 2000);
 
         return () => clearInterval(interval);
       }, [jobId]);
 
-      const handleUploadComplete = (url, fileName) => {
+      const onUploadComplete = (url, fileName) => {
         setVideoUrl(url);
-        setVideoFileName(fileName);
+        setVideoFileName(fileName || 'video');
+        setError(null);
       };
 
-      const handleVibeSubmit = async (vibe) => {
+      const onGenerate = async () => {
+        if (!videoUrl || !vibe.trim()) return;
+
         try {
+          setSubmitting(true);
+          setError(null);
+
           const response = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl, vibeInput: vibe, userId }),
+            body: JSON.stringify({ videoUrl, vibeInput: vibe.trim(), userId }),
           });
 
           const data = await response.json();
-          if (!response.ok) throw new Error(data?.error || 'Failed to create job');
+          if (!response.ok) {
+            throw new Error(data?.error || 'Failed to create job');
+          }
+
           setJobId(data.jobId);
           setStatus('queued');
           setProgress(0);
-          setError(null);
-        } catch (err) {
-          setError(err.message || 'Failed to create job');
+        } catch (generateError) {
+          setError(generateError.message || 'Failed to create job');
+        } finally {
+          setSubmitting(false);
         }
       };
 
+      const onReset = () => {
+        setVideoUrl(null);
+        setVideoFileName('');
+        setVibe('');
+        setJobId(null);
+        setStatus('idle');
+        setProgress(0);
+        setRenderedVideoUrl(null);
+        setError(null);
+        setSubmitting(false);
+      };
+
+      const showWorkflow = !jobId;
+      const showProcessing = jobId && status !== 'complete' && status !== 'error';
+      const showComplete = status === 'complete' && renderedVideoUrl;
+      const showError = status === 'error';
+
       return (
-        <main className="editor-shell">
-          <div style={{ marginBottom: '32px' }}>
-            <h1 style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px', color: '#ffffff' }}>
-              🎬 AI Video Editor
-            </h1>
-            <p className="editor-subtitle">
-              Upload your clip, set the vibe, and let Promptly create your edited video
-            </p>
+        <>
+          <TopNav onToggleMenu={() => setDrawerOpen((prev) => !prev)} />
+          <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+          <div className="content">
+            <div className="content-inner">
+              <div className="header-block">
+                <h1 className="header-title">AI Video Editor</h1>
+                <p className="header-subtitle">Turn raw clips into viral videos</p>
+              </div>
+
+              {showWorkflow ? (
+                <EditorCard
+                  videoUrl={videoUrl}
+                  videoFileName={videoFileName}
+                  vibe={vibe}
+                  setVibe={setVibe}
+                  onUploadComplete={onUploadComplete}
+                  onGenerate={onGenerate}
+                  generating={submitting}
+                  userId={userId}
+                />
+              ) : null}
+
+              {showProcessing ? (
+                <ProcessingState status={status} progress={progress} />
+              ) : null}
+
+              {showComplete ? (
+                <CompleteState renderedVideoUrl={renderedVideoUrl} onReset={onReset} />
+              ) : null}
+
+              {showError ? (
+                <ErrorState error={error} onReset={onReset} />
+              ) : null}
+            </div>
           </div>
 
-          {!videoUrl && (
-            <section className="editor-card">
-              <h3 className="editor-stage-title mb-2">Upload Your Clip</h3>
-              <p className="editor-stage-text mb-5">Use a clear talking-head or storytelling clip for best results</p>
-              <UploadZone onUploadComplete={handleUploadComplete} userId={userId} />
-            </section>
-          )}
-
-          {videoUrl && !jobId && (
-            <section className="editor-card space-y-4">
-              <div className="editor-msg-success">✓ Video uploaded: {videoFileName}</div>
-              <div>
-                <h3 className="editor-stage-title mb-2">Set The Vibe</h3>
-                <p className="editor-stage-text">Tell Promptly how you want the final edit to feel.</p>
-              </div>
-              <VibeInput onSubmit={handleVibeSubmit} />
-            </section>
-          )}
-
-          {jobId && status !== 'complete' && status !== 'error' && (
-            <section className="editor-card text-center space-y-4">
-              <div style={{ fontSize: '48px' }}>🎬</div>
-              <h3 className="editor-stage-title">Creating your video...</h3>
-              <p className="editor-stage-text">
-                {status === 'queued' && 'Queued...'}
-                {status === 'analyzing' && 'Analyzing clip...'}
-                {status === 'editing' && 'Generating edit recipe...'}
-                {status === 'rendering' && 'Rendering video...'}
-              </p>
-              <div className="editor-progress-track">
-                <div className="editor-progress-fill" style={{ width: `${progress}%` }} />
-              </div>
-              <p className="text-sm text-gray-300">{progress}%</p>
-            </section>
-          )}
-
-          {status === 'complete' && renderedVideoUrl && (
-            <section className="editor-card space-y-6 text-center">
-              <h3 className="editor-stage-title">✨ Your video is ready!</h3>
-              <video src={renderedVideoUrl} controls className="w-full max-w-md mx-auto rounded-xl border border-gray-700" />
-              <div className="flex flex-wrap gap-3 justify-center">
-                <a href={renderedVideoUrl} download className="editor-btn-primary" style={{ width: 'auto', paddingLeft: '20px', paddingRight: '20px' }}>
-                  Download Video
-                </a>
-                <button onClick={() => window.location.reload()} className="editor-btn-ghost">
-                  Edit Another Video
-                </button>
-              </div>
-            </section>
-          )}
-
-          {status === 'error' && (
-            <section className="editor-card">
-              <div className="editor-msg-error">❌ Error: {error || 'Something went wrong while processing your video.'}</div>
-              <div className="mt-4">
-                <button onClick={() => window.location.reload()} className="editor-btn-ghost">Try Again</button>
-              </div>
-            </section>
-          )}
-        </main>
+          <Footer />
+        </>
       );
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<EditorPage />);
+    root.render(<App />);
   </script>
 </body>
 </html>
