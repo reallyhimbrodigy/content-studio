@@ -10368,7 +10368,7 @@ const server = http.createServer((req, res) => {
       },
     };
     const planStart = Date.now();
-    const planMaxTokens = expectedCount >= 30 ? 1800 : 900;
+    const planMaxTokens = expectedCount >= 30 ? 4000 : 1200;
     const runPlanRequest = async ({ maxTokens }) => {
       return withTimeout(
         withOpenAiSlot(() =>
@@ -10396,6 +10396,21 @@ const server = http.createServer((req, res) => {
       const jsonSegment = extractJsonChunk(responseText) || responseText;
       parsed = JSON.parse(jsonSegment);
     } catch {
+      // Claude sometimes truncates large arrays; recover by parsing each complete object.
+      const recoveredItems = [];
+      for (let i = 0; i < responseText.length; i += 1) {
+        if (responseText[i] !== '{') continue;
+        const segment = captureJsonSegment(responseText, i);
+        if (!segment) continue;
+        try {
+          const item = JSON.parse(segment);
+          if (item && typeof item === 'object') recoveredItems.push(item);
+        } catch {}
+        i += Math.max(0, segment.length - 1);
+      }
+      if (recoveredItems.length > 0) {
+        parsed = recoveredItems;
+      } else {
       console.log('[Calendar][Plan] 422 reason:', {
         requestId,
         code: 'PLAN_PARSE_FAILED',
@@ -10406,6 +10421,7 @@ const server = http.createServer((req, res) => {
       err.code = 'PLAN_PARSE_FAILED';
       err.statusCode = 422;
       throw err;
+      }
     }
     let plan = null;
     if (parsed?.plan && Array.isArray(parsed.plan)) {
@@ -10448,6 +10464,7 @@ const server = http.createServer((req, res) => {
         expectedCount,
         actualCount: plan.length,
         details,
+        truncated: looksTruncatedJson(responseText),
       });
       const err = new Error('PLAN_SCHEMA_MISMATCH');
       err.code = 'PLAN_SCHEMA_MISMATCH';
