@@ -3959,15 +3959,15 @@ const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}.
 ${voiceLock ? `The creator's voice: ${voiceLock}.` : ''}
 
 THE VIDEO: ${opts.topicSignature || ''}
-${hasPromoting ? `HOW THIS CONNECTS: ${opts.plannedAngle || ''}` : `HOW THIS CONNECTS: ${opts.plannedAngle || ''}`}
+HOW THIS CONNECTS: ${opts.plannedAngle || ''}
 
-${hasPromoting ? `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.` : `The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.`}
+The creator is talking directly to camera about a moment from their day-to-day. The video is 30-60 seconds.
 
 title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator reveals what happened, with details.` : `body — Everything the creator says after the hook. The creator reveals what happened, with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator reveals what happened, with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator reveals what happened, with details.`}
 
 cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
 
@@ -10334,8 +10334,8 @@ const server = http.createServer((req, res) => {
       cleanTargetAudience ? `The audience: ${cleanTargetAudience}.` : '',
       '',
       hasPromoting
-        ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`
-        : `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. During the story, what the creator is offering connects to what the creator was talking about.`,
+        ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. During the story, what the creator is offering connects to what the creator was talking about.`
+        : `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`,
       '',
       'Return JSON only. Each item:',
       '{',
