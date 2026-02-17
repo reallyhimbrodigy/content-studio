@@ -1,4 +1,3 @@
-'use client';
 
 import { useState } from 'react';
 import { useJobStatus } from '@/app/editor/hooks/useJobStatus';

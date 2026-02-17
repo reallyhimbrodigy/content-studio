@@ -1,34 +1,27 @@
-import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase-server';
 
-export async function POST(req) {
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   try {
-    const body = await req.json();
+    const body = req.body || {};
     const { videoUrl, vibeInput, userId } = body;
 
-    // Validate required fields
     if (!videoUrl) {
-      return NextResponse.json(
-        { error: 'Video URL is required' },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: 'Video URL is required' });
     }
 
     if (!vibeInput) {
-      return NextResponse.json(
-        { error: 'Vibe input is required' },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: 'Vibe input is required' });
     }
 
     if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
+      return res.status(400).json({ error: 'User ID is required' });
     }
 
-    // Extract filename from videoUrl
     let fileName = 'unknown';
     try {
       const url = new URL(videoUrl);
@@ -38,7 +31,6 @@ export async function POST(req) {
       fileName = videoUrl.split('/').pop()?.split('?')[0] || 'unknown';
     }
 
-    // Insert job into database
     const { data, error } = await supabase
       .from('edit_jobs')
       .insert({
@@ -54,20 +46,12 @@ export async function POST(req) {
 
     if (error) {
       console.error('Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to create job' },
-        { status: 500 }
-      );
+      return res.status(500).json({ error: 'Failed to create job' });
     }
 
-    return NextResponse.json({
-      jobId: data.id,
-    });
+    return res.status(200).json({ jobId: data.id });
   } catch (error) {
     console.error('Generate error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }

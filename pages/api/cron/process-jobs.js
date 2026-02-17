@@ -1,3 +1,6 @@
+import { supabase } from '@/lib/supabase-server';
+import { processEditJob } from '@/lib/video-processor/process-job';
+
 /**
  * Cron job endpoint for processing queued video editing jobs
  *
@@ -11,25 +14,18 @@
  *
  * Security: Requires CRON_SECRET in Authorization header
  */
+export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase-server';
-import { processEditJob } from '@/lib/video-processor/process-job';
-
-/**
- * Process queued edit jobs via cron.
- * @param {Request} request
- * @returns {Promise<NextResponse>}
- */
-export async function GET(request) {
   try {
-    // STEP 1: Verify cron secret
-    const authHeader = request.headers.get('authorization');
+    const authHeader = req.headers.authorization;
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // STEP 2: Fetch queued jobs
     const { data: jobs, error } = await supabase
       .from('edit_jobs')
       .select('*')
@@ -41,34 +37,30 @@ export async function GET(request) {
       throw new Error(`Failed to fetch queued jobs: ${error.message}`);
     }
 
-    // STEP 3: No jobs queued
     if (!jobs || jobs.length === 0) {
-      return NextResponse.json({ message: 'No queued jobs', processed: 0 });
+      return res.status(200).json({ message: 'No queued jobs', processed: 0 });
     }
 
-    // STEP 4: Process jobs sequentially
     const results = [];
     for (const job of jobs) {
       try {
         console.log(`[cron/process-jobs] Processing job ${job.id}...`);
         const finalVideoUrl = await processEditJob(job);
         results.push({ jobId: job.id, success: true, videoUrl: finalVideoUrl });
-        console.log(`[cron/process-jobs] ✅ Job ${job.id} completed: ${finalVideoUrl}`);
+        console.log(`[cron/process-jobs] Job ${job.id} completed: ${finalVideoUrl}`);
       } catch (jobError) {
-        console.error(`[cron/process-jobs] ❌ Job ${job.id} failed:`, jobError?.message || jobError);
+        console.error(`[cron/process-jobs] Job ${job.id} failed:`, jobError?.message || jobError);
         results.push({ jobId: job.id, success: false, error: jobError?.message || 'Unknown job error' });
       }
     }
 
-    // STEP 5: Return summary
-    return NextResponse.json({
+    return res.status(200).json({
       message: 'Cron job completed',
       processed: jobs.length,
       results,
     });
   } catch (error) {
     console.error('[cron/process-jobs] Fatal cron endpoint error:', error);
-    return NextResponse.json({ error: error?.message || 'Internal cron error' }, { status: 500 });
+    return res.status(500).json({ error: error?.message || 'Internal cron error' });
   }
 }
-
