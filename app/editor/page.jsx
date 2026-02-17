@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useJobStatus } from './hooks/useJobStatus';
-import UploadZone from './components/UploadZone';
-import VibeInput from './components/VibeInput';
+import { useJobStatus } from '@/app/editor/hooks/useJobStatus';
+import UploadZone from '@/app/editor/components/UploadZone';
+import VibeInput from '@/app/editor/components/VibeInput';
 
 export default function EditorPage() {
   const [userId] = useState(() => `user-${Math.random().toString(36).substr(2, 9)}`);
