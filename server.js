@@ -2424,7 +2424,7 @@ async function generateAndValidateSinglePost({
     try {
       currentStage = 'openai_request';
       const result = await callOpenAI(nicheStyle, brandContext, {
-        model: 'gpt-5-mini',
+        model: 'claude-opus-4-6',
         days: 1,
         startDay: day,
         postsPerDay: 1,
@@ -2724,6 +2724,100 @@ function extractTextFromAnthropicContent(content = []) {
     .filter(Boolean)
     .join('\n')
     .trim();
+}
+
+function extractClaudeTextFromResponse(json = {}) {
+  const content = Array.isArray(json?.content) ? json.content : [];
+  return content
+    .map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      if (item.type === 'text' && typeof item.text === 'string') return item.text;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function claudeMessagesRequest({
+  model = 'claude-opus-4-6',
+  system = '',
+  messages = [],
+  maxTokens = 4096,
+  temperature = 0.4,
+  thinking = null,
+  effort = null,
+} = {}) {
+  if (!CLAUDE_API_KEY) {
+    const err = new Error('CLAUDE_API_KEY not set');
+    err.code = 'CLAUDE_NOT_CONFIGURED';
+    err.statusCode = 500;
+    return Promise.reject(err);
+  }
+  const payloadObj = {
+    model: 'claude-opus-4-6',
+    max_tokens: Math.max(256, Math.min(8192, Number(maxTokens) || 4096)),
+    system: String(system || ''),
+    messages: Array.isArray(messages) ? messages : [],
+  };
+  if (Number.isFinite(Number(temperature))) payloadObj.temperature = Number(temperature);
+  if (thinking && typeof thinking === 'object') payloadObj.thinking = thinking;
+  if (effort && typeof effort === 'string') payloadObj.effort = effort;
+  const payload = JSON.stringify(payloadObj);
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          let parsed = {};
+          try {
+            parsed = data ? JSON.parse(data) : {};
+          } catch (parseErr) {
+            const err = new Error(`Claude response parse failed: ${parseErr.message}`);
+            err.code = 'CLAUDE_PARSE_ERROR';
+            err.statusCode = 502;
+            return reject(err);
+          }
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            return resolve({
+              raw: parsed,
+              text: extractClaudeTextFromResponse(parsed),
+            });
+          }
+          const claudeError = parsed?.error || {};
+          const err = new Error(
+            claudeError?.message || `Claude API error ${res.statusCode || 'unknown'}`
+          );
+          err.code = 'CLAUDE_API_ERROR';
+          err.statusCode = res.statusCode || 500;
+          err.claudeError = claudeError;
+          return reject(err);
+        });
+      }
+    );
+    req.on('error', (err) => {
+      const netErr = new Error(`Claude request failed: ${err.message || err}`);
+      netErr.code = 'CLAUDE_NETWORK_ERROR';
+      netErr.statusCode = 502;
+      reject(netErr);
+    });
+    req.write(payload);
+    req.end();
+  });
 }
 
 function hashToPseudoEmbedding(text = '', dim = 256) {
@@ -8437,78 +8531,29 @@ async function generateTopicPlan({
     'Assigned slots:',
     ...slotLines,
   ].filter(Boolean).join('\n');
-  const payload = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role: 'user', content: prompt }],
-    max_completion_tokens: 900,
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'calendar_topic_plan', strict: true, schema },
-    },
-  });
-  const options = {
-    hostname: 'api.openai.com',
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  };
-  const extractContentText = (json) => {
-    if (typeof json?.output_text === 'string') return json.output_text;
-    if (Array.isArray(json?.output)) {
-      const outputText = json.output
-        .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
-        .map((chunk) => {
-          if (chunk?.type === 'output_text' && typeof chunk?.text === 'string') return chunk.text;
-          if (typeof chunk?.text === 'string') return chunk.text;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-      if (outputText) return outputText;
-    }
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
   let json = null;
   try {
-    json = await openAIRequest(options, payload);
+    json = await claudeMessagesRequest({
+      model: 'claude-opus-4-6',
+      system: 'Return valid JSON only.',
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 900,
+      temperature: 0.2,
+    });
   } catch (err) {
     const details = extractOpenAiErrorDetails(err);
     console.error('[OpenAI][TopicPlan] request failed', {
       requestId: requestId || null,
       mode: 'topicPlan',
-      model: 'gpt-4o-mini',
-          responseFormat: safeStringify({
-            type: 'json_schema',
-            json_schema: { name: 'calendar_topic_plan', strict: true },
-          }),
+      model: 'claude-opus-4-6',
+      responseFormat: null,
       statusCode: err?.statusCode || err?.status || null,
       ...details,
     });
     pushWarning({ reason: 'openai_error', details });
     return null;
   }
-  const content = extractContentText(json);
+  const content = toPlainString(json?.text || '');
   let parsed = null;
   try {
     parsed = content ? JSON.parse(content) : null;
@@ -8550,7 +8595,7 @@ async function generateTopicPlan({
 
 async function callOpenAI(nicheStyle, brandContext, opts = {}) {
   const { loggingContext = {} } = opts;
-  const modelName = opts.model || 'gpt-4o-mini';
+  const modelName = opts.model || 'claude-opus-4-6';
   const maxTokenCap = opts.compactPrompt ? 6000 : (opts.reduceVerbosity ? 2600 : 3200);
   const requestedTokens =
     Number.isFinite(Number(opts.maxTokens)) && Number(opts.maxTokens) > 0
@@ -8623,36 +8668,6 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     throw schemaErr;
   }
   const debugEnabled = process.env.DEBUG_AI_PARSE === '1';
-  const extractContentText = (json) => {
-    const messageContent = json?.choices?.[0]?.message?.content;
-    if (!messageContent) return '';
-    if (typeof messageContent === 'string') return messageContent;
-    if (Array.isArray(messageContent)) {
-      return messageContent
-        .map((item) => {
-          if (typeof item === 'string') return item;
-          if (typeof item?.text === 'string') return item.text;
-          if (typeof item?.value === 'string') return item.value;
-          if (typeof item?.content === 'string') return item.content;
-          return '';
-        })
-        .filter(Boolean)
-        .join('');
-    }
-    if (typeof messageContent?.text === 'string') return messageContent.text;
-    if (typeof messageContent?.value === 'string') return messageContent.value;
-    return '';
-  };
-  const buildRequestOptions = (payload, useResponsesApi = false) => ({
-    hostname: 'api.openai.com',
-    path: useResponsesApi ? '/v1/responses' : '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload),
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-  });
   const attemptStart = Date.now();
   const contextLabel = formatCalendarLogContext(loggingContext);
   const label = contextLabel ? ` (${contextLabel})` : '';
@@ -8663,33 +8678,12 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return snippet.length <= 500 ? snippet : `${snippet.slice(0, 500)}...`;
   };
   let lastPromptMeta = null;
-  const parseOpenAiErrorPayload = (err) => {
-    const raw = String(err?.message || '');
-    const marker = raw.indexOf(':');
-    if (marker === -1) return null;
-    const payloadText = raw.slice(marker + 1).trim();
-    try {
-      return JSON.parse(payloadText);
-    } catch {
-      return null;
-    }
-  };
   const attachPromptMeta = (err) => {
     if (!err || typeof err !== 'object') return;
     err.promptMeta = lastPromptMeta;
     err.model = modelName;
     err.responseFormat = null;
     err.mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
-  };
-  const isSchemaErrorPayload = (payload, err) => {
-    const message = payload?.error?.message || err?.message || '';
-    const code = payload?.error?.code || '';
-    return (
-      err?.statusCode === 400 &&
-      (String(message).includes('schema') ||
-        String(message).includes('response_format') ||
-        String(code).includes('schema'))
-    );
   };
   const extractStructuredOutput = (responseJson) => {
     if (!responseJson || typeof responseJson !== 'object') return null;
@@ -8716,7 +8710,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     return JSON.parse(trimmed.slice(start, end + 1));
   };
 
-  const attemptRequest = async (useSchema = true, overrides = {}) => {
+  const attemptRequest = async (_useSchema = true, overrides = {}) => {
     const attemptTimestamp = Date.now();
     const attemptNumber = Number.isFinite(Number(overrides.attempt)) ? Number(overrides.attempt) : 1;
     const attemptMaxTokens = Number.isFinite(Number(overrides.maxTokens)) ? Number(overrides.maxTokens) : maxTokens;
@@ -8764,109 +8758,63 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         });
       }
     }
-  const responseFormat = {
-    type: 'json_schema',
-    json_schema: { name: schemaName, strict: true, schema },
-  };
-    const toTextFormat = (format) => ({
-      name: format?.json_schema?.name,
-      type: format?.type,
-      strict: format?.json_schema?.strict,
-      schema: format?.json_schema?.schema,
-    });
-    const responseTextFormat = toTextFormat(responseFormat);
     const systemMessage = 'You write exactly what a person would say out loud. Every script you write is a transcript of spoken words. You write in complete sentences that flow into each other as one continuous paragraph. When you write a CTA, you write one sentence that connects back to what the creator just said.';
-    const payloadObj = {
-      model: attemptModel,
-      input: [
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: prompt },
-      ],
-      max_output_tokens: Math.max(4000, attemptMaxTokens),
-      text: { format: responseTextFormat },
-    };
-    if (Number.isFinite(Number(attemptPresencePenalty))) {
-      payloadObj.presence_penalty = Number(attemptPresencePenalty);
-    }
-    const payload = JSON.stringify(payloadObj);
     if (debugCalendar && loggingContext?.requestId) {
-      console.log('[OpenAI][CalendarChunk][Payload]', {
+      console.log('[Claude][CalendarChunk][Payload]', {
         requestId: loggingContext.requestId,
-        model: attemptModel,
-        hasResponseFormat: Boolean(responseTextFormat),
-        hasTextFormat: false,
-        textFormatName: responseTextFormat?.name || null,
-        formatType: responseTextFormat?.type || null,
+        model: 'claude-opus-4-6',
+        hasSystem: true,
+        hasMessages: true,
+        maxTokens: Math.max(4000, attemptMaxTokens),
       });
     }
-    if (!responseTextFormat?.name) {
-      const err = new Error('OpenAI payload missing text.format.name');
-      err.code = 'OPENAI_PAYLOAD_INVALID';
-      err.statusCode = 500;
-      err.details = {
-        hasTextFormat: Boolean(responseTextFormat),
-        textFormatKeys: responseTextFormat ? Object.keys(responseTextFormat) : [],
-      };
-      throw err;
-    }
     const requestPromise = withOpenAiSlot(() =>
-      openAIResponsesRequest(buildRequestOptions(payload, true), payload).catch((err) => {
-        const payloadJson = parseOpenAiErrorPayload(err);
+      claudeMessagesRequest({
+        model: 'claude-opus-4-6',
+        system: systemMessage,
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: Math.max(4000, attemptMaxTokens),
+        temperature: attemptTemperature,
+      }).catch((err) => {
         const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
-        const details = extractOpenAiErrorDetails(err);
+        const details = {
+          claudeType: err?.claudeError?.type || null,
+          claudeMessage: err?.claudeError?.message || err?.message || null,
+        };
         err.attempt = attemptNumber;
-        console.error('[OpenAI][CalendarChunk] request failed', {
+        console.error('[Claude][CalendarChunk] request failed', {
           requestId: loggingContext?.requestId || null,
           mode,
-          model: attemptModel,
-          responseFormat: safeStringify(responseFormat),
+          model: 'claude-opus-4-6',
           statusCode: err?.statusCode || err?.status || null,
           ...details,
         });
-        if (useSchema && isSchemaErrorPayload(payloadJson, err)) {
-          const openaiMessage = payloadJson?.error?.message || err?.message || '';
-          const schemaObject = extractSchemaObjectName(openaiMessage);
-          console.warn('[OpenAI][SchemaError] object=%s message=%s', schemaObject, openaiMessage);
-          const schemaErr = new Error(openaiMessage || 'OpenAI schema error');
-          schemaErr.code = 'OPENAI_SCHEMA_ERROR';
-          schemaErr.statusCode = err?.statusCode || 400;
-          schemaErr.details = {
-            error: payloadJson?.error || null,
-            response_format: { type: 'json_schema', json_schema: { name: 'calendar_batch', strict: true } },
-            schemaKeys: Object.keys(schema || {}),
-          };
-          schemaErr.openaiMessage = openaiMessage;
-          schemaErr.schemaObject = schemaObject;
-          schemaErr.schemaSnippet = JSON.stringify(schema).slice(0, 1200);
-          schemaErr.openaiDetails = details;
-          schemaErr.mode = mode;
-          schemaErr.attempt = attemptNumber;
-          schemaErr.promptMeta = lastPromptMeta;
-          schemaErr.model = attemptModel;
-          schemaErr.responseFormat = responseFormat;
-          throw schemaErr;
-        }
         err.openaiDetails = details;
         err.mode = mode;
         err.promptMeta = lastPromptMeta;
-        err.model = attemptModel;
-        err.responseFormat = responseFormat;
+        err.model = 'claude-opus-4-6';
+        err.responseFormat = null;
         throw err;
       })
     );
     const timeoutPromise = new Promise((_, reject) => {
       const timeoutId = setTimeout(() => {
-        const timeoutErr = new Error('OpenAI request timed out');
+        const timeoutErr = new Error('Claude request timed out');
         timeoutErr.code = 'OPENAI_TIMEOUT';
         timeoutErr.attempt = attemptNumber;
         reject(timeoutErr);
       }, attemptTimeoutMs);
       requestPromise.finally(() => clearTimeout(timeoutId));
     });
-    const json = await Promise.race([requestPromise, timeoutPromise]);
-    const extracted = extractStructuredCalendarOutput(json);
-    const parsedOutput = extracted.parsed || null;
-    const content = typeof extracted.text === 'string' ? extracted.text : '';
+    const claudeResult = await Promise.race([requestPromise, timeoutPromise]);
+    const json = claudeResult?.raw || null;
+    const content = typeof claudeResult?.text === 'string' ? claudeResult.text : '';
+    let parsedOutput = null;
+    try {
+      parsedOutput = content ? parseJsonFromText(content) : null;
+    } catch (_parseErr) {
+      parsedOutput = null;
+    }
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
     }
@@ -8875,10 +8823,10 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
       parsedOutput,
       latency: Date.now() - attemptTimestamp,
       promptMeta: lastPromptMeta,
-      responseId: extracted.responseId || json?.id || null,
-      responseModel: extracted.model || json?.model || attemptModel,
+      responseId: json?.id || null,
+      responseModel: json?.model || 'claude-opus-4-6',
       rawTextLength: typeof content === 'string' ? content.length : null,
-      responseKeys: extracted.presentFields || [],
+      responseKeys: json && typeof json === 'object' ? Object.keys(json) : [],
       extractedKind: parsedOutput || content ? 'structured' : 'none',
     };
   };
@@ -9674,6 +9622,7 @@ const server = http.createServer((req, res) => {
           .upsert(
             {
               id: user.id,
+              email: toPlainString(user.email || user?.user_metadata?.email || ''),
               tier: normalized,
               subscription_plan: normalized,
               updated_at: new Date().toISOString(),
@@ -9804,6 +9753,7 @@ const server = http.createServer((req, res) => {
           .upsert(
             {
               id: user.id,
+              email: toPlainString(user.email || user?.user_metadata?.email || ''),
               profile_settings: nextSettings,
               updated_at: new Date().toISOString(),
             },
@@ -10252,8 +10202,8 @@ const server = http.createServer((req, res) => {
       err.statusCode = 400;
       throw err;
     }
-    if (!OPENAI_API_KEY) {
-      const err = new Error('OPENAI_API_KEY not set');
+    if (!CLAUDE_API_KEY) {
+      const err = new Error('CLAUDE_API_KEY not set');
       err.statusCode = 500;
       throw err;
     }
@@ -10360,30 +10310,19 @@ const server = http.createServer((req, res) => {
         },
       },
     };
-    const buildRequestOptions = (payloadText) => ({
-      hostname: 'api.openai.com',
-      path: '/v1/chat/completions',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payloadText),
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-    });
     const planStart = Date.now();
     const planMaxTokens = expectedCount >= 30 ? 1800 : 900;
     const runPlanRequest = async ({ maxTokens }) => {
-      const payload = JSON.stringify({
-        model: 'gpt-4.1-mini',
-        messages: [{ role: 'user', content: planPrompt }],
-        max_tokens: maxTokens,
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: 'calendar_plan', strict: true, schema: planSchema },
-        },
-      });
       return withTimeout(
-        withOpenAiSlot(() => openAIRequest(buildRequestOptions(payload), payload)),
+        withOpenAiSlot(() =>
+          claudeMessagesRequest({
+            model: 'claude-opus-4-6',
+            system: 'Return only valid JSON for the requested plan. No markdown.',
+            messages: [{ role: 'user', content: planPrompt }],
+            maxTokens: maxTokens,
+            temperature: 0.2,
+          })
+        ),
         60000,
         { requestId, phase: 'plan' }
       );
@@ -10391,7 +10330,7 @@ const server = http.createServer((req, res) => {
     let response = null;
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
-    const content = toPlainString(response?.choices?.[0]?.message?.content || '');
+    const content = toPlainString(response?.text || '');
     let parsed = null;
     try {
       const jsonSegment = extractJsonChunk(content) || content;
@@ -10448,8 +10387,8 @@ const server = http.createServer((req, res) => {
       err.statusCode = 400;
       throw err;
     }
-    if (!OPENAI_API_KEY) {
-      const err = new Error('OPENAI_API_KEY not set');
+    if (!CLAUDE_API_KEY) {
+      const err = new Error('CLAUDE_API_KEY not set');
       err.statusCode = 500;
       throw err;
     }
@@ -10669,8 +10608,8 @@ const server = http.createServer((req, res) => {
       err.statusCode = 400;
       throw err;
     }
-    if (!OPENAI_API_KEY) {
-      const err = new Error('OPENAI_API_KEY not set');
+    if (!CLAUDE_API_KEY) {
+      const err = new Error('CLAUDE_API_KEY not set');
       err.statusCode = 500;
       throw err;
     }
@@ -11019,7 +10958,7 @@ const server = http.createServer((req, res) => {
       };
       err.promptMeta = lastPromptMeta;
       err.rawContent = lastRawContent ? String(lastRawContent) : '';
-      err.model = 'gpt-4o-mini';
+      err.model = 'claude-opus-4-6';
       err.schemaName = 'calendar_batch';
       err.responseFormat = null;
       err.mode = calendarMode;
@@ -11108,106 +11047,7 @@ const server = http.createServer((req, res) => {
         })
         : null;
       if (false && brandBrainEnabled) {
-        const schema = buildCalendarSchemaObject(
-          expectedCount || rawPosts.length,
-          fallbackStart,
-          fallbackStart + daysToGenerate - 1,
-          calendarMode
-        );
-        const repairPayload = {
-          posts: rawPosts.map((post) => post || {}),
-        };
-        const missingSummary = missingFieldsReport.map((entry) => ({
-          index: entry.index,
-          day: entry.day,
-          slotIndex: entry.slotIndex,
-          postsPerDay: entry.postsPerDay,
-          post_key: entry.post_key,
-          missing: entry.missing,
-        }));
-        const repairPrompt = [
-          'You repair JSON structure only.',
-          'Return valid JSON matching the schema exactly.',
-          'Keep the exact number of items and the same order.',
-          'Fill only the missing fields listed per item.',
-          'Preserve all existing field values.',
-          'Use concrete values for missing fields; do not add new topics.',
-          `Missing fields report: ${JSON.stringify(missingSummary)}`,
-          `Original JSON: ${JSON.stringify(repairPayload)}`,
-        ].join('\n');
-        try {
-          const payload = JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: repairPrompt }],
-            max_completion_tokens: Math.max(chunkMinTokens, chunkBaseTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: 'calendar_batch_repair', strict: true, schema },
-            },
-          });
-          const options = {
-            hostname: 'api.openai.com',
-            path: '/v1/chat/completions',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payload),
-              Authorization: `Bearer ${OPENAI_API_KEY}`,
-            },
-          };
-          const completion = await openAIRequest(options, payload);
-          const extract = completion?.choices?.[0]?.message?.content;
-          const text = typeof extract === 'string'
-            ? extract
-            : Array.isArray(extract)
-              ? extract.map((item) => (typeof item === 'string' ? item : item?.text || item?.value || '')).join('')
-              : '';
-          const parsed = tryParsePosts(text, expectedCount || rawPosts.length);
-          if (parsed.posts) {
-            rawPosts = parsed.posts;
-            missingFieldsReport.length = 0;
-            rawPosts.forEach((post, idx) => {
-              const missing = validatePostCompleteness(post, 'brand_brain');
-              if (!missing.length) return;
-              const coreMissing = missing.filter((field) => !NONCORE_OPTIONAL_FIELDS.has(field));
-              if (!coreMissing.length) return;
-              const day = Number.isFinite(Number(post.day)) ? Number(post.day) : computePostDayIndex(idx, fallbackStart, perDay);
-              const slotIndex = Number.isFinite(Number(post?.slotIndex)) ? Number(post.slotIndex) : null;
-              const postKeyValue = toPlainString(post?.post_key || post?.postKey || '');
-              missingFieldsReport.push({
-                index: idx,
-                day,
-                slotIndex,
-                postsPerDay: perDay,
-                post_key: postKeyValue,
-                missing: coreMissing,
-              });
-            });
-          }
-        } catch (repairErr) {
-          console.warn('[BrandBrain][Repair] failed', {
-            requestId: loggingContext?.requestId || 'unknown',
-            error: repairErr?.message || repairErr,
-          });
-        }
-        if (missingFieldsReport.length) {
-          console.warn('[BrandBrain][SchemaValidation] missing required fields after repair', {
-            requestId: loggingContext?.requestId,
-            startDay,
-            days,
-            postsPerDay,
-            expectedCount,
-            actualCount: rawPosts.length,
-            missingFields: missingFieldsReport.length,
-            responseLength: rawLength,
-            detailSamples: missingFieldsReport.slice(0, 2).map((entry) => ({
-              ...entry,
-              missing: Array.isArray(entry.missing) ? entry.missing.map(String) : [],
-            })),
-          });
-          rawPosts = repairBrandBrainPostBatch(rawPosts, nicheStyle, fallbackStart, perDay);
-          missingFieldsReport.length = 0;
-        }
+        // Disabled legacy repair path intentionally left empty.
       } else {
         const err = new Error('Calendar response missing required fields');
         err.code = 'OPENAI_SCHEMA_ERROR';
@@ -11223,7 +11063,7 @@ const server = http.createServer((req, res) => {
         }
         err.promptMeta = lastPromptMeta;
         err.rawContent = lastRawContent ? String(lastRawContent) : '';
-        err.model = 'gpt-4o-mini';
+        err.model = 'claude-opus-4-6';
         err.schemaName = 'calendar_batch';
         err.responseFormat = null;
         err.mode = calendarMode;
@@ -12302,7 +12142,7 @@ const server = http.createServer((req, res) => {
             requestId,
             mode: safeError?.mode || 'unknown',
             schemaName: safeError?.schemaName || 'calendar_batch',
-            model: safeError?.model || 'gpt-4o-mini',
+            model: safeError?.model || 'claude-opus-4-6',
             responseFormat: safeError?.responseFormat || null,
             promptChars: promptMeta.chars || null,
             promptHash: promptMeta.hash || null,
