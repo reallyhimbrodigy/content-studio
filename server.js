@@ -2748,6 +2748,8 @@ function claudeMessagesRequest({
   temperature = 0.4,
   thinking = null,
   effort = null,
+  tools = null,
+  toolChoice = null,
 } = {}) {
   if (!CLAUDE_API_KEY) {
     const err = new Error('CLAUDE_API_KEY not set');
@@ -2756,7 +2758,7 @@ function claudeMessagesRequest({
     return Promise.reject(err);
   }
   const payloadObj = {
-    model: 'claude-opus-4-6',
+    model: String(model || 'claude-opus-4-6'),
     max_tokens: Math.max(256, Math.min(8192, Number(maxTokens) || 4096)),
     system: String(system || ''),
     messages: Array.isArray(messages) ? messages : [],
@@ -2764,6 +2766,8 @@ function claudeMessagesRequest({
   if (Number.isFinite(Number(temperature))) payloadObj.temperature = Number(temperature);
   if (thinking && typeof thinking === 'object') payloadObj.thinking = thinking;
   if (effort && typeof effort === 'string') payloadObj.effort = effort;
+  if (Array.isArray(tools) && tools.length) payloadObj.tools = tools;
+  if (toolChoice && typeof toolChoice === 'object') payloadObj.tool_choice = toolChoice;
   const payload = JSON.stringify(payloadObj);
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -3952,8 +3956,7 @@ caption — One to two sentences. What the creator types under the video about t
 designNotes — One sentence. Where the creator is and what is behind them.
 
 hashtags — 5-8 hashtags.
-
-Return JSON only.`;
+`;
 
 const BRAND_BRAIN_MAIN_PROMPT = `You are a creator in this space: ${cleanNiche}. Write one short-form video for TikTok / Instagram Reels.
 ${voiceLock ? `The creator's voice: ${voiceLock}.` : ''}
@@ -3982,8 +3985,7 @@ caption — One to two sentences. What the creator types under the video about t
 designNotes — One sentence. Where the creator is and what is behind them.
 
 hashtags — 5-8 hashtags.
-
-Return JSON only.`;
+`;
 
   const mainPrompt = mode === 'brand_brain' ? BRAND_BRAIN_MAIN_PROMPT : REGULAR_MAIN_PROMPT;
   return mainPrompt;
@@ -8586,6 +8588,12 @@ async function generateTopicPlan({
         messages: [{ role: 'user', content: prompt }],
         maxTokens: 900,
         temperature: 0.2,
+        tools: [{
+          name: 'plan_calendar_topics',
+          description: 'Plan topic slots for short-form videos.',
+          input_schema: schema,
+        }],
+        toolChoice: { type: 'tool', name: 'plan_calendar_topics' },
       }),
       CALENDAR_PLAN_TIMEOUT_MS,
       { requestId, phase: 'topic_plan' }
@@ -8603,28 +8611,9 @@ async function generateTopicPlan({
     pushWarning({ reason: 'openai_error', details });
     return null;
   }
-  const content = toPlainString(json?.text || '');
-  let responseText = content;
-  console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
-  let parsed = null;
-  try {
-    responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-    const jsonSegment = extractJsonChunk(responseText) || responseText;
-    parsed = jsonSegment ? JSON.parse(jsonSegment) : null;
-  } catch {
-    parsed = null;
-  }
-  let topics = null;
-  if (Array.isArray(parsed?.topics)) {
-    topics = parsed.topics;
-  } else if (Array.isArray(parsed)) {
-    topics = parsed;
-  } else if (parsed && typeof parsed === 'object' && parsed.slot != null && parsed.title) {
-    topics = [parsed];
-  } else if (parsed && typeof parsed === 'object') {
-    const arrayKey = Object.keys(parsed).find((key) => Array.isArray(parsed[key]));
-    if (arrayKey) topics = parsed[arrayKey];
-  }
+  const contentBlocks = Array.isArray(json?.raw?.content) ? json.raw.content : [];
+  const toolBlock = contentBlocks.find((b) => b && b.type === 'tool_use' && b.name === 'plan_calendar_topics');
+  const topics = Array.isArray(toolBlock?.input?.topics) ? toolBlock.input.topics : null;
   if (!topics) {
     pushWarning({ reason: 'missing_topics' });
     return null;
@@ -10316,12 +10305,7 @@ const server = http.createServer((req, res) => {
       '',
       `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`,
       '',
-      'Return JSON only. Each item:',
-      '{',
-      '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — a specific moment from the creator\'s day-to-day in this space.",',
-      '  "angle": "One sentence — what the creator expected to go one way that went another."',
-      '}',
+      'Each video needs a topic_signature (one sentence — a specific moment from the creator\'s day-to-day in this space) and an angle (one sentence — what the creator expected to go one way that went another).',
       plannerCountLine,
       '',
       `Every video covers a different topic.`,
@@ -10337,14 +10321,9 @@ const server = http.createServer((req, res) => {
         ? `Every video is the creator talking directly to camera about a moment from their day-to-day in this space. During the story, what the creator is offering connects to what the creator was talking about.`
         : `Every video is the creator talking directly to camera about a moment from their day-to-day in this space.`,
       '',
-      'Return JSON only. Each item:',
-      '{',
-      '  "post_key": "<key>",',
-      '  "topic_signature": "One sentence — a specific moment from the creator\'s day-to-day in this space.",',
       hasPromoting
-        ? '  "angle": "One sentence — what the creator expected to go one way that went another, and how that connects to what the creator offers."'
-        : '  "angle": "One sentence — what the creator expected to go one way that went another."',
-      '}',
+        ? 'Each video needs a topic_signature (one sentence — a specific moment from the creator\'s day-to-day in this space) and an angle (one sentence — what the creator expected to go one way that went another, and how that connects to what the creator offers).'
+        : 'Each video needs a topic_signature (one sentence — a specific moment from the creator\'s day-to-day in this space) and an angle (one sentence — what the creator expected to go one way that went another).',
       plannerCountLine,
       '',
       `Every video covers a different topic.`,
@@ -10387,6 +10366,29 @@ const server = http.createServer((req, res) => {
             messages: [{ role: 'user', content: planPrompt }],
             maxTokens: maxTokens,
             temperature: 0.2,
+            tools: [{
+              name: 'plan_calendar',
+              description: 'Plan short-form videos for TikTok and Reels.',
+              input_schema: {
+                type: 'object',
+                properties: {
+                  plan: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        post_key: { type: 'string' },
+                        topic_signature: { type: 'string' },
+                        angle: { type: 'string' },
+                      },
+                      required: ['post_key', 'topic_signature', 'angle'],
+                    },
+                  },
+                },
+                required: ['plan'],
+              },
+            }],
+            toolChoice: { type: 'tool', name: 'plan_calendar' },
           })
         ),
         CALENDAR_PLAN_TIMEOUT_MS,
@@ -10396,61 +10398,15 @@ const server = http.createServer((req, res) => {
     let response = null;
     const planTokensUsed = planMaxTokens;
     response = await runPlanRequest({ maxTokens: planMaxTokens });
-    const content = toPlainString(response?.text || '');
-    let responseText = content;
-    console.log('[Calendar][Plan] raw Claude response (first 500 chars):', responseText.substring(0, 500));
-    let parsed = null;
-    try {
-      responseText = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-      const jsonSegment = extractJsonChunk(responseText) || responseText;
-      parsed = JSON.parse(jsonSegment);
-    } catch {
-      // Claude sometimes truncates large arrays; recover by parsing each complete object.
-      const recoveredItems = [];
-      for (let i = 0; i < responseText.length; i += 1) {
-        if (responseText[i] !== '{') continue;
-        const segment = captureJsonSegment(responseText, i);
-        if (!segment) continue;
-        try {
-          const item = JSON.parse(segment);
-          if (item && typeof item === 'object') recoveredItems.push(item);
-        } catch {}
-        i += Math.max(0, segment.length - 1);
-      }
-      if (recoveredItems.length > 0) {
-        parsed = recoveredItems;
-      } else {
-      console.log('[Calendar][Plan] 422 reason:', {
-        requestId,
-        code: 'PLAN_PARSE_FAILED',
-        message: 'Failed to parse planner JSON',
-        contentPreview: String(responseText || '').slice(0, 500),
-      });
-      const err = new Error('PLAN_PARSE_FAILED');
-      err.code = 'PLAN_PARSE_FAILED';
-      err.statusCode = 422;
-      throw err;
-      }
-    }
-    let plan = null;
-    if (parsed?.plan && Array.isArray(parsed.plan)) {
-      plan = parsed.plan;
-    } else if (Array.isArray(parsed)) {
-      plan = parsed;
-    } else if (parsed && typeof parsed === 'object' && parsed.post_key && parsed.topic_signature) {
-      plan = [parsed];
-    } else if (parsed && typeof parsed === 'object') {
-      const arrayKey = Object.keys(parsed).find((k) => Array.isArray(parsed[k]));
-      if (arrayKey) {
-        plan = parsed[arrayKey];
-      }
-    }
+    const contentBlocks = Array.isArray(response?.raw?.content) ? response.raw.content : [];
+    const toolBlock = contentBlocks.find((b) => b && b.type === 'tool_use' && b.name === 'plan_calendar');
+    const plan = Array.isArray(toolBlock?.input?.plan) ? toolBlock.input.plan : null;
     if (!plan) {
       console.log('[Calendar][Plan] 422 reason:', {
         requestId,
         code: 'PLAN_MISSING',
-        message: 'Parsed planner payload missing plan array',
-        parsedKeys: parsed && typeof parsed === 'object' ? Object.keys(parsed) : null,
+        message: 'Tool response missing plan array',
+        contentTypes: contentBlocks.map((b) => b?.type || null),
       });
       const err = new Error('PLAN_MISSING');
       err.code = 'PLAN_MISSING';
@@ -10473,7 +10429,6 @@ const server = http.createServer((req, res) => {
         expectedCount,
         actualCount: plan.length,
         details,
-        truncated: looksTruncatedJson(responseText),
       });
       const err = new Error('PLAN_SCHEMA_MISMATCH');
       err.code = 'PLAN_SCHEMA_MISMATCH';
