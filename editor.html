@@ -11,23 +11,23 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     .page-editor {
-      background: #0f0f10;
+      background: #0a0a0a;
       color: #f5f5f5;
       min-height: 100vh;
       margin: 0;
     }
 
     .editor-shell {
-      max-width: 980px;
+      max-width: 700px;
       margin: 0 auto;
-      padding: 2rem 1.25rem 3rem;
+      padding: 24px;
     }
 
     .editor-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: #1a1a1a;
+      border: 1px solid #404040;
       border-radius: 16px;
-      padding: 1.25rem;
+      padding: 32px;
     }
 
     .editor-input,
@@ -90,9 +90,9 @@
 
     .editor-dropzone {
       background: #151515;
-      border: 2px dashed #4b4b4b;
+      border: 2px dashed #606060;
       border-radius: 16px;
-      padding: 2.75rem 1rem;
+      padding: 48px 32px;
       text-align: center;
       cursor: pointer;
       transition: border-color 0.2s ease, background 0.2s ease;
@@ -161,21 +161,21 @@
 
     .editor-subtitle {
       margin: 0;
-      color: #b8b8b8;
-      font-size: 1.05rem;
+      color: #808080;
+      font-size: 15px;
       line-height: 1.5;
     }
 
     .editor-stage-title {
       margin: 0;
-      font-size: 1.45rem;
+      font-size: 18px;
       font-weight: 700;
     }
 
     .editor-stage-text {
       margin: 0;
-      color: #b8b8b8;
-      font-size: 0.96rem;
+      color: #808080;
+      font-size: 14px;
     }
 
     .editor-main-wrap {
@@ -183,9 +183,9 @@
     }
 
     @media (max-width: 768px) {
-      .editor-shell { padding: 1.5rem 1rem 2rem; }
-      .editor-card { padding: 1rem; }
-      .editor-dropzone { padding: 2rem 0.9rem; }
+      .editor-shell { padding: 16px; }
+      .editor-card { padding: 20px; }
+      .editor-dropzone { padding: 36px 16px; }
     }
   </style>
 </head>
@@ -211,16 +211,6 @@
         </div>
       </aside>
       <div class="app-main editor-main-wrap">
-        <header class="hero app-hero">
-          <div class="hero-top">
-            <div class="hero-top__left">
-              <img src="assets/promptly-mark-white.png" alt="Promptly logo" class="logo" />
-              <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
-            </div>
-          </div>
-          <h1>AI Video Editor</h1>
-          <p>Upload your clip, set the vibe, and let Promptly create your edited video.</p>
-        </header>
         <div id="root"></div>
       </div>
     </div>
@@ -361,10 +351,10 @@
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-6xl">📤</div>
-                <p className="text-xl font-semibold text-white">Drop your video here</p>
-                <p className="text-gray-300">or click to browse</p>
-                <p className="text-sm text-gray-400 mt-3">MP4, MOV, AVI • Max 500MB</p>
+                <div style={{ fontSize: '48px' }}>📤</div>
+                <p style={{ fontSize: '18px' }} className="font-semibold text-white">Drop your video here</p>
+                <p style={{ fontSize: '14px' }} className="text-gray-300">or click to browse</p>
+                <p style={{ fontSize: '14px' }} className="text-gray-400 mt-3">MP4, MOV, AVI • Max 500MB</p>
               </div>
             )}
           </div>
@@ -485,21 +475,25 @@
 
       return (
         <main className="editor-shell">
-          <section className="editor-card mb-6">
-            <h2 className="editor-title">Turn Raw Clips Into Viral Videos</h2>
-            <p className="editor-subtitle">Upload, describe the vibe, and get a fully edited video in minutes.</p>
-          </section>
+          <div style={{ marginBottom: '32px' }}>
+            <h1 style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px', color: '#ffffff' }}>
+              🎬 AI Video Editor
+            </h1>
+            <p className="editor-subtitle">
+              Upload your clip, set the vibe, and let Promptly create your edited video
+            </p>
+          </div>
 
           {!videoUrl && (
             <section className="editor-card">
               <h3 className="editor-stage-title mb-2">Upload Your Clip</h3>
-              <p className="editor-stage-text mb-5">Use a clear talking-head or storytelling clip for best results.</p>
+              <p className="editor-stage-text mb-5">Use a clear talking-head or storytelling clip for best results</p>
               <UploadZone onUploadComplete={handleUploadComplete} userId={userId} />
             </section>
           )}
 
           {videoUrl && !jobId && (
-            <section className="editor-card space-y-5">
+            <section className="editor-card space-y-4">
               <div className="editor-msg-success">✓ Video uploaded: {videoFileName}</div>
               <div>
                 <h3 className="editor-stage-title mb-2">Set The Vibe</h3>
@@ -511,7 +505,7 @@
 
           {jobId && status !== 'complete' && status !== 'error' && (
             <section className="editor-card text-center space-y-4">
-              <div className="text-5xl">🎬</div>
+              <div style={{ fontSize: '48px' }}>🎬</div>
               <h3 className="editor-stage-title">Creating your video...</h3>
               <p className="editor-stage-text">
                 {status === 'queued' && 'Queued...'}
