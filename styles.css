@@ -281,6 +281,13 @@ body {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
+.sidebar-link:hover,
+.sidebar-link:focus,
+.sidebar-link:active,
+.sidebar-link:visited {
+  text-decoration: none;
+}
+
 .sidebar-link em {
   margin-left: auto;
   font-size: 0.7rem;

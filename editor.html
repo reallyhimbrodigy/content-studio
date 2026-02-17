@@ -4,22 +4,265 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Video Editor | Promptly</title>
-
+  <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
   <style>
-    body {
+    .page-editor {
+      background: #0f0f10;
+      color: #f5f5f5;
+      min-height: 100vh;
       margin: 0;
-      background: #f9fafb;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .editor-shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+
+    .editor-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 16px;
+      padding: 1.25rem;
+    }
+
+    .editor-input,
+    .editor-textarea {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 14px;
+      padding: 12px 14px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .editor-input:focus,
+    .editor-textarea:focus {
+      border-color: #7a7a7a;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+    }
+
+    .editor-btn-primary {
+      width: 100%;
+      background: #fff;
+      color: #000;
+      border: 1px solid #fff;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+
+    .editor-btn-primary:hover { background: #e8e8e8; }
+    .editor-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .editor-btn-ghost {
+      background: transparent;
+      color: #fff;
+      border: 1px solid #666;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 15px;
+      padding: 11px 16px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s ease, color 0.2s ease;
+    }
+
+    .editor-btn-ghost:hover {
+      border-color: #fff;
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .editor-dropzone {
+      background: #151515;
+      border: 2px dashed #4b4b4b;
+      border-radius: 16px;
+      padding: 2.75rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .editor-dropzone.is-active {
+      border-color: #a0a0a0;
+      background: #1d1d1d;
+    }
+
+    .editor-dropzone.is-uploading {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .editor-progress-track {
+      width: 100%;
+      height: 10px;
+      background: #2c2c2c;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .editor-progress-fill {
+      height: 100%;
+      background: #fff;
+      transition: width 0.25s ease;
+    }
+
+    .editor-pill {
+      border: 1px solid #474747;
+      background: #1c1c1c;
+      color: #d0d0d0;
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    .editor-pill:hover { border-color: #7a7a7a; color: #fff; }
+
+    .editor-msg-success {
+      background: #0f2318;
+      border: 1px solid #2b7a4b;
+      color: #b4f0c8;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 600;
+    }
+
+    .editor-msg-error {
+      background: #2a1111;
+      border: 1px solid #7a2b2b;
+      color: #ffb9b9;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-weight: 600;
+    }
+
+    .editor-title {
+      font-size: clamp(1.9rem, 4vw, 2.45rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+
+    .editor-subtitle {
+      margin: 0;
+      color: #b8b8b8;
+      font-size: 1.05rem;
+      line-height: 1.5;
+    }
+
+    .editor-stage-title {
+      margin: 0;
+      font-size: 1.45rem;
+      font-weight: 700;
+    }
+
+    .editor-stage-text {
+      margin: 0;
+      color: #b8b8b8;
+      font-size: 0.96rem;
+    }
+
+    .editor-main-wrap {
+      min-height: 100vh;
+    }
+
+    @media (max-width: 768px) {
+      .editor-shell { padding: 1.5rem 1rem 2rem; }
+      .editor-card { padding: 1rem; }
+      .editor-dropzone { padding: 2rem 0.9rem; }
     }
   </style>
 </head>
-<body>
-  <div id="root"></div>
+<body class="page-editor">
+  <div class="app-shell">
+    <div class="app-layout sidebar-collapsed" id="app-layout">
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">
+        <span class="sidebar-toggle__bars" aria-hidden="true"></span>
+      </button>
+      <aside class="app-sidebar collapsed" id="app-sidebar">
+        <div class="sidebar-fixed-inner">
+          <nav class="sidebar-nav" aria-label="Workspace navigation">
+            <a href="/calendar.html" class="sidebar-link">
+              <span>Content Calendar</span>
+            </a>
+            <a href="/editor" class="sidebar-link is-active" aria-current="page">
+              <span>AI Editor</span>
+            </a>
+            <a href="/library.html" class="sidebar-link">
+              <span>Library</span>
+            </a>
+          </nav>
+        </div>
+      </aside>
+      <div class="app-main editor-main-wrap">
+        <header class="hero app-hero">
+          <div class="hero-top">
+            <div class="hero-top__left">
+              <img src="assets/promptly-mark-white.png" alt="Promptly logo" class="logo" />
+              <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
+            </div>
+          </div>
+          <h1>AI Video Editor</h1>
+          <p>Upload your clip, set the vibe, and let Promptly create your edited video.</p>
+        </header>
+        <div id="root"></div>
+      </div>
+    </div>
+    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+  </div>
+
+  <script>
+    (function initSidebar() {
+      const appLayout = document.getElementById('app-layout');
+      const appSidebar = document.getElementById('app-sidebar');
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+      const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+      if (!appLayout || !appSidebar || !sidebarToggle || !sidebarBackdrop) return;
+
+      function isMobile() {
+        return window.matchMedia('(max-width: 960px)').matches;
+      }
+
+      function applySidebarState(collapsed) {
+        appLayout.classList.toggle('sidebar-collapsed', collapsed);
+        appSidebar.classList.toggle('collapsed', collapsed);
+        sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+        sidebarBackdrop.classList.toggle('visible', !collapsed && isMobile());
+        document.body.classList.toggle('sidebar-open', !collapsed && isMobile());
+      }
+
+      sidebarToggle.addEventListener('click', () => {
+        const collapsed = appSidebar.classList.contains('collapsed');
+        applySidebarState(!collapsed);
+      });
+
+      sidebarBackdrop.addEventListener('click', () => applySidebarState(true));
+      window.addEventListener('resize', () => {
+        if (!isMobile()) {
+          sidebarBackdrop.classList.remove('visible');
+          document.body.classList.remove('sidebar-open');
+        }
+      });
+
+      applySidebarState(isMobile());
+    })();
+  </script>
 
   <script type="text/babel">
     const { useState, useEffect } = React;
@@ -43,6 +286,7 @@
 
         setUploading(true);
         setError(null);
+        setProgress(0);
 
         const formData = new FormData();
         formData.append('video', file);
@@ -61,7 +305,10 @@
             const data = JSON.parse(xhr.responseText);
             onUploadComplete(data.videoUrl, data.fileName);
           } else {
-            setError('Upload failed');
+            const data = (() => {
+              try { return JSON.parse(xhr.responseText); } catch (_e) { return {}; }
+            })();
+            setError(data.error || 'Upload failed');
           }
           setUploading(false);
         });
@@ -88,18 +335,16 @@
       };
 
       return (
-        <div className="w-full">
+        <div className="w-full space-y-4">
           <div
-            className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition ${
-              dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-            } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`editor-dropzone ${dragActive ? 'is-active' : ''} ${uploading ? 'is-uploading' : ''}`}
             onDrop={handleDrop}
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
             onDragLeave={() => setDragActive(false)}
-            onClick={() => !uploading && document.getElementById('fileInput').click()}
+            onClick={() => !uploading && document.getElementById('editorFileInput').click()}
           >
             <input
-              id="fileInput"
+              id="editorFileInput"
               type="file"
               accept="video/mp4,video/quicktime,video/x-msvideo"
               onChange={handleChange}
@@ -108,30 +353,23 @@
 
             {uploading ? (
               <div className="space-y-4">
-                <p className="text-xl font-semibold">Uploading...</p>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-black h-3 rounded-full transition-all"
-                    style={{ width: `${progress}%` }}
-                  />
+                <p className="text-lg font-semibold text-white">Uploading...</p>
+                <div className="editor-progress-track">
+                  <div className="editor-progress-fill" style={{ width: `${progress}%` }} />
                 </div>
-                <p className="text-sm text-gray-600">{progress}%</p>
+                <p className="text-sm text-gray-300">{progress}%</p>
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="text-6xl">📤</div>
-                <p className="text-xl font-semibold">Drop your video here</p>
-                <p className="text-gray-500">or click to browse</p>
-                <p className="text-sm text-gray-400 mt-4">MP4, MOV, AVI • Max 500MB</p>
+                <p className="text-xl font-semibold text-white">Drop your video here</p>
+                <p className="text-gray-300">or click to browse</p>
+                <p className="text-sm text-gray-400 mt-3">MP4, MOV, AVI • Max 500MB</p>
               </div>
             )}
           </div>
 
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-800 text-sm">{error}</p>
-            </div>
-          )}
+          {error && <div className="editor-msg-error">❌ {error}</div>}
         </div>
       );
     }
@@ -146,18 +384,18 @@
       ];
 
       return (
-        <div className="w-full space-y-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Describe the vibe you want:
+            <label className="block text-sm font-semibold text-gray-300 mb-2">
+              Describe the vibe you want
             </label>
             <textarea
               value={vibe}
               onChange={(e) => setVibe(e.target.value)}
               placeholder="e.g., punchy TikTok with fast cuts and meme SFX"
               disabled={disabled}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-black"
-              rows={3}
+              className="editor-textarea"
+              rows={4}
             />
           </div>
 
@@ -168,7 +406,7 @@
                 type="button"
                 onClick={() => setVibe(s)}
                 disabled={disabled}
-                className="px-3 py-1 text-sm rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                className="editor-pill"
               >
                 {s}
               </button>
@@ -178,7 +416,7 @@
           <button
             onClick={() => vibe.trim() && onSubmit(vibe.trim())}
             disabled={disabled || !vibe.trim()}
-            className="w-full py-4 bg-black text-white rounded-lg font-semibold text-lg hover:bg-gray-800 disabled:opacity-50"
+            className="editor-btn-primary"
           >
             Generate Edited Video
           </button>
@@ -239,79 +477,79 @@
           setJobId(data.jobId);
           setStatus('queued');
           setProgress(0);
+          setError(null);
         } catch (err) {
           setError(err.message || 'Failed to create job');
         }
       };
 
       return (
-        <div className="min-h-screen bg-gray-50">
-          <header className="bg-white border-b border-gray-200">
-            <div className="max-w-5xl mx-auto px-6 py-4">
-              <h1 className="text-2xl font-bold">🎬 AI Video Editor</h1>
-            </div>
-          </header>
+        <main className="editor-shell">
+          <section className="editor-card mb-6">
+            <h2 className="editor-title">Turn Raw Clips Into Viral Videos</h2>
+            <p className="editor-subtitle">Upload, describe the vibe, and get a fully edited video in minutes.</p>
+          </section>
 
-          <main className="max-w-5xl mx-auto px-6 py-12">
-            <div className="space-y-8">
-              <div className="text-center space-y-2">
-                <h2 className="text-4xl font-bold">Turn Raw Clips Into Viral Videos</h2>
-                <p className="text-xl text-gray-600">Upload, describe the vibe, get a fully edited video in minutes</p>
+          {!videoUrl && (
+            <section className="editor-card">
+              <h3 className="editor-stage-title mb-2">Upload Your Clip</h3>
+              <p className="editor-stage-text mb-5">Use a clear talking-head or storytelling clip for best results.</p>
+              <UploadZone onUploadComplete={handleUploadComplete} userId={userId} />
+            </section>
+          )}
+
+          {videoUrl && !jobId && (
+            <section className="editor-card space-y-5">
+              <div className="editor-msg-success">✓ Video uploaded: {videoFileName}</div>
+              <div>
+                <h3 className="editor-stage-title mb-2">Set The Vibe</h3>
+                <p className="editor-stage-text">Tell Promptly how you want the final edit to feel.</p>
               </div>
+              <VibeInput onSubmit={handleVibeSubmit} />
+            </section>
+          )}
 
-              {!videoUrl && <UploadZone onUploadComplete={handleUploadComplete} userId={userId} />}
+          {jobId && status !== 'complete' && status !== 'error' && (
+            <section className="editor-card text-center space-y-4">
+              <div className="text-5xl">🎬</div>
+              <h3 className="editor-stage-title">Creating your video...</h3>
+              <p className="editor-stage-text">
+                {status === 'queued' && 'Queued...'}
+                {status === 'analyzing' && 'Analyzing clip...'}
+                {status === 'editing' && 'Generating edit recipe...'}
+                {status === 'rendering' && 'Rendering video...'}
+              </p>
+              <div className="editor-progress-track">
+                <div className="editor-progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="text-sm text-gray-300">{progress}%</p>
+            </section>
+          )}
 
-              {videoUrl && !jobId && (
-                <div className="space-y-6">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-green-800 font-medium">✓ Video uploaded: {videoFileName}</p>
-                  </div>
-                  <VibeInput onSubmit={handleVibeSubmit} />
-                </div>
-              )}
+          {status === 'complete' && renderedVideoUrl && (
+            <section className="editor-card space-y-6 text-center">
+              <h3 className="editor-stage-title">✨ Your video is ready!</h3>
+              <video src={renderedVideoUrl} controls className="w-full max-w-md mx-auto rounded-xl border border-gray-700" />
+              <div className="flex flex-wrap gap-3 justify-center">
+                <a href={renderedVideoUrl} download className="editor-btn-primary" style={{ width: 'auto', paddingLeft: '20px', paddingRight: '20px' }}>
+                  Download Video
+                </a>
+                <button onClick={() => window.location.reload()} className="editor-btn-ghost">
+                  Edit Another Video
+                </button>
+              </div>
+            </section>
+          )}
 
-              {jobId && status !== 'complete' && status !== 'error' && (
-                <div className="bg-white border border-gray-200 rounded-lg p-8 text-center space-y-4">
-                  <div className="text-6xl">🎬</div>
-                  <h3 className="text-2xl font-semibold">Creating your video...</h3>
-                  <p className="text-gray-600">
-                    {status === 'queued' && '⏳ Queued...'}
-                    {status === 'analyzing' && '✓ Analyzing clip...'}
-                    {status === 'editing' && '✓ Generating edit recipe...'}
-                    {status === 'rendering' && '✓ Rendering video...'}
-                  </p>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div className="bg-black h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
-                  </div>
-                </div>
-              )}
-
-              {status === 'complete' && renderedVideoUrl && (
-                <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-6">
-                  <h3 className="text-2xl font-bold text-center">✨ Your video is ready!</h3>
-                  <video src={renderedVideoUrl} controls className="w-full max-w-md mx-auto rounded-lg shadow-lg" />
-                  <div className="flex gap-4 justify-center">
-                    <a href={renderedVideoUrl} download className="px-6 py-3 bg-black text-white rounded-lg font-semibold">
-                      Download Video
-                    </a>
-                    <button onClick={() => window.location.reload()} className="px-6 py-3 border-2 border-black rounded-lg font-semibold">
-                      Edit Another Video
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {status === 'error' && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                  <p className="text-red-800 font-medium">❌ Error: {error}</p>
-                  <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
-                    Try Again
-                  </button>
-                </div>
-              )}
-            </div>
-          </main>
-        </div>
+          {status === 'error' && (
+            <section className="editor-card">
+              <div className="editor-msg-error">❌ Error: {error || 'Something went wrong while processing your video.'}</div>
+              <div className="mt-4">
+                <button onClick={() => window.location.reload()} className="editor-btn-ghost">Try Again</button>
+              </div>
+            </section>
+          )}
+        </main>
       );
     }
 
