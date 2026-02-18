@@ -2203,6 +2203,26 @@ const OPENAI_CHUNK_MAX_DAYS = (() => {
 })();
 const CALENDAR_PLAN_TIMEOUT_MS = 180000;
 const CALENDAR_POST_TIMEOUT_MS = 120000;
+const POST_TOOL = {
+  name: 'create_post',
+  description: 'Create a short-form video post with all required fields.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'A few words describing what the video is about.' },
+      hook: { type: 'string', description: 'The first sentence the creator says out loud, in first person.' },
+      body: { type: 'string', description: 'Everything the creator says after the hook.' },
+      cta: { type: 'string', description: 'The last sentence of the script.' },
+      reelHook: { type: 'string', description: 'On-screen text version of the hook.' },
+      reelBody: { type: 'string', description: 'A few sentences that appear on screen. Shorter version of the body.' },
+      reelCta: { type: 'string', description: 'Shorter version of the cta.' },
+      caption: { type: 'string', description: 'One to two sentences the creator types under the video.' },
+      designNotes: { type: 'string', description: 'One sentence. Where the creator is and what is behind them.' },
+      hashtags: { type: 'array', items: { type: 'string' }, description: '5-8 hashtags.' },
+    },
+    required: ['title', 'hook', 'body', 'cta', 'reelHook', 'reelBody', 'reelCta', 'caption', 'designNotes', 'hashtags'],
+  },
+};
 const OPENAI_GENERATION_TIMEOUT_MS = (() => {
   return CALENDAR_POST_TIMEOUT_MS;
 })();
@@ -8823,14 +8843,19 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
         maxTokens: Math.max(4000, attemptMaxTokens),
       });
     }
+    const claudePayload = {
+      model: 'claude-opus-4-6',
+      system: systemMessage,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: Math.max(4000, attemptMaxTokens),
+      temperature: attemptTemperature,
+    };
+    if (useSinglePost) {
+      claudePayload.tools = [POST_TOOL];
+      claudePayload.toolChoice = { type: 'tool', name: 'create_post' };
+    }
     const requestPromise = withOpenAiSlot(() =>
-      claudeMessagesRequest({
-        model: 'claude-opus-4-6',
-        system: systemMessage,
-        messages: [{ role: 'user', content: prompt }],
-        maxTokens: Math.max(4000, attemptMaxTokens),
-        temperature: attemptTemperature,
-      }).catch((err) => {
+      claudeMessagesRequest(claudePayload).catch((err) => {
         const mode = opts.brandBrainDirective ? 'chunk_brand_brain' : 'chunk';
         const details = {
           claudeType: err?.claudeError?.type || null,
@@ -8863,12 +8888,22 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     });
     const claudeResult = await Promise.race([requestPromise, timeoutPromise]);
     const json = claudeResult?.raw || null;
-    const content = typeof claudeResult?.text === 'string' ? claudeResult.text : '';
+    const contentBlocks = Array.isArray(json?.content) ? json.content : [];
+    let content = typeof claudeResult?.text === 'string' ? claudeResult.text : '';
     let parsedOutput = null;
-    try {
-      parsedOutput = content ? parseJsonFromText(content) : null;
-    } catch (_parseErr) {
-      parsedOutput = null;
+    if (useSinglePost) {
+      const toolBlock = contentBlocks.find((block) => block?.type === 'tool_use' && block?.name === 'create_post');
+      parsedOutput = toolBlock?.input && typeof toolBlock.input === 'object' ? toolBlock.input : null;
+      if (!content) {
+        const textBlock = contentBlocks.find((block) => block?.type === 'text' && typeof block?.text === 'string');
+        content = textBlock?.text || '';
+      }
+    } else {
+      try {
+        parsedOutput = content ? parseJsonFromText(content) : null;
+      } catch (_parseErr) {
+        parsedOutput = null;
+      }
     }
     if (debugEnabled) {
       console.log('[CALENDAR PARSE] chunk schema response length', (content || '').length);
@@ -8923,29 +8958,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
     const parseStart = Date.now();
     if (useSinglePost) {
       const rawText = firstResponse.content || '';
-      let parsed = firstResponse.parsedOutput;
-      let parsedSource = 'output_parsed';
-      if (!parsed && rawText) {
-        try {
-          parsed = parseJsonFromText(rawText);
-          parsedSource = 'output_text_in_output';
-        } catch (parseErr) {
-          const rawHead = String(rawText || '').replace(/\s+/g, ' ').slice(0, 120);
-          console.log('[Calendar][Parse][Fail]', {
-            requestId: loggingContext?.requestId || 'unknown',
-            mode: calendarMode,
-            raw_head: rawHead,
-          });
-          const err = new Error('missing_posts_parse_failed');
-          err.code = 'PARSE_FAILED';
-          err.statusCode = 422;
-          err.reason = 'PARSE_FAILED';
-          err.responseId = firstResponse.responseId || null;
-          err.responseModel = firstResponse.responseModel || modelName;
-          err.usedStructuredOutput = false;
-          throw err;
-        }
-      }
+      const parsed = firstResponse.parsedOutput;
       if (parsed) {
         const normalized = normalizeCalendarModelOutput(parsed, expectedChunkCount, {
           requestId: loggingContext?.requestId || null,
@@ -8960,7 +8973,7 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
             responseId: firstResponse.responseId || null,
             model: firstResponse.responseModel || modelName,
             usedStructuredOutput: true,
-            source: parsedSource,
+            source: 'tool_use',
           });
         }
         return {
@@ -8979,13 +8992,13 @@ async function callOpenAI(nicheStyle, brandContext, opts = {}) {
           responseId: firstResponse.responseId || null,
           model: firstResponse.responseModel || modelName,
           presentFields: firstResponse.responseKeys || [],
-          note: rawText ? 'missing_output_parsed' : 'missing_output_text_in_output',
+          note: 'missing_tool_use_input',
         });
       }
       const parseErr = new Error('missing_posts_parse_failed');
       parseErr.code = 'PARSE_FAILED';
       parseErr.statusCode = 422;
-      parseErr.reason = 'STRUCTURED_OUTPUT_MISSING';
+      parseErr.reason = 'TOOL_USE_MISSING';
       parseErr.responseId = firstResponse.responseId || null;
       parseErr.responseModel = firstResponse.responseModel || modelName;
       parseErr.usedStructuredOutput = false;
