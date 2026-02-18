@@ -705,6 +705,14 @@
           const response = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
           console.log('API response status:', response.status);
           const data = await response.json().catch(() => ({}));
+          console.log('=== API RESPONSE ===');
+          console.log('Full data:', JSON.stringify(data, null, 2));
+          console.log('Subscription field:', data?.subscription);
+          console.log('Plan field:', data?.plan);
+          console.log('Tier field:', data?.tier);
+          console.log('Status field:', data?.status);
+          console.log('Is Pro?:', data?.isPro);
+          console.log('===================');
           if (!response.ok) {
             console.log('API error body:', data);
             throw new Error(data?.error || 'profile_settings_fetch_failed');
@@ -722,17 +730,27 @@
 
           let planTier = 'free';
           try {
-            const subResp = await fetchWithAccountAuth('/api/user/subscription', { method: 'GET' });
-            const subData = await subResp.json().catch(() => ({}));
-            if (subResp.ok) {
-              const rawTier = String(subData?.tier || subData?.plan || 'free').toLowerCase();
-              planTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+            // Match calendar.html source-of-truth: Stripe-backed entitlements endpoint first.
+            const entResp = await fetchWithAccountAuth('/api/entitlements', { method: 'GET' });
+            const entData = await entResp.json().catch(() => ({}));
+            console.log('[AccountModal] entitlements response:', entData);
+            if (entResp.ok && entData && entData.tier) {
+              const rawEntTier = String(entData.tier || 'free').toLowerCase();
+              planTier = rawEntTier === 'paid' || rawEntTier === 'premium' ? 'pro' : rawEntTier;
+            } else {
+              const subResp = await fetchWithAccountAuth('/api/user/subscription', { method: 'GET' });
+              const subData = await subResp.json().catch(() => ({}));
+              console.log('[AccountModal] subscription fallback response:', subData);
+              if (subResp.ok) {
+                const rawTier = String(subData?.tier || subData?.plan || 'free').toLowerCase();
+                planTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+              }
             }
-          } catch (subError) {
-            console.warn('[AccountModal] subscription lookup failed', subError);
+          } catch (tierError) {
+            console.warn('[AccountModal] entitlement/subscription lookup failed', tierError);
           }
 
-          if (accountPlanStatusEl) accountPlanStatusEl.textContent = planTier === 'pro' ? 'Pro plan' : 'Free plan';
+          if (accountPlanStatusEl) accountPlanStatusEl.textContent = planTier === 'pro' ? 'Promptly Pro' : 'Free';
           if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'inline-block' : 'none';
           if (accountPlanLimitsEl) {
             accountPlanLimitsEl.textContent = planTier === 'pro'
