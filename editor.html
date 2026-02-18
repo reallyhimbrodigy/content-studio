@@ -23,10 +23,9 @@
 
       .editor-main {
         width: 100%;
-        max-width: 1200px;
+        max-width: 1000px;
         margin: 0 auto;
-        padding: 32px 40px;
-        min-height: calc(100vh - 220px);
+        padding: 40px 24px;
         display: flex;
         flex-direction: column;
         gap: 24px;
@@ -46,7 +45,7 @@
       }
 
       .editor-container {
-        width: min(1200px, 100%);
+        width: min(800px, 100%);
         margin: 0 auto;
       }
 
@@ -57,7 +56,7 @@
 
       .editor-hero__title {
         margin: 0 0 8px;
-        font-size: 28px;
+        font-size: 32px;
         line-height: 1.1;
         letter-spacing: -0.02em;
         font-weight: 700;
@@ -65,7 +64,7 @@
       }
 
       .editor-hero__subtitle {
-        margin: 0 auto 40px;
+        margin: 0 auto 48px;
         max-width: 700px;
         font-size: 16px;
         font-weight: 400;
@@ -74,167 +73,140 @@
 
       .editor-card {
         background: #1a1a1a;
-        border: 1px solid #2a2a2a;
+        border: 2px solid #2a2a2a;
         border-radius: 16px;
-        padding: 32px;
-        margin-bottom: 24px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        padding: 24px;
+        margin-bottom: 0;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         transition: all 0.3s ease;
       }
 
-      .step-title {
-        margin: 0 0 8px;
-        font-size: 20px;
-        font-weight: 600;
-        color: #ffffff;
+      .editor-card.is-drag {
+        border-color: #ffffff;
+        background: rgba(255, 255, 255, 0.02);
       }
 
-      .step-content {
-        margin-left: 0;
-      }
-
-      .step-help {
-        margin: 0 0 20px;
-        font-size: 14px;
-        color: #808080;
-      }
-
-      .upload-zone {
-        height: 280px;
-        border: 3px dashed #404040;
-        border-radius: 16px;
-        background: #141414;
-        padding: 60px 40px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
+      .composer-header {
         display: flex;
         align-items: center;
-        justify-content: center;
-      }
-
-      .upload-zone:hover {
-        border-color: #606060;
-        background: #1a1a1a;
-      }
-
-      .upload-zone.is-drag {
-        border-color: #ffffff;
-        background: #222222;
-        transform: scale(1.01);
-      }
-
-      .upload-zone.is-disabled {
-        opacity: 0.62;
-        cursor: not-allowed;
-      }
-
-      .upload-icon {
-        font-size: 72px;
-        margin-bottom: 16px;
-      }
-
-      .upload-title {
-        margin: 0 0 8px;
-        font-size: 24px;
-        font-weight: 600;
-        color: #ffffff;
-      }
-
-      .upload-subtitle {
-        margin: 0 0 16px;
-        font-size: 16px;
-        color: #909090;
-      }
-
-      .upload-meta {
-        margin: 12px 0 0;
-        font-size: 14px;
-        color: #606060;
-      }
-
-      .status-box {
-        border-radius: 10px;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 600;
-      }
-
-      .status-box.success {
-        background: rgba(16, 185, 129, 0.15);
-        border: 1px solid rgba(16, 185, 129, 0.35);
-        color: #10b981;
-      }
-
-      .status-box.error {
-        background: rgba(239, 68, 68, 0.15);
-        border: 1px solid rgba(239, 68, 68, 0.35);
-        color: #f87171;
-      }
-
-      .vibe-textarea {
-        width: 100%;
-        min-height: 100px;
-        resize: vertical;
         margin-bottom: 12px;
-        font-size: 16px;
-        padding: 16px;
-        line-height: 1.6;
-        border-radius: 12px;
-        background: #0f0f0f;
-        border: 2px solid #2a2a2a;
+      }
+
+      .attach-button {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #2a2a2a;
+        border: 1px solid #404040;
         color: #ffffff;
-        transition: all 0.3s ease;
-      }
-
-      .vibe-textarea::placeholder {
-        color: #606060;
-        font-style: italic;
-      }
-
-      .vibe-textarea:focus {
-        border-color: #505050;
-        background: #121212;
-        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
-      }
-
-      .vibe-textarea:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-
-      .primary-btn.secondary {
-        width: 100%;
-        height: 56px;
-        border-radius: 12px;
-        margin-top: 24px;
-        font-size: 18px;
-        font-weight: 700;
-        background: #ffffff;
-        color: #000000;
-        border: 1px solid #ffffff;
-        box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
+        font-size: 24px;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
         transition: all 0.2s ease;
       }
 
-      .primary-btn.secondary:hover:enabled {
-        background: #f5f5f5;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(255, 255, 255, 0.15);
+      .attach-button:hover {
+        background: #353535;
+        border-color: #505050;
       }
 
-      .primary-btn.secondary:disabled {
-        background: #303030;
-        color: #707070;
-        border-color: #303030;
+      .composer-textarea {
+        width: 100%;
+        min-height: 200px;
+        resize: vertical;
+        background: transparent;
+        border: none;
+        color: #ffffff;
+        font-size: 16px;
+        line-height: 1.6;
+        padding: 16px;
+      }
+
+      .composer-textarea::placeholder {
+        color: #606060;
+      }
+
+      .composer-textarea:focus {
+        outline: none;
+        box-shadow: none;
+      }
+
+      .upload-progress-wrap {
+        margin-top: 16px;
+      }
+
+      .upload-progress-label {
+        margin: 0 0 8px;
+        font-size: 14px;
+        color: #a0a0a0;
+      }
+
+      .attached-file {
+        margin-top: 16px;
+        background: #0f0f0f;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .attached-file__info {
+        color: #e0e0e0;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attached-file__remove {
+        border: none;
+        background: transparent;
+        color: #808080;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0;
+      }
+
+      .attached-file__remove:hover {
+        color: #ffffff;
+      }
+
+      .composer-generate {
+        width: 100%;
+        height: 56px;
+        margin-top: 20px;
+        border: none;
+        border-radius: 12px;
+        background: #ffffff;
+        color: #000000;
+        font-size: 18px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .composer-generate:hover:enabled {
+        background: #f5f5f5;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+      }
+
+      .composer-generate:disabled {
+        background: #2a2a2a;
+        color: #606060;
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
       }
 
       .trust-badge {
-        border-top: 1px solid #1a1a1a;
-        padding: 20px 0 0;
+        padding: 0;
         margin-top: 24px;
         font-size: 13px;
         color: #707070;
@@ -309,19 +281,6 @@
         .state-card {
           padding: 24px;
           margin-bottom: 24px;
-        }
-
-        .upload-zone {
-          height: 240px;
-          padding: 32px 24px;
-        }
-
-        .upload-icon {
-          font-size: 60px;
-        }
-
-        .upload-title {
-          font-size: 20px;
         }
       }
 
@@ -555,25 +514,40 @@
     <script type="text/babel">
       const { useEffect, useState } = React;
 
-      function UploadZone({ disabled, onUploadComplete, userId }) {
+      function EditorCard({
+        videoUrl,
+        videoFileName,
+        videoFileSize,
+        vibe,
+        setVibe,
+        onUploadComplete,
+        onRemoveUpload,
+        onGenerate,
+        generating,
+        userId,
+      }) {
         const [isUploading, setIsUploading] = useState(false);
         const [progress, setProgress] = useState(0);
         const [error, setError] = useState(null);
         const [dragActive, setDragActive] = useState(false);
+        const canGenerate = Boolean(videoUrl && vibe.trim() && !generating && !isUploading);
+        const formatFileSize = (bytes) => {
+          const value = Number(bytes || 0);
+          if (!Number.isFinite(value) || value <= 0) return '';
+          const mb = value / (1024 * 1024);
+          return `(${mb.toFixed(1)} MB)`;
+        };
 
         const uploadFile = (file) => {
           if (!file) return;
-
           if (file.size > 500 * 1024 * 1024) {
             setError('File too large. Max 500MB.');
             return;
           }
-
           if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) {
             setError('Invalid file type. Use MP4, MOV, or AVI.');
             return;
           }
-
           setError(null);
           setIsUploading(true);
           setProgress(0);
@@ -583,17 +557,15 @@
           formData.append('userId', userId);
 
           const xhr = new XMLHttpRequest();
-
           xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) {
               setProgress(Math.round((e.loaded / e.total) * 100));
             }
           });
-
           xhr.addEventListener('load', () => {
             if (xhr.status === 200) {
               const data = JSON.parse(xhr.responseText);
-              onUploadComplete(data.videoUrl, data.fileName);
+              onUploadComplete(data.videoUrl, data.fileName || file.name, file.size);
             } else {
               let message = 'Upload failed';
               try {
@@ -604,121 +576,91 @@
             }
             setIsUploading(false);
           });
-
           xhr.addEventListener('error', () => {
             setError('Upload failed');
             setIsUploading(false);
           });
-
           xhr.open('POST', '/api/upload');
           xhr.send(formData);
         };
 
-        const handleDrop = (e) => {
-          e.preventDefault();
-          if (disabled || isUploading) return;
-          setDragActive(false);
-          uploadFile(e.dataTransfer.files[0]);
-        };
-
-        const handleChange = (e) => {
-          if (disabled || isUploading) return;
-          uploadFile(e.target.files[0]);
-        };
-
         return (
-          <div>
-            <div
-              className={`upload-zone ${dragActive ? 'is-drag' : ''} ${disabled || isUploading ? 'is-disabled' : ''}`}
-              onDrop={handleDrop}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (disabled || isUploading) return;
-                setDragActive(true);
-              }}
-              onDragLeave={() => setDragActive(false)}
-              onClick={() => {
-                if (disabled || isUploading) return;
-                const input = document.getElementById('editor-file-input');
-                if (input) input.click();
-              }}
-            >
+          <section
+            className={`editor-card ${dragActive ? 'is-drag' : ''}`}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (generating || isUploading) return;
+              setDragActive(false);
+              uploadFile(e.dataTransfer.files[0]);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (generating || isUploading) return;
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+          >
+            <div className="composer-header">
+              <button
+                type="button"
+                className="attach-button"
+                onClick={() => {
+                  if (generating || isUploading) return;
+                  const input = document.getElementById('editor-file-input');
+                  if (input) input.click();
+                }}
+                aria-label="Attach video"
+              >
+                +
+              </button>
               <input
                 id="editor-file-input"
                 type="file"
                 accept="video/mp4,video/quicktime,video/x-msvideo"
-                onChange={handleChange}
                 style={{ display: 'none' }}
+                onChange={(e) => {
+                  if (generating || isUploading) return;
+                  uploadFile(e.target.files[0]);
+                  e.target.value = '';
+                }}
               />
-
-              {isUploading ? (
-                <div>
-                  <p className="upload-title">Uploading...</p>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${progress}%` }} />
-                  </div>
-                  <p className="upload-meta" style={{ marginTop: '10px' }}>{progress}%</p>
-                </div>
-              ) : (
-                <div>
-                  <div className="upload-icon">📤</div>
-                  <p className="upload-title">Drop your video here</p>
-                  <p className="upload-subtitle">or click to browse</p>
-                  <p className="upload-meta">MP4, MOV, AVI • Max 500MB</p>
-                </div>
-              )}
             </div>
-            {error ? <div style={{ marginTop: '10px' }} className="status-box error">{error}</div> : null}
-          </div>
-        );
-      }
 
-      function EditorCard({
-        videoUrl,
-        videoFileName,
-        vibe,
-        setVibe,
-        onUploadComplete,
-        onGenerate,
-        generating,
-        userId,
-      }) {
-        const canGenerate = Boolean(videoUrl && vibe.trim() && !generating);
+            <textarea
+              className="composer-textarea"
+              rows={8}
+              placeholder="Describe the vibe you want... (e.g., punchy TikTok with fast cuts and meme SFX)"
+              disabled={generating || isUploading}
+              value={vibe}
+              onChange={(e) => setVibe(e.target.value)}
+            />
 
-        return (
-          <>
-            <section className="editor-card">
-              <h2 className="step-title">Upload Your Clip</h2>
-              <div className="step-content">
-                <p className="step-help">Use a clear talking-head or storytelling clip for best results</p>
-                {!videoUrl ? (
-                  <UploadZone disabled={generating} onUploadComplete={onUploadComplete} userId={userId} />
-                ) : (
-                  <div className="status-box success">✓ Video uploaded: {videoFileName}</div>
-                )}
+            {isUploading ? (
+              <div className="upload-progress-wrap">
+                <p className="upload-progress-label">Uploading... {progress}%</p>
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${progress}%` }} />
+                </div>
               </div>
-            </section>
+            ) : null}
 
-            <section className="editor-card" style={{ marginBottom: 0 }}>
-              <h2 className="step-title">Describe The Vibe</h2>
-              <div className="step-content">
-                <textarea
-                  className="vibe-textarea"
-                  rows={3}
-                  placeholder="e.g., punchy TikTok with fast cuts and meme SFX"
-                  disabled={!videoUrl || generating}
-                  value={vibe}
-                  onChange={(e) => setVibe(e.target.value)}
-                />
-
-                <button className="primary-btn secondary" disabled={!canGenerate} onClick={onGenerate}>
-                  {generating ? 'Generating...' : 'Generate Edited Video'}
+            {videoUrl ? (
+              <div className="attached-file">
+                <span className="attached-file__info">📎 {videoFileName} {formatFileSize(videoFileSize)}</span>
+                <button type="button" className="attached-file__remove" onClick={onRemoveUpload}>
+                  Remove
                 </button>
               </div>
+            ) : null}
 
-              <div className="trust-badge">⚡ Powered by Claude Opus 4.6 • Estimated time: 60-90 seconds</div>
-            </section>
-          </>
+            {error ? (
+              <div style={{ marginTop: '16px', color: '#f87171', fontSize: '14px' }}>{error}</div>
+            ) : null}
+
+            <button className="composer-generate" disabled={!canGenerate} onClick={onGenerate}>
+              {generating ? 'Generating...' : 'Generate Edited Video'}
+            </button>
+          </section>
         );
       }
 
@@ -769,6 +711,7 @@
         const [userId] = useState(() => `user-${Math.random().toString(36).slice(2, 11)}`);
         const [videoUrl, setVideoUrl] = useState(null);
         const [videoFileName, setVideoFileName] = useState('');
+        const [videoFileSize, setVideoFileSize] = useState(0);
         const [vibe, setVibe] = useState('');
         const [jobId, setJobId] = useState(null);
         const [status, setStatus] = useState('idle');
@@ -802,10 +745,17 @@
           return () => clearInterval(interval);
         }, [jobId]);
 
-        const onUploadComplete = (url, fileName) => {
+        const onUploadComplete = (url, fileName, fileSize = 0) => {
           setVideoUrl(url);
           setVideoFileName(fileName || 'video');
+          setVideoFileSize(Number(fileSize || 0));
           setError(null);
+        };
+
+        const onRemoveUpload = () => {
+          setVideoUrl(null);
+          setVideoFileName('');
+          setVideoFileSize(0);
         };
 
         const onGenerate = async () => {
@@ -839,6 +789,7 @@
         const onReset = () => {
           setVideoUrl(null);
           setVideoFileName('');
+          setVideoFileSize(0);
           setVibe('');
           setJobId(null);
           setStatus('idle');
@@ -864,9 +815,11 @@
               <EditorCard
                 videoUrl={videoUrl}
                 videoFileName={videoFileName}
+                videoFileSize={videoFileSize}
                 vibe={vibe}
                 setVibe={setVibe}
                 onUploadComplete={onUploadComplete}
+                onRemoveUpload={onRemoveUpload}
                 onGenerate={onGenerate}
                 generating={submitting}
                 userId={userId}
@@ -883,6 +836,10 @@
 
             {showError ? (
               <ErrorState error={error} onReset={onReset} />
+            ) : null}
+
+            {showWorkflow ? (
+              <div className="trust-badge">⚡ Powered by Claude Opus 4.6 • 60-90 seconds</div>
             ) : null}
           </>
         );
