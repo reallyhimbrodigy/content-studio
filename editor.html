@@ -541,7 +541,7 @@
         if (accountModal && typeof window.openAccountModal === 'function') {
           window.openAccountModal('account');
         } else {
-          window.location.href = '/calendar.html#account';
+          window.location.href = '/#account';
         }
       });
 
@@ -550,7 +550,7 @@
         if (accountModal && typeof window.openAccountModal === 'function') {
           window.openAccountModal('profile');
         } else {
-          window.location.href = '/calendar.html#profile-settings';
+          window.location.href = '/#profile-settings';
         }
       });
 
@@ -571,6 +571,22 @@
               currentUser = data?.user?.email || '';
             }
           } catch (_) {}
+          if (!currentUser) {
+            try {
+              const profileResp = await fetch('/api/profile/settings', { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+              const profileData = await profileResp.json().catch(() => ({}));
+              currentUser = profileData?.email || '';
+            } catch (_) {}
+          }
+          if (!currentUser) {
+            try {
+              currentUser = localStorage.getItem('promptly_last_user') || '';
+            } catch (_) {}
+          }
+          if (!currentUser) {
+            alert('Please sign in to manage billing.');
+            return;
+          }
           try {
             const resp = await fetch('/api/billing/portal', {
               method: 'POST',
