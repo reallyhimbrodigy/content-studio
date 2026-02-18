@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script src="assets/vendor/supabase.js"></script>
     <style>
       body.page-editor,
       body.page-editor .app-main,
@@ -372,7 +373,7 @@
                       <button id="account-overview-btn" class="profile-menu-item">Account</button>
                       <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
                       <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
-                      <button id="manage-billing-btn" class="profile-menu-item">Manage billing</button>
+                      <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
                       <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
                     </div>
                   </div>
@@ -389,6 +390,99 @@
     </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+    <!-- Account + Accessibility Modal (copied from calendar structure) -->
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
+        <div class="settings-modal__head">
+          <div>
+            <h3 id="account-modal-title">Account settings</h3>
+            <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
+          </div>
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
+            &times;
+          </button>
+        </div>
+        <div class="account-settings-body" data-account-modal-body>
+          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
+            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
+            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
+          </div>
+          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
+            <div class="settings-group">
+              <label>Email</label>
+              <div class="settings-field-readonly mobile-email-row" data-email-row>
+                <span id="account-email-display" data-email-value>you@example.com</span>
+                <button type="button" id="account-email-copy" class="ghost" data-email-copy>Copy</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Password</label>
+              <div class="settings-field-readonly">
+                <span aria-label="Password is hidden">••••••••</span>
+                <button type="button" id="account-password-manage" class="ghost">Update password</button>
+              </div>
+              <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+            </div>
+            <div class="settings-group">
+              <label>Subscription</label>
+              <div class="settings-field-readonly">
+                <div class="settings-field-readonly__details">
+                  <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
+                  <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+                </div>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label>Last login</label>
+              <div class="settings-field-readonly">
+                <span id="account-last-login">Not available</span>
+              </div>
+            </div>
+          </div>
+          <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
+            <form id="account-settings-form" class="settings-form">
+              <div class="settings-group">
+                <label for="account-display-name">Display name</label>
+                <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
+              </div>
+              <div class="settings-group">
+                <label for="account-pronouns">Pronouns (optional)</label>
+                <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
+              </div>
+              <div class="settings-group">
+                <label for="account-role">Role or team</label>
+                <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
+              </div>
+              <fieldset class="settings-group">
+                <legend class="settings-group__label">Interface preferences</legend>
+                <div class="settings-accessibility" data-interface-prefs>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-high-contrast" />
+                    <span>High contrast surfaces</span>
+                  </label>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-large-type" />
+                    <span>Larger typography</span>
+                  </label>
+                  <label class="settings-toggle" data-pref-row>
+                    <input type="checkbox" id="prefers-reduced-motion" />
+                    <span>Reduce motion &amp; animations</span>
+                  </label>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+          <div class="settings-actions" data-account-modal-actions>
+            <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
+            <div class="settings-actions__buttons">
+              <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
+              <button type="submit" form="account-settings-form" class="primary">Save preferences</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="footer.js"></script>
 
@@ -505,6 +599,86 @@
       const manageBillingBtn = document.getElementById('manage-billing-btn');
       const signOutBtn = document.getElementById('sign-out-btn');
       const accountModal = document.getElementById('account-modal');
+      const accountCloseBtn = document.getElementById('account-close-btn');
+      const accountCancelBtn = document.getElementById('account-cancel-btn');
+      const accountForm = document.getElementById('account-settings-form');
+      const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+      const settingsPanels = document.querySelectorAll('[data-settings-panel]');
+      const accountFeedback = document.getElementById('account-feedback');
+      const accountDisplayNameInput = document.getElementById('account-display-name');
+      const accountPronounsInput = document.getElementById('account-pronouns');
+      const accountRoleInput = document.getElementById('account-role');
+      const prefersHighContrastInput = document.getElementById('prefers-high-contrast');
+      const prefersLargeTypeInput = document.getElementById('prefers-large-type');
+      const prefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
+      const accountEmailDisplay = document.getElementById('account-email-display');
+      const accountEmailCopyBtn = document.getElementById('account-email-copy');
+      const accountPasswordManageBtn = document.getElementById('account-password-manage');
+      const accountPlanStatusEl = document.getElementById('account-plan-status');
+      const accountPlanLimitsEl = document.getElementById('account-plan-limits');
+      const accountLastLoginEl = document.getElementById('account-last-login');
+
+      function setAccountSettingsTab(tab = 'account') {
+        settingsTabButtons.forEach((btn) => {
+          const isActive = (btn.dataset.settingsTab || 'account') === tab;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', String(isActive));
+        });
+        settingsPanels.forEach((panel) => {
+          const panelTab = panel.dataset.settingsPanel || 'account';
+          const isActive = panelTab === tab;
+          panel.classList.toggle('active-panel', isActive);
+          panel.style.display = isActive ? '' : 'none';
+        });
+      }
+
+      async function loadAccountModalData() {
+        try {
+          const response = await fetch('/api/profile/settings', {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data?.error || 'Failed to load profile settings');
+          const profile = data?.profile || {};
+          if (accountDisplayNameInput) accountDisplayNameInput.value = profile.displayName || '';
+          if (accountPronounsInput) accountPronounsInput.value = profile.pronouns || '';
+          if (accountRoleInput) accountRoleInput.value = profile.role || '';
+          if (prefersHighContrastInput) prefersHighContrastInput.checked = !!profile.highContrast;
+          if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!profile.largeType;
+          if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!profile.reducedMotion;
+          if (accountEmailDisplay) accountEmailDisplay.textContent = data?.email || 'you@example.com';
+          if (accountPlanStatusEl) accountPlanStatusEl.textContent = (data?.tier || 'free').toLowerCase() === 'pro' ? 'Pro plan' : 'Free plan';
+          if (manageBillingBtn) manageBillingBtn.style.display = (data?.tier || 'free').toLowerCase() === 'pro' ? 'inline-block' : 'none';
+          if (accountPlanLimitsEl) {
+            accountPlanLimitsEl.textContent = (data?.tier || 'free').toLowerCase() === 'pro'
+              ? 'Unlimited calendars · full export access'
+              : '1 calendar/month · single export format';
+          }
+          if (accountLastLoginEl) accountLastLoginEl.textContent = data?.lastLogin || 'Not available';
+        } catch (err) {
+          console.warn('Unable to load account modal data', err);
+        }
+      }
+
+      async function openAccountModal(initialTab = 'account') {
+        if (!accountModal) return;
+        setAccountSettingsTab(initialTab);
+        accountModal.style.display = 'flex';
+        accountModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+        closeProfileMenu();
+        await loadAccountModalData();
+      }
+
+      function closeAccountModal() {
+        if (!accountModal) return;
+        accountModal.style.display = 'none';
+        accountModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+      }
+
+      window.openAccountModal = openAccountModal;
 
       const bindProfileMenuAction = (btn, handler) => {
         if (!btn) return;
@@ -535,17 +709,17 @@
 
       bindProfileMenuAction(accountOverviewBtn, () => {
         closeProfileMenu();
-        window.location.href = '/settings/account';
+        openAccountModal('account');
       });
 
       bindProfileMenuAction(profileSettingsBtn, () => {
         closeProfileMenu();
-        window.location.href = '/settings/profile';
+        openAccountModal('profile');
       });
 
       bindProfileMenuAction(passwordSettingsBtn, () => {
         closeProfileMenu();
-        window.location.href = '/settings/security';
+        window.location.href = '/reset-password.html';
       });
 
       if (manageBillingBtn && !manageBillingBtn.dataset.bound) {
@@ -580,7 +754,7 @@
             const resp = await fetch('/api/billing/portal', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ returnUrl: `${window.location.origin}/editor`, email: currentUser })
+              body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
             });
             const data = await resp.json().catch(() => ({}));
             if (resp.ok && data && data.url) {
@@ -609,9 +783,84 @@
           } catch (err) {
             console.error('signOut error:', err);
           }
-          window.location.replace('/');
+          window.location.replace('auth.html');
         });
       }
+
+      if (accountCloseBtn) accountCloseBtn.addEventListener('click', closeAccountModal);
+      if (accountCancelBtn) accountCancelBtn.addEventListener('click', closeAccountModal);
+      if (accountModal) {
+        accountModal.addEventListener('click', (event) => {
+          if (event.target === accountModal) closeAccountModal();
+        });
+      }
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeAccountModal();
+      });
+
+      if (settingsTabButtons.length) {
+        settingsTabButtons.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            setAccountSettingsTab(btn.dataset.settingsTab || 'account');
+          });
+        });
+      }
+
+      if (accountPasswordManageBtn) {
+        accountPasswordManageBtn.addEventListener('click', () => {
+          window.location.href = '/reset-password.html';
+        });
+      }
+
+      if (accountEmailCopyBtn) {
+        accountEmailCopyBtn.addEventListener('click', async () => {
+          if (!accountEmailDisplay?.textContent) return;
+          try {
+            await navigator.clipboard.writeText(accountEmailDisplay.textContent);
+          } catch (_) {}
+        });
+      }
+
+      if (accountForm && !accountForm.dataset.bound) {
+        accountForm.dataset.bound = '1';
+        accountForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (accountFeedback) {
+            accountFeedback.textContent = 'Saving preferences...';
+            accountFeedback.classList.remove('error', 'success');
+          }
+          const payload = {
+            displayName: accountDisplayNameInput?.value.trim() || '',
+            pronouns: accountPronounsInput?.value.trim() || '',
+            role: accountRoleInput?.value.trim() || '',
+            highContrast: !!prefersHighContrastInput?.checked,
+            largeType: !!prefersLargeTypeInput?.checked,
+            reducedMotion: !!prefersReducedMotionInput?.checked,
+          };
+          try {
+            const response = await fetch('/api/profile/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data?.error || 'Failed to save settings');
+            if (accountFeedback) {
+              accountFeedback.textContent = 'Preferences saved.';
+              accountFeedback.classList.add('success');
+            }
+            setTimeout(closeAccountModal, 250);
+          } catch (err) {
+            console.warn('Unable to save profile settings', err);
+            if (accountFeedback) {
+              accountFeedback.textContent = 'Saved locally, but syncing failed. Try again soon.';
+              accountFeedback.classList.add('error');
+            }
+          }
+        });
+      }
+
+      loadAccountModalData();
     </script>
 
     <script>
