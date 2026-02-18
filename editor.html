@@ -502,48 +502,111 @@
         closeProfileMenu();
       });
 
-      document.getElementById('account-overview-btn')?.addEventListener('click', () => {
-        window.location.href = '/#account';
-      });
-      document.getElementById('profile-settings-btn')?.addEventListener('click', () => {
-        window.location.href = '/#profile-settings';
-      });
-      document.getElementById('password-settings-btn')?.addEventListener('click', () => {
-        window.location.href = 'reset-password.html';
-      });
-      document.getElementById('manage-billing-btn')?.addEventListener('click', async (event) => {
-        event.preventDefault();
-        try {
-          const resp = await fetch('/api/billing/portal', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ returnUrl: window.location.href })
-          });
-          const data = await resp.json().catch(() => ({}));
-          if (resp.ok && data?.url) {
-            window.location.href = data.url;
-          } else {
-            alert(data?.error || 'Billing portal is not configured yet.');
+      const accountOverviewBtn = document.getElementById('account-overview-btn');
+      const profileSettingsBtn = document.getElementById('profile-settings-btn');
+      const passwordSettingsBtn = document.getElementById('password-settings-btn');
+      const manageBillingBtn = document.getElementById('manage-billing-btn');
+      const signOutBtn = document.getElementById('sign-out-btn');
+      const accountModal = document.getElementById('account-modal');
+
+      const bindProfileMenuAction = (btn, handler) => {
+        if (!btn) return;
+        const invoke = (event) => {
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
           }
-        } catch (_) {
-          alert('Billing portal unavailable. Please try again later.');
+          handler();
+        };
+        let pointerTriggered = false;
+        btn.addEventListener('pointerdown', (event) => {
+          if (event.button !== undefined && event.button !== 0) return;
+          pointerTriggered = true;
+          invoke(event);
+        });
+        btn.addEventListener('click', (event) => {
+          if (pointerTriggered) {
+            pointerTriggered = false;
+            return;
+          }
+          invoke(event);
+        });
+        btn.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') invoke(event);
+        });
+      };
+
+      bindProfileMenuAction(accountOverviewBtn, () => {
+        closeProfileMenu();
+        if (accountModal && typeof window.openAccountModal === 'function') {
+          window.openAccountModal('account');
+        } else {
+          window.location.href = '/calendar.html#account';
         }
       });
-      document.getElementById('sign-out-btn')?.addEventListener('click', async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        try {
-          if (typeof window.storeSignOut === 'function') {
-            await window.storeSignOut();
-          } else {
-            const sb = window?.supabase || window?.supabaseClient || null;
-            if (sb?.auth?.signOut) {
-              await sb.auth.signOut();
-            }
-          }
-        } catch (_) {}
-        window.location.replace('auth.html');
+
+      bindProfileMenuAction(profileSettingsBtn, () => {
+        closeProfileMenu();
+        if (accountModal && typeof window.openAccountModal === 'function') {
+          window.openAccountModal('profile');
+        } else {
+          window.location.href = '/calendar.html#profile-settings';
+        }
       });
+
+      bindProfileMenuAction(passwordSettingsBtn, () => {
+        closeProfileMenu();
+        window.location.href = 'reset-password.html';
+      });
+
+      if (manageBillingBtn && !manageBillingBtn.dataset.bound) {
+        manageBillingBtn.dataset.bound = '1';
+        manageBillingBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          let currentUser = '';
+          try {
+            const sb = window?.supabase || window?.supabaseClient || null;
+            if (sb?.auth?.getUser) {
+              const { data } = await sb.auth.getUser();
+              currentUser = data?.user?.email || '';
+            }
+          } catch (_) {}
+          try {
+            const resp = await fetch('/api/billing/portal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data && data.url) {
+              window.location.href = data.url;
+            } else {
+              alert(data?.error || 'Billing portal is not configured yet.');
+            }
+          } catch (_err) {
+            alert('Billing portal unavailable. Please try again later.');
+          }
+        });
+      }
+
+      if (signOutBtn && !signOutBtn.dataset.bound) {
+        signOutBtn.dataset.bound = '1';
+        signOutBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            if (typeof window.storeSignOut === 'function') {
+              await window.storeSignOut();
+            } else {
+              const sb = window?.supabase || window?.supabaseClient || null;
+              if (sb?.auth?.signOut) await sb.auth.signOut();
+            }
+          } catch (err) {
+            console.error('signOut error:', err);
+          }
+          window.location.replace('auth.html');
+        });
+      }
     </script>
 
     <script type="text/babel">
