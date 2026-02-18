@@ -15,10 +15,21 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
+      body.page-editor,
+      body.page-editor .app-main,
+      body.page-editor main.editor-main {
+        background: #121212 !important;
+      }
+
       .editor-main {
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 60px 40px 40px;
+        min-height: calc(100vh - 220px);
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 32px;
       }
 
       .editor-topbar {
@@ -35,53 +46,82 @@
       }
 
       .editor-container {
-        width: min(860px, 100%);
+        width: min(1200px, 100%);
         margin: 0 auto;
       }
 
+      .editor-hero {
+        text-align: center;
+        margin-bottom: 8px;
+      }
+
+      .editor-hero__title {
+        margin: 0 0 16px;
+        font-size: 56px;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        font-weight: 700;
+        color: #ffffff;
+      }
+
+      .editor-hero__subtitle {
+        margin: 0 auto 60px;
+        max-width: 700px;
+        font-size: 24px;
+        font-weight: 400;
+        color: #a0a0a0;
+      }
+
       .editor-card {
-        background: var(--surface);
-        border: 1px solid var(--card-border);
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
         border-radius: 20px;
-        padding: clamp(1.25rem, 2vw, 2rem);
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+        padding: 48px;
+        margin-bottom: 40px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        transition: all 0.3s ease;
       }
 
       .step-title {
         margin: 0 0 12px;
-        font-size: 18px;
+        font-size: 24px;
         font-weight: 600;
-        color: var(--text-primary);
+        color: #ffffff;
       }
 
       .step-content {
-        margin-left: 36px;
+        margin-left: 0;
       }
 
       .step-help {
-        margin: 0 0 14px;
-        font-size: 0.92rem;
-        color: var(--text-secondary);
+        margin: 0 0 32px;
+        font-size: 16px;
+        color: #808080;
       }
 
       .upload-zone {
-        border: 2px dashed rgba(255, 255, 255, 0.32);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.04);
-        padding: clamp(1.75rem, 3vw, 2.5rem);
+        height: 400px;
+        border: 3px dashed #404040;
+        border-radius: 16px;
+        background: #141414;
+        padding: 80px 40px;
         text-align: center;
         cursor: pointer;
-        transition: border-color 0.2s ease, background 0.2s ease;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .upload-zone:hover {
-        border-color: rgba(255, 255, 255, 0.52);
-        background: rgba(255, 255, 255, 0.08);
+        border-color: #606060;
+        background: #1a1a1a;
       }
 
       .upload-zone.is-drag {
-        border-color: rgba(255, 255, 255, 0.66);
-        background: rgba(255, 255, 255, 0.1);
+        border-color: #ffffff;
+        background: #222222;
+        transform: scale(1.01);
       }
 
       .upload-zone.is-disabled {
@@ -90,27 +130,27 @@
       }
 
       .upload-icon {
-        font-size: 44px;
-        margin-bottom: 8px;
+        font-size: 96px;
+        margin-bottom: 24px;
       }
 
       .upload-title {
-        margin: 0 0 4px;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--text-primary);
+        margin: 0 0 8px;
+        font-size: 28px;
+        font-weight: 600;
+        color: #ffffff;
       }
 
       .upload-subtitle {
-        margin: 0;
-        font-size: 14px;
-        color: var(--text-secondary);
+        margin: 0 0 16px;
+        font-size: 18px;
+        color: #909090;
       }
 
       .upload-meta {
         margin: 12px 0 0;
-        font-size: 14px;
-        color: var(--text-secondary);
+        font-size: 15px;
+        color: #606060;
       }
 
       .status-box {
@@ -132,17 +172,30 @@
         color: #f87171;
       }
 
-      .divider {
-        height: 1px;
-        background: var(--card-border);
-        margin: 32px 0;
-      }
-
       .vibe-textarea {
         width: 100%;
-        min-height: 96px;
+        min-height: 140px;
         resize: vertical;
         margin-bottom: 12px;
+        font-size: 18px;
+        padding: 20px;
+        line-height: 1.6;
+        border-radius: 12px;
+        background: #0f0f0f;
+        border: 2px solid #2a2a2a;
+        color: #ffffff;
+        transition: all 0.3s ease;
+      }
+
+      .vibe-textarea::placeholder {
+        color: #606060;
+        font-style: italic;
+      }
+
+      .vibe-textarea:focus {
+        border-color: #505050;
+        background: #121212;
+        box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
       }
 
       .vibe-textarea:disabled {
@@ -150,49 +203,76 @@
         cursor: not-allowed;
       }
 
-      .primary-btn {
+      .primary-btn.secondary {
         width: 100%;
+        height: 64px;
+        border-radius: 12px;
+        margin-top: 24px;
+        font-size: 20px;
+        font-weight: 700;
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid #ffffff;
+        box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
+        transition: all 0.2s ease;
+      }
+
+      .primary-btn.secondary:hover:enabled {
+        background: #f5f5f5;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(255, 255, 255, 0.15);
+      }
+
+      .primary-btn.secondary:disabled {
+        background: #303030;
+        color: #707070;
+        border-color: #303030;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
       }
 
       .trust-badge {
-        border-top: 1px solid var(--card-border);
-        padding-top: 20px;
-        margin-top: 22px;
-        font-size: 13px;
-        color: var(--text3);
+        border-top: 1px solid #1a1a1a;
+        padding: 24px 0 0;
+        margin-top: 24px;
+        font-size: 15px;
+        color: #707070;
         text-align: center;
       }
 
       .state-card {
-        background: var(--surface);
-        border: 1px solid var(--card-border);
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
         border-radius: 20px;
-        padding: clamp(1.25rem, 2vw, 2rem);
+        padding: 60px;
         text-align: center;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        transition: all 0.3s ease;
       }
 
       .state-title {
-        margin: 0 0 8px;
+        margin: 0 0 12px;
         font-size: 1.6rem;
       }
 
       .state-muted {
-        color: var(--text-secondary);
+        color: #9a9a9a;
       }
 
       .progress-track {
         width: 100%;
-        height: 10px;
-        background: rgba(255, 255, 255, 0.12);
+        height: 8px;
+        background: #2a2a2a;
         border-radius: 999px;
         overflow: hidden;
-        margin-top: 14px;
+        margin-top: 24px;
       }
 
       .progress-fill {
         height: 100%;
-        background: #fff;
-        transition: width 0.2s ease;
+        background: linear-gradient(90deg, #ffffff 0%, #e0e0e0 100%);
+        transition: width 0.3s ease;
       }
 
       .state-actions {
@@ -204,10 +284,45 @@
       }
 
       .video-preview {
-        width: min(460px, 100%);
-        border-radius: 12px;
-        border: 1px solid var(--card-border);
+        width: min(600px, 100%);
+        border-radius: 16px;
+        border: 1px solid #2a2a2a;
         margin: 0 auto;
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+      }
+
+      @media (max-width: 980px) {
+        .editor-main {
+          padding: 36px 20px 24px;
+        }
+
+        .editor-hero__title {
+          font-size: 42px;
+        }
+
+        .editor-hero__subtitle {
+          font-size: 19px;
+          margin-bottom: 36px;
+        }
+
+        .editor-card,
+        .state-card {
+          padding: 28px;
+          margin-bottom: 24px;
+        }
+
+        .upload-zone {
+          height: 320px;
+          padding: 40px 24px;
+        }
+
+        .upload-icon {
+          font-size: 76px;
+        }
+
+        .upload-title {
+          font-size: 22px;
+        }
       }
 
       body.page-editor .profile-menu-item.danger {
@@ -571,8 +686,8 @@
         const canGenerate = Boolean(videoUrl && vibe.trim() && !generating);
 
         return (
-          <section className="editor-card">
-            <div>
+          <>
+            <section className="editor-card">
               <h2 className="step-title">Upload Your Clip</h2>
               <div className="step-content">
                 <p className="step-help">Use a clear talking-head or storytelling clip for best results</p>
@@ -582,11 +697,9 @@
                   <div className="status-box success">✓ Video uploaded: {videoFileName}</div>
                 )}
               </div>
-            </div>
+            </section>
 
-            <div className="divider" />
-
-            <div>
+            <section className="editor-card" style={{ marginBottom: 0 }}>
               <h2 className="step-title">Describe The Vibe</h2>
               <div className="step-content">
                 <textarea
@@ -602,10 +715,10 @@
                   {generating ? 'Generating...' : 'Generate Edited Video'}
                 </button>
               </div>
-            </div>
 
-            <div className="trust-badge">⚡ Powered by AI • Estimated time: 60-90 seconds</div>
-          </section>
+              <div className="trust-badge">⚡ Powered by Claude Opus 4.6 • Estimated time: 60-90 seconds</div>
+            </section>
+          </>
         );
       }
 
@@ -742,6 +855,11 @@
 
         return (
           <>
+            <header className="editor-hero">
+              <h1 className="editor-hero__title">AI Video Editor</h1>
+              <p className="editor-hero__subtitle">Turn raw clips into viral videos</p>
+            </header>
+
             {showWorkflow ? (
               <EditorCard
                 videoUrl={videoUrl}

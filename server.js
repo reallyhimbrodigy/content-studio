@@ -3961,9 +3961,9 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-body — Everything the creator says after the hook. The creator reveals what happened, with details.
+body — Everything the creator says after the hook. The creator stays in the scene and reveals what happened next, with details. Each sentence moves the story forward.
 
-cta — The last sentence of the script. The creator says what they are going to do next or what they are looking into next.
+cta — The last sentence of the script. The creator says what they are about to go do right now, continuing from the story they just told.
 
 reelHook — On-screen text version of the hook.
 
@@ -3990,9 +3990,9 @@ title — A few words describing what the video is about.
 
 hook — The first sentence the creator says out loud, in first person. The hook is the moment before something shifted. The body reveals what happened.
 
-${hasPromoting ? `body — Everything the creator says after the hook. The creator reveals what happened, with details. During the story, the creator mentions what they are offering because it connects to what they were talking about.` : `body — Everything the creator says after the hook. The creator reveals what happened, with details.`}
+${hasPromoting ? `body — Everything the creator says after the hook. The creator stays in the scene and reveals what happened next, with details. Each sentence moves the story forward. During the story, what the creator offers comes up because it connects to what was already happening.` : `body — Everything the creator says after the hook. The creator stays in the scene and reveals what happened next, with details. Each sentence moves the story forward.`}
 
-cta — The last sentence of the script. The creator says what they are going to do next or what they are working on next.
+cta — The last sentence of the script. The creator says what they are about to go do right now, continuing from the story they just told.
 
 reelHook — On-screen text version of the hook.
 
