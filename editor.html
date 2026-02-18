@@ -58,7 +58,7 @@
         margin: 0 0 8px;
         font-size: 32px;
         line-height: 1.1;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.01em;
         font-weight: 700;
         color: #ffffff;
       }
@@ -68,13 +68,13 @@
         max-width: 700px;
         font-size: 16px;
         font-weight: 400;
-        color: #909090;
+        color: #808080;
       }
 
       .editor-card {
         background: #1a1a1a;
-        border: 2px solid #2a2a2a;
-        border-radius: 16px;
+        border: 1px solid #252525;
+        border-radius: 12px;
         padding: 24px;
         margin-bottom: 0;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
@@ -93,13 +93,14 @@
       }
 
       .attach-button {
-        width: 40px;
+        width: 100px;
         height: 40px;
         border-radius: 8px;
         background: #2a2a2a;
-        border: 1px solid #404040;
+        border: 1px solid #353535;
         color: #ffffff;
-        font-size: 24px;
+        font-size: 14px;
+        font-weight: 500;
         line-height: 1;
         display: inline-flex;
         align-items: center;
@@ -115,8 +116,8 @@
 
       .composer-textarea {
         width: 100%;
-        min-height: 200px;
-        resize: vertical;
+        height: 120px;
+        resize: none;
         background: transparent;
         border: none;
         color: #ffffff;
@@ -147,40 +148,65 @@
       .attached-file {
         margin-top: 16px;
         background: #0f0f0f;
-        border: 1px solid #2a2a2a;
+        border: 1px solid #252525;
         border-radius: 8px;
         padding: 12px 16px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        margin-bottom: 12px;
       }
 
-      .attached-file__info {
-        color: #e0e0e0;
+      .file-info {
+        display: inline-flex;
+        align-items: center;
         font-size: 14px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .attached-file__remove {
+      .checkmark {
+        color: #10b981;
+        margin-right: 8px;
+      }
+
+      .filename {
+        color: #e0e0e0;
+        font-weight: 500;
+      }
+
+      .filesize {
+        color: #707070;
+        margin-left: 4px;
+      }
+
+      .remove-file {
         border: none;
         background: transparent;
         color: #808080;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 20px;
+        line-height: 1;
         padding: 0;
       }
 
-      .attached-file__remove:hover {
+      .remove-file:hover {
         color: #ffffff;
+      }
+
+      .example-hints {
+        font-size: 13px;
+        color: #505050;
+        margin-top: 8px;
+        text-align: left;
       }
 
       .composer-generate {
         width: 100%;
         height: 56px;
-        margin-top: 20px;
+        margin-top: 16px;
         border: none;
         border-radius: 12px;
         background: #ffffff;
@@ -198,8 +224,9 @@
       }
 
       .composer-generate:disabled {
-        background: #2a2a2a;
-        color: #606060;
+        background: transparent;
+        color: #404040;
+        border: 1px solid #252525;
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
@@ -207,7 +234,7 @@
 
       .trust-badge {
         padding: 0;
-        margin-top: 24px;
+        margin-top: 20px;
         font-size: 13px;
         color: #707070;
         text-align: center;
@@ -611,7 +638,7 @@
                 }}
                 aria-label="Attach video"
               >
-                +
+                📎 Video
               </button>
               <input
                 id="editor-file-input"
@@ -629,11 +656,12 @@
             <textarea
               className="composer-textarea"
               rows={8}
-              placeholder="Describe the vibe you want... (e.g., punchy TikTok with fast cuts and meme SFX)"
+              placeholder="What vibe are you going for?"
               disabled={generating || isUploading}
               value={vibe}
               onChange={(e) => setVibe(e.target.value)}
             />
+            <div className="example-hints">Try: "Punchy TikTok" • "Smooth Reels" • "Chaotic Comedy"</div>
 
             {isUploading ? (
               <div className="upload-progress-wrap">
@@ -646,9 +674,18 @@
 
             {videoUrl ? (
               <div className="attached-file">
-                <span className="attached-file__info">📎 {videoFileName} {formatFileSize(videoFileSize)}</span>
-                <button type="button" className="attached-file__remove" onClick={onRemoveUpload}>
-                  Remove
+                {(() => {
+                  const sizeLabel = String(formatFileSize(videoFileSize)).replace(/[()]/g, '');
+                  return (
+                <span className="file-info">
+                  <span className="checkmark">✓</span>
+                  <span className="filename">{videoFileName}</span>
+                  {sizeLabel ? <span className="filesize">• {sizeLabel}</span> : null}
+                </span>
+                  );
+                })()}
+                <button type="button" className="remove-file" onClick={onRemoveUpload} aria-label="Remove file">
+                  ×
                 </button>
               </div>
             ) : null}
@@ -839,7 +876,7 @@
             ) : null}
 
             {showWorkflow ? (
-              <div className="trust-badge">⚡ Powered by Claude Opus 4.6 • 60-90 seconds</div>
+              <div className="trust-badge">Estimated time: 60-90 seconds</div>
             ) : null}
           </>
         );
