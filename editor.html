@@ -11,9 +11,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
       body.page-editor,
       body.page-editor .app-main,
@@ -538,25 +535,17 @@
 
       bindProfileMenuAction(accountOverviewBtn, () => {
         closeProfileMenu();
-        if (accountModal && typeof window.openAccountModal === 'function') {
-          window.openAccountModal('account');
-        } else {
-          window.location.href = '/#account';
-        }
+        window.location.href = '/settings/account';
       });
 
       bindProfileMenuAction(profileSettingsBtn, () => {
         closeProfileMenu();
-        if (accountModal && typeof window.openAccountModal === 'function') {
-          window.openAccountModal('profile');
-        } else {
-          window.location.href = '/#profile-settings';
-        }
+        window.location.href = '/settings/profile';
       });
 
       bindProfileMenuAction(passwordSettingsBtn, () => {
         closeProfileMenu();
-        window.location.href = 'reset-password.html';
+        window.location.href = '/settings/security';
       });
 
       if (manageBillingBtn && !manageBillingBtn.dataset.bound) {
@@ -591,7 +580,7 @@
             const resp = await fetch('/api/billing/portal', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
+              body: JSON.stringify({ returnUrl: `${window.location.origin}/editor`, email: currentUser })
             });
             const data = await resp.json().catch(() => ({}));
             if (resp.ok && data && data.url) {
@@ -620,351 +609,357 @@
           } catch (err) {
             console.error('signOut error:', err);
           }
-          window.location.replace('auth.html');
+          window.location.replace('/');
         });
       }
     </script>
 
-    <script type="text/babel">
-      const { useEffect, useState } = React;
+    <script>
+      (function initEditorPage() {
+        const root = document.getElementById('editor-react-root');
+        if (!root) return;
 
-      function EditorCard({
-        videoUrl,
-        videoFileName,
-        videoFileSize,
-        vibe,
-        setVibe,
-        onUploadComplete,
-        onRemoveUpload,
-        onGenerate,
-        generating,
-        userId,
-      }) {
-        const [isUploading, setIsUploading] = useState(false);
-        const [progress, setProgress] = useState(0);
-        const [error, setError] = useState(null);
-        const [dragActive, setDragActive] = useState(false);
-        const canGenerate = Boolean(videoUrl && vibe.trim() && !generating && !isUploading);
+        const state = {
+          userId: `user-${Math.random().toString(36).slice(2, 11)}`,
+          videoUrl: null,
+          videoFileName: '',
+          videoFileSize: 0,
+          vibe: '',
+          jobId: null,
+          status: 'idle',
+          progress: 0,
+          renderedVideoUrl: null,
+          error: null,
+          isUploading: false,
+          uploadProgress: 0,
+          submitting: false,
+        };
+        let pollInterval = null;
+
+        root.innerHTML = `
+          <header class="editor-hero">
+            <h1 class="editor-hero__title">AI Video Editor</h1>
+            <p class="editor-hero__subtitle">Turn raw clips into viral videos</p>
+          </header>
+
+          <section id="upload-section" class="editor-card">
+            <div id="input-box">
+              <button id="attach-btn" type="button" class="attach-button" aria-label="Attach video">+</button>
+              <textarea id="vibe-textarea" class="composer-textarea" rows="8" placeholder="What vibe are you going for?"></textarea>
+              <div class="example-hints">Try: "Punchy TikTok" • "Smooth Reels" • "Chaotic Comedy"</div>
+
+              <div id="upload-progress-wrap" class="upload-progress-wrap" style="display:none;">
+                <p id="upload-progress-label" class="upload-progress-label">Uploading... 0%</p>
+                <div class="progress-track"><div id="upload-progress-fill" class="progress-fill" style="width:0%;"></div></div>
+              </div>
+
+              <div id="attached-file" class="attached-file" style="display:none;">
+                <span class="file-icon">📎</span>
+                <span id="file-name" class="file-name"></span>
+                <span id="file-size" class="file-size"></span>
+                <button id="remove-file" type="button" class="remove-file" aria-label="Remove file">×</button>
+              </div>
+
+              <div id="composer-error" style="display:none; margin-top:12px; color:#f87171; font-size:14px;"></div>
+              <button id="generate-btn" class="composer-generate" type="button" disabled>Generate Edited Video</button>
+            </div>
+          </section>
+
+          <section id="processing-section" class="state-card" style="display:none;">
+            <h2 class="state-title">Creating your video...</h2>
+            <p id="status-text" class="state-muted">Queued...</p>
+            <div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%;"></div></div>
+            <p id="progress-text" class="state-muted" style="margin-top:10px;">0%</p>
+          </section>
+
+          <section id="complete-section" class="state-card" style="display:none;">
+            <h2 class="state-title">Your video is ready</h2>
+            <video id="video-preview" controls class="video-preview"></video>
+            <div class="state-actions">
+              <a id="download-link" href="#" download class="secondary" style="text-decoration:none;">Download Video</a>
+              <button id="edit-another-btn" class="ghost" type="button">Edit Another Video</button>
+            </div>
+          </section>
+
+          <section id="error-section" class="state-card" style="display:none;">
+            <h2 class="state-title">Something went wrong</h2>
+            <p id="error-text" class="state-muted" style="margin-bottom:18px;">Failed to process your video.</p>
+            <button id="retry-btn" class="ghost" type="button">Try Again</button>
+          </section>
+
+          <div id="trust-badge" class="trust-badge">Estimated time: 60-90 seconds</div>
+        `;
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'video/mp4,video/quicktime,video/x-msvideo';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        const uploadSection = document.getElementById('upload-section');
+        const inputBox = document.getElementById('input-box');
+        const attachBtn = document.getElementById('attach-btn');
+        const vibeTextarea = document.getElementById('vibe-textarea');
+        const generateBtn = document.getElementById('generate-btn');
+        const uploadProgressWrap = document.getElementById('upload-progress-wrap');
+        const uploadProgressLabel = document.getElementById('upload-progress-label');
+        const uploadProgressFill = document.getElementById('upload-progress-fill');
+        const attachedFile = document.getElementById('attached-file');
+        const fileNameEl = document.getElementById('file-name');
+        const fileSizeEl = document.getElementById('file-size');
+        const removeFileBtn = document.getElementById('remove-file');
+        const composerError = document.getElementById('composer-error');
+        const processingSection = document.getElementById('processing-section');
+        const statusText = document.getElementById('status-text');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const completeSection = document.getElementById('complete-section');
+        const videoPreview = document.getElementById('video-preview');
+        const downloadLink = document.getElementById('download-link');
+        const editAnotherBtn = document.getElementById('edit-another-btn');
+        const errorSection = document.getElementById('error-section');
+        const errorText = document.getElementById('error-text');
+        const retryBtn = document.getElementById('retry-btn');
+        const trustBadge = document.getElementById('trust-badge');
+
         const formatFileSize = (bytes) => {
           const value = Number(bytes || 0);
           if (!Number.isFinite(value) || value <= 0) return '';
-          const mb = value / (1024 * 1024);
-          return `(${mb.toFixed(1)} MB)`;
+          return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+        };
+
+        const syncGenerateState = () => {
+          const canGenerate = Boolean(state.videoUrl && state.vibe.trim() && !state.submitting && !state.isUploading);
+          generateBtn.disabled = !canGenerate;
+        };
+
+        const render = () => {
+          const showWorkflow = !state.jobId;
+          const showProcessing = state.jobId && state.status !== 'complete' && state.status !== 'error';
+          const showComplete = state.status === 'complete' && state.renderedVideoUrl;
+          const showError = state.status === 'error';
+
+          uploadSection.style.display = showWorkflow ? 'block' : 'none';
+          processingSection.style.display = showProcessing ? 'block' : 'none';
+          completeSection.style.display = showComplete ? 'block' : 'none';
+          errorSection.style.display = showError ? 'block' : 'none';
+          trustBadge.style.display = showWorkflow ? 'block' : 'none';
+
+          vibeTextarea.value = state.vibe;
+          vibeTextarea.disabled = state.submitting || state.isUploading;
+          attachBtn.disabled = state.submitting || state.isUploading;
+
+          attachedFile.style.display = state.videoUrl ? 'flex' : 'none';
+          fileNameEl.textContent = state.videoFileName || '';
+          fileSizeEl.textContent = state.videoFileSize ? formatFileSize(state.videoFileSize) : '';
+
+          uploadProgressWrap.style.display = state.isUploading ? 'block' : 'none';
+          uploadProgressLabel.textContent = `Uploading... ${state.uploadProgress}%`;
+          uploadProgressFill.style.width = `${state.uploadProgress}%`;
+
+          composerError.style.display = state.error && showWorkflow ? 'block' : 'none';
+          composerError.textContent = state.error || '';
+
+          if (showProcessing) {
+            const label = state.status === 'queued'
+              ? 'Queued...'
+              : state.status === 'analyzing'
+                ? 'Analyzing clip...'
+                : state.status === 'editing'
+                  ? 'Generating edit recipe...'
+                  : state.status === 'rendering'
+                    ? 'Rendering video...'
+                    : 'Processing...';
+            statusText.textContent = label;
+            progressFill.style.width = `${state.progress || 0}%`;
+            progressText.textContent = `${state.progress || 0}%`;
+          }
+
+          if (showComplete) {
+            videoPreview.src = state.renderedVideoUrl;
+            downloadLink.href = state.renderedVideoUrl;
+          }
+
+          if (showError) {
+            errorText.textContent = state.error || 'Failed to process your video.';
+          }
+
+          syncGenerateState();
+        };
+
+        const reset = () => {
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          state.videoUrl = null;
+          state.videoFileName = '';
+          state.videoFileSize = 0;
+          state.vibe = '';
+          state.jobId = null;
+          state.status = 'idle';
+          state.progress = 0;
+          state.renderedVideoUrl = null;
+          state.error = null;
+          state.isUploading = false;
+          state.uploadProgress = 0;
+          state.submitting = false;
+          render();
         };
 
         const uploadFile = (file) => {
           if (!file) return;
           if (file.size > 500 * 1024 * 1024) {
-            setError('File too large. Max 500MB.');
+            state.error = 'File too large. Max 500MB.';
+            render();
             return;
           }
           if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) {
-            setError('Invalid file type. Use MP4, MOV, or AVI.');
+            state.error = 'Invalid file type. Use MP4, MOV, or AVI.';
+            render();
             return;
           }
-          setError(null);
-          setIsUploading(true);
-          setProgress(0);
+
+          state.error = null;
+          state.isUploading = true;
+          state.uploadProgress = 0;
+          render();
 
           const formData = new FormData();
           formData.append('video', file);
-          formData.append('userId', userId);
+          formData.append('userId', state.userId);
 
           const xhr = new XMLHttpRequest();
           xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) {
-              setProgress(Math.round((e.loaded / e.total) * 100));
+              state.uploadProgress = Math.round((e.loaded / e.total) * 100);
+              render();
             }
           });
           xhr.addEventListener('load', () => {
+            state.isUploading = false;
             if (xhr.status === 200) {
               const data = JSON.parse(xhr.responseText);
-              onUploadComplete(data.videoUrl, data.fileName || file.name, file.size);
+              state.videoUrl = data.videoUrl;
+              state.videoFileName = data.fileName || file.name || 'video';
+              state.videoFileSize = file.size || 0;
+              state.error = null;
             } else {
               let message = 'Upload failed';
               try {
                 const payload = JSON.parse(xhr.responseText);
                 if (payload?.error) message = payload.error;
-              } catch (_e) {}
-              setError(message);
+              } catch (_) {}
+              state.error = message;
             }
-            setIsUploading(false);
+            render();
           });
           xhr.addEventListener('error', () => {
-            setError('Upload failed');
-            setIsUploading(false);
+            state.isUploading = false;
+            state.error = 'Upload failed';
+            render();
           });
           xhr.open('POST', '/api/upload');
           xhr.send(formData);
         };
 
-        return (
-          <section
-            className={`editor-card ${dragActive ? 'is-drag' : ''}`}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (generating || isUploading) return;
-              setDragActive(false);
-              uploadFile(e.dataTransfer.files[0]);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (generating || isUploading) return;
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-          >
-            <button
-              type="button"
-              className="attach-button"
-              onClick={() => {
-                if (generating || isUploading) return;
-                const input = document.getElementById('editor-file-input');
-                if (input) input.click();
-              }}
-              aria-label="Attach video"
-            >
-              +
-            </button>
-            <input
-              id="editor-file-input"
-              type="file"
-              accept="video/mp4,video/quicktime,video/x-msvideo"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                if (generating || isUploading) return;
-                uploadFile(e.target.files[0]);
-                e.target.value = '';
-              }}
-            />
-
-            <textarea
-              className="composer-textarea"
-              rows={8}
-              placeholder="What vibe are you going for?"
-              disabled={generating || isUploading}
-              value={vibe}
-              onChange={(e) => setVibe(e.target.value)}
-            />
-            <div className="example-hints">Try: "Punchy TikTok" • "Smooth Reels" • "Chaotic Comedy"</div>
-
-            {isUploading ? (
-              <div className="upload-progress-wrap">
-                <p className="upload-progress-label">Uploading... {progress}%</p>
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-            ) : null}
-
-            {videoUrl ? (
-              <div className="attached-file">
-                <span className="file-icon">📎</span>
-                <span className="file-name">{videoFileName}</span>
-                {(() => {
-                  const sizeLabel = String(formatFileSize(videoFileSize)).replace(/[()]/g, '');
-                  return sizeLabel ? <span className="file-size">{sizeLabel}</span> : null;
-                })()}
-                <button type="button" className="remove-file" onClick={onRemoveUpload} aria-label="Remove file">
-                  ×
-                </button>
-              </div>
-            ) : null}
-
-            {error ? (
-              <div style={{ marginTop: '16px', color: '#f87171', fontSize: '14px' }}>{error}</div>
-            ) : null}
-
-            <button className="composer-generate" disabled={!canGenerate} onClick={onGenerate}>
-              {generating ? 'Generating...' : 'Generate Edited Video'}
-            </button>
-          </section>
-        );
-      }
-
-      function ProcessingState({ status, progress }) {
-        return (
-          <section className="state-card">
-            <h2 className="state-title">Creating your video...</h2>
-            <p className="state-muted">
-              {status === 'queued' && 'Queued...'}
-              {status === 'analyzing' && 'Analyzing clip...'}
-              {status === 'editing' && 'Generating edit recipe...'}
-              {status === 'rendering' && 'Rendering video...'}
-            </p>
-            <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="state-muted" style={{ marginTop: '10px' }}>{progress}%</p>
-          </section>
-        );
-      }
-
-      function CompleteState({ renderedVideoUrl, onReset }) {
-        return (
-          <section className="state-card">
-            <h2 className="state-title">Your video is ready</h2>
-            <video src={renderedVideoUrl} controls className="video-preview" />
-            <div className="state-actions">
-              <a href={renderedVideoUrl} download className="secondary" style={{ textDecoration: 'none' }}>
-                Download Video
-              </a>
-              <button className="ghost" onClick={onReset}>Edit Another Video</button>
-            </div>
-          </section>
-        );
-      }
-
-      function ErrorState({ error, onReset }) {
-        return (
-          <section className="state-card">
-            <h2 className="state-title">Something went wrong</h2>
-            <p className="state-muted" style={{ marginBottom: '18px' }}>{error || 'Failed to process your video.'}</p>
-            <button className="ghost" onClick={onReset}>Try Again</button>
-          </section>
-        );
-      }
-
-      function App() {
-        const [userId] = useState(() => `user-${Math.random().toString(36).slice(2, 11)}`);
-        const [videoUrl, setVideoUrl] = useState(null);
-        const [videoFileName, setVideoFileName] = useState('');
-        const [videoFileSize, setVideoFileSize] = useState(0);
-        const [vibe, setVibe] = useState('');
-        const [jobId, setJobId] = useState(null);
-        const [status, setStatus] = useState('idle');
-        const [progress, setProgress] = useState(0);
-        const [renderedVideoUrl, setRenderedVideoUrl] = useState(null);
-        const [error, setError] = useState(null);
-        const [submitting, setSubmitting] = useState(false);
-
-        useEffect(() => {
-          if (!jobId) return undefined;
-
-          const interval = setInterval(async () => {
+        const startPolling = (jobId) => {
+          if (pollInterval) clearInterval(pollInterval);
+          pollInterval = setInterval(async () => {
             try {
               const response = await fetch(`/api/jobs/${jobId}`);
               if (!response.ok) return;
               const data = await response.json();
-
-              setStatus(data.status || 'queued');
-              setProgress(data.progress || 0);
-              setRenderedVideoUrl(data.rendered_video_url || null);
-              setError(data.error || null);
-
+              state.status = data.status || 'queued';
+              state.progress = data.progress || 0;
+              state.renderedVideoUrl = data.rendered_video_url || null;
+              state.error = data.error || null;
+              render();
               if (data.status === 'complete' || data.status === 'error') {
-                clearInterval(interval);
+                clearInterval(pollInterval);
+                pollInterval = null;
               }
-            } catch (pollError) {
-              console.error('Polling failed:', pollError);
+            } catch (err) {
+              console.error('Poll error:', err);
             }
           }, 2000);
-
-          return () => clearInterval(interval);
-        }, [jobId]);
-
-        const onUploadComplete = (url, fileName, fileSize = 0) => {
-          setVideoUrl(url);
-          setVideoFileName(fileName || 'video');
-          setVideoFileSize(Number(fileSize || 0));
-          setError(null);
         };
 
-        const onRemoveUpload = () => {
-          setVideoUrl(null);
-          setVideoFileName('');
-          setVideoFileSize(0);
-        };
-
-        const onGenerate = async () => {
-          if (!videoUrl || !vibe.trim()) return;
-
+        const handleGenerate = async () => {
+          if (!state.videoUrl || !state.vibe.trim()) return;
+          state.submitting = true;
+          state.error = null;
+          render();
           try {
-            setSubmitting(true);
-            setError(null);
-
             const response = await fetch('/api/generate', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ videoUrl, vibeInput: vibe.trim(), userId }),
+              body: JSON.stringify({
+                videoUrl: state.videoUrl,
+                vibeInput: state.vibe.trim(),
+                userId: state.userId,
+              }),
             });
-
             const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data?.error || 'Failed to create job');
-            }
-
-            setJobId(data.jobId);
-            setStatus('queued');
-            setProgress(0);
-          } catch (generateError) {
-            setError(generateError.message || 'Failed to create job');
+            if (!response.ok) throw new Error(data?.error || 'Failed to create job');
+            state.jobId = data.jobId;
+            state.status = 'queued';
+            state.progress = 0;
+            state.error = null;
+            startPolling(state.jobId);
+          } catch (err) {
+            state.error = err?.message || 'Failed to create job';
           } finally {
-            setSubmitting(false);
+            state.submitting = false;
+            render();
           }
         };
 
-        const onReset = () => {
-          setVideoUrl(null);
-          setVideoFileName('');
-          setVideoFileSize(0);
-          setVibe('');
-          setJobId(null);
-          setStatus('idle');
-          setProgress(0);
-          setRenderedVideoUrl(null);
-          setError(null);
-          setSubmitting(false);
-        };
+        attachBtn.addEventListener('click', () => {
+          if (state.submitting || state.isUploading) return;
+          fileInput.click();
+        });
 
-        const showWorkflow = !jobId;
-        const showProcessing = jobId && status !== 'complete' && status !== 'error';
-        const showComplete = status === 'complete' && renderedVideoUrl;
-        const showError = status === 'error';
+        fileInput.addEventListener('change', (e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadFile(file);
+          e.target.value = '';
+        });
 
-        return (
-          <>
-            <header className="editor-hero">
-              <h1 className="editor-hero__title">AI Video Editor</h1>
-              <p className="editor-hero__subtitle">Turn raw clips into viral videos</p>
-            </header>
+        inputBox.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (state.submitting || state.isUploading) return;
+          uploadSection.classList.add('is-drag');
+        });
+        inputBox.addEventListener('dragleave', () => {
+          uploadSection.classList.remove('is-drag');
+        });
+        inputBox.addEventListener('drop', (e) => {
+          e.preventDefault();
+          uploadSection.classList.remove('is-drag');
+          if (state.submitting || state.isUploading) return;
+          const file = e.dataTransfer.files?.[0];
+          if (file) uploadFile(file);
+        });
 
-            {showWorkflow ? (
-              <EditorCard
-                videoUrl={videoUrl}
-                videoFileName={videoFileName}
-                videoFileSize={videoFileSize}
-                vibe={vibe}
-                setVibe={setVibe}
-                onUploadComplete={onUploadComplete}
-                onRemoveUpload={onRemoveUpload}
-                onGenerate={onGenerate}
-                generating={submitting}
-                userId={userId}
-              />
-            ) : null}
+        vibeTextarea.addEventListener('input', (e) => {
+          state.vibe = e.target.value || '';
+          syncGenerateState();
+        });
 
-            {showProcessing ? (
-              <ProcessingState status={status} progress={progress} />
-            ) : null}
+        removeFileBtn.addEventListener('click', () => {
+          state.videoUrl = null;
+          state.videoFileName = '';
+          state.videoFileSize = 0;
+          render();
+        });
 
-            {showComplete ? (
-              <CompleteState renderedVideoUrl={renderedVideoUrl} onReset={onReset} />
-            ) : null}
+        generateBtn.addEventListener('click', handleGenerate);
+        editAnotherBtn.addEventListener('click', reset);
+        retryBtn.addEventListener('click', reset);
 
-            {showError ? (
-              <ErrorState error={error} onReset={onReset} />
-            ) : null}
-
-            {showWorkflow ? (
-              <div className="trust-badge">Estimated time: 60-90 seconds</div>
-            ) : null}
-          </>
-        );
-      }
-
-      const root = ReactDOM.createRoot(document.getElementById('editor-react-root'));
-      root.render(<App />);
+        render();
+      })();
     </script>
   </body>
 </html>
