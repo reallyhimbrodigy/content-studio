@@ -618,6 +618,51 @@
       const accountPlanLimitsEl = document.getElementById('account-plan-limits');
       const accountLastLoginEl = document.getElementById('account-last-login');
 
+      async function resolveSupabaseAuthClient() {
+        const existing = window?.supabaseClient || window?.supabase || null;
+        if (existing?.auth?.getSession) return existing;
+        try {
+          const mod = await import('./supabase-client.js');
+          if (mod?.supabase?.auth?.getSession) {
+            window.supabaseClient = mod.supabase;
+            return mod.supabase;
+          }
+        } catch (error) {
+          console.warn('[AccountModal] failed to load supabase-client.js', error);
+        }
+        return null;
+      }
+
+      async function getSupabaseAccessToken() {
+        const sb = await resolveSupabaseAuthClient();
+        if (!sb?.auth?.getSession) return '';
+        const { data, error } = await sb.auth.getSession();
+        if (error) {
+          console.warn('[AccountModal] getSession error', error);
+          return '';
+        }
+        return data?.session?.access_token || '';
+      }
+
+      async function fetchWithAccountAuth(path, options = {}) {
+        const token = await getSupabaseAccessToken();
+        if (!token) {
+          const err = new Error('auth_failed');
+          err.status = 401;
+          throw err;
+        }
+        const headers = new Headers(options.headers || {});
+        if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+          headers.set('Content-Type', 'application/json');
+        }
+        headers.set('Authorization', `Bearer ${token}`);
+        return fetch(path, {
+          ...options,
+          headers,
+          credentials: 'include',
+        });
+      }
+
       function setAccountSettingsTab(tab = 'account') {
         settingsTabButtons.forEach((btn) => {
           const isActive = (btn.dataset.settingsTab || 'account') === tab;
@@ -633,30 +678,70 @@
       }
 
       async function loadAccountModalData() {
+        console.log('=== LOADING ACCOUNT MODAL ===');
         try {
-          const response = await fetch('/api/profile/settings', {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-          });
+          console.log('Step 1: Resolving auth user...');
+          const sb = await resolveSupabaseAuthClient();
+          const { data: authData, error: authError } = sb?.auth?.getUser
+            ? await sb.auth.getUser()
+            : { data: { user: null }, error: new Error('supabase_client_missing') };
+          const authUser = authData?.user || null;
+          console.log('Auth user:', authUser?.email || 'No user', authError || null);
+
+          if (accountEmailDisplay) {
+            accountEmailDisplay.textContent = authUser?.email || 'Not signed in';
+          }
+          if (accountLastLoginEl) {
+            accountLastLoginEl.textContent = authUser?.last_sign_in_at
+              ? new Date(authUser.last_sign_in_at).toLocaleString()
+              : 'Not available';
+          }
+
+          console.log('Step 2: Getting access token...');
+          const token = await getSupabaseAccessToken();
+          console.log('Access token present:', Boolean(token));
+
+          console.log('Step 3: Fetching /api/profile/settings...');
+          const response = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
+          console.log('API response status:', response.status);
           const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(data?.error || 'Failed to load profile settings');
-          const profile = data?.profile || {};
-          if (accountDisplayNameInput) accountDisplayNameInput.value = profile.displayName || '';
-          if (accountPronounsInput) accountPronounsInput.value = profile.pronouns || '';
-          if (accountRoleInput) accountRoleInput.value = profile.role || '';
-          if (prefersHighContrastInput) prefersHighContrastInput.checked = !!profile.highContrast;
-          if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!profile.largeType;
-          if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!profile.reducedMotion;
-          if (accountEmailDisplay) accountEmailDisplay.textContent = data?.email || 'you@example.com';
-          if (accountPlanStatusEl) accountPlanStatusEl.textContent = (data?.tier || 'free').toLowerCase() === 'pro' ? 'Pro plan' : 'Free plan';
-          if (manageBillingBtn) manageBillingBtn.style.display = (data?.tier || 'free').toLowerCase() === 'pro' ? 'inline-block' : 'none';
+          if (!response.ok) {
+            console.log('API error body:', data);
+            throw new Error(data?.error || 'profile_settings_fetch_failed');
+          }
+
+          const settings = data?.settings && typeof data.settings === 'object'
+            ? data.settings
+            : {};
+          if (accountDisplayNameInput) accountDisplayNameInput.value = settings.displayName || '';
+          if (accountPronounsInput) accountPronounsInput.value = settings.pronouns || '';
+          if (accountRoleInput) accountRoleInput.value = settings.role || '';
+          if (prefersHighContrastInput) prefersHighContrastInput.checked = !!settings.highContrast;
+          if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!settings.largeType;
+          if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!settings.reducedMotion;
+
+          let planTier = 'free';
+          try {
+            const subResp = await fetchWithAccountAuth('/api/user/subscription', { method: 'GET' });
+            const subData = await subResp.json().catch(() => ({}));
+            if (subResp.ok) {
+              const rawTier = String(subData?.tier || subData?.plan || 'free').toLowerCase();
+              planTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
+            }
+          } catch (subError) {
+            console.warn('[AccountModal] subscription lookup failed', subError);
+          }
+
+          if (accountPlanStatusEl) accountPlanStatusEl.textContent = planTier === 'pro' ? 'Pro plan' : 'Free plan';
+          if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'inline-block' : 'none';
           if (accountPlanLimitsEl) {
-            accountPlanLimitsEl.textContent = (data?.tier || 'free').toLowerCase() === 'pro'
+            accountPlanLimitsEl.textContent = planTier === 'pro'
               ? 'Unlimited calendars · full export access'
               : '1 calendar/month · single export format';
           }
-          if (accountLastLoginEl) accountLastLoginEl.textContent = data?.lastLogin || 'Not available';
+          console.log('Step 4: Account modal data loaded.');
         } catch (err) {
+          console.error('=== LOAD FAILED ===', err);
           console.warn('Unable to load account modal data', err);
         }
       }
@@ -728,7 +813,7 @@
           e.preventDefault();
           let currentUser = '';
           try {
-            const sb = window?.supabase || window?.supabaseClient || null;
+            const sb = await resolveSupabaseAuthClient();
             if (sb?.auth?.getUser) {
               const { data } = await sb.auth.getUser();
               currentUser = data?.user?.email || '';
@@ -736,9 +821,11 @@
           } catch (_) {}
           if (!currentUser) {
             try {
-              const profileResp = await fetch('/api/profile/settings', { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+              const profileResp = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
               const profileData = await profileResp.json().catch(() => ({}));
-              currentUser = profileData?.email || '';
+              const sb = await resolveSupabaseAuthClient();
+              const { data } = sb?.auth?.getUser ? await sb.auth.getUser() : { data: { user: null } };
+              currentUser = data?.user?.email || profileData?.email || '';
             } catch (_) {}
           }
           if (!currentUser) {
@@ -753,7 +840,11 @@
           try {
             const resp = await fetch('/api/billing/portal', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await getSupabaseAccessToken()}`
+              },
+              credentials: 'include',
               body: JSON.stringify({ returnUrl: window.location.href, email: currentUser })
             });
             const data = await resp.json().catch(() => ({}));
@@ -777,7 +868,7 @@
             if (typeof window.storeSignOut === 'function') {
               await window.storeSignOut();
             } else {
-              const sb = window?.supabase || window?.supabaseClient || null;
+              const sb = await resolveSupabaseAuthClient();
               if (sb?.auth?.signOut) await sb.auth.signOut();
             }
           } catch (err) {
@@ -838,9 +929,8 @@
             reducedMotion: !!prefersReducedMotionInput?.checked,
           };
           try {
-            const response = await fetch('/api/profile/settings', {
+            const response = await fetchWithAccountAuth('/api/profile/settings', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
             const data = await response.json().catch(() => ({}));
