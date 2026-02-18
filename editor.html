@@ -75,10 +75,11 @@
         background: #1a1a1a;
         border: 1px solid #252525;
         border-radius: 12px;
-        padding: 24px;
+        padding: 16px;
         margin-bottom: 0;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         transition: all 0.3s ease;
+        position: relative;
       }
 
       .editor-card.is-drag {
@@ -86,44 +87,49 @@
         background: rgba(255, 255, 255, 0.02);
       }
 
-      .composer-header {
-        display: flex;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-
       .attach-button {
-        width: 100px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
         border-radius: 8px;
-        background: #2a2a2a;
+        background: transparent;
         border: 1px solid #353535;
-        color: #ffffff;
-        font-size: 14px;
-        font-weight: 500;
+        color: #909090;
+        font-size: 20px;
+        font-weight: 300;
         line-height: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         transition: all 0.2s ease;
+        position: absolute;
+        top: 16px;
+        left: 16px;
       }
 
       .attach-button:hover {
-        background: #353535;
-        border-color: #505050;
+        background: #1a1a1a;
+        border-color: #353535;
+        color: #ffffff;
+      }
+
+      .attach-button:focus,
+      .attach-button:active {
+        background: #222222;
+        border-color: #404040;
+        outline: none;
       }
 
       .composer-textarea {
         width: 100%;
-        height: 120px;
+        min-height: 120px;
         resize: none;
         background: transparent;
         border: none;
         color: #ffffff;
         font-size: 16px;
-        line-height: 1.6;
-        padding: 16px;
+        line-height: 1.5;
+        padding: 16px 16px 16px 60px;
       }
 
       .composer-textarea::placeholder {
@@ -146,72 +152,74 @@
       }
 
       .attached-file {
-        margin-top: 16px;
+        margin-top: 12px;
         background: #0f0f0f;
         border: 1px solid #252525;
         border-radius: 8px;
-        padding: 12px 16px;
+        padding: 10px 12px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
         margin-bottom: 12px;
+        font-size: 14px;
       }
 
-      .file-info {
-        display: inline-flex;
-        align-items: center;
-        font-size: 14px;
+      .file-icon {
+        font-size: 16px;
+        color: #bcbcbc;
+      }
+
+      .file-name {
+        color: #e0e0e0;
+        font-weight: 500;
+        flex: 1;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .checkmark {
-        color: #10b981;
-        margin-right: 8px;
-      }
-
-      .filename {
-        color: #e0e0e0;
-        font-weight: 500;
-      }
-
-      .filesize {
+      .file-size {
         color: #707070;
-        margin-left: 4px;
+        font-size: 13px;
       }
 
       .remove-file {
         border: none;
         background: transparent;
-        color: #808080;
+        color: #707070;
         cursor: pointer;
-        font-size: 20px;
+        font-size: 18px;
         line-height: 1;
         padding: 0;
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
       }
 
       .remove-file:hover {
+        background: #252525;
         color: #ffffff;
       }
 
       .example-hints {
         font-size: 13px;
-        color: #505050;
-        margin-top: 8px;
+        color: #606060;
+        margin-top: 12px;
         text-align: left;
       }
 
       .composer-generate {
         width: 100%;
-        height: 56px;
+        height: 52px;
         margin-top: 16px;
         border: none;
-        border-radius: 12px;
+        border-radius: 10px;
         background: #ffffff;
         color: #000000;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -627,31 +635,29 @@
             }}
             onDragLeave={() => setDragActive(false)}
           >
-            <div className="composer-header">
-              <button
-                type="button"
-                className="attach-button"
-                onClick={() => {
-                  if (generating || isUploading) return;
-                  const input = document.getElementById('editor-file-input');
-                  if (input) input.click();
-                }}
-                aria-label="Attach video"
-              >
-                📎 Video
-              </button>
-              <input
-                id="editor-file-input"
-                type="file"
-                accept="video/mp4,video/quicktime,video/x-msvideo"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  if (generating || isUploading) return;
-                  uploadFile(e.target.files[0]);
-                  e.target.value = '';
-                }}
-              />
-            </div>
+            <button
+              type="button"
+              className="attach-button"
+              onClick={() => {
+                if (generating || isUploading) return;
+                const input = document.getElementById('editor-file-input');
+                if (input) input.click();
+              }}
+              aria-label="Attach video"
+            >
+              +
+            </button>
+            <input
+              id="editor-file-input"
+              type="file"
+              accept="video/mp4,video/quicktime,video/x-msvideo"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                if (generating || isUploading) return;
+                uploadFile(e.target.files[0]);
+                e.target.value = '';
+              }}
+            />
 
             <textarea
               className="composer-textarea"
@@ -674,15 +680,11 @@
 
             {videoUrl ? (
               <div className="attached-file">
+                <span className="file-icon">📎</span>
+                <span className="file-name">{videoFileName}</span>
                 {(() => {
                   const sizeLabel = String(formatFileSize(videoFileSize)).replace(/[()]/g, '');
-                  return (
-                <span className="file-info">
-                  <span className="checkmark">✓</span>
-                  <span className="filename">{videoFileName}</span>
-                  {sizeLabel ? <span className="filesize">• {sizeLabel}</span> : null}
-                </span>
-                  );
+                  return sizeLabel ? <span className="file-size">{sizeLabel}</span> : null;
                 })()}
                 <button type="button" className="remove-file" onClick={onRemoveUpload} aria-label="Remove file">
                   ×
