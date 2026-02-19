@@ -267,27 +267,54 @@
       <!-- Pricing Section -->
       <section class="pricing" id="pricing">
         <div class="pricing-container">
-          <h2 class="section-headline">One Simple Plan</h2>
-          <div class="pricing-card">
-            <div class="pricing-price">
-              <span class="pricing-amount">$9.99</span>
-              <span class="pricing-period">/month</span>
+          <h2 class="section-headline">Simple Pricing</h2>
+          <p class="pricing-subheadline">Try free. Upgrade when you're ready.</p>
+
+          <div class="pricing-cards">
+            <div class="pricing-card free-tier">
+              <h3 class="tier-name">Free</h3>
+
+              <div class="pricing-price">
+                <span class="pricing-amount">$0</span>
+              </div>
+
+              <ul class="pricing-features">
+                <li><span class="checkmark">✓</span> 5 AI edits per month</li>
+                <li><span class="checkmark">✓</span> All content types</li>
+                <li><span class="checkmark">✓</span> HD exports (1080p)</li>
+                <li><span class="checkmark">✓</span> 7-day content calendar</li>
+              </ul>
+
+              <a href="https://usepromptly.app/auth.html" class="pricing-cta secondary">
+                Get Started Free
+              </a>
             </div>
-            <ul class="pricing-features">
-              <li><span class="checkmark">✓</span> Unlimited video edits</li>
-              <li><span class="checkmark">✓</span> All content types supported</li>
-              <li><span class="checkmark">✓</span> Professional effects &amp; grading</li>
-              <li><span class="checkmark">✓</span> HD exports (1080p)</li>
-              <li><span class="checkmark">✓</span> Cancel anytime</li>
-            </ul>
-            <a href="https://usepromptly.app/auth.html" class="pricing-cta">Start Free Trial</a>
-            <p class="pricing-trial">First 5 videos free. No credit card required.</p>
-            <div class="pricing-bonus-section">
-              <div class="bonus-divider"></div>
-              <p class="pricing-bonus-title">Bonus Included:</p>
-              <p class="pricing-bonus">
-                30-day content calendar with ready-to-film video scripts
-              </p>
+
+            <div class="pricing-card pro-tier highlighted">
+              <div class="popular-badge">MOST POPULAR</div>
+
+              <h3 class="tier-name">Pro</h3>
+
+              <div class="pricing-price">
+                <span class="pricing-amount">$19.99</span>
+                <span class="pricing-period">/month</span>
+              </div>
+
+              <p class="pricing-annual">or $199/year (save $40)</p>
+
+              <ul class="pricing-features">
+                <li><span class="checkmark">✓</span> <strong>Unlimited</strong> AI edits</li>
+                <li><span class="checkmark">✓</span> Priority processing</li>
+                <li><span class="checkmark">✓</span> 30-day content calendar</li>
+                <li><span class="checkmark">✓</span> Brand Brain Mode</li>
+                <li><span class="checkmark">✓</span> Priority support</li>
+              </ul>
+
+              <button onclick="openUpgradeModal()" class="pricing-cta primary" type="button">
+                Upgrade to Pro
+              </button>
+
+              <p class="pricing-guarantee">Cancel anytime</p>
             </div>
           </div>
         </div>
@@ -309,9 +336,56 @@
       <!-- Footer is preserved via existing footer.js injection -->
     </div>
 
+    <!-- Upgrade Modal -->
+    <div id="upgrade-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-container">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeUpgradeModal()" aria-label="Close modal" type="button">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          <div class="modal-header">
+            <h2 class="modal-title">Upgrade to Promptly Pro</h2>
+            <p class="modal-subtitle">Unlock unlimited AI video edits</p>
+          </div>
+
+          <div class="modal-pricing-card">
+            <div class="modal-badge">PROMPTLY PRO</div>
+
+            <div class="modal-price">
+              <span class="modal-price-amount">$19.99</span>
+              <span class="modal-price-period">/month</span>
+            </div>
+
+            <p class="modal-annual">or $199/year (save $40)</p>
+
+            <ul class="modal-features">
+              <li><span class="checkmark">✓</span> <strong>Unlimited</strong> AI video edits</li>
+              <li><span class="checkmark">✓</span> Priority processing (faster renders)</li>
+              <li><span class="checkmark">✓</span> 30-day content calendar</li>
+              <li><span class="checkmark">✓</span> Brand Brain Mode included</li>
+              <li><span class="checkmark">✓</span> Priority support</li>
+            </ul>
+
+            <a href="https://usepromptly.app/auth.html" class="modal-cta">Start Free Trial</a>
+
+            <p class="modal-trial-text">First 5 videos free. No credit card required.</p>
+
+            <div class="modal-bonus">
+              <p class="modal-bonus-text">Cancel anytime • 30-day money-back guarantee</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="application/ld+json" src="/assets/schema-website.json"></script>
     <script type="application/ld+json" src="/assets/schema-organization.json"></script>
     <script type="application/ld+json" src="/assets/schema-product.json"></script>
+    <script src="/js/upgrade-modal.js"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
