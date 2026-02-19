@@ -382,24 +382,6 @@ a {
   color: #a0a0a0;
 }
 
-/* Flexibility Section */
-.flexibility {
-  padding: 80px 24px;
-  background: #0f0f0f;
-}
-
-.flexibility-container {
-  max-width: 800px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.flexibility-description {
-  font-size: 18px;
-  line-height: 1.6;
-  color: #a0a0a0;
-}
-
 /* Pricing Section */
 .pricing {
   padding: 80px 24px;
