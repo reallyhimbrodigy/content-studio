@@ -1,40 +1,68 @@
-(function () {
-  function getModal() {
-    return document.getElementById('upgrade-modal');
-  }
+// Upgrade Modal Functions
 
-  function lockBody(lock) {
-    document.body.style.overflow = lock ? 'hidden' : '';
-  }
-
-  window.openUpgradeModal = function openUpgradeModal() {
-    var modal = getModal();
-    if (!modal) return;
+function openUpgradeModal() {
+  const modal = document.getElementById('upgrade-modal');
+  if (modal) {
     modal.style.display = 'flex';
-    lockBody(true);
-  };
+    document.body.style.overflow = 'hidden'; // Prevent background scroll
+  }
+}
 
-  window.closeUpgradeModal = function closeUpgradeModal() {
-    var modal = getModal();
-    if (!modal) return;
+function closeUpgradeModal() {
+  const modal = document.getElementById('upgrade-modal');
+  if (modal) {
     modal.style.display = 'none';
-    lockBody(false);
-  };
+    document.body.style.overflow = 'auto'; // Restore scroll
+  }
+}
 
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') {
-      var modal = getModal();
-      if (modal && modal.style.display !== 'none' && modal.style.display !== '') {
-        window.closeUpgradeModal();
+// Initialize modal event listeners
+document.addEventListener('DOMContentLoaded', function() {
+  const modal = document.getElementById('upgrade-modal');
+
+  // Main upgrade button in pricing section
+  const upgradeBtn = document.getElementById('upgrade-to-pro-btn');
+  if (upgradeBtn) {
+    upgradeBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      openUpgradeModal();
+    });
+  }
+
+  // All other upgrade trigger buttons (hero, final CTA, etc.)
+  const upgradeTriggers = document.querySelectorAll('.upgrade-trigger');
+  upgradeTriggers.forEach(function(trigger) {
+    trigger.addEventListener('click', function(e) {
+      e.preventDefault();
+      openUpgradeModal();
+    });
+  });
+
+  // Close button
+  const closeBtn = document.getElementById('modal-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      closeUpgradeModal();
+    });
+  }
+
+  // Close modal when clicking overlay background
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        closeUpgradeModal();
+      }
+    });
+  }
+
+  // Close modal on ESC key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('upgrade-modal');
+      if (modal && modal.style.display === 'flex') {
+        closeUpgradeModal();
       }
     }
   });
-
-  document.addEventListener('click', function (event) {
-    var modal = getModal();
-    if (!modal || modal.style.display === 'none' || modal.style.display === '') return;
-    if (event.target === modal) {
-      window.closeUpgradeModal();
-    }
-  });
-})();
+});
