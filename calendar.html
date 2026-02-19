@@ -42,6 +42,17 @@
       gap: 0.9rem;
       border: 1px solid #1a1a1a;
       background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), transparent 55%), #0f0f0f;
+      margin-bottom: 0.35rem;
+    }
+
+    .page-calendar .app-hero + main#app {
+      margin-top: 0 !important;
+      padding-top: 0;
+    }
+
+    .page-calendar .calendar {
+      margin-top: 0;
+      padding-top: 0.35rem;
     }
 
     .page-calendar .app-hero .hero-top {
@@ -122,11 +133,14 @@
     .page-calendar #delete-calendar-button:focus,
     .page-calendar #delete-calendar-button:active,
     .page-calendar #delete-calendar-button:focus-visible {
+      appearance: none !important;
       background: transparent !important;
       border: none !important;
       color: #a55a5a !important;
       box-shadow: none !important;
       padding-inline: 4px !important;
+      font-weight: 600 !important;
+      text-align: left;
       text-decoration: none;
     }
 
@@ -136,7 +150,7 @@
     }
 
     .page-calendar .calendar-card {
-      border: 1px solid #252525;
+      border: 1px solid #2b2b2b;
       box-shadow: 0 18px 28px rgba(0, 0, 0, 0.22);
     }
 
@@ -279,11 +293,14 @@
       }
 
       .page-calendar .app-hero .hero-controls {
+        order: 1;
+      }
+
+      .page-calendar .app-hero .hero-topbar {
         order: 2;
       }
 
       .page-calendar .app-hero .hero-topbar .profile-wrapper {
-        order: 3;
         margin-left: 0;
       }
 
@@ -331,6 +348,9 @@
         <header class="hero app-hero">
           <div class="hero-top">
               <div id="user-menu" class="user-menu" style="display: none; align-items: center; gap: 0.75rem;">
+                <div class="hero-controls">
+                  <button id="brand-brain-btn" class="primary brand-brain-btn" data-analytics="modal_brandbrain_open">Brand Brain</button>
+                </div>
                 <div class="hero-topbar">
                   <div class="profile-wrapper">
                     <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
@@ -348,9 +368,6 @@
                       </div>
                     </div>
                   </div>
-                </div>
-                <div class="hero-controls">
-                  <button id="brand-brain-btn" class="primary brand-brain-btn" data-analytics="modal_brandbrain_open">Brand Brain</button>
                 </div>
               </div>
           </div>
