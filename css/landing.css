@@ -172,54 +172,6 @@ a {
   color: #707070;
 }
 
-/* Proof Section */
-.proof {
-  padding: 80px 24px;
-  background: #0f0f0f;
-}
-
-.proof-container {
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-.proof-video {
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid #1a1a1a;
-}
-
-.proof-placeholder {
-  background: #141414;
-  padding: 80px 40px;
-  text-align: center;
-}
-
-.proof-text {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
-  margin-bottom: 24px;
-}
-
-.proof-before,
-.proof-after {
-  font-size: 18px;
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.proof-arrow {
-  font-size: 32px;
-  color: #0066ff;
-}
-
-.proof-time {
-  font-size: 16px;
-  color: #a0a0a0;
-}
-
 /* Problem Section */
 .problem {
   padding: 80px 24px;
@@ -251,16 +203,24 @@ a {
   border: 1px solid #1a1a1a;
   border-radius: 12px;
   padding: 32px 24px;
-  transition: border-color 0.2s;
+  transition: transform 0.2s, border-color 0.2s;
 }
 
 .problem-item:hover {
-  border-color: #333333;
+  transform: translateY(-4px);
+  border-color: #0066ff;
 }
 
 .problem-icon {
-  font-size: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 16px;
+}
+
+.problem-icon svg {
+  color: #0066ff;
+  stroke-width: 1.5;
 }
 
 .problem-title {
@@ -308,6 +268,13 @@ a {
   flex: 1;
   max-width: 320px;
   position: relative;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.step:hover {
+  transform: translateY(-4px);
+  border-color: #0066ff;
+  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.15);
 }
 
 .step-number {
@@ -327,8 +294,15 @@ a {
 }
 
 .step-icon {
-  font-size: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 16px;
+}
+
+.step-icon svg {
+  color: #0066ff;
+  stroke-width: 1.5;
 }
 
 .step-title {
@@ -348,6 +322,7 @@ a {
   font-size: 32px;
   color: #333333;
   flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
 }
 
 /* Features Section */
@@ -373,16 +348,25 @@ a {
   border-radius: 12px;
   padding: 24px;
   text-align: center;
-  transition: border-color 0.2s;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 
 .feature:hover {
-  border-color: #333333;
+  transform: translateY(-4px);
+  border-color: #0066ff;
+  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.15);
 }
 
 .feature-icon {
-  font-size: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 12px;
+  color: #0066ff;
+}
+
+.feature-icon svg {
+  stroke-width: 1.7;
 }
 
 .feature-title {
@@ -434,6 +418,12 @@ a {
   border-radius: 12px;
   padding: 48px 40px;
   position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 102, 255, 0.2);
 }
 
 .pricing-card::before {
@@ -448,7 +438,7 @@ a {
 }
 
 .pricing-badge {
-  display: inline-block;
+  display: none;
   background: rgba(0, 102, 255, 0.1);
   color: #0066ff;
   padding: 6px 12px;
@@ -487,6 +477,14 @@ a {
   color: #a0a0a0;
   margin-bottom: 12px;
   padding-left: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.pricing-features .checkmark {
+  color: #0066ff;
+  font-weight: bold;
+  margin-right: 8px;
 }
 
 .pricing-cta {
@@ -512,12 +510,30 @@ a {
   margin-bottom: 24px;
 }
 
-.pricing-bonus {
-  font-size: 14px;
-  color: #707070;
-  line-height: 1.5;
-  padding-top: 24px;
+.pricing-bonus-section {
+  margin-top: 32px;
+  padding-top: 32px;
   border-top: 1px solid #1a1a1a;
+}
+
+.bonus-divider {
+  display: none;
+}
+
+.pricing-bonus-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0066ff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pricing-bonus {
+  font-size: 15px;
+  color: #a0a0a0;
+  line-height: 1.5;
+  margin: 0;
 }
 
 /* Final CTA Section */
@@ -604,6 +620,7 @@ a {
 
   .step-arrow {
     transform: rotate(90deg);
+    animation: none;
   }
 
   .nav-links {
@@ -612,6 +629,17 @@ a {
 
   .final-cta-headline {
     font-size: 28px;
+  }
+
+  /* Disable animations on mobile for performance */
+  .problem,
+  .how-it-works,
+  .features,
+  .flexibility,
+  .pricing,
+  .final-cta {
+    animation: none;
+    opacity: 1;
   }
 }
 
@@ -629,4 +657,93 @@ a {
     padding: 14px 24px;
     font-size: 15px;
   }
+}
+
+/* ============================================
+   ANIMATIONS & POLISH
+   ============================================ */
+
+/* Fade-in animation for sections */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-container {
+  animation: fadeInUp 0.8s ease-out;
+}
+
+/* Animated arrow connector */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Button pulse animation on hover */
+.btn-primary:hover,
+.btn-primary-large:hover,
+.pricing-cta:hover {
+  animation: buttonPulse 0.3s ease-out;
+}
+
+@keyframes buttonPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1.02);
+  }
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Section entrance animations */
+.problem,
+.how-it-works,
+.features,
+.flexibility,
+.pricing,
+.final-cta {
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.problem {
+  animation-delay: 0.1s;
+}
+
+.how-it-works {
+  animation-delay: 0.2s;
+}
+
+.features {
+  animation-delay: 0.3s;
+}
+
+.flexibility {
+  animation-delay: 0.4s;
+}
+
+.pricing {
+  animation-delay: 0.5s;
+}
+
+.final-cta {
+  animation-delay: 0.6s;
 }
