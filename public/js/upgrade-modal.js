@@ -16,6 +16,25 @@ function closeUpgradeModal() {
   }
 }
 
+async function startUpgradeCheckout() {
+  const fallbackUrl = 'https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en';
+  try {
+    const response = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: '', priceLookupKey: 'promptly_pro_monthly' })
+    });
+    const data = await response.json().catch(function () { return {}; });
+    if (response.ok && data && data.url) {
+      window.location.href = data.url;
+      return;
+    }
+    window.location.href = fallbackUrl;
+  } catch (error) {
+    window.location.href = fallbackUrl;
+  }
+}
+
 // Initialize modal event listeners
 document.addEventListener('DOMContentLoaded', function() {
   const modal = document.getElementById('upgrade-modal');
@@ -44,6 +63,15 @@ document.addEventListener('DOMContentLoaded', function() {
     closeBtn.addEventListener('click', function(e) {
       e.preventDefault();
       closeUpgradeModal();
+    });
+  }
+
+  // Upgrade CTA inside modal
+  const upgradeNowBtn = document.getElementById('modal-upgrade-now-btn');
+  if (upgradeNowBtn) {
+    upgradeNowBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      startUpgradeCheckout();
     });
   }
 

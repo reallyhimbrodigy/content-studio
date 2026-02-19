@@ -599,6 +599,9 @@ a {
   border: 1px solid #2b2b2b;
   color: #bdbdbd;
   background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -705,13 +708,6 @@ a {
 .modal-cta:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(0, 102, 255, 0.35);
-}
-
-.modal-trial-text {
-  text-align: center;
-  color: #a0a0a0;
-  font-size: 13px;
-  margin: 0 0 14px;
 }
 
 .modal-bonus {
