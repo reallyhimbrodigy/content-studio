@@ -270,51 +270,64 @@
           <h2 class="section-headline">Simple Pricing</h2>
           <p class="pricing-subheadline">Try free. Upgrade when you're ready.</p>
 
+          <div class="pricing-toggle-wrap" role="group" aria-label="Billing interval toggle">
+            <div class="pricing-toggle">
+              <button class="pricing-toggle-btn is-active" data-billing="monthly" type="button">Monthly</button>
+              <button class="pricing-toggle-btn" data-billing="yearly" type="button">Yearly</button>
+            </div>
+            <span class="pricing-save-label">Save $40</span>
+          </div>
+
           <div class="pricing-cards">
             <div class="pricing-card free-tier">
-              <h3 class="tier-name">Free</h3>
+              <div class="pricing-card-main">
+                <h3 class="tier-name">Free</h3>
 
-              <div class="pricing-price">
-                <span class="pricing-amount">$0</span>
+                <div class="pricing-price">
+                  <span class="pricing-amount">$0</span>
+                </div>
+
+                <ul class="pricing-features">
+                  <li><span class="checkmark">✓</span> 5 AI edits per month</li>
+                  <li><span class="checkmark">✓</span> All content types</li>
+                  <li><span class="checkmark">✓</span> HD exports (1080p)</li>
+                  <li><span class="checkmark">✓</span> 7-day content calendar</li>
+                </ul>
               </div>
-
-              <ul class="pricing-features">
-                <li><span class="checkmark">✓</span> 5 AI edits per month</li>
-                <li><span class="checkmark">✓</span> All content types</li>
-                <li><span class="checkmark">✓</span> HD exports (1080p)</li>
-                <li><span class="checkmark">✓</span> 7-day content calendar</li>
-              </ul>
-
-              <a href="https://usepromptly.app/auth.html" class="pricing-cta secondary">
-                Get Started Free
-              </a>
+              <div class="pricing-card-footer">
+                <a href="https://usepromptly.app/auth.html" class="pricing-cta secondary">
+                  Get Started Free
+                </a>
+              </div>
             </div>
 
             <div class="pricing-card pro-tier highlighted">
-              <div class="popular-badge">MOST POPULAR</div>
+              <div class="pricing-card-main">
+                <h3 class="tier-name">Pro</h3>
 
-              <h3 class="tier-name">Pro</h3>
+                <div class="pricing-price">
+                  <span id="pro-price-amount" class="pricing-amount">$19.99</span>
+                  <span class="pricing-period">/month</span>
+                </div>
 
-              <div class="pricing-price">
-                <span class="pricing-amount">$19.99</span>
-                <span class="pricing-period">/month</span>
+                <p id="pro-billed-note" class="pricing-billed-note" hidden>billed annually</p>
+
+                <ul class="pricing-features">
+                  <li><span class="checkmark">✓</span> <strong>Unlimited</strong> AI edits</li>
+                  <li><span class="checkmark">✓</span> Priority processing</li>
+                  <li><span class="checkmark">✓</span> 30-day content calendar</li>
+                  <li><span class="checkmark">✓</span> Brand Brain Mode</li>
+                  <li><span class="checkmark">✓</span> Priority support</li>
+                </ul>
               </div>
 
-              <p class="pricing-annual">or $199/year (save $40)</p>
+              <div class="pricing-card-footer">
+                <button id="upgrade-to-pro-btn" class="pricing-cta primary" type="button">
+                  Upgrade to Pro
+                </button>
 
-              <ul class="pricing-features">
-                <li><span class="checkmark">✓</span> <strong>Unlimited</strong> AI edits</li>
-                <li><span class="checkmark">✓</span> Priority processing</li>
-                <li><span class="checkmark">✓</span> 30-day content calendar</li>
-                <li><span class="checkmark">✓</span> Brand Brain Mode</li>
-                <li><span class="checkmark">✓</span> Priority support</li>
-              </ul>
-
-              <button id="upgrade-to-pro-btn" class="pricing-cta primary" type="button">
-                Upgrade to Pro
-              </button>
-
-              <p class="pricing-guarantee">Cancel anytime</p>
+                <p class="pricing-guarantee">Cancel anytime</p>
+              </div>
             </div>
           </div>
         </div>
@@ -378,6 +391,7 @@
     <script type="application/ld+json" src="/assets/schema-website.json"></script>
     <script type="application/ld+json" src="/assets/schema-organization.json"></script>
     <script type="application/ld+json" src="/assets/schema-product.json"></script>
+    <script src="/js/pricing-toggle.js"></script>
     <script src="/js/upgrade-modal.js"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
     <script src="/sw-register.js" defer></script>
