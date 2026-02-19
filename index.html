@@ -3,20 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Promptly</title>
-  <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
-  <link rel="canonical" href="https://usepromptly.app/" />
-  <meta property="og:title" content="Promptly · AI Content Studio" />
-  <meta property="og:description" content="Create a full month of strategic content in seconds." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://usepromptly.app/" />
-  <meta property="og:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
-  <meta property="og:image:width" content="512" />
-  <meta property="og:image:height" content="512" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Promptly · AI Content Studio" />
-  <meta name="twitter:description" content="Create a full month of strategic content in seconds." />
-  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
+    <title>Promptly</title>
+    <meta
+      name="description"
+      content="Promptly turns raw footage into polished short-form edits in about 60 seconds."
+    />
+    <link rel="canonical" href="https://usepromptly.app/" />
+    <meta property="og:title" content="Promptly" />
+    <meta property="og:description" content="Turn raw footage into polished short-form edits in about 60 seconds." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://usepromptly.app/" />
+    <meta property="og:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Promptly" />
+    <meta name="twitter:description" content="Turn raw footage into polished short-form edits in about 60 seconds." />
+    <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,315 +27,285 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="assets/promptly-mark-white.png" />
-  <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
-  <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
-  <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="styles.css" />
-  <style>
-    .landing-hero .landing-hero-content--center {
-      max-width: 640px;
-      margin-inline: auto;
-    }
-    .landing-hero .hero-tagline {
-      max-width: 640px;
-    }
-    .landing-hero .landing-badges {
-      margin: 0.9rem 0 0.4rem;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .landing-hero .landing-badge {
-      font-size: 0.85rem;
-      opacity: 0.85;
-    }
-    .landing-hero .hero-micro {
-      margin: 0.75rem 0 1.1rem;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem 1.25rem;
-      justify-content: center;
-      font-size: 0.85rem;
-      color: rgba(255, 255, 255, 0.7);
-    }
-    .landing-hero .hero-micro strong {
-      color: rgba(255, 255, 255, 0.85);
-      font-weight: 600;
-    }
-    .landing-hero .hero-proof {
-      margin-top: 1.5rem;
-      opacity: 0.72;
-    }
-    .landing-hero .hero-proof__value {
-      font-size: 1rem;
-    }
-    .landing-hero .hero-proof__label {
-      font-size: 0.78rem;
-    }
-    .landing-hero .landing-logos {
-      margin-top: 1rem;
-      opacity: 0.65;
-      font-size: 0.85rem;
-    }
-    .landing-hero .landing-logos__row span {
-      font-size: 0.85rem;
-    }
-  </style>
-  <link rel="manifest" href="manifest.json" />
+    <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
+    <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/css/landing.css" />
+    <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
     <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
   </head>
   <body class="view-landing landing-page landing is-landing">
     <div class="app-shell">
-      <main class="lp">
-        <div class="lp-bg" aria-hidden="true"></div>
-        <div class="lp-container">
-          <nav class="landing-nav lp-nav" aria-label="Primary navigation">
-            <div class="landing-nav__brand"></div>
-            <div class="landing-nav__links">
-              <a href="#product">Product</a>
-              <a href="#workflow">Workflow</a>
-              <a href="#pricing">Pricing</a>
-            </div>
-            <div class="landing-nav__actions">
-              <nav id="public-nav" class="main-nav" style="display: none; gap: 0.75rem; align-items: center;"></nav>
-            </div>
-          </nav>
+      <!-- Navigation -->
+      <nav class="nav">
+        <div class="nav-container">
+          <div class="nav-logo">
+            <a href="/">Promptly</a>
+          </div>
+          <div class="nav-links">
+            <a href="#how-it-works">How It Works</a>
+            <a href="#features">Features</a>
+            <a href="#pricing">Pricing</a>
+          </div>
+          <div class="nav-actions">
+            <a href="/login" class="nav-login">Log In</a>
+            <a href="/editor" class="nav-cta">Try Promptly Free</a>
+          </div>
+        </div>
+      </nav>
 
-          <div id="landing-experience">
-            <header class="hero landing-hero lp-hero" id="home">
-          <div class="landing-hero__wrap">
-            <div class="landing-hero__grid">
-              <div class="hero-copy">
-                <div class="landing-hero__intro landing-hero-content landing-hero-content--center">
-                  <p class="hero-pill">THE NEW WAVE OF CONTENT CREATION</p>
-                  <h1>Get a full month of content in minutes.</h1>
-                  <p class="hero-tagline">
-                    Promptly generates 30 days of posts with ready-to-film video scripts—so you never start from zero again.
-                  </p>
-                  <div class="landing-badges lp-hero__tags">
-                    <span class="landing-badge">30-day plan</span>
-                    <span class="landing-badge">Video scripts</span>
-                    <span class="landing-badge">Built-in strategy</span>
-                    <span class="landing-badge">Done for you</span>
-                  </div>
-                  <div class="hero-micro">
-                    <span>Built for creators + businesses.</span>
-                  </div>
-              <div class="landing-hero__actions lp-ctaRow">
-                  <a href="https://usepromptly.app/auth.html?mode=signup" class="primary primary-large" data-analytics="cta_signup">Generate my calendar</a>
-                  <a href="auth.html?mode=login" class="ghost primary-large" data-analytics="cta_login">Log In</a>
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-container">
+          <h1 class="hero-headline">
+            Turn Raw Footage Into<br />Viral Edits in 60 Seconds
+          </h1>
+          <p class="hero-subheadline">
+            Promptly edits your videos for TikTok, Instagram Reels &amp; YouTube Shorts.<br />
+            Upload your footage. Describe the style you want. Download your edit.
+          </p>
+          <div class="hero-cta">
+            <a href="/editor" class="btn-primary">Try Promptly Free</a>
+            <a href="#how-it-works" class="btn-secondary">Watch Demo →</a>
+          </div>
+          <p class="hero-trust">First 5 videos free • No credit card required</p>
+        </div>
+      </section>
+
+      <!-- Proof Section -->
+      <section class="proof">
+        <div class="proof-container">
+          <div class="proof-video">
+            <div class="proof-placeholder">
+              <div class="proof-text">
+                <p class="proof-before">Before: Raw footage</p>
+                <p class="proof-arrow">→</p>
+                <p class="proof-after">After: Promptly edit</p>
               </div>
-                  <div class="hero-proof">
-                    <div class="hero-proof__item">
-                      <span class="hero-proof__value">Hours of planning → seconds.</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <p class="proof-time">Processed in 68 seconds</p>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
-        </header>
+      <!-- Problem Section -->
+      <section class="problem">
+        <div class="problem-container">
+          <h2 class="section-headline">Video Editing Shouldn't Cost This Much</h2>
+          <div class="problem-grid">
+            <div class="problem-item">
+              <div class="problem-icon">⏰</div>
+              <h3 class="problem-title">3+ Hours Per Video</h3>
+              <p class="problem-description">You spend more time editing than creating.</p>
+            </div>
+            <div class="problem-item">
+              <div class="problem-icon">💰</div>
+              <h3 class="problem-title">$50-200 Per Video</h3>
+              <p class="problem-description">Hiring editors gets expensive fast.</p>
+            </div>
+            <div class="problem-item">
+              <div class="problem-icon">📚</div>
+              <h3 class="problem-title">Steep Learning Curve</h3>
+              <p class="problem-description">You don't have time to learn Premiere Pro.</p>
+            </div>
+          </div>
+          <p class="problem-solution">Promptly does the editing. You do the creating.</p>
+        </div>
+      </section>
 
-    <section id="product" class="lp-section lp-product">
-      <div class="lp-product__grid">
-        <div class="lp-product__copy">
-          <div class="section-kicker">PRODUCT</div>
-          <h2 class="product-headline">Your content system for the next 30 days.</h2>
-          <p class="product-subhead" style="max-width: 520px;">
-            Open the calendar. Copy a script. Film. Post. Repeat.
+      <!-- How It Works Section -->
+      <section class="how-it-works" id="how-it-works">
+        <div class="how-container">
+          <h2 class="section-headline">Three Steps to Your Finished Edit</h2>
+          <div class="steps">
+            <div class="step">
+              <div class="step-number">1</div>
+              <div class="step-icon">📹</div>
+              <h3 class="step-title">Upload Your Footage</h3>
+              <p class="step-description">
+                Drop any raw video. Promptly handles any content type automatically.
+              </p>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step">
+              <div class="step-number">2</div>
+              <div class="step-icon">✨</div>
+              <h3 class="step-title">Describe Your Style</h3>
+              <p class="step-description">
+                Tell Promptly the vibe you're going for. Use your own words—Promptly
+                understands.
+              </p>
+            </div>
+            <div class="step-arrow">→</div>
+            <div class="step">
+              <div class="step-number">3</div>
+              <div class="step-icon">🎬</div>
+              <h3 class="step-title">Download Your Edit</h3>
+              <p class="step-description">
+                60-90 seconds later, your video is ready with cuts, effects, and professional
+                finishing.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="features" id="features">
+        <div class="features-container">
+          <h2 class="section-headline">Professional Editing, Every Time</h2>
+          <div class="features-grid">
+            <div class="feature">
+              <div class="feature-icon">✂️</div>
+              <h3 class="feature-title">Smart Cuts</h3>
+              <p class="feature-description">
+                Promptly places cuts where they belong—synced to your content's natural rhythm.
+              </p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">🎨</div>
+              <h3 class="feature-title">Professional Color</h3>
+              <p class="feature-description">Film-grade color grading matched to your style.</p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">💬</div>
+              <h3 class="feature-title">Auto Captions</h3>
+              <p class="feature-description">
+                Promptly generates and syncs captions when your content calls for them.
+              </p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">🎵</div>
+              <h3 class="feature-title">Beat Sync</h3>
+              <p class="feature-description">
+                Promptly cuts on the beat when working with music-driven content.
+              </p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">⚡</div>
+              <h3 class="feature-title">Effects &amp; Motion</h3>
+              <p class="feature-description">
+                Speed changes, motion blur, and zooms applied where they enhance your video.
+              </p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">🎯</div>
+              <h3 class="feature-title">Content Recognition</h3>
+              <p class="feature-description">
+                Promptly analyzes your footage and applies the right editing approach automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Flexibility Section -->
+      <section class="flexibility">
+        <div class="flexibility-container">
+          <h2 class="section-headline">Make Any Kind of Video</h2>
+          <p class="flexibility-description">
+            Promptly adapts to whatever you're creating.<br />
+            No limitations. No templates. Just describe what you want.
           </p>
         </div>
+      </section>
 
-        <div class="lp-product__deliverables">
-          <div class="deliverable-title">What you get per post</div>
-          <ul class="deliverable-list">
-            <li>Daily post topics</li>
-            <li>Scroll-stopping hooks</li>
-            <li>Video scripts (what to say)</li>
-            <li>What to film (notes)</li>
-            <li>Strong CTAs</li>
-            <li>Posting plan</li>
-          </ul>
+      <!-- Comparison Section -->
+      <section class="comparison">
+        <div class="comparison-container">
+          <h2 class="section-headline">Why Choose Promptly?</h2>
+          <div class="comparison-table">
+            <div class="comparison-header">
+              <div class="comparison-cell"></div>
+              <div class="comparison-cell highlight">Promptly</div>
+              <div class="comparison-cell">Hiring Editor</div>
+              <div class="comparison-cell">DIY Editing</div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-cell row-label">Time</div>
+              <div class="comparison-cell highlight">60 seconds</div>
+              <div class="comparison-cell">2-5 days</div>
+              <div class="comparison-cell">3+ hours</div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-cell row-label">Cost</div>
+              <div class="comparison-cell highlight">$9.99/mo</div>
+              <div class="comparison-cell">$50-200/video</div>
+              <div class="comparison-cell">Free*</div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-cell row-label">Skill Needed</div>
+              <div class="comparison-cell highlight">None</div>
+              <div class="comparison-cell">None</div>
+              <div class="comparison-cell">High</div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-cell row-label">Quality</div>
+              <div class="comparison-cell highlight">Professional</div>
+              <div class="comparison-cell">Professional</div>
+              <div class="comparison-cell">Learning Curve</div>
+            </div>
+            <div class="comparison-row">
+              <div class="comparison-cell row-label">Videos/Month</div>
+              <div class="comparison-cell highlight">Unlimited</div>
+              <div class="comparison-cell">Pay per video</div>
+              <div class="comparison-cell">Time limited</div>
+            </div>
+          </div>
+          <p class="comparison-note">*But your time isn't free</p>
         </div>
-      </div>
+      </section>
 
-      <div class="lp-product__why">
-        <div class="why-title">Why it matters</div>
-        <ul class="why-list">
-          <li>No more blank page</li>
-          <li>No more random posting</li>
-          <li>No more spending hours planning</li>
-        </ul>
-      </div>
-
-      <div class="lp-product__cta">
-        <a class="btn primary product-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
-        <div class="product-cta-sub">No guesswork. Just a month of ready-to-post content.</div>
-      </div>
-    </section>
-
-    <section class="landing-workflow lp-section lp-section--workflow lp-workflow" id="workflow">
-      <div class="wf-container">
-        <div class="wf-head lp-workflow__top">
-          <div class="wf-head-left">
-            <div class="section-kicker">WORKFLOW</div>
-            <h2 class="workflow-headline">Set it once. Get a month of high-performing content.</h2>
-            <p class="workflow-subhead">
-              Promptly turns a single niche into a 30-day content calendar—complete with hooks, captions, scripts, and CTAs designed to drive engagement and conversion.
+      <!-- Pricing Section -->
+      <section class="pricing" id="pricing">
+        <div class="pricing-container">
+          <h2 class="section-headline">One Simple Plan</h2>
+          <div class="pricing-card">
+            <div class="pricing-badge">Promptly Pro</div>
+            <div class="pricing-price">
+              <span class="pricing-amount">$9.99</span>
+              <span class="pricing-period">/month</span>
+            </div>
+            <ul class="pricing-features">
+              <li>✓ Unlimited video edits</li>
+              <li>✓ All content types supported</li>
+              <li>✓ Professional effects &amp; grading</li>
+              <li>✓ HD exports (1080p)</li>
+              <li>✓ Cancel anytime</li>
+            </ul>
+            <a href="/signup" class="pricing-cta">Start Free Trial</a>
+            <p class="pricing-trial">First 5 videos free. No credit card.</p>
+            <p class="pricing-bonus">
+              Plus: Get 30 days of content ideas with the Promptly Content Calendar (included
+              free).
             </p>
           </div>
-
-          <aside class="wf-head-right lp-workflow__aside">
-            <div class="lp-workflow__asideInner">
-              <div class="workflow-preferences-card lp-card">
-                <div class="workflow-preferences-title">What you set</div>
-                <ul class="workflow-preferences-list">
-                  <li>Your niche</li>
-                  <li>Brand Brain on or off</li>
-                </ul>
-
-                <div class="workflow-preferences-note">
-                  Promptly automatically generates the strategy, structure, and content for every post.
-                </div>
-              </div>
-            </div>
-          </aside>
         </div>
+      </section>
 
-        <div class="wf-steps-row">
-          <div class="workflow-steps wf-steps lp-steps lp-workflow__grid">
-            <div class="step-row wf-step lp-card">
-              <div class="step-badge wf-step-num">1</div>
-              <div class="step-body">
-                <div class="step-title wf-step-title">Set your niche</div>
-                <div class="step-desc wf-step-desc">Tell Promptly what you do so every post stays focused and relevant.</div>
-              </div>
-            </div>
-
-            <div class="step-row wf-step lp-card">
-              <div class="step-badge wf-step-num">2</div>
-              <div class="step-body">
-                <div class="step-title wf-step-title">Enable Brand Brain (optional)</div>
-                <div class="step-desc wf-step-desc">Turn on advanced sales psychology and social-algorithm logic to optimize for engagement and conversions.</div>
-              </div>
-            </div>
-
-            <div class="step-row wf-step lp-card">
-              <div class="step-badge wf-step-num">3</div>
-              <div class="step-body">
-                <div class="step-title wf-step-title">Generate your 30-day calendar</div>
-                <div class="step-desc wf-step-desc">Get 30 days of ready-to-post content—topics, hooks, captions, scripts, and CTAs—in minutes.</div>
-              </div>
-            </div>
-
-            <div class="step-row wf-step lp-card">
-              <div class="step-badge wf-step-num">4</div>
-              <div class="step-body">
-                <div class="step-title wf-step-title">Export & post</div>
-                <div class="step-desc wf-step-desc">Save to your library, download, and publish with confidence.</div>
-              </div>
-            </div>
-          </div>
+      <!-- Final CTA Section -->
+      <section class="final-cta">
+        <div class="final-cta-container">
+          <h2 class="final-cta-headline">Ready to Let Promptly Handle Your Editing?</h2>
+          <p class="final-cta-subheadline">
+            Stop spending hours editing. Start creating more content.
+          </p>
+          <a href="/signup" class="btn-primary-large">Try Promptly Free</a>
+          <p class="final-cta-trust">First 5 videos free • No credit card • No tricks</p>
+          <p class="final-cta-social">Join 10,000+ creators using Promptly</p>
         </div>
+      </section>
 
-        <div class="workflow-cta-bar lp-ctaBand lp-workflow__cta">
-          <a class="btn primary workflow-cta" href="https://usepromptly.app/auth.html?mode=signup">Generate my 30-day calendar</a>
-          <div class="workflow-cta-sub">Start free. Create your first Calendar in seconds.</div>
-        </div>
-      </div>
-    </section>
-
-    <section id="pricing" class="landing-section lp-section lp-section--pricing">
-      <div class="landing-section__inner">
-        <div class="landing-section__header">
-          <span class="landing-eyebrow">PRICING</span>
-          <h2>Simple pricing that scales with output</h2>
-          <p>Choose the plan that fits how consistent and dedicated you are.</p>
-        </div>
-        <div class="pricing-grid lp-pricing">
-          <article class="pricing-card lp-card">
-            <p class="pricing-card__name">Starter</p>
-            <p class="pricing-card__price">FREE<span></span></p>
-            <p class="pricing-card__subtitle">Best for casual posting</p>
-            <ul class="pricing-card__features">
-              <li>30-day Content Calendar generation</li>
-              <li>Limited Saves and Exports</li>
-            </ul>
-            <a class="pricing-card__cta" href="https://usepromptly.app/auth.html?mode=signup">Start free</a>
-          </article>
-          <article class="pricing-card pricing-card--featured is-featured lp-card">
-            <span class="pricing-pill">Most popular</span>
-            <p class="pricing-card__name">Pro</p>
-            <p class="pricing-card__price">$19.99<span>/month</span></p>
-            <p class="pricing-card__subtitle">Best for consistent publishing</p>
-            <ul class="pricing-card__features">
-              <li>30-day Content Calendar generation</li>
-              <li>Brand Brain unlocked</li>
-              <li>Regenerate a single post</li>
-              <li>Unlimited Saves and Exports</li>
-            </ul>
-            <button class="pricing-card__cta pricing-card__cta--primary" type="button" data-upgrade-trigger>Upgrade to Pro</button>
-          </article>
-        </div>
-      </div>
-    </section>
-
-          </div>
-        </div>
-      </main>
-    </div>
-    <!-- Upgrade Modal -->
-    <div id="upgrade-modal" class="modal" style="display: none;">
-      <div class="modal-content upgrade-modal">
-        <button class="modal-close" id="upgrade-close" aria-label="Close upgrade modal">&times;</button>
-        <div class="upgrade-header">
-          <img class="upgrade-logo" src="/assets/promptly-mark-white.png" alt="Promptly" />
-          <h2>Upgrade to Promptly Pro</h2>
-          <p class="upgrade-subtitle">Unlock your true potential</p>
-        </div>
-
-        <div class="pricing-cards">
-            <div class="pricing-card">
-              <div class="pricing-tier">Starter</div>
-              <div class="pricing-price">FREE<span></span></div>
-              <ul class="pricing-features">
-                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-                <li><span class="check">✓</span> Limited Saves and Exports</li>
-              </ul>
-            </div>
-
-            <div class="pricing-card pricing-card-pro">
-              <div class="pricing-badge">Most Popular</div>
-              <div class="pricing-tier">Pro</div>
-              <div class="pricing-price">$19.99<span>/month</span></div>
-              <ul class="pricing-features">
-                <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-                <li><span class="check">✓</span> Brand Brain unlocked</li>
-                <li><span class="check">✓</span> Regenerate a single post</li>
-                <li><span class="check">✓</span> Unlimited Saves and Exports</li>
-                <li><span class="check">✓</span> Target Audience unlocked</li>
-                <li><span class="check">✓</span> Voice Lock unlocked</li>
-              </ul>
-            <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;" data-analytics="upgrade_cta">
-              Upgrade to Pro
-            </button>
-            </div>
-          </div>
-
-        <p class="upgrade-footer">Start free, upgrade anytime. Cancel whenever you want.</p>
-      </div>
+      <!-- Footer is preserved via existing footer.js injection -->
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
-  <script type="application/ld+json" src="/assets/schema-website.json"></script>
-  <script type="application/ld+json" src="/assets/schema-organization.json"></script>
-  <script type="application/ld+json" src="/assets/schema-product.json"></script>
+    <script type="application/ld+json" src="/assets/schema-website.json"></script>
+    <script type="application/ld+json" src="/assets/schema-organization.json"></script>
+    <script type="application/ld+json" src="/assets/schema-product.json"></script>
     <script type="module" src="./footer.js?t=1763412925"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
-    <script src="/js/landing.js" defer></script>
   </body>
 </html>
