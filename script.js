@@ -170,9 +170,6 @@ const downloadVariantsZipBtn = document.getElementById('download-variants-zip');
 const downloadCalendarFolderBtn = document.getElementById('download-calendar-folder');
 const deleteCalendarBtn = document.getElementById('delete-calendar-button');
 const calendarExportUsageEl = document.getElementById('calendar-export-usage');
-const hub = document.getElementById('publish-hub');
-const hubNext = document.getElementById('hub-next');
-const hubAfter = document.getElementById('hub-after');
 const designSection = document.getElementById('design-lab');
 const designGrid = document.getElementById('design-grid');
 const designEmpty = document.getElementById('design-empty');
@@ -306,21 +303,8 @@ const landingExperience = document.getElementById('landing-experience');
 const appExperience = document.getElementById('app-experience');
 const urlParams = new URLSearchParams(window.location.search || '');
 const forceLandingView = urlParams.get('view') === 'landing';
-// Tabs
-  const tabPlan = document.getElementById('tab-plan');
-  const tabPublish = document.getElementById('tab-publish');
-  const calendarSection = document.querySelector('section.calendar');
-  const toggleCompactBtn = document.getElementById('toggle-compact');
-  const hubEmpty = document.getElementById('hub-empty');
-  const hubEmptyGenBtn = document.getElementById('hub-empty-generate');
-  const hubGrid = document.querySelector('.publish-hub__grid');
-  const hubPrevBtn = document.getElementById('hub-prev');
-  const hubNextBtn = document.getElementById('hub-btn-next');
-  const hubSkipBtn = document.getElementById('hub-skip-unposted');
-  const hubSkipPrevBtn = document.getElementById('hub-skip-prev');
-  const hubProgress = document.getElementById('hub-progress');
-  const hubMarkBtn = document.getElementById('hub-mark-posted');
-const hubDaySelect = document.getElementById('hub-day-select');
+const calendarSection = document.querySelector('section.calendar');
+const toggleCompactBtn = document.getElementById('toggle-compact');
 
 const PROFILE_SETTINGS_LEGACY_KEY = 'promptly_profile_settings';
 const PROFILE_SETTINGS_PREFIX = 'promptly_profile_settings_v2:';
@@ -506,8 +490,7 @@ const initAnalyticsFrustrationSignals = () => {
 initAnalyticsPageviews();
 initAnalyticsFrustrationSignals();
 
-  // Posted state per user+niche
-let hubIndex = 0; // 0-based index into currentCalendar
+// Posted state per user+niche
 let activeTab = 'plan';
 let isCompact = false;
 let currentPostFrequency = 1;
@@ -3880,42 +3863,20 @@ applyProfileSettings();
     } catch { return {}; }
   }
 function updateTabs(){
-    if (!calendarSection || !hub) return;
+    if (!calendarSection) return;
     const wantsDesign = activeTab === 'design';
     if (wantsDesign && !isProTier()) activeTab = 'plan';
-    const hasCalendar = currentCalendar && currentCalendar.length > 0;
-    // Toggle classes
-    if (tabPlan) tabPlan.classList.toggle('active', activeTab==='plan');
-    if (tabPublish) tabPublish.classList.toggle('active', activeTab==='publish');
-    if (tabPlan) tabPlan.setAttribute('aria-pressed', String(activeTab==='plan'));
-    if (tabPublish) tabPublish.setAttribute('aria-pressed', String(activeTab==='publish'));
-
     const showCalendar = activeTab === 'plan';
-    const showHub = activeTab === 'publish';
     const showDesign = activeTab === 'design' && designSection;
 
     calendarSection.style.display = showCalendar ? '' : 'none';
-    hub.style.display = showHub ? '' : 'none';
     if (designSection) designSection.style.display = showDesign ? 'flex' : 'none';
 
     if (showCalendar) {
-      hub.style.opacity = '0';
       if (designSection) designSection.style.opacity = '0';
       requestAnimationFrame(() => { calendarSection.style.opacity = '1'; });
-    } else if (showHub) {
-      calendarSection.style.opacity = '0';
-      if (designSection) designSection.style.opacity = '0';
-      requestAnimationFrame(() => { hub.style.opacity = '1'; });
-  if (!hasCalendar) {
-        if (hubEmpty) hubEmpty.style.display = '';
-        if (hubGrid) hubGrid.style.display = 'none';
-      } else {
-        if (hubEmpty) hubEmpty.style.display = 'none';
-        if (hubGrid) hubGrid.style.display = '';
-      }
     } else if (showDesign && designSection) {
       calendarSection.style.opacity = '0';
-      hub.style.opacity = '0';
       requestAnimationFrame(() => { designSection.style.opacity = '1'; });
       renderDesignAssets();
     }
@@ -5030,23 +4991,7 @@ function handleDesignAssetDownload(asset, fileNameOverride) {
     link.remove();
     if (revokeLater) URL.revokeObjectURL(url);
   }
-  function savePostedMap(map) { localStorage.setItem(postedKey(), JSON.stringify(map)); }
   function isPosted(day) { const map = loadPostedMap(); return !!map[String(day)]; }
-  function setPosted(day, val) { const map = loadPostedMap(); if (val) map[String(day)] = true; else delete map[String(day)]; savePostedMap(map); }
-  function findNextUnposted(startIdx=0) {
-    for (let i=startIdx; i<currentCalendar.length; i++) { if (!isPosted(currentCalendar[i].day)) return i; }
-    return Math.min(startIdx, currentCalendar.length-1);
-  }
-  function findPrevUnposted(startIdx){
-    let i = typeof startIdx==='number'? startIdx : (hubIndex>0? hubIndex-1 : 0);
-    for (; i>=0; i--) { if (!isPosted(currentCalendar[i].day)) return i; }
-    return 0;
-  }
-  function countPosted(){
-    if (!currentCalendar) return {done:0,total:0};
-    let done = 0; currentCalendar.forEach(p=>{ if (isPosted(p.day)) done++; });
-    return { done, total: currentCalendar.length };
-  }
 
   // Debug: Log which elements are found
   console.log("=== DOM Elements Check ===");
@@ -7060,25 +7005,9 @@ function revealCalendarActionButtons() {
   });
 }
 
-function syncHubControls() {
-  if (!hubDaySelect) return;
-  if (!Array.isArray(currentCalendar) || !currentCalendar.length) {
-    hubDaySelect.innerHTML = '';
-    return;
-  }
-  hubDaySelect.innerHTML = currentCalendar
-    .map((p, idx) => `<option value="${idx}">Day ${String(p.day).padStart(2, '0')}</option>`)
-    .join('');
-  const nextIdx = findNextUnposted(0);
-  hubIndex = Math.max(0, Math.min(currentCalendar.length - 1, nextIdx));
-  hubDaySelect.value = String(hubIndex);
-}
-
 function syncCalendarUIAfterDataChange(options = {}) {
   revealCalendarActionButtons();
   updateCalendarToolbarState();
-  syncHubControls();
-  if (hub) renderPublishHub();
   updateTabs();
   if (options.scrollToCalendar && calendarSection) {
     setTimeout(() => {
@@ -7321,8 +7250,6 @@ function clearCalendarUI() {
   currentNiche = '';
   setCurrentCalendarId(null);
   renderCards(currentCalendar);
-  syncHubControls();
-  if (hub) renderPublishHub();
   updateTabs();
   persistCurrentCalendarState();
 }
@@ -7889,8 +7816,6 @@ if (downloadCalendarFolderBtn) {
     URL.revokeObjectURL(url);
   });
 }
-
-// (renderPublishHub defined later with navigation/posted state)
 
 function buildICS(posts){
   const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Promptly//Content Studio//EN'];
@@ -9660,10 +9585,6 @@ if (signOutBtn) console.log("✓ Sign out button has event listener");
 console.log("All buttons are ready to use!");
 initSidebar();
 
-// Tabs behavior
-if (tabPlan) tabPlan.addEventListener('click', ()=>{ activeTab='plan'; updateTabs(); });
-if (tabPublish) tabPublish.addEventListener('click', ()=>{ activeTab='publish'; updateTabs(); });
-
 // Compact mode toggle
 if (toggleCompactBtn && calendarSection) {
   toggleCompactBtn.addEventListener('click', ()=>{
@@ -9681,15 +9602,6 @@ if (proNavLinks.length) {
         event.preventDefault();
       }
     });
-  });
-}
-
-// Empty state CTA
-if (hubEmptyGenBtn) {
-  hubEmptyGenBtn.addEventListener('click', ()=>{
-    activeTab = 'plan';
-    updateTabs();
-    if (nicheInput) nicheInput.focus();
   });
 }
 
@@ -10112,152 +10024,6 @@ if (grid) {
   });
 }
 
-// Publish Hub controls
-if (hubPrevBtn) {
-  hubPrevBtn.addEventListener('click', ()=>{
-    hubIndex = Math.max(0, hubIndex-1);
-    if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-    renderPublishHub();
-  });
-}
-if (hubNextBtn) {
-  hubNextBtn.addEventListener('click', ()=>{
-    hubIndex = Math.min(currentCalendar.length-1, hubIndex+1);
-    if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-    renderPublishHub();
-  });
-}
-if (hubDaySelect) {
-  hubDaySelect.addEventListener('change', ()=>{
-    hubIndex = Number(hubDaySelect.value||0);
-    renderPublishHub();
-  });
-}
-if (hubMarkBtn) {
-  hubMarkBtn.addEventListener('click', ()=>{
-    const post = currentCalendar[hubIndex];
-    if (!post) return;
-    const wasPosted = isPosted(post.day);
-    setPosted(post.day, !wasPosted);
-    // Re-render cards and hub
-    renderCards(currentCalendar);
-    // Auto-advance to next unposted if just marked posted
-    if (!wasPosted) {
-      const nextIdx = findNextUnposted(hubIndex+1);
-      hubIndex = nextIdx;
-      if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-    }
-    renderPublishHub();
-  });
-}
-
-function renderPublishHub(){
-  if (!hub || !hubNext || !hubAfter) return;
-  const posts = currentCalendar || [];
-  if (posts.length === 0) { hub.style.display='none'; return; }
-  const idxNext = Math.min(Math.max(0, hubIndex), posts.length-1);
-  const idxAfter = Math.min(idxNext+1, posts.length-1);
-  // Update progress
-  if (hubProgress){ const p = countPosted(); hubProgress.textContent = `${p.done}/${p.total} posted`; }
-  const render = (container, post, label)=>{
-    container.innerHTML = '';
-    if (!post) return;
-    const title = document.createElement('h3');
-    const titleText = document.createTextNode(`${label}: Day ${String(post.day).padStart(2,'0')} — ${post.idea || ''}`);
-    title.appendChild(titleText);
-    if (isPosted(post.day)) {
-      const badge = document.createElement('span');
-      badge.className = 'badge-posted';
-      badge.textContent = 'Posted';
-      title.appendChild(badge);
-    }
-    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `${post.format || ''}`;
-    const text = document.createElement('div');
-    const tags = Array.isArray(post.hashtags)? post.hashtags.map(h=>h.startsWith('#')?h:'#'+h).join(' ') : (post.hashtags||'');
-    text.innerHTML = `<div>${(post.caption||'').replace(/\n/g,'<br/>')}</div>${tags?`<div style="margin-top:0.3rem;color:var(--text-secondary)">${tags}</div>`:''}`;
-    const actions = document.createElement('div'); actions.className='actions';
-    const mk = (label)=>{ const b=document.createElement('button'); b.className='ghost'; b.textContent=label; b.style.fontSize='0.8rem'; b.style.padding='0.3rem 0.6rem'; return b; };
-    // Build full text with all card content
-    const fullTextParts = [];
-    const safeText = (value) => stripTrailingFollowUpSection(typeof value === 'string' ? value : '');
-    fullTextParts.push(`Day ${String(post.day).padStart(2,'0')}`);
-    if (post.idea) fullTextParts.push(`Idea: ${safeText(post.idea)}`);
-    if (post.type) fullTextParts.push(`Type: ${post.type}`);
-    if (post.caption) fullTextParts.push(`Caption: ${safeText(post.caption)}`);
-    if (tags) fullTextParts.push(`Hashtags: ${tags}`);
-    if (post.format) fullTextParts.push(`Format: ${post.format}`);
-    if (post.cta) fullTextParts.push(`CTA: ${safeText(post.cta)}`);
-    if (post.designNotes) fullTextParts.push(`Design Notes: ${safeText(post.designNotes)}`);
-    if (post.repurpose && Array.isArray(post.repurpose) && post.repurpose.length) fullTextParts.push(`Repurpose: ${post.repurpose.join(' • ')}`);
-    if (post.promoSlot) fullTextParts.push(`Weekly Promo Slot: Yes`);
-    if (post.weeklyPromo) fullTextParts.push(`Promo: ${post.weeklyPromo}`);
-    if (post.videoScript && (post.videoScript.hook || post.videoScript.body || post.videoScript.cta)) {
-      const scriptLines = [];
-      if (post.videoScript.hook) scriptLines.push(safeText(post.videoScript.hook));
-      if (post.videoScript.body) scriptLines.push(safeText(post.videoScript.body));
-      if (post.videoScript.cta) scriptLines.push(safeText(post.videoScript.cta));
-      fullTextParts.push(`Reel Script:\n${scriptLines.join('\n')}`);
-    }
-    if (post.engagementScripts && typeof post.engagementScripts === 'object' && !Array.isArray(post.engagementScripts)) {
-      if (Array.isArray(post.engagementScripts.commentPrompts) && post.engagementScripts.commentPrompts.length) {
-        fullTextParts.push(`Engagement Comment Prompts: ${post.engagementScripts.commentPrompts.join(' | ')}`);
-      }
-      if (Array.isArray(post.engagementScripts.dmScripts) && post.engagementScripts.dmScripts.length) {
-        fullTextParts.push(`Engagement DM Scripts: ${post.engagementScripts.dmScripts.join(' | ')}`);
-      }
-      if (Array.isArray(post.engagementScripts.replyTemplates) && post.engagementScripts.replyTemplates.length) {
-        fullTextParts.push(`Engagement Reply Templates: ${post.engagementScripts.replyTemplates.join(' | ')}`);
-      }
-      if (post.engagementScripts.commentReply) fullTextParts.push(`Engagement Comment: ${safeText(post.engagementScripts.commentReply)}`);
-      if (post.engagementScripts.dmReply) fullTextParts.push(`Engagement DM: ${safeText(post.engagementScripts.dmReply)}`);
-    } else if (typeof post.engagementScripts === 'string' && post.engagementScripts.trim()) {
-      fullTextParts.push(`Engagement Scripts: ${safeText(post.engagementScripts.trim())}`);
-    }
-    if (post.variants) {
-      if (post.variants.igCaption) fullTextParts.push(`Instagram Variant: ${safeText(post.variants.igCaption)}`);
-      if (post.variants.tiktokCaption) fullTextParts.push(`TikTok Variant: ${safeText(post.variants.tiktokCaption)}`);
-      if (post.variants.linkedinCaption) fullTextParts.push(`LinkedIn Variant: ${safeText(post.variants.linkedinCaption)}`);
-    }
-    const fullText = stripTrailingFollowUpSection(fullTextParts.join('\n\n'));
-    const bCopyFull = mk('Copy Full'); bCopyFull.addEventListener('click', async ()=>{ try { await navigator.clipboard.writeText(fullText); bCopyFull.textContent='Copied!'; setTimeout(()=>bCopyFull.textContent='Copy Full', 1000);} catch(e){} });
-    actions.appendChild(bCopyFull);
-    if (post.variants){
-      // variant copy buttons removed
-    }
-    const variantsDiv = document.createElement('div'); variantsDiv.className='variants';
-    if (post.variants){
-      const items=[];
-      if (post.variants.igCaption) items.push(`<div><em>Instagram:</em> ${post.variants.igCaption}</div>`);
-      if (post.variants.tiktokCaption) items.push(`<div><em>TikTok:</em> ${post.variants.tiktokCaption}</div>`);
-      if (post.variants.linkedinCaption) items.push(`<div><em>LinkedIn:</em> ${post.variants.linkedinCaption}</div>`);
-      variantsDiv.innerHTML = items.join('');
-    }
-    container.append(title, meta, text, actions, variantsDiv);
-  };
-  render(hubNext, posts[idxNext], 'Next');
-  render(hubAfter, posts[idxAfter], 'After');
-  if (hubMarkBtn) hubMarkBtn.textContent = isPosted(posts[idxNext].day) ? 'Unmark Posted' : 'Mark as Posted';
-}
-
-// Skip to next unposted control
-if (hubSkipBtn) {
-  hubSkipBtn.addEventListener('click', ()=>{
-    if (!currentCalendar || currentCalendar.length===0) return;
-    const nextIdx = findNextUnposted(hubIndex+1);
-    hubIndex = nextIdx;
-    if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-    renderPublishHub();
-  });
-}
-if (hubSkipPrevBtn) {
-  hubSkipPrevBtn.addEventListener('click', ()=>{
-    if (!currentCalendar || currentCalendar.length===0) return;
-    const prevIdx = findPrevUnposted(hubIndex-1);
-    hubIndex = prevIdx;
-    if (hubDaySelect) hubDaySelect.value = String(hubIndex);
-    renderPublishHub();
-  });
-}
 function buildDesignPdfBlob(asset, payload) {
     const lines = [
       `Promptly AI Asset`,
@@ -10366,7 +10132,7 @@ function sanitizeSlidesForStorage(slides = []) {
     previewUrl: slide.previewUrl || '',
   }));
 }
-if (designSection && (!calendarSection || !hub)) {
+if (designSection && !calendarSection) {
   activeTab = 'design';
   designSection.style.display = 'flex';
   designSection.style.opacity = '1';
