@@ -184,12 +184,6 @@ const emailInput = document.getElementById("email");
   const googleAuthBtn = document.getElementById('google-auth-btn');
   const footerYear = document.getElementById('auth-footer-year');
   if (footerYear) footerYear.textContent = new Date().getFullYear();
-  const backHomeLinks = document.querySelectorAll('[data-back-home]');
-  backHomeLinks.forEach((link) => {
-    link.addEventListener('click', () => {
-      try { sessionStorage.removeItem('promptly_show_app'); } catch (_) {}
-    });
-  });
 
   // Password strength checker
   const checkPasswordStrength = (password) => {
