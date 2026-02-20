@@ -434,6 +434,7 @@ async function loadLibraryAccountModalData() {
 
 async function openLibraryAccountModal() {
   if (!accountModal) return;
+  accountModal.removeAttribute('hidden');
   accountModal.style.display = 'flex';
   accountModal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
@@ -444,6 +445,7 @@ async function openLibraryAccountModal() {
 function closeLibraryAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
+  accountModal.setAttribute('hidden', '');
   accountModal.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('modal-open');
 }

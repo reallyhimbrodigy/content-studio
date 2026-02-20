@@ -10,8 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?t=1771553914" />
-    <script src="assets/vendor/supabase.js?t=1771553914"></script>
+    <link rel="stylesheet" href="styles.css?t=1771554503" />
+    <script src="assets/vendor/supabase.js?t=1771554503"></script>
     <style>
       body.page-editor,
       body.page-editor .app-main,
@@ -388,14 +388,14 @@
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
     <!-- Account Settings Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay onclick="if(event.target===this){this.style.display='none';this.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');}">
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" hidden aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
       <div class="modal settings-modal mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close onclick="document.getElementById('account-modal').style.display='none';document.getElementById('account-modal').setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');">
+          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
             &times;
           </button>
         </div>
@@ -427,7 +427,7 @@
       </div>
     </div>
 
-    <script type="module" src="footer.js?t=1771553914"></script>
+    <script type="module" src="footer.js?t=1771554503"></script>
 
     <script>
       const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
@@ -661,6 +661,7 @@
 
       async function openAccountModal() {
         if (!accountModal) return;
+        accountModal.removeAttribute('hidden');
         accountModal.style.display = 'flex';
         accountModal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('modal-open');
@@ -671,6 +672,7 @@
       function closeAccountModal() {
         if (!accountModal) return;
         accountModal.style.display = 'none';
+        accountModal.setAttribute('hidden', '');
         accountModal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('modal-open');
       }
