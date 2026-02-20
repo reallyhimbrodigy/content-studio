@@ -11314,7 +11314,6 @@ body.page-calendar #account-modal [data-account-modal] {
 
 body.page-calendar #account-modal [data-account-modal] h3,
 body.page-calendar #account-modal [data-account-modal] label,
-body.page-calendar #account-modal [data-account-modal] .settings-tab,
 body.page-calendar #account-modal [data-account-modal] .settings-field-readonly,
 body.page-calendar #account-modal [data-account-modal] .settings-field-readonly span {
   color: #f2f2f2 !important;
@@ -11322,27 +11321,6 @@ body.page-calendar #account-modal [data-account-modal] .settings-field-readonly 
 
 body.page-calendar #account-modal [data-account-modal] .modal-sub {
   color: #a0a0a0 !important;
-}
-
-body.page-calendar #account-modal .settings-tabs {
-  background: #151515 !important;
-  border: 1px solid #2a2a2a !important;
-  border-radius: 12px !important;
-  padding: 4px !important;
-}
-
-body.page-calendar #account-modal .settings-tab {
-  background: transparent !important;
-  border: 1px solid transparent !important;
-  border-radius: 9px !important;
-  color: #9a9a9a !important;
-}
-
-body.page-calendar #account-modal .settings-tab.active {
-  color: #ffffff !important;
-  background: rgba(0, 102, 255, 0.18) !important;
-  border-color: rgba(0, 102, 255, 0.45) !important;
-  box-shadow: inset 0 -2px 0 rgba(0, 102, 255, 0.75) !important;
 }
 
 body.page-calendar #account-modal input,
@@ -11377,12 +11355,28 @@ body.page-calendar #account-modal #account-plan-status {
   font-weight: 700 !important;
 }
 
-body.page-calendar #account-modal .field-hint {
-  color: #7f7f7f !important;
-  font-size: 0.82rem !important;
+body.page-calendar #account-modal .account-subscription-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.6rem !important;
 }
 
-body.page-calendar #account-modal #account-cancel-btn,
+body.page-calendar #account-modal .settings-field-readonly {
+  background: #151515 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+body.page-calendar #account-modal #account-email-display,
+body.page-calendar #account-modal [aria-label="Password is hidden"] {
+  color: #ffffff !important;
+}
+
+body.page-calendar #account-modal .field-hint {
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.4 !important;
+}
+
 body.page-calendar #account-modal #account-email-copy,
 body.page-calendar #account-modal #account-password-manage {
   background: transparent !important;
@@ -11390,22 +11384,10 @@ body.page-calendar #account-modal #account-password-manage {
   color: #f2f2f2 !important;
 }
 
-body.page-calendar #account-modal #account-cancel-btn:hover,
 body.page-calendar #account-modal #account-email-copy:hover,
 body.page-calendar #account-modal #account-password-manage:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border-color: #3a3a3a !important;
-}
-
-body.page-calendar #account-modal .settings-actions .primary {
-  background: #0066ff !important;
-  border: 1px solid #0066ff !important;
-  color: #ffffff !important;
-}
-
-body.page-calendar #account-modal .settings-actions .primary:hover {
-  background: #1a75ff !important;
-  border-color: #1a75ff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: #4a4a4a !important;
 }
 
 body.page-calendar #account-modal #account-close-btn,

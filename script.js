@@ -72,18 +72,11 @@ const grid = document.getElementById("calendar-grid");
   const passwordSettingsBtn = document.getElementById('password-settings-btn');
   const accountModal = document.getElementById('account-modal');
   const accountCloseBtn = document.getElementById('account-close-btn');
-  const accountCancelBtn = document.getElementById('account-cancel-btn');
-  const accountForm = document.getElementById('account-settings-form');
-  const accountSaveBtn = accountForm?.querySelector('button[type="submit"]');
-  const accountDisplayNameInput = document.getElementById('account-display-name');
-  const accountFeedback = document.getElementById('account-feedback');
   const accountEmailDisplay = document.getElementById('account-email-display');
   const accountEmailCopyBtn = document.getElementById('account-email-copy');
   const accountPasswordManageBtn = document.getElementById('account-password-manage');
   const accountPlanStatusEl = document.getElementById('account-plan-status');
 const accountPlanLimitsEl = document.getElementById('account-plan-limits');
-const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
-const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const postFrequencyDisplay = document.getElementById('post-frequency-display');
 const postFrequencySelect = document.getElementById('post-frequency-select');
 const DESIGN_FEATURES_ENABLED = false;
@@ -309,7 +302,6 @@ let profileSettingsPersistentDisabled = false;
 let profileSettings = loadProfileSettings();
 let profileSettingsSyncPromise = null;
 let activeUserEmail = '';
-let activeSettingsTab = 'account';
 let forceAppAfterAuth = false;
 try {
   forceAppAfterAuth = sessionStorage.getItem('promptly_show_app') === '1';
@@ -3558,14 +3550,12 @@ async function getAccountAuthUser() {
 
 function setAccountModalLoadingState() {
   if (accountEmailDisplay) accountEmailDisplay.textContent = 'Loading…';
-  if (accountSaveBtn) accountSaveBtn.disabled = true;
 }
 
 function setAccountModalLoggedOutState() {
   activeUserEmail = '';
   updateAccountOverviewEmail('');
   updateAccountPlanInfo('none');
-  if (accountSaveBtn) accountSaveBtn.disabled = false;
 }
 
 async function loadAccountModalData() {
@@ -3581,17 +3571,14 @@ async function loadAccountModalData() {
     accountEmailDisplay.textContent = email || 'Email unavailable';
   }
   if (userEmailEl && email) userEmailEl.textContent = email;
-  hydrateAccountForm();
   try {
     const settings = await getProfilePreferences();
     if (settings && typeof settings === 'object') {
       updateProfileSettings(settings, { replace: true, targetEmail: email || activeUserEmail });
-      hydrateAccountForm();
     }
   } catch (error) {
     console.warn('Unable to sync profile settings from Supabase', error);
   }
-  if (accountSaveBtn) accountSaveBtn.disabled = false;
   return user;
 }
 
@@ -3610,35 +3597,6 @@ async function syncProfileSettingsFromSupabase() {
     }
   })();
   return profileSettingsSyncPromise;
-}
-
-function setAccountSettingsTab(tab = 'account') {
-  if (!tab) tab = 'account';
-  activeSettingsTab = tab;
-  settingsTabButtons.forEach((btn) => {
-    const isActive = (btn.dataset.settingsTab || 'account') === tab;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', String(isActive));
-    if (isActive) {
-      btn.removeAttribute('tabindex');
-    } else {
-      btn.setAttribute('tabindex', '-1');
-    }
-  });
-  settingsPanels.forEach((panel) => {
-    const isActive = (panel.dataset.settingsPanel || 'account') === tab;
-    panel.classList.toggle('active-panel', isActive);
-  });
-}
-
-if (settingsTabButtons.length) {
-  settingsTabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.settingsTab || 'account';
-      setAccountSettingsTab(tab);
-    });
-  });
-  setAccountSettingsTab('account');
 }
 
 function updateAccountOverviewEmail(email) {
@@ -3694,19 +3652,8 @@ async function loadCalendarExportUsage() {
   }
 }
 
-function hydrateAccountForm() {
-  if (!accountForm) return;
-  const settings = profileSettings || {};
-  if (accountDisplayNameInput) accountDisplayNameInput.value = settings.displayName || '';
-}
-
-function openAccountModal(initialTab = 'account') {
+function openAccountModal() {
   if (!accountModal) return;
-  if (accountFeedback) {
-    accountFeedback.textContent = '';
-    accountFeedback.classList.remove('success');
-  }
-  setAccountSettingsTab(initialTab);
   accountModal.style.display = 'flex';
   document.body.classList.add('modal-open');
   loadAccountModalData();
@@ -5281,7 +5228,7 @@ const bindProfileMenuAction = (btn, handler) => {
 bindProfileMenuAction(accountOverviewBtn, () => {
   closeProfileMenu();
   if (accountModal) {
-    openAccountModal('account');
+    openAccountModal();
   } else {
     window.location.href = '/#account';
   }
@@ -5290,7 +5237,7 @@ bindProfileMenuAction(accountOverviewBtn, () => {
 bindProfileMenuAction(profileSettingsBtn, () => {
   closeProfileMenu();
   if (accountModal) {
-    openAccountModal('profile');
+    openAccountModal();
   } else {
     window.location.href = '/#profile-settings';
   }
@@ -5303,12 +5250,6 @@ bindProfileMenuAction(passwordSettingsBtn, () => {
 
 if (accountCloseBtn) {
   accountCloseBtn.addEventListener('click', () => {
-    closeAccountModal();
-  });
-}
-
-if (accountCancelBtn) {
-  accountCancelBtn.addEventListener('click', () => {
     closeAccountModal();
   });
 }
@@ -5441,69 +5382,6 @@ if (postFrequencySelect) {
   });
 }
 
-
-if (accountForm) {
-  accountForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const authUser = await getAccountAuthUser();
-    const authEmail = authUser?.email || authUser?.user_metadata?.email || '';
-    if (authEmail) {
-      activeUserEmail = authEmail;
-      updateAccountOverviewEmail(authEmail);
-      if (userEmailEl) userEmailEl.textContent = authEmail;
-    }
-    if (accountFeedback) {
-      accountFeedback.textContent = activeUserEmail ? 'Saving preferences...' : 'Preferences saved locally.';
-      accountFeedback.classList.remove('error');
-      accountFeedback.classList.remove('success');
-    }
-
-    const payload = {
-      displayName: accountDisplayNameInput?.value.trim() || ''
-    };
-    const persistResult = updateProfileSettings(payload, { targetEmail: authEmail || activeUserEmail });
-
-    let syncedToSupabase = false;
-    let shouldCloseModal = !authEmail;
-    let localSaveNote = persistResult?.volatile ? ' Settings will reset when you close this tab.' : '';
-
-    if (authUser?.id) {
-      try {
-        const savedRemote = await saveProfilePreferences(profileSettings);
-        updateProfileSettings(savedRemote, { replace: true, targetEmail: authEmail || activeUserEmail });
-        syncedToSupabase = true;
-        await loadAccountModalData();
-        shouldCloseModal = true;
-      } catch (error) {
-        console.warn('Unable to sync profile settings to server', error);
-        shouldCloseModal = false;
-      }
-    }
-
-    if (accountFeedback) {
-      if (syncedToSupabase) {
-        accountFeedback.textContent = `Preferences saved.${localSaveNote}`;
-        accountFeedback.classList.add('success');
-      } else if (!activeUserEmail) {
-        accountFeedback.textContent = `Preferences saved locally.${localSaveNote}`;
-        accountFeedback.classList.add('success');
-      } else {
-        accountFeedback.textContent = `Saved locally, but syncing failed. Try again soon.${localSaveNote}`;
-        accountFeedback.classList.add('error');
-      }
-    }
-
-    if (shouldCloseModal) {
-      setTimeout(() => {
-        closeAccountModal();
-        if (accountFeedback) {
-          accountFeedback.textContent = '';
-          accountFeedback.classList.remove('success', 'error');
-        }
-      }, 800);
-    }
-  });
-}
 
 function setupLandingNavScroll() {
   if (!landingNavAnchors || landingNavAnchors.length === 0) return;
