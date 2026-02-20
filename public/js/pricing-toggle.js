@@ -1,6 +1,7 @@
 (function () {
   function setBillingInterval(interval) {
     var priceAmount = document.getElementById('pro-price-amount');
+    var pricePeriod = document.getElementById('pro-price-period');
     var billedNote = document.getElementById('pro-billed-note');
     var buttons = document.querySelectorAll('.pricing-toggle-btn');
     if (!priceAmount || !billedNote || !buttons.length) return;
@@ -12,11 +13,14 @@
     });
 
     if (interval === 'yearly') {
-      priceAmount.textContent = '$16.58';
-      billedNote.hidden = false;
+      priceAmount.textContent = '$200';
+      if (pricePeriod) pricePeriod.textContent = '/year';
+      billedNote.hidden = true;
     } else {
       priceAmount.textContent = '$19.99';
-      billedNote.hidden = true;
+      if (pricePeriod) pricePeriod.textContent = '/month';
+      billedNote.textContent = 'or $200/year (save $40)';
+      billedNote.hidden = false;
     }
   }
 
