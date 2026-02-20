@@ -9926,29 +9926,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createQueuedEditJob({ userId, videoUrl, vibeInput }) {
+  async function createQueuedVideoJob({ userId, videoUrl, vibeInput }) {
     if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
     if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
     if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
 
-    let fileName = 'unknown';
-    try {
-      const urlObj = new URL(videoUrl);
-      const pathParts = urlObj.pathname.split('/');
-      fileName = pathParts[pathParts.length - 1] || 'unknown';
-    } catch (_e) {
-      fileName = String(videoUrl).split('/').pop()?.split('?')[0] || 'unknown';
-    }
-
     const { data, error } = await supabaseAdmin
-      .from('edit_jobs')
+      .from('video_jobs')
       .insert({
         user_id: userId,
         video_url: videoUrl,
-        video_filename: fileName,
         vibe_input: vibeInput,
         status: 'queued',
         progress: 0,
+        current_step: 'Queued',
       })
       .select()
       .single();
@@ -9970,7 +9961,7 @@ const server = http.createServer((req, res) => {
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
 
-        const job = await createQueuedEditJob({
+        const job = await createQueuedVideoJob({
           userId: authUser.id,
           videoUrl,
           vibeInput,
@@ -10002,8 +9993,8 @@ const server = http.createServer((req, res) => {
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
         const { data, error } = await supabaseAdmin
-          .from('edit_jobs')
-          .select('id, user_id, status, progress, rendered_video_url, error, created_at, completed_at, updated_at')
+          .from('video_jobs')
+          .select('id, user_id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .maybeSingle();
@@ -10015,9 +10006,9 @@ const server = http.createServer((req, res) => {
           id: data.id,
           status: data.status,
           progress: Number(data.progress || 0),
-          current_step: data.status,
-          result_url: data.rendered_video_url || null,
-          error_message: data.error || null,
+          current_step: data.current_step || data.status,
+          result_url: data.result_url || null,
+          error_message: data.error_message || null,
           created_at: data.created_at || null,
           completed_at: data.completed_at || null,
         });
@@ -10037,9 +10028,13 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
         const authUser = await requireSupabaseUser(req);
+        const requestedUserId = String(parsed.query?.user_id || '').trim();
+        if (requestedUserId && requestedUserId !== authUser.id) {
+          return sendJson(res, 403, { error: 'Forbidden' });
+        }
         const { data, error } = await supabaseAdmin
-          .from('edit_jobs')
-          .select('id, status, progress, rendered_video_url, error, created_at, completed_at, updated_at')
+          .from('video_jobs')
+          .select('id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
           .eq('user_id', authUser.id)
           .order('created_at', { ascending: false })
           .limit(100);
@@ -10050,9 +10045,9 @@ const server = http.createServer((req, res) => {
             id: job.id,
             status: job.status,
             progress: Number(job.progress || 0),
-            current_step: job.status,
-            result_url: job.rendered_video_url || null,
-            error_message: job.error || null,
+            current_step: job.current_step || job.status,
+            result_url: job.result_url || null,
+            error_message: job.error_message || null,
             created_at: job.created_at || null,
             completed_at: job.completed_at || null,
           })),
@@ -10075,7 +10070,7 @@ const server = http.createServer((req, res) => {
 
         const body = await readJsonBody(req);
         const { videoUrl, vibeInput, userId } = body || {};
-        const job = await createQueuedEditJob({ userId, videoUrl, vibeInput });
+        const job = await createQueuedVideoJob({ userId, videoUrl, vibeInput });
         return sendJson(res, 200, { jobId: job.id });
       } catch (error) {
         const status = error?.statusCode || 500;

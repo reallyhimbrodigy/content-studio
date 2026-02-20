@@ -848,6 +848,7 @@
           jobId: null,
           status: 'idle',
           progress: 0,
+          currentStep: '',
           renderedVideoUrl: null,
           error: null,
           isUploading: false,
@@ -981,7 +982,7 @@
           composerError.textContent = state.error || '';
 
           if (showProcessing) {
-            const label = state.status === 'queued'
+              const label = state.currentStep || (state.status === 'queued'
               ? 'Queued...'
               : state.status === 'analyzing'
                 ? 'Analyzing clip...'
@@ -989,8 +990,8 @@
                   ? 'Generating edit recipe...'
                   : state.status === 'rendering'
                     ? 'Rendering video...'
-                    : 'Processing...';
-            statusText.textContent = label;
+                    : 'Processing...');
+              statusText.textContent = label;
             progressFill.style.width = `${state.progress || 0}%`;
             progressText.textContent = `${state.progress || 0}%`;
           }
@@ -1019,6 +1020,7 @@
           state.jobId = null;
           state.status = 'idle';
           state.progress = 0;
+          state.currentStep = '';
           state.renderedVideoUrl = null;
           state.error = null;
           state.isUploading = false;
@@ -1129,6 +1131,7 @@
               const data = await response.json();
               state.status = data.status || 'queued';
               state.progress = data.progress || 0;
+              state.currentStep = data.current_step || '';
               state.renderedVideoUrl = data.result_url || data.rendered_video_url || null;
               state.error = data.error_message || data.error || null;
               render();
@@ -1166,6 +1169,7 @@
             state.jobId = data.job_id || data.jobId;
             state.status = 'queued';
             state.progress = 0;
+            state.currentStep = 'Queued';
             state.error = null;
             startPolling(state.jobId);
           } catch (err) {

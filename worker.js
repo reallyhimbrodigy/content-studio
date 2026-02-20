@@ -1,5 +1,5 @@
 const { supabaseAdmin } = require('./services/supabase-admin');
-const { processEditJob } = require('./lib/video-processor/process-job');
+const { processVideoJob } = require('./lib/video-processor/process-job');
 
 const POLL_INTERVAL_MS = Number(process.env.VIDEO_WORKER_POLL_MS || 5000);
 let workerRunning = false;
@@ -12,7 +12,7 @@ async function claimNextQueuedJob() {
   if (!supabaseAdmin) throw new Error('supabase_not_configured');
 
   const { data: jobs, error } = await supabaseAdmin
-    .from('edit_jobs')
+    .from('video_jobs')
     .select('*')
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
@@ -23,10 +23,11 @@ async function claimNextQueuedJob() {
   if (!job) return null;
 
   const { data: claimed, error: claimError } = await supabaseAdmin
-    .from('edit_jobs')
+    .from('video_jobs')
     .update({
       status: 'processing',
       progress: Number(job.progress || 0),
+      current_step: 'Queued',
       started_at: job.started_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -42,10 +43,53 @@ async function claimNextQueuedJob() {
 async function processOneJob(job) {
   console.log(`[VideoWorker] Processing job ${job.id}`);
   try {
-    await processEditJob(job);
+    const onProgress = async (progress, step) => {
+      await supabaseAdmin
+        .from('video_jobs')
+        .update({
+          status: 'processing',
+          progress: Number(progress || 0),
+          current_step: String(step || 'Processing'),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+    };
+
+    const result = await processVideoJob({
+      videoUrl: job.video_url,
+      vibeInput: job.vibe_input,
+      jobId: job.id,
+      onProgress,
+    });
+
+    await supabaseAdmin
+      .from('video_jobs')
+      .update({
+        status: 'completed',
+        progress: 100,
+        current_step: 'Completed',
+        result_url: result.rendered_video_url || null,
+        content_type: result.contentType || null,
+        vibe_params: result.vibeParams || null,
+        edit_recipe: result.editRecipe || null,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', job.id);
+
     console.log(`[VideoWorker] Completed job ${job.id}`);
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);
+    await supabaseAdmin
+      .from('video_jobs')
+      .update({
+        status: 'failed',
+        error_message: String(error?.message || 'Unknown processing error'),
+        current_step: 'Failed',
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', job.id);
   }
 }
 
@@ -91,4 +135,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
