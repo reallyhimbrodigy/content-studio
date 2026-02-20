@@ -27,7 +27,7 @@
   <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
   <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
   <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?t=1771551493" />
   <link rel="manifest" href="manifest.json" />
     <style>
       .page-library .user-tier-badge {
@@ -38,10 +38,31 @@
       }
 
       .library-container {
-        padding: 2rem 0;
+        padding: 1.25rem 0 2rem;
         display: flex;
         flex-direction: column;
         gap: 1.25rem;
+      }
+
+      .page-library .app-hero {
+        padding: 1.25rem 1.4rem;
+        gap: 0.5rem;
+        margin-bottom: 0.35rem;
+      }
+
+      .page-library .app-hero .hero-top {
+        min-height: 42px;
+        margin-bottom: 0;
+        justify-content: flex-end;
+      }
+
+      .page-library .app-hero h1 {
+        margin: 0;
+      }
+
+      .page-library .app-hero p {
+        margin: 0;
+        color: rgba(255, 255, 255, 0.72);
       }
 
       .library-header {
@@ -68,8 +89,8 @@
         flex-wrap: wrap;
         gap: 1rem;
         align-items: flex-end;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: #0f0f0f;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 18px;
         padding: 1rem;
       }
@@ -99,13 +120,33 @@
         border-radius: 12px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.75rem 0.9rem;
-        background: rgba(0, 0, 0, 0.2);
+        background: #151515;
         color: #ffffff;
         font-size: 0.95rem;
       }
 
       .library-toolbar input::placeholder {
         color: rgba(255, 255, 255, 0.5);
+      }
+
+      .library-toolbar__field input:focus,
+      .library-toolbar__field select:focus {
+        outline: none;
+        border-color: rgba(0, 102, 255, 0.75);
+        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.18);
+      }
+
+      .library-toolbar__field select {
+        appearance: none;
+        padding-right: 2.4rem;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23d6d6d6' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.8rem center;
+      }
+
+      .library-toolbar__field select option {
+        background: #121212;
+        color: #f1f1f1;
       }
 
       .library-filters {
@@ -119,7 +160,7 @@
         border-radius: 999px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 0.5rem 1.1rem;
-        background: rgba(255, 255, 255, 0.03);
+        background: #141414;
         color: #ffffff;
         font-size: 0.85rem;
         cursor: pointer;
@@ -127,9 +168,13 @@
       }
 
       .library-filter.is-active {
-        border-color: rgba(255, 255, 255, 0.3);
-        background: rgba(255, 255, 255, 0.08);
+        border-color: #0066ff;
+        background: #0066ff;
         color: #ffffff;
+      }
+
+      .library-filter:hover:not(.is-active) {
+        border-color: rgba(255, 255, 255, 0.3);
       }
 
       .library-filter:disabled,
@@ -149,7 +194,7 @@
 
       .calendar-card {
         background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 20px;
         padding: 1.5rem;
         display: flex;
@@ -201,27 +246,28 @@
       .calendar-card__status {
         border-radius: 999px;
         padding: 0.2rem 0.8rem;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        border: 1px solid transparent;
+        border: 1px solid rgba(255, 255, 255, 0.16);
       }
 
       .calendar-card__status--draft {
-        border-color: rgba(255, 255, 255, 0.25);
-        color: rgba(255, 255, 255, 0.8);
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.14);
+        color: rgba(255, 255, 255, 0.82);
       }
 
       .calendar-card__status--scheduled {
-        border-color: rgba(255, 255, 255, 0.3);
-        color: rgba(255, 255, 255, 0.85);
-        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(0, 102, 255, 0.3);
+        color: #cfe0ff;
+        background: rgba(0, 102, 255, 0.16);
       }
 
       .calendar-card__status--published {
-        border-color: rgba(255, 255, 255, 0.3);
-        color: rgba(255, 255, 255, 0.85);
-        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.18);
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.07);
       }
 
       .sidebar-toggle {
@@ -246,6 +292,50 @@
       .calendar-card__actions button {
         flex: 1;
         min-width: 90px;
+      }
+
+      #new-calendar-btn {
+        background: #0066ff;
+        border: 1px solid #0066ff;
+        color: #fff;
+      }
+
+      #new-calendar-btn:hover {
+        background: #1a75ff;
+        border-color: #1a75ff;
+      }
+
+      .calendar-card__actions .primary {
+        background: #0066ff;
+        border: 1px solid #0066ff;
+        color: #fff;
+      }
+
+      .calendar-card__actions .primary:hover {
+        background: #1a75ff;
+        border-color: #1a75ff;
+      }
+
+      .calendar-card__actions .ghost[data-calendar-action="export"] {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #f1f1f1;
+      }
+
+      .calendar-card__actions .ghost[data-calendar-action="export"]:hover {
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .calendar-card__actions .delete-calendar-btn {
+        background: transparent;
+        border: none;
+        color: #c35b5b;
+      }
+
+      .calendar-card__actions .delete-calendar-btn:hover {
+        color: #ff6b6b;
+        background: transparent;
       }
 
       .calendar-empty-state {
@@ -318,10 +408,6 @@
         <div class="app-main">
       <header class="hero app-hero">
         <div class="hero-top">
-          <div class="hero-top__left">
-            <img src="assets/promptly-mark-white.png" alt="Promptly logo" class="logo" />
-            <span class="hero-pill hero-pill--subtle">By Creators, For Creators</span>
-          </div>
           <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
             <div class="profile-wrapper">
               <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
@@ -637,15 +723,15 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1763412925" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771551493" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
-    <script type="module" src="./script.js?t=1771357248"></script>
-  <script type="module" src="./footer.js?t=1763412925"></script>
-  <script src="/sw-register.js" defer></script>
-  <script src="/pwa-install.js" defer></script>
-  <script src="/js/landing.js" defer></script>
-    <script type="module" src="./library.js?t=1763412925"></script>
+    <script type="module" src="./script.js?t=1771551493"></script>
+  <script type="module" src="./footer.js?t=1771551493"></script>
+  <script src="/sw-register.js?t=1771551493" defer></script>
+  <script src="/pwa-install.js?t=1771551493" defer></script>
+  <script src="/js/landing.js?t=1771551493" defer></script>
+    <script type="module" src="./library.js?t=1771551493"></script>
   </body>
 </html>

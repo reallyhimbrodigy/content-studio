@@ -11437,3 +11437,39 @@ body.page-calendar #account-modal .subscription-group {
 body.page-calendar #account-modal .subscription-group .account-subscription-row {
   margin-top: 0.5rem !important;
 }
+
+/* Library page polish */
+body.page-library .library-toolbar__field input,
+body.page-library .library-toolbar__field select {
+  background: #151515;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+body.page-library .library-toolbar__field input:focus,
+body.page-library .library-toolbar__field select:focus {
+  outline: none;
+  border-color: rgba(0, 102, 255, 0.75);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.18);
+}
+
+body.page-library .library-filter.is-active {
+  background: #0066ff;
+  border-color: #0066ff;
+  color: #ffffff;
+}
+
+body.page-library .calendar-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.page-library .calendar-card__actions .delete-calendar-btn {
+  background: transparent;
+  border: none;
+  color: #c35b5b;
+}
+
+body.page-library .calendar-card__actions .delete-calendar-btn:hover {
+  background: transparent;
+  color: #ff6b6b;
+}
