@@ -68,7 +68,6 @@ const grid = document.getElementById("calendar-grid");
   const profileInitial = document.getElementById('profile-initial');
   const userPronounsEl = document.getElementById('user-pronouns');
   const accountOverviewBtn = document.getElementById('account-overview-btn');
-  const profileSettingsBtn = document.getElementById('profile-settings-btn');
   const passwordSettingsBtn = document.getElementById('password-settings-btn');
   const accountModal = document.getElementById('account-modal');
   const accountCloseBtn = document.getElementById('account-close-btn');
@@ -5231,15 +5230,6 @@ bindProfileMenuAction(accountOverviewBtn, () => {
     openAccountModal();
   } else {
     window.location.href = '/#account';
-  }
-});
-
-bindProfileMenuAction(profileSettingsBtn, () => {
-  closeProfileMenu();
-  if (accountModal) {
-    openAccountModal();
-  } else {
-    window.location.href = '/#profile-settings';
   }
 });
 

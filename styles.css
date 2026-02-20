@@ -11303,11 +11303,14 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 body.page-calendar #account-modal.modal-overlay {
   background: rgba(0, 0, 0, 0.72) !important;
   backdrop-filter: blur(6px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 body.page-calendar #account-modal [data-account-modal] {
   background: #0f0f0f !important;
-  border: 1px solid #252525 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   color: #f2f2f2 !important;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.42) !important;
 }
@@ -11362,8 +11365,11 @@ body.page-calendar #account-modal .account-subscription-row {
 }
 
 body.page-calendar #account-modal .settings-field-readonly {
-  background: #151515 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 !important;
+  padding: 0.5rem 0 0.7rem !important;
 }
 
 body.page-calendar #account-modal #account-email-display,
@@ -11372,34 +11378,58 @@ body.page-calendar #account-modal [aria-label="Password is hidden"] {
 }
 
 body.page-calendar #account-modal .field-hint {
-  color: rgba(255, 255, 255, 0.5) !important;
-  font-size: 0.78rem !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 0.75rem !important;
   line-height: 1.4 !important;
+  margin-top: 0.45rem !important;
 }
 
 body.page-calendar #account-modal #account-email-copy,
 body.page-calendar #account-modal #account-password-manage {
   background: transparent !important;
-  border: 1px solid #2a2a2a !important;
-  color: #f2f2f2 !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  border-radius: 6px !important;
+  padding: 0.3rem 0.8rem !important;
+  font-size: 0.85rem !important;
+  line-height: 1.2 !important;
 }
 
 body.page-calendar #account-modal #account-email-copy:hover,
 body.page-calendar #account-modal #account-password-manage:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: #4a4a4a !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
 }
 
 body.page-calendar #account-modal #account-close-btn,
 body.page-calendar #account-modal [data-account-close],
 body.page-calendar #account-modal button[aria-label="Close profile settings"] {
   color: #f2f2f2 !important;
-  border-color: #2a2a2a !important;
-  background: transparent !important;
+  border: none !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
 }
 
 body.page-calendar #account-modal #account-close-btn:hover,
 body.page-calendar #account-modal [data-account-close]:hover,
 body.page-calendar #account-modal button[aria-label="Close profile settings"]:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.page-calendar #account-modal .subscription-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  margin-top: 1rem !important;
+  padding-top: 1rem !important;
+}
+
+body.page-calendar #account-modal .subscription-group .account-subscription-row {
+  margin-top: 0.5rem !important;
 }
