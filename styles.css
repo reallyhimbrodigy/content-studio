@@ -3450,35 +3450,32 @@ button.button--danger:hover {
   opacity: 0.85;
 }
 
-#delete-calendar-button {
+/* Calendar page: delete action should be text-only and subdued */
+body.page-calendar #delete-calendar-button {
   opacity: 1 !important;
   pointer-events: auto !important;
   cursor: pointer !important;
   position: relative;
   z-index: 5;
-  background: #ffffff !important;
-  border-color: #ffffff !important;
-  color: #000000 !important;
-}
-
-#delete-calendar-button:hover {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border-color: rgba(255, 255, 255, 0.92) !important;
-}
-
-body.page-calendar #delete-calendar-button {
-  background: #ff3b30 !important;
-  border-color: #ff3b30 !important;
-  color: #000000 !important;
+  appearance: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #cc4444 !important;
+  padding: 0.5rem 1rem !important;
+  text-align: left !important;
 }
 
 body.page-calendar #delete-calendar-button:hover,
 body.page-calendar #delete-calendar-button:focus,
 body.page-calendar #delete-calendar-button:active,
 body.page-calendar #delete-calendar-button:focus-visible {
-  background: #e1322a !important;
-  border-color: #e1322a !important;
-  color: #000000 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #ff5555 !important;
 }
 
 button[data-action="calendar-generate-asset"] {
@@ -4470,6 +4467,21 @@ body.prefers-reduced-motion *::after {
   margin: 0;
 }
 
+/* Calendar page: keep generator/results visually connected */
+body.page-calendar .calendar {
+  margin-top: 1.5rem !important;
+  padding-top: 0 !important;
+}
+
+/* Calendar top-right order: Brand Brain left, profile/avatar right */
+body.page-calendar #user-menu .hero-controls {
+  order: 1 !important;
+}
+
+body.page-calendar #user-menu .hero-topbar {
+  order: 2 !important;
+}
+
 .calendar__head {
   display: flex;
   flex-wrap: wrap;
@@ -4888,6 +4900,11 @@ body.prefers-reduced-motion *::after {
   height: auto;
   min-height: 320px;
   grid-column: auto;
+}
+
+/* Calendar page: subtle card definition */
+body.page-calendar .calendar-card {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 .calendar-card--expanded {
@@ -10021,6 +10038,15 @@ body:has(#account-modal.modal-overlay) .app-main {
     padding: 0 0.55rem;
     font-size: 0.62rem;
     letter-spacing: 0.04em;
+  }
+
+  /* Calendar top-right order: Brand Brain left, profile/avatar right */
+  .page-calendar #user-menu .hero-controls {
+    order: 1 !important;
+  }
+
+  .page-calendar #user-menu .hero-topbar {
+    order: 2 !important;
   }
 
   .profile-trigger {
