@@ -5244,6 +5244,20 @@ if (accountCloseBtn) {
   });
 }
 
+document.addEventListener(
+  'click',
+  (event) => {
+    if (!isCalendarPagePath) return;
+    const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
+    if (!closeBtn) return;
+    if (!accountModal || accountModal.style.display !== 'flex') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeAccountModal();
+  },
+  true
+);
+
 if (voiceLockBtn) {
   voiceLockBtn.addEventListener('click', (event) => {
     event.preventDefault();
