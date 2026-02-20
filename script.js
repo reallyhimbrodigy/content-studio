@@ -5250,7 +5250,9 @@ document.addEventListener(
     if (!isCalendarPagePath) return;
     const closeBtn = event.target.closest('[data-account-close], #account-close-btn');
     if (!closeBtn) return;
-    if (!accountModal || accountModal.style.display !== 'flex') return;
+    if (!accountModal) return;
+    const computed = window.getComputedStyle(accountModal);
+    if (accountModal.style.display === 'none' && computed.display === 'none') return;
     event.preventDefault();
     event.stopPropagation();
     closeAccountModal();
