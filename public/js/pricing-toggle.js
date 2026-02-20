@@ -15,7 +15,8 @@
     if (interval === 'yearly') {
       priceAmount.textContent = '$200';
       if (pricePeriod) pricePeriod.textContent = '/year';
-      billedNote.hidden = true;
+      billedNote.textContent = '(save $40)';
+      billedNote.hidden = false;
     } else {
       priceAmount.textContent = '$19.99';
       if (pricePeriod) pricePeriod.textContent = '/month';
