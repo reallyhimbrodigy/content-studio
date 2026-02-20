@@ -15,7 +15,6 @@ async function testClaudeAPI() {
       model: 'claude-opus-4-6',
       max_tokens: 1024,
       thinking: { type: 'adaptive' },
-      effort: 'high',
       messages: [
         {
           role: 'user',
