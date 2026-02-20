@@ -5839,8 +5839,8 @@ footer,
   z-index: 10000;
 }
 
-#account-modal {
-  display: none;
+#account-modal[hidden] {
+  display: none !important;
 }
 
 body.modal-open {
@@ -5921,9 +5921,9 @@ body.modal-open {
   flex-wrap: wrap !important;
 }
 
-#account-modal.modal-overlay,
-.account-settings-modal,
-.profile-accessibility-modal {
+#account-modal.modal-overlay:not([hidden]),
+.account-settings-modal:not([hidden]),
+.profile-accessibility-modal:not([hidden]) {
   position: fixed;
   inset: 0;
   display: flex;
@@ -11304,7 +11304,7 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 }
 
 /* Calendar account modal: dark theme refresh */
-body.page-calendar #account-modal.modal-overlay {
+body.page-calendar #account-modal.modal-overlay:not([hidden]) {
   background: rgba(0, 0, 0, 0.72) !important;
   backdrop-filter: blur(6px) !important;
   display: flex !important;
