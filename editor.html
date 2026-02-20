@@ -10,8 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?t=1771555008" />
-    <script src="assets/vendor/supabase.js?t=1771555008"></script>
+    <link rel="stylesheet" href="styles.css?t=1771556488" />
+    <script src="assets/vendor/supabase.js?t=1771556488"></script>
     <style>
       body.auth-pending {
         visibility: hidden;
@@ -431,10 +431,10 @@
       </div>
     </div>
 
-    <script type="module" src="footer.js?t=1771555008"></script>
+    <script type="module" src="footer.js?t=1771556488"></script>
 
     <script type="module">
-      import { supabase } from './supabase-client.js?t=1771555008';
+      import { supabase } from './supabase-client.js?t=1771556488';
 
       try {
         window.supabaseClient = window.supabaseClient || supabase;
@@ -834,13 +834,13 @@
       loadAccountModalData();
     </script>
 
-    <script>
+    <script type="module">
       (function initEditorPage() {
         const root = document.getElementById('editor-react-root');
         if (!root) return;
 
         const state = {
-          userId: `user-${Math.random().toString(36).slice(2, 11)}`,
+          userId: '',
           videoUrl: null,
           videoFileName: '',
           videoFileSize: 0,
@@ -955,9 +955,9 @@
 
         const render = () => {
           const showWorkflow = !state.jobId;
-          const showProcessing = state.jobId && state.status !== 'complete' && state.status !== 'error';
-          const showComplete = state.status === 'complete' && state.renderedVideoUrl;
-          const showError = state.status === 'error';
+          const showProcessing = state.jobId && !['complete', 'completed', 'error', 'failed'].includes(state.status);
+          const showComplete = ['complete', 'completed'].includes(state.status) && state.renderedVideoUrl;
+          const showError = ['error', 'failed'].includes(state.status);
 
           uploadSection.style.display = showWorkflow ? 'block' : 'none';
           processingSection.style.display = showProcessing ? 'block' : 'none';
@@ -1027,7 +1027,28 @@
           render();
         };
 
-        const uploadFile = (file) => {
+        const getSupabaseClient = () => window.supabaseClient || window.supabase || null;
+
+        const getAuthContext = async () => {
+          const sb = getSupabaseClient();
+          if (!sb?.auth?.getSession || !sb?.auth?.getUser) {
+            throw new Error('Authentication client unavailable');
+          }
+          const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] = await Promise.all([
+            sb.auth.getSession(),
+            sb.auth.getUser(),
+          ]);
+          if (sessionError || userError || !sessionData?.session?.access_token || !userData?.user?.id) {
+            throw new Error('Please sign in to continue');
+          }
+          state.userId = userData.user.id;
+          return {
+            token: sessionData.session.access_token,
+            user: userData.user,
+          };
+        };
+
+        const uploadFile = async (file) => {
           if (!file) return;
           if (file.size > 500 * 1024 * 1024) {
             state.error = 'File too large. Max 500MB.';
@@ -1045,9 +1066,19 @@
           state.uploadProgress = 0;
           render();
 
+          let authContext = null;
+          try {
+            authContext = await getAuthContext();
+          } catch (authError) {
+            state.isUploading = false;
+            state.error = authError?.message || 'Please sign in to upload videos.';
+            render();
+            return;
+          }
+
           const formData = new FormData();
           formData.append('video', file);
-          formData.append('userId', state.userId);
+          formData.append('userId', authContext.user.id);
 
           const xhr = new XMLHttpRequest();
           xhr.upload.addEventListener('progress', (e) => {
@@ -1080,6 +1111,7 @@
             render();
           });
           xhr.open('POST', '/api/upload');
+          xhr.setRequestHeader('Authorization', `Bearer ${authContext.token}`);
           xhr.send(formData);
         };
 
@@ -1087,15 +1119,20 @@
           if (pollInterval) clearInterval(pollInterval);
           pollInterval = setInterval(async () => {
             try {
-              const response = await fetch(`/api/jobs/${jobId}`);
+              const auth = await getAuthContext();
+              const response = await fetch(`/api/video-jobs/${jobId}`, {
+                headers: {
+                  Authorization: `Bearer ${auth.token}`,
+                },
+              });
               if (!response.ok) return;
               const data = await response.json();
               state.status = data.status || 'queued';
               state.progress = data.progress || 0;
-              state.renderedVideoUrl = data.rendered_video_url || null;
-              state.error = data.error || null;
+              state.renderedVideoUrl = data.result_url || data.rendered_video_url || null;
+              state.error = data.error_message || data.error || null;
               render();
-              if (data.status === 'complete' || data.status === 'error') {
+              if (['complete', 'completed', 'error', 'failed'].includes(data.status)) {
                 clearInterval(pollInterval);
                 pollInterval = null;
               }
@@ -1111,18 +1148,22 @@
           state.error = null;
           render();
           try {
-            const response = await fetch('/api/generate', {
+            const auth = await getAuthContext();
+            const response = await fetch('/api/video-jobs', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${auth.token}`,
+              },
               body: JSON.stringify({
-                videoUrl: state.videoUrl,
-                vibeInput: state.vibe.trim(),
-                userId: state.userId,
+                video_url: state.videoUrl,
+                vibe_input: state.vibe.trim(),
+                user_id: auth.user.id,
               }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data?.error || 'Failed to create job');
-            state.jobId = data.jobId;
+            state.jobId = data.job_id || data.jobId;
             state.status = 'queued';
             state.progress = 0;
             state.error = null;

@@ -9926,6 +9926,146 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  async function createQueuedEditJob({ userId, videoUrl, vibeInput }) {
+    if (!videoUrl) throw Object.assign(new Error('Video URL is required'), { statusCode: 400 });
+    if (!vibeInput) throw Object.assign(new Error('Vibe input is required'), { statusCode: 400 });
+    if (!userId) throw Object.assign(new Error('User ID is required'), { statusCode: 400 });
+
+    let fileName = 'unknown';
+    try {
+      const urlObj = new URL(videoUrl);
+      const pathParts = urlObj.pathname.split('/');
+      fileName = pathParts[pathParts.length - 1] || 'unknown';
+    } catch (_e) {
+      fileName = String(videoUrl).split('/').pop()?.split('?')[0] || 'unknown';
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('edit_jobs')
+      .insert({
+        user_id: userId,
+        video_url: videoUrl,
+        video_filename: fileName,
+        vibe_input: vibeInput,
+        status: 'queued',
+        progress: 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw Object.assign(new Error(error.message || 'Failed to create job'), { statusCode: 500 });
+    }
+    return data;
+  }
+
+  if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
+        const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
+
+        const job = await createQueuedEditJob({
+          userId: authUser.id,
+          videoUrl,
+          vibeInput,
+        });
+
+        return sendJson(res, 200, {
+          success: true,
+          job_id: job.id,
+          status: job.status || 'queued',
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][VideoJobsCreate] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  const videoJobsStatusMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)$/i);
+  if (videoJobsStatusMatch && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+        const authUser = await requireSupabaseUser(req);
+        const jobId = decodeURIComponent(videoJobsStatusMatch[1] || '').trim();
+        if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
+
+        const { data, error } = await supabaseAdmin
+          .from('edit_jobs')
+          .select('id, user_id, status, progress, rendered_video_url, error, created_at, completed_at, updated_at')
+          .eq('id', jobId)
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        if (error) return sendJson(res, 500, { error: 'Failed to fetch job status' });
+        if (!data) return sendJson(res, 404, { error: 'Job not found' });
+
+        return sendJson(res, 200, {
+          id: data.id,
+          status: data.status,
+          progress: Number(data.progress || 0),
+          current_step: data.status,
+          result_url: data.rendered_video_url || null,
+          error_message: data.error || null,
+          created_at: data.created_at || null,
+          completed_at: data.completed_at || null,
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][VideoJobsStatus] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/video-jobs' && req.method === 'GET') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) {
+          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        }
+        const authUser = await requireSupabaseUser(req);
+        const { data, error } = await supabaseAdmin
+          .from('edit_jobs')
+          .select('id, status, progress, rendered_video_url, error, created_at, completed_at, updated_at')
+          .eq('user_id', authUser.id)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) return sendJson(res, 500, { error: 'Failed to fetch jobs' });
+        return sendJson(res, 200, {
+          jobs: (data || []).map((job) => ({
+            id: job.id,
+            status: job.status,
+            progress: Number(job.progress || 0),
+            current_step: job.status,
+            result_url: job.rendered_video_url || null,
+            error_message: job.error || null,
+            created_at: job.created_at || null,
+            completed_at: job.completed_at || null,
+          })),
+        });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[VideoEditor][VideoJobsList] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/generate' && req.method === 'POST') {
     (async () => {
       try {
@@ -9935,39 +10075,8 @@ const server = http.createServer((req, res) => {
 
         const body = await readJsonBody(req);
         const { videoUrl, vibeInput, userId } = body || {};
-
-        if (!videoUrl) return sendJson(res, 400, { error: 'Video URL is required' });
-        if (!vibeInput) return sendJson(res, 400, { error: 'Vibe input is required' });
-        if (!userId) return sendJson(res, 400, { error: 'User ID is required' });
-
-        let fileName = 'unknown';
-        try {
-          const urlObj = new URL(videoUrl);
-          const pathParts = urlObj.pathname.split('/');
-          fileName = pathParts[pathParts.length - 1] || 'unknown';
-        } catch (_e) {
-          fileName = String(videoUrl).split('/').pop()?.split('?')[0] || 'unknown';
-        }
-
-        const { data, error } = await supabaseAdmin
-          .from('edit_jobs')
-          .insert({
-            user_id: userId,
-            video_url: videoUrl,
-            video_filename: fileName,
-            vibe_input: vibeInput,
-            status: 'queued',
-            progress: 0,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('[VideoEditor][Generate] Database error:', error);
-          return sendJson(res, 500, { error: 'Failed to create job' });
-        }
-
-        return sendJson(res, 200, { jobId: data.id });
+        const job = await createQueuedEditJob({ userId, videoUrl, vibeInput });
+        return sendJson(res, 200, { jobId: job.id });
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][Generate] error:', error);
@@ -15242,6 +15351,19 @@ if (process.env.CALENDAR_PARSE_SELFTEST === '1') {
 const PORT = process.env.PORT || 8000;
 
 if (require.main === module) {
+  const shouldRunVideoWorker = process.env.NODE_ENV !== 'test' && process.env.DISABLE_VIDEO_WORKER !== '1';
+  if (shouldRunVideoWorker) {
+    try {
+      const { runWorker } = require('./worker');
+      console.log('[VideoWorker] Booting background worker...');
+      runWorker().catch((error) => {
+        console.error('[VideoWorker] Failed to start:', error);
+      });
+    } catch (error) {
+      console.error('[VideoWorker] Startup import error:', error);
+    }
+  }
+
   // Daily analytics sync (06:00 America/Los_Angeles)
   cron.schedule(
     '0 6 * * *',
