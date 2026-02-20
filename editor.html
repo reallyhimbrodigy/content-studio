@@ -10,9 +10,13 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?t=1771554503" />
-    <script src="assets/vendor/supabase.js?t=1771554503"></script>
+    <link rel="stylesheet" href="styles.css?t=1771555008" />
+    <script src="assets/vendor/supabase.js?t=1771555008"></script>
     <style>
+      body.auth-pending {
+        visibility: hidden;
+      }
+
       body.page-editor,
       body.page-editor .app-main,
       body.page-editor main.editor-main {
@@ -336,7 +340,7 @@
       }
     </style>
   </head>
-  <body class="page-editor">
+  <body class="page-editor auth-pending">
     <div class="app-shell editor-page">
       <div class="app-layout" id="app-layout">
         <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">
@@ -427,9 +431,24 @@
       </div>
     </div>
 
-    <script type="module" src="footer.js?t=1771554503"></script>
+    <script type="module" src="footer.js?t=1771555008"></script>
 
-    <script>
+    <script type="module">
+      import { supabase } from './supabase-client.js?t=1771555008';
+
+      try {
+        window.supabaseClient = window.supabaseClient || supabase;
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session?.user) {
+          window.location.replace('/auth.html');
+          throw new Error('AUTH_REQUIRED');
+        }
+        document.body.classList.remove('auth-pending');
+      } catch (error) {
+        window.location.replace('/auth.html');
+        throw error;
+      }
+
       const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
       const isMobileViewport = () => window.matchMedia('(max-width: 768px)').matches;
 

@@ -342,7 +342,19 @@ let libraryCalendarData = [];
 const calendarFilters = { search: '', status: 'all', sort: 'recent' };
 const calendarRawLookup = new Map();
 
-renderLibraryCalendars();
+async function ensureLibraryAuth() {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session?.user) {
+      window.location.replace('/auth.html');
+      return false;
+    }
+    return true;
+  } catch (_err) {
+    window.location.replace('/auth.html');
+    return false;
+  }
+}
 
 function applySidebarState(collapsed) {
   if (!appSidebar) return;
@@ -563,7 +575,11 @@ async function hydrateLibraryUser() {
   }
 }
 
-function initLibraryPage() {
+async function initLibraryPage() {
+  const authenticated = await ensureLibraryAuth();
+  if (!authenticated) return;
+  document.body.classList.remove('auth-pending');
+  renderLibraryCalendars();
   initSidebarToggle();
   initProfileMenu();
   initLibraryAccountModal();
