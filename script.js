@@ -3653,6 +3653,7 @@ async function loadCalendarExportUsage() {
 
 function openAccountModal() {
   if (!accountModal) return;
+  accountModal.hidden = false;
   accountModal.style.display = 'flex';
   document.body.classList.add('modal-open');
   loadAccountModalData();
@@ -3661,6 +3662,7 @@ function openAccountModal() {
 function closeAccountModal() {
   if (!accountModal) return;
   accountModal.style.display = 'none';
+  accountModal.hidden = true;
   document.body.classList.remove('modal-open');
 }
 

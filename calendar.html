@@ -27,7 +27,7 @@
   <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
   <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
   <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="styles.css?t=1771548908" />
+  <link rel="stylesheet" href="styles.css?t=1771549249" />
   <link rel="manifest" href="manifest.json" />
   <style>
     .page-calendar .hero-topbar,
@@ -692,14 +692,14 @@
     
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" hidden aria-modal="true" role="dialog" data-account-modal-root data-account-overlay onclick="if(event.target===this){this.style.display='none';this.hidden=true;document.body.classList.remove('modal-open');}">
+      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal onclick="event.stopPropagation();">
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
             <p class="modal-sub">Review your Promptly account details.</p>
           </div>
-          <button type="button" class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close onclick="document.getElementById('account-modal').style.display='none';document.body.classList.remove('modal-open');">
+          <button type="button" class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close onclick="var m=document.getElementById('account-modal');if(m){m.style.display='none';m.hidden=true;}document.body.classList.remove('modal-open');">
             &times;
           </button>
         </div>
@@ -901,7 +901,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771548908" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771549249" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
@@ -1247,8 +1247,8 @@
       }
     }
   </style>
-  <script type="module" src="./script.js?t=1771548908"></script>
-  <script type="module" src="./footer.js?t=1771548908"></script>
+  <script type="module" src="./script.js?t=1771549249"></script>
+  <script type="module" src="./footer.js?t=1771549249"></script>
   <script src="/sw-register.js" defer></script>
   <script src="/pwa-install.js" defer></script>
   <script src="/js/landing.js" defer></script>

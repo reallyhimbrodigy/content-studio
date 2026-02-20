@@ -5839,6 +5839,10 @@ footer,
   z-index: 10000;
 }
 
+#account-modal {
+  display: none;
+}
+
 body.modal-open {
   overflow: hidden;
 }
