@@ -11298,3 +11298,126 @@ body.is-landing .lp-workflow .workflow-cta-bar{
 .page-calendar .calendar.compact .pc-accordions {
   display: none;
 }
+
+/* Calendar account modal: dark theme refresh */
+body.page-calendar #account-modal.modal-overlay {
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(6px) !important;
+}
+
+body.page-calendar #account-modal [data-account-modal] {
+  background: #0f0f0f !important;
+  border: 1px solid #252525 !important;
+  color: #f2f2f2 !important;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.42) !important;
+}
+
+body.page-calendar #account-modal [data-account-modal] h3,
+body.page-calendar #account-modal [data-account-modal] label,
+body.page-calendar #account-modal [data-account-modal] .settings-tab,
+body.page-calendar #account-modal [data-account-modal] .settings-field-readonly,
+body.page-calendar #account-modal [data-account-modal] .settings-field-readonly span {
+  color: #f2f2f2 !important;
+}
+
+body.page-calendar #account-modal [data-account-modal] .modal-sub {
+  color: #a0a0a0 !important;
+}
+
+body.page-calendar #account-modal .settings-tabs {
+  background: #151515 !important;
+  border: 1px solid #2a2a2a !important;
+  border-radius: 12px !important;
+  padding: 4px !important;
+}
+
+body.page-calendar #account-modal .settings-tab {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  color: #9a9a9a !important;
+}
+
+body.page-calendar #account-modal .settings-tab.active {
+  color: #ffffff !important;
+  background: rgba(0, 102, 255, 0.18) !important;
+  border-color: rgba(0, 102, 255, 0.45) !important;
+  box-shadow: inset 0 -2px 0 rgba(0, 102, 255, 0.75) !important;
+}
+
+body.page-calendar #account-modal input,
+body.page-calendar #account-modal textarea,
+body.page-calendar #account-modal select {
+  background: #151515 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f2f2f2 !important;
+}
+
+body.page-calendar #account-modal input::placeholder,
+body.page-calendar #account-modal textarea::placeholder {
+  color: #707070 !important;
+}
+
+body.page-calendar #account-modal input:focus,
+body.page-calendar #account-modal textarea:focus,
+body.page-calendar #account-modal select:focus {
+  border-color: rgba(0, 102, 255, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2) !important;
+  outline: none !important;
+}
+
+body.page-calendar #account-modal #account-plan-status {
+  color: #8bb7ff !important;
+  background: rgba(0, 102, 255, 0.16) !important;
+  border: 1px solid rgba(0, 102, 255, 0.35) !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 0.2rem 0.6rem !important;
+  font-weight: 700 !important;
+}
+
+body.page-calendar #account-modal .field-hint {
+  color: #7f7f7f !important;
+  font-size: 0.82rem !important;
+}
+
+body.page-calendar #account-modal #account-cancel-btn,
+body.page-calendar #account-modal #account-email-copy,
+body.page-calendar #account-modal #account-password-manage {
+  background: transparent !important;
+  border: 1px solid #2a2a2a !important;
+  color: #f2f2f2 !important;
+}
+
+body.page-calendar #account-modal #account-cancel-btn:hover,
+body.page-calendar #account-modal #account-email-copy:hover,
+body.page-calendar #account-modal #account-password-manage:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: #3a3a3a !important;
+}
+
+body.page-calendar #account-modal .settings-actions .primary {
+  background: #0066ff !important;
+  border: 1px solid #0066ff !important;
+  color: #ffffff !important;
+}
+
+body.page-calendar #account-modal .settings-actions .primary:hover {
+  background: #1a75ff !important;
+  border-color: #1a75ff !important;
+}
+
+body.page-calendar #account-modal #account-close-btn,
+body.page-calendar #account-modal [data-account-close],
+body.page-calendar #account-modal button[aria-label="Close profile settings"] {
+  color: #f2f2f2 !important;
+  border-color: #2a2a2a !important;
+  background: transparent !important;
+}
+
+body.page-calendar #account-modal #account-close-btn:hover,
+body.page-calendar #account-modal [data-account-close]:hover,
+body.page-calendar #account-modal button[aria-label="Close profile settings"]:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}

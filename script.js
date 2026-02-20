@@ -76,18 +76,12 @@ const grid = document.getElementById("calendar-grid");
   const accountForm = document.getElementById('account-settings-form');
   const accountSaveBtn = accountForm?.querySelector('button[type="submit"]');
   const accountDisplayNameInput = document.getElementById('account-display-name');
-  const accountPronounsInput = document.getElementById('account-pronouns');
-  const accountRoleInput = document.getElementById('account-role');
   const accountFeedback = document.getElementById('account-feedback');
-  const prefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
-  const prefersHighContrastInput = document.getElementById('prefers-high-contrast');
-  const prefersLargeTypeInput = document.getElementById('prefers-large-type');
   const accountEmailDisplay = document.getElementById('account-email-display');
   const accountEmailCopyBtn = document.getElementById('account-email-copy');
   const accountPasswordManageBtn = document.getElementById('account-password-manage');
   const accountPlanStatusEl = document.getElementById('account-plan-status');
 const accountPlanLimitsEl = document.getElementById('account-plan-limits');
-const accountLastLoginEl = document.getElementById('account-last-login');
 const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
 const settingsPanels = document.querySelectorAll('[data-settings-panel]');
 const postFrequencyDisplay = document.getElementById('post-frequency-display');
@@ -3359,15 +3353,6 @@ function applyProfileSettings() {
     const initial = initialsSource.trim().charAt(0) || 'P';
     profileInitial.textContent = initial.toUpperCase();
   }
-  if (userPronounsEl) {
-    const pronouns = (settings.pronouns || '').trim();
-    userPronounsEl.textContent = pronouns;
-    userPronounsEl.style.display = pronouns ? '' : 'none';
-  }
-  document.body.classList.toggle('prefers-high-contrast', !!settings.highContrast);
-  document.body.classList.toggle('prefers-large-type', !!settings.largeType);
-  document.body.classList.toggle('prefers-reduced-motion', !!settings.reducedMotion);
-  document.documentElement.style.fontSize = settings.largeType ? '18px' : '';
 }
 
 function normalizeVoiceLockSettings(raw = {}) {
@@ -3573,7 +3558,6 @@ async function getAccountAuthUser() {
 
 function setAccountModalLoadingState() {
   if (accountEmailDisplay) accountEmailDisplay.textContent = 'Loading…';
-  if (accountLastLoginEl) accountLastLoginEl.textContent = 'Loading…';
   if (accountSaveBtn) accountSaveBtn.disabled = true;
 }
 
@@ -3581,7 +3565,6 @@ function setAccountModalLoggedOutState() {
   activeUserEmail = '';
   updateAccountOverviewEmail('');
   updateAccountPlanInfo('none');
-  updateAccountLastLogin('');
   if (accountSaveBtn) accountSaveBtn.disabled = false;
 }
 
@@ -3598,9 +3581,6 @@ async function loadAccountModalData() {
     accountEmailDisplay.textContent = email || 'Email unavailable';
   }
   if (userEmailEl && email) userEmailEl.textContent = email;
-  if (accountLastLoginEl && accountLastLoginEl.textContent === 'Loading…') {
-    accountLastLoginEl.textContent = '';
-  }
   hydrateAccountForm();
   try {
     const settings = await getProfilePreferences();
@@ -3714,31 +3694,10 @@ async function loadCalendarExportUsage() {
   }
 }
 
-function updateAccountLastLogin(timestamp) {
-  if (!accountLastLoginEl) return;
-  if (!timestamp) {
-    accountLastLoginEl.textContent = activeUserEmail ? '' : 'Not available';
-    return;
-  }
-  try {
-    const date = new Date(timestamp);
-    accountLastLoginEl.textContent = isNaN(date.getTime())
-      ? 'Not available'
-      : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    accountLastLoginEl.textContent = 'Not available';
-  }
-}
-
 function hydrateAccountForm() {
   if (!accountForm) return;
   const settings = profileSettings || {};
   if (accountDisplayNameInput) accountDisplayNameInput.value = settings.displayName || '';
-  if (accountPronounsInput) accountPronounsInput.value = settings.pronouns || '';
-  if (accountRoleInput) accountRoleInput.value = settings.role || '';
-  if (prefersHighContrastInput) prefersHighContrastInput.checked = !!settings.highContrast;
-  if (prefersLargeTypeInput) prefersLargeTypeInput.checked = !!settings.largeType;
-  if (prefersReducedMotionInput) prefersReducedMotionInput.checked = !!settings.reducedMotion;
 }
 
 function openAccountModal(initialTab = 'account') {
@@ -5084,13 +5043,6 @@ async function bootstrapApp(attempt = 0) {
         syncTargetAudienceFromSettings();
       });
     }
-    try {
-      const userDetails = await getCurrentUserDetails();
-      updateAccountLastLogin(userDetails?.last_sign_in_at || userDetails?.updated_at || userDetails?.created_at || '');
-    } catch (err) {
-      console.warn('Unable to fetch user details', err);
-      updateAccountLastLogin('');
-    }
     
     if (userTierBadge) {
       userTierBadge.style.display = userIsPro ? 'inline-flex' : 'none';
@@ -5155,7 +5107,6 @@ async function bootstrapApp(attempt = 0) {
     updateAccountOverviewEmail('');
     updateAccountPlanInfo('none');
     if (calendarExportUsageEl) calendarExportUsageEl.textContent = '';
-    updateAccountLastLogin('');
     brandBrainHydrated = false;
     currentBrandText = '';
     if (publicNav) {
@@ -5508,12 +5459,7 @@ if (accountForm) {
     }
 
     const payload = {
-      displayName: accountDisplayNameInput?.value.trim() || '',
-      pronouns: accountPronounsInput?.value.trim() || '',
-      role: accountRoleInput?.value.trim() || '',
-      highContrast: !!prefersHighContrastInput?.checked,
-      largeType: !!prefersLargeTypeInput?.checked,
-      reducedMotion: !!prefersReducedMotionInput?.checked
+      displayName: accountDisplayNameInput?.value.trim() || ''
     };
     const persistResult = updateProfileSettings(payload, { targetEmail: authEmail || activeUserEmail });
 
@@ -10287,13 +10233,7 @@ if (isLibraryPage()) {
   const libraryAccountForm = document.getElementById('account-settings-form');
   const libraryAccountSaveBtn = libraryAccountForm?.querySelector('button[type="submit"]');
   const libraryAccountEmailDisplay = document.getElementById('account-email-display');
-  const libraryAccountLastLoginEl = document.getElementById('account-last-login');
   const libraryAccountDisplayNameInput = document.getElementById('account-display-name');
-  const libraryAccountPronounsInput = document.getElementById('account-pronouns');
-  const libraryAccountRoleInput = document.getElementById('account-role');
-  const libraryPrefersHighContrastInput = document.getElementById('prefers-high-contrast');
-  const libraryPrefersLargeTypeInput = document.getElementById('prefers-large-type');
-  const libraryPrefersReducedMotionInput = document.getElementById('prefers-reduced-motion');
   const libraryAccountFeedback = document.getElementById('account-feedback');
   const libraryUserEmailEl = document.getElementById('user-email');
   const libraryAccountPlanStatusEl = document.getElementById('account-plan-status');
@@ -10400,34 +10340,17 @@ if (isLibraryPage()) {
 
   const setLibraryModalLoadingState = () => {
     if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Loading…';
-    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Loading…';
     if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = true;
   };
 
   const setLibraryModalLoggedOutState = () => {
     if (libraryAccountEmailDisplay) libraryAccountEmailDisplay.textContent = 'Not signed in';
-    if (libraryAccountLastLoginEl) libraryAccountLastLoginEl.textContent = 'Not available';
     if (libraryAccountSaveBtn) libraryAccountSaveBtn.disabled = false;
   };
 
   const applyLibraryPrefs = (settings = {}) => {
     if (libraryAccountDisplayNameInput && typeof settings.displayName === 'string') {
       libraryAccountDisplayNameInput.value = settings.displayName;
-    }
-    if (libraryAccountPronounsInput && typeof settings.pronouns === 'string') {
-      libraryAccountPronounsInput.value = settings.pronouns;
-    }
-    if (libraryAccountRoleInput && typeof settings.role === 'string') {
-      libraryAccountRoleInput.value = settings.role;
-    }
-    if (libraryPrefersHighContrastInput && 'highContrast' in settings) {
-      libraryPrefersHighContrastInput.checked = !!settings.highContrast;
-    }
-    if (libraryPrefersLargeTypeInput && 'largeType' in settings) {
-      libraryPrefersLargeTypeInput.checked = !!settings.largeType;
-    }
-    if (libraryPrefersReducedMotionInput && 'reducedMotion' in settings) {
-      libraryPrefersReducedMotionInput.checked = !!settings.reducedMotion;
     }
   };
 
@@ -10448,22 +10371,6 @@ if (isLibraryPage()) {
     }
   };
 
-  const updateLibraryLastLogin = (timestamp) => {
-    if (!libraryAccountLastLoginEl) return;
-    if (!timestamp) {
-      libraryAccountLastLoginEl.textContent = '';
-      return;
-    }
-    try {
-      const date = new Date(timestamp);
-      libraryAccountLastLoginEl.textContent = isNaN(date.getTime())
-        ? ''
-        : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-    } catch {
-      libraryAccountLastLoginEl.textContent = '';
-    }
-  };
-
   const loadLibraryAccountModalData = async () => {
     setLibraryModalLoadingState();
     if (!supabase?.auth?.getUser) {
@@ -10480,23 +10387,12 @@ if (isLibraryPage()) {
       libraryAccountEmailDisplay.textContent = email || 'Email unavailable';
     }
     if (libraryUserEmailEl && email) libraryUserEmailEl.textContent = email;
-    if (libraryAccountLastLoginEl && libraryAccountLastLoginEl.textContent === 'Loading…') {
-      libraryAccountLastLoginEl.textContent = '';
-    }
     try {
       const proStatus = isProTier();
       updateLibraryPlanInfo(!!proStatus);
-      const userDetails = await getCurrentUserDetails();
-      updateLibraryLastLogin(
-        userDetails?.last_sign_in_at ||
-          userDetails?.updated_at ||
-          userDetails?.created_at ||
-          ''
-      );
     } catch (planError) {
       console.warn('Unable to resolve plan details for library modal', planError);
       updateLibraryPlanInfo(false);
-      updateLibraryLastLogin('');
     }
     try {
       const settings = await getProfilePreferences();
@@ -10591,12 +10487,7 @@ if (isLibraryPage()) {
         libraryAccountFeedback.classList.remove('success');
       }
       const payload = {
-        displayName: libraryAccountDisplayNameInput?.value.trim() || '',
-        pronouns: libraryAccountPronounsInput?.value.trim() || '',
-        role: libraryAccountRoleInput?.value.trim() || '',
-        highContrast: !!libraryPrefersHighContrastInput?.checked,
-        largeType: !!libraryPrefersLargeTypeInput?.checked,
-        reducedMotion: !!libraryPrefersReducedMotionInput?.checked
+        displayName: libraryAccountDisplayNameInput?.value.trim() || ''
       };
       try {
         const saved = await saveProfilePreferences(enforceFreeLocks(payload));
