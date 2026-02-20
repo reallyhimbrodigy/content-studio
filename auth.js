@@ -261,7 +261,7 @@ const emailInput = document.getElementById("email");
         const user = await getCurrentUser();
         const landingPaths = ['/', '/index.html'];
         if (user && landingPaths.includes(window.location.pathname)) {
-          window.location.href = '/calendar.html';
+          window.location.href = '/editor';
         }
       } catch (err) {
         console.error('auth.js: landing redirect check failed', err);
@@ -349,7 +349,7 @@ const emailInput = document.getElementById("email");
             try {
               const user = await getCurrentUser();
               if (user) {
-                window.location.href = "/calendar.html";
+                window.location.href = "/editor";
               } else {
                 // Session not ready yet, try again
                 setTimeout(verifyAndRedirect, 300);
@@ -387,7 +387,7 @@ const emailInput = document.getElementById("email");
           const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-              redirectTo: `${window.location.origin}/calendar.html`
+              redirectTo: `${window.location.origin}/editor`
             }
           });
           

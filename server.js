@@ -20,7 +20,6 @@ const cron = require('node-cron');
 let uploadAssetFromUrl = async () => null;
 let buildAssetUrl = () => '';
 let generateBrandedBackgroundImage = async () => null;
-const { getBrandBrainForUser } = require('./services/brand-brain');
 let getPhylloPosts = async () => [];
 let getPhylloPostMetrics = async () => null;
 let getUserPostMetrics = async () => ({ posts: [], summary: {} });
@@ -1800,7 +1799,7 @@ async function handleCreateDesignAsset(req, res) {
       });
     }
 
-    const brandProfile = (await fetchBrandBrainRow(user.id)) || (await getBrandBrainForUser(user.id));
+    const brandProfile = await fetchBrandBrainRow(user.id);
     console.log('[BrandBrain] for user', user.id, brandProfile);
     const calendarDay = await loadCalendarDay(calendarDayId, user.id);
     let designData = buildBaseDesignDataFromBody(requestBody, { calendarDayId, linkedDay, type });
@@ -10114,13 +10113,26 @@ const server = http.createServer((req, res) => {
       }
     }
     if (parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html') {
-      const calendarPage = path.join(__dirname, 'calendar.html');
-      if (fs.existsSync(calendarPage)) {
-        return serveFile(calendarPage, res);
-      }
       res.writeHead(404, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'calendar_not_found' }));
+      return res.end(JSON.stringify({ error: 'not_found' }));
     }
+  }
+
+  // Calendar + Brand Brain features removed: hard-disable legacy endpoints.
+  const removedFeaturePath = String(parsed.pathname || '');
+  if (
+    removedFeaturePath === '/api/generate-calendar' ||
+    removedFeaturePath === '/api/brand-brain/settings' ||
+    removedFeaturePath.startsWith('/api/calendar') ||
+    /^\/api\/calendars\/[^/]+$/i.test(removedFeaturePath)
+  ) {
+    res.writeHead(410, { 'Content-Type': 'application/json' });
+    return res.end(
+      JSON.stringify({
+        error: 'feature_removed',
+        message: 'Content Calendar and Brand Brain features have been removed.',
+      })
+    );
   }
 
   // Helper: serve static file with optional gzip if client supports

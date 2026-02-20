@@ -1,12 +1,12 @@
 /* Promptly Service Worker */
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CORE_CACHE = `promptly-core-${CACHE_VERSION}`;
 const CORE_ASSETS = [
   '/',
   '/index.html',
-  '/calendar.html',
   '/styles.css',
-  '/script.js',
+  '/editor.html',
+  '/library.html',
   '/assets/vendor/supabase.js',
   '/assets/promptly-mark-white.png',
   '/offline.html'

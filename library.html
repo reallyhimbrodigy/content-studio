@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Promptly</title>
-  <meta name="description" content="Promptly generates a polished 30-day social content calendar in seconds – sequenced posts, platform variants, and export-ready assets." />
+  <meta name="description" content="Promptly helps you manage saved AI video edits, exports, and projects in one place." />
   <link rel="canonical" href="https://usepromptly.app/" />
   <meta property="og:title" content="Promptly · AI Content Studio" />
   <meta property="og:description" content="Create a full month of strategic content in seconds." />
@@ -27,7 +27,7 @@
   <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
   <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
   <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="styles.css?t=1771551493" />
+  <link rel="stylesheet" href="styles.css?t=1771552754" />
   <link rel="manifest" href="manifest.json" />
     <style>
       .page-library .user-tier-badge {
@@ -393,9 +393,6 @@
         <aside class="app-sidebar" id="app-sidebar">
           <div class="sidebar-fixed-inner">
           <nav class="sidebar-nav" aria-label="Workspace navigation">
-            <a href="/calendar.html" class="sidebar-link">
-              <span>Content Calendar</span>
-            </a>
             <a href="/editor" class="sidebar-link">
               <span>AI Editor</span>
             </a>
@@ -418,7 +415,7 @@
                 <div id="profile-dropdown" class="profile-dropdown">
                   <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
                   <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                  <button id="profile-settings-btn" class="profile-menu-item">Profile &amp; accessibility</button>
+                  <button id="profile-settings-btn" class="profile-menu-item">Profile</button>
                   <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
                   <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage Billing</button>
                   <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
@@ -428,22 +425,22 @@
           </div>
         </div>
         <h1>Library</h1>
-        <p>Reopen, download, or continue refining any saved calendar. Everything you generate lives here.</p>
+        <p>Reopen, download, or continue refining any saved edit. Everything you generate lives here.</p>
       </header>
 
       <main id="app">
         <section class="library-container" aria-labelledby="library-saved-heading">
           <div class="library-header">
-            <h2 id="library-saved-heading">Saved Calendars</h2>
+            <h2 id="library-saved-heading">Saved Edits</h2>
             <div class="nav-buttons">
-              <button id="new-calendar-btn" class="secondary">+ New Calendar</button>
+              <button id="new-calendar-btn" class="secondary">+ New Edit</button>
             </div>
           </div>
 
-          <div class="library-toolbar" id="calendar-toolbar" role="region" aria-label="Calendar controls">
+          <div class="library-toolbar" id="calendar-toolbar" role="region" aria-label="Library controls">
             <div class="library-toolbar__field library-toolbar__field--search">
               <label for="calendar-search">Search</label>
-              <input type="search" id="calendar-search" placeholder="Search calendars…" autocomplete="off" />
+              <input type="search" id="calendar-search" placeholder="Search edits…" autocomplete="off" />
             </div>
             <div class="library-toolbar__field library-toolbar__field--sort">
               <label for="calendar-sort">Sort by</label>
@@ -455,7 +452,7 @@
             </div>
             <div class="library-toolbar__field library-toolbar__field--filters">
               <label>Filter</label>
-              <div class="library-filters" role="group" aria-label="Calendar status filter">
+              <div class="library-filters" role="group" aria-label="Edit status filter">
                 <button type="button" class="library-filter is-active" data-calendar-filter="all">All</button>
                 <button type="button" class="library-filter" data-calendar-filter="draft">Draft</button>
                 <button type="button" class="library-filter" data-calendar-filter="scheduled">Scheduled</button>
@@ -466,9 +463,9 @@
 
           <div id="library-empty-state" class="calendar-empty-state" role="status" aria-live="polite">
             <div class="calendar-empty-state__icon" aria-hidden="true">∎</div>
-            <h3>No calendars yet</h3>
-            <p>Start from one idea and we’ll turn it into a month of ready-to-post scripts.</p>
-            <button type="button" id="calendar-empty-cta" class="primary">Create your first calendar</button>
+            <h3>No edits yet</h3>
+            <p>Upload your first clip in the AI Editor to start building your library.</p>
+            <button type="button" id="calendar-empty-cta" class="primary">Create your first edit</button>
           </div>
 
           <div id="library-calendars-grid" class="calendar-grid" aria-live="polite"></div>
@@ -575,116 +572,6 @@
       </div>
     </div>
 
-    <!-- Brand Brain Modal -->
-    <div id="brand-modal" class="brand-brain-overlay" style="display:none">
-      <div class="brand-brain-panel" role="dialog" aria-modal="true">
-        <header class="brand-brain-header">
-          <div class="brand-brain-header-left">
-            <h3>Brand Brain</h3>
-            <span class="brand-brain-badge">Pro</span>
-          </div>
-          <span id="brand-brain-status-pill" class="brand-brain-status-pill" data-state="disabled">Disabled</span>
-        </header>
-        <p class="brand-brain-subtitle">Optimize your monthly plan with growth and conversion strategy tailored to your audience.</p>
-
-        <div class="brand-brain-toggle-row" data-pro-lock="1">
-          <label class="brand-brain-switch">
-            <input type="checkbox" id="brand-brain-enabled" />
-            <span class="brand-brain-switch__slider"></span>
-          </label>
-          <div class="brand-brain-toggle-copy">
-            <div class="brand-brain-toggle-label">Optimize calendar for growth + conversions</div>
-            <div class="brand-brain-toggle-subtext">Applies platform patterns and sales psychology to your monthly plan.</div>
-          </div>
-          <span class="brand-brain-locked-pill">Pro</span>
-        </div>
-        <div class="brand-brain-locked-copy">Pro required to enable. Unlock to optimize your calendar.</div>
-
-        <fieldset class="brand-brain-section" data-pro-lock="1">
-          <legend>Strategy preset</legend>
-          <label class="brand-brain-radio">
-            <input type="radio" name="brand-brain-preset" value="direct_response" checked />
-            <span>Direct Response (conversion-first)</span>
-          </label>
-          <label class="brand-brain-radio">
-            <input type="radio" name="brand-brain-preset" value="authority_builder" />
-            <span>Authority Builder (trust-first)</span>
-          </label>
-          <label class="brand-brain-radio">
-            <input type="radio" name="brand-brain-preset" value="viral_hybrid" />
-            <span>Viral Hybrid (reach + conversion balance)</span>
-          </label>
-        </fieldset>
-
-        <div class="brand-brain-section" data-pro-lock="1">
-          <label class="brand-brain-label" for="brand-brain-audience">Audience</label>
-          <input id="brand-brain-audience" type="text" placeholder="Who you serve (one line)" />
-          <label class="brand-brain-label" for="brand-brain-offer">Offer</label>
-          <input id="brand-brain-offer" type="text" placeholder="Core offer or outcome (one line)" />
-          <div class="brand-brain-grid">
-            <div>
-              <label class="brand-brain-label" for="brand-brain-cta">Primary CTA</label>
-              <select id="brand-brain-cta">
-                <option value="comment">Comment</option>
-                <option value="dm">DM</option>
-                <option value="link_in_bio">Link in bio</option>
-                <option value="save_share">Save/Share</option>
-                <option value="follow">Follow</option>
-              </select>
-            </div>
-            <div>
-              <label class="brand-brain-label" for="brand-brain-risk">Risk level</label>
-              <div class="brand-brain-risk-row">
-                <span>Conservative</span>
-                <input id="brand-brain-risk" type="range" min="0" max="100" value="45" />
-                <span>Aggressive</span>
-              </div>
-              <div class="brand-brain-risk-value">Risk: <span id="brand-brain-risk-value">45</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="brand-brain-section" data-pro-lock="1">
-          <label class="brand-brain-label">Content levers</label>
-          <div class="brand-brain-levers">
-            <label class="brand-brain-toggle">
-              <input type="checkbox" id="brand-brain-lever-hooks" checked />
-              <span>Stronger hooks</span>
-            </label>
-            <label class="brand-brain-toggle">
-              <input type="checkbox" id="brand-brain-lever-captions" checked />
-              <span>Shorter captions</span>
-            </label>
-            <label class="brand-brain-toggle">
-              <input type="checkbox" id="brand-brain-lever-loops" checked />
-              <span>Add engagement loops</span>
-            </label>
-            <label class="brand-brain-toggle">
-              <input type="checkbox" id="brand-brain-lever-retention" checked />
-              <span>Add retention beats</span>
-            </label>
-            <label class="brand-brain-toggle">
-              <input type="checkbox" id="brand-brain-lever-cta" checked />
-              <span>Add CTA variety</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="brand-brain-section brand-brain-rules">
-          <div class="brand-brain-rules-title">Rules preview</div>
-          <ul id="brand-brain-rules-list"></ul>
-        </div>
-
-        <div class="brand-brain-footer">
-          <div class="brand-brain-save">
-            <span id="brand-brain-save-indicator"></span>
-            <span id="brand-brain-apply-indicator" class="brand-brain-apply">Enable to apply on next generation</span>
-          </div>
-          <button id="brand-brain-close" class="ghost">Close</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Upgrade Modal (mirrored from index.html) -->
     <div id="upgrade-modal" class="modal" style="display: none;">
       <div class="modal-content upgrade-modal">
@@ -699,7 +586,7 @@
             <div class="pricing-tier">Starter</div>
             <div class="pricing-price">FREE<span></span></div>
             <ul class="pricing-features">
-              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
+              <li><span class="check">✓</span> 5 AI video edits per month</li>
               <li><span class="check">✓</span> Limited Saves and Exports</li>
             </ul>
           </div>
@@ -708,12 +595,10 @@
             <div class="pricing-tier">Pro</div>
             <div class="pricing-price">$19.99<span>/month</span></div>
             <ul class="pricing-features">
-              <li><span class="check">✓</span> 30-day Content Calendar generation</li>
-              <li><span class="check">✓</span> Brand Brain unlocked</li>
-              <li><span class="check">✓</span> Regenerate a single post</li>
-              <li><span class="check">✓</span> Unlimited Saves and Exports</li>
-              <li><span class="check">✓</span> Target Audience unlocked</li>
-              <li><span class="check">✓</span> Voice Lock unlocked</li>
+              <li><span class="check">✓</span> Unlimited AI video edits</li>
+              <li><span class="check">✓</span> Priority processing</li>
+              <li><span class="check">✓</span> HD exports (1080p)</li>
+              <li><span class="check">✓</span> Priority support</li>
             </ul>
             <button id="upgrade-btn" class="primary primary-large" style="margin-top: 1.5rem;">Upgrade to Pro</button>
             <a id="upgrade-same-tab" href="https://buy.stripe.com/5kQ5kE3Qw1G8aWoe5Cgbm00?locale=en" class="ghost" style="margin-top: 0.75rem; display: inline-block; text-decoration: none;">Open checkout in this tab</a>
@@ -723,15 +608,14 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771551493" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771552754" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
-    <script type="module" src="./script.js?t=1771551493"></script>
-  <script type="module" src="./footer.js?t=1771551493"></script>
-  <script src="/sw-register.js?t=1771551493" defer></script>
-  <script src="/pwa-install.js?t=1771551493" defer></script>
-  <script src="/js/landing.js?t=1771551493" defer></script>
-    <script type="module" src="./library.js?t=1771551493"></script>
+  <script type="module" src="./footer.js?t=1771552754"></script>
+  <script src="/sw-register.js?t=1771552754" defer></script>
+  <script src="/pwa-install.js?t=1771552754" defer></script>
+  <script src="/js/landing.js?t=1771552754" defer></script>
+    <script type="module" src="./library.js?t=1771552754"></script>
   </body>
 </html>

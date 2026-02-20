@@ -316,7 +316,6 @@ const manageBillingBtn = document.getElementById('manage-billing-btn');
 const upgradeModal = document.getElementById('upgrade-modal');
 const upgradeClose = document.getElementById('upgrade-close');
 const upgradeBtn = document.getElementById('upgrade-btn');
-const brandBtn = document.getElementById('brand-brain-btn');
 const calendarsList = document.getElementById('library-calendars-grid');
 const calendarToolbar = document.getElementById('calendar-toolbar');
 const calendarSearchInput = document.getElementById('calendar-search');
@@ -549,7 +548,7 @@ if (signOutBtn) {
 
 
 function startNewCalendarFlow() {
-  window.location.href = '/calendar.html';
+  window.location.href = '/editor';
 }
 
 if (newCalendarBtn) {
@@ -596,7 +595,7 @@ async function loadCalendars() {
     const normalizedEntry = normalizeCalendar(
       {
         id: calendar.id || `saved-${index}`,
-        title: calendar.niche_style || calendar.nicheStyle || 'Untitled Calendar',
+        title: calendar.niche_style || calendar.nicheStyle || 'Untitled Edit',
         status: calendar.status || 'draft',
         platforms: Array.isArray(calendar.platforms) && calendar.platforms.length ? calendar.platforms : inferPlatformsFromPosts(calendar.posts),
         startDate: calendar.start_date || calendar.rangeStart || calendar.created_at || new Date().toISOString(),
@@ -635,7 +634,7 @@ function renderLibraryCalendars() {
 
   const filtered = getFilteredCalendars();
   if (!filtered.length) {
-    calendarsList.innerHTML = `<div class="calendar-empty-results">No calendars match this view.</div>`;
+    calendarsList.innerHTML = `<div class="calendar-empty-results">No edits match this view.</div>`;
     calendarsList.style.display = 'grid';
     if (calendarEmptyState) calendarEmptyState.style.display = 'none';
     return;
@@ -728,15 +727,15 @@ function handleCalendarAction(action = 'open', calendarId = '') {
   const rawCalendar = calendarRawLookup.get(calendarId);
 
   if (record.source !== 'remote' || !rawCalendar) {
-    alert('Save a calendar in Promptly to open, duplicate, or export from the Library.');
+    alert('Save an edit in Promptly to open, duplicate, or export from the Library.');
     return;
   }
 
   if (action === 'open') {
     sessionStorage.setItem('promptly_load_calendar', JSON.stringify(rawCalendar));
-    window.location.href = '/calendar.html';
+    window.location.href = '/editor';
   } else if (action === 'delete') {
-    const confirmed = window.confirm('Delete this saved calendar? This cannot be undone.');
+    const confirmed = window.confirm('Delete this saved edit? This cannot be undone.');
     if (!confirmed) return;
     deleteSavedCalendar(calendarId);
   } else if (action === 'export') {
@@ -827,7 +826,7 @@ function normalizeCalendar(calendar, { source = 'mock', raw = null } = {}) {
     : `calendar-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return {
     id: String(calendar.id || generatedId),
-    title: calendar.title || 'Untitled Calendar',
+    title: calendar.title || 'Untitled Edit',
     status: (calendar.status || 'draft').toLowerCase(),
     platforms,
     startDate,

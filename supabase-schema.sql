@@ -267,3 +267,10 @@ CREATE TABLE IF NOT EXISTS feature_usage (
 
 CREATE UNIQUE INDEX IF NOT EXISTS feature_usage_user_feature_idx
   ON feature_usage(user_id, feature_key);
+-- DEPRECATED FEATURE NOTICE (2026-02-20):
+-- Content Calendar + Brand Brain features have been removed from the application.
+-- These tables remain temporarily for rollback safety and data retention.
+-- Planned cleanup (future migration, after stability window):
+-- DROP TABLE IF EXISTS calendars;
+-- DROP TABLE IF EXISTS brand_brain_settings;
+-- DROP TABLE IF EXISTS feature_usage;

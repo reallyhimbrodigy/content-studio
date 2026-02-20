@@ -345,9 +345,6 @@
         <aside class="app-sidebar collapsed" id="app-sidebar">
           <div class="sidebar-fixed-inner">
             <nav class="sidebar-nav" aria-label="Workspace navigation">
-              <a href="/calendar.html" class="sidebar-link">
-                <span>Content Calendar</span>
-              </a>
               <a href="/editor" class="sidebar-link is-active" aria-current="page">
                 <span>AI Editor</span>
               </a>
@@ -391,9 +388,9 @@
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
-    <!-- Account + Accessibility Modal (copied from calendar structure) -->
+    <!-- Account Settings Modal -->
     <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
+      <div class="modal settings-modal mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
@@ -404,7 +401,7 @@
           </button>
         </div>
         <div class="account-settings-body" data-account-modal-body>
-          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
+          <div class="settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
             <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
             <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
           </div>
@@ -429,7 +426,7 @@
               <div class="settings-field-readonly">
                 <div class="settings-field-readonly__details">
                   <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
-                  <span class="field-hint" id="account-plan-limits">1 calendar/month · single export format</span>
+                  <span class="field-hint" id="account-plan-limits">5 edits/month · standard export access</span>
                 </div>
               </div>
             </div>
@@ -730,7 +727,7 @@
 
           let planTier = 'free';
           try {
-            // Match calendar.html source-of-truth: Stripe-backed entitlements endpoint first.
+            // Source-of-truth: Stripe-backed entitlements endpoint first.
             const entResp = await fetchWithAccountAuth('/api/entitlements', { method: 'GET' });
             const entData = await entResp.json().catch(() => ({}));
             console.log('[AccountModal] entitlements response:', entData);
@@ -754,8 +751,8 @@
           if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'inline-block' : 'none';
           if (accountPlanLimitsEl) {
             accountPlanLimitsEl.textContent = planTier === 'pro'
-              ? 'Unlimited calendars · full export access'
-              : '1 calendar/month · single export format';
+              ? 'Unlimited edits · full export access'
+              : '5 edits/month · standard export access';
           }
           console.log('Step 4: Account modal data loaded.');
         } catch (err) {
