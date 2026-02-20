@@ -11438,6 +11438,134 @@ body.page-calendar #account-modal .subscription-group .account-subscription-row 
   margin-top: 0.5rem !important;
 }
 
+/* Editor + Library account modal: simplified single-view dark style */
+body.page-editor #account-modal.modal-overlay:not([hidden]),
+body.page-library #account-modal.modal-overlay:not([hidden]) {
+  background: rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(6px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+body.page-editor #account-modal [data-account-modal],
+body.page-library #account-modal [data-account-modal] {
+  background: #0f0f0f !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f2f2f2 !important;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.42) !important;
+}
+
+body.page-editor #account-modal [data-account-modal] h3,
+body.page-editor #account-modal [data-account-modal] label,
+body.page-editor #account-modal [data-account-modal] .settings-field-readonly,
+body.page-editor #account-modal [data-account-modal] .settings-field-readonly span,
+body.page-library #account-modal [data-account-modal] h3,
+body.page-library #account-modal [data-account-modal] label,
+body.page-library #account-modal [data-account-modal] .settings-field-readonly,
+body.page-library #account-modal [data-account-modal] .settings-field-readonly span {
+  color: #f2f2f2 !important;
+}
+
+body.page-editor #account-modal [data-account-modal] .modal-sub,
+body.page-library #account-modal [data-account-modal] .modal-sub {
+  color: #a0a0a0 !important;
+}
+
+body.page-editor #account-modal .settings-field-readonly,
+body.page-library #account-modal .settings-field-readonly {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0 !important;
+  padding: 0.5rem 0 0.7rem !important;
+}
+
+body.page-editor #account-modal #account-email-display,
+body.page-editor #account-modal [aria-label="Password is hidden"],
+body.page-library #account-modal #account-email-display,
+body.page-library #account-modal [aria-label="Password is hidden"] {
+  color: #ffffff !important;
+}
+
+body.page-editor #account-modal .field-hint,
+body.page-library #account-modal .field-hint {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 0.75rem !important;
+  line-height: 1.4 !important;
+  margin-top: 0.45rem !important;
+}
+
+body.page-editor #account-modal #account-email-copy,
+body.page-editor #account-modal #account-password-manage,
+body.page-library #account-modal #account-email-copy,
+body.page-library #account-modal #account-password-manage {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  border-radius: 6px !important;
+  padding: 0.3rem 0.8rem !important;
+  font-size: 0.85rem !important;
+  line-height: 1.2 !important;
+}
+
+body.page-editor #account-modal #account-email-copy:hover,
+body.page-editor #account-modal #account-password-manage:hover,
+body.page-library #account-modal #account-email-copy:hover,
+body.page-library #account-modal #account-password-manage:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+body.page-editor #account-modal #account-close-btn,
+body.page-editor #account-modal [data-account-close],
+body.page-library #account-modal #accountSettingsClose,
+body.page-library #account-modal [data-account-close] {
+  color: #f2f2f2 !important;
+  border: none !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+
+body.page-editor #account-modal #account-close-btn:hover,
+body.page-editor #account-modal [data-account-close]:hover,
+body.page-library #account-modal #accountSettingsClose:hover,
+body.page-library #account-modal [data-account-close]:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.page-editor #account-modal .subscription-group,
+body.page-library #account-modal .subscription-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  margin-top: 1rem !important;
+  padding-top: 1rem !important;
+}
+
+body.page-editor #account-modal .subscription-group .account-subscription-row,
+body.page-library #account-modal .subscription-group .account-subscription-row {
+  margin-top: 0.5rem !important;
+}
+
+body.page-editor #account-modal #account-plan-status,
+body.page-library #account-modal #account-plan-status {
+  color: #ffffff !important;
+  background: rgba(0, 102, 255, 0.85) !important;
+  border: 1px solid rgba(0, 102, 255, 0.95) !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 0.2rem 0.6rem !important;
+  font-weight: 700 !important;
+}
+
 /* Library page polish */
 body.page-library .library-toolbar__field input,
 body.page-library .library-toolbar__field select {

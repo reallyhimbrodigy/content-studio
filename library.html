@@ -27,7 +27,7 @@
   <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
   <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
   <meta name="theme-color" content="#000000" />
-  <link rel="stylesheet" href="styles.css?t=1771552754" />
+  <link rel="stylesheet" href="styles.css?t=1771553914" />
   <link rel="manifest" href="manifest.json" />
     <style>
       .page-library .user-tier-badge {
@@ -415,7 +415,6 @@
                 <div id="profile-dropdown" class="profile-dropdown">
                   <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
                   <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                  <button id="profile-settings-btn" class="profile-menu-item">Profile</button>
                   <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
                   <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage Billing</button>
                   <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
@@ -483,20 +482,16 @@
     </div>
 
     <!-- Account + Accessibility Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
+    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay onclick="if(event.target===this){this.style.display='none';this.setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');}">
       <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
-            <p class="modal-sub">Review your Promptly account details, personal info, and accessibility preferences.</p>
+            <p class="modal-sub">Review your Promptly account details.</p>
           </div>
-          <button class="ghost icon-only account-settings-close" id="accountSettingsClose" aria-label="Close profile settings" data-account-modal-close data-account-close>&times;</button>
+          <button class="ghost icon-only account-settings-close" id="accountSettingsClose" aria-label="Close profile settings" data-account-modal-close data-account-close onclick="document.getElementById('account-modal').style.display='none';document.getElementById('account-modal').setAttribute('aria-hidden','true');document.body.classList.remove('modal-open');">&times;</button>
         </div>
         <div class="account-settings-body" data-account-modal-body>
-          <div class="settings-tabs calendar-settings-tabs mobile-account-tabs" role="tablist" data-account-modal-tabs data-account-tabs>
-            <button type="button" class="settings-tab active" data-settings-tab="account" aria-selected="true" data-account-tab>Account</button>
-            <button type="button" class="settings-tab" data-settings-tab="profile" aria-selected="false" data-account-tab>Profile &amp; accessibility</button>
-          </div>
           <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
             <div class="settings-group">
               <label>Email</label>
@@ -513,61 +508,13 @@
               </div>
               <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
             </div>
-            <div class="settings-group">
+            <div class="settings-group subscription-group">
               <label>Subscription</label>
-              <div class="settings-field-readonly">
-                <div class="settings-field-readonly__details">
-                  <span class="settings-field-emphasis" id="account-plan-status">Free plan</span>
-                  <span class="field-hint" id="account-plan-limits"></span>
-                </div>
-              </div>
-            </div>
-            <div class="settings-group">
-              <label>Last login</label>
-              <div class="settings-field-readonly">
-                <span id="account-last-login">Not available</span>
+              <div class="account-subscription-row">
+                <span class="settings-field-emphasis" id="account-plan-status">Free</span>
               </div>
             </div>
           </div>
-          <div class="settings-panel mobile-account-content" data-settings-panel="profile" data-account-panel>
-            <form id="account-settings-form" class="settings-form">
-              <div class="settings-group">
-                <label for="account-display-name">Display name</label>
-                <input id="account-display-name" type="text" placeholder="How your team knows you" autocomplete="name" />
-              </div>
-              <div class="settings-group">
-                <label for="account-pronouns">Pronouns (optional)</label>
-                <input id="account-pronouns" type="text" placeholder="e.g., she/her · they/them" />
-              </div>
-              <div class="settings-group">
-                <label for="account-role">Role or team</label>
-                <input id="account-role" type="text" placeholder="Content lead, founder, etc." />
-              </div>
-              <fieldset class="settings-group">
-              <legend class="settings-group__label">Interface preferences</legend>
-              <div class="settings-accessibility">
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-high-contrast" />
-                  <span>High contrast surfaces</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-large-type" />
-                  <span>Larger typography</span>
-                </label>
-                <label class="settings-toggle">
-                  <input type="checkbox" id="prefers-reduced-motion" />
-                  <span>Reduce motion &amp; animations</span>
-                </label>
-              </div>
-            </fieldset>
-            <div class="settings-actions" data-account-modal-actions>
-              <div id="account-feedback" class="input-feedback" aria-live="polite"></div>
-              <div class="settings-actions__buttons">
-                <button type="button" id="account-cancel-btn" class="ghost">Cancel</button>
-                <button type="submit" class="primary">Save preferences</button>
-              </div>
-            </div>
-          </form>
         </div>
       </div>
     </div>
@@ -608,14 +555,14 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771552754" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771553914" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
-  <script type="module" src="./footer.js?t=1771552754"></script>
-  <script src="/sw-register.js?t=1771552754" defer></script>
-  <script src="/pwa-install.js?t=1771552754" defer></script>
-  <script src="/js/landing.js?t=1771552754" defer></script>
-    <script type="module" src="./library.js?t=1771552754"></script>
+  <script type="module" src="./footer.js?t=1771553914"></script>
+  <script src="/sw-register.js?t=1771553914" defer></script>
+  <script src="/pwa-install.js?t=1771553914" defer></script>
+  <script src="/js/landing.js?t=1771553914" defer></script>
+    <script type="module" src="./library.js?t=1771553914"></script>
   </body>
 </html>

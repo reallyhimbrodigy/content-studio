@@ -312,6 +312,14 @@ const profileInitial = document.getElementById('profile-initial');
 const userTierBadge = document.getElementById('user-tier-badge');
 const newCalendarBtn = document.getElementById('new-calendar-btn');
 const manageBillingBtn = document.getElementById('manage-billing-btn');
+const accountOverviewBtn = document.getElementById('account-overview-btn');
+const passwordSettingsBtn = document.getElementById('password-settings-btn');
+const accountModal = document.getElementById('account-modal');
+const accountCloseBtn = document.getElementById('accountSettingsClose');
+const accountEmailDisplay = document.getElementById('account-email-display');
+const accountEmailCopyBtn = document.getElementById('account-email-copy');
+const accountPasswordManageBtn = document.getElementById('account-password-manage');
+const accountPlanStatusEl = document.getElementById('account-plan-status');
 // Upgrade modal elements (library page)
 const upgradeModal = document.getElementById('upgrade-modal');
 const upgradeClose = document.getElementById('upgrade-close');
@@ -410,6 +418,85 @@ function initProfileMenu() {
   });
 }
 
+async function loadLibraryAccountModalData() {
+  if (accountEmailDisplay) {
+    accountEmailDisplay.textContent = currentUser || 'Not signed in';
+  }
+  let tier = 'free';
+  try {
+    const userIsPro = currentUser ? await isPro(currentUser) : false;
+    tier = userIsPro ? 'pro' : 'free';
+  } catch (_) {}
+  if (accountPlanStatusEl) {
+    accountPlanStatusEl.textContent = tier === 'pro' ? 'Promptly Pro' : 'Free';
+  }
+}
+
+async function openLibraryAccountModal() {
+  if (!accountModal) return;
+  accountModal.style.display = 'flex';
+  accountModal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  closeProfileMenu();
+  await loadLibraryAccountModalData();
+}
+
+function closeLibraryAccountModal() {
+  if (!accountModal) return;
+  accountModal.style.display = 'none';
+  accountModal.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+function initLibraryAccountModal() {
+  if (accountOverviewBtn) {
+    accountOverviewBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await openLibraryAccountModal();
+    });
+  }
+  if (passwordSettingsBtn) {
+    passwordSettingsBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeProfileMenu();
+      window.location.href = '/reset-password.html';
+    });
+  }
+  if (accountCloseBtn) {
+    accountCloseBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeLibraryAccountModal();
+    });
+  }
+  if (accountModal) {
+    accountModal.addEventListener('click', (event) => {
+      if (event.target === accountModal) closeLibraryAccountModal();
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeLibraryAccountModal();
+  });
+  if (accountEmailCopyBtn) {
+    accountEmailCopyBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const value = accountEmailDisplay?.textContent?.trim();
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+      } catch (_) {}
+    });
+  }
+  if (accountPasswordManageBtn) {
+    accountPasswordManageBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      window.location.href = '/reset-password.html';
+    });
+  }
+}
+
 // Global sign-out handler (now async with Supabase)
 window.handleSignOut = async function() {
   const { signOut } = await import('./user-store.js');
@@ -477,6 +564,7 @@ async function hydrateLibraryUser() {
 function initLibraryPage() {
   initSidebarToggle();
   initProfileMenu();
+  initLibraryAccountModal();
   hydrateLibraryUser();
 }
 
