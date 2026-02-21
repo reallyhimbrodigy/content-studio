@@ -1146,33 +1146,74 @@
         };
 
         const handleGenerate = async () => {
-          if (!state.videoUrl || !state.vibe.trim()) return;
+          console.log('🎬 GENERATE BUTTON CLICKED');
+          
+          if (!state.videoUrl || !state.vibe.trim()) {
+            console.log('❌ Missing video URL or vibe');
+            console.log('  Video URL:', state.videoUrl);
+            console.log('  Vibe:', state.vibe);
+            return;
+          }
+          
           state.submitting = true;
           state.error = null;
           render();
+          
           try {
+            console.log('Step 1: Getting auth context...');
             const auth = await getAuthContext();
+            console.log('  User ID:', auth.user?.id);
+            console.log('  Token exists:', !!auth.token);
+            
+            console.log('Step 2: Preparing request...');
+            const payload = {
+              video_url: state.videoUrl,
+              vibe_input: state.vibe.trim(),
+              user_id: auth.user.id,
+            };
+            console.log('  Payload:', payload);
+            console.log('  URL: /api/video-jobs');
+            console.log('  Method: POST');
+            
+            console.log('Step 3: Making fetch request...');
             const response = await fetch('/api/video-jobs', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${auth.token}`,
               },
-              body: JSON.stringify({
-                video_url: state.videoUrl,
-                vibe_input: state.vibe.trim(),
-                user_id: auth.user.id,
-              }),
+              body: JSON.stringify(payload),
             });
+            
+            console.log('Step 4: Response received');
+            console.log('  Status:', response.status);
+            console.log('  Status Text:', response.statusText);
+            console.log('  OK:', response.ok);
+            console.log('  URL:', response.url);
+            
             const data = await response.json();
-            if (!response.ok) throw new Error(data?.error || 'Failed to create job');
+            console.log('  Response data:', data);
+            
+            if (!response.ok) {
+              console.error('❌ Response not OK');
+              throw new Error(data?.error || 'Failed to create job');
+            }
+            
+            console.log('✅ Job created successfully');
+            console.log('  Job ID:', data.job_id || data.jobId);
+            
             state.jobId = data.job_id || data.jobId;
             state.status = 'queued';
             state.progress = 0;
             state.currentStep = 'Queued';
             state.error = null;
             startPolling(state.jobId);
+            
           } catch (err) {
+            console.error('❌ ERROR in handleGenerate:');
+            console.error('  Message:', err.message);
+            console.error('  Stack:', err.stack);
+            console.error('  Full error:', err);
             state.error = err?.message || 'Failed to create job';
           } finally {
             state.submitting = false;

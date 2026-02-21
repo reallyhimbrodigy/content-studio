@@ -9501,6 +9501,7 @@ function isProfileSettingsSchemaMissing(err) {
 
 const server = http.createServer((req, res) => {
   try {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   const parsed = url.parse(req.url, true);
   const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9953,19 +9954,29 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
     (async () => {
       try {
+        console.log('\n📝 POST /api/video-jobs REQUEST RECEIVED');
+        console.log('  Time:', new Date().toISOString());
+        console.log('  Method:', req.method);
+        console.log('  URL:', req.url);
+        console.log('  Headers:', req.headers);
         if (!supabaseAdmin) {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
         const authUser = await requireSupabaseUser(req);
+        console.log('  ✅ Auth user:', authUser.id);
         const body = await readJsonBody(req);
+        console.log('  Request body:', body);
         const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
         const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
+        console.log('  Video URL:', videoUrl);
+        console.log('  Vibe:', vibeInput);
 
         const job = await createQueuedVideoJob({
           userId: authUser.id,
           videoUrl,
           vibeInput,
         });
+        console.log('  ✅ Job created:', job.id);
 
         return sendJson(res, 200, {
           success: true,
@@ -9973,6 +9984,8 @@ const server = http.createServer((req, res) => {
           status: job.status || 'queued',
         });
       } catch (error) {
+        console.error('  ❌ Error in POST /api/video-jobs:', error);
+        console.error('  Stack:', error.stack);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsCreate] error:', error);
         return sendJson(res, status, { error: error?.message || 'Internal server error' });
