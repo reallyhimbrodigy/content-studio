@@ -1118,29 +1118,64 @@
         };
 
         const startPolling = (jobId) => {
-          if (pollInterval) clearInterval(pollInterval);
+          console.log('🔄 Starting polling for job:', jobId);
+          
+          if (pollInterval) {
+            console.log('  Clearing existing poll interval');
+            clearInterval(pollInterval);
+          }
+          
+          let pollCount = 0;
+          
           pollInterval = setInterval(async () => {
+            pollCount++;
+            console.log(`📡 Poll attempt ${pollCount} for job ${jobId}`);
+            
             try {
               const auth = await getAuthContext();
-              const response = await fetch(`/api/video-jobs/${jobId}`, {
+              const url = `/api/video-jobs/${jobId}`;
+              
+              console.log(`  Fetching: ${url}`);
+              console.log(`  Token exists: ${!!auth.token}`);
+              
+              const response = await fetch(url, {
                 headers: {
                   Authorization: `Bearer ${auth.token}`,
                 },
               });
-              if (!response.ok) return;
+              
+              console.log(`  Response status: ${response.status}`);
+              console.log(`  Response OK: ${response.ok}`);
+              console.log(`  Response URL: ${response.url}`);
+              
+              if (!response.ok) {
+                console.error(`❌ Poll failed with status ${response.status}`);
+                const errorText = await response.text();
+                console.error(`  Error response: ${errorText}`);
+                return;
+              }
+              
               const data = await response.json();
+              console.log(`  Job status: ${data.status}`);
+              console.log(`  Progress: ${data.progress}%`);
+              console.log(`  Current step: ${data.current_step}`);
+              
               state.status = data.status || 'queued';
               state.progress = data.progress || 0;
               state.currentStep = data.current_step || '';
               state.renderedVideoUrl = data.result_url || data.rendered_video_url || null;
               state.error = data.error_message || data.error || null;
               render();
+              
               if (['complete', 'completed', 'error', 'failed'].includes(data.status)) {
+                console.log(`✅ Job finished with status: ${data.status}`);
                 clearInterval(pollInterval);
                 pollInterval = null;
               }
             } catch (err) {
-              console.error('Poll error:', err);
+              console.error('❌ Poll error:', err);
+              console.error('  Message:', err.message);
+              console.error('  Stack:', err.stack);
             }
           }, 2000);
         };

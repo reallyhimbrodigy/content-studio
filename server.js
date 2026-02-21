@@ -9997,12 +9997,16 @@ const server = http.createServer((req, res) => {
   const videoJobsStatusMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)$/i);
   if (videoJobsStatusMatch && req.method === 'GET') {
     (async () => {
+      console.log('\n🔍 GET /api/video-jobs/:jobId REQUEST');
+      console.log('  URL:', req.url);
+      console.log('  Job ID:', videoJobsStatusMatch[1]);
       try {
         if (!supabaseAdmin) {
           return sendJson(res, 500, { error: 'supabase_not_configured' });
         }
         const authUser = await requireSupabaseUser(req);
         const jobId = decodeURIComponent(videoJobsStatusMatch[1] || '').trim();
+        console.log('  User ID:', authUser.id);
         if (!jobId) return sendJson(res, 400, { error: 'jobId is required' });
 
         const { data, error } = await supabaseAdmin
@@ -10012,8 +10016,15 @@ const server = http.createServer((req, res) => {
           .eq('user_id', authUser.id)
           .maybeSingle();
 
-        if (error) return sendJson(res, 500, { error: 'Failed to fetch job status' });
-        if (!data) return sendJson(res, 404, { error: 'Job not found' });
+        if (error) {
+          console.error('  ❌ Database error:', error);
+          return sendJson(res, 500, { error: 'Failed to fetch job status' });
+        }
+        if (!data) {
+          console.error('  ❌ Job not found');
+          return sendJson(res, 404, { error: 'Job not found' });
+        }
+        console.log('  ✅ Job found, status:', data.status);
 
         return sendJson(res, 200, {
           id: data.id,
@@ -10026,6 +10037,7 @@ const server = http.createServer((req, res) => {
           completed_at: data.completed_at || null,
         });
       } catch (error) {
+        console.error('  ❌ Error:', error);
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsStatus] error:', error);
         return sendJson(res, status, { error: error?.message || 'Internal server error' });
