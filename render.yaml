@@ -10,15 +10,13 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CREATOMATE_API_KEY
         sync: false
       - key: DEEPGRAM_API_KEY
-        sync: false
-      - key: TWELVE_LABS_API_KEY
-        sync: false
-      - key: TWELVE_LABS_INDEX_ID
         sync: false
       - key: SUPABASE_URL
         sync: false
