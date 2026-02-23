@@ -92,6 +92,7 @@ async function processOneJob(job) {
       onProgress,
     });
 
+    console.log(`[VideoWorker] Uploading complete, saving result for job ${job.id}...`);
     await supabaseAdmin
       .from('video_jobs')
       .update({
