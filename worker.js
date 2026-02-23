@@ -42,7 +42,7 @@ async function claimNextQueuedJob() {
 
 async function cleanupStaleJobs() {
   if (!supabaseAdmin) throw new Error('supabase_not_configured');
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   const { data: stale, error } = await supabaseAdmin
     .from('video_jobs')
@@ -54,7 +54,7 @@ async function cleanupStaleJobs() {
       updated_at: new Date().toISOString(),
     })
     .eq('status', 'processing')
-    .lt('updated_at', fiveMinAgo)
+    .lt('updated_at', fifteenMinAgo)
     .select('id');
 
   if (error) {
@@ -70,14 +70,18 @@ async function processOneJob(job) {
   console.log(`[VideoWorker] Processing job ${job.id}`);
   try {
     const onProgress = async (progress, step) => {
+      const updateData = {
+        status: 'processing',
+        current_step: String(step || 'Processing'),
+        updated_at: new Date().toISOString(),
+      };
+      if (progress != null) {
+        updateData.progress = Number(progress);
+      }
+
       await supabaseAdmin
         .from('video_jobs')
-        .update({
-          status: 'processing',
-          progress: Number(progress || 0),
-          current_step: String(step || 'Processing'),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', job.id);
     };
 
@@ -95,8 +99,6 @@ async function processOneJob(job) {
         progress: 100,
         current_step: 'Completed',
         result_url: result.rendered_video_url || null,
-        content_type: result.contentType || null,
-        vibe_params: result.vibeParams || null,
         edit_recipe: result.edit_recipe || null,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
