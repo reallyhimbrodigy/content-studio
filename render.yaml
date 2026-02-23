@@ -14,8 +14,6 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: CREATOMATE_API_KEY
-        sync: false
       - key: DEEPGRAM_API_KEY
         sync: false
       - key: SUPABASE_URL
