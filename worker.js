@@ -93,7 +93,11 @@ async function processOneJob(job) {
     });
 
     console.log(`[VideoWorker] Uploading complete, saving result for job ${job.id}...`);
-    await supabaseAdmin
+    console.log(`[VideoWorker] Result keys: ${Object.keys(result || {}).join(', ')}`);
+    console.log(`[VideoWorker] result_url: ${result.rendered_video_url ? 'present' : 'missing'}`);
+    console.log(`[VideoWorker] edit_recipe: ${result.edit_recipe ? `${JSON.stringify(result.edit_recipe).length} chars` : 'missing'}`);
+
+    const { error: updateError } = await supabaseAdmin
       .from('video_jobs')
       .update({
         status: 'completed',
@@ -106,19 +110,46 @@ async function processOneJob(job) {
       })
       .eq('id', job.id);
 
-    console.log(`[VideoWorker] Completed job ${job.id}`);
+    if (updateError) {
+      console.error(`[VideoWorker] FAILED to update job ${job.id} to completed:`, updateError);
+      // Try a minimal update without edit_recipe in case that's the problem
+      const { error: retryError } = await supabaseAdmin
+        .from('video_jobs')
+        .update({
+          status: 'completed',
+          progress: 100,
+          current_step: 'Completed',
+          result_url: result.rendered_video_url || null,
+          error_message: 'Completed but failed to save edit_recipe: ' + updateError.message,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', job.id);
+
+      if (retryError) {
+        console.error(`[VideoWorker] Retry also failed:`, retryError);
+      } else {
+        console.log(`[VideoWorker] Retry succeeded (without edit_recipe) for job ${job.id}`);
+      }
+    } else {
+      console.log(`[VideoWorker] Completed job ${job.id}`);
+    }
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);
-    await supabaseAdmin
+    const { error: failError } = await supabaseAdmin
       .from('video_jobs')
       .update({
         status: 'failed',
-        error_message: String(error?.message || 'Unknown processing error'),
+        error_message: String(error?.message || 'Unknown processing error').substring(0, 1000),
         current_step: 'Failed',
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('id', job.id);
+
+    if (failError) {
+      console.error(`[VideoWorker] Could not update failed status for job ${job.id}:`, failError);
+    }
   }
 }
 
