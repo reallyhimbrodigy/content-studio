@@ -40,6 +40,32 @@ async function claimNextQueuedJob() {
   return claimed;
 }
 
+async function cleanupStaleJobs() {
+  if (!supabaseAdmin) throw new Error('supabase_not_configured');
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  const { data: stale, error } = await supabaseAdmin
+    .from('video_jobs')
+    .update({
+      status: 'failed',
+      error_message: 'Job timed out (worker may have crashed)',
+      current_step: 'Failed',
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('status', 'processing')
+    .lt('updated_at', fiveMinAgo)
+    .select('id');
+
+  if (error) {
+    throw new Error(`Failed to cleanup stale jobs: ${error.message}`);
+  }
+
+  if (stale?.length > 0) {
+    console.log(`[VideoWorker] Cleaned up ${stale.length} stale jobs:`, stale.map((j) => j.id));
+  }
+}
+
 async function processOneJob(job) {
   console.log(`[VideoWorker] Processing job ${job.id}`);
   try {
@@ -100,6 +126,7 @@ async function runWorker() {
 
   while (workerRunning) {
     try {
+      await cleanupStaleJobs();
       const job = await claimNextQueuedJob();
       if (!job) {
         await sleep(POLL_INTERVAL_MS);
