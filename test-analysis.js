@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { analyzeVideo } from './lib/video-processor/analyze-video.js';
 
 async function test() {
