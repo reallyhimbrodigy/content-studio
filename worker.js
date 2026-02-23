@@ -97,7 +97,7 @@ async function processOneJob(job) {
     console.log(`[VideoWorker] result_url: ${result.rendered_video_url ? 'present' : 'missing'}`);
     console.log(`[VideoWorker] edit_recipe: ${result.edit_recipe ? `${JSON.stringify(result.edit_recipe).length} chars` : 'missing'}`);
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updateResult, error: updateError } = await supabaseAdmin
       .from('video_jobs')
       .update({
         status: 'completed',
@@ -108,7 +108,12 @@ async function processOneJob(job) {
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', job.id);
+      .eq('id', job.id)
+      .select();
+
+    console.log(`[VideoWorker] Update result:`, JSON.stringify(updateResult));
+    console.log(`[VideoWorker] Update error:`, updateError);
+    console.log(`[VideoWorker] Rows affected:`, updateResult?.length || 0);
 
     if (updateError) {
       console.error(`[VideoWorker] FAILED to update job ${job.id} to completed:`, updateError);
@@ -136,7 +141,7 @@ async function processOneJob(job) {
     }
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);
-    const { error: failError } = await supabaseAdmin
+    const { data: failResult, error: failError } = await supabaseAdmin
       .from('video_jobs')
       .update({
         status: 'failed',
@@ -145,10 +150,13 @@ async function processOneJob(job) {
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', job.id);
+      .eq('id', job.id)
+      .select();
+
+    console.log(`[VideoWorker] Fail update result:`, JSON.stringify(failResult));
 
     if (failError) {
-      console.error(`[VideoWorker] Could not update failed status for job ${job.id}:`, failError);
+      console.error(`[VideoWorker] Could not update failed status:`, failError);
     }
   }
 }
