@@ -97,7 +97,7 @@ async function processOneJob(job) {
         result_url: result.rendered_video_url || null,
         content_type: result.contentType || null,
         vibe_params: result.vibeParams || null,
-        edit_recipe: result.editRecipe || null,
+        edit_recipe: result.edit_recipe || null,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
