@@ -1,13 +1,13 @@
-import { analyzeClip } from './lib/video-processor/analyze-clip.js';
+import { analyzeVideo } from './lib/video-processor/analyze-video.js';
 
 async function test() {
   // IMPORTANT: Replace with your actual video URL from Supabase Storage
   const testVideoUrl = 'PASTE_YOUR_VIDEO_URL_HERE';
   
-  console.log('Testing clip analysis pipeline...\n');
+  console.log('Testing video analysis pipeline...\n');
   
   try {
-    const analysis = await analyzeClip(testVideoUrl);
+  const analysis = await analyzeVideo(testVideoUrl);
     
     console.log('\n=== ANALYSIS RESULT ===');
     console.log(JSON.stringify(analysis, null, 2));
