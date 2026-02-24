@@ -138,6 +138,39 @@ async function processOneJob(job) {
       }
     } else {
       console.log(`[VideoWorker] Completed job ${job.id}`);
+
+      // Verify the update actually persisted
+      const { data: verifyData, error: verifyError } = await supabaseAdmin
+        .from('video_jobs')
+        .select('id, status, result_url')
+        .eq('id', job.id)
+        .maybeSingle();
+
+      if (verifyError) {
+        console.error(`[VideoWorker] VERIFY ERROR: ${verifyError.message}`);
+      } else {
+        console.log(`[VideoWorker] VERIFY: status=${verifyData?.status}, result_url=${verifyData?.result_url ? 'present' : 'null'}`);
+        if (verifyData?.status !== 'completed') {
+          console.error(`[VideoWorker] VERIFY FAILED: status is ${verifyData?.status}, expected completed. Retrying update...`);
+          const { error: retryError } = await supabaseAdmin
+            .from('video_jobs')
+            .update({
+              status: 'completed',
+              progress: 100,
+              current_step: 'Completed',
+              result_url: result.rendered_video_url || null,
+              edit_recipe: result.edit_recipe || null,
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id);
+          if (retryError) {
+            console.error(`[VideoWorker] RETRY UPDATE ERROR: ${retryError.message}`);
+          } else {
+            console.log(`[VideoWorker] RETRY UPDATE succeeded`);
+          }
+        }
+      }
     }
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);

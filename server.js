@@ -10014,6 +10014,7 @@ const server = http.createServer((req, res) => {
           .select('id, user_id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
+          .order('updated_at', { ascending: false })
           .maybeSingle();
 
         if (error) {
