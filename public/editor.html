@@ -1126,39 +1126,55 @@
           }
           
           let pollCount = 0;
+          let consecutiveErrors = 0;
+          const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes max
+          const pollStartTime = Date.now();
           
-          pollInterval = setInterval(async () => {
+          const doPoll = async () => {
             pollCount++;
-            console.log(`📡 Poll attempt ${pollCount} for job ${jobId}`);
+            const elapsed = Date.now() - pollStartTime;
+            
+            // Safety: stop polling after 10 minutes
+            if (elapsed > MAX_POLL_DURATION_MS) {
+              console.error('⏰ Polling timeout after 10 minutes');
+              clearInterval(pollInterval);
+              pollInterval = null;
+              state.status = 'error';
+              state.error = 'Job timed out. Please check your library or try again.';
+              render();
+              return;
+            }
             
             try {
               const auth = await getAuthContext();
-              const url = `/api/video-jobs/${jobId}`;
-              
-              console.log(`  Fetching: ${url}`);
-              console.log(`  Token exists: ${!!auth.token}`);
+              // Cache-bust to avoid any intermediate caching
+              const url = `/api/video-jobs/${jobId}?_t=${Date.now()}`;
               
               const response = await fetch(url, {
                 headers: {
                   Authorization: `Bearer ${auth.token}`,
+                  'Cache-Control': 'no-cache',
                 },
               });
               
-              console.log(`  Response status: ${response.status}`);
-              console.log(`  Response OK: ${response.ok}`);
-              console.log(`  Response URL: ${response.url}`);
-              
               if (!response.ok) {
-                console.error(`❌ Poll failed with status ${response.status}`);
-                const errorText = await response.text();
-                console.error(`  Error response: ${errorText}`);
+                consecutiveErrors++;
+                console.error(`❌ Poll ${pollCount} failed (${consecutiveErrors} consecutive): status ${response.status}`);
+                // After 5 consecutive failures, show error
+                if (consecutiveErrors >= 5) {
+                  clearInterval(pollInterval);
+                  pollInterval = null;
+                  state.status = 'error';
+                  state.error = 'Lost connection to server. Please refresh the page.';
+                  render();
+                }
                 return;
               }
               
+              consecutiveErrors = 0; // Reset on success
+              
               const data = await response.json();
-              console.log(`  Job status: ${data.status}`);
-              console.log(`  Progress: ${data.progress}%`);
-              console.log(`  Current step: ${data.current_step}`);
+              console.log(`📡 Poll ${pollCount}: status=${data.status}, progress=${data.progress}%, step=${data.current_step}`);
               
               state.status = data.status || 'queued';
               state.progress = data.progress || 0;
@@ -1173,11 +1189,21 @@
                 pollInterval = null;
               }
             } catch (err) {
-              console.error('❌ Poll error:', err);
-              console.error('  Message:', err.message);
-              console.error('  Stack:', err.stack);
+              consecutiveErrors++;
+              console.error(`❌ Poll ${pollCount} error (${consecutiveErrors} consecutive):`, err.message);
+              if (consecutiveErrors >= 5) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+                state.status = 'error';
+                state.error = 'Lost connection to server. Please refresh the page.';
+                render();
+              }
             }
-          }, 2000);
+          };
+          
+          // Do first poll immediately instead of waiting 2s
+          doPoll();
+          pollInterval = setInterval(doPoll, 2000);
         };
 
         const handleGenerate = async () => {

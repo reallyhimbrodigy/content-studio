@@ -10027,6 +10027,10 @@ const server = http.createServer((req, res) => {
         }
         console.log('  ✅ Job found, status:', data.status);
 
+        // Prevent any caching of job status
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+
         return sendJson(res, 200, {
           id: data.id,
           status: data.status,
