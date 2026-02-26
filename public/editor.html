@@ -20,23 +20,32 @@
       body.page-editor,
       body.page-editor .app-main,
       body.page-editor main.editor-main {
-        background: #121212 !important;
+        background: #0b0b0b !important;
+      }
+
+      .editor-page,
+      .app-shell.editor-page,
+      .app-main,
+      .editor-main,
+      .editor-container {
+        background: #0b0b0b;
       }
 
       .editor-main {
         width: 100%;
-        max-width: 1000px;
-        margin: 0 auto;
-        padding: 40px 24px;
+        margin: 0;
+        padding: 0 24px 24px;
         display: flex;
-        flex-direction: column;
-        gap: 24px;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 64px);
       }
 
       .editor-topbar {
         display: flex;
         justify-content: flex-end;
         align-items: center;
+        border-bottom: 1px solid #1a1a1a;
       }
 
       .page-editor .user-tier-badge {
@@ -47,57 +56,60 @@
       }
 
       .editor-container {
-        width: min(800px, 100%);
+        width: min(560px, 90%);
         margin: 0 auto;
       }
 
       .editor-card {
-        background: #1a1a1a;
-        border: 1px solid #2a2a2a;
-        border-radius: 16px;
-        padding: 20px;
         margin-bottom: 0;
-        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        transition: border-color 0.2s ease;
       }
 
-      .editor-card.is-drag {
-        border-color: #0066ff;
-        box-shadow: 0 14px 32px rgba(0, 102, 255, 0.18);
+      #upload-section.editor-card,
+      #upload-section.state-card {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        padding: 0;
       }
 
       .input-box {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 0;
       }
 
-      .upload-zone {
+      .upload-zone,
+      .upload-drop-zone {
         width: 100%;
         background: #111111;
-        border: 1px dashed #3a3a3a;
-        border-radius: 14px;
+        border: 2px dashed #333333;
+        border-radius: 16px;
         color: #d7d7d7;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        padding: 30px 16px;
+        padding: 48px 32px;
         cursor: pointer;
-        transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        transition: border-color 0.2s ease;
       }
 
       .upload-zone:hover,
-      .editor-card.is-drag .upload-zone {
+      .upload-drop-zone:hover,
+      .editor-card.is-drag .upload-zone,
+      .editor-card.is-drag .upload-drop-zone,
+      .upload-drop-zone.is-drag {
         border-color: #0066ff;
-        background: rgba(0, 102, 255, 0.08);
         color: #ffffff;
       }
 
       .upload-zone svg {
-        width: 26px;
-        height: 26px;
+        width: 36px;
+        height: 36px;
+        margin-bottom: 12px;
+        opacity: 0.5;
         color: #82a9ff;
       }
 
@@ -140,6 +152,7 @@
         font-size: 15px;
         line-height: 1.5;
         padding: 12px 14px;
+        margin-top: 16px;
       }
 
       .composer-textarea::placeholder {
@@ -218,6 +231,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        margin-top: 12px;
       }
 
       .vibe-pill {
@@ -241,44 +255,40 @@
       .composer-generate {
         width: 100%;
         min-height: 52px;
-        margin-top: 2px;
+        margin-top: 16px;
         border: none;
-        border-radius: 10px;
+        border-radius: 12px;
         background: #0066ff;
         color: #ffffff;
         font-size: 16px;
-        font-weight: 700;
+        font-weight: 600;
         letter-spacing: 0.01em;
         padding: 14px 32px;
         cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        transition: background 0.2s ease, opacity 0.2s ease;
       }
 
       .composer-generate:hover:enabled {
-        background: #0066ff;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0, 102, 255, 0.34);
+        background: #3b82f6;
       }
 
       .composer-generate:disabled {
         background: #0066ff;
-        opacity: 0.45;
+        opacity: 0.4;
         cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
       }
 
       .trust-badge {
         padding: 0;
-        margin-top: 16px;
+        margin-top: 12px;
         font-size: 13px;
-        color: #808080;
+        color: #666666;
         text-align: center;
       }
 
       .state-card {
-        background: #1a1a1a;
-        border: 1px solid #2a2a2a;
+        background: #111111;
+        border: 1px solid #1f1f1f;
         border-radius: 20px;
         padding: 32px;
         text-align: center;
@@ -310,8 +320,15 @@
 
       .progress-fill {
         height: 100%;
-        background: linear-gradient(90deg, #0066ff 0%, #4d8dff 100%);
+        background: #0066ff;
         transition: width 0.3s ease;
+      }
+
+      #processing-section.state-card,
+      #complete-section.state-card,
+      #error-section.state-card {
+        background: #111111;
+        border: 1px solid #1f1f1f;
       }
 
       .state-actions {
@@ -375,12 +392,13 @@
 
       @media (max-width: 980px) {
         .editor-main {
-          padding: 20px 16px;
+          padding: 0 16px 16px;
+          min-height: calc(100vh - 64px);
         }
 
         .editor-card,
         .state-card {
-          padding: 24px;
+          padding: 22px;
           margin-bottom: 16px;
         }
 
@@ -933,7 +951,7 @@
         root.innerHTML = `
           <section id="upload-section" class="editor-card">
             <div id="input-box" class="input-box">
-              <button id="attach-btn" type="button" class="attach-button upload-zone" aria-label="Attach video">
+              <button id="attach-btn" type="button" class="attach-button upload-zone upload-drop-zone" aria-label="Attach video">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M8 16.5a3.5 3.5 0 0 1 .2-7 5 5 0 0 1 9.7 1.5A3.5 3.5 0 1 1 18 18H8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                   <path d="M12 9v8m0 0-3-3m3 3 3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -965,6 +983,7 @@
 
               <div id="composer-error" style="display:none; margin-top:12px; color:#f87171; font-size:14px;"></div>
               <button id="generate-btn" class="composer-generate" type="button" disabled>Generate Edited Video</button>
+              <div id="trust-badge" class="trust-badge">Estimated time: 60-90 seconds</div>
             </div>
           </section>
 
@@ -996,8 +1015,6 @@
             <p id="error-text" class="state-muted" style="margin-bottom:18px;">Failed to process your video.</p>
             <button id="retry-btn" class="editor-action-ghost" type="button">Try Again</button>
           </section>
-
-          <div id="trust-badge" class="trust-badge">Estimated time: 60-90 seconds</div>
         `;
 
         const fileInput = document.createElement('input');
