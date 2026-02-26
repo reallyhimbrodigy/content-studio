@@ -245,6 +245,10 @@ section {
   color: #a0a0a0;
   text-align: center;
   width: 100%;
+  display: block;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
 }
 
 /* How It Works Section */
@@ -405,12 +409,15 @@ section {
 .pricing-subheadline {
   font-size: 18px;
   color: #a0a0a0;
-  margin: -20px 0 36px;
+  margin: -20px auto 36px;
+  text-align: center;
+  width: 100%;
 }
 
 .pricing-toggle-wrap {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   margin-bottom: 28px;
 }
@@ -502,12 +509,13 @@ section {
 .pro-tier.highlighted {
   border: 1px solid rgba(0, 102, 255, 0.62);
   box-shadow: 0 0 0 1px rgba(0, 102, 255, 0.16), 0 20px 42px rgba(0, 102, 255, 0.22);
-  transform: scale(1.03);
+  transform: none;
 }
 
 .pro-tier.highlighted:hover {
   border-color: rgba(0, 102, 255, 0.8);
   box-shadow: 0 0 0 1px rgba(0, 102, 255, 0.26), 0 24px 46px rgba(0, 102, 255, 0.26);
+  transform: translateY(-4px);
 }
 
 .tier-name {
@@ -539,9 +547,9 @@ section {
 }
 
 .pricing-billed-note {
-  font-size: 13px;
-  color: #7faeff;
-  margin: -8px 0 20px;
+  font-size: 14px;
+  color: #777777;
+  margin: 0 0 20px;
   min-height: 20px;
 }
 
@@ -550,6 +558,7 @@ section {
   margin: 0 0 26px;
   text-align: left;
   flex: 1;
+  margin-top: auto;
 }
 
 .pricing-card ul,
@@ -847,6 +856,11 @@ section h1 {
   text-align: center;
 }
 
+.pricing .section-headline {
+  text-align: center;
+  width: 100%;
+}
+
 .section-subtitle,
 .section-tagline,
 section h2 + p,
@@ -865,6 +879,15 @@ section h1 + p {
   text-align: center;
   margin-left: auto;
   margin-right: auto;
+}
+
+section > .container,
+section > [class*="container"] {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 /* Responsive Design */
