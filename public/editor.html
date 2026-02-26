@@ -39,6 +39,7 @@
         align-items: center;
         justify-content: center;
         min-height: calc(100vh - 64px);
+        background: radial-gradient(ellipse at 50% 40%, rgba(37, 99, 235, 0.07) 0%, transparent 55%);
       }
 
       .editor-topbar {
@@ -79,11 +80,32 @@
         gap: 0;
       }
 
+      @keyframes breathe {
+        0%, 100% { transform: scale(1); opacity: 0.7; }
+        50% { transform: scale(1.06); opacity: 0.9; }
+      }
+
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .editor-tagline {
+        font-size: 13px;
+        color: #555555;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+        text-align: center;
+        animation: fadeInUp 0.4s ease forwards;
+      }
+
       .upload-zone,
       .upload-drop-zone {
         width: 100%;
-        background: #111111;
-        border: 2px dashed #333333;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.02);
+        backdrop-filter: blur(12px);
         border-radius: 16px;
         color: #d7d7d7;
         display: flex;
@@ -93,7 +115,8 @@
         gap: 8px;
         padding: 48px 32px;
         cursor: pointer;
-        transition: border-color 0.2s ease;
+        transition: border-color 0.3s ease, background 0.3s ease;
+        animation: fadeInUp 0.5s ease forwards;
       }
 
       .upload-zone:hover,
@@ -101,16 +124,18 @@
       .editor-card.is-drag .upload-zone,
       .editor-card.is-drag .upload-drop-zone,
       .upload-drop-zone.is-drag {
-        border-color: #0066ff;
+        border-color: rgba(37, 99, 235, 0.4);
+        background: rgba(37, 99, 235, 0.04);
         color: #ffffff;
       }
 
       .upload-zone svg {
-        width: 36px;
-        height: 36px;
+        width: 48px;
+        height: 48px;
         margin-bottom: 12px;
-        opacity: 0.5;
-        color: #82a9ff;
+        opacity: 0.7;
+        color: #2563eb;
+        animation: breathe 3s ease-in-out infinite;
       }
 
       .upload-zone-copy {
@@ -153,6 +178,8 @@
         line-height: 1.5;
         padding: 12px 14px;
         margin-top: 16px;
+        animation: fadeInUp 0.5s ease 0.1s forwards;
+        opacity: 0;
       }
 
       .composer-textarea::placeholder {
@@ -161,8 +188,8 @@
 
       .composer-textarea:focus {
         outline: none;
-        border-color: #0066ff;
-        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.15);
+        border-color: rgba(37, 99, 235, 0.5);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
       }
 
       .upload-progress-wrap {
@@ -232,6 +259,8 @@
         flex-wrap: wrap;
         gap: 8px;
         margin-top: 12px;
+        animation: fadeInUp 0.5s ease 0.2s forwards;
+        opacity: 0;
       }
 
       .vibe-pill {
@@ -243,13 +272,20 @@
         font-size: 12px;
         font-weight: 500;
         cursor: pointer;
-        transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+        transition: all 0.2s ease;
       }
 
       .vibe-pill:hover {
-        border-color: #5f5f5f;
+        border-color: rgba(37, 99, 235, 0.5);
+        box-shadow: 0 0 12px rgba(37, 99, 235, 0.15);
         color: #ffffff;
-        background: #1d1d1d;
+      }
+
+      .vibe-pill.active,
+      .vibe-pill:active {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #ffffff;
       }
 
       .composer-generate {
@@ -258,23 +294,27 @@
         margin-top: 16px;
         border: none;
         border-radius: 12px;
-        background: #0066ff;
+        background: #2563eb;
         color: #ffffff;
         font-size: 16px;
         font-weight: 600;
         letter-spacing: 0.01em;
         padding: 14px 32px;
         cursor: pointer;
-        transition: background 0.2s ease, opacity 0.2s ease;
+        box-shadow: 0 0 24px rgba(37, 99, 235, 0.25);
+        transition: all 0.2s ease;
+        animation: fadeInUp 0.5s ease 0.3s forwards;
+        opacity: 0;
       }
 
       .composer-generate:hover:enabled {
         background: #3b82f6;
+        box-shadow: 0 0 32px rgba(37, 99, 235, 0.4);
       }
 
       .composer-generate:disabled {
-        background: #0066ff;
-        opacity: 0.4;
+        opacity: 0.35;
+        box-shadow: none;
         cursor: not-allowed;
       }
 
@@ -284,6 +324,8 @@
         font-size: 13px;
         color: #666666;
         text-align: center;
+        animation: fadeInUp 0.5s ease 0.4s forwards;
+        opacity: 0;
       }
 
       .state-card {
@@ -951,6 +993,7 @@
         root.innerHTML = `
           <section id="upload-section" class="editor-card">
             <div id="input-box" class="input-box">
+              <p class="editor-tagline">Upload · Describe · Done</p>
               <button id="attach-btn" type="button" class="attach-button upload-zone upload-drop-zone" aria-label="Attach video">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M8 16.5a3.5 3.5 0 0 1 .2-7 5 5 0 0 1 9.7 1.5A3.5 3.5 0 1 1 18 18H8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
