@@ -273,8 +273,8 @@ a {
 
 .step:hover {
   transform: translateY(-4px);
-  border-color: #0066ff;
-  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 .step-number {
@@ -353,8 +353,8 @@ a {
 
 .feature:hover {
   transform: translateY(-4px);
-  border-color: #0066ff;
-  box-shadow: 0 8px 24px rgba(0, 102, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 .feature-icon {
@@ -545,7 +545,7 @@ a {
 .pricing-features li {
   font-size: 15px;
   color: #b0b0b0;
-  margin-bottom: 13px;
+  margin-bottom: 8px;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -772,7 +772,7 @@ a {
 
 /* Final CTA Section */
 .final-cta {
-  padding: 120px 24px 80px;
+  padding: 90px 24px 80px;
 }
 
 .final-cta-container {
