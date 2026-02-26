@@ -60,7 +60,7 @@
 
       .editor-topbar {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
         border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       }
@@ -73,7 +73,7 @@
       }
 
       .editor-container {
-        width: min(560px, 90%);
+        width: min(640px, 90%);
         margin: 0 auto;
         position: relative;
         z-index: 1;
@@ -98,13 +98,27 @@
         gap: 0;
       }
 
-      .editor-tagline {
-        font-size: 11px;
-        color: #333333;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        margin-bottom: 28px;
+      .topbar-logo {
+        display: flex;
+        align-items: center;
+        margin-left: 12px;
+        text-decoration: none;
+      }
+
+      .topbar-logo-img {
+        height: 24px;
+        width: auto;
+        opacity: 0.9;
+      }
+
+      .editor-heading {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-weight: 500;
+        font-size: 20px;
+        color: #e5e5e5;
         text-align: center;
+        margin-bottom: 24px;
+        letter-spacing: -0.3px;
       }
 
       .upload-zone,
@@ -114,7 +128,7 @@
         background: rgba(255, 255, 255, 0.02);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
         backdrop-filter: none;
-        border-radius: 16px;
+        border-radius: 12px;
         color: #d7d7d7;
         display: flex;
         flex-direction: column;
@@ -139,7 +153,7 @@
       .upload-zone svg {
         width: 40px;
         height: 40px;
-        margin-bottom: 12px;
+        margin-bottom: 16px;
         opacity: 0.35;
         color: #ffffff;
       }
@@ -168,9 +182,9 @@
 
       .attach-button:focus,
       .attach-button:active {
-        border-color: #0066ff;
+        border-color: #2563eb;
         outline: none;
-        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.2);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
       }
 
       .composer-textarea {
@@ -317,7 +331,7 @@
       }
 
       .composer-generate:disabled {
-        opacity: 0.35;
+        opacity: 0.3;
         box-shadow: none;
         cursor: not-allowed;
       }
@@ -328,6 +342,14 @@
         font-size: 12px;
         color: #333333;
         text-align: center;
+      }
+
+      .editor-trust-line {
+        font-size: 12px;
+        color: #333333;
+        text-align: center;
+        margin-top: 8px;
+        letter-spacing: 0.3px;
       }
 
       .state-card {
@@ -364,7 +386,7 @@
 
       .progress-fill {
         height: 100%;
-        background: #0066ff;
+        background: #2563eb;
         transition: width 0.3s ease;
       }
 
@@ -380,11 +402,14 @@
         flex-wrap: wrap;
         justify-content: center;
         gap: 12px;
-        margin-top: 8px;
+        margin-top: 24px;
       }
 
       .editor-action-primary,
-      .editor-action-ghost {
+      .editor-action-ghost,
+      .state-actions .secondary,
+      .state-actions a[download],
+      .state-actions .ghost {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -397,26 +422,42 @@
         text-decoration: none;
       }
 
-      .editor-action-primary {
-        background: #0066ff;
-        border: 1px solid #0066ff;
+      .editor-action-primary,
+      .state-actions .secondary,
+      .state-actions a[download] {
+        background: #2563eb;
+        border: none;
         color: #ffffff;
+        font-weight: 500;
+        font-size: 15px;
+        border-radius: 10px;
+        padding: 12px 24px;
+        transition: background 0.15s ease;
       }
 
-      .editor-action-primary:hover {
-        box-shadow: 0 6px 18px rgba(0, 102, 255, 0.32);
+      .editor-action-primary:hover,
+      .state-actions .secondary:hover,
+      .state-actions a[download]:hover {
+        background: #3b82f6;
       }
 
-      .editor-action-ghost {
+      .editor-action-ghost,
+      .state-actions .ghost {
         background: transparent;
-        border: 1px solid #3a3a3a;
-        color: #d6d6d6;
+        color: #999999;
+        font-weight: 400;
+        font-size: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 12px 24px;
+        transition: all 0.15s ease;
       }
 
-      .editor-action-ghost:hover {
-        border-color: #5a5a5a;
-        color: #ffffff;
-        background: #171717;
+      .editor-action-ghost:hover,
+      .state-actions .ghost:hover {
+        color: #cccccc;
+        border-color: rgba(255, 255, 255, 0.15);
+        background: transparent;
       }
 
       .video-preview {
@@ -435,14 +476,22 @@
       }
 
       @media (max-width: 980px) {
+        .editor-container {
+          width: 90%;
+        }
+
         .editor-main {
           padding: 0 16px 16px;
           min-height: calc(100vh - 64px);
         }
 
+        .upload-drop-zone {
+          padding: 32px 20px;
+        }
+
         .editor-card,
         .state-card {
-          padding: 22px;
+          padding: 24px;
           margin-bottom: 16px;
         }
 
@@ -496,6 +545,9 @@
 
         <div class="app-main">
           <div class="editor-topbar">
+            <a href="/" class="topbar-logo">
+              <img src="/assets/promptly-mark-white.png" alt="Promptly" class="topbar-logo-img">
+            </a>
             <div id="user-menu" class="user-menu" style="display:flex; align-items:center; gap:0.75rem;">
               <div class="hero-topbar">
                 <div class="profile-wrapper">
@@ -995,11 +1047,11 @@
         root.innerHTML = `
           <section id="upload-section" class="editor-card">
             <div id="input-box" class="input-box">
-              <p class="editor-tagline">Upload · Describe · Done</p>
+              <h1 class="editor-heading">Create your edit</h1>
               <button id="attach-btn" type="button" class="attach-button upload-zone upload-drop-zone" aria-label="Attach video">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M8 16.5a3.5 3.5 0 0 1 .2-7 5 5 0 0 1 9.7 1.5A3.5 3.5 0 1 1 18 18H8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M12 9v8m0 0-3-3m3 3 3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                 </svg>
                 <span class="upload-zone-copy">
                   <span class="upload-zone-title">Drop your video here or click to browse</span>
@@ -1029,6 +1081,7 @@
               <div id="composer-error" style="display:none; margin-top:12px; color:#f87171; font-size:14px;"></div>
               <button id="generate-btn" class="composer-generate" type="button" disabled>Generate Edited Video</button>
               <div id="trust-badge" class="trust-badge">Estimated time: 60-90 seconds</div>
+              <p class="editor-trust-line">No watermarks · Full HD export · Cancel anytime</p>
             </div>
           </section>
 
