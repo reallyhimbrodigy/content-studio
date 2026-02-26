@@ -254,7 +254,7 @@
         background: #1a1a1a;
         border: 1px solid #2a2a2a;
         border-radius: 20px;
-        padding: 60px;
+        padding: 32px;
         text-align: center;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         transition: all 0.3s ease;
@@ -293,10 +293,13 @@
       }
 
       .video-preview {
-        width: min(600px, 100%);
+        display: block;
+        max-height: 65vh;
+        max-width: 100%;
+        width: auto;
         border-radius: 16px;
         border: 1px solid #2a2a2a;
-        margin: 0 auto;
+        margin: 0 auto 24px;
         box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
       }
 
