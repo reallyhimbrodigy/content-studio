@@ -1373,7 +1373,7 @@
 
         const reset = () => {
           if (pollInterval) {
-            clearInterval(pollInterval);
+            clearTimeout(pollInterval);
             pollInterval = null;
           }
           state.videoUrl = null;
@@ -1485,7 +1485,7 @@
           
           if (pollInterval) {
             console.log('  Clearing existing poll interval');
-            clearInterval(pollInterval);
+            clearTimeout(pollInterval);
           }
           
           let pollCount = 0;
@@ -1500,7 +1500,7 @@
             // Safety: stop polling after 10 minutes
             if (elapsed > MAX_POLL_DURATION_MS) {
               console.error('⏰ Polling timeout after 10 minutes');
-              clearInterval(pollInterval);
+              clearTimeout(pollInterval);
               pollInterval = null;
               state.status = 'error';
               state.error = 'Job timed out. Please check your library or try again.';
@@ -1525,12 +1525,15 @@
                 console.error(`❌ Poll ${pollCount} failed (${consecutiveErrors} consecutive): status ${response.status}`);
                 // After 5 consecutive failures, show error
                 if (consecutiveErrors >= 5) {
-                  clearInterval(pollInterval);
+                  clearTimeout(pollInterval);
                   pollInterval = null;
                   state.status = 'error';
                   state.error = 'Lost connection to server. Please refresh the page.';
                   render();
+                  return;
                 }
+                const nextInterval = elapsed > 30000 ? 5000 : 2000;
+                pollInterval = setTimeout(doPoll, nextInterval);
                 return;
               }
               
@@ -1548,25 +1551,29 @@
               
               if (['complete', 'completed', 'error', 'failed'].includes(data.status)) {
                 console.log(`✅ Job finished with status: ${data.status}`);
-                clearInterval(pollInterval);
+                clearTimeout(pollInterval);
                 pollInterval = null;
+                return;
               }
             } catch (err) {
               consecutiveErrors++;
               console.error(`❌ Poll ${pollCount} error (${consecutiveErrors} consecutive):`, err.message);
               if (consecutiveErrors >= 5) {
-                clearInterval(pollInterval);
+                clearTimeout(pollInterval);
                 pollInterval = null;
                 state.status = 'error';
                 state.error = 'Lost connection to server. Please refresh the page.';
                 render();
+                return;
               }
             }
+
+            const nextInterval = elapsed > 30000 ? 5000 : 2000;
+            pollInterval = setTimeout(doPoll, nextInterval);
           };
           
           // Do first poll immediately instead of waiting 2s
           doPoll();
-          pollInterval = setInterval(doPoll, 2000);
         };
 
         const handleGenerate = async () => {

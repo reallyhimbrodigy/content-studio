@@ -41,339 +41,216 @@
         font-weight: 700;
       }
 
-      .library-container {
-        padding: 1.25rem 0 2rem;
-        display: flex;
-        flex-direction: column;
-        gap: 1.25rem;
-      }
-
-      .page-library .app-hero {
-        padding: 1.25rem 1.4rem;
-        gap: 0.5rem;
-        margin-bottom: 0.35rem;
-      }
-
-      .page-library .app-hero .hero-top {
-        min-height: 42px;
-        margin-bottom: 0;
-        justify-content: flex-end;
-      }
-
-      .page-library .app-hero h1 {
-        margin: 0;
-      }
-
-      .page-library .app-hero p {
-        margin: 0;
-        color: rgba(255, 255, 255, 0.72);
-      }
-
-      .library-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        flex-wrap: wrap;
-      }
-
-      .library-header h2 {
-        margin: 0;
-        font-size: clamp(1.75rem, 3vw, 2.25rem);
-      }
-
-      .nav-buttons {
-        display: flex;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-      }
-
-      .library-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1rem;
-        align-items: flex-end;
-        background: #0f0f0f;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 18px;
-        padding: 1rem;
-      }
-
-      .library-toolbar.is-disabled {
-        opacity: 0.5;
-        pointer-events: none;
-      }
-
-      .library-toolbar__field {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3rem;
-        flex: 1 1 220px;
-      }
-
-      .library-toolbar__field label {
-        font-size: 0.75rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.6);
-      }
-
-      .library-toolbar__field input,
-      .library-toolbar__field select {
-        width: 100%;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        padding: 0.75rem 0.9rem;
-        background: #151515;
-        color: #ffffff;
-        font-size: 0.95rem;
-      }
-
-      .library-toolbar input::placeholder {
-        color: rgba(255, 255, 255, 0.5);
-      }
-
-      .library-toolbar__field input:focus,
-      .library-toolbar__field select:focus {
-        outline: none;
-        border-color: rgba(0, 102, 255, 0.75);
-        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.18);
-      }
-
-      .library-toolbar__field select {
-        appearance: none;
-        padding-right: 2.4rem;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23d6d6d6' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.8rem center;
-      }
-
-      .library-toolbar__field select option {
-        background: #121212;
-        color: #f1f1f1;
-      }
-
-      .library-filters {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .library-filter {
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        padding: 0.5rem 1.1rem;
-        background: #141414;
-        color: #ffffff;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: border-color 0.2s ease, background 0.2s ease;
-      }
-
-      .library-filter.is-active {
-        border-color: #0066ff;
-        background: #0066ff;
-        color: #ffffff;
-      }
-
-      .library-filter:hover:not(.is-active) {
-        border-color: rgba(255, 255, 255, 0.3);
-      }
-
-      .library-filter:disabled,
-      .library-toolbar__field input:disabled,
-      .library-toolbar__field select:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
-      .calendar-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 1.25rem;
-        grid-auto-flow: row dense;
-        align-items: start;
-      }
-
-      .calendar-card {
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 20px;
-        padding: 1.5rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        cursor: pointer;
-        transition: border-color 0.2s ease, transform 0.2s ease;
-        min-height: 260px;
-      }
-
-      .calendar-card:hover,
-      .calendar-card:focus-within {
-        border-color: rgba(255, 255, 255, 0.3);
-        transform: translateY(-2px);
-      }
-
-      .calendar-card h3 {
-        margin: 0;
-        font-size: 1.15rem;
-      }
-
-      .calendar-card__meta,
-      .calendar-card__metrics {
-        font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.65);
-        display: flex;
-        justify-content: space-between;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-      }
-
-      .calendar-card__platforms {
-        display: flex;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-      }
-
-      .calendar-card__platform-chip {
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 0.2rem 0.75rem;
-        font-size: 0.75rem;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.8);
-      }
-
-      .calendar-card__status {
-        border-radius: 999px;
-        padding: 0.2rem 0.8rem;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-      }
-
-      .calendar-card__status--draft {
-        background: rgba(255, 255, 255, 0.05);
-        border-color: rgba(255, 255, 255, 0.14);
-        color: rgba(255, 255, 255, 0.82);
-      }
-
-      .calendar-card__status--scheduled {
-        border-color: rgba(0, 102, 255, 0.3);
-        color: #cfe0ff;
-        background: rgba(0, 102, 255, 0.16);
-      }
-
-      .calendar-card__status--published {
-        border-color: rgba(255, 255, 255, 0.18);
-        color: rgba(255, 255, 255, 0.9);
-        background: rgba(255, 255, 255, 0.07);
-      }
-
       .sidebar-toggle {
         position: fixed;
         z-index: 9999;
         pointer-events: auto;
       }
 
-      .calendar-card__range {
-        font-size: 0.9rem;
-        color: rgba(255, 255, 255, 0.8);
+      .library-content {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 40px 24px;
+      }
+
+      .library-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 32px;
+        padding: 0;
+      }
+
+      .library-title {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 24px;
+        font-weight: 600;
+        color: #f0f0f0;
         margin: 0;
       }
 
-      .calendar-card__actions {
-        margin-top: auto;
+      .library-header-actions {
         display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
+        align-items: center;
+        gap: 12px;
       }
 
-      .calendar-card__actions button {
-        flex: 1;
-        min-width: 90px;
-      }
-
-      #new-calendar-btn {
-        background: #0066ff;
-        border: 1px solid #0066ff;
+      .new-edit-btn {
+        background: #2563eb;
         color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 10px 20px;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.15s ease;
       }
 
-      #new-calendar-btn:hover {
-        background: #1a75ff;
-        border-color: #1a75ff;
+      .new-edit-btn:hover {
+        background: #3b82f6;
       }
 
-      .calendar-card__actions .primary {
-        background: #0066ff;
-        border: 1px solid #0066ff;
-        color: #fff;
+      .library-count {
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 20px;
       }
 
-      .calendar-card__actions .primary:hover {
-        background: #1a75ff;
-        border-color: #1a75ff;
+      .edits-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
       }
 
-      .calendar-card__actions .ghost[data-calendar-action="export"] {
-        background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: #f1f1f1;
-      }
-
-      .calendar-card__actions .ghost[data-calendar-action="export"]:hover {
-        border-color: rgba(255, 255, 255, 0.35);
-        background: rgba(255, 255, 255, 0.05);
-      }
-
-      .calendar-card__actions .delete-calendar-btn {
-        background: transparent;
-        border: none;
-        color: #c35b5b;
-      }
-
-      .calendar-card__actions .delete-calendar-btn:hover {
-        color: #ff6b6b;
-        background: transparent;
-      }
-
-      .calendar-empty-state {
-        border: 1px dashed rgba(255, 255, 255, 0.18);
-        border-radius: 20px;
-        padding: 2.5rem 1.25rem;
-        text-align: center;
-        color: rgba(255, 255, 255, 0.75);
-        display: none;
+      .edit-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 20px;
+        transition: border-color 0.15s ease;
+        display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 12px;
+      }
+
+      .edit-card:hover {
+        border-color: rgba(255, 255, 255, 0.12);
+      }
+
+      .edit-card-status {
+        display: inline-flex;
         align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        width: fit-content;
       }
 
-      .calendar-empty-state.is-visible {
+      .edit-card-status.completed {
+        color: #34d399;
+        background: rgba(52, 211, 153, 0.1);
+      }
+
+      .edit-card-status.processing {
+        color: #fbbf24;
+        background: rgba(251, 191, 36, 0.1);
+      }
+
+      .edit-card-status.queued {
+        color: #818cf8;
+        background: rgba(129, 140, 248, 0.1);
+      }
+
+      .edit-card-status.failed {
+        color: #f87171;
+        background: rgba(248, 113, 113, 0.1);
+      }
+
+      .edit-card-vibe {
+        font-size: 14px;
+        font-weight: 500;
+        color: #ddd;
+        line-height: 1.4;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .edit-card-date {
+        font-size: 12px;
+        color: #555;
+      }
+
+      .edit-card-actions {
         display: flex;
+        gap: 8px;
+        margin-top: auto;
+        padding-top: 8px;
       }
 
-      .calendar-empty-state__icon {
-        width: 56px;
-        height: 56px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.08);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.75rem;
-        color: #ffffff;
+      .edit-card-actions a,
+      .edit-card-actions button {
+        font-size: 12px;
+        font-weight: 500;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        border: none;
       }
 
-      .calendar-empty-results {
+      .edit-action-download {
+        background: #2563eb;
+        color: #fff;
+      }
+
+      .edit-action-download:hover {
+        background: #3b82f6;
+      }
+
+      .edit-action-delete {
+        background: transparent;
+        color: #666;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+      }
+
+      .edit-action-delete:hover {
+        color: #f87171;
+        border-color: rgba(248, 113, 113, 0.3) !important;
+      }
+
+      .library-empty {
         text-align: center;
-        padding: 2rem 1rem;
-        color: rgba(255, 255, 255, 0.7);
+        padding: 80px 0;
+      }
+
+      .empty-title {
+        font-size: 16px;
+        font-weight: 500;
+        color: #888;
+        margin-bottom: 4px;
+      }
+
+      .empty-subtitle {
+        font-size: 13px;
+        color: #444;
+        margin-bottom: 24px;
+      }
+
+      .empty-cta {
+        display: inline-block;
+        background: #2563eb;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 10px 20px;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.15s ease;
+      }
+
+      .empty-cta:hover {
+        background: #3b82f6;
+      }
+
+      @media (max-width: 640px) {
+        .edits-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .library-header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 16px;
+        }
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>
@@ -407,71 +284,44 @@
           </div>
         </aside>
         <div class="app-main">
-      <header class="hero app-hero">
-        <div class="hero-top">
-          <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
-            <div class="profile-wrapper">
-              <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
-              <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-                <span id="profile-initial" aria-hidden="true">P</span>
-              </button>
-              <div id="profile-menu" class="profile-menu" style="display:none;">
-                <div id="profile-dropdown" class="profile-dropdown">
-                  <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
-                  <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                  <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
-                  <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage Billing</button>
-                  <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+      <main id="app">
+        <section class="library-content" aria-labelledby="library-title">
+          <div class="library-header">
+            <h1 class="library-title" id="library-title">Your Edits</h1>
+            <div class="library-header-actions">
+              <a href="/editor" class="new-edit-btn">+ New Edit</a>
+              <div id="user-menu" class="user-menu" style="display: flex; align-items: center; gap: 0.75rem;">
+                <div class="profile-wrapper">
+                  <span id="user-tier-badge" class="user-tier-badge" style="display:none;">PRO</span>
+                  <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                    <span id="profile-initial" aria-hidden="true">P</span>
+                  </button>
+                  <div id="profile-menu" class="profile-menu" style="display:none;">
+                    <div id="profile-dropdown" class="profile-dropdown">
+                      <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
+                      <button id="account-overview-btn" class="profile-menu-item">Account</button>
+                      <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
+                      <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage Billing</button>
+                      <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <h1>Library</h1>
-        <p>Reopen, download, or continue refining any saved edit. Everything you generate lives here.</p>
-      </header>
 
-      <main id="app">
-        <section class="library-container" aria-labelledby="library-saved-heading">
-          <div class="library-header">
-            <h2 id="library-saved-heading">Saved Edits</h2>
-            <div class="nav-buttons">
-              <button id="new-calendar-btn" class="secondary">+ New Edit</button>
-            </div>
+          <p class="library-count" id="library-count"></p>
+
+          <div class="edits-grid" id="edits-grid" aria-live="polite"></div>
+          <div class="library-empty" id="library-empty" style="display: none;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #333; margin-bottom: 16px;">
+              <polygon points="23 7 16 12 23 17 23 7"></polygon>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <p class="empty-title">No edits yet</p>
+            <p class="empty-subtitle">Your generated videos will appear here</p>
+            <a href="/editor" class="empty-cta">Create your first edit</a>
           </div>
-
-          <div class="library-toolbar" id="calendar-toolbar" role="region" aria-label="Library controls">
-            <div class="library-toolbar__field library-toolbar__field--search">
-              <label for="calendar-search">Search</label>
-              <input type="search" id="calendar-search" placeholder="Search edits…" autocomplete="off" />
-            </div>
-            <div class="library-toolbar__field library-toolbar__field--sort">
-              <label for="calendar-sort">Sort by</label>
-              <select id="calendar-sort">
-                <option value="recent">Recently updated</option>
-                <option value="created">Created date</option>
-                <option value="alpha">A–Z</option>
-              </select>
-            </div>
-            <div class="library-toolbar__field library-toolbar__field--filters">
-              <label>Filter</label>
-              <div class="library-filters" role="group" aria-label="Edit status filter">
-                <button type="button" class="library-filter is-active" data-calendar-filter="all">All</button>
-                <button type="button" class="library-filter" data-calendar-filter="draft">Draft</button>
-                <button type="button" class="library-filter" data-calendar-filter="scheduled">Scheduled</button>
-                <button type="button" class="library-filter" data-calendar-filter="published">Published</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="library-empty-state" class="calendar-empty-state" role="status" aria-live="polite">
-            <div class="calendar-empty-state__icon" aria-hidden="true">∎</div>
-            <h3>No edits yet</h3>
-            <p>Upload your first clip in the AI Editor to start building your library.</p>
-            <button type="button" id="calendar-empty-cta" class="primary">Create your first edit</button>
-          </div>
-
-          <div id="library-calendars-grid" class="calendar-grid" aria-live="polite"></div>
         </section>
       </main>
 
@@ -487,7 +337,7 @@
 
     <!-- Account + Accessibility Modal -->
     <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" hidden aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
-      <div class="modal settings-modal calendar-settings-panel mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
+      <div class="modal settings-modal mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
         <div class="settings-modal__head">
           <div>
             <h3 id="account-modal-title">Account settings</h3>
@@ -559,7 +409,6 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js?v=1771556488" crossorigin="anonymous"></script>
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>

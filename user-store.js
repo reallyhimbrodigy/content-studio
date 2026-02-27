@@ -550,6 +550,45 @@ export async function deleteUserCalendar(calendarId) {
   }
 }
 
+export async function getUserEdits(userId) {
+  try {
+    const resolvedUserId = userId || await getCurrentUserId();
+    if (!resolvedUserId) return [];
+
+    const { data, error } = await supabase
+      .from('video_jobs')
+      .select('id, status, vibe_input, result_url, edit_recipe, created_at, completed_at, error_message')
+      .eq('user_id', resolvedUserId)
+      .in('status', ['completed', 'processing', 'queued', 'failed'])
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('getUserEdits error:', error);
+    return [];
+  }
+}
+
+export async function deleteUserEdit(editId) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('No user logged in');
+
+    const { error } = await supabase
+      .from('video_jobs')
+      .delete()
+      .eq('id', editId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('deleteUserEdit error:', error);
+    return false;
+  }
+}
+
 // ============================================================================
 // Legacy compatibility helpers (for gradual migration)
 // ============================================================================
