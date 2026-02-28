@@ -4,7 +4,16 @@ services:
     runtime: node
     branch: main
     rootDir: .
-    buildCommand: npm install --omit=dev
+    buildCommand: >-
+      npm install --omit=dev &&
+      mkdir -p /usr/share/fonts/truetype/montserrat &&
+      curl -L -o /tmp/montserrat.zip "https://fonts.google.com/download?family=Montserrat" &&
+      unzip -o /tmp/montserrat.zip -d /tmp/montserrat &&
+      cp /tmp/montserrat/static/Montserrat-Black.ttf /usr/share/fonts/truetype/montserrat/ &&
+      cp /tmp/montserrat/static/Montserrat-Bold.ttf /usr/share/fonts/truetype/montserrat/ &&
+      cp /tmp/montserrat/static/Montserrat-ExtraBold.ttf /usr/share/fonts/truetype/montserrat/ &&
+      fc-cache -fv &&
+      rm -rf /tmp/montserrat /tmp/montserrat.zip
     startCommand: npm start
     autoDeploy: true
     envVars:
