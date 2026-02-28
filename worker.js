@@ -1,7 +1,7 @@
 const { supabaseAdmin } = require('./services/supabase-admin');
 const { processVideoJob } = require('./lib/video-processor/process-job');
 
-const POLL_INTERVAL_MS = Number(process.env.VIDEO_WORKER_POLL_MS || 5000);
+const POLL_INTERVAL_MS = Number(process.env.VIDEO_WORKER_POLL_MS || 1000);
 let workerRunning = false;
 
 function sleep(ms) {
