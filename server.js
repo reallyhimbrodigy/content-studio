@@ -9951,6 +9951,18 @@ const server = http.createServer((req, res) => {
     return data;
   }
 
+  async function countCompletedVideoEdits(userId) {
+    const { count, error } = await supabaseAdmin
+      .from('video_jobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'completed');
+    if (error) {
+      throw Object.assign(new Error(error.message || 'Failed to count completed edits'), { statusCode: 500 });
+    }
+    return Number(count || 0);
+  }
+
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
     (async () => {
       try {
@@ -9970,6 +9982,17 @@ const server = http.createServer((req, res) => {
         const vibeInput = String(body?.vibe_input || body?.vibeInput || '').trim();
         console.log('  Video URL:', videoUrl);
         console.log('  Vibe:', vibeInput);
+
+        const entitlement = await assertProEntitled(authUser.id);
+        if (!entitlement.isPro) {
+          const completedCount = await countCompletedVideoEdits(authUser.id);
+          if (completedCount >= 5) {
+            return sendJson(res, 403, {
+              error: 'free_limit_reached',
+              message: 'You have used all 5 free edits. Upgrade to Promptly Pro for unlimited edits without watermarks.',
+            });
+          }
+        }
 
         const job = await createQueuedVideoJob({
           userId: authUser.id,

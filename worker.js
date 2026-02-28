@@ -89,6 +89,7 @@ async function processOneJob(job) {
       videoUrl: job.video_url,
       vibeInput: job.vibe_input,
       jobId: job.id,
+      userId: job.user_id,
       onProgress,
     });
 
