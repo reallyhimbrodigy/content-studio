@@ -44,6 +44,7 @@ try {
   console.log('[Phyllo] metrics disabled (module missing)');
 }
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
+const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createDesignRender = async () => ({ id: null, status: 'disabled' });
@@ -1145,17 +1146,10 @@ function resolveEntitlementDecision(entitlement) {
     : false;
   const plan = entitlement?.plan || null;
   const status = entitlement?.status || null;
-  const isProFlag = Boolean(row?.is_pro || row?.isPro || row?.pro || row?.paid);
+  const isPro = isProfilePro(row);
   const planQualifies = plan ? PRO_PLAN_VALUES.has(plan) : false;
-  const statusQualifies = status ? PRO_SUBSCRIPTION_STATUSES.has(status) : false;
-  if (isProFlag) {
-    return { isPro: true, reason: 'IS_PRO_FLAG', plan, status, hasStatusField };
-  }
-  if (planQualifies && statusQualifies) {
-    return { isPro: true, reason: 'PLAN_AND_STATUS', plan, status, hasStatusField };
-  }
-  if (planQualifies && !status) {
-    return { isPro: true, reason: 'STATUS_MISSING_ASSUME_PRO', plan, status, hasStatusField };
+  if (isPro) {
+    return { isPro: true, reason: 'IS_USER_PRO', plan, status, hasStatusField };
   }
   if (!row) {
     return { isPro: false, reason: 'NO_ENTITLEMENT_ROW', plan, status, hasStatusField };
@@ -9956,7 +9950,7 @@ const server = http.createServer((req, res) => {
       .from('video_jobs')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('status', 'completed');
+      .neq('status', 'failed');
     if (error) {
       throw Object.assign(new Error(error.message || 'Failed to count completed edits'), { statusCode: 500 });
     }
