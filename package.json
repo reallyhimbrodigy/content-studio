@@ -4,9 +4,9 @@
   "description": "AI Content Studio — Promptly",
   "private": true,
   "scripts": {
-    "start": "node server.js",
-    "worker": "node worker.js",
-    "dev": "node server.js",
+    "start": "node --expose-gc server.js",
+    "worker": "node --expose-gc worker.js",
+    "dev": "node --expose-gc server.js",
     "export-logos": "node tools/export-logos.js",
     "test:e2e": "npx playwright test tests/e2e.spec.js",
     "build:css": "node build.js",
