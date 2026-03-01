@@ -8,6 +8,53 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function markJobCompleted(jobId, resultData, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const now = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from('video_jobs')
+      .update({
+        status: 'completed',
+        progress: 100,
+        current_step: 'Completed',
+        result_url: resultData.rendered_video_url || null,
+        edit_recipe: resultData.edit_recipe || null,
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('id', jobId)
+      .eq('status', 'processing');
+
+    if (error) {
+      console.error(`[VideoWorker] Update attempt ${attempt + 1} error: ${error.message}`);
+      await sleep(500);
+      continue;
+    }
+
+    const { data: check, error: checkError } = await supabaseAdmin
+      .from('video_jobs')
+      .select('status, result_url')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error(`[VideoWorker] Verify attempt ${attempt + 1} error: ${checkError.message}`);
+      await sleep(500);
+      continue;
+    }
+
+    if (check?.status === 'completed') {
+      console.log(`[VideoWorker] Job ${jobId} marked completed on attempt ${attempt + 1}`);
+      return true;
+    }
+
+    await sleep(500);
+  }
+
+  console.error(`[VideoWorker] CRITICAL: Failed to mark job ${jobId} as completed after ${maxRetries} attempts`);
+  return false;
+}
+
 async function claimNextQueuedJob() {
   if (!supabaseAdmin) throw new Error('supabase_not_configured');
 
@@ -82,7 +129,8 @@ async function processOneJob(job) {
       await supabaseAdmin
         .from('video_jobs')
         .update(updateData)
-        .eq('id', job.id);
+        .eq('id', job.id)
+        .eq('status', 'processing');
     };
 
     const result = await processVideoJob({
@@ -98,81 +146,11 @@ async function processOneJob(job) {
     console.log(`[VideoWorker] result_url: ${result.rendered_video_url ? 'present' : 'missing'}`);
     console.log(`[VideoWorker] edit_recipe: ${result.edit_recipe ? `${JSON.stringify(result.edit_recipe).length} chars` : 'missing'}`);
 
-    const { data: updateResult, error: updateError } = await supabaseAdmin
-      .from('video_jobs')
-      .update({
-        status: 'completed',
-        progress: 100,
-        current_step: 'Completed',
-        result_url: result.rendered_video_url || null,
-        edit_recipe: result.edit_recipe || null,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', job.id)
-      .select();
-
-    console.log(`[VideoWorker] Update result:`, JSON.stringify(updateResult));
-    console.log(`[VideoWorker] Update error:`, updateError);
-    console.log(`[VideoWorker] Rows affected:`, updateResult?.length || 0);
-
-    if (updateError) {
-      console.error(`[VideoWorker] FAILED to update job ${job.id} to completed:`, updateError);
-      // Try a minimal update without edit_recipe in case that's the problem
-      const { error: retryError } = await supabaseAdmin
-        .from('video_jobs')
-        .update({
-          status: 'completed',
-          progress: 100,
-          current_step: 'Completed',
-          result_url: result.rendered_video_url || null,
-          error_message: 'Completed but failed to save edit_recipe: ' + updateError.message,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', job.id);
-
-      if (retryError) {
-        console.error(`[VideoWorker] Retry also failed:`, retryError);
-      } else {
-        console.log(`[VideoWorker] Retry succeeded (without edit_recipe) for job ${job.id}`);
-      }
-    } else {
-      console.log(`[VideoWorker] Completed job ${job.id}`);
-
-      // Verify the update actually persisted
-      const { data: verifyData, error: verifyError } = await supabaseAdmin
-        .from('video_jobs')
-        .select('id, status, result_url')
-        .eq('id', job.id)
-        .maybeSingle();
-
-      if (verifyError) {
-        console.error(`[VideoWorker] VERIFY ERROR: ${verifyError.message}`);
-      } else {
-        console.log(`[VideoWorker] VERIFY: status=${verifyData?.status}, result_url=${verifyData?.result_url ? 'present' : 'null'}`);
-        if (verifyData?.status !== 'completed') {
-          console.error(`[VideoWorker] VERIFY FAILED: status is ${verifyData?.status}, expected completed. Retrying update...`);
-          const { error: retryError } = await supabaseAdmin
-            .from('video_jobs')
-            .update({
-              status: 'completed',
-              progress: 100,
-              current_step: 'Completed',
-              result_url: result.rendered_video_url || null,
-              edit_recipe: result.edit_recipe || null,
-              completed_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', job.id);
-          if (retryError) {
-            console.error(`[VideoWorker] RETRY UPDATE ERROR: ${retryError.message}`);
-          } else {
-            console.log(`[VideoWorker] RETRY UPDATE succeeded`);
-          }
-        }
-      }
+    const completed = await markJobCompleted(job.id, result, 3);
+    if (!completed) {
+      throw new Error(`Failed to mark job ${job.id} as completed`);
     }
+    console.log(`[VideoWorker] Completed job ${job.id}`);
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);
     const { data: failResult, error: failError } = await supabaseAdmin
