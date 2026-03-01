@@ -9497,6 +9497,13 @@ const server = http.createServer((req, res) => {
   try {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   const parsed = url.parse(req.url, true);
+
+  // Render health checks should be constant-time and avoid any extra work.
+  if (req.method === 'GET' && parsed.pathname === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end('OK');
+  }
+
   const cspNonce = crypto.randomBytes(16).toString('base64');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -15467,8 +15474,14 @@ if (require.main === module) {
 
   server.listen(PORT, () => console.log(`Promptly server running on http://localhost:${PORT}`));
 
-  process.on('uncaughtException', (err) => console.error('Uncaught:', err));
-  process.on('unhandledRejection', (r) => console.error('Unhandled rejection:', r));
+  process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception:', err?.message || err);
+    if (err?.stack) console.error(err.stack);
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] Unhandled rejection:', reason);
+    if (reason && reason.stack) console.error(reason.stack);
+  });
 }
 
 module.exports = {

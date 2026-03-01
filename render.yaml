@@ -35,4 +35,4 @@ services:
         sync: false
       - key: NODE_VERSION
         value: 20
-    healthCheckPath: /
+    healthCheckPath: /healthz
