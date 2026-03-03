@@ -2024,3 +2024,24 @@ footer,
 footer {
   background: rgba(10, 10, 10, 0.85);
 }
+
+/* Platform item in logo slider */
+.hero-v3__platform-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.hero-v3__platform-item svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.hero-v3__platform-item span {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
