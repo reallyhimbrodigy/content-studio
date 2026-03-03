@@ -28,6 +28,7 @@
   <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
   <meta name="theme-color" content="#000000" />
   <link rel="stylesheet" href="styles.css?t=1771556488" />
+  <link rel="stylesheet" href="/css/sidebar.css" />
   <link rel="manifest" href="manifest.json" />
     <style>
       body.auth-pending {
@@ -416,6 +417,10 @@
   <script src="/sw-register.js?t=1771556488" defer></script>
   <script src="/pwa-install.js?t=1771556488" defer></script>
   <script src="/js/landing.js?t=1771556488" defer></script>
+    <script type="module">
+      import { initSidebar } from '/components/sidebar.js';
+      initSidebar();
+    </script>
     <script type="module" src="./library.js?t=1771556488"></script>
   </body>
 </html>
