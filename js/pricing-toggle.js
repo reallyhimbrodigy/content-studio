@@ -23,6 +23,12 @@
       billedNote.textContent = 'or $200/year (save $40)';
       billedNote.hidden = false;
     }
+
+    // Slide the toggle indicator
+    var indicator = document.querySelector('.pricing-v2__toggle-indicator');
+    if (indicator) {
+      indicator.style.transform = interval === 'yearly' ? 'translateX(100%)' : 'translateX(0)';
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function () {

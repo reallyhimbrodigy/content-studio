@@ -254,68 +254,97 @@
       </section>
 
       <!-- Pricing Section -->
-      <section class="pricing" id="pricing">
-        <div class="pricing-container">
-          <h2 class="section-headline">Simple Pricing</h2>
-          <p class="pricing-subheadline">Try free. Upgrade when you're ready.</p>
-
-          <div class="pricing-toggle-wrap" role="group" aria-label="Billing interval toggle">
-            <div class="pricing-toggle">
-              <button class="pricing-toggle-btn is-active" data-billing="monthly" type="button">Monthly</button>
-              <button class="pricing-toggle-btn" data-billing="yearly" type="button">Yearly</button>
-            </div>
-            <span class="pricing-save-label">Save $40</span>
+      <section class="pricing-v2" id="pricing">
+        <div class="pricing-v2__container">
+          <div class="pricing-v2__header">
+            <h2 class="pricing-v2__title">Simple Pricing</h2>
+            <p class="pricing-v2__subtitle">Try free. Upgrade when you're ready.</p>
           </div>
 
-          <div class="pricing-cards">
-            <div class="pricing-card free-tier">
-              <div class="pricing-card-main">
-                <h3 class="tier-name">Free</h3>
+          <div class="pricing-v2__toggle-wrap" role="group" aria-label="Billing interval toggle">
+            <div class="pricing-v2__toggle">
+              <button class="pricing-toggle-btn is-active" data-billing="monthly" type="button">Monthly</button>
+              <button class="pricing-toggle-btn" data-billing="yearly" type="button">Yearly</button>
+              <div class="pricing-v2__toggle-indicator"></div>
+            </div>
+            <span class="pricing-v2__save-badge">Save $40</span>
+          </div>
 
-                <div class="pricing-price">
-                  <span class="pricing-amount">$0</span>
+          <div class="pricing-v2__cards">
+            <!-- Free Tier -->
+            <div class="pricing-v2__card">
+              <div class="pricing-v2__card-body">
+                <h3 class="pricing-v2__tier-name">Free</h3>
+                <div class="pricing-v2__price-block">
+                  <span class="pricing-v2__amount">$0</span>
                 </div>
-
-                <ul class="pricing-features">
-                  <li><span class="checkmark">✓</span> 5 AI edits per month</li>
-                  <li><span class="checkmark">✓</span> All content types</li>
-                  <li><span class="checkmark">✓</span> HD exports (1080p)</li>
-                  <li><span class="checkmark">✓</span> Fast AI-powered edits</li>
+                <p class="pricing-v2__description">For trying out Promptly</p>
+                <ul class="pricing-v2__features">
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    5 AI edits per month
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    All content types
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    HD exports (1080p)
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Fast AI-powered edits
+                  </li>
                 </ul>
               </div>
-              <div class="pricing-card-footer">
-                <a href="https://usepromptly.app/auth.html" class="pricing-cta secondary">
+              <div class="pricing-v2__card-footer">
+                <a href="https://usepromptly.app/auth.html" class="pricing-v2__cta pricing-v2__cta--secondary">
                   Get Started Free
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </a>
               </div>
             </div>
 
-            <div class="pricing-card pro-tier highlighted">
-              <div class="pricing-card-main">
-                <h3 class="tier-name">Pro</h3>
-
-                <div class="pricing-price">
-                  <span id="pro-price-amount" class="pricing-amount">$19.99</span>
-                  <span id="pro-price-period" class="pricing-period">/month</span>
+            <!-- Pro Tier -->
+            <div class="pricing-v2__card pricing-v2__card--featured">
+              <div class="pricing-v2__popular-badge">Most Popular</div>
+              <div class="pricing-v2__card-body">
+                <h3 class="pricing-v2__tier-name">Pro</h3>
+                <div class="pricing-v2__price-block">
+                  <span id="pro-price-amount" class="pricing-v2__amount">$19.99</span>
+                  <span id="pro-price-period" class="pricing-v2__period">/month</span>
                 </div>
-
-                <p id="pro-billed-note" class="pricing-billed-note">or $200/year (save $40)</p>
-
-                <ul class="pricing-features">
-                  <li><span class="checkmark">✓</span> <strong>Unlimited</strong> AI edits</li>
-                  <li><span class="checkmark">✓</span> Priority processing</li>
-                  <li><span class="checkmark">✓</span> All content types</li>
-                  <li><span class="checkmark">✓</span> HD exports (1080p)</li>
-                  <li><span class="checkmark">✓</span> Email support</li>
+                <p id="pro-billed-note" class="pricing-v2__billed-note">or $200/year (save $40)</p>
+                <ul class="pricing-v2__features">
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    <strong>Unlimited</strong> AI edits
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Priority processing
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    All content types
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    HD exports (1080p)
+                  </li>
+                  <li>
+                    <svg class="pricing-v2__check" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Email support
+                  </li>
                 </ul>
               </div>
-
-              <div class="pricing-card-footer">
-                <button id="upgrade-to-pro-btn" class="pricing-cta primary" type="button">
+              <div class="pricing-v2__card-footer">
+                <button id="upgrade-to-pro-btn" class="pricing-v2__cta pricing-v2__cta--primary" type="button">
                   Upgrade to Pro
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </button>
-
-                <p class="pricing-guarantee">Cancel anytime</p>
+                <p class="pricing-v2__guarantee">Cancel anytime</p>
               </div>
             </div>
           </div>
