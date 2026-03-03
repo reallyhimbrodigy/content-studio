@@ -1757,3 +1757,265 @@ html {
     gap: 64px;
   }
 }
+
+/* ============================================================
+   Nav V3 — Floating transparent nav with scroll blur
+   Matches 21st.dev Hero Section 5 navigation
+   ============================================================ */
+
+.nav-v3 {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding-top: 8px;
+}
+
+.nav-v3__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  border-radius: 24px;
+  transition: background 0.3s ease, backdrop-filter 0.3s ease;
+}
+
+@media (min-width: 1024px) {
+  .nav-v3__inner {
+    padding: 0 48px;
+  }
+}
+
+/* Scrolled state — frosted glass */
+.nav-v3.scrolled .nav-v3__inner {
+  background: rgba(10, 10, 10, 0.5);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.nav-v3__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 0;
+  transition: padding 0.2s ease;
+}
+
+@media (min-width: 1024px) {
+  .nav-v3__row {
+    padding: 24px 0;
+  }
+
+  .nav-v3.scrolled .nav-v3__row {
+    padding: 16px 0;
+  }
+}
+
+/* Left side: logo + links */
+.nav-v3__left {
+  display: flex;
+  align-items: center;
+  gap: 48px;
+}
+
+.nav-v3__logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-decoration: none;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.nav-v3__links {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 32px;
+}
+
+@media (min-width: 1024px) {
+  .nav-v3__links {
+    display: flex;
+  }
+}
+
+.nav-v3__links a {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.nav-v3__links a:hover {
+  color: #ffffff;
+}
+
+/* Right side: buttons + hamburger */
+.nav-v3__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-v3__actions {
+  display: none;
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .nav-v3__actions {
+    display: flex;
+  }
+}
+
+/* Buttons */
+.nav-v3__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.nav-v3__btn--outline {
+  background: transparent;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.nav-v3__btn--outline:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.nav-v3__btn--filled {
+  background: #ffffff;
+  color: #0a0a0a;
+  border: 1px solid transparent;
+}
+
+.nav-v3__btn--filled:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.nav-v3__btn--full {
+  width: 100%;
+}
+
+/* Hamburger */
+.nav-v3__hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 10px;
+  margin: -10px;
+  margin-right: -16px;
+}
+
+@media (min-width: 1024px) {
+  .nav-v3__hamburger {
+    display: none;
+  }
+}
+
+.nav-v3__icon-close {
+  display: none;
+}
+
+.nav-v3.menu-open .nav-v3__icon-menu {
+  display: none;
+}
+
+.nav-v3.menu-open .nav-v3__icon-close {
+  display: block;
+}
+
+/* Mobile dropdown */
+.nav-v3__mobile {
+  display: none;
+  padding: 24px;
+  margin-bottom: 24px;
+  background: #111;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+}
+
+.nav-v3.menu-open .nav-v3__mobile {
+  display: block;
+}
+
+.nav-v3__mobile-links {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.nav-v3__mobile-links a {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.nav-v3__mobile-links a:hover {
+  color: #ffffff;
+}
+
+.nav-v3__mobile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .nav-v3__mobile-actions {
+    flex-direction: row;
+  }
+}
+
+/* ============================================================
+   Sparkles Canvas — full-page floating particle background
+   ============================================================ */
+
+.sparkles-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Make sure all content sections sit above the canvas */
+.nav-v3,
+.hero-v3,
+.hero-v3__trust-bar,
+.problem,
+.how-it-works,
+.features,
+.pricing,
+.final-cta,
+.faq,
+footer,
+.modal-overlay {
+  position: relative;
+  z-index: 1;
+}

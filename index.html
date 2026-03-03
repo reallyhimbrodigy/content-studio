@@ -38,20 +38,50 @@
   </head>
   <body class="view-landing landing-page landing is-landing">
     <div class="app-shell">
+      <!-- Sparkles particle background -->
+      <canvas id="sparklesCanvas" class="sparkles-canvas"></canvas>
       <!-- Navigation -->
-      <nav class="nav">
-        <div class="nav-container">
-          <div class="nav-logo">
-            <a href="/">Promptly</a>
+      <nav class="nav-v3" id="mainNav">
+        <div class="nav-v3__inner">
+          <div class="nav-v3__row">
+            <!-- Left: Logo -->
+            <div class="nav-v3__left">
+              <a href="/" class="nav-v3__logo" aria-label="home">Promptly</a>
+
+              <!-- Desktop menu links (beside logo) -->
+              <ul class="nav-v3__links">
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+              </ul>
+            </div>
+
+            <!-- Right: Actions + mobile hamburger -->
+            <div class="nav-v3__right">
+              <div class="nav-v3__actions">
+                <a href="https://usepromptly.app/auth.html?mode=login" class="nav-v3__btn nav-v3__btn--outline">Log In</a>
+                <a href="https://usepromptly.app/auth.html" class="nav-v3__btn nav-v3__btn--filled">Sign Up</a>
+              </div>
+
+              <!-- Mobile hamburger -->
+              <button class="nav-v3__hamburger" id="navHamburger" aria-label="Open Menu">
+                <svg class="nav-v3__icon-menu" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                <svg class="nav-v3__icon-close" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
           </div>
-          <div class="nav-links">
-            <a href="#how-it-works">How It Works</a>
-            <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
-          </div>
-          <div class="nav-actions">
-            <a href="https://usepromptly.app/auth.html?mode=login" class="nav-login">Log In</a>
-            <a href="https://usepromptly.app/auth.html" class="nav-cta">Try Promptly Free</a>
+
+          <!-- Mobile dropdown -->
+          <div class="nav-v3__mobile" id="navMobileMenu">
+            <ul class="nav-v3__mobile-links">
+              <li><a href="#how-it-works">How It Works</a></li>
+              <li><a href="#features">Features</a></li>
+              <li><a href="#pricing">Pricing</a></li>
+            </ul>
+            <div class="nav-v3__mobile-actions">
+              <a href="https://usepromptly.app/auth.html?mode=login" class="nav-v3__btn nav-v3__btn--outline nav-v3__btn--full">Log In</a>
+              <a href="https://usepromptly.app/auth.html" class="nav-v3__btn nav-v3__btn--filled nav-v3__btn--full">Sign Up</a>
+            </div>
           </div>
         </div>
       </nav>

@@ -10665,3 +10665,132 @@ if (isLibraryPage()) {
     true
   );
 }
+
+/* Nav V3 — scroll blur + mobile menu */
+(function () {
+  var nav = document.getElementById('mainNav');
+  var hamburger = document.getElementById('navHamburger');
+
+  if (!nav || !hamburger) return;
+
+  // Scroll detection — add frosted glass on scroll
+  window.addEventListener('scroll', function () {
+    if (window.scrollY > 40) {
+      nav.classList.add('scrolled');
+    } else {
+      nav.classList.remove('scrolled');
+    }
+  }, { passive: true });
+
+  // Mobile hamburger toggle
+  hamburger.addEventListener('click', function () {
+    nav.classList.toggle('menu-open');
+    var isOpen = nav.classList.contains('menu-open');
+    hamburger.setAttribute('aria-label', isOpen ? 'Close Menu' : 'Open Menu');
+  });
+
+  // Close mobile menu when a link is clicked
+  var mobileLinks = document.querySelectorAll('.nav-v3__mobile-links a');
+  mobileLinks.forEach(function (link) {
+    link.addEventListener('click', function () {
+      nav.classList.remove('menu-open');
+    });
+  });
+})();
+
+/* ============================================================
+   Sparkles Canvas — vanilla JS particle background
+   Matches Aceternity/tsparticles sparkles effect
+   ============================================================ */
+(function () {
+  var canvas = document.getElementById('sparklesCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  var particles = [];
+  var particleCount = 120;
+  var animId;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = document.documentElement.scrollHeight;
+  }
+
+  function createParticle() {
+    return {
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() * 2 + 0.5,
+      speedX: (Math.random() - 0.5) * 0.3,
+      speedY: (Math.random() - 0.5) * 0.3,
+      opacity: Math.random(),
+      opacitySpeed: (Math.random() * 0.008 + 0.002) * (Math.random() < 0.5 ? 1 : -1),
+    };
+  }
+
+  function init() {
+    resize();
+    particles = [];
+    for (var i = 0; i < particleCount; i++) {
+      particles.push(createParticle());
+    }
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+
+      // Move
+      p.x += p.speedX;
+      p.y += p.speedY;
+
+      // Twinkle opacity
+      p.opacity += p.opacitySpeed;
+      if (p.opacity >= 1) { p.opacity = 1; p.opacitySpeed *= -1; }
+      if (p.opacity <= 0.1) { p.opacity = 0.1; p.opacitySpeed *= -1; }
+
+      // Wrap around edges
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+
+      // Draw
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, ' + p.opacity + ')';
+      ctx.fill();
+    }
+
+    animId = requestAnimationFrame(animate);
+  }
+
+  // Resize canvas when window resizes or content changes
+  var resizeTimeout;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(function () {
+      resize();
+    }, 200);
+  }, { passive: true });
+
+  // Also resize on page load complete (for dynamic content)
+  window.addEventListener('load', function () {
+    resize();
+  });
+
+  init();
+  animate();
+
+  // Pause animation when tab is hidden to save CPU
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      cancelAnimationFrame(animId);
+    } else {
+      animate();
+    }
+  });
+})();
