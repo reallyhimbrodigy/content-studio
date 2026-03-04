@@ -1026,7 +1026,7 @@
         const modal = document.getElementById('account-modal');
         if (!modal) return;
 
-        const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+        const sb = window.supabaseClient || window.supabase || await resolveSupabaseAuthClient();
         let user = null;
         try {
           const { data } = await sb.auth.getUser();
@@ -1157,7 +1157,7 @@
             }
             try {
               avatarTrigger.classList.add('acct-avatar-uploading');
-              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const sb = window.supabaseClient || window.supabase || await resolveSupabaseAuthClient();
               const user = (await sb.auth.getUser())?.data?.user;
               if (!user) {
                 alert('Not signed in');
@@ -1201,7 +1201,7 @@
             saveNameBtn.textContent = 'Saving...';
             saveNameBtn.disabled = true;
             try {
-              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const sb = window.supabaseClient || window.supabase || await resolveSupabaseAuthClient();
               const { error } = await sb.auth.updateUser({ data: { full_name: newName } });
               if (error) throw error;
               saveNameBtn.textContent = 'Saved!';
@@ -1234,7 +1234,7 @@
             saveEmailBtn.textContent = 'Saving...';
             saveEmailBtn.disabled = true;
             try {
-              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const sb = window.supabaseClient || window.supabase || await resolveSupabaseAuthClient();
               const { error } = await sb.auth.updateUser({ email: newEmail });
               if (error) throw error;
               saveEmailBtn.textContent = 'Check inbox';
