@@ -1,0 +1,138 @@
+:root {
+  --bg-body: #ffffff;
+  --bg-body-rgb: 255, 255, 255;
+  --sparkle-color: 0, 0, 0;
+  --sparkle-opacity-max: 0.15;
+  --text-primary: #111111;
+  --text-secondary: #555555;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-body: #0a0a0a;
+    --bg-body-rgb: 10, 10, 10;
+    --sparkle-color: 255, 255, 255;
+    --sparkle-opacity-max: 0.6;
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+  }
+}
+
+body.is-landing,
+body.landing-page,
+body.landing {
+  background-color: var(--bg-body) !important;
+  color: var(--text-primary);
+}
+
+/* Ensure wrapper doesn't mask the fixed canvas */
+body.is-landing .app-shell,
+body.landing-page .app-shell,
+body.landing .app-shell {
+  background: transparent !important;
+}
+
+.sparkles-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.sparkles-canvas.is-ready {
+  opacity: 1;
+}
+
+.nav-v3 {
+  position: relative;
+  z-index: 10;
+}
+
+.hero-v3 {
+  position: relative;
+  z-index: 2;
+  background-color: var(--bg-body);
+}
+
+.hero-v3__trust-bar {
+  position: relative;
+  z-index: 2;
+  background-color: var(--bg-body);
+}
+
+.problem,
+.how-it-works,
+.features,
+.pricing-v2,
+.final-cta,
+footer {
+  position: relative;
+  z-index: 1;
+  background-color: transparent !important;
+}
+
+.modal-overlay {
+  z-index: 100;
+}
+
+/* Theme-aware text colors for landing content below hero */
+.section-headline,
+.problem-title,
+.step-title,
+.feature-title,
+.pricing-v2__title,
+.final-cta-headline,
+.pricing-v2__amount,
+.pricing-v2__tier-name,
+.pricing-v2__cta--secondary,
+.pricing-v2__cta--primary,
+.final-cta .btn-primary-large,
+.hero-v3__platform-item,
+.hero-v3__trust-label p {
+  color: var(--text-primary);
+}
+
+.problem-description,
+.problem-solution,
+.step-description,
+.feature-description,
+.pricing-v2__subtitle,
+.pricing-v2__period,
+.pricing-v2__billed-note,
+.pricing-v2__description,
+.pricing-v2__features li,
+.pricing-v2__guarantee,
+.final-cta-subheadline,
+.final-cta-trust,
+.final-cta-social {
+  color: var(--text-secondary);
+}
+
+/* Keep card/button contrast coherent across themes */
+.pricing-v2__card {
+  background: color-mix(in srgb, var(--bg-body) 92%, #000 8%);
+  border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+.pricing-v2__card--featured {
+  background: color-mix(in srgb, var(--bg-body) 96%, var(--text-primary) 4%);
+}
+
+.pricing-v2__cta--secondary {
+  background: color-mix(in srgb, var(--bg-body) 85%, var(--text-primary) 15%);
+}
+
+.pricing-v2__cta--primary {
+  background: var(--text-primary);
+  color: var(--bg-body);
+}
+
+.pricing-v2__cta--primary:hover,
+.pricing-v2__cta--secondary:hover {
+  filter: brightness(1.05);
+}
