@@ -3983,7 +3983,7 @@ function updateDesignEditorBrandMeta(asset) {
       el.style.display = 'inline-flex';
       el.style.backgroundColor = next;
       el.style.borderColor = next;
-      el.style.color = '#ffffff';
+      el.style.color = 'var(--text-inverse)';
       hasSwatch = true;
     } else {
       el.textContent = '';

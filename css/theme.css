@@ -1,0 +1,204 @@
+:root {
+  color-scheme: light dark;
+
+  --bg-body: #ffffff;
+  --bg-surface: #f5f5f5;
+  --bg-surface-hover: #ebebeb;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+
+  --text-primary: #111111;
+  --text-secondary: #555555;
+  --text-tertiary: #888888;
+  --text-inverse: #ffffff;
+
+  --border-color: rgba(0, 0, 0, 0.12);
+  --border-color-strong: rgba(0, 0, 0, 0.25);
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-text: #ffffff;
+
+  --nav-bg: rgba(255, 255, 255, 0.85);
+  --modal-bg: #ffffff;
+  --input-bg: #ffffff;
+  --input-border: rgba(0, 0, 0, 0.15);
+  --code-bg: #f0f0f0;
+
+  --app-bg: var(--bg-body);
+  --app-panel: var(--bg-surface);
+  --app-border: var(--border-color);
+  --app-text: var(--text-primary);
+  --bg: var(--bg-body);
+  --bg-elev: var(--bg-surface);
+  --panel: var(--bg-surface);
+  --panel2: rgba(0, 0, 0, 0.08);
+  --border: var(--border-color);
+  --border2: var(--border-color-strong);
+  --text: var(--text-primary);
+  --text2: var(--text-secondary);
+  --text3: var(--text-tertiary);
+  --text-dim: var(--text-secondary);
+  --card: var(--bg-surface);
+  --card-border: var(--border-color);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-strong: color-mix(in srgb, var(--accent) 22%, transparent);
+  --surface: var(--bg-surface);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-body: #0a0a0a;
+    --bg-surface: #161616;
+    --bg-surface-hover: #222222;
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+    --text-tertiary: #666666;
+    --text-inverse: #000000;
+
+    --border-color: rgba(255, 255, 255, 0.12);
+    --border-color-strong: rgba(255, 255, 255, 0.25);
+
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-text: #ffffff;
+
+    --nav-bg: rgba(10, 10, 10, 0.85);
+    --modal-bg: #1a1a1a;
+    --input-bg: #1a1a1a;
+    --input-border: rgba(255, 255, 255, 0.15);
+    --code-bg: #1e1e1e;
+
+    --panel2: rgba(255, 255, 255, 0.08);
+  }
+}
+
+html,
+body {
+  background: var(--bg-body) !important;
+  color: var(--text-primary) !important;
+}
+
+body,
+.app-shell,
+.app-layout,
+.app-main,
+main,
+.page,
+.content-page,
+.page-content,
+.page-container,
+main.editor-main,
+.editor-container,
+.library-content {
+  background-color: transparent;
+}
+
+p,
+label,
+small,
+.meta,
+.muted,
+.subtitle {
+  color: var(--text-secondary);
+}
+
+a {
+  color: var(--text-primary);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+input,
+select,
+textarea {
+  background: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--input-border) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+.card,
+.modal,
+.modal-card,
+.modal-container,
+.publish-card,
+.content-page section,
+.auth-card,
+.nf-card,
+.offline-card {
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.modal-overlay {
+  background: var(--bg-overlay);
+}
+
+.nav-v3,
+.nav-v3.scrolled .nav-v3__inner {
+  background: var(--nav-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hero-v3 {
+  background: var(--bg-body);
+}
+
+.hero-v3__trust-bar {
+  background: var(--bg-body);
+}
+
+.site-footer,
+footer.site-footer,
+footer {
+  background: transparent !important;
+  color: var(--text-secondary);
+}
+
+.primary,
+.btn-primary,
+.hero-v3__btn--primary,
+.nav-v3__btn--filled {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-text) !important;
+}
+
+.primary:hover,
+.btn-primary:hover,
+.hero-v3__btn--primary:hover,
+.nav-v3__btn--filled:hover {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+}
+
+.secondary,
+.ghost,
+.nav-v3__btn--outline,
+.hero-v3__btn--ghost {
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+@media (prefers-color-scheme: light) {
+  .logo,
+  .content-page__logo img,
+  .site-footer__logo-img,
+  .auth-page__logo img,
+  .auth-wordmark img,
+  .hero-top__left img,
+  .nav-v3__logo img,
+  .hero-v3__platform-item svg {
+    filter: invert(1);
+  }
+}

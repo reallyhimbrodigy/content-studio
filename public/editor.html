@@ -11,6 +11,9 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?t=1771556488" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/css/theme.css" />
     <link rel="stylesheet" href="/css/sidebar.css" />
     <script src="assets/vendor/supabase.js?t=1771556488"></script>
     <style>
@@ -628,6 +631,51 @@
 
       body.page-editor .profile-menu-item.danger svg {
         color: #ffffff;
+      }
+
+      /* System theme overrides */
+      body.page-editor,
+      body.page-editor .app-main,
+      body.page-editor main.editor-main,
+      .editor-page,
+      .app-shell.editor-page,
+      .app-main,
+      .editor-main,
+      .editor-container {
+        background: var(--bg-body) !important;
+        color: var(--text-primary);
+      }
+
+      .editor-main::before {
+        opacity: 0.35;
+      }
+
+      .editor-heading,
+      .editor-section-title,
+      .jobs-title,
+      .editor-form__label,
+      .editor-action-primary,
+      .editor-action-ghost {
+        color: var(--text-primary) !important;
+      }
+
+      .editor-helper,
+      .editor-muted,
+      .editor-subtitle,
+      .jobs-empty,
+      .job-item__meta {
+        color: var(--text-secondary) !important;
+      }
+
+      .editor-card,
+      .editor-form,
+      .jobs-panel,
+      .job-item,
+      .editor-form__line input,
+      .editor-form__line textarea {
+        background: var(--bg-surface) !important;
+        border-color: var(--border-color) !important;
+        color: var(--text-primary) !important;
       }
     </style>
   </head>

@@ -9,8 +9,8 @@
     * { box-sizing: border-box; }
     body {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
-      background: #000000;
-      color: #ffffff;
+      background: var(--bg-body);
+      color: var(--text-primary);
       min-height: 100vh;
       margin: 0;
       padding: 2rem;
@@ -19,39 +19,39 @@
     h1 {
       font-size: 2rem;
       margin-bottom: 0.5rem;
-      color: #ffffff;
+      color: var(--text-primary);
     }
     .card {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
       border-radius: 16px;
       padding: 2rem;
       margin-bottom: 2rem;
       backdrop-filter: blur(14px);
     }
     .status { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; }
-    .status.ok { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85); }
-    .status.error { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.85); }
+    .status.ok { background: var(--bg-surface-hover); color: var(--text-primary); }
+    .status.error { background: var(--bg-surface-hover); color: var(--text-primary); }
     .log-box {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--code-bg);
       padding: 1rem;
       border-radius: 8px;
       font-family: "Monaco", "Courier New", monospace;
       font-size: 0.85rem;
       max-height: 400px;
       overflow-y: auto;
-      color: #ffffff;
+      color: var(--text-primary);
       white-space: pre-wrap;
       word-wrap: break-word;
       margin-top: 1rem;
     }
     .log-line { margin: 0.25rem 0; }
-    .log-line.error { color: rgba(255, 255, 255, 0.72); }
-    .log-line.success { color: rgba(255, 255, 255, 0.72); }
+    .log-line.error { color: var(--text-secondary); }
+    .log-line.success { color: var(--text-secondary); }
     button {
-      background: #ffffff;
-      color: #000000;
-      border: 1px solid #ffffff;
+      background: var(--accent);
+      color: var(--accent-text);
+      border: 1px solid var(--accent);
       padding: 0.75rem 1.5rem;
       border-radius: 999px;
       font-weight: 600;
@@ -60,9 +60,12 @@
       margin-top: 1rem;
       box-shadow: none;
     }
-    button:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.92); }
+    button:hover { transform: translateY(-2px); background: var(--accent-hover); }
   </style>
   <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
   <div class="container">
@@ -125,7 +128,7 @@
       statusDiv.style.marginBottom = '1rem';
       statusDiv.innerHTML = `
         <span class="status ${ok ? 'ok' : 'error'}">${ok ? '✓' : '✗'} ${title}</span>
-        ${detail ? `<p style="margin: 0.5rem 0; font-size: 0.9rem; color: rgba(255, 255, 255, 0.7);">${detail}</p>` : ''}
+        ${detail ? `<p style="margin: 0.5rem 0; font-size: 0.9rem; color: var(--text-secondary);">${detail}</p>` : ''}
       `;
       statusBox.appendChild(statusDiv);
     }

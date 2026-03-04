@@ -5,6 +5,17 @@
  * Call this at the top of every page's JS entry point
  */
 export function initTheme() {
+  applyFaviconForScheme();
+  if (window.matchMedia) {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => applyFaviconForScheme();
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(onChange);
+    }
+  }
+
   let saved;
   try {
     saved = localStorage.getItem('promptly_theme');
@@ -24,6 +35,15 @@ export function initTheme() {
   }
   
   return saved;
+}
+
+function applyFaviconForScheme() {
+  const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const iconHref = isDark ? '/assets/promptly-mark-white.png' : '/assets/promptly-logo.svg';
+  const iconLink = document.querySelector('link[rel="icon"]');
+  if (iconLink) {
+    iconLink.setAttribute('href', iconHref);
+  }
 }
 
 /**

@@ -212,7 +212,9 @@ const emailInput = document.getElementById("email");
     const strengthText = document.getElementById('strength-text');
     
     // Reset all bars
-    bars.forEach(bar => bar.style.background = 'rgba(255, 255, 255, 0.1)');
+    bars.forEach((bar) => {
+      bar.style.background = 'color-mix(in srgb, var(--text-primary) 12%, transparent)';
+    });
     
     if (password.length === 0) {
       strengthText.textContent = '';
@@ -220,10 +222,10 @@ const emailInput = document.getElementById("email");
     }
     
     const colors = [
-      'rgba(255, 255, 255, 0.45)',
-      'rgba(255, 255, 255, 0.6)',
-      'rgba(255, 255, 255, 0.75)',
-      'rgba(255, 255, 255, 0.95)'
+      'color-mix(in srgb, var(--accent) 45%, transparent)',
+      'color-mix(in srgb, var(--accent) 60%, transparent)',
+      'color-mix(in srgb, var(--accent) 75%, transparent)',
+      'color-mix(in srgb, var(--accent) 95%, transparent)'
     ];
     const labels = ['Weak password', 'Fair password', 'Good password', 'Strong password'];
     
@@ -232,7 +234,7 @@ const emailInput = document.getElementById("email");
     }
     
     strengthText.textContent = labels[strength - 1] || 'Too short';
-    strengthText.style.color = colors[strength - 1] || 'rgba(255, 255, 255, 0.45)';
+    strengthText.style.color = colors[strength - 1] || 'var(--text-secondary)';
   };
 
   const applyModeUI = () => {

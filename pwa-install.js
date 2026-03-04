@@ -17,12 +17,12 @@
     wrap.style.zIndex = '9999';
     wrap.style.maxWidth = '360px';
     wrap.style.borderRadius = '12px';
-    wrap.style.border = '1px solid rgba(255,255,255,0.14)';
-    wrap.style.background = 'rgba(255,255,255,0.06)';
+    wrap.style.border = '1px solid var(--border-color)';
+    wrap.style.background = 'var(--bg-surface)';
     wrap.style.backdropFilter = 'blur(10px)';
     wrap.style.boxShadow = '0 12px 28px rgba(0,0,0,0.35)';
     wrap.style.padding = '12px';
-    wrap.style.color = 'rgba(255,255,255,0.86)';
+    wrap.style.color = 'var(--text-primary)';
     wrap.style.display = 'flex';
     wrap.style.alignItems = 'center';
     wrap.style.gap = '10px';
@@ -41,9 +41,9 @@
     installBtn.style.fontWeight = '700';
     installBtn.style.padding = '0.5rem 1rem';
     installBtn.style.fontSize = '0.9rem';
-    installBtn.style.background = '#ffffff';
-    installBtn.style.border = '1px solid #ffffff';
-    installBtn.style.color = '#000000';
+    installBtn.style.background = 'var(--accent)';
+    installBtn.style.border = '1px solid var(--accent)';
+    installBtn.style.color = 'var(--accent-text)';
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
@@ -56,8 +56,8 @@
     closeBtn.style.alignItems = 'center';
     closeBtn.style.justifyContent = 'center';
     // grid-based centering caused the × to sit slightly off-center due to font metrics; flex keeps it perfectly centered.
-    closeBtn.style.border = '1px solid rgba(255,255,255,0.22)';
-    closeBtn.style.background = 'rgba(255,255,255,0.08)';
+    closeBtn.style.border = '1px solid var(--border-color-strong)';
+    closeBtn.style.background = 'var(--bg-surface-hover)';
     closeBtn.style.color = 'inherit';
     closeBtn.style.cursor = 'pointer';
 

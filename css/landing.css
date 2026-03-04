@@ -1957,3 +1957,73 @@ footer {
   font-size: 0.875rem;
   font-weight: 500;
 }
+
+/* ============================================================
+   System Theme Compatibility Overrides
+   ============================================================ */
+@media (prefers-color-scheme: light) {
+  .nav-v3__logo,
+  .nav-v3__links a,
+  .nav-v3__btn--outline,
+  .nav-v3__hamburger {
+    color: var(--text-primary);
+  }
+
+  .nav-v3__btn--outline {
+    border-color: var(--border-color);
+    background: color-mix(in srgb, var(--bg-body) 90%, transparent);
+  }
+
+  .nav-v3.scrolled .nav-v3__inner {
+    background: var(--nav-bg);
+  }
+
+  .hero-v3__headline {
+    color: var(--text-primary);
+  }
+
+  .hero-v3__subheadline {
+    color: var(--text-secondary);
+  }
+
+  .hero-v3__btn--ghost {
+    color: var(--text-primary);
+    border-color: var(--border-color);
+  }
+
+  .hero-v3__btn--ghost:hover {
+    background: var(--bg-surface);
+  }
+
+  .hero-v3__trust-bar {
+    background: transparent;
+  }
+
+  .hero-v3__slider-track img,
+  .hero-v3__platform-item svg {
+    filter: none;
+    opacity: 0.8;
+  }
+
+  .hero-v3__slider-fade--left {
+    background: linear-gradient(to right, var(--bg-body) 0%, transparent 100%);
+  }
+
+  .hero-v3__slider-fade--right {
+    background: linear-gradient(to left, var(--bg-body) 0%, transparent 100%);
+  }
+
+  .pricing-v2__title,
+  .pricing-v2__tier-name,
+  .pricing-v2__amount {
+    color: var(--text-primary);
+  }
+
+  .pricing-v2__subtitle,
+  .pricing-v2__description,
+  .pricing-v2__features li,
+  .pricing-v2__period,
+  .pricing-v2__billed-note {
+    color: var(--text-secondary);
+  }
+}

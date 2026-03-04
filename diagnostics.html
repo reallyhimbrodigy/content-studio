@@ -9,8 +9,8 @@
     * { box-sizing: border-box; }
     body {
       font-family: "Inter", system-ui, -apple-system, sans-serif;
-      background: #000000;
-      color: #ffffff;
+      background: var(--bg-body);
+      color: var(--text-primary);
       min-height: 100vh;
       margin: 0;
       padding: 2rem;
@@ -22,16 +22,16 @@
     h1 {
       font-size: 2rem;
       margin-bottom: 0.5rem;
-      color: #ffffff;
+      color: var(--text-primary);
     }
     .subtitle {
-      color: rgba(255, 255, 255, 0.64);
+      color: var(--text-secondary);
       margin-bottom: 2rem;
       font-size: 0.95rem;
     }
     .card {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
       border-radius: 16px;
       padding: 2rem;
       margin-bottom: 2rem;
@@ -40,7 +40,7 @@
     .card h2 {
       margin-top: 0;
       font-size: 1.3rem;
-      color: rgba(255, 255, 255, 0.95);
+      color: var(--text-primary);
     }
     .status {
       display: inline-block;
@@ -51,22 +51,22 @@
       margin-bottom: 1rem;
     }
     .status.ok {
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.85);
+      background: var(--bg-surface-hover);
+      color: var(--text-primary);
     }
     .status.pending {
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.85);
+      background: var(--bg-surface-hover);
+      color: var(--text-primary);
     }
     .status.error {
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.85);
+      background: var(--bg-surface-hover);
+      color: var(--text-primary);
     }
     .test-section {
       margin: 1.5rem 0;
       padding: 1rem;
-      background: rgba(255, 255, 255, 0.04);
-      border-left: 3px solid rgba(255, 255, 255, 0.22);
+      background: var(--bg-surface);
+      border-left: 3px solid var(--border-color-strong);
       border-radius: 8px;
     }
     .test-result {
@@ -79,11 +79,11 @@
       content: "✓";
       margin-right: 0.75rem;
       font-weight: bold;
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--text-primary);
     }
     .test-result.error::before {
       content: "✗";
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--text-primary);
     }
     .btn-group {
       display: flex;
@@ -94,9 +94,9 @@
     a.btn {
       display: inline-block;
       padding: 0.75rem 1.5rem;
-      background: #ffffff;
-      color: #000000;
-      border: 1px solid #ffffff;
+      background: var(--accent);
+      color: var(--accent-text);
+      border: 1px solid var(--accent);
       text-decoration: none;
       border-radius: 999px;
       font-weight: 600;
@@ -106,28 +106,28 @@
     }
     a.btn:hover {
       transform: translateY(-2px);
-      background: rgba(255, 255, 255, 0.92);
+      background: var(--accent-hover);
     }
     .code {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--code-bg);
       padding: 1rem;
       border-radius: 8px;
       font-family: "Monaco", "Courier New", monospace;
       font-size: 0.85rem;
       overflow-x: auto;
-      color: #ffffff;
+      color: var(--text-primary);
       margin: 0.75rem 0;
     }
     .instructions {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
       padding: 1.5rem;
       border-radius: 12px;
       margin-top: 1.5rem;
     }
     .instructions h3 {
       margin-top: 0;
-      color: #ffffff;
+      color: var(--text-primary);
     }
     .instructions ol {
       margin: 1rem 0;
@@ -139,6 +139,9 @@
     }
   </style>
   <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<link rel="stylesheet" href="/css/theme.css" />
 </head>
 <body>
   <div class="container">
@@ -217,7 +220,7 @@
       <h2>🆘 Troubleshooting</h2>
       <div class="test-section">
         <strong>If buttons are unresponsive:</strong>
-        <div style="margin-top: 0.75rem; color: rgba(255, 255, 255, 0.8);">
+        <div style="margin-top: 0.75rem; color: var(--text-secondary);">
           <p>1. <strong>Clear your browser cache:</strong></p>
           <div class="code">Windows/Linux: Ctrl+Shift+Delete<br>Mac: Cmd+Shift+Delete</div>
           <p>2. Or use a <strong>private/incognito window</strong> (Ctrl/Cmd+Shift+N)</p>
@@ -226,7 +229,7 @@
       </div>
       <div class="test-section">
         <strong>If the server is not running:</strong>
-        <div style="margin-top: 0.75rem; color: rgba(255, 255, 255, 0.8);">
+        <div style="margin-top: 0.75rem; color: var(--text-secondary);">
           <p>In your terminal, run:</p>
           <div class="code">cd /Users/zaclibman/content-studio<br>npm start</div>
           <p>Then refresh this page.</p>
@@ -309,14 +312,14 @@
       if (allOk) {
         document.getElementById('status-check').innerHTML = `
           <span class="status ok">✅ All systems operational</span>
-          <p style="margin-top: 1rem; color: rgba(255, 255, 255, 0.8);">
+          <p style="margin-top: 1rem; color: var(--text-secondary);">
             Your app is ready to use. Click the <strong>"Open App"</strong> buttons above to get started.
           </p>
         `;
       } else {
         document.getElementById('status-check').innerHTML = `
           <span class="status error">⚠ Some systems are offline</span>
-          <p style="margin-top: 1rem; color: rgba(255, 255, 255, 0.8);">
+          <p style="margin-top: 1rem; color: var(--text-secondary);">
             Make sure the server is running with <code>npm start</code> and try refreshing this page.
           </p>
         `;
@@ -329,4 +332,3 @@
   <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>
-
