@@ -11660,134 +11660,6 @@ body.page-calendar #account-modal .subscription-group .account-subscription-row 
   margin-top: 0.5rem !important;
 }
 
-/* Editor + Library account modal: simplified single-view dark style */
-body.page-editor #account-modal.modal-overlay:not([hidden]),
-body.page-library #account-modal.modal-overlay:not([hidden]) {
-  background: rgba(0, 0, 0, 0.72) !important;
-  backdrop-filter: blur(6px) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-body.page-editor #account-modal [data-account-modal],
-body.page-library #account-modal [data-account-modal] {
-  background: #0f0f0f !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #f2f2f2 !important;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.42) !important;
-}
-
-body.page-editor #account-modal [data-account-modal] h3,
-body.page-editor #account-modal [data-account-modal] label,
-body.page-editor #account-modal [data-account-modal] .settings-field-readonly,
-body.page-editor #account-modal [data-account-modal] .settings-field-readonly span,
-body.page-library #account-modal [data-account-modal] h3,
-body.page-library #account-modal [data-account-modal] label,
-body.page-library #account-modal [data-account-modal] .settings-field-readonly,
-body.page-library #account-modal [data-account-modal] .settings-field-readonly span {
-  color: #f2f2f2 !important;
-}
-
-body.page-editor #account-modal [data-account-modal] .modal-sub,
-body.page-library #account-modal [data-account-modal] .modal-sub {
-  color: #a0a0a0 !important;
-}
-
-body.page-editor #account-modal .settings-field-readonly,
-body.page-library #account-modal .settings-field-readonly {
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 0 !important;
-  padding: 0.5rem 0 0.7rem !important;
-}
-
-body.page-editor #account-modal #account-email-display,
-body.page-editor #account-modal [aria-label="Password is hidden"],
-body.page-library #account-modal #account-email-display,
-body.page-library #account-modal [aria-label="Password is hidden"] {
-  color: #ffffff !important;
-}
-
-body.page-editor #account-modal .field-hint,
-body.page-library #account-modal .field-hint {
-  color: rgba(255, 255, 255, 0.4) !important;
-  font-size: 0.75rem !important;
-  line-height: 1.4 !important;
-  margin-top: 0.45rem !important;
-}
-
-body.page-editor #account-modal #account-email-copy,
-body.page-editor #account-modal #account-password-manage,
-body.page-library #account-modal #account-email-copy,
-body.page-library #account-modal #account-password-manage {
-  background: transparent !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  color: #ffffff !important;
-  border-radius: 6px !important;
-  padding: 0.3rem 0.8rem !important;
-  font-size: 0.85rem !important;
-  line-height: 1.2 !important;
-}
-
-body.page-editor #account-modal #account-email-copy:hover,
-body.page-editor #account-modal #account-password-manage:hover,
-body.page-library #account-modal #account-email-copy:hover,
-body.page-library #account-modal #account-password-manage:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.4) !important;
-}
-
-body.page-editor #account-modal #account-close-btn,
-body.page-editor #account-modal [data-account-close],
-body.page-library #account-modal #accountSettingsClose,
-body.page-library #account-modal [data-account-close] {
-  color: #f2f2f2 !important;
-  border: none !important;
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-radius: 50% !important;
-  width: 32px !important;
-  height: 32px !important;
-  min-width: 32px !important;
-  min-height: 32px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  line-height: 1 !important;
-}
-
-body.page-editor #account-modal #account-close-btn:hover,
-body.page-editor #account-modal [data-account-close]:hover,
-body.page-library #account-modal #accountSettingsClose:hover,
-body.page-library #account-modal [data-account-close]:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
-}
-
-body.page-editor #account-modal .subscription-group,
-body.page-library #account-modal .subscription-group {
-  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
-  margin-top: 1rem !important;
-  padding-top: 1rem !important;
-}
-
-body.page-editor #account-modal .subscription-group .account-subscription-row,
-body.page-library #account-modal .subscription-group .account-subscription-row {
-  margin-top: 0.5rem !important;
-}
-
-body.page-editor #account-modal #account-plan-status,
-body.page-library #account-modal #account-plan-status {
-  color: #ffffff !important;
-  background: rgba(0, 102, 255, 0.85) !important;
-  border: 1px solid rgba(0, 102, 255, 0.95) !important;
-  border-radius: 999px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  padding: 0.2rem 0.6rem !important;
-  font-weight: 700 !important;
-}
-
 /* Library page polish */
 body.page-library .library-toolbar__field input,
 body.page-library .library-toolbar__field select {
@@ -11823,3 +11695,376 @@ body.page-library .calendar-card__actions .delete-calendar-btn:hover {
   background: transparent;
   color: #ff6b6b;
 }
+/* ===== ACCOUNT SETTINGS MODAL ===== */
+
+.acct-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  transition: background 0.2s ease, backdrop-filter 0.2s ease;
+  padding: 1rem;
+}
+
+.acct-modal-overlay.acct-modal-visible {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.acct-modal {
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 1rem;
+  background: var(--bg-surface, #0d0d14);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.acct-modal-visible .acct-modal {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.acct-modal-content {
+  padding: 2rem;
+}
+
+@media (max-width: 640px) {
+  .acct-modal-content { padding: 1.25rem; }
+}
+
+.acct-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.acct-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.acct-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  margin: 0.25rem 0 0;
+}
+
+.acct-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.acct-close-btn:hover {
+  color: var(--text-primary, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.acct-separator {
+  height: 1px;
+  background: var(--border-color, rgba(255, 255, 255, 0.1));
+  margin: 0;
+}
+
+.acct-section {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 2.5rem;
+  padding: 1.75rem 0;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .acct-section {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1.25rem 0;
+  }
+}
+
+.acct-section-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.acct-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.acct-section-desc {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  margin: 0;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.acct-section-right {
+  display: flex;
+  align-items: center;
+}
+
+.acct-avatar-wrapper {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  transition: border-color 0.15s, opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.acct-avatar-wrapper:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.acct-avatar-wrapper:hover .acct-avatar-hover-overlay {
+  opacity: 1;
+}
+
+.acct-avatar-wrapper.acct-avatar-uploading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.acct-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.acct-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.acct-avatar-hover-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: #fff;
+}
+
+.acct-field-group {
+  width: 100%;
+}
+
+.acct-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.acct-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary, #fff);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+.acct-input::placeholder {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.35));
+}
+
+.acct-input:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.acct-save-btn {
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-primary, #fff);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.acct-save-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.acct-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.acct-field-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+  margin: 0.375rem 0 0;
+}
+
+.acct-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.acct-plan-badge {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.acct-plan-badge.acct-plan-pro {
+  background: rgba(147, 51, 234, 0.15);
+  color: #a78bfa;
+  border-color: rgba(147, 51, 234, 0.25);
+}
+
+body.light .acct-modal,
+.page-library .acct-modal {
+  background: var(--bg-surface, #fff);
+  border-color: var(--border-color, rgba(0, 0, 0, 0.1));
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.15);
+}
+
+body.light .acct-title,
+body.light .acct-section-title,
+.page-library .acct-title,
+.page-library .acct-section-title {
+  color: var(--text-primary, #111);
+}
+
+body.light .acct-subtitle,
+body.light .acct-section-desc,
+body.light .acct-field-hint,
+.page-library .acct-subtitle,
+.page-library .acct-section-desc,
+.page-library .acct-field-hint {
+  color: var(--text-secondary, #6b7280);
+}
+
+body.light .acct-close-btn,
+.page-library .acct-close-btn {
+  color: #9ca3af;
+}
+
+body.light .acct-close-btn:hover,
+.page-library .acct-close-btn:hover {
+  color: #374151;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.light .acct-separator,
+.page-library .acct-separator {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+body.light .acct-avatar-wrapper,
+.page-library .acct-avatar-wrapper {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.light .acct-avatar-wrapper:hover,
+.page-library .acct-avatar-wrapper:hover {
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+body.light .acct-avatar-fallback,
+.page-library .acct-avatar-fallback {
+  color: #374151;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+body.light .acct-input,
+.page-library .acct-input {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #111;
+}
+
+body.light .acct-input::placeholder,
+.page-library .acct-input::placeholder {
+  color: #9ca3af;
+}
+
+body.light .acct-input:focus,
+.page-library .acct-input:focus {
+  border-color: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+body.light .acct-save-btn,
+.page-library .acct-save-btn {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #111;
+}
+
+body.light .acct-save-btn:hover,
+.page-library .acct-save-btn:hover {
+  background: #f9fafb;
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+body.light .acct-plan-badge,
+.page-library .acct-plan-badge {
+  background: rgba(0, 0, 0, 0.04);
+  color: #6b7280;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ===== END ACCOUNT SETTINGS MODAL ===== */

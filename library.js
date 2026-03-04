@@ -19,15 +19,8 @@ const profileDisplayName = document.getElementById('profile-display-name');
 const profileDisplayEmail = document.getElementById('profile-display-email');
 const billingBadge = document.getElementById('billing-badge');
 const manageBillingBtn = document.getElementById('manage-billing-btn');
-const accountOverviewBtn = document.getElementById('account-overview-btn');
-const passwordSettingsBtn = document.getElementById('password-settings-btn');
 
-const accountModal = document.getElementById('account-modal');
-const accountCloseBtn = document.getElementById('accountSettingsClose');
-const accountEmailDisplay = document.getElementById('account-email-display');
-const accountEmailCopyBtn = document.getElementById('account-email-copy');
-const accountPasswordManageBtn = document.getElementById('account-password-manage');
-const accountPlanStatusEl = document.getElementById('account-plan-status');
+const accountManageBillingBtn = document.getElementById('acct-manage-billing-btn');
 
 const editsGrid = document.getElementById('edits-grid');
 const libraryEmpty = document.getElementById('library-empty');
@@ -121,97 +114,245 @@ function initProfileMenu() {
   });
 }
 
-async function loadAccountModalData() {
-  if (accountEmailDisplay) {
-    accountEmailDisplay.textContent = currentUserEmail || 'Not signed in';
-  }
-
-  let tier = 'free';
-  try {
-    const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
-    tier = userIsPro ? 'pro' : 'free';
-  } catch (_) {}
-
-  if (accountPlanStatusEl) {
-    accountPlanStatusEl.textContent = tier === 'pro' ? 'Promptly Pro' : 'Free';
-  }
-}
-
 async function openAccountModal() {
-  if (!accountModal) return;
-  accountModal.removeAttribute('hidden');
-  accountModal.style.display = 'flex';
-  accountModal.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
   closeProfileMenu();
-  await loadAccountModalData();
+
+  const modal = document.getElementById('account-modal');
+  if (!modal) return;
+
+  const sb = window.__supabase || window.supabase || supabase;
+  let user = null;
+  try {
+    const { data } = await sb.auth.getUser();
+    user = data?.user || null;
+  } catch (e) {
+    console.error('[account] Failed to get user:', e);
+  }
+  if (!user) return;
+
+  window.__currentUser = user;
+
+  const avatarUrl = user.user_metadata?.avatar_url || '';
+  const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
+  const avatarTrigger = document.getElementById('acct-avatar-trigger');
+  const fallback = document.getElementById('acct-avatar-fallback');
+  if (avatarUrl && fallback) {
+    const img = document.createElement('img');
+    img.src = avatarUrl;
+    img.alt = 'Avatar';
+    img.className = 'acct-avatar-img';
+    img.id = 'acct-avatar-img';
+    fallback.replaceWith(img);
+  } else if (fallback) {
+    fallback.textContent = getAccountInitials(userName || user.email);
+  }
+
+  const nameInput = document.getElementById('acct-name-input');
+  const emailInput = document.getElementById('acct-email-input');
+  if (nameInput) nameInput.value = userName;
+  if (emailInput) emailInput.value = user.email || '';
+
+  const planStatus = document.getElementById('account-plan-status');
+  const billingBtn = document.getElementById('acct-manage-billing-btn');
+  const tier = user.user_metadata?.subscription_tier || user.user_metadata?.tier || (await isPro(user.email || '') ? 'pro' : 'free');
+  if (planStatus) {
+    const isUserPro = String(tier).toLowerCase() === 'pro';
+    planStatus.textContent = isUserPro ? 'Pro' : 'Free';
+    planStatus.className = `acct-plan-badge${isUserPro ? ' acct-plan-pro' : ''}`;
+    if (billingBtn) billingBtn.style.display = isUserPro ? 'inline-flex' : 'none';
+    if (manageBillingBtn) manageBillingBtn.style.display = isUserPro ? 'flex' : 'none';
+    if (billingBadge) billingBadge.style.display = isUserPro ? 'inline-flex' : 'none';
+  }
+
+  modal.style.display = 'flex';
+  modal.hidden = false;
+  modal.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => modal.classList.add('acct-modal-visible'));
 }
 
 function closeAccountModal() {
-  if (!accountModal) return;
-  accountModal.style.display = 'none';
-  accountModal.setAttribute('hidden', '');
-  accountModal.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
+  const modal = document.getElementById('account-modal');
+  if (!modal) return;
+  modal.classList.remove('acct-modal-visible');
+  setTimeout(() => {
+    modal.style.display = 'none';
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    const img = document.getElementById('acct-avatar-img');
+    if (img) {
+      const fallback = document.createElement('span');
+      fallback.className = 'acct-avatar-fallback';
+      fallback.id = 'acct-avatar-fallback';
+      fallback.textContent = '?';
+      img.replaceWith(fallback);
+    }
+  }, 200);
+}
+
+function getAccountInitials(str) {
+  if (!str) return '?';
+  const parts = str.split(/[\s@]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return str.charAt(0).toUpperCase();
 }
 
 function initAccountModal() {
-  if (accountOverviewBtn) {
-    accountOverviewBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+  const accountOverviewActionBtn = document.getElementById('account-overview-btn');
+  if (accountOverviewActionBtn) {
+    accountOverviewActionBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       await openAccountModal();
     });
   }
 
-  if (passwordSettingsBtn) {
-    passwordSettingsBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+  const passwordSettingsActionBtn = document.getElementById('password-settings-btn');
+  if (passwordSettingsActionBtn) {
+    passwordSettingsActionBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       closeProfileMenu();
       window.location.href = '/reset-password.html';
     });
   }
 
-  if (accountCloseBtn) {
-    accountCloseBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
+  const accountCloseActionBtn = document.getElementById('account-close-btn');
+  if (accountCloseActionBtn) {
+    accountCloseActionBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       closeAccountModal();
     });
   }
 
-  if (accountModal) {
-    accountModal.addEventListener('click', (event) => {
-      if (event.target === accountModal) closeAccountModal();
+  const accountModalEl = document.getElementById('account-modal');
+  if (accountModalEl) {
+    accountModalEl.addEventListener('click', (e) => {
+      if (e.target === accountModalEl) closeAccountModal();
     });
   }
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeAccountModal();
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAccountModal();
   });
 
-  if (accountEmailCopyBtn) {
-    accountEmailCopyBtn.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const value = accountEmailDisplay?.textContent?.trim();
-      if (!value) return;
+  const avatarTrigger = document.getElementById('acct-avatar-trigger');
+  const avatarInput = document.getElementById('acct-avatar-input');
+  if (avatarTrigger && avatarInput) {
+    avatarTrigger.addEventListener('click', () => avatarInput.click());
+    avatarInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 20 * 1024 * 1024) {
+        alert('Image must be under 20MB');
+        return;
+      }
       try {
-        await navigator.clipboard.writeText(value);
-      } catch (_) {}
+        avatarTrigger.classList.add('acct-avatar-uploading');
+        const sb = window.__supabase || window.supabase || supabase;
+        const user = (await sb.auth.getUser())?.data?.user;
+        if (!user) {
+          alert('Not signed in');
+          return;
+        }
+        const ext = file.name.split('.').pop() || 'jpg';
+        const filePath = `avatars/${user.id}.${ext}`;
+        const { error: uploadError } = await sb.storage.from('avatars').upload(filePath, file, { upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = sb.storage.from('avatars').getPublicUrl(filePath);
+        const publicUrl = `${urlData?.publicUrl}?t=${Date.now()}`;
+        await sb.auth.updateUser({ data: { avatar_url: publicUrl } });
+        const existing = avatarTrigger.querySelector('.acct-avatar-img') || avatarTrigger.querySelector('.acct-avatar-fallback');
+        if (existing) {
+          const img = document.createElement('img');
+          img.src = publicUrl;
+          img.alt = 'Avatar';
+          img.className = 'acct-avatar-img';
+          img.id = 'acct-avatar-img';
+          existing.replaceWith(img);
+        }
+      } catch (err) {
+        console.error('[account] Avatar upload failed:', err);
+        alert('Failed to upload avatar.');
+      } finally {
+        avatarTrigger.classList.remove('acct-avatar-uploading');
+        avatarInput.value = '';
+      }
     });
   }
 
-  if (accountPasswordManageBtn) {
-    accountPasswordManageBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-      window.location.href = '/reset-password.html';
+  const saveNameBtn = document.getElementById('acct-save-name-btn');
+  if (saveNameBtn) {
+    saveNameBtn.addEventListener('click', async () => {
+      const nameInput = document.getElementById('acct-name-input');
+      const newName = (nameInput?.value || '').trim();
+      if (!newName || newName.length > 32) {
+        alert('Name must be 1-32 characters');
+        return;
+      }
+      saveNameBtn.textContent = 'Saving...';
+      saveNameBtn.disabled = true;
+      try {
+        const sb = window.__supabase || window.supabase || supabase;
+        const { error } = await sb.auth.updateUser({ data: { full_name: newName } });
+        if (error) throw error;
+        saveNameBtn.textContent = 'Saved!';
+        if (profileDisplayName) profileDisplayName.textContent = newName;
+        if (profileInitial) profileInitial.textContent = newName.charAt(0).toUpperCase();
+        setTimeout(() => {
+          saveNameBtn.textContent = 'Save Changes';
+          saveNameBtn.disabled = false;
+        }, 1500);
+      } catch (err) {
+        console.error('[account] Name update failed:', err);
+        alert('Failed to update name.');
+        saveNameBtn.textContent = 'Save Changes';
+        saveNameBtn.disabled = false;
+      }
+    });
+  }
+
+  const saveEmailBtn = document.getElementById('acct-save-email-btn');
+  if (saveEmailBtn) {
+    saveEmailBtn.addEventListener('click', async () => {
+      const emailInput = document.getElementById('acct-email-input');
+      const newEmail = (emailInput?.value || '').trim();
+      if (!newEmail || !newEmail.includes('@')) {
+        alert('Please enter a valid email');
+        return;
+      }
+      saveEmailBtn.textContent = 'Saving...';
+      saveEmailBtn.disabled = true;
+      try {
+        const sb = window.__supabase || window.supabase || supabase;
+        const { error } = await sb.auth.updateUser({ email: newEmail });
+        if (error) throw error;
+        saveEmailBtn.textContent = 'Check inbox';
+        if (profileDisplayEmail) profileDisplayEmail.textContent = newEmail;
+        setTimeout(() => {
+          saveEmailBtn.textContent = 'Save Changes';
+          saveEmailBtn.disabled = false;
+        }, 3000);
+      } catch (err) {
+        console.error('[account] Email update failed:', err);
+        alert('Failed to update email.');
+        saveEmailBtn.textContent = 'Save Changes';
+        saveEmailBtn.disabled = false;
+      }
+    });
+  }
+
+  if (accountManageBillingBtn) {
+    accountManageBillingBtn.addEventListener('click', () => {
+      if (typeof handleManageBilling === 'function') {
+        handleManageBilling();
+      }
     });
   }
 }
 
 async function handleManageBilling(event) {
-  event.preventDefault();
+  if (event?.preventDefault) event.preventDefault();
   try {
     const resp = await fetch('/api/billing/portal', {
       method: 'POST',

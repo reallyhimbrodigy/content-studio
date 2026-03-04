@@ -739,39 +739,79 @@
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
-    <!-- Account Settings Modal -->
-    <div id="account-modal" class="modal-overlay account-settings-modal" style="display:none" hidden aria-hidden="true" aria-modal="true" role="dialog" data-account-modal-root data-account-overlay>
-      <div class="modal settings-modal mobile-account-panel account-settings-panel" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" data-account-modal-panel data-account-modal>
-        <div class="settings-modal__head">
-          <div>
-            <h3 id="account-modal-title">Account settings</h3>
-            <p class="modal-sub">Review your Promptly account details.</p>
+    <div id="account-modal" class="acct-modal-overlay" style="display:none" hidden aria-hidden="true">
+      <div class="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
+        <div class="acct-modal-content">
+          <div class="acct-header">
+            <div>
+              <h3 id="acct-modal-title" class="acct-title">Account Settings</h3>
+              <p class="acct-subtitle">Manage your account and personal information.</p>
+            </div>
+            <button class="acct-close-btn" id="account-close-btn" aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+            </button>
           </div>
-          <button class="ghost icon-only account-settings-close" id="account-close-btn" aria-label="Close profile settings" data-account-modal-close data-account-close>
-            &times;
-          </button>
-        </div>
-        <div class="account-settings-body" data-account-modal-body>
-          <div class="settings-panel active-panel mobile-account-content" data-settings-panel="account" data-account-panel>
-            <div class="settings-group">
-              <label>Email</label>
-              <div class="settings-field-readonly mobile-email-row" data-email-row>
-                <span id="account-email-display" data-email-value>you@example.com</span>
-                <button type="button" id="account-email-copy" class="ghost" data-email-copy>Copy</button>
+          <div class="acct-separator"></div>
+
+          <div class="acct-section">
+            <div class="acct-section-left">
+              <h4 class="acct-section-title">Your Avatar</h4>
+              <p class="acct-section-desc">An avatar is optional but strongly recommended.</p>
+            </div>
+            <div class="acct-section-right">
+              <div class="acct-avatar-wrapper" id="acct-avatar-trigger" title="Click to upload avatar">
+                <span class="acct-avatar-fallback" id="acct-avatar-fallback">?</span>
+                <div class="acct-avatar-hover-overlay">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                </div>
+                <input type="file" id="acct-avatar-input" accept="image/jpeg,image/png,image/webp" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none" />
               </div>
             </div>
-            <div class="settings-group">
-              <label>Password</label>
-              <div class="settings-field-readonly">
-                <span aria-label="Password is hidden">••••••••</span>
-                <button type="button" id="account-password-manage" class="ghost">Update password</button>
-              </div>
-              <p class="field-hint">For security, passwords are never displayed. Use the button above to reset it.</p>
+          </div>
+          <div class="acct-separator"></div>
+
+          <div class="acct-section">
+            <div class="acct-section-left">
+              <h4 class="acct-section-title">Your Name</h4>
+              <p class="acct-section-desc">Please enter a display name you are comfortable with.</p>
             </div>
-            <div class="settings-group subscription-group">
-              <label>Subscription</label>
-              <div class="account-subscription-row">
-                <span class="settings-field-emphasis" id="account-plan-status">Free</span>
+            <div class="acct-section-right">
+              <div class="acct-field-group">
+                <div class="acct-input-row">
+                  <input type="text" id="acct-name-input" class="acct-input" placeholder="Enter Your Name" maxlength="32" />
+                  <button class="acct-save-btn" id="acct-save-name-btn">Save Changes</button>
+                </div>
+                <p class="acct-field-hint">Max 32 characters</p>
+              </div>
+            </div>
+          </div>
+          <div class="acct-separator"></div>
+
+          <div class="acct-section">
+            <div class="acct-section-left">
+              <h4 class="acct-section-title">Your Email</h4>
+              <p class="acct-section-desc">Please enter a primary email address.</p>
+            </div>
+            <div class="acct-section-right">
+              <div class="acct-field-group">
+                <div class="acct-input-row">
+                  <input type="email" id="acct-email-input" class="acct-input" placeholder="Enter Your Email" />
+                  <button class="acct-save-btn" id="acct-save-email-btn">Save Changes</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="acct-separator"></div>
+
+          <div class="acct-section">
+            <div class="acct-section-left">
+              <h4 class="acct-section-title">Subscription</h4>
+              <p class="acct-section-desc">Your current plan and billing.</p>
+            </div>
+            <div class="acct-section-right">
+              <div class="acct-plan-row">
+                <span class="acct-plan-badge" id="account-plan-status">Free</span>
+                <button class="acct-save-btn" id="acct-manage-billing-btn" style="display:none">Manage Billing</button>
               </div>
             </div>
           </div>
@@ -919,17 +959,10 @@
         closeProfileMenu();
       });
 
-      const accountOverviewBtn = document.getElementById('account-overview-btn');
-      const passwordSettingsBtn = document.getElementById('password-settings-btn');
       const manageBillingBtn = document.getElementById('manage-billing-btn');
       const billingBadge = document.getElementById('billing-badge');
       const signOutBtn = document.getElementById('sign-out-btn');
-      const accountModal = document.getElementById('account-modal');
-      const accountCloseBtn = document.getElementById('account-close-btn');
-      const accountEmailDisplay = document.getElementById('account-email-display');
-      const accountEmailCopyBtn = document.getElementById('account-email-copy');
-      const accountPasswordManageBtn = document.getElementById('account-password-manage');
-      const accountPlanStatusEl = document.getElementById('account-plan-status');
+      const accountManageBillingBtn = document.getElementById('acct-manage-billing-btn');
 
       function applyProfileIdentity(user) {
         const email = user?.email || '';
@@ -987,131 +1020,249 @@
         });
       }
 
-      async function loadAccountModalData() {
-        console.log('=== LOADING ACCOUNT MODAL ===');
-        try {
-          console.log('Step 1: Resolving auth user...');
-          const sb = await resolveSupabaseAuthClient();
-          const { data: authData, error: authError } = sb?.auth?.getUser
-            ? await sb.auth.getUser()
-            : { data: { user: null }, error: new Error('supabase_client_missing') };
-          const authUser = authData?.user || null;
-          console.log('Auth user:', authUser?.email || 'No user', authError || null);
-          applyProfileIdentity(authUser);
-
-          if (accountEmailDisplay) {
-            accountEmailDisplay.textContent = authUser?.email || 'Not signed in';
-          }
-
-          console.log('Step 2: Getting access token...');
-          const token = await getSupabaseAccessToken();
-          console.log('Access token present:', Boolean(token));
-
-          console.log('Step 3: Fetching /api/profile/settings...');
-          const response = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
-          console.log('API response status:', response.status);
-          const data = await response.json().catch(() => ({}));
-          console.log('=== API RESPONSE ===');
-          console.log('Full data:', JSON.stringify(data, null, 2));
-          console.log('Subscription field:', data?.subscription);
-          console.log('Plan field:', data?.plan);
-          console.log('Tier field:', data?.tier);
-          console.log('Status field:', data?.status);
-          console.log('Is Pro?:', data?.isPro);
-          console.log('===================');
-          if (!response.ok) {
-            console.log('API error body:', data);
-            throw new Error(data?.error || 'profile_settings_fetch_failed');
-          }
-
-          let planTier = 'free';
-          try {
-            // Source-of-truth: Stripe-backed entitlements endpoint first.
-            const entResp = await fetchWithAccountAuth('/api/entitlements', { method: 'GET' });
-            const entData = await entResp.json().catch(() => ({}));
-            console.log('[AccountModal] entitlements response:', entData);
-            if (entResp.ok && entData && entData.tier) {
-              const rawEntTier = String(entData.tier || 'free').toLowerCase();
-              planTier = rawEntTier === 'paid' || rawEntTier === 'premium' ? 'pro' : rawEntTier;
-            } else {
-              const subResp = await fetchWithAccountAuth('/api/user/subscription', { method: 'GET' });
-              const subData = await subResp.json().catch(() => ({}));
-              console.log('[AccountModal] subscription fallback response:', subData);
-              if (subResp.ok) {
-                const rawTier = String(subData?.tier || subData?.plan || 'free').toLowerCase();
-                planTier = rawTier === 'paid' || rawTier === 'premium' ? 'pro' : rawTier;
-              }
-            }
-          } catch (tierError) {
-            console.warn('[AccountModal] entitlement/subscription lookup failed', tierError);
-          }
-
-          if (accountPlanStatusEl) accountPlanStatusEl.textContent = planTier === 'pro' ? 'Promptly Pro' : 'Free';
-          if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'flex' : 'none';
-          if (billingBadge) billingBadge.style.display = planTier === 'pro' ? 'inline-flex' : 'none';
-          console.log('Step 4: Account modal data loaded.');
-        } catch (err) {
-          console.error('=== LOAD FAILED ===', err);
-          console.warn('Unable to load account modal data', err);
-        }
-      }
-
       async function openAccountModal() {
-        if (!accountModal) return;
-        accountModal.removeAttribute('hidden');
-        accountModal.style.display = 'flex';
-        accountModal.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('modal-open');
         closeProfileMenu();
-        await loadAccountModalData();
+
+        const modal = document.getElementById('account-modal');
+        if (!modal) return;
+
+        const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+        let user = null;
+        try {
+          const { data } = await sb.auth.getUser();
+          user = data?.user || null;
+        } catch (e) {
+          console.error('[account] Failed to get user:', e);
+        }
+        if (!user) return;
+
+        window.__currentUser = user;
+
+        const avatarUrl = user.user_metadata?.avatar_url || '';
+        const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
+        const avatarTrigger = document.getElementById('acct-avatar-trigger');
+        const fallback = document.getElementById('acct-avatar-fallback');
+        if (avatarUrl && fallback) {
+          const img = document.createElement('img');
+          img.src = avatarUrl;
+          img.alt = 'Avatar';
+          img.className = 'acct-avatar-img';
+          img.id = 'acct-avatar-img';
+          fallback.replaceWith(img);
+        } else if (fallback) {
+          fallback.textContent = getAccountInitials(userName || user.email);
+        }
+
+        const nameInput = document.getElementById('acct-name-input');
+        const emailInput = document.getElementById('acct-email-input');
+        if (nameInput) nameInput.value = userName;
+        if (emailInput) emailInput.value = user.email || '';
+
+        const planStatus = document.getElementById('account-plan-status');
+        const billingBtn = document.getElementById('acct-manage-billing-btn');
+        const tier = user.user_metadata?.subscription_tier || user.user_metadata?.tier || 'free';
+        if (planStatus) {
+          const isUserPro = String(tier).toLowerCase() === 'pro';
+          planStatus.textContent = isUserPro ? 'Pro' : 'Free';
+          planStatus.className = `acct-plan-badge${isUserPro ? ' acct-plan-pro' : ''}`;
+          if (billingBtn) billingBtn.style.display = isUserPro ? 'inline-flex' : 'none';
+          if (manageBillingBtn) manageBillingBtn.style.display = isUserPro ? 'flex' : 'none';
+          if (billingBadge) billingBadge.style.display = isUserPro ? 'inline-flex' : 'none';
+        }
+
+        modal.style.display = 'flex';
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(() => modal.classList.add('acct-modal-visible'));
       }
 
       function closeAccountModal() {
-        if (!accountModal) return;
-        accountModal.style.display = 'none';
-        accountModal.setAttribute('hidden', '');
-        accountModal.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('modal-open');
+        const modal = document.getElementById('account-modal');
+        if (!modal) return;
+        modal.classList.remove('acct-modal-visible');
+        setTimeout(() => {
+          modal.style.display = 'none';
+          modal.hidden = true;
+          modal.setAttribute('aria-hidden', 'true');
+          const img = document.getElementById('acct-avatar-img');
+          if (img) {
+            const fallback = document.createElement('span');
+            fallback.className = 'acct-avatar-fallback';
+            fallback.id = 'acct-avatar-fallback';
+            fallback.textContent = '?';
+            img.replaceWith(fallback);
+          }
+        }, 200);
+      }
+
+      function getAccountInitials(str) {
+        if (!str) return '?';
+        const parts = str.split(/[\s@]+/).filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        return str.charAt(0).toUpperCase();
       }
 
       window.openAccountModal = openAccountModal;
 
-      const bindProfileMenuAction = (btn, handler) => {
-        if (!btn) return;
-        const invoke = (event) => {
-          if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-          }
-          handler();
-        };
-        let pointerTriggered = false;
-        btn.addEventListener('pointerdown', (event) => {
-          if (event.button !== undefined && event.button !== 0) return;
-          pointerTriggered = true;
-          invoke(event);
-        });
-        btn.addEventListener('click', (event) => {
-          if (pointerTriggered) {
-            pointerTriggered = false;
-            return;
-          }
-          invoke(event);
-        });
-        btn.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') invoke(event);
-        });
-      };
+      function initAccountModal() {
+        const accountOverviewActionBtn = document.getElementById('account-overview-btn');
+        if (accountOverviewActionBtn) {
+          accountOverviewActionBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await openAccountModal();
+          });
+        }
 
-      bindProfileMenuAction(accountOverviewBtn, () => {
-        closeProfileMenu();
-        openAccountModal();
-      });
+        const passwordSettingsActionBtn = document.getElementById('password-settings-btn');
+        if (passwordSettingsActionBtn) {
+          passwordSettingsActionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeProfileMenu();
+            window.location.href = '/reset-password.html';
+          });
+        }
 
-      bindProfileMenuAction(passwordSettingsBtn, () => {
-        closeProfileMenu();
-        window.location.href = '/reset-password.html';
-      });
+        const accountCloseActionBtn = document.getElementById('account-close-btn');
+        if (accountCloseActionBtn) {
+          accountCloseActionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeAccountModal();
+          });
+        }
+
+        const accountModalEl = document.getElementById('account-modal');
+        if (accountModalEl) {
+          accountModalEl.addEventListener('click', (e) => {
+            if (e.target === accountModalEl) closeAccountModal();
+          });
+        }
+
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') closeAccountModal();
+        });
+
+        const avatarTrigger = document.getElementById('acct-avatar-trigger');
+        const avatarInput = document.getElementById('acct-avatar-input');
+        if (avatarTrigger && avatarInput) {
+          avatarTrigger.addEventListener('click', () => avatarInput.click());
+          avatarInput.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            if (file.size > 20 * 1024 * 1024) {
+              alert('Image must be under 20MB');
+              return;
+            }
+            try {
+              avatarTrigger.classList.add('acct-avatar-uploading');
+              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const user = (await sb.auth.getUser())?.data?.user;
+              if (!user) {
+                alert('Not signed in');
+                return;
+              }
+              const ext = file.name.split('.').pop() || 'jpg';
+              const filePath = `avatars/${user.id}.${ext}`;
+              const { error: uploadError } = await sb.storage.from('avatars').upload(filePath, file, { upsert: true });
+              if (uploadError) throw uploadError;
+              const { data: urlData } = sb.storage.from('avatars').getPublicUrl(filePath);
+              const publicUrl = `${urlData?.publicUrl}?t=${Date.now()}`;
+              await sb.auth.updateUser({ data: { avatar_url: publicUrl } });
+              const existing = avatarTrigger.querySelector('.acct-avatar-img') || avatarTrigger.querySelector('.acct-avatar-fallback');
+              if (existing) {
+                const img = document.createElement('img');
+                img.src = publicUrl;
+                img.alt = 'Avatar';
+                img.className = 'acct-avatar-img';
+                img.id = 'acct-avatar-img';
+                existing.replaceWith(img);
+              }
+            } catch (err) {
+              console.error('[account] Avatar upload failed:', err);
+              alert('Failed to upload avatar.');
+            } finally {
+              avatarTrigger.classList.remove('acct-avatar-uploading');
+              avatarInput.value = '';
+            }
+          });
+        }
+
+        const saveNameBtn = document.getElementById('acct-save-name-btn');
+        if (saveNameBtn) {
+          saveNameBtn.addEventListener('click', async () => {
+            const nameInput = document.getElementById('acct-name-input');
+            const newName = (nameInput?.value || '').trim();
+            if (!newName || newName.length > 32) {
+              alert('Name must be 1-32 characters');
+              return;
+            }
+            saveNameBtn.textContent = 'Saving...';
+            saveNameBtn.disabled = true;
+            try {
+              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const { error } = await sb.auth.updateUser({ data: { full_name: newName } });
+              if (error) throw error;
+              saveNameBtn.textContent = 'Saved!';
+              const dn = document.getElementById('profile-display-name');
+              if (dn) dn.textContent = newName;
+              const pi = document.getElementById('profile-initial');
+              if (pi) pi.textContent = newName.charAt(0).toUpperCase();
+              setTimeout(() => {
+                saveNameBtn.textContent = 'Save Changes';
+                saveNameBtn.disabled = false;
+              }, 1500);
+            } catch (err) {
+              console.error('[account] Name update failed:', err);
+              alert('Failed to update name.');
+              saveNameBtn.textContent = 'Save Changes';
+              saveNameBtn.disabled = false;
+            }
+          });
+        }
+
+        const saveEmailBtn = document.getElementById('acct-save-email-btn');
+        if (saveEmailBtn) {
+          saveEmailBtn.addEventListener('click', async () => {
+            const emailInput = document.getElementById('acct-email-input');
+            const newEmail = (emailInput?.value || '').trim();
+            if (!newEmail || !newEmail.includes('@')) {
+              alert('Please enter a valid email');
+              return;
+            }
+            saveEmailBtn.textContent = 'Saving...';
+            saveEmailBtn.disabled = true;
+            try {
+              const sb = window.__supabase || window.supabase || await resolveSupabaseAuthClient();
+              const { error } = await sb.auth.updateUser({ email: newEmail });
+              if (error) throw error;
+              saveEmailBtn.textContent = 'Check inbox';
+              const de = document.getElementById('profile-display-email');
+              if (de) de.textContent = newEmail;
+              setTimeout(() => {
+                saveEmailBtn.textContent = 'Save Changes';
+                saveEmailBtn.disabled = false;
+              }, 3000);
+            } catch (err) {
+              console.error('[account] Email update failed:', err);
+              alert('Failed to update email.');
+              saveEmailBtn.textContent = 'Save Changes';
+              saveEmailBtn.disabled = false;
+            }
+          });
+        }
+
+        if (accountManageBillingBtn) {
+          accountManageBillingBtn.addEventListener('click', () => {
+            if (typeof handleManageBilling === 'function') {
+              handleManageBilling();
+            } else if (manageBillingBtn) {
+              manageBillingBtn.click();
+            }
+          });
+        }
+      }
 
       if (manageBillingBtn && !manageBillingBtn.dataset.bound) {
         manageBillingBtn.dataset.bound = '1';
@@ -1184,32 +1335,7 @@
         });
       }
 
-      if (accountCloseBtn) accountCloseBtn.addEventListener('click', closeAccountModal);
-      if (accountModal) {
-        accountModal.addEventListener('click', (event) => {
-          if (event.target === accountModal) closeAccountModal();
-        });
-      }
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeAccountModal();
-      });
-
-      if (accountPasswordManageBtn) {
-        accountPasswordManageBtn.addEventListener('click', () => {
-          window.location.href = '/reset-password.html';
-        });
-      }
-
-      if (accountEmailCopyBtn) {
-        accountEmailCopyBtn.addEventListener('click', async () => {
-          if (!accountEmailDisplay?.textContent) return;
-          try {
-            await navigator.clipboard.writeText(accountEmailDisplay.textContent);
-          } catch (_) {}
-        });
-      }
-
-      loadAccountModalData();
+      initAccountModal();
     </script>
 
     <script type="module">
