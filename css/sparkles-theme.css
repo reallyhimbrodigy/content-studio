@@ -5,6 +5,7 @@
   --sparkle-opacity-max: 0.15;
   --text-primary: #111111;
   --text-secondary: #555555;
+  --border-color: rgba(0, 0, 0, 0.12);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +16,7 @@
     --sparkle-opacity-max: 0.6;
     --text-primary: #ffffff;
     --text-secondary: #aaaaaa;
+    --border-color: rgba(255, 255, 255, 0.12);
   }
 }
 
@@ -66,8 +68,7 @@ body.landing .app-shell {
 }
 
 .problem,
-.how-it-works,
-.features,
+.section-grid,
 .pricing-v2,
 .final-cta,
 footer {
