@@ -1933,6 +1933,10 @@ footer {
   background: rgba(10, 10, 10, 0.85);
 }
 
+.site-footer {
+  background: transparent !important;
+}
+
 /* Platform item in logo slider */
 .hero-v3__platform-item {
   display: flex;

@@ -1,13 +1,23 @@
-// Centralized footer injection across pages
 const COPYRIGHT_TEXT = `© ${new Date().getFullYear()} Promptly. All rights reserved.`;
 
-const FOOTER_LINK_SECTIONS = [
+const FOOTER_COLUMNS = [
   {
-    title: 'Platform',
+    title: 'Product',
     links: [
       { label: 'Home', href: '/' },
       { label: 'AI Editor', href: '/editor' },
-      { label: 'Library', href: '/library.html' }
+      { label: 'How It Works', href: '/#how-it-works' },
+      { label: 'Features', href: '/#features' },
+      { label: 'Pricing', href: '/#pricing' }
+    ]
+  },
+  {
+    title: 'Account',
+    links: [
+      { label: 'Sign Up', href: '/auth.html' },
+      { label: 'Log In', href: '/auth.html?mode=login' },
+      { label: 'Library', href: '/library.html' },
+      { label: 'Reset Access', href: '/reset-password.html' }
     ]
   },
   {
@@ -21,71 +31,57 @@ const FOOTER_LINK_SECTIONS = [
   {
     title: 'Company',
     links: [
-      { label: 'Contact', href: '/contact.html' },
-      { label: 'Reset Access', href: '/reset-password.html' }
+      { label: 'Contact', href: '/contact.html' }
     ]
   }
 ];
 
-const FOOTER_SOCIAL_LINKS = [];
-
-function renderLinkSections() {
-  return FOOTER_LINK_SECTIONS.map((section) => `
-      <div class="footer__column">
-        <p class="footer__column-title">${section.title}</p>
-        <ul class="footer__link-list">
-          ${section.links
-            .map((link) => `
-              <li>
-                <a href="${link.href}">${link.label}</a>
-              </li>
-            `)
-            .join('')}
-        </ul>
-      </div>
-    `)
-    .join('');
+function getLogoSrc() {
+  return '/assets/promptly-mark-white.png';
 }
 
-function renderSocialLinks() {
-  return FOOTER_SOCIAL_LINKS.map((link) => {
-    const attrs = link.external
-      ? ' target="_blank" rel="noreferrer noopener"'
-      : '';
-    return `<a href="${link.href}"${attrs}>${link.label}</a>`;
-  }).join('');
+function renderColumns() {
+  return FOOTER_COLUMNS.map((column) => `
+    <div class="site-footer__col">
+      <h3 class="site-footer__col-title">${column.title}</h3>
+      <ul class="site-footer__col-links">
+        ${column.links
+          .map((link) => `<li><a href="${link.href}">${link.label}</a></li>`)
+          .join('')}
+      </ul>
+    </div>
+  `).join('');
 }
 
 function ensureFooter() {
-  // Prefer to append inside app shell if present
   const container = document.querySelector('.app-shell') || document.body;
-  let footer = document.querySelector('footer.footer');
+  let footer = document.querySelector('footer.site-footer, footer.footer');
 
   if (!footer) {
     footer = document.createElement('footer');
-    footer.className = 'footer';
     container.appendChild(footer);
   }
 
-  const sectionsMarkup = renderLinkSections();
-  const socialsMarkup = renderSocialLinks();
+  footer.className = 'site-footer';
 
   footer.innerHTML = `
-    <div class="footer__inner">
-      <div class="footer__brand">
-        <p class="footer__eyebrow">Promptly</p>
-        <p class="footer__tagline">AI video editor that does the heavy lifting so you can focus on creating.</p>
+    <div class="site-footer__container">
+      <div class="site-footer__grid">
+        <div class="site-footer__brand">
+          <a href="/" class="site-footer__logo-link" aria-label="Promptly Home">
+            <img src="${getLogoSrc()}" alt="Promptly" class="site-footer__logo-img" />
+            <span class="site-footer__logo-text">Promptly</span>
+          </a>
+          <p class="site-footer__tagline">Professional video edits in 60 seconds.</p>
+        </div>
+        ${renderColumns()}
       </div>
-      <nav class="footer__links" aria-label="Footer">
-        ${sectionsMarkup}
-      </nav>
-    </div>
-    <div class="footer__meta">
-      <div class="footer__legal">
-        <span>${COPYRIGHT_TEXT}</span>
-      </div>
-      <div class="footer__socials" aria-label="Social links">
-        ${socialsMarkup}
+      <div class="site-footer__bottom">
+        <p class="site-footer__copyright">${COPYRIGHT_TEXT}</p>
+        <ul class="site-footer__legal">
+          <li><a href="/privacy.html">Privacy Policy</a></li>
+          <li><a href="/terms.html">Terms of Service</a></li>
+        </ul>
       </div>
     </div>
   `;
