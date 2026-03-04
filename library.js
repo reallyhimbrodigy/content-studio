@@ -15,7 +15,9 @@ const signOutBtn = document.getElementById('sign-out-btn');
 const profileTrigger = document.getElementById('profile-trigger');
 const profileMenu = document.getElementById('profile-menu');
 const profileInitial = document.getElementById('profile-initial');
-const userTierBadge = document.getElementById('user-tier-badge');
+const profileDisplayName = document.getElementById('profile-display-name');
+const profileDisplayEmail = document.getElementById('profile-display-email');
+const billingBadge = document.getElementById('billing-badge');
 const manageBillingBtn = document.getElementById('manage-billing-btn');
 const accountOverviewBtn = document.getElementById('account-overview-btn');
 const passwordSettingsBtn = document.getElementById('password-settings-btn');
@@ -334,15 +336,20 @@ async function hydrateUser() {
     const initial = currentUserEmail.trim().charAt(0) || 'P';
     profileInitial.textContent = initial.toUpperCase();
   }
+  if (profileDisplayName) {
+    profileDisplayName.textContent = currentUserEmail
+      ? currentUserEmail.split('@')[0]
+      : 'User';
+  }
+  if (profileDisplayEmail) {
+    profileDisplayEmail.textContent = currentUserEmail || '';
+  }
 
   try {
     const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
-    if (userTierBadge) {
-      userTierBadge.textContent = 'PRO';
-      userTierBadge.style.display = userIsPro ? 'inline-block' : 'none';
-    }
+    if (billingBadge) billingBadge.style.display = userIsPro ? 'inline-flex' : 'none';
     if (manageBillingBtn) {
-      manageBillingBtn.style.display = userIsPro ? 'inline-block' : 'none';
+      manageBillingBtn.style.display = userIsPro ? 'flex' : 'none';
       if (userIsPro && !manageBillingBtn.dataset.bound) {
         manageBillingBtn.dataset.bound = '1';
         manageBillingBtn.addEventListener('click', handleManageBilling);

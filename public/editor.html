@@ -72,13 +72,6 @@
         margin-left: auto;
       }
 
-      .page-editor .user-tier-badge {
-        background: #ffffff;
-        color: #000000;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        font-weight: 700;
-      }
-
       .editor-container {
         width: min(640px, 90%);
         margin: 0 auto;
@@ -615,24 +608,6 @@
         }
       }
 
-      body.page-editor .profile-menu-item.danger {
-        background: #ef4444;
-        color: #ffffff;
-        border: none;
-      }
-
-      body.page-editor .profile-menu-item.danger:hover,
-      body.page-editor .profile-menu-item.danger:focus,
-      body.page-editor .profile-menu-item.danger:active,
-      body.page-editor .profile-menu-item.danger:focus-visible {
-        background: #dc2626;
-        color: #ffffff;
-      }
-
-      body.page-editor .profile-menu-item.danger svg {
-        color: #ffffff;
-      }
-
       /* System theme overrides */
       body.page-editor,
       body.page-editor .app-main,
@@ -704,20 +679,51 @@
               <img src="/assets/promptly-mark-white.png" alt="Promptly" class="topbar-logo-img">
             </a>
             <div id="user-menu" class="user-menu" style="display:flex; align-items:center; gap:0.75rem;">
-              <div class="hero-topbar">
-                <div class="profile-wrapper">
-                  <span id="user-tier-badge" class="user-tier-badge" style="display:inline-flex;">PRO</span>
-                  <button id="profile-trigger" class="profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-                    <span id="profile-initial" aria-hidden="true">Z</span>
-                  </button>
-                  <div id="profile-menu" class="profile-menu" style="display:none;">
-                    <div id="profile-dropdown" class="profile-dropdown">
-                      <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
-                      <button id="account-overview-btn" class="profile-menu-item">Account</button>
-                      <button id="password-settings-btn" class="profile-menu-item">Password &amp; security</button>
-                      <button id="manage-billing-btn" class="profile-menu-item" style="display:none">Manage billing</button>
-                      <button id="sign-out-btn" class="profile-menu-item danger">Sign out</button>
+              <div class="profile-wrapper">
+                <button id="profile-trigger" class="profile-trigger-v2" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+                  <div class="profile-trigger-left">
+                    <span class="profile-trigger-name" id="profile-display-name">User</span>
+                    <span class="profile-trigger-email" id="profile-display-email">user@email.com</span>
+                  </div>
+                  <div class="profile-avatar-ring">
+                    <div class="profile-avatar-inner">
+                      <span id="profile-initial" class="profile-avatar-letter" aria-hidden="true">U</span>
                     </div>
+                  </div>
+                </button>
+
+                <div class="profile-side-indicator" id="profile-side-indicator">
+                  <svg width="12" height="24" viewBox="0 0 12 24" fill="none" aria-hidden="true">
+                    <path d="M2 4C6 8 6 16 2 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                  </svg>
+                </div>
+
+                <div id="profile-menu" class="profile-menu-v2" style="display:none;">
+                  <div id="profile-dropdown" class="profile-dropdown-v2">
+                    <p class="profile-pronouns" id="user-pronouns" style="display:none;"></p>
+
+                    <button id="account-overview-btn" class="profile-menu-item-v2">
+                      <svg class="pm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      <span class="pm-label">Account</span>
+                    </button>
+
+                    <button id="password-settings-btn" class="profile-menu-item-v2">
+                      <svg class="pm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      <span class="pm-label">Password &amp; security</span>
+                    </button>
+
+                    <button id="manage-billing-btn" class="profile-menu-item-v2" style="display:none">
+                      <svg class="pm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                      <span class="pm-label">Manage billing</span>
+                      <span class="pm-badge pm-badge-pro" id="billing-badge" style="display:none;">PRO</span>
+                    </button>
+
+                    <div class="profile-menu-separator"></div>
+
+                    <button id="sign-out-btn" class="profile-menu-item-v2 pm-danger">
+                      <svg class="pm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                      <span class="pm-label">Sign out</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -805,6 +811,8 @@
 
       const profileMenu = document.getElementById('profile-menu');
       const profileTrigger = document.getElementById('profile-trigger');
+      const profileDisplayName = document.getElementById('profile-display-name');
+      const profileDisplayEmail = document.getElementById('profile-display-email');
 
       function applySidebarState(collapsed) {
         if (!appSidebar || !appLayout || !sidebarToggle) return;
@@ -874,6 +882,16 @@
         }
       }
 
+      (async () => {
+        try {
+          const sb = await resolveSupabaseAuthClient();
+          if (sb?.auth?.getUser) {
+            const { data } = await sb.auth.getUser();
+            applyProfileIdentity(data?.user || null);
+          }
+        } catch (_) {}
+      })();
+
       initSidebar();
 
       if (sidebarBackdrop) {
@@ -904,6 +922,7 @@
       const accountOverviewBtn = document.getElementById('account-overview-btn');
       const passwordSettingsBtn = document.getElementById('password-settings-btn');
       const manageBillingBtn = document.getElementById('manage-billing-btn');
+      const billingBadge = document.getElementById('billing-badge');
       const signOutBtn = document.getElementById('sign-out-btn');
       const accountModal = document.getElementById('account-modal');
       const accountCloseBtn = document.getElementById('account-close-btn');
@@ -911,6 +930,17 @@
       const accountEmailCopyBtn = document.getElementById('account-email-copy');
       const accountPasswordManageBtn = document.getElementById('account-password-manage');
       const accountPlanStatusEl = document.getElementById('account-plan-status');
+
+      function applyProfileIdentity(user) {
+        const email = user?.email || '';
+        const fullName = user?.user_metadata?.full_name || '';
+        const fallbackName = email ? String(email).split('@')[0] : 'User';
+        if (profileDisplayName) profileDisplayName.textContent = fullName || fallbackName;
+        if (profileDisplayEmail) profileDisplayEmail.textContent = email || '';
+        const initial = (fullName || fallbackName || 'U').trim().charAt(0) || 'U';
+        const initialEl = document.getElementById('profile-initial');
+        if (initialEl) initialEl.textContent = initial.toUpperCase();
+      }
 
       async function resolveSupabaseAuthClient() {
         const existing = window?.supabaseClient || window?.supabase || null;
@@ -967,6 +997,7 @@
             : { data: { user: null }, error: new Error('supabase_client_missing') };
           const authUser = authData?.user || null;
           console.log('Auth user:', authUser?.email || 'No user', authError || null);
+          applyProfileIdentity(authUser);
 
           if (accountEmailDisplay) {
             accountEmailDisplay.textContent = authUser?.email || 'Not signed in';
@@ -1016,7 +1047,8 @@
           }
 
           if (accountPlanStatusEl) accountPlanStatusEl.textContent = planTier === 'pro' ? 'Promptly Pro' : 'Free';
-          if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'inline-block' : 'none';
+          if (manageBillingBtn) manageBillingBtn.style.display = planTier === 'pro' ? 'flex' : 'none';
+          if (billingBadge) billingBadge.style.display = planTier === 'pro' ? 'inline-flex' : 'none';
           console.log('Step 4: Account modal data loaded.');
         } catch (err) {
           console.error('=== LOAD FAILED ===', err);
