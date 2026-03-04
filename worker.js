@@ -207,6 +207,14 @@ process.on('SIGTERM', () => {
   console.log('[VideoWorker] SIGTERM received, stopping...');
   stopWorker();
 });
+process.on('uncaughtException', (err) => {
+  console.error('[VideoWorker][FATAL] Uncaught exception:', err?.message || err);
+  if (err?.stack) console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[VideoWorker][FATAL] Unhandled rejection:', reason);
+  if (reason?.stack) console.error(reason.stack);
+});
 
 module.exports = { runWorker, stopWorker };
 
