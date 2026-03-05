@@ -924,7 +924,8 @@
 
       (async () => {
         try {
-          const sb = await resolveSupabaseAuthClient();
+          const sb = window.supabaseClient || window.supabase;
+          if (!sb) { console.error('[editor] Supabase client not available'); return; }
           if (sb?.auth?.getUser) {
             const { data } = await sb.auth.getUser();
             applyProfileIdentity(data?.user || null);
@@ -975,23 +976,9 @@
         if (initialEl) initialEl.textContent = initial.toUpperCase();
       }
 
-      async function resolveSupabaseAuthClient() {
-        const existing = window?.supabaseClient || window?.supabase || null;
-        if (existing?.auth?.getSession) return existing;
-        try {
-          const mod = await import('./supabase-client.js');
-          if (mod?.supabase?.auth?.getSession) {
-            window.supabaseClient = mod.supabase;
-            return mod.supabase;
-          }
-        } catch (error) {
-          console.warn('[AccountModal] failed to load supabase-client.js', error);
-        }
-        return null;
-      }
-
       async function getSupabaseAccessToken() {
-        const sb = await resolveSupabaseAuthClient();
+        const sb = window.supabaseClient || window.supabase;
+        if (!sb) { console.error('[editor] Supabase client not available'); return ''; }
         if (!sb?.auth?.getSession) return '';
         const { data, error } = await sb.auth.getSession();
         if (error) {
@@ -1097,11 +1084,7 @@
         }
 
         try {
-          const profileResp = await fetch('/api/profile/settings', {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-          });
+          const profileResp = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
           if (profileResp.ok) {
             const profileData = await profileResp.json().catch(() => ({}));
             const profileTier = profileData?.subscription_tier || profileData?.tier || profileData?.plan || '';
@@ -1329,7 +1312,8 @@
           e.preventDefault();
           let currentUser = '';
           try {
-            const sb = await resolveSupabaseAuthClient();
+            const sb = window.supabaseClient || window.supabase;
+            if (!sb) { console.error('[editor] Supabase client not available'); return; }
             if (sb?.auth?.getUser) {
               const { data } = await sb.auth.getUser();
               currentUser = data?.user?.email || '';
@@ -1339,7 +1323,8 @@
             try {
               const profileResp = await fetchWithAccountAuth('/api/profile/settings', { method: 'GET' });
               const profileData = await profileResp.json().catch(() => ({}));
-              const sb = await resolveSupabaseAuthClient();
+              const sb = window.supabaseClient || window.supabase;
+              if (!sb) { console.error('[editor] Supabase client not available'); return; }
               const { data } = sb?.auth?.getUser ? await sb.auth.getUser() : { data: { user: null } };
               currentUser = data?.user?.email || profileData?.email || '';
             } catch (_) {}
@@ -1384,7 +1369,8 @@
             if (typeof window.storeSignOut === 'function') {
               await window.storeSignOut();
             } else {
-              const sb = await resolveSupabaseAuthClient();
+              const sb = window.supabaseClient || window.supabase;
+              if (!sb) { console.error('[editor] Supabase client not available'); return; }
               if (sb?.auth?.signOut) await sb.auth.signOut();
             }
           } catch (err) {
