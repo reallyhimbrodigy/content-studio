@@ -302,6 +302,24 @@ function initAccountModal() {
           img.id = 'acct-avatar-img';
           existing.replaceWith(img);
         }
+
+        // Update profile dropdown avatar
+        const profileAvatarInner = document.querySelector('.profile-avatar-inner');
+        if (profileAvatarInner) {
+          let profileAvatarImg = profileAvatarInner.querySelector('.profile-avatar-img');
+          if (profileAvatarImg) {
+            profileAvatarImg.src = publicUrl;
+          } else {
+            profileAvatarImg = document.createElement('img');
+            profileAvatarImg.src = publicUrl;
+            profileAvatarImg.alt = 'Avatar';
+            profileAvatarImg.id = 'profile-avatar-img';
+            profileAvatarImg.className = 'profile-avatar-img';
+            profileAvatarImg.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;';
+            profileAvatarInner.appendChild(profileAvatarImg);
+          }
+          if (profileInitial) profileInitial.style.display = 'none';
+        }
       } catch (err) {
         console.error('[account] Avatar upload failed:', err);
         alert('Failed to upload avatar.');
@@ -335,7 +353,11 @@ function initAccountModal() {
         if (error) throw error;
         saveNameBtn.textContent = 'Saved!';
         if (profileDisplayName) profileDisplayName.textContent = newName;
-        if (profileInitial) profileInitial.textContent = newName.charAt(0).toUpperCase();
+        if (profileInitial) {
+          profileInitial.textContent = newName.charAt(0).toUpperCase();
+          const hasAvatar = document.querySelector('.profile-avatar-inner .profile-avatar-img');
+          if (hasAvatar) profileInitial.style.display = 'none';
+        }
         setTimeout(() => {
           saveNameBtn.textContent = 'Save Changes';
           saveNameBtn.disabled = false;
@@ -516,25 +538,54 @@ async function hydrateUser() {
   currentUserEmail = await getCurrentUser();
   if (userEmailEl) userEmailEl.textContent = currentUserEmail || '';
 
-  if (profileInitial && currentUserEmail) {
-    const initial = currentUserEmail.trim().charAt(0) || 'P';
-    profileInitial.textContent = initial.toUpperCase();
+  const sb = window.supabaseClient || window.supabase;
+  let authUser = null;
+  if (sb?.auth?.getUser) {
+    try {
+      const { data } = await sb.auth.getUser();
+      authUser = data?.user || null;
+    } catch (_) {}
   }
+
+  const profileName = authUser?.user_metadata?.full_name
+    || (currentUserEmail ? currentUserEmail.split('@')[0] : 'User');
+  const initial = (profileName || currentUserEmail || 'P').trim().charAt(0) || 'P';
+  if (profileInitial) profileInitial.textContent = initial.toUpperCase();
   if (profileDisplayName) {
-    profileDisplayName.textContent = currentUserEmail
-      ? currentUserEmail.split('@')[0]
-      : 'User';
+    profileDisplayName.textContent = profileName;
   }
   if (profileDisplayEmail) {
     profileDisplayEmail.textContent = currentUserEmail || '';
   }
 
+  // Show avatar image if available
+  const avatarUrl = authUser?.user_metadata?.avatar_url || authUser?.user_metadata?.picture || '';
+  const avatarInner = document.querySelector('.profile-avatar-inner');
+  if (avatarInner) {
+    const existing = avatarInner.querySelector('.profile-avatar-img');
+    if (avatarUrl) {
+      if (existing) {
+        existing.src = avatarUrl;
+      } else {
+        const avatarImg = document.createElement('img');
+        avatarImg.src = avatarUrl;
+        avatarImg.alt = 'Avatar';
+        avatarImg.id = 'profile-avatar-img';
+        avatarImg.className = 'profile-avatar-img';
+        avatarImg.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;';
+        avatarInner.appendChild(avatarImg);
+      }
+      if (profileInitial) profileInitial.style.display = 'none';
+    } else {
+      if (existing) existing.remove();
+      if (profileInitial) profileInitial.style.display = '';
+    }
+  }
+
   let userIsPro = false;
   try {
-    const sb = window.supabaseClient || window.supabase;
-    if (sb?.auth?.getUser && sb?.from) {
-      const { data } = await sb.auth.getUser();
-      const user = data?.user || null;
+    if (sb?.from) {
+      const user = authUser;
       if (user?.id) {
         const { data: profileRow, error: profileError } = await sb
           .from('profiles')
