@@ -1,6 +1,8 @@
 import { getCurrentUser, getUserEdits, deleteUserEdit, supabase } from './user-store.js';
 import { initTheme } from './theme.js';
 
+window.supabaseClient = window.supabaseClient || supabase;
+
 initTheme();
 
 const SIDEBAR_STORAGE_KEY = 'promptly_sidebar_collapsed';
