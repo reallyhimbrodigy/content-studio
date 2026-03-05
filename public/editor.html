@@ -187,31 +187,6 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
       }
 
-      .composer-textarea {
-        width: 100%;
-        min-height: 66px;
-        max-height: 66px;
-        resize: none;
-        background: var(--panel2);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        color: var(--text-primary);
-        font-size: 14px;
-        font-weight: 400;
-        line-height: 1.5;
-        padding: 14px 16px;
-        margin-top: 16px;
-      }
-
-      .composer-textarea::placeholder {
-        color: var(--text-tertiary);
-      }
-
-      .composer-textarea:focus {
-        outline: none;
-        border-color: var(--border-color-strong);
-        box-shadow: none;
-      }
 
       .upload-progress-wrap {
         margin-top: 6px;
@@ -275,38 +250,118 @@
         color: #ffffff;
       }
 
-      .vibe-pills {
+      /* ===== VIBE INPUT V2 ===== */
+
+      .vibe-input-wrap {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 12px;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 16px;
       }
 
-      .vibe-pill {
-        background: transparent;
-        border: 1px solid var(--border-color);
-        color: var(--text-secondary);
-        border-radius: 6px;
-        padding: 6px 14px;
-        font-size: 12px;
-        font-weight: 400;
+      .vibe-suggestions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .vibe-suggest-card {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+        background: var(--panel2, rgba(255, 255, 255, 0.03));
         cursor: pointer;
         transition: all 0.15s ease;
+        text-align: left;
+        font-family: inherit;
       }
 
-      .vibe-pill:hover {
-        color: var(--text-primary);
-        border-color: var(--border-color-strong);
-        box-shadow: none;
-        background: transparent;
+      .vibe-suggest-card:hover {
+        background: var(--bg-surface-hover, rgba(255, 255, 255, 0.06));
+        border-color: var(--border-color-strong, rgba(255, 255, 255, 0.15));
       }
 
-      .vibe-pill.active,
-      .vibe-pill:active {
-        background: transparent;
-        border-color: var(--border-color-strong);
-        color: #ffffff;
+      .vibe-suggest-card.active {
+        border-color: var(--accent, #4f46e5);
+        background: rgba(79, 70, 229, 0.08);
       }
+
+      .vibe-suggest-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-primary, #fff);
+      }
+
+      .vibe-suggest-desc {
+        font-size: 0.75rem;
+        color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+      }
+
+      .vibe-textarea-wrap {
+        position: relative;
+      }
+
+      .vibe-chat-input {
+        width: 100%;
+        min-height: 44px;
+        max-height: 120px;
+        padding: 12px 40px 12px 16px;
+        border-radius: 16px;
+        border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+        background: var(--panel2, rgba(255, 255, 255, 0.03));
+        color: var(--text-primary, #fff);
+        font-size: 0.9375rem;
+        font-family: inherit;
+        line-height: 1.5;
+        resize: none;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        overflow-y: auto;
+        box-sizing: border-box;
+      }
+
+      .vibe-chat-input::placeholder {
+        color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+      }
+
+      .vibe-chat-input:focus {
+        border-color: var(--border-color-strong, rgba(255, 255, 255, 0.2));
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+      }
+
+      .vibe-clear-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        transition: color 0.15s, background 0.15s;
+      }
+
+      .vibe-clear-btn:hover {
+        color: var(--text-primary, #fff);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      @media (max-width: 480px) {
+        .vibe-suggestions {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ===== END VIBE INPUT V2 ===== */
 
       .composer-generate {
         width: 100%;
@@ -647,8 +702,7 @@
         color: var(--text-primary);
       }
 
-      .upload-zone svg,
-      .composer-textarea::placeholder {
+      .upload-zone svg {
         color: var(--text-tertiary);
       }
 
@@ -673,17 +727,6 @@
         color: var(--text-secondary);
       }
 
-      .composer-textarea {
-        background: var(--panel2);
-        border-color: var(--border-color);
-        color: var(--text-primary);
-      }
-
-      .composer-textarea:focus {
-        background: var(--panel2);
-        border-color: var(--border-color-strong);
-      }
-
       .attached-file,
       .state-card,
       #processing-section.state-card,
@@ -695,25 +738,6 @@
 
       .remove-file:hover {
         background: var(--bg-surface-hover);
-        color: var(--text-primary);
-      }
-
-      .vibe-pill {
-        background: var(--panel2);
-        border-color: var(--border-color);
-        color: var(--text-secondary);
-      }
-
-      .vibe-pill:hover {
-        background: var(--panel2);
-        border-color: var(--border-color-strong);
-        color: var(--text-primary);
-      }
-
-      .vibe-pill.active,
-      .vibe-pill:active {
-        background: var(--panel2);
-        border-color: var(--border-color-strong);
         color: var(--text-primary);
       }
 
@@ -1590,11 +1614,31 @@
                 <button id="remove-file" type="button" class="remove-file" aria-label="Remove file">×</button>
               </div>
 
-              <textarea id="vibe-textarea" class="composer-textarea" rows="2" placeholder="Describe your vibe..."></textarea>
-              <div class="vibe-pills">
-                <button type="button" class="vibe-pill" data-vibe="Punchy TikTok">Punchy TikTok</button>
-                <button type="button" class="vibe-pill" data-vibe="Smooth Reels">Smooth Reels</button>
-                <button type="button" class="vibe-pill" data-vibe="Chaotic Comedy">Chaotic Comedy</button>
+              <div class="vibe-input-wrap" id="vibe-input-wrap">
+                <div class="vibe-suggestions" id="vibe-suggestions">
+                  <button type="button" class="vibe-suggest-card" data-vibe="Punchy TikTok with fast cuts, zoom effects, and bold captions">
+                    <span class="vibe-suggest-title">Punchy TikTok</span>
+                    <span class="vibe-suggest-desc">Fast cuts, zoom effects, bold captions</span>
+                  </button>
+                  <button type="button" class="vibe-suggest-card" data-vibe="Smooth Reels with clean transitions and subtle color grading">
+                    <span class="vibe-suggest-title">Smooth Reels</span>
+                    <span class="vibe-suggest-desc">Clean transitions, subtle color grade</span>
+                  </button>
+                  <button type="button" class="vibe-suggest-card" data-vibe="Professional edit with simple transitions and enhanced quality">
+                    <span class="vibe-suggest-title">Professional</span>
+                    <span class="vibe-suggest-desc">Simple transitions, enhanced quality</span>
+                  </button>
+                  <button type="button" class="vibe-suggest-card" data-vibe="Cinematic edit with dramatic color grading, slow transitions, and moody feel">
+                    <span class="vibe-suggest-title">Cinematic</span>
+                    <span class="vibe-suggest-desc">Dramatic color, slow transitions, moody</span>
+                  </button>
+                </div>
+                <div class="vibe-textarea-wrap">
+                  <textarea id="vibe-textarea" class="vibe-chat-input" rows="1" placeholder="Describe your vibe..."></textarea>
+                  <button type="button" class="vibe-clear-btn" id="vibe-clear-btn" aria-label="Clear" style="display:none">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+                  </button>
+                </div>
               </div>
 
               <div id="composer-error" style="display:none; margin-top:12px; color:#f87171; font-size:14px;"></div>
@@ -1702,7 +1746,8 @@
         const fileNameEl = document.getElementById('file-name');
         const fileSizeEl = document.getElementById('file-size');
         const removeFileBtn = document.getElementById('remove-file');
-        const vibePills = Array.from(root.querySelectorAll('.vibe-pill'));
+        const vibeSuggestCards = Array.from(root.querySelectorAll('.vibe-suggest-card'));
+        const vibeClearBtn = document.getElementById('vibe-clear-btn');
         const composerError = document.getElementById('composer-error');
         const processingSection = document.getElementById('processing-section');
         const statusText = document.getElementById('status-text');
@@ -1741,7 +1786,13 @@
           trustBadge.style.display = showWorkflow ? 'block' : 'none';
 
           vibeTextarea.value = state.vibe;
+          vibeTextarea.style.height = 'auto';
+          vibeTextarea.style.height = `${vibeTextarea.scrollHeight}px`;
           vibeTextarea.disabled = state.submitting || state.isUploading;
+          for (const card of vibeSuggestCards) {
+            card.classList.toggle('active', card.dataset.vibe === state.vibe);
+          }
+          if (vibeClearBtn) vibeClearBtn.style.display = state.vibe ? 'flex' : 'none';
           attachBtn.disabled = state.submitting || state.isUploading;
           attachBtn.style.display = state.videoUrl ? 'none' : 'flex';
           uploadSection.classList.toggle('has-file', Boolean(state.videoUrl));
@@ -2092,17 +2143,39 @@
           if (file) uploadFile(file);
         });
 
-        vibeTextarea.addEventListener('input', (e) => {
-          state.vibe = e.target.value || '';
-          syncGenerateState();
-        });
-
-        for (const pill of vibePills) {
-          pill.addEventListener('click', () => {
-            state.vibe = pill.dataset.vibe || '';
-            render();
+        for (const card of vibeSuggestCards) {
+          card.addEventListener('click', () => {
+            const vibe = card.dataset.vibe || '';
+            state.vibe = vibe;
+            vibeTextarea.value = vibe;
+            vibeSuggestCards.forEach((c) => c.classList.remove('active'));
+            card.classList.add('active');
+            if (vibeClearBtn) vibeClearBtn.style.display = 'flex';
+            vibeTextarea.style.height = 'auto';
+            vibeTextarea.style.height = `${vibeTextarea.scrollHeight}px`;
+            syncGenerateState();
           });
         }
+
+        if (vibeClearBtn) {
+          vibeClearBtn.addEventListener('click', () => {
+            state.vibe = '';
+            vibeTextarea.value = '';
+            vibeSuggestCards.forEach((c) => c.classList.remove('active'));
+            vibeClearBtn.style.display = 'none';
+            vibeTextarea.style.height = 'auto';
+            syncGenerateState();
+          });
+        }
+
+        vibeTextarea.addEventListener('input', (e) => {
+          state.vibe = e.target.value || '';
+          vibeSuggestCards.forEach((c) => c.classList.remove('active'));
+          if (vibeClearBtn) vibeClearBtn.style.display = e.target.value ? 'flex' : 'none';
+          vibeTextarea.style.height = 'auto';
+          vibeTextarea.style.height = `${vibeTextarea.scrollHeight}px`;
+          syncGenerateState();
+        });
 
         removeFileBtn.addEventListener('click', () => {
           state.videoUrl = null;
