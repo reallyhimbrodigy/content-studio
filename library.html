@@ -36,19 +36,16 @@
       body.auth-pending {
         visibility: hidden;
       }
-
       .sidebar-toggle {
         position: fixed;
         z-index: 9999;
         pointer-events: auto;
       }
-
       .library-content {
         max-width: 960px;
         margin: 0 auto;
         padding: 40px 24px;
       }
-
       .library-header {
         display: flex;
         align-items: center;
@@ -56,21 +53,18 @@
         margin-bottom: 32px;
         padding: 0;
       }
-
       .library-title {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 24px;
         font-weight: 600;
-        color: #f0f0f0;
+        color: var(--text-primary);
         margin: 0;
       }
-
       .library-header-actions {
         display: flex;
         align-items: center;
         gap: 12px;
       }
-
       .new-edit-btn {
         background: #2563eb;
         color: #fff;
@@ -82,26 +76,22 @@
         text-decoration: none;
         transition: background 0.15s ease;
       }
-
       .new-edit-btn:hover {
         background: #3b82f6;
       }
-
       .library-count {
         font-size: 13px;
-        color: #555;
+        color: var(--text-secondary);
         margin-bottom: 20px;
       }
-
       .edits-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
       }
-
       .edit-card {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 20px;
         transition: border-color 0.15s ease;
@@ -109,11 +99,9 @@
         flex-direction: column;
         gap: 12px;
       }
-
       .edit-card:hover {
-        border-color: rgba(255, 255, 255, 0.12);
+        border-color: var(--border-color-strong);
       }
-
       .edit-card-status {
         display: inline-flex;
         align-items: center;
@@ -126,50 +114,42 @@
         border-radius: 4px;
         width: fit-content;
       }
-
       .edit-card-status.completed {
         color: #34d399;
         background: rgba(52, 211, 153, 0.1);
       }
-
       .edit-card-status.processing {
         color: #fbbf24;
         background: rgba(251, 191, 36, 0.1);
       }
-
       .edit-card-status.queued {
         color: #818cf8;
         background: rgba(129, 140, 248, 0.1);
       }
-
       .edit-card-status.failed {
         color: #f87171;
         background: rgba(248, 113, 113, 0.1);
       }
-
       .edit-card-vibe {
         font-size: 14px;
         font-weight: 500;
-        color: #ddd;
+        color: var(--text-primary);
         line-height: 1.4;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
       }
-
       .edit-card-date {
         font-size: 12px;
-        color: #555;
+        color: var(--text-secondary);
       }
-
       .edit-card-actions {
         display: flex;
         gap: 8px;
         margin-top: auto;
         padding-top: 8px;
       }
-
       .edit-card-actions a,
       .edit-card-actions button {
         font-size: 12px;
@@ -182,45 +162,37 @@
         text-decoration: none;
         border: none;
       }
-
       .edit-action-download {
         background: #2563eb;
         color: #fff;
       }
-
       .edit-action-download:hover {
         background: #3b82f6;
       }
-
       .edit-action-delete {
         background: transparent;
-        color: #666;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color) !important;
       }
-
       .edit-action-delete:hover {
         color: #f87171;
         border-color: rgba(248, 113, 113, 0.3) !important;
       }
-
       .library-empty {
         text-align: center;
         padding: 80px 0;
       }
-
       .empty-title {
         font-size: 16px;
         font-weight: 500;
-        color: #888;
+        color: var(--text-tertiary);
         margin-bottom: 4px;
       }
-
       .empty-subtitle {
         font-size: 13px;
-        color: #444;
+        color: var(--text-secondary);
         margin-bottom: 24px;
       }
-
       .empty-cta {
         display: inline-block;
         background: #2563eb;
@@ -232,39 +204,18 @@
         text-decoration: none;
         transition: background 0.15s ease;
       }
-
       .empty-cta:hover {
         background: #3b82f6;
       }
-
       @media (max-width: 640px) {
         .edits-grid {
           grid-template-columns: 1fr;
         }
-
         .library-header {
           flex-direction: column;
           align-items: flex-start;
           gap: 16px;
         }
-      }
-
-      /* System theme overrides */
-      .library-title,
-      .edit-card-vibe {
-        color: var(--text-primary);
-      }
-
-      .library-count,
-      .edit-card-date,
-      .empty-title,
-      .empty-subtitle {
-        color: var(--text-secondary);
-      }
-
-      .edit-card {
-        background: var(--bg-surface);
-        border-color: var(--border-color);
       }
     </style>
     <script src="assets/vendor/supabase.js"></script>

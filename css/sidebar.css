@@ -1,17 +1,8 @@
 body.has-sidebar {
-  --sidebar-bg: #f5f5f5;
-  --sidebar-text: #404040;
-  --sidebar-hover: #e8e8e8;
-  --sidebar-active: #dedede;
-}
-
-@media (prefers-color-scheme: dark) {
-  body.has-sidebar {
-    --sidebar-bg: #111113;
-    --sidebar-text: #d4d4d4;
-    --sidebar-hover: rgba(255, 255, 255, 0.06);
-    --sidebar-active: rgba(255, 255, 255, 0.1);
-  }
+  --sidebar-bg: var(--bg-surface);
+  --sidebar-text: var(--text-primary);
+  --sidebar-hover: var(--bg-surface-hover);
+  --sidebar-active: var(--panel2);
 }
 
 body.has-sidebar .app-main {
@@ -139,13 +130,7 @@ body.has-sidebar .app-main {
   bottom: 9px;
   width: 3px;
   border-radius: 4px;
-  background: #737373;
-}
-
-@media (prefers-color-scheme: dark) {
-  .sidebar-link.is-active::before {
-    background: #a3a3a3;
-  }
+  background: var(--text-tertiary);
 }
 
 .sidebar-link-icon {
@@ -163,7 +148,7 @@ body.has-sidebar .app-main {
 }
 
 .sidebar-logout {
-  border-top: 1px solid var(--sidebar-hover);
+  border-top: 1px solid var(--border-color);
   margin-top: 8px;
   padding-top: 14px;
 }

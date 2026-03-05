@@ -24,7 +24,7 @@
       body.page-editor,
       body.page-editor .app-main,
       body.page-editor main.editor-main {
-        background: #0a0a0a !important;
+        background: var(--bg-body) !important;
       }
 
       .editor-page,
@@ -32,7 +32,7 @@
       .app-main,
       .editor-main,
       .editor-container {
-        background: #0a0a0a;
+        background: var(--bg-body);
       }
 
       .editor-page {
@@ -45,7 +45,7 @@
         padding: 48px 24px 24px;
         display: block;
         min-height: calc(100vh - 56px);
-        background: #0a0a0a;
+        background: var(--bg-body);
         position: relative;
       }
 
@@ -63,7 +63,7 @@
       .editor-topbar {
         display: flex;
         align-items: center;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        border-bottom: 1px solid var(--border-color);
         padding: 0 16px;
         height: 56px;
       }
@@ -115,7 +115,7 @@
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 600;
         font-size: 28px;
-        color: #f0f0f0;
+        color: var(--text-primary);
         text-align: center;
         margin-bottom: 28px;
         letter-spacing: -0.5px;
@@ -124,12 +124,12 @@
       .upload-zone,
       .upload-drop-zone {
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border-color);
+        background: var(--panel2);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
         backdrop-filter: none;
         border-radius: 12px;
-        color: #d7d7d7;
+        color: var(--text-primary);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -145,8 +145,8 @@
       .editor-card.is-drag .upload-zone,
       .editor-card.is-drag .upload-drop-zone,
       .upload-drop-zone.is-drag {
-        border-color: rgba(255, 255, 255, 0.12);
-        background: rgba(255, 255, 255, 0.05);
+        border-color: var(--border-color);
+        background: var(--bg-surface-hover);
         color: #ffffff;
       }
 
@@ -167,12 +167,12 @@
       .upload-zone-title {
         font-size: 15px;
         font-weight: 500;
-        color: #cccccc;
+        color: var(--text-primary);
       }
 
       .upload-zone-sub {
         font-size: 13px;
-        color: #555555;
+        color: var(--text-secondary);
         font-weight: 400;
       }
 
@@ -192,10 +192,10 @@
         min-height: 66px;
         max-height: 66px;
         resize: none;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--panel2);
+        border: 1px solid var(--border-color);
         border-radius: 10px;
-        color: #dddddd;
+        color: var(--text-primary);
         font-size: 14px;
         font-weight: 400;
         line-height: 1.5;
@@ -204,12 +204,12 @@
       }
 
       .composer-textarea::placeholder {
-        color: #444444;
+        color: var(--text-tertiary);
       }
 
       .composer-textarea:focus {
         outline: none;
-        border-color: rgba(255, 255, 255, 0.15);
+        border-color: var(--border-color-strong);
         box-shadow: none;
       }
 
@@ -220,12 +220,12 @@
       .upload-progress-label {
         margin: 0 0 8px;
         font-size: 14px;
-        color: #a0a0a0;
+        color: var(--text-secondary);
       }
 
       .attached-file {
-        background: #0f0f0f;
-        border: 1px solid #2d2d2d;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
         border-radius: 10px;
         padding: 10px 12px;
         display: flex;
@@ -237,11 +237,11 @@
 
       .file-icon {
         font-size: 16px;
-        color: #bcbcbc;
+        color: var(--text-secondary);
       }
 
       .file-name {
-        color: #e0e0e0;
+        color: var(--text-primary);
         font-weight: 500;
         flex: 1;
         overflow: hidden;
@@ -250,14 +250,14 @@
       }
 
       .file-size {
-        color: #707070;
+        color: var(--text-tertiary);
         font-size: 13px;
       }
 
       .remove-file {
         border: none;
         background: transparent;
-        color: #8a8a8a;
+        color: var(--text-tertiary);
         cursor: pointer;
         font-size: 18px;
         line-height: 1;
@@ -271,7 +271,7 @@
       }
 
       .remove-file:hover {
-        background: #2b2b2b;
+        background: var(--bg-surface-hover);
         color: #ffffff;
       }
 
@@ -284,8 +284,8 @@
 
       .vibe-pill {
         background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        color: #555555;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
         border-radius: 6px;
         padding: 6px 14px;
         font-size: 12px;
@@ -295,8 +295,8 @@
       }
 
       .vibe-pill:hover {
-        color: #cccccc;
-        border-color: rgba(255, 255, 255, 0.15);
+        color: var(--text-primary);
+        border-color: var(--border-color-strong);
         box-shadow: none;
         background: transparent;
       }
@@ -304,7 +304,7 @@
       .vibe-pill.active,
       .vibe-pill:active {
         background: transparent;
-        border-color: rgba(255, 255, 255, 0.2);
+        border-color: var(--border-color-strong);
         color: #ffffff;
       }
 
@@ -340,13 +340,13 @@
         padding: 0;
         margin-top: 16px;
         font-size: 12px;
-        color: #333333;
+        color: var(--text-tertiary);
         text-align: center;
       }
 
       .editor-trust-line {
         font-size: 12px;
-        color: #333333;
+        color: var(--text-tertiary);
         text-align: center;
         margin-top: 8px;
         letter-spacing: 0.3px;
@@ -360,7 +360,7 @@
       .showcase-divider {
         width: 100%;
         height: 1px;
-        background: rgba(255, 255, 255, 0.06);
+        background: var(--panel2);
         margin-bottom: 40px;
       }
 
@@ -368,7 +368,7 @@
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 500;
         font-size: 16px;
-        color: #666666;
+        color: var(--text-secondary);
         text-align: center;
         margin-bottom: 24px;
         letter-spacing: -0.2px;
@@ -381,8 +381,8 @@
       }
 
       .showcase-card {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--panel2);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 24px 16px;
         text-align: center;
@@ -391,8 +391,8 @@
       }
 
       .showcase-card:hover {
-        border-color: rgba(255, 255, 255, 0.1);
-        background: rgba(255, 255, 255, 0.03);
+        border-color: var(--border-color);
+        background: var(--panel2);
       }
 
       .showcase-card-preview {
@@ -407,7 +407,7 @@
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 500;
         font-size: 14px;
-        color: #dddddd;
+        color: var(--text-primary);
         margin-bottom: 4px;
       }
 
@@ -415,7 +415,7 @@
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 400;
         font-size: 12px;
-        color: #555555;
+        color: var(--text-secondary);
         line-height: 1.4;
       }
 
@@ -431,18 +431,18 @@
       .feature-text {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 12px;
-        color: #444444;
+        color: var(--text-tertiary);
         font-weight: 400;
       }
 
       .feature-dot {
-        color: #333333;
+        color: var(--text-tertiary);
         font-size: 12px;
       }
 
       .state-card {
-        background: #111111;
-        border: 1px solid #1f1f1f;
+        background: var(--text-primary);
+        border: 1px solid var(--border-color);
         border-radius: 20px;
         padding: 32px;
         text-align: center;
@@ -458,7 +458,7 @@
       }
 
       .state-muted {
-        color: #a1a1a1;
+        color: var(--text-secondary);
         font-size: 14px;
         font-weight: 500;
       }
@@ -466,7 +466,7 @@
       .progress-track {
         width: 100%;
         height: 8px;
-        background: #2a2a2a;
+        background: var(--bg-surface-hover);
         border-radius: 999px;
         overflow: hidden;
         margin-top: 24px;
@@ -481,8 +481,8 @@
       #processing-section.state-card,
       #complete-section.state-card,
       #error-section.state-card {
-        background: #111111;
-        border: 1px solid #1f1f1f;
+        background: var(--text-primary);
+        border: 1px solid var(--border-color);
       }
 
       .state-actions {
@@ -532,10 +532,10 @@
       .editor-action-ghost,
       .state-actions .ghost {
         background: transparent;
-        color: #999999;
+        color: var(--text-secondary);
         font-weight: 400;
         font-size: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--border-color);
         border-radius: 10px;
         padding: 12px 24px;
         transition: all 0.15s ease;
@@ -543,8 +543,8 @@
 
       .editor-action-ghost:hover,
       .state-actions .ghost:hover {
-        color: #cccccc;
-        border-color: rgba(255, 255, 255, 0.15);
+        color: var(--text-primary);
+        border-color: var(--border-color-strong);
         background: transparent;
       }
 
@@ -554,7 +554,7 @@
         max-width: 100%;
         width: auto;
         border-radius: 16px;
-        border: 1px solid #2a2a2a;
+        border: 1px solid var(--bg-surface-hover);
         margin: 0 auto 24px;
         box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
       }
@@ -608,7 +608,7 @@
         }
       }
 
-      /* Light mode defaults */
+      /* Theme variables (light/dark handled by css/theme.css) */
       body.page-editor,
       body.page-editor .app-main,
       body.page-editor main.editor-main,
@@ -617,24 +617,24 @@
       .app-main,
       .editor-main,
       .editor-container {
-        background: #ffffff !important;
-        color: #111111;
+        background: var(--bg-body) !important;
+        color: var(--text-primary);
       }
 
       .editor-topbar {
-        background: #ffffff;
-        border-bottom-color: rgba(0, 0, 0, 0.08);
+        background: var(--bg-body);
+        border-bottom-color: var(--border-color);
       }
 
       .editor-card-zone {
-        background: #ffffff;
+        background: var(--bg-body);
       }
 
       .upload-zone,
       .upload-drop-zone {
-        background: rgba(0, 0, 0, 0.02);
-        border-color: rgba(0, 0, 0, 0.12);
-        color: #222222;
+        background: var(--panel2);
+        border-color: var(--border-color);
+        color: var(--text-primary);
       }
 
       .upload-zone:hover,
@@ -642,17 +642,22 @@
       .editor-card.is-drag .upload-zone,
       .editor-card.is-drag .upload-drop-zone,
       .upload-drop-zone.is-drag {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: rgba(0, 0, 0, 0.25);
-        color: #111111;
+        background: var(--bg-surface-hover);
+        border-color: var(--border-color-strong);
+        color: var(--text-primary);
       }
 
-      .upload-zone svg {
-        color: rgba(0, 0, 0, 0.25);
+      .upload-zone svg,
+      .composer-textarea::placeholder {
+        color: var(--text-tertiary);
       }
 
-      .upload-zone-title {
-        color: #111111;
+      .upload-zone-title,
+      .state-title,
+      .file-name,
+      .showcase-card-label,
+      .editor-heading {
+        color: var(--text-primary);
       }
 
       .upload-zone-sub,
@@ -660,265 +665,90 @@
       .upload-progress-label,
       .showcase-heading,
       .showcase-card-desc,
-      .feature-text {
-        color: #666666;
+      .feature-text,
+      .trust-badge,
+      .editor-trust-line,
+      .feature-dot,
+      .file-size {
+        color: var(--text-secondary);
       }
 
       .composer-textarea {
-        background: rgba(0, 0, 0, 0.03);
-        border-color: rgba(0, 0, 0, 0.1);
-        color: #111111;
-      }
-
-      .composer-textarea::placeholder {
-        color: #8a8a8a;
+        background: var(--panel2);
+        border-color: var(--border-color);
+        color: var(--text-primary);
       }
 
       .composer-textarea:focus {
-        border-color: rgba(0, 0, 0, 0.2);
+        background: var(--panel2);
+        border-color: var(--border-color-strong);
       }
 
-      .attached-file {
-        background: #f5f5f5;
-        border-color: #d8d8d8;
-      }
-
-      .file-name,
-      .showcase-card-label,
-      .state-title,
-      .editor-heading {
-        color: #111111;
-      }
-
-      .file-size {
-        color: #666666;
-      }
-
-      .remove-file:hover {
-        background: #e5e5e5;
-        color: #111111;
-      }
-
-      .vibe-pill {
-        background: rgba(0, 0, 0, 0.06);
-        border-color: rgba(0, 0, 0, 0.08);
-        color: #555555;
-      }
-
-      .vibe-pill:hover {
-        background: rgba(0, 0, 0, 0.02);
-        border-color: rgba(0, 0, 0, 0.15);
-        color: #222222;
-      }
-
-      .vibe-pill.active,
-      .vibe-pill:active {
-        background: rgba(0, 0, 0, 0.03);
-        border-color: rgba(0, 0, 0, 0.15);
-        color: #111111;
-      }
-
-      .trust-badge,
-      .editor-trust-line,
-      .feature-dot {
-        color: #666666;
-      }
-
-      .showcase-divider {
-        background: rgba(0, 0, 0, 0.08);
-      }
-
-      .showcase-card {
-        background: rgba(0, 0, 0, 0.02);
-        border-color: rgba(0, 0, 0, 0.06);
-      }
-
-      .showcase-card:hover {
-        background: rgba(0, 0, 0, 0.04);
-        border-color: rgba(0, 0, 0, 0.12);
-      }
-
+      .attached-file,
       .state-card,
       #processing-section.state-card,
       #complete-section.state-card,
       #error-section.state-card {
-        background: #ffffff;
-        border-color: rgba(0, 0, 0, 0.12);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        background: var(--bg-surface);
+        border-color: var(--border-color);
+      }
+
+      .remove-file:hover {
+        background: var(--bg-surface-hover);
+        color: var(--text-primary);
+      }
+
+      .vibe-pill {
+        background: var(--panel2);
+        border-color: var(--border-color);
+        color: var(--text-secondary);
+      }
+
+      .vibe-pill:hover {
+        background: var(--panel2);
+        border-color: var(--border-color-strong);
+        color: var(--text-primary);
+      }
+
+      .vibe-pill.active,
+      .vibe-pill:active {
+        background: var(--panel2);
+        border-color: var(--border-color-strong);
+        color: var(--text-primary);
+      }
+
+      .showcase-divider {
+        background: var(--panel2);
+      }
+
+      .showcase-card {
+        background: var(--panel2);
+        border-color: var(--border-color);
+      }
+
+      .showcase-card:hover {
+        background: var(--panel2);
+        border-color: var(--border-color-strong);
       }
 
       .progress-track {
-        background: #e5e5e5;
+        background: var(--bg-surface-hover);
       }
 
       .editor-action-ghost,
       .state-actions .ghost {
-        color: #555555;
-        border-color: rgba(0, 0, 0, 0.1);
+        color: var(--text-secondary);
+        border-color: var(--border-color);
       }
 
       .editor-action-ghost:hover,
       .state-actions .ghost:hover {
-        color: #111111;
-        border-color: rgba(0, 0, 0, 0.2);
+        color: var(--text-primary);
+        border-color: var(--border-color-strong);
       }
 
       .video-preview {
-        border-color: rgba(0, 0, 0, 0.15);
-        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.16);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        body.page-editor,
-        body.page-editor .app-main,
-        body.page-editor main.editor-main,
-        .editor-page,
-        .app-shell.editor-page,
-        .app-main,
-        .editor-main,
-        .editor-container {
-          background: #0a0a0a !important;
-          color: #ffffff;
-        }
-
-        .editor-topbar {
-          background: #0a0a0a;
-          border-bottom-color: rgba(255, 255, 255, 0.04);
-        }
-
-        .editor-card-zone {
-          background: #0a0a0a;
-        }
-
-        .upload-zone,
-        .upload-drop-zone {
-          background: rgba(255, 255, 255, 0.02);
-          border-color: rgba(255, 255, 255, 0.12);
-          color: #d7d7d7;
-        }
-
-        .upload-zone:hover,
-        .upload-drop-zone:hover,
-        .editor-card.is-drag .upload-zone,
-        .editor-card.is-drag .upload-drop-zone,
-        .upload-drop-zone.is-drag {
-          background: rgba(255, 255, 255, 0.05);
-          border-color: rgba(255, 255, 255, 0.25);
-          color: #ffffff;
-        }
-
-        .upload-zone svg {
-          color: rgba(255, 255, 255, 0.25);
-        }
-
-        .upload-zone-title,
-        .state-title,
-        .file-name,
-        .showcase-card-label,
-        .editor-heading {
-          color: #ffffff;
-        }
-
-        .upload-zone-sub,
-        .state-muted,
-        .upload-progress-label,
-        .showcase-heading,
-        .showcase-card-desc,
-        .feature-text,
-        .trust-badge,
-        .editor-trust-line,
-        .feature-dot,
-        .file-size {
-          color: rgba(255, 255, 255, 0.5);
-        }
-
-        .composer-textarea {
-          background: rgba(255, 255, 255, 0.03);
-          border-color: rgba(255, 255, 255, 0.1);
-          color: #ffffff;
-        }
-
-        .composer-textarea::placeholder {
-          color: rgba(255, 255, 255, 0.3);
-        }
-
-        .composer-textarea:focus {
-          background: rgba(255, 255, 255, 0.03);
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .attached-file {
-          background: #0f0f0f;
-          border-color: #2d2d2d;
-        }
-
-        .remove-file:hover {
-          background: #2b2b2b;
-          color: #ffffff;
-        }
-
-        .vibe-pill {
-          background: rgba(255, 255, 255, 0.06);
-          border-color: rgba(255, 255, 255, 0.08);
-          color: rgba(255, 255, 255, 0.65);
-        }
-
-        .vibe-pill:hover {
-          background: rgba(255, 255, 255, 0.02);
-          border-color: rgba(255, 255, 255, 0.15);
-          color: #cccccc;
-        }
-
-        .vibe-pill.active,
-        .vibe-pill:active {
-          background: rgba(255, 255, 255, 0.03);
-          border-color: rgba(255, 255, 255, 0.2);
-          color: #ffffff;
-        }
-
-        .showcase-divider {
-          background: rgba(255, 255, 255, 0.06);
-        }
-
-        .showcase-card {
-          background: rgba(255, 255, 255, 0.02);
-          border-color: rgba(255, 255, 255, 0.06);
-        }
-
-        .showcase-card:hover {
-          background: rgba(255, 255, 255, 0.04);
-          border-color: rgba(255, 255, 255, 0.12);
-        }
-
-        .state-card,
-        #processing-section.state-card,
-        #complete-section.state-card,
-        #error-section.state-card {
-          background: #111111;
-          border-color: #1f1f1f;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-        }
-
-        .progress-track {
-          background: #2a2a2a;
-        }
-
-        .editor-action-ghost,
-        .state-actions .ghost {
-          color: #999999;
-          border-color: rgba(255, 255, 255, 0.08);
-        }
-
-        .editor-action-ghost:hover,
-        .state-actions .ghost:hover {
-          color: #cccccc;
-          border-color: rgba(255, 255, 255, 0.15);
-        }
-
-        .video-preview {
-          border-color: #2a2a2a;
-          box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
-        }
+        border-color: var(--border-color-strong);
       }
     </style>
   </head>
