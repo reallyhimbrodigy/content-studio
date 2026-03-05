@@ -10,33 +10,311 @@
     <link rel="icon" type="image/svg+xml" href="assets/promptly-mark-white.png" />
     <link rel="stylesheet" href="styles.css" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-<link rel="stylesheet" href="/css/theme.css" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="/css/theme.css" />
     <link rel="manifest" href="manifest.json" />
     <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
+    <style>
+      .contact-section {
+        padding: 80px 24px;
+        min-height: calc(100vh - 200px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .contact-container {
+        max-width: 1100px;
+        width: 100%;
+        margin: 0 auto;
+        display: flex;
+        gap: 60px;
+        align-items: flex-start;
+      }
+
+      .contact-info {
+        max-width: 380px;
+        flex-shrink: 0;
+      }
+
+      .contact-title {
+        font-size: 3rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 8px;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+      }
+
+      .contact-desc {
+        font-size: 1rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        margin: 0 0 48px;
+      }
+
+      .contact-details-title {
+        font-size: 1.35rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 20px;
+      }
+
+      .contact-details-list {
+        list-style: disc;
+        padding-left: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+      }
+
+      .contact-details-list li {
+        font-size: 0.95rem;
+        color: var(--text-primary);
+        line-height: 1.5;
+      }
+
+      .contact-details-list li strong {
+        font-weight: 600;
+      }
+
+      .contact-details-list li a {
+        color: var(--text-primary);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .contact-details-list li a:hover {
+        color: var(--accent-hover, #4338ca);
+      }
+
+      .contact-form-card {
+        flex: 1;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        background: var(--bg-surface);
+      }
+
+      .contact-form-row {
+        display: flex;
+        gap: 16px;
+      }
+
+      .contact-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+      }
+
+      .contact-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .contact-input {
+        height: 42px;
+        padding: 0 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--input-bg, var(--bg-body));
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+
+      .contact-input:focus {
+        border-color: var(--accent, #4f46e5);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+      }
+
+      .contact-input::placeholder {
+        color: var(--text-tertiary);
+      }
+
+      .contact-textarea {
+        min-height: 120px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--input-bg, var(--bg-body));
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-family: inherit;
+        outline: none;
+        resize: vertical;
+        transition: border-color 0.15s;
+      }
+
+      .contact-textarea:focus {
+        border-color: var(--accent, #4f46e5);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+      }
+
+      .contact-textarea::placeholder {
+        color: var(--text-tertiary);
+      }
+
+      .contact-submit {
+        width: 100%;
+        height: 44px;
+        border-radius: 8px;
+        border: none;
+        background: var(--accent, #4f46e5);
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .contact-submit:hover {
+        background: var(--accent-hover, #4338ca);
+      }
+
+      .contact-submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .contact-success {
+        text-align: center;
+        padding: 20px;
+        color: #34d399;
+        font-weight: 500;
+        display: none;
+      }
+
+      .contact-back {
+        position: fixed;
+        top: 24px;
+        left: 24px;
+        z-index: 10;
+      }
+
+      .contact-back a {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: color 0.15s;
+      }
+
+      .contact-back a:hover {
+        color: var(--text-primary);
+      }
+
+      @media (max-width: 768px) {
+        .contact-container {
+          flex-direction: column;
+          gap: 40px;
+        }
+
+        .contact-info {
+          max-width: 100%;
+          text-align: center;
+        }
+
+        .contact-details-list {
+          text-align: left;
+          max-width: 300px;
+          margin: 0 auto;
+        }
+
+        .contact-title {
+          font-size: 2.25rem;
+        }
+
+        .contact-form-card {
+          padding: 24px;
+        }
+
+        .contact-form-row {
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .contact-back {
+          position: static;
+          padding: 16px 24px 0;
+        }
+      }
+    </style>
   </head>
   <body>
     <div class="app-shell">
-      <header class="hero">
-        <div class="hero-top" style="display:flex;align-items:center;justify-content:space-between;">
-          <a href="/" aria-label="Back to home"><img src="assets/promptly-mark-white.png" alt="Promptly logo" class="logo" /></a>
-        </div>
-        <h1>Contact</h1>
-        <p class="hero-tagline">We'd love to hear from you. Reach out for support, feedback, or partnerships.</p>
-      </header>
+      <div class="contact-back">
+        <a href="/">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </a>
+      </div>
 
       <main>
-        <section class="publish-hub" style="max-width:720px;margin:0 auto;">
-          <div style="display:grid;gap:1rem;">
-            <div class="publish-card">
-              <h3 style="margin:0 0 .5rem 0;">Email</h3>
-              <p class="meta">Prefer email? We typically reply within 1–2 business days.</p>
-              <p><a class="primary" href="mailto:support@usepromptly.app">support@usepromptly.app</a></p>
+        <section class="contact-section">
+          <div class="contact-container">
+            <div class="contact-info">
+              <h1 class="contact-title">Contact Us</h1>
+              <p class="contact-desc">We're available for questions, feedback, or collaboration opportunities. Let us know how we can help!</p>
+
+              <h3 class="contact-details-title">Contact Details</h3>
+              <ul class="contact-details-list">
+                <li>
+                  <strong>Email: </strong>
+                  <a href="mailto:support@usepromptly.app">support@usepromptly.app</a>
+                </li>
+                <li>
+                  <strong>Web: </strong>
+                  <a href="https://usepromptly.app" target="_blank">usepromptly.app</a>
+                </li>
+              </ul>
             </div>
-            <div class="publish-card">
-              <h3 style="margin:0 0 .5rem 0;">Help & FAQ</h3>
-              <p class="meta">Common questions and quick fixes.</p>
-              <p><a class="secondary" href="/help.html">Open Help</a></p>
+
+            <div class="contact-form-card">
+              <form id="contact-form" onsubmit="return false;">
+                <div style="display:flex;flex-direction:column;gap:20px;">
+                  <div class="contact-form-row">
+                    <div class="contact-field">
+                      <label class="contact-label" for="contact-firstname">First Name</label>
+                      <input class="contact-input" type="text" id="contact-firstname" placeholder="First Name" required />
+                    </div>
+                    <div class="contact-field">
+                      <label class="contact-label" for="contact-lastname">Last Name</label>
+                      <input class="contact-input" type="text" id="contact-lastname" placeholder="Last Name" required />
+                    </div>
+                  </div>
+
+                  <div class="contact-field">
+                    <label class="contact-label" for="contact-email">Email</label>
+                    <input class="contact-input" type="email" id="contact-email" placeholder="Email" required />
+                  </div>
+
+                  <div class="contact-field">
+                    <label class="contact-label" for="contact-subject">Subject</label>
+                    <input class="contact-input" type="text" id="contact-subject" placeholder="Subject" required />
+                  </div>
+
+                  <div class="contact-field">
+                    <label class="contact-label" for="contact-message">Message</label>
+                    <textarea class="contact-textarea" id="contact-message" placeholder="Type your message here." required></textarea>
+                  </div>
+
+                  <button type="submit" class="contact-submit" id="contact-submit-btn">Send Message</button>
+                  <p class="contact-success" id="contact-success">Message sent! We'll get back to you soon.</p>
+                </div>
+              </form>
             </div>
           </div>
         </section>
@@ -45,11 +323,50 @@
       <footer class="footer"></footer>
     </div>
 
+    <script>
+      document.getElementById('contact-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('contact-submit-btn');
+        const success = document.getElementById('contact-success');
+        const firstName = document.getElementById('contact-firstname').value.trim();
+        const lastName = document.getElementById('contact-lastname').value.trim();
+        const email = document.getElementById('contact-email').value.trim();
+        const subject = document.getElementById('contact-subject').value.trim();
+        const message = document.getElementById('contact-message').value.trim();
+
+        if (!firstName || !email || !subject || !message) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+
+        try {
+          const resp = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ firstName, lastName, email, subject, message }),
+          });
+
+          if (resp.ok) {
+            success.style.display = 'block';
+            btn.textContent = 'Sent!';
+            document.getElementById('contact-form').reset();
+            setTimeout(() => {
+              success.style.display = 'none';
+              btn.textContent = 'Send Message';
+              btn.disabled = false;
+            }, 4000);
+          } else {
+            throw new Error('Failed');
+          }
+        } catch (err) {
+          btn.textContent = 'Send Message';
+          btn.disabled = false;
+          alert('Failed to send message. Please try emailing us directly at support@usepromptly.app');
+        }
+      });
+    </script>
     <script type="module" src="./footer.js"></script>
     <script src="/sw-register.js" defer></script>
     <script src="/pwa-install.js" defer></script>
   </body>
 </html>
-
-
-

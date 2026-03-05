@@ -441,7 +441,7 @@ window.handleSignOut = async function handleSignOut() {
   const { signOut } = await import('./user-store.js');
   await signOut();
   localStorage.removeItem('promptly_current_user');
-  window.location.href = '/auth.html';
+  window.location.href = '/';
 };
 
 async function ensureAuth() {
