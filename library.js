@@ -174,38 +174,11 @@ async function openAccountModal() {
 
   const planStatus = document.getElementById('account-plan-status');
   const billingBtn = document.getElementById('acct-manage-billing-btn');
-  let isUserPro = false;
-
-  const metaTier = user.user_metadata?.subscription_tier || user.user_metadata?.tier || '';
-  if (metaTier.toLowerCase() === 'pro') {
-    isUserPro = true;
-  }
-
+  // Detect Pro status from the profile dropdown — it was already determined during page init
   const existingBillingBtn = document.getElementById('manage-billing-btn');
   const existingBillingBadge = document.getElementById('billing-badge');
-  if (existingBillingBtn && existingBillingBtn.style.display !== 'none') {
-    isUserPro = true;
-  }
-  if (existingBillingBadge && existingBillingBadge.style.display !== 'none') {
-    isUserPro = true;
-  }
-
-  try {
-    const profileResp = await fetch('/api/profile/settings', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-    });
-    if (profileResp.ok) {
-      const profileData = await profileResp.json().catch(() => ({}));
-      const profileTier = profileData?.subscription_tier || profileData?.tier || profileData?.plan || '';
-      if (profileTier.toLowerCase() === 'pro' || profileData?.is_pro === true) {
-        isUserPro = true;
-      }
-    }
-  } catch (e) {
-    console.warn('[account] Could not fetch profile for tier check:', e);
-  }
+  const isUserPro = (existingBillingBtn && existingBillingBtn.style.display !== 'none') ||
+                    (existingBillingBadge && existingBillingBadge.style.display !== 'none');
 
   if (planStatus) {
     planStatus.textContent = isUserPro ? 'Pro' : 'Free';
@@ -303,7 +276,7 @@ function initAccountModal() {
           return;
         }
         const ext = file.name.split('.').pop() || 'jpg';
-        const filePath = `avatars/${user.id}.${ext}`;
+        const filePath = `${user.id}.${ext}`;
         const { error: uploadError } = await sb.storage.from('avatars').upload(filePath, file, { upsert: true });
         if (uploadError) throw uploadError;
         const { data: urlData } = sb.storage.from('avatars').getPublicUrl(filePath);
