@@ -407,94 +407,6 @@
         letter-spacing: 0.3px;
       }
 
-      .showcase-section {
-        margin-top: 48px;
-        padding-bottom: 64px;
-      }
-
-      .showcase-divider {
-        width: 100%;
-        height: 1px;
-        background: var(--panel2);
-        margin-bottom: 40px;
-      }
-
-      .showcase-heading {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-weight: 500;
-        font-size: 16px;
-        color: var(--text-secondary);
-        text-align: center;
-        margin-bottom: 24px;
-        letter-spacing: -0.2px;
-      }
-
-      .showcase-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-      }
-
-      .showcase-card {
-        background: var(--panel2);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 24px 16px;
-        text-align: center;
-        transition: border-color 0.2s ease, background 0.2s ease;
-        cursor: default;
-      }
-
-      .showcase-card:hover {
-        border-color: var(--border-color);
-        background: var(--panel2);
-      }
-
-      .showcase-card-preview {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 64px;
-        margin-bottom: 12px;
-      }
-
-      .showcase-card-label {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-weight: 500;
-        font-size: 14px;
-        color: var(--text-primary);
-        margin-bottom: 4px;
-      }
-
-      .showcase-card-desc {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-weight: 400;
-        font-size: 12px;
-        color: var(--text-secondary);
-        line-height: 1.4;
-      }
-
-      .feature-highlights {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 32px;
-      }
-
-      .feature-text {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        font-size: 12px;
-        color: var(--text-tertiary);
-        font-weight: 400;
-      }
-
-      .feature-dot {
-        color: var(--text-tertiary);
-        font-size: 12px;
-      }
-
       .state-card {
         background: var(--text-primary);
         border: 1px solid var(--border-color);
@@ -649,15 +561,6 @@
       }
 
       @media (max-width: 640px) {
-        .showcase-grid {
-          grid-template-columns: 1fr;
-          gap: 12px;
-        }
-
-        .feature-highlights {
-          gap: 4px;
-        }
-
         .editor-heading {
           font-size: 24px;
         }
@@ -709,7 +612,6 @@
       .upload-zone-title,
       .state-title,
       .file-name,
-      .showcase-card-label,
       .editor-heading {
         color: var(--text-primary);
       }
@@ -717,12 +619,8 @@
       .upload-zone-sub,
       .state-muted,
       .upload-progress-label,
-      .showcase-heading,
-      .showcase-card-desc,
-      .feature-text,
       .trust-badge,
       .editor-trust-line,
-      .feature-dot,
       .file-size {
         color: var(--text-secondary);
       }
@@ -739,20 +637,6 @@
       .remove-file:hover {
         background: var(--bg-surface-hover);
         color: var(--text-primary);
-      }
-
-      .showcase-divider {
-        background: var(--panel2);
-      }
-
-      .showcase-card {
-        background: var(--panel2);
-        border-color: var(--border-color);
-      }
-
-      .showcase-card:hover {
-        background: var(--panel2);
-        border-color: var(--border-color-strong);
       }
 
       .progress-track {
@@ -1646,55 +1530,6 @@
               <div id="trust-badge" class="trust-badge">Estimated time: 60-90 seconds</div>
               <p class="editor-trust-line">No watermarks · Full HD export · Cancel anytime</p>
 
-              <div class="showcase-section">
-                <div class="showcase-divider"></div>
-                <h2 class="showcase-heading">What Promptly can do</h2>
-                <div class="showcase-grid">
-                  <div class="showcase-card" data-vibe="Punchy TikTok with fast cuts, zoom effects, and bold captions">
-                    <div class="showcase-card-preview">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #2563eb;">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                      </svg>
-                    </div>
-                    <div class="showcase-card-label">Punchy TikTok</div>
-                    <div class="showcase-card-desc">Fast cuts, zoom effects, bold captions</div>
-                  </div>
-                  <div class="showcase-card" data-vibe="Smooth Reels with clean transitions and subtle color grade">
-                    <div class="showcase-card-preview">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #2563eb;">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                      </svg>
-                    </div>
-                    <div class="showcase-card-label">Smooth Reels</div>
-                    <div class="showcase-card-desc">Clean transitions, subtle color grade</div>
-                  </div>
-                  <div class="showcase-card" data-vibe="Cinematic edit with background music, fade to black, and slow zoom">
-                    <div class="showcase-card-preview">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: #2563eb;">
-                        <path d="M9 18V5l12-2v13"></path>
-                        <circle cx="6" cy="18" r="3"></circle>
-                        <circle cx="18" cy="16" r="3"></circle>
-                      </svg>
-                    </div>
-                    <div class="showcase-card-label">Cinematic</div>
-                    <div class="showcase-card-desc">Background music, fade to black, slow zoom</div>
-                  </div>
-                </div>
-                <!-- TODO: Wire .showcase-card[data-vibe] click to fill #vibe-textarea, same as pill behavior. -->
-
-                <div class="feature-highlights">
-                  <span class="feature-text">AI-powered cuts</span>
-                  <span class="feature-dot">·</span>
-                  <span class="feature-text">Auto captions</span>
-                  <span class="feature-dot">·</span>
-                  <span class="feature-text">Background music</span>
-                  <span class="feature-dot">·</span>
-                  <span class="feature-text">Color grading</span>
-                  <span class="feature-dot">·</span>
-                  <span class="feature-text">Speed ramping</span>
-                </div>
-              </div>
             </div>
           </section>
 
