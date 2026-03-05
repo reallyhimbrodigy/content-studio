@@ -78,10 +78,6 @@ function ensureFooter() {
       </div>
       <div class="site-footer__bottom">
         <p class="site-footer__copyright">${COPYRIGHT_TEXT}</p>
-        <ul class="site-footer__legal">
-          <li><a href="/privacy.html">Privacy Policy</a></li>
-          <li><a href="/terms.html">Terms of Service</a></li>
-        </ul>
       </div>
     </div>
   `;
