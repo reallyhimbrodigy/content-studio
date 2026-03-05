@@ -1,78 +1,358 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Help & Support - Promptly</title>
-  <meta property="og:title" content="Promptly · AI Content Studio" />
-  <meta property="og:description" content="Create a full month of strategic content in seconds." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://usepromptly.app/" />
-  <meta property="og:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
-  <meta property="og:image:width" content="512" />
-  <meta property="og:image:height" content="512" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:image" content="https://usepromptly.app/assets/promptly-mark-white.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Help • Promptly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="assets/promptly-mark-white.png" />
+    <link rel="stylesheet" href="styles.css" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-<link rel="stylesheet" href="/css/theme.css" />
-  <script src="assets/vendor/supabase.js"></script>
-  <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
-</head>
-<body>
-  <div class="content-page">
-    <header class="content-page__header">
-      <a href="/" class="content-page__logo">
-        <img src="assets/promptly-mark-white.png" alt="Promptly logo" />
-      </a>
-      <h1>Help & Support</h1>
-    </header>
-    
-    <section>
-      <h2>Getting Started</h2>
-      <p>Welcome to Promptly! Here's how to get started:</p>
-      <ol>
-        <li>Sign up for a free account</li>
-        <li>Enter your niche or target audience</li>
-        <li>Click "Generate Calendar" to create your content plan</li>
-        <li>Customize and publish your content</li>
-      </ol>
-    </section>
-    
-    <section>
-      <h2>Frequently Asked Questions</h2>
-      
-      <h3>How do I reset my password?</h3>
-      <p>On the sign-in page, click "Forgot password?" and enter your email. You'll receive a reset link.</p>
-      
-      <h3>What's included in the PRO plan?</h3>
-      <p>Promptly Pro includes unlimited AI video edits, priority processing, HD exports, and priority support.</p>
-      
-      <h3>Can I export my content?</h3>
-      <p>Yes! You can export as CSV, ICS calendar files, or download as a ZIP archive.</p>
-    </section>
-    
-    <section>
-      <h2>Contact Support</h2>
-      <p>Need more help? Reach out to us:</p>
-      <ul class="no-bullets">
-        <li>Email: support@usepromptly.app</li>
-      </ul>
-    </section>
-    
-    <div class="content-page__footer">
-      <a href="/">← Back to Home</a>
-      <a href="/auth.html" data-hide-when-authenticated>Sign In</a>
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="manifest" href="manifest.json" />
+    <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
+    <style>
+      .help-page {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 60px 24px 80px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      .help-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        margin-bottom: 32px;
+        transition: color 0.15s;
+      }
+
+      .help-back:hover {
+        color: var(--text-primary);
+      }
+
+      .help-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0 0 8px;
+        letter-spacing: -0.02em;
+      }
+
+      .help-subtitle {
+        font-size: 1.05rem;
+        color: var(--text-secondary);
+        margin: 0 0 48px;
+        line-height: 1.6;
+      }
+
+      /* Sections */
+      .help-section {
+        margin-bottom: 48px;
+      }
+
+      .help-section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 20px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      /* Getting started steps */
+      .help-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .help-step {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+      }
+
+      .help-step-num {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--accent, #4f46e5);
+        color: #fff;
+        font-size: 0.875rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .help-step-text {
+        padding-top: 4px;
+      }
+
+      .help-step-text strong {
+        display: block;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+
+      .help-step-text p {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      /* FAQ */
+      .help-faq {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .help-faq-item {
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .help-faq-q {
+        width: 100%;
+        background: none;
+        border: none;
+        padding: 18px 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        font-family: inherit;
+        text-align: left;
+      }
+
+      .help-faq-q span {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .help-faq-q svg {
+        color: var(--text-tertiary);
+        flex-shrink: 0;
+        transition: transform 0.2s;
+      }
+
+      .help-faq-item.open .help-faq-q svg {
+        transform: rotate(180deg);
+      }
+
+      .help-faq-a {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, padding 0.3s ease;
+      }
+
+      .help-faq-item.open .help-faq-a {
+        max-height: 200px;
+        padding-bottom: 18px;
+      }
+
+      .help-faq-a p {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: 1.6;
+      }
+
+      /* Contact CTA */
+      .help-contact {
+        text-align: center;
+        padding: 40px 24px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--bg-surface);
+      }
+
+      .help-contact p {
+        font-size: 1rem;
+        color: var(--text-secondary);
+        margin: 0 0 16px;
+      }
+
+      .help-contact a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 24px;
+        border-radius: 8px;
+        background: var(--accent, #4f46e5);
+        color: #fff;
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 600;
+        transition: background 0.15s;
+      }
+
+      .help-contact a:hover {
+        background: var(--accent-hover, #4338ca);
+      }
+
+      @media (max-width: 480px) {
+        .help-title {
+          font-size: 1.75rem;
+        }
+
+        .help-page {
+          padding: 32px 16px 60px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="help-page">
+        <a href="/" class="help-back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </a>
+
+        <h1 class="help-title">Help Center</h1>
+        <p class="help-subtitle">Everything you need to know about using Promptly.</p>
+
+        <!-- Getting Started -->
+        <section class="help-section">
+          <h2 class="help-section-title">Getting Started</h2>
+          <div class="help-steps">
+            <div class="help-step">
+              <div class="help-step-num">1</div>
+              <div class="help-step-text">
+                <strong>Upload your video</strong>
+                <p>Drag and drop or click to browse. Supports MP4, MOV, and AVI files up to 500MB.</p>
+              </div>
+            </div>
+            <div class="help-step">
+              <div class="help-step-num">2</div>
+              <div class="help-step-text">
+                <strong>Describe your vibe</strong>
+                <p>Tell Promptly what you want — "punchy TikTok," "smooth reels," or write your own brief. You can also pick a preset.</p>
+              </div>
+            </div>
+            <div class="help-step">
+              <div class="help-step-num">3</div>
+              <div class="help-step-text">
+                <strong>Generate and download</strong>
+                <p>Click "Generate Edited Video" and wait 60–90 seconds. Your edited video will be ready to download and post.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- FAQ -->
+        <section class="help-section">
+          <h2 class="help-section-title">Frequently Asked Questions</h2>
+          <div class="help-faq" id="help-faq">
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>What video formats are supported?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Promptly accepts MP4, MOV, and AVI files up to 500MB. For best results, upload in 1080p or higher resolution. Most phone and camera recordings work perfectly.</p>
+              </div>
+            </div>
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>How long does editing take?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Most videos are processed in 60–90 seconds. Longer videos or complex edits may take up to 2 minutes. You can close the tab and come back — your edit will be waiting in your library.</p>
+              </div>
+            </div>
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>Can I add my own music?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Promptly doesn't add background music to your edits. This is intentional — add your own music directly in TikTok, Instagram, or YouTube when you post. This gives you access to trending sounds and avoids copyright issues.</p>
+              </div>
+            </div>
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>Why does my video have a watermark?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Videos on the free plan include a small Promptly watermark. Upgrade to Pro to remove the watermark and export clean, professional videos.</p>
+              </div>
+            </div>
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>How do I manage my subscription?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Click your profile in the top-right corner, then "Manage billing." From there you can upgrade, downgrade, or cancel your subscription. Changes take effect at the end of your current billing period.</p>
+              </div>
+            </div>
+
+            <div class="help-faq-item">
+              <button class="help-faq-q" aria-expanded="false">
+                <span>Is my video data private?</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="help-faq-a">
+                <p>Yes. Your uploaded videos are stored securely and are only accessible to you. We don't share, sell, or use your content for training. Videos are automatically deleted after 30 days.</p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Contact -->
+        <section class="help-section">
+          <div class="help-contact">
+            <p>Still need help? We typically respond within 1–2 business days.</p>
+            <a href="/contact.html">Contact Support</a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer"></footer>
     </div>
-  </div>
-  <script type="module">
-    import { initTheme } from './theme.js';
-    initTheme();
-  </script>
-  <script type="module" src="./auth-visibility.js"></script>
-  <script type="module" src="./footer.js"></script>
-</body>
+
+    <script>
+      // FAQ accordion
+      document.querySelectorAll('.help-faq-q').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const item = btn.closest('.help-faq-item');
+          const isOpen = item.classList.contains('open');
+          // Close all
+          document.querySelectorAll('.help-faq-item').forEach(i => i.classList.remove('open'));
+          document.querySelectorAll('.help-faq-q').forEach(b => b.setAttribute('aria-expanded', 'false'));
+          // Toggle clicked
+          if (!isOpen) {
+            item.classList.add('open');
+            btn.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+    </script>
+    <script type="module" src="./footer.js"></script>
+    <script src="/sw-register.js" defer></script>
+    <script src="/pwa-install.js" defer></script>
+  </body>
 </html>
-
-
