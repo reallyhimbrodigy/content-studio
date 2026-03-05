@@ -56,8 +56,8 @@ body.has-sidebar .app-main {
   width: 24px;
   height: 24px;
   border-radius: 8px;
-  background: #3b82f6;
   flex-shrink: 0;
+  object-fit: contain;
 }
 
 .sidebar-logo-text {
@@ -248,5 +248,11 @@ body.has-sidebar .app-main {
 
   .sidebar-mobile-bar {
     display: flex;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .sidebar-logo-mark {
+    filter: invert(1);
   }
 }

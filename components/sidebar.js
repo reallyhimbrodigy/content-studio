@@ -51,7 +51,7 @@ function buildSidebarHtml() {
       <aside class="sidebar" aria-label="Sidebar navigation">
         <div class="sidebar-logo-wrap">
           <a class="sidebar-logo" href="/editor" aria-label="Promptly">
-            <span class="sidebar-logo-mark" aria-hidden="true"></span>
+            <img src="/assets/promptly-mark-white.png" alt="" class="sidebar-logo-mark" aria-hidden="true" />
             <span class="sidebar-logo-text">Promptly</span>
           </a>
         </div>
@@ -86,7 +86,7 @@ function buildSidebarHtml() {
         <aside class="sidebar-overlay-panel" aria-label="Mobile sidebar navigation">
           <div class="sidebar-overlay-head">
             <a class="sidebar-logo is-open" href="/editor" aria-label="Promptly">
-              <span class="sidebar-logo-mark" aria-hidden="true"></span>
+              <img src="/assets/promptly-mark-white.png" alt="" class="sidebar-logo-mark" aria-hidden="true" />
               <span class="sidebar-logo-text">Promptly</span>
             </a>
             <button class="sidebar-icon-btn" type="button" aria-label="Close menu" data-sidebar-close>
