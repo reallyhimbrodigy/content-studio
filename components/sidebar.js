@@ -70,15 +70,6 @@ function buildSidebarHtml() {
             <span class="sidebar-link-label">Library</span>
           </a>
         </nav>
-
-        <div class="sidebar-bottom">
-          <a class="sidebar-link sidebar-logout" href="/auth.html" data-logout>
-            <span class="sidebar-link-icon" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-            </span>
-            <span class="sidebar-link-label">Logout</span>
-          </a>
-        </div>
       </aside>
 
       <div class="sidebar-overlay" aria-hidden="true">
@@ -107,14 +98,6 @@ function buildSidebarHtml() {
               <span class="sidebar-link-label">Library</span>
             </a>
           </nav>
-          <div class="sidebar-bottom">
-            <a class="sidebar-link sidebar-logout" href="/auth.html" data-logout data-mobile-link>
-              <span class="sidebar-link-icon" aria-hidden="true">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-              </span>
-              <span class="sidebar-link-label">Logout</span>
-            </a>
-          </div>
         </aside>
       </div>
     </div>
