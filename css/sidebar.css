@@ -5,6 +5,15 @@ body.has-sidebar {
   --sidebar-active: #dedede;
 }
 
+@media (prefers-color-scheme: dark) {
+  body.has-sidebar {
+    --sidebar-bg: #111113;
+    --sidebar-text: #d4d4d4;
+    --sidebar-hover: rgba(255, 255, 255, 0.06);
+    --sidebar-active: rgba(255, 255, 255, 0.1);
+  }
+}
+
 body.has-sidebar .app-main {
   margin-left: 60px;
   transition: margin-left 0.3s ease;
@@ -133,6 +142,12 @@ body.has-sidebar .app-main {
   background: #737373;
 }
 
+@media (prefers-color-scheme: dark) {
+  .sidebar-link.is-active::before {
+    background: #a3a3a3;
+  }
+}
+
 .sidebar-link-icon {
   width: 20px;
   height: 20px;
@@ -148,7 +163,7 @@ body.has-sidebar .app-main {
 }
 
 .sidebar-logout {
-  border-top: 1px solid #dfdfdf;
+  border-top: 1px solid var(--sidebar-hover);
   margin-top: 8px;
   padding-top: 14px;
 }
