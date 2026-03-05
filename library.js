@@ -120,7 +120,11 @@ async function openAccountModal() {
   const modal = document.getElementById('account-modal');
   if (!modal) return;
 
-  const sb = window.supabaseClient || window.supabase || supabase;
+  const sb = window.supabaseClient || window.supabase;
+  if (!sb || !sb.auth) {
+    console.error('[account] Supabase client not available');
+    return;
+  }
   let user = null;
   try {
     const { data } = await sb.auth.getUser();
@@ -134,17 +138,33 @@ async function openAccountModal() {
 
   const avatarUrl = user.user_metadata?.avatar_url || '';
   const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || '';
-  const avatarTrigger = document.getElementById('acct-avatar-trigger');
-  const fallback = document.getElementById('acct-avatar-fallback');
-  if (avatarUrl && fallback) {
-    const img = document.createElement('img');
-    img.src = avatarUrl;
-    img.alt = 'Avatar';
-    img.className = 'acct-avatar-img';
-    img.id = 'acct-avatar-img';
-    fallback.replaceWith(img);
-  } else if (fallback) {
-    fallback.textContent = getAccountInitials(userName || user.email);
+  const avatarWrapper = document.getElementById('acct-avatar-trigger');
+  if (avatarWrapper) {
+    const existingImg = avatarWrapper.querySelector('.acct-avatar-img');
+    const existingFallback = avatarWrapper.querySelector('.acct-avatar-fallback');
+
+    if (avatarUrl) {
+      if (existingImg) {
+        existingImg.src = avatarUrl;
+      } else if (existingFallback) {
+        const img = document.createElement('img');
+        img.src = avatarUrl;
+        img.alt = 'Avatar';
+        img.className = 'acct-avatar-img';
+        img.id = 'acct-avatar-img';
+        existingFallback.replaceWith(img);
+      }
+    } else {
+      if (existingImg) {
+        const fallback = document.createElement('span');
+        fallback.className = 'acct-avatar-fallback';
+        fallback.id = 'acct-avatar-fallback';
+        fallback.textContent = getAccountInitials(userName || user.email);
+        existingImg.replaceWith(fallback);
+      } else if (existingFallback) {
+        existingFallback.textContent = getAccountInitials(userName || user.email);
+      }
+    }
   }
 
   const nameInput = document.getElementById('acct-name-input');
@@ -154,15 +174,46 @@ async function openAccountModal() {
 
   const planStatus = document.getElementById('account-plan-status');
   const billingBtn = document.getElementById('acct-manage-billing-btn');
-  const tier = user.user_metadata?.subscription_tier || user.user_metadata?.tier || (await isPro(user.email || '') ? 'pro' : 'free');
-  if (planStatus) {
-    const isUserPro = String(tier).toLowerCase() === 'pro';
-    planStatus.textContent = isUserPro ? 'Pro' : 'Free';
-    planStatus.className = `acct-plan-badge${isUserPro ? ' acct-plan-pro' : ''}`;
-    if (billingBtn) billingBtn.style.display = isUserPro ? 'inline-flex' : 'none';
-    if (manageBillingBtn) manageBillingBtn.style.display = isUserPro ? 'flex' : 'none';
-    if (billingBadge) billingBadge.style.display = isUserPro ? 'inline-flex' : 'none';
+  let isUserPro = false;
+
+  const metaTier = user.user_metadata?.subscription_tier || user.user_metadata?.tier || '';
+  if (metaTier.toLowerCase() === 'pro') {
+    isUserPro = true;
   }
+
+  const existingBillingBtn = document.getElementById('manage-billing-btn');
+  const existingBillingBadge = document.getElementById('billing-badge');
+  if (existingBillingBtn && existingBillingBtn.style.display !== 'none') {
+    isUserPro = true;
+  }
+  if (existingBillingBadge && existingBillingBadge.style.display !== 'none') {
+    isUserPro = true;
+  }
+
+  try {
+    const profileResp = await fetch('/api/profile/settings', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (profileResp.ok) {
+      const profileData = await profileResp.json().catch(() => ({}));
+      const profileTier = profileData?.subscription_tier || profileData?.tier || profileData?.plan || '';
+      if (profileTier.toLowerCase() === 'pro' || profileData?.is_pro === true) {
+        isUserPro = true;
+      }
+    }
+  } catch (e) {
+    console.warn('[account] Could not fetch profile for tier check:', e);
+  }
+
+  if (planStatus) {
+    planStatus.textContent = isUserPro ? 'Pro' : 'Free';
+    planStatus.className = 'acct-plan-badge' + (isUserPro ? ' acct-plan-pro' : '');
+  }
+  if (billingBtn) billingBtn.style.display = isUserPro ? 'inline-flex' : 'none';
+  if (manageBillingBtn) manageBillingBtn.style.display = isUserPro ? 'flex' : 'none';
+  if (billingBadge) billingBadge.style.display = isUserPro ? 'inline-flex' : 'none';
 
   modal.style.display = 'flex';
   modal.hidden = false;
@@ -178,14 +229,6 @@ function closeAccountModal() {
     modal.style.display = 'none';
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
-    const img = document.getElementById('acct-avatar-img');
-    if (img) {
-      const fallback = document.createElement('span');
-      fallback.className = 'acct-avatar-fallback';
-      fallback.id = 'acct-avatar-fallback';
-      fallback.textContent = '?';
-      img.replaceWith(fallback);
-    }
   }, 200);
 }
 
@@ -249,7 +292,11 @@ function initAccountModal() {
       }
       try {
         avatarTrigger.classList.add('acct-avatar-uploading');
-        const sb = window.supabaseClient || window.supabase || supabase;
+        const sb = window.supabaseClient || window.supabase;
+        if (!sb || !sb.auth) {
+          alert('Not signed in');
+          return;
+        }
         const user = (await sb.auth.getUser())?.data?.user;
         if (!user) {
           alert('Not signed in');
@@ -293,7 +340,13 @@ function initAccountModal() {
       saveNameBtn.textContent = 'Saving...';
       saveNameBtn.disabled = true;
       try {
-        const sb = window.supabaseClient || window.supabase || supabase;
+        const sb = window.supabaseClient || window.supabase;
+        if (!sb || !sb.auth) {
+          alert('Failed to update name.');
+          saveNameBtn.textContent = 'Save Changes';
+          saveNameBtn.disabled = false;
+          return;
+        }
         const { error } = await sb.auth.updateUser({ data: { full_name: newName } });
         if (error) throw error;
         saveNameBtn.textContent = 'Saved!';
@@ -324,7 +377,13 @@ function initAccountModal() {
       saveEmailBtn.textContent = 'Saving...';
       saveEmailBtn.disabled = true;
       try {
-        const sb = window.supabaseClient || window.supabase || supabase;
+        const sb = window.supabaseClient || window.supabase;
+        if (!sb || !sb.auth) {
+          alert('Failed to update email.');
+          saveEmailBtn.textContent = 'Save Changes';
+          saveEmailBtn.disabled = false;
+          return;
+        }
         const { error } = await sb.auth.updateUser({ email: newEmail });
         if (error) throw error;
         saveEmailBtn.textContent = 'Check inbox';
