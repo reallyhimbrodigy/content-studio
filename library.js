@@ -1,4 +1,4 @@
-import { getCurrentUser, getUserEdits, deleteUserEdit, isPro, supabase } from './user-store.js';
+import { getCurrentUser, getUserEdits, deleteUserEdit, supabase } from './user-store.js';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -172,14 +172,25 @@ async function openAccountModal() {
   if (nameInput) nameInput.value = userName;
   if (emailInput) emailInput.value = user.email || '';
 
+  // Fetch tier from profiles table (source of truth)
+  let isUserPro = false;
+  try {
+    if (sb && user) {
+      const { data: profileRow } = await sb
+        .from('profiles')
+        .select('tier')
+        .eq('id', user.id)
+        .single();
+      if (profileRow) {
+        isUserPro = String(profileRow.tier || '').toLowerCase() === 'pro';
+      }
+    }
+  } catch (e) {
+    console.warn('[account] Could not fetch tier:', e);
+  }
+
   const planStatus = document.getElementById('account-plan-status');
   const billingBtn = document.getElementById('acct-manage-billing-btn');
-  // Detect Pro status from the profile dropdown — it was already determined during page init
-  const existingBillingBtn = document.getElementById('manage-billing-btn');
-  const existingBillingBadge = document.getElementById('billing-badge');
-  const isUserPro = (existingBillingBtn && existingBillingBtn.style.display !== 'none') ||
-                    (existingBillingBadge && existingBillingBadge.style.display !== 'none');
-
   if (planStatus) {
     planStatus.textContent = isUserPro ? 'Pro' : 'Free';
     planStatus.className = 'acct-plan-badge' + (isUserPro ? ' acct-plan-pro' : '');
@@ -518,17 +529,35 @@ async function hydrateUser() {
     profileDisplayEmail.textContent = currentUserEmail || '';
   }
 
+  let userIsPro = false;
   try {
-    const userIsPro = currentUserEmail ? await isPro(currentUserEmail) : false;
-    if (billingBadge) billingBadge.style.display = userIsPro ? 'inline-flex' : 'none';
-    if (manageBillingBtn) {
-      manageBillingBtn.style.display = userIsPro ? 'flex' : 'none';
-      if (userIsPro && !manageBillingBtn.dataset.bound) {
-        manageBillingBtn.dataset.bound = '1';
-        manageBillingBtn.addEventListener('click', handleManageBilling);
+    const sb = window.supabaseClient || window.supabase;
+    if (sb?.auth?.getUser && sb?.from) {
+      const { data } = await sb.auth.getUser();
+      const user = data?.user || null;
+      if (user?.id) {
+        const { data: profileRow, error: profileError } = await sb
+          .from('profiles')
+          .select('tier')
+          .eq('id', user.id)
+          .single();
+        if (!profileError && profileRow) {
+          userIsPro = String(profileRow.tier || 'free').toLowerCase() === 'pro';
+        }
       }
     }
-  } catch (_) {}
+  } catch (e) {
+    console.warn('[profile] Could not fetch tier:', e);
+  }
+
+  if (billingBadge) billingBadge.style.display = userIsPro ? 'inline-flex' : 'none';
+  if (manageBillingBtn) {
+    manageBillingBtn.style.display = userIsPro ? 'flex' : 'none';
+    if (userIsPro && !manageBillingBtn.dataset.bound) {
+      manageBillingBtn.dataset.bound = '1';
+      manageBillingBtn.addEventListener('click', handleManageBilling);
+    }
+  }
 }
 
 async function initLibraryPage() {

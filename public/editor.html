@@ -928,7 +928,31 @@
           if (!sb) { console.error('[editor] Supabase client not available'); return; }
           if (sb?.auth?.getUser) {
             const { data } = await sb.auth.getUser();
-            applyProfileIdentity(data?.user || null);
+            const user = data?.user || null;
+            applyProfileIdentity(user);
+
+            // Fetch tier from profiles table (source of truth)
+            let userTier = 'free';
+            if (user?.id && sb?.from) {
+              try {
+                const { data: profileRow, error: profileError } = await sb
+                  .from('profiles')
+                  .select('tier')
+                  .eq('id', user.id)
+                  .single();
+                if (!profileError && profileRow) {
+                  userTier = String(profileRow.tier || 'free').toLowerCase();
+                }
+              } catch (e) {
+                console.warn('[profile] Could not fetch tier:', e);
+              }
+            }
+
+            const isUserPro = userTier === 'pro';
+            const topManageBillingBtn = document.getElementById('manage-billing-btn');
+            const topBillingBadge = document.getElementById('billing-badge');
+            if (topManageBillingBtn) topManageBillingBtn.style.display = isUserPro ? 'flex' : 'none';
+            if (topBillingBadge) topBillingBadge.style.display = isUserPro ? 'inline-flex' : 'none';
           }
         } catch (_) {}
       })();
@@ -1065,14 +1089,25 @@
         if (nameInput) nameInput.value = userName;
         if (emailInput) emailInput.value = user.email || '';
 
+        // Fetch tier from profiles table (source of truth)
+        let isUserPro = false;
+        try {
+          if (sb && user) {
+            const { data: profileRow } = await sb
+              .from('profiles')
+              .select('tier')
+              .eq('id', user.id)
+              .single();
+            if (profileRow) {
+              isUserPro = String(profileRow.tier || '').toLowerCase() === 'pro';
+            }
+          }
+        } catch (e) {
+          console.warn('[account] Could not fetch tier:', e);
+        }
+
         const planStatus = document.getElementById('account-plan-status');
         const billingBtn = document.getElementById('acct-manage-billing-btn');
-        // Detect Pro status from the profile dropdown — it was already determined during page init
-        const existingBillingBtn = document.getElementById('manage-billing-btn');
-        const existingBillingBadge = document.getElementById('billing-badge');
-        const isUserPro = (existingBillingBtn && existingBillingBtn.style.display !== 'none') ||
-                          (existingBillingBadge && existingBillingBadge.style.display !== 'none');
-
         if (planStatus) {
           planStatus.textContent = isUserPro ? 'Pro' : 'Free';
           planStatus.className = 'acct-plan-badge' + (isUserPro ? ' acct-plan-pro' : '');

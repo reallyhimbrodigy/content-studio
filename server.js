@@ -1318,7 +1318,7 @@ async function readJsonBody(req) {
         return;
       }
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch (error) {
@@ -1346,7 +1346,7 @@ async function readRawBody(req) {
       }
       chunks.push(chunk);
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       resolve(Buffer.concat(chunks, length));
     });
     req.on('error', (err) => reject(err));
@@ -12965,7 +12965,7 @@ const server = http.createServer((req, res) => {
     const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
     let raw = '';
     req.on('data', (chunk) => (raw += chunk));
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         if (!STRIPE_WEBHOOK_SECRET) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
@@ -12991,13 +12991,13 @@ const server = http.createServer((req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Invalid event' }));
         }
-        // Capture mapping on checkout completion or subscription creation
+        // Capture mapping on checkout completion or subscription lifecycle updates
         let email = '';
         let customer = '';
         if (type === 'checkout.session.completed') {
           email = obj.customer_details && obj.customer_details.email || '';
           customer = obj.customer || '';
-        } else if (type === 'customer.subscription.created' || type === 'customer.subscription.updated') {
+        } else if (type === 'customer.subscription.created' || type === 'customer.subscription.updated' || type === 'customer.subscription.deleted') {
           customer = obj.customer || '';
           email = obj.customer_email || '';
         }
@@ -13005,6 +13005,56 @@ const server = http.createServer((req, res) => {
           const map = loadCustomersMap();
           map[String(email).toLowerCase()] = customer;
           saveCustomersMap(map);
+        }
+
+        // Update profiles.tier in Supabase (source of truth)
+        const normalizedEmail = String(email || '').toLowerCase().trim();
+        if (normalizedEmail) {
+          try {
+            let newTier = null;
+
+            if (type === 'checkout.session.completed') {
+              newTier = 'pro';
+            } else if (type === 'customer.subscription.updated') {
+              const subStatus = String(obj.status || '').toLowerCase();
+              if (subStatus === 'active' || subStatus === 'trialing') {
+                newTier = 'pro';
+              } else if (subStatus === 'canceled' || subStatus === 'unpaid' || subStatus === 'past_due') {
+                newTier = 'free';
+              }
+            } else if (type === 'customer.subscription.deleted') {
+              newTier = 'free';
+            }
+
+            if (newTier) {
+              const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+              const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+
+              if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+                const updateResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?email=eq.${encodeURIComponent(normalizedEmail)}`, {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_SERVICE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+                    'Prefer': 'return=minimal',
+                  },
+                  body: JSON.stringify({ tier: newTier, updated_at: new Date().toISOString() }),
+                });
+                if (updateResp.ok) {
+                  console.log(`[stripe] Updated profiles.tier to '${newTier}' for ${normalizedEmail}`);
+                } else {
+                  const errText = await updateResp.text().catch(() => '');
+                  console.error(`[stripe] Failed to update tier for ${normalizedEmail}: ${updateResp.status} ${errText}`);
+                }
+              } else {
+                console.warn('[stripe] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — cannot update tier');
+              }
+            }
+          } catch (tierErr) {
+            console.error('[stripe] Error updating tier:', tierErr);
+            // Keep webhook response successful even if tier sync fails.
+          }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ received: true }));
