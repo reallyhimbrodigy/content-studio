@@ -1513,6 +1513,16 @@ html {
   height: 48px;
 }
 
+.hero-v3__btn span,
+.nav-v3__btn span {
+  text-decoration: none;
+}
+
+.hero-v3__btn:hover,
+.nav-v3__btn:hover {
+  text-decoration: none;
+}
+
 .hero-v3__btn--primary {
   background: #ffffff;
   color: #0a0a0a;
