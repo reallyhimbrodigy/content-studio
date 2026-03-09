@@ -47,6 +47,7 @@ const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/feat
 const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
+const { settlePendingRunpodJob } = require('./lib/video-processor/runpod-webhook');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createDesignRender = async () => ({ id: null, status: 'disabled' });
 const resolveDesignTemplateId = () => null;
@@ -9933,6 +9934,25 @@ const server = http.createServer((req, res) => {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][Upload] error:', error);
         return sendJson(res, status, { error: error?.message || 'Internal server error during upload' });
+      }
+    })();
+    return;
+  }
+
+  if (parsed.pathname === '/api/runpod-webhook' && req.method === 'POST') {
+    (async () => {
+      try {
+        const body = await readJsonBody(req);
+        const id = body?.id;
+        const status = body?.status;
+        const output = body?.output;
+        const error = body?.error || body?.message || null;
+        console.log(`[runpod] Webhook received: ${id || 'unknown'} status=${status || 'UNKNOWN'}`);
+        settlePendingRunpodJob({ id, status, output, error });
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[runpod] Webhook handler failed:', err.message);
+        return sendJson(res, 200, { ok: false });
       }
     })();
     return;
