@@ -46,6 +46,7 @@ try {
 const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/featureUsage');
 const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
+const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createDesignRender = async () => ({ id: null, status: 'disabled' });
 const resolveDesignTemplateId = () => null;
@@ -9911,10 +9912,19 @@ const server = http.createServer((req, res) => {
         const { data: urlData } = supabaseAdmin.storage
           .from('videos')
           .getPublicUrl(storagePath);
+        const publicUrl = urlData?.publicUrl;
+        if (publicUrl) {
+          console.log('[upload] Calling triggerPreAnalysis for:', publicUrl);
+          try {
+            triggerPreAnalysis(publicUrl);
+          } catch (err) {
+            console.error('[upload] triggerPreAnalysis threw synchronously:', err.message, err.stack);
+          }
+        }
 
         return sendJson(res, 200, {
           success: true,
-          videoUrl: urlData?.publicUrl,
+          videoUrl: publicUrl,
           fileName: sanitizedFilename,
           fileSize: file.size,
           storagePath,
