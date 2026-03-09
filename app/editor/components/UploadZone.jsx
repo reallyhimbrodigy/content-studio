@@ -2,16 +2,57 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 
+const LANDSCAPE_ERROR =
+  'Promptly supports vertical and square videos for TikTok, Reels, and Shorts. Please upload a vertical video or re-record in portrait mode.';
+
+const getVideoDimensions = (file) =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    let cleaned = false;
+
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      URL.revokeObjectURL(url);
+      video.removeAttribute('src');
+      try {
+        video.load();
+      } catch (_) {}
+    };
+
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const width = Number(video.videoWidth) || null;
+      const height = Number(video.videoHeight) || null;
+      cleanup();
+      resolve({ width, height });
+    };
+    video.onerror = () => {
+      cleanup();
+      resolve({ width: null, height: null });
+    };
+    video.src = url;
+  });
+
 export default function UploadZone({ onUploadComplete, userId }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
 
   const onDrop = useCallback(
-    (acceptedFiles) => {
+    async (acceptedFiles) => {
       if (acceptedFiles.length === 0) return;
 
       const file = acceptedFiles[0];
+      const { width, height } = await getVideoDimensions(file);
+      if (width && height && width > height) {
+        setError(LANDSCAPE_ERROR);
+        setIsUploading(false);
+        setUploadProgress(0);
+        return;
+      }
+
       setError(null);
       setIsUploading(true);
       setUploadProgress(0);
