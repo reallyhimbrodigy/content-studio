@@ -1,5 +1,5 @@
 const { supabaseAdmin } = require('./services/supabase-admin');
-const { processVideoJob } = require('./lib/video-processor/process-job');
+const { dispatchJobToRunPod } = require('./lib/video-processor/dispatch-to-runpod');
 
 const POLL_INTERVAL_MS = Number(process.env.VIDEO_WORKER_POLL_MS || 1000);
 let workerRunning = false;
@@ -114,39 +114,35 @@ async function cleanupStaleJobs() {
 }
 
 async function processOneJob(job) {
-  console.log(`[VideoWorker] Processing job ${job.id}`);
+  console.log(`[worker] Dispatching job ${job.id} to RunPod`);
   try {
-    const onProgress = async (progress, step) => {
-      const updateData = {
-        status: 'processing',
-        current_step: String(step || 'Processing'),
-        updated_at: new Date().toISOString(),
-      };
-      if (progress != null) {
-        updateData.progress = Number(progress);
-      }
-
-      await supabaseAdmin
-        .from('video_jobs')
-        .update(updateData)
-        .eq('id', job.id)
-        .eq('status', 'processing');
-    };
-
-    const result = await processVideoJob({
-      videoUrl: job.video_url,
-      vibeInput: job.vibe_input,
+    const { result, publicUrl } = await dispatchJobToRunPod({
       jobId: job.id,
+      videoUrl: job.video_url,
+      vibe: job.vibe_input,
       userId: job.user_id,
-      onProgress,
     });
 
-    console.log(`[VideoWorker] Uploading complete, saving result for job ${job.id}...`);
-    console.log(`[VideoWorker] Result keys: ${Object.keys(result || {}).join(', ')}`);
-    console.log(`[VideoWorker] result_url: ${result.rendered_video_url ? 'present' : 'missing'}`);
-    console.log(`[VideoWorker] edit_recipe: ${result.edit_recipe ? `${JSON.stringify(result.edit_recipe).length} chars` : 'missing'}`);
+    if (result?.error) {
+      throw new Error(result.error);
+    }
 
-    const completed = await markJobCompleted(job.id, result, 3);
+    const finalResult = {
+      rendered_video_url: publicUrl,
+      edit_recipe: result?.edit_recipe || null,
+      metadata: {
+        total_time: result?.total_time,
+        render_time: result?.render_time,
+        output_size_mb: result?.output_size_mb,
+      },
+    };
+
+    console.log(`[VideoWorker] Uploading complete, saving result for job ${job.id}...`);
+    console.log(`[VideoWorker] Result keys: ${Object.keys(finalResult || {}).join(', ')}`);
+    console.log(`[VideoWorker] result_url: ${finalResult.rendered_video_url ? 'present' : 'missing'}`);
+    console.log(`[VideoWorker] edit_recipe: ${finalResult.edit_recipe ? `${JSON.stringify(finalResult.edit_recipe).length} chars` : 'missing'}`);
+
+    const completed = await markJobCompleted(job.id, finalResult, 3);
     if (!completed) {
       throw new Error(`Failed to mark job ${job.id} as completed`);
     }
