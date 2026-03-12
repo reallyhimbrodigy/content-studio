@@ -10047,20 +10047,31 @@ const server = http.createServer((req, res) => {
         // Dispatch to RunPod asynchronously — do not await
         const { dispatchJobToRunPod } = require('./lib/video-processor/dispatch-to-runpod');
         dispatchJobToRunPod({ jobId: job.id, videoUrl, vibe: vibeInput, userId: authUser.id })
-          .then(({ publicUrl }) => {
-            if (publicUrl) {
-              supabaseAdmin
-                .from('video_jobs')
-                .update({ status: 'completed', rendered_video_url: publicUrl, progress: 100, updated_at: new Date().toISOString() })
-                .eq('id', job.id)
-                .then(() => {});
-            }
+          .then(({ result, publicUrl }) => {
+            const videoUrl = result?.rendered_video_url || publicUrl || null;
+            console.log(`[generate] Job ${job.id} complete, video URL: ${videoUrl}`);
+            return supabaseAdmin
+              .from('video_jobs')
+              .update({
+                status: 'completed',
+                rendered_video_url: videoUrl,
+                progress: 100,
+                current_step: 'complete',
+                step_message: 'Your video is ready!',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', job.id);
           })
           .catch((err) => {
             console.error(`[generate] RunPod dispatch failed for job ${job.id}:`, err.message);
             supabaseAdmin
               .from('video_jobs')
-              .update({ status: 'failed', error: err.message, updated_at: new Date().toISOString() })
+              .update({
+                status: 'failed',
+                error: err.message,
+                step_message: 'Something went wrong. Please try again.',
+                updated_at: new Date().toISOString(),
+              })
               .eq('id', job.id)
               .then(() => {});
           });

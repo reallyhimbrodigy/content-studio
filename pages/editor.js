@@ -139,13 +139,10 @@ export default function EditorPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-semibold text-gray-900">
-                    {jobStatus.message || 'Working...'}
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    {progress}%
+                    {message || 'Getting started...'}
                   </p>
                 </div>
-                <div className="text-3xl animate-spin">⚙️</div>
+                <div className="text-2xl animate-spin">⚙️</div>
               </div>
 
               <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
