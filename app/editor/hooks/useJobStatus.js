@@ -6,26 +6,22 @@ export function useJobStatus(jobId) {
   const [jobStatus, setJobStatus] = useState({
     status: 'idle',
     progress: 0,
+    step: '',
+    message: '',
     videoUrl: null,
     error: null,
   });
 
   useEffect(() => {
     if (!jobId) {
-      setJobStatus({
-        status: 'idle',
-        progress: 0,
-        videoUrl: null,
-        error: null,
-      });
+      setJobStatus({ status: 'idle', progress: 0, step: '', message: '', videoUrl: null, error: null });
       return;
     }
 
-    // Fetch initial job data
     const fetchJob = async () => {
       const { data, error } = await supabaseClient
-        .from('edit_jobs')
-        .select('status, progress, rendered_video_url, error')
+        .from('video_jobs')
+        .select('status, progress, current_step, step_message, rendered_video_url, error_message')
         .eq('id', jobId)
         .single();
 
@@ -38,16 +34,17 @@ export function useJobStatus(jobId) {
       if (data) {
         setJobStatus({
           status: data.status,
-          progress: data.progress,
+          progress: data.progress || 0,
+          step: data.current_step || '',
+          message: data.step_message || '',
           videoUrl: data.rendered_video_url,
-          error: data.error,
+          error: data.error_message,
         });
       }
     };
 
     fetchJob();
 
-    // Subscribe to realtime updates
     const channel = supabaseClient
       .channel(`job-${jobId}`)
       .on(
@@ -55,22 +52,23 @@ export function useJobStatus(jobId) {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'edit_jobs',
+          table: 'video_jobs',
           filter: `id=eq.${jobId}`,
         },
         (payload) => {
           const data = payload.new;
           setJobStatus({
             status: data.status,
-            progress: data.progress,
+            progress: data.progress || 0,
+            step: data.current_step || '',
+            message: data.step_message || '',
             videoUrl: data.rendered_video_url,
-            error: data.error,
+            error: data.error_message,
           });
         }
       )
       .subscribe();
 
-    // Cleanup subscription on unmount
     return () => {
       supabaseClient.removeChannel(channel);
     };

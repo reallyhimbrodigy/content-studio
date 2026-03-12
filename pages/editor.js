@@ -10,7 +10,8 @@ export default function EditorPage() {
   const [videoFileName, setVideoFileName] = useState(null);
   const [jobId, setJobId] = useState(null);
 
-  const { status, progress, videoUrl: outputVideoUrl, error: jobError } = useJobStatus(jobId);
+  const jobStatus = useJobStatus(jobId);
+  const { status, progress, message, videoUrl: outputVideoUrl, error: jobError } = jobStatus;
 
   const handleUploadComplete = (url, fileName) => {
     setVideoUrl(url);
@@ -132,41 +133,26 @@ export default function EditorPage() {
               <h2 className="text-3xl font-bold text-gray-900 mb-2">
                 Creating your video...
               </h2>
-              <p className="text-gray-600">
-                Our AI is working its magic
-              </p>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-lg font-semibold text-gray-900 capitalize">
-                    {status}
+                  <p className="text-lg font-semibold text-gray-900">
+                    {jobStatus.message || 'Working...'}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    Estimated time remaining: {getEstimatedTime(status)}
+                  <p className="text-sm text-gray-400 mt-1">
+                    {progress}%
                   </p>
                 </div>
-                <div className="text-3xl animate-spin">
-                  ⚙️
-                </div>
+                <div className="text-3xl animate-spin">⚙️</div>
               </div>
 
-              <div className="space-y-2">
-                <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                  <div
-                    className="bg-blue-600 h-full transition-all duration-500 ease-out"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="text-sm text-gray-600 text-center">{progress}%</p>
-              </div>
-
-              <div className="text-xs text-gray-500 space-y-1">
-                <p>📹 Analyzing video content</p>
-                <p>✂️ Applying AI edits</p>
-                <p>🎵 Syncing audio and effects</p>
-                <p>🎬 Rendering final output</p>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-black h-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
           </div>

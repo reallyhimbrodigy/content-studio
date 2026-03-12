@@ -9939,6 +9939,34 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (parsed.pathname === '/api/runpod-progress' && req.method === 'POST') {
+    (async () => {
+      try {
+        const body = await readJsonBody(req);
+        const { job_id, step, pct, message } = body || {};
+        if (!job_id) return sendJson(res, 400, { error: 'job_id required' });
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+
+        await supabaseAdmin
+          .from('video_jobs')
+          .update({
+            status: pct >= 100 ? 'completed' : 'processing',
+            progress: Number(pct || 0),
+            current_step: step || '',
+            step_message: message || '',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job_id);
+
+        return sendJson(res, 200, { ok: true });
+      } catch (err) {
+        console.error('[runpod-progress] error:', err.message);
+        return sendJson(res, 200, { ok: false });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/runpod-webhook' && req.method === 'POST') {
     (async () => {
       try {
@@ -9992,6 +10020,59 @@ const server = http.createServer((req, res) => {
       throw Object.assign(new Error(error.message || 'Failed to count completed edits'), { statusCode: 500 });
     }
     return Number(count || 0);
+  }
+
+  if (parsed.pathname === '/api/generate' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const videoUrl = String(body?.videoUrl || body?.video_url || '').trim();
+        const vibeInput = String(body?.vibeInput || body?.vibe_input || '').trim();
+
+        const entitlement = await assertProEntitled(authUser.id);
+        if (!entitlement.isPro) {
+          const completedCount = await countCompletedVideoEdits(authUser.id);
+          if (completedCount >= 5) {
+            return sendJson(res, 403, {
+              error: 'free_limit_reached',
+              message: 'You have used all 5 free edits. Upgrade to Promptly Pro for unlimited edits without watermarks.',
+            });
+          }
+        }
+
+        const job = await createQueuedVideoJob({ userId: authUser.id, videoUrl, vibeInput });
+
+        // Dispatch to RunPod asynchronously — do not await
+        const { dispatchJobToRunPod } = require('./lib/video-processor/dispatch-to-runpod');
+        dispatchJobToRunPod({ jobId: job.id, videoUrl, vibe: vibeInput, userId: authUser.id })
+          .then(({ publicUrl }) => {
+            if (publicUrl) {
+              supabaseAdmin
+                .from('video_jobs')
+                .update({ status: 'completed', rendered_video_url: publicUrl, progress: 100, updated_at: new Date().toISOString() })
+                .eq('id', job.id)
+                .then(() => {});
+            }
+          })
+          .catch((err) => {
+            console.error(`[generate] RunPod dispatch failed for job ${job.id}:`, err.message);
+            supabaseAdmin
+              .from('video_jobs')
+              .update({ status: 'failed', error: err.message, updated_at: new Date().toISOString() })
+              .eq('id', job.id)
+              .then(() => {});
+          });
+
+        return sendJson(res, 200, { success: true, jobId: job.id, status: 'queued' });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[generate] error:', error);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
   }
 
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
@@ -10139,26 +10220,6 @@ const server = http.createServer((req, res) => {
       } catch (error) {
         const status = error?.statusCode || 500;
         console.error('[VideoEditor][VideoJobsList] error:', error);
-        return sendJson(res, status, { error: error?.message || 'Internal server error' });
-      }
-    })();
-    return;
-  }
-
-  if (parsed.pathname === '/api/generate' && req.method === 'POST') {
-    (async () => {
-      try {
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { error: 'supabase_not_configured' });
-        }
-
-        const body = await readJsonBody(req);
-        const { videoUrl, vibeInput, userId } = body || {};
-        const job = await createQueuedVideoJob({ userId, videoUrl, vibeInput });
-        return sendJson(res, 200, { jobId: job.id });
-      } catch (error) {
-        const status = error?.statusCode || 500;
-        console.error('[VideoEditor][Generate] error:', error);
         return sendJson(res, status, { error: error?.message || 'Internal server error' });
       }
     })();
