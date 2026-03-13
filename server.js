@@ -10036,14 +10036,32 @@ const server = http.createServer((req, res) => {
           .update(updateData)
           .eq('id', job_id);
 
-        pushProgressToSSE(job_id, {
-          status,
-          progress: Number(pct || 0),
-          step: step || '',
-          message: message || '',
-          videoUrl: completionVideoUrl,
-          error: null,
-        });
+        if (step === 'complete') {
+          // Worker never sends videoUrl — fetch it from DB
+          const { data: jobRow } = await supabaseAdmin
+            .from('video_jobs')
+            .select('rendered_video_url')
+            .eq('id', job_id)
+            .maybeSingle();
+          const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
+          pushProgressToSSE(job_id, {
+            status: 'completed',
+            progress: 100,
+            step: 'complete',
+            message: message || 'Your video is ready!',
+            videoUrl: finalVideoUrl,
+            error: null,
+          });
+        } else {
+          pushProgressToSSE(job_id, {
+            status,
+            progress: Number(pct || 0),
+            step: step || '',
+            message: message || '',
+            videoUrl: completionVideoUrl,
+            error: null,
+          });
+        }
 
         return sendJson(res, 200, { ok: true });
       } catch (err) {
