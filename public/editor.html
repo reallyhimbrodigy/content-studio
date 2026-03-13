@@ -1675,10 +1675,7 @@
           if (showProcessing) {
             progressFill.style.width = `${state.progress || 0}%`;
             progressText.textContent = `${state.progress || 0}%`;
-            // statusText is updated by animateStepMessage — do not overwrite it here
-            if (!statusText.textContent) {
-              animateStepMessage('Getting started...');
-            }
+            // statusText is updated by SSE handler — do not overwrite it here
           }
 
           if (showComplete) {
@@ -1861,6 +1858,8 @@
             sseConnection.close();
             sseConnection = null;
           }
+          currentAnimatedMessage = '';
+          if (statusText) statusText.textContent = 'Getting started...';
           if (pollInterval) {
             clearTimeout(pollInterval);
             pollInterval = null;

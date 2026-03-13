@@ -10020,16 +10020,20 @@ const server = http.createServer((req, res) => {
         if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
 
         const status = Number(pct) >= 100 ? 'completed' : 'processing';
+        const completionVideoUrl = body?.videoUrl || body?.video_url || body?.rendered_video_url || null;
+
+        const updateData = {
+          status,
+          progress: Number(pct || 0),
+          current_step: step || '',
+          step_message: message || '',
+          updated_at: new Date().toISOString(),
+        };
+        if (completionVideoUrl) updateData.rendered_video_url = completionVideoUrl;
 
         await supabaseAdmin
           .from('video_jobs')
-          .update({
-            status,
-            progress: Number(pct || 0),
-            current_step: step || '',
-            step_message: message || '',
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', job_id);
 
         pushProgressToSSE(job_id, {
@@ -10037,7 +10041,7 @@ const server = http.createServer((req, res) => {
           progress: Number(pct || 0),
           step: step || '',
           message: message || '',
-          videoUrl: null,
+          videoUrl: completionVideoUrl,
           error: null,
         });
 
