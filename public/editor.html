@@ -658,6 +658,32 @@
       .video-preview {
         border-color: var(--border-color-strong);
       }
+
+      #status-text {
+        min-height: 1.5em;
+        transition: none;
+      }
+
+      #status-text::after {
+        content: '';
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background: currentColor;
+        margin-left: 2px;
+        vertical-align: middle;
+        opacity: 0;
+      }
+
+      #status-text.typing::after {
+        opacity: 1;
+        animation: blink-cursor 0.7s step-end infinite;
+      }
+
+      @keyframes blink-cursor {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
     </style>
   </head>
   <body class="page-editor auth-pending">
@@ -1470,6 +1496,9 @@
           submitting: false,
         };
         let pollInterval = null;
+        let sseConnection = null;
+        let typingInterval = null;
+        let currentAnimatedMessage = '';
 
         root.innerHTML = `
           <section id="upload-section" class="editor-card">
@@ -1644,18 +1673,12 @@
           composerError.textContent = state.error || '';
 
           if (showProcessing) {
-              const label = state.currentStep || (state.status === 'queued'
-              ? 'Queued...'
-              : state.status === 'analyzing'
-                ? 'Analyzing clip...'
-                : state.status === 'editing'
-                  ? 'Generating edit recipe...'
-                  : state.status === 'rendering'
-                    ? 'Rendering video...'
-                    : 'Processing...');
-              statusText.textContent = label;
             progressFill.style.width = `${state.progress || 0}%`;
             progressText.textContent = `${state.progress || 0}%`;
+            // statusText is updated by animateStepMessage — do not overwrite it here
+            if (!statusText.textContent) {
+              animateStepMessage('Getting started...');
+            }
           }
 
           if (showComplete) {
@@ -1674,6 +1697,20 @@
           if (pollInterval) {
             clearTimeout(pollInterval);
             pollInterval = null;
+          }
+          if (sseConnection) {
+            sseConnection.close();
+            sseConnection = null;
+          }
+          if (typingInterval) {
+            clearInterval(typingInterval);
+            typingInterval = null;
+          }
+          currentAnimatedMessage = '';
+          if (statusText) {
+            statusText.textContent = '';
+            statusText.classList.remove('typing');
+            statusText.classList.remove('waiting');
           }
           state.videoUrl = null;
           state.videoFileName = '';
@@ -1819,101 +1856,103 @@
           xhr.send(formData);
         };
 
-        const startPolling = (jobId) => {
-          console.log('🔄 Starting polling for job:', jobId);
-          
-          if (pollInterval) {
-            console.log('  Clearing existing poll interval');
-            clearTimeout(pollInterval);
+        function startSSE(jobId) {
+          if (sseConnection) {
+            sseConnection.close();
+            sseConnection = null;
           }
-          
-          let pollCount = 0;
-          let consecutiveErrors = 0;
-          const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes max
-          const pollStartTime = Date.now();
-          
-          const doPoll = async () => {
-            pollCount++;
-            const elapsed = Date.now() - pollStartTime;
-            
-            // Safety: stop polling after 10 minutes
-            if (elapsed > MAX_POLL_DURATION_MS) {
-              console.error('⏰ Polling timeout after 10 minutes');
-              clearTimeout(pollInterval);
-              pollInterval = null;
-              state.status = 'error';
-              state.error = 'Job timed out. Please check your library or try again.';
-              render();
-              return;
-            }
-            
-            try {
-              const auth = await getAuthContext();
-              // Cache-bust to avoid any intermediate caching
-              const url = `/api/video-jobs/${jobId}?_t=${Date.now()}`;
-              
-              const response = await fetch(url, {
-                headers: {
-                  Authorization: `Bearer ${auth.token}`,
-                  'Cache-Control': 'no-cache',
-                },
-              });
-              
-              if (!response.ok) {
-                consecutiveErrors++;
-                console.error(`❌ Poll ${pollCount} failed (${consecutiveErrors} consecutive): status ${response.status}`);
-                // After 5 consecutive failures, show error
-                if (consecutiveErrors >= 5) {
-                  clearTimeout(pollInterval);
-                  pollInterval = null;
-                  state.status = 'error';
-                  state.error = 'Lost connection to server. Please refresh the page.';
-                  render();
-                  return;
-                }
-                const nextInterval = elapsed > 30000 ? 5000 : 2000;
-                pollInterval = setTimeout(doPoll, nextInterval);
-                return;
-              }
-              
-              consecutiveErrors = 0; // Reset on success
-              
-              const data = await response.json();
-              console.log(`📡 Poll ${pollCount}: status=${data.status}, progress=${data.progress}%, step=${data.current_step}`);
-              
-              state.status = data.status || 'queued';
-              state.progress = data.progress || 0;
-              state.currentStep = data.current_step || '';
-              state.renderedVideoUrl = data.result_url || data.rendered_video_url || null;
-              state.error = data.error_message || data.error || null;
-              render();
-              
-              if (['complete', 'completed', 'error', 'failed'].includes(data.status)) {
-                console.log(`✅ Job finished with status: ${data.status}`);
-                clearTimeout(pollInterval);
-                pollInterval = null;
-                return;
-              }
-            } catch (err) {
-              consecutiveErrors++;
-              console.error(`❌ Poll ${pollCount} error (${consecutiveErrors} consecutive):`, err.message);
-              if (consecutiveErrors >= 5) {
-                clearTimeout(pollInterval);
-                pollInterval = null;
-                state.status = 'error';
-                state.error = 'Lost connection to server. Please refresh the page.';
-                render();
-                return;
-              }
-            }
+          if (pollInterval) {
+            clearTimeout(pollInterval);
+            pollInterval = null;
+          }
 
-            const nextInterval = elapsed > 30000 ? 5000 : 2000;
-            pollInterval = setTimeout(doPoll, nextInterval);
-          };
-          
-          // Do first poll immediately instead of waiting 2s
-          doPoll();
-        };
+          const sb = getSupabaseClient();
+          let token = '';
+          const sessionPromise = sb?.auth?.getSession ? sb.auth.getSession() : Promise.resolve(null);
+
+          sessionPromise.then((result) => {
+            token = result?.data?.session?.access_token || '';
+            const url = `/api/video-jobs/${jobId}/stream`;
+            const es = new EventSource(url);
+            sseConnection = es;
+
+            es.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (data.status) state.status = data.status;
+                if (typeof data.progress === 'number') state.progress = data.progress;
+                if (data.step) state.currentStep = data.step;
+                if (data.message) {
+                  animateStepMessage(data.message);
+                }
+                if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
+                if (data.error) state.error = data.error;
+
+                if (data.status === 'completed' || data.status === 'complete') {
+                  state.status = 'completed';
+                  if (!state.renderedVideoUrl) {
+                    // Fallback: fetch video URL directly
+                    fetchWithAuth(`/api/video-jobs/${jobId}`)
+                      .then((r) => r.json())
+                      .then((d) => {
+                        if (d.rendered_video_url) {
+                          state.renderedVideoUrl = d.rendered_video_url;
+                          render();
+                        }
+                      })
+                      .catch(() => {});
+                  }
+                  es.close();
+                  sseConnection = null;
+                }
+
+                if (data.status === 'failed' || data.status === 'error') {
+                  state.status = 'failed';
+                  state.error = data.error || 'Something went wrong. Please try again.';
+                  es.close();
+                  sseConnection = null;
+                }
+
+                render();
+              } catch (e) {
+                console.error('[SSE] parse error', e);
+              }
+            };
+
+            es.onerror = () => {
+              // EventSource auto-reconnects — no action needed
+            };
+          });
+        }
+
+        function animateStepMessage(message) {
+          if (message === currentAnimatedMessage) return;
+          currentAnimatedMessage = message;
+
+          if (typingInterval) {
+            clearInterval(typingInterval);
+            typingInterval = null;
+          }
+
+          if (!statusText) return;
+
+          let i = 0;
+          statusText.textContent = '';
+          statusText.classList.remove('waiting');
+          statusText.classList.add('typing');
+
+          typingInterval = setInterval(() => {
+            i++;
+            statusText.textContent = message.slice(0, i);
+            if (i >= message.length) {
+              clearInterval(typingInterval);
+              typingInterval = null;
+              statusText.classList.remove('typing');
+              statusText.classList.add('waiting');
+              setTimeout(() => statusText.classList.remove('waiting'), 100);
+            }
+          }, 22);
+        }
 
         const handleGenerate = async () => {
           console.log('🎬 GENERATE BUTTON CLICKED');
@@ -1977,7 +2016,7 @@
             state.progress = 0;
             state.currentStep = 'Queued';
             state.error = null;
-            startPolling(state.jobId);
+            startSSE(state.jobId);
             
           } catch (err) {
             console.error('❌ ERROR in handleGenerate:');
