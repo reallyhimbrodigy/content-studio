@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useJobStatus } from '@/app/editor/hooks/useJobStatus';
 import UploadZone from '@/app/editor/components/UploadZone';
 import VibeInput from '@/app/editor/components/VibeInput';
@@ -12,6 +12,37 @@ export default function EditorPage() {
 
   const jobStatus = useJobStatus(jobId);
   const { status, progress, message, videoUrl: outputVideoUrl, error: jobError } = jobStatus;
+
+  // Typing animation state
+  const [displayedMessage, setDisplayedMessage] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typingRef = useRef(null);
+  const messageRef = useRef('');
+
+  useEffect(() => {
+    const incoming = message || 'Getting started...';
+    if (incoming === messageRef.current) return;
+    messageRef.current = incoming;
+
+    // Clear any running animation
+    if (typingRef.current) clearInterval(typingRef.current);
+    setIsTyping(true);
+    setDisplayedMessage('');
+
+    let i = 0;
+    typingRef.current = setInterval(() => {
+      i++;
+      setDisplayedMessage(incoming.slice(0, i));
+      if (i >= incoming.length) {
+        clearInterval(typingRef.current);
+        setIsTyping(false);
+      }
+    }, 28);
+
+    return () => {
+      if (typingRef.current) clearInterval(typingRef.current);
+    };
+  }, [message]);
 
   const handleUploadComplete = (url, fileName) => {
     setVideoUrl(url);
@@ -129,28 +160,41 @@ export default function EditorPage() {
         {/* State 3: Job processing */}
         {jobId && status && status !== 'completed' && status !== 'failed' && status !== 'idle' && (
           <div className="space-y-6">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                Creating your video...
-              </h2>
-            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-8">
 
-            <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {message || 'Getting started...'}
+              {/* Animated message — Claude/ChatGPT style */}
+              <div className="flex items-start space-x-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-black rounded-full flex items-center justify-center mt-0.5">
+                  <span className="text-white text-xs font-bold">P</span>
+                </div>
+                <div className="flex-1 min-h-[2rem]">
+                  <p className="text-base text-gray-900 leading-relaxed">
+                    {displayedMessage}
+                    {isTyping && (
+                      <span className="inline-block w-0.5 h-4 bg-gray-900 ml-0.5 align-middle animate-pulse" />
+                    )}
+                    {!isTyping && displayedMessage && (
+                      <span className="inline-flex space-x-1 ml-2 align-middle">
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    )}
                   </p>
                 </div>
-                <div className="text-2xl animate-spin">⚙️</div>
               </div>
 
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-black h-full transition-all duration-500 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
+              {/* Progress bar */}
+              <div className="space-y-2">
+                <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
+                  <div
+                    className="bg-black h-full rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 text-right">{progress}%</p>
               </div>
+
             </div>
           </div>
         )}
