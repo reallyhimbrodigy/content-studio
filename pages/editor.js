@@ -13,6 +13,24 @@ export default function EditorPage() {
   const jobStatus = useJobStatus(jobId);
   const { status, progress, message, videoUrl: outputVideoUrl, error: jobError } = jobStatus;
 
+  // Fallback: if status is completed but videoUrl is missing, fetch it directly
+  const [fallbackVideoUrl, setFallbackVideoUrl] = useState(null);
+  useEffect(() => {
+    if (status === 'completed' && !outputVideoUrl && jobId) {
+      fetch(`/api/video-jobs/${jobId}`, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.rendered_video_url) setFallbackVideoUrl(data.rendered_video_url);
+        })
+        .catch(() => {});
+    }
+  }, [status, outputVideoUrl, jobId]);
+
+  const finalVideoUrl = outputVideoUrl || fallbackVideoUrl;
+
   const [displayedMessage, setDisplayedMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingRef = useRef(null);
@@ -213,7 +231,7 @@ export default function EditorPage() {
         )}
 
         {/* State 4: Job completed */}
-        {status === 'completed' && outputVideoUrl && (
+        {status === 'completed' && finalVideoUrl && (
           <div className="space-y-6">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">
@@ -226,7 +244,7 @@ export default function EditorPage() {
 
             <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               <video
-                src={outputVideoUrl}
+                src={finalVideoUrl}
                 controls
                 className="w-full rounded-lg"
               >
@@ -235,7 +253,7 @@ export default function EditorPage() {
 
               <div className="flex space-x-4">
                 <a
-                  href={outputVideoUrl}
+                  href={finalVideoUrl}
                   download
                   className="flex-1 px-6 py-3 bg-black text-white font-semibold rounded-lg hover:bg-gray-800 transition-colors text-center"
                 >

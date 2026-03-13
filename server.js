@@ -9955,9 +9955,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const sseMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/stream$/i);
-  if (sseMatch && req.method === 'GET') {
-    const jobId = decodeURIComponent(sseMatch[1] || '').trim();
+  const sseStreamMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/stream$/i);
+  if (sseStreamMatch && req.method === 'GET') {
+    const jobId = decodeURIComponent(sseStreamMatch[1] || '').trim();
     if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
 
     res.writeHead(200, {
@@ -9966,7 +9966,6 @@ const server = http.createServer((req, res) => {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
-
     res.write(': connected\n\n');
 
     if (!sseClients.has(jobId)) sseClients.set(jobId, new Set());
@@ -9981,14 +9980,16 @@ const server = http.createServer((req, res) => {
         .maybeSingle()
         .then(({ data }) => {
           if (data) {
-            res.write(`data: ${JSON.stringify({
-              status: data.status,
-              progress: data.progress || 0,
-              step: data.current_step || '',
-              message: data.step_message || '',
-              videoUrl: data.rendered_video_url || null,
-              error: data.error_message || null,
-            })}\n\n`);
+            try {
+              res.write(`data: ${JSON.stringify({
+                status: data.status,
+                progress: data.progress || 0,
+                step: data.current_step || '',
+                message: data.step_message || '',
+                videoUrl: data.rendered_video_url || null,
+                error: data.error_message || null,
+              })}\n\n`);
+            } catch (e) {}
           }
         })
         .catch(() => {});
