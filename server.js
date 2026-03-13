@@ -47,6 +47,7 @@ const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/feat
 const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
+const { dispatchJobToModal } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingRunpodJob } = require('./lib/video-processor/runpod-webhook');
 
 // SSE client registry — maps jobId -> Set of response objects
@@ -10164,6 +10165,14 @@ const server = http.createServer((req, res) => {
           vibeInput,
         });
         console.log('  ✅ Job created:', job.id);
+
+        await dispatchJobToModal({
+          jobId: job.id,
+          videoUrl,
+          vibe: vibeInput,
+          userId: authUser.id,
+        });
+        console.log('  ✅ Modal dispatch started for job:', job.id);
 
         return sendJson(res, 200, {
           success: true,
