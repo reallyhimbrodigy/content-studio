@@ -13,18 +13,16 @@ export default function EditorPage() {
   const jobStatus = useJobStatus(jobId);
   const { status, progress, message, videoUrl: outputVideoUrl, error: jobError } = jobStatus;
 
-  // Typing animation state
   const [displayedMessage, setDisplayedMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingRef = useRef(null);
-  const messageRef = useRef('');
+  const prevMessageRef = useRef('');
 
   useEffect(() => {
-    const incoming = message || 'Getting started...';
-    if (incoming === messageRef.current) return;
-    messageRef.current = incoming;
+    const incoming = message || '';
+    if (!incoming || incoming === prevMessageRef.current) return;
+    prevMessageRef.current = incoming;
 
-    // Clear any running animation
     if (typingRef.current) clearInterval(typingRef.current);
     setIsTyping(true);
     setDisplayedMessage('');
@@ -35,9 +33,10 @@ export default function EditorPage() {
       setDisplayedMessage(incoming.slice(0, i));
       if (i >= incoming.length) {
         clearInterval(typingRef.current);
+        typingRef.current = null;
         setIsTyping(false);
       }
-    }, 28);
+    }, 22);
 
     return () => {
       if (typingRef.current) clearInterval(typingRef.current);
@@ -162,22 +161,25 @@ export default function EditorPage() {
           <div className="space-y-6">
             <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-8">
 
-              {/* Animated message — Claude/ChatGPT style */}
+              {/* Avatar + typing message */}
               <div className="flex items-start space-x-3">
                 <div className="flex-shrink-0 w-8 h-8 bg-black rounded-full flex items-center justify-center mt-0.5">
                   <span className="text-white text-xs font-bold">P</span>
                 </div>
-                <div className="flex-1 min-h-[2rem]">
-                  <p className="text-base text-gray-900 leading-relaxed">
+                <div className="flex-1 pt-1 min-h-[1.5rem]">
+                  <p className="text-base text-gray-900 leading-relaxed font-medium">
                     {displayedMessage}
                     {isTyping && (
-                      <span className="inline-block w-0.5 h-4 bg-gray-900 ml-0.5 align-middle animate-pulse" />
+                      <span
+                        className="inline-block w-0.5 h-4 bg-gray-900 ml-0.5 align-middle"
+                        style={{ animation: 'blink 0.7s step-end infinite' }}
+                      />
                     )}
                     {!isTyping && displayedMessage && (
-                      <span className="inline-flex space-x-1 ml-2 align-middle">
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="inline-flex items-center space-x-1 ml-2 align-middle">
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" style={{ animation: 'bounce 1.2s ease-in-out infinite', animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" style={{ animation: 'bounce 1.2s ease-in-out infinite', animationDelay: '200ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" style={{ animation: 'bounce 1.2s ease-in-out infinite', animationDelay: '400ms' }} />
                       </span>
                     )}
                   </p>
@@ -185,17 +187,28 @@ export default function EditorPage() {
               </div>
 
               {/* Progress bar */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="w-full bg-gray-100 rounded-full h-1 overflow-hidden">
                   <div
-                    className="bg-black h-full rounded-full transition-all duration-700 ease-out"
-                    style={{ width: `${progress}%` }}
+                    className="bg-black h-full rounded-full"
+                    style={{ width: `${progress}%`, transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }}
                   />
                 </div>
-                <p className="text-xs text-gray-400 text-right">{progress}%</p>
+                <p className="text-xs text-gray-400 text-right tabular-nums">{progress}%</p>
               </div>
 
             </div>
+
+            <style>{`
+              @keyframes blink {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0; }
+              }
+              @keyframes bounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-4px); }
+              }
+            `}</style>
           </div>
         )}
 

@@ -48,6 +48,22 @@ const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const { settlePendingRunpodJob } = require('./lib/video-processor/runpod-webhook');
+
+// SSE client registry — maps jobId -> Set of response objects
+const sseClients = new Map();
+
+function pushProgressToSSE(jobId, data) {
+  const clients = sseClients.get(jobId);
+  if (!clients || clients.size === 0) return;
+  const payload = `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of clients) {
+    try {
+      res.write(payload);
+    } catch (e) {
+      clients.delete(res);
+    }
+  }
+}
 // Design Lab has been removed; provide stubs so legacy code paths do not break.
 const createDesignRender = async () => ({ id: null, status: 'disabled' });
 const resolveDesignTemplateId = () => null;
@@ -9939,6 +9955,61 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const sseMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)\/stream$/i);
+  if (sseMatch && req.method === 'GET') {
+    const jobId = decodeURIComponent(sseMatch[1] || '').trim();
+    if (!jobId) return sendJson(res, 400, { error: 'jobId required' });
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    res.write(': connected\n\n');
+
+    if (!sseClients.has(jobId)) sseClients.set(jobId, new Set());
+    sseClients.get(jobId).add(res);
+
+    // Send current state immediately so browser doesn't wait
+    if (supabaseAdmin) {
+      supabaseAdmin
+        .from('video_jobs')
+        .select('status, progress, current_step, step_message, rendered_video_url, error_message')
+        .eq('id', jobId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            res.write(`data: ${JSON.stringify({
+              status: data.status,
+              progress: data.progress || 0,
+              step: data.current_step || '',
+              message: data.step_message || '',
+              videoUrl: data.rendered_video_url || null,
+              error: data.error_message || null,
+            })}\n\n`);
+          }
+        })
+        .catch(() => {});
+    }
+
+    const pingInterval = setInterval(() => {
+      try { res.write(': ping\n\n'); } catch (e) { clearInterval(pingInterval); }
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(pingInterval);
+      const clients = sseClients.get(jobId);
+      if (clients) {
+        clients.delete(res);
+        if (clients.size === 0) sseClients.delete(jobId);
+      }
+    });
+
+    return;
+  }
+
   if (parsed.pathname === '/api/runpod-progress' && req.method === 'POST') {
     (async () => {
       try {
@@ -9947,16 +10018,27 @@ const server = http.createServer((req, res) => {
         if (!job_id) return sendJson(res, 400, { error: 'job_id required' });
         if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
 
+        const status = Number(pct) >= 100 ? 'completed' : 'processing';
+
         await supabaseAdmin
           .from('video_jobs')
           .update({
-            status: pct >= 100 ? 'completed' : 'processing',
+            status,
             progress: Number(pct || 0),
             current_step: step || '',
             step_message: message || '',
             updated_at: new Date().toISOString(),
           })
           .eq('id', job_id);
+
+        pushProgressToSSE(job_id, {
+          status,
+          progress: Number(pct || 0),
+          step: step || '',
+          message: message || '',
+          videoUrl: null,
+          error: null,
+        });
 
         return sendJson(res, 200, { ok: true });
       } catch (err) {
@@ -10060,7 +10142,17 @@ const server = http.createServer((req, res) => {
                 step_message: 'Your video is ready!',
                 updated_at: new Date().toISOString(),
               })
-              .eq('id', job.id);
+              .eq('id', job.id)
+              .then(() => {
+                pushProgressToSSE(job.id, {
+                  status: 'completed',
+                  progress: 100,
+                  step: 'complete',
+                  message: 'Your video is ready!',
+                  videoUrl,
+                  error: null,
+                });
+              });
           })
           .catch((err) => {
             console.error(`[generate] RunPod dispatch failed for job ${job.id}:`, err.message);

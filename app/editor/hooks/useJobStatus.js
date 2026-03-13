@@ -1,6 +1,4 @@
-
-import { useEffect, useState } from 'react';
-import { supabaseClient } from '@/lib/supabase-client';
+import { useEffect, useState, useRef } from 'react';
 
 export function useJobStatus(jobId) {
   const [jobStatus, setJobStatus] = useState({
@@ -12,65 +10,51 @@ export function useJobStatus(jobId) {
     error: null,
   });
 
+  const esRef = useRef(null);
+
   useEffect(() => {
     if (!jobId) {
       setJobStatus({ status: 'idle', progress: 0, step: '', message: '', videoUrl: null, error: null });
       return;
     }
 
-    const fetchJob = async () => {
-      const { data, error } = await supabaseClient
-        .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, error_message')
-        .eq('id', jobId)
-        .single();
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
+    }
 
-      if (error) {
-        console.error('Error fetching job:', error);
-        setJobStatus((prev) => ({ ...prev, error: 'Failed to fetch job status' }));
-        return;
-      }
+    const es = new EventSource(`/api/video-jobs/${jobId}/stream`);
+    esRef.current = es;
 
-      if (data) {
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
         setJobStatus({
-          status: data.status,
+          status: data.status || 'processing',
           progress: data.progress || 0,
-          step: data.current_step || '',
-          message: data.step_message || '',
-          videoUrl: data.rendered_video_url,
-          error: data.error_message,
+          step: data.step || '',
+          message: data.message || '',
+          videoUrl: data.videoUrl || null,
+          error: data.error || null,
         });
+        if (data.status === 'completed' || data.status === 'failed') {
+          es.close();
+          esRef.current = null;
+        }
+      } catch (e) {
+        console.error('[useJobStatus] SSE parse error:', e);
       }
     };
 
-    fetchJob();
-
-    const channel = supabaseClient
-      .channel(`job-${jobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'video_jobs',
-          filter: `id=eq.${jobId}`,
-        },
-        (payload) => {
-          const data = payload.new;
-          setJobStatus({
-            status: data.status,
-            progress: data.progress || 0,
-            step: data.current_step || '',
-            message: data.step_message || '',
-            videoUrl: data.rendered_video_url,
-            error: data.error_message,
-          });
-        }
-      )
-      .subscribe();
+    es.onerror = () => {
+      // EventSource auto-reconnects — no action needed
+    };
 
     return () => {
-      supabaseClient.removeChannel(channel);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
     };
   }, [jobId]);
 
