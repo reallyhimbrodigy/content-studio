@@ -1564,9 +1564,12 @@
 
           <section id="processing-section" class="state-card" style="display:none;">
             <h2 class="state-title">Creating your video...</h2>
-            <p id="status-text" class="state-muted">Queued...</p>
+            <p id="status-text" class="state-muted">Getting started...</p>
             <div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%;"></div></div>
             <p id="progress-text" class="state-muted" style="margin-top:10px;">0%</p>
+            <p id="queue-hint" class="state-muted" style="margin-top:6px; font-size:12px; opacity:0.5; display:none;">
+              Waiting for an available GPU...
+            </p>
           </section>
 
           <section id="complete-section" class="state-card" style="display:none;">
@@ -1883,9 +1886,16 @@
                 if (data.step) state.currentStep = data.step;
                 if (data.message) {
                   animateStepMessage(data.message);
+                } else if (data.status === 'queued' || (data.status === 'processing' && data.progress === 0)) {
+                  animateStepMessage('Getting your worker ready...');
                 }
                 if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
                 if (data.error) state.error = data.error;
+
+                const queueHint = document.getElementById('queue-hint');
+                if (queueHint) {
+                  queueHint.style.display = (data.status === 'queued' || (data.progress || 0) === 0) ? 'block' : 'none';
+                }
 
                 if (data.status === 'completed' || data.status === 'complete') {
                   state.status = 'completed';
