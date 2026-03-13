@@ -1875,7 +1875,7 @@
             const es = new EventSource(url);
             sseConnection = es;
 
-            es.onmessage = (event) => {
+            es.onmessage = async (event) => {
               try {
                 const data = JSON.parse(event.data);
                 if (data.status) state.status = data.status;
@@ -1891,7 +1891,12 @@
                   state.status = 'completed';
                   if (!state.renderedVideoUrl) {
                     // Fallback: fetch video URL directly
-                    fetchWithAuth(`/api/video-jobs/${jobId}`)
+                    const sb = getSupabaseClient();
+                    const sessionResult = sb?.auth?.getSession ? await sb.auth.getSession() : null;
+                    const tok = sessionResult?.data?.session?.access_token || '';
+                    fetch(`/api/video-jobs/${jobId}`, {
+                      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+                    })
                       .then((r) => r.json())
                       .then((d) => {
                         if (d.rendered_video_url) {
