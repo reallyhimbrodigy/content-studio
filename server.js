@@ -10157,7 +10157,7 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, rendered_video_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -10181,8 +10181,11 @@ const server = http.createServer((req, res) => {
           id: data.id,
           status: data.status,
           progress: Number(data.progress || 0),
-          current_step: data.current_step || data.status,
+          current_step: data.current_step || '',
+          step_message: data.step_message || '',
+          rendered_video_url: data.rendered_video_url || data.result_url || null,
           result_url: data.result_url || null,
+          error: data.error_message || null,
           error_message: data.error_message || null,
           created_at: data.created_at || null,
           completed_at: data.completed_at || null,
