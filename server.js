@@ -10167,6 +10167,7 @@ const server = http.createServer((req, res) => {
         console.log('  ✅ Job created:', job.id);
 
         await dispatchJobToModal({
+          pushProgressToSSE,
           jobId: job.id,
           videoUrl,
           vibe: vibeInput,
