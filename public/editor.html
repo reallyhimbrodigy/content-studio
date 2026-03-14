@@ -1899,32 +1899,21 @@
 
                 if (data.status === 'completed' || data.status === 'complete') {
                   state.status = 'completed';
-                  if (!state.renderedVideoUrl) {
-                    // Fallback: fetch video URL directly
-                    const sb = getSupabaseClient();
-                    const sessionResult = sb?.auth?.getSession ? await sb.auth.getSession() : null;
-                    const tok = sessionResult?.data?.session?.access_token || '';
-                    fetch(`/api/video-jobs/${jobId}`, {
-                      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
-                    })
-                      .then((r) => r.json())
-                      .then((d) => {
-                        if (d.rendered_video_url) {
-                          state.renderedVideoUrl = d.rendered_video_url;
-                          render();
-                        }
-                      })
-                      .catch(() => {});
+                  if (data.videoUrl) {
+                    state.renderedVideoUrl = data.videoUrl;
+                    es.close();
+                    sseConnection = null;
                   }
-                  es.close();
-                  sseConnection = null;
+                  // If no videoUrl yet, keep SSE open — server will push it in the next event
                 }
 
                 if (data.status === 'failed' || data.status === 'error') {
                   state.status = 'failed';
                   state.error = data.error || 'Something went wrong. Please try again.';
-                  es.close();
-                  sseConnection = null;
+                  if (sseConnection) {
+                    sseConnection.close();
+                    sseConnection = null;
+                  }
                 }
 
                 render();
