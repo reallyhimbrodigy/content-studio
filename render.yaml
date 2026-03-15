@@ -36,3 +36,19 @@ services:
       - key: NODE_VERSION
         value: 20
     healthCheckPath: /healthz
+
+crons:
+  - name: trend-engine
+    runtime: node
+    schedule: "0 3 * * 0"
+    buildCommand: npm install
+    startCommand: node scripts/trend-engine.js
+    envVars:
+      - key: APIFY_API_TOKEN
+        sync: false
+      - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
