@@ -164,27 +164,68 @@ function sleep(ms) {
 }
 
 async function downloadVideoFromSupabase(videoFileUrl, localPath) {
-  // Download the video file from Supabase storage to a local temp file
-  // videoFileUrl could be a full URL or a storage path like "2026-03-15/uuid.mp4"
+  console.log(`[analyzer]   Downloading from: "${videoFileUrl}"`);
 
-  // If it's a storage path (not a full URL), download via Supabase SDK
-  if (!videoFileUrl.startsWith('http')) {
+  // Extract the storage path from whatever format was stored
+  let storagePath = videoFileUrl;
+
+  // If it's a full Supabase URL, extract just the path after the bucket name
+  if (storagePath.includes('/trend-videos/')) {
+    storagePath = storagePath.split('/trend-videos/').pop();
+  }
+
+  // Remove any leading slashes
+  storagePath = storagePath.replace(/^\/+/, '');
+
+  console.log(`[analyzer]   Resolved storage path: "${storagePath}"`);
+
+  // Method 1: Try Supabase SDK download (works for private buckets)
+  try {
     const { data, error } = await supabase.storage
       .from('trend-videos')
-      .download(videoFileUrl);
+      .download(storagePath);
 
-    if (error) throw new Error(`Supabase download error: ${error.message}`);
+    if (error) throw error;
 
     const buffer = Buffer.from(await data.arrayBuffer());
     fs.writeFileSync(localPath, buffer);
+    console.log(`[analyzer]   Downloaded via Supabase SDK: ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
+    return;
+  } catch (sdkErr) {
+    console.log(`[analyzer]   Supabase SDK download failed: ${sdkErr.message}, trying signed URL...`);
+  }
+
+  // Method 2: Try creating a signed URL and downloading via fetch
+  try {
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('trend-videos')
+      .createSignedUrl(storagePath, 300); // 5 minute expiry
+
+    if (signedError) throw signedError;
+
+    const response = await fetch(signedData.signedUrl);
+    if (!response.ok) throw new Error(`Signed URL fetch failed: ${response.status}`);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(localPath, buffer);
+    console.log(`[analyzer]   Downloaded via signed URL: ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
+    return;
+  } catch (signedErr) {
+    console.log(`[analyzer]   Signed URL download failed: ${signedErr.message}, trying direct fetch...`);
+  }
+
+  // Method 3: Try direct fetch as a last resort (works if it's already a valid URL)
+  if (videoFileUrl.startsWith('http')) {
+    const response = await fetch(videoFileUrl);
+    if (!response.ok) throw new Error(`Direct fetch failed: ${response.status}`);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(localPath, buffer);
+    console.log(`[analyzer]   Downloaded via direct fetch: ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
     return;
   }
 
-  // If it's a full URL, download via fetch
-  const response = await fetch(videoFileUrl);
-  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(localPath, buffer);
+  throw new Error(`All download methods failed for: ${videoFileUrl}`);
 }
 
 async function analyzeVideo(videoRow) {
@@ -194,6 +235,8 @@ async function analyzeVideo(videoRow) {
   try {
     // 1. Download video to local temp file
     console.log(`[analyzer]   Downloading video ${videoId}...`);
+    console.log(`[analyzer]   video_file_url value: "${videoRow.video_file_url}"`);
+    console.log(`[analyzer]   Type: ${typeof videoRow.video_file_url}`);
     await downloadVideoFromSupabase(videoRow.video_file_url, localPath);
 
     // 2. Upload to Gemini file API
