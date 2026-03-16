@@ -38,6 +38,33 @@ async function scrapeCategory(category) {
 
       // Fetch results from the default dataset
       const { items } = await apify.dataset(run.defaultDatasetId).listItems();
+      if (items.length > 0) {
+        const sample = items[0];
+        console.log(`[scraper]   Sample item keys: ${Object.keys(sample).join(', ')}`);
+        // Log all fields that might contain a video URL
+        const urlFields = Object.entries(sample)
+          .filter(([key, val]) => typeof val === 'string' && (
+            key.toLowerCase().includes('video') ||
+            key.toLowerCase().includes('url') ||
+            key.toLowerCase().includes('download') ||
+            key.toLowerCase().includes('play') ||
+            (typeof val === 'string' && val.includes('.mp4'))
+          ));
+        console.log('[scraper]   Potential video URL fields:', JSON.stringify(urlFields.slice(0, 10)));
+        // Also check nested objects
+        if (sample.video) console.log(`[scraper]   sample.video keys: ${Object.keys(sample.video).join(', ')}`);
+        if (sample.videoMeta) console.log(`[scraper]   sample.videoMeta keys: ${Object.keys(sample.videoMeta).join(', ')}`);
+        if (sample.itemInfos) console.log(`[scraper]   sample.itemInfos keys: ${Object.keys(sample.itemInfos).join(', ')}`);
+      }
+
+      // After the run completes, check the key-value store for downloaded videos
+      if (run.defaultKeyValueStoreId) {
+        const { items: kvItems } = await apify.keyValueStore(run.defaultKeyValueStoreId).listKeys();
+        console.log(`[scraper]   Key-value store has ${kvItems.length} items`);
+        if (kvItems.length > 0) {
+          console.log(`[scraper]   First few KV keys: ${kvItems.slice(0, 5).map((k) => k.key).join(', ')}`);
+        }
+      }
 
       for (const item of items) {
         // The clockworks scraper returns fields like:
@@ -48,10 +75,27 @@ async function scrapeCategory(category) {
         // Extract hashtags from the description text
         const extractedHashtags = (item.desc || '').match(/#\w+/g) || [];
 
+        // Try every known field name for the video download URL
+        const downloadUrl =
+          item.videoUrl ||
+          item.downloadUrl ||
+          item.video?.downloadAddr ||
+          item.video?.playAddr ||
+          item.video?.url ||
+          item.videoMeta?.downloadAddr ||
+          item.videoMeta?.playAddr ||
+          item.videoMeta?.url ||
+          item.itemInfos?.video?.urls?.[0] ||
+          item.mediaUrls?.[0] ||
+          item.videoPlayUrl ||
+          item.videoDownloadUrl ||
+          item.playUrl ||
+          null;
+
         results.push({
           platform: 'tiktok',
           video_url: item.webVideoUrl || item.videoUrl || item.url || '',
-          video_download_url: item.videoUrl || item.downloadUrl || null,
+          video_download_url: downloadUrl,
           view_count: item.playCount || 0,
           like_count: item.diggCount || item.likesCount || 0,
           share_count: item.shareCount || 0,
@@ -68,6 +112,9 @@ async function scrapeCategory(category) {
       // Continue to next hashtag — don't block the batch
     }
   }
+
+  const withUrls = results.filter((r) => r.video_download_url).length;
+  console.log(`[scraper]   ${withUrls}/${results.length} have download URLs`);
 
   return results;
 }
