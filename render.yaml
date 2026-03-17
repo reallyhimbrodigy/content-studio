@@ -38,15 +38,21 @@ services:
     healthCheckPath: /healthz
 
 crons:
-  - name: trend-engine
+  - name: trend-video-pipeline
     runtime: node
     schedule: "0 3 * * 0"
     buildCommand: npm install
-    startCommand: node scripts/trend-engine.js
+    startCommand: node scripts/trend-video-pipeline.js
     envVars:
       - key: APIFY_API_TOKEN
         sync: false
+      - key: GCS_BUCKET_NAME
+        sync: false
+      - key: GCS_CREDENTIALS_JSON
+        sync: false
       - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
