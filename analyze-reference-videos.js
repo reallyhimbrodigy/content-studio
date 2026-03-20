@@ -11,7 +11,8 @@
  *   GEMINI_API_KEY=xxx SUPABASE_URL=xxx SUPABASE_SERVICE_KEY=xxx node analyze-reference-videos.js
  */
 
-const { GoogleGenerativeAI, FileState } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleAIFileManager, FileState } = require("@google/generative-ai/server");
 const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
@@ -27,11 +28,12 @@ if (!GEMINI_API_KEY) { console.error("Missing GEMINI_API_KEY"); process.exit(1);
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY"); process.exit(1); }
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 async function analyzeVideo(videoPath, metadata) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview" });
-  const fileManager = genAI.getFileManager();
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
+  // fileManager is defined at module level
 
   console.log(`  Uploading ${path.basename(videoPath)} to Gemini...`);
   const uploadResult = await fileManager.uploadFile(videoPath, {
@@ -43,7 +45,8 @@ async function analyzeVideo(videoPath, metadata) {
   let attempts = 0;
   while (file.state === FileState.PROCESSING && attempts < 60) {
     await new Promise((r) => setTimeout(r, 3000));
-    file = await fileManager.getFile(file.name);
+    const check = await fileManager.getFile(file.name);
+    file = check;
     attempts++;
   }
 
@@ -161,7 +164,7 @@ Respond ONLY with JSON. No markdown, no backticks, no preamble.`;
 }
 
 async function aggregateStyleGuide(analyses) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
   const prompt = `You are a senior short-form video editor and creative director. Below are detailed analyses of ${analyses.length} manually curated reference videos — these are PERFECT examples of what professionally edited short-form content should look and feel like.
 
