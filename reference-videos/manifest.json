@@ -1,0 +1,25 @@
+{
+  "videos": [
+    {
+      "filename": "speed-ramp-example-1.mp4",
+      "description": "Talking head with aggressive speed ramping on punchlines",
+      "tags": ["speed_ramping", "talking_head"],
+      "views": "2M+",
+      "why_included": "Excellent example of speed ramping on talking head content"
+    },
+    {
+      "filename": "speed-ramp-example-2.mp4",
+      "description": "Business advice video with fast-slow-fast pacing",
+      "tags": ["speed_ramping", "business"],
+      "views": "1.5M+",
+      "why_included": "Shows how speed ramping creates comedy timing"
+    },
+    {
+      "filename": "speed-ramp-example-3.mp4",
+      "description": "Product review with speed ramping during demo sections",
+      "tags": ["speed_ramping", "product_review"],
+      "views": "800K+",
+      "why_included": "Speed ramping on non-talking-head content"
+    }
+  ]
+}

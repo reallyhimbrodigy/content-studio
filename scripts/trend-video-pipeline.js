@@ -1,52 +1,54 @@
 /**
  * Weekly Trend Video Pipeline
  *
- * Runs every Sunday at 3AM UTC (Render cron).
- *
- * 1. Scrapes 50 top TikTok videos via Apify
- * 2. Downloads them to local temp storage
- * 3. Uploads to Google Cloud Storage (deletes last week's videos first)
- * 4. Sends all videos to Gemini 3.1 Pro in one call
- * 5. Gemini watches them and writes a comprehensive editing style guide
- * 6. Stores the style guide in Supabase (trend_profiles table)
+ * Flow:
+ * 1) Scrape trending TikTok videos via Apify
+ * 2) Download each video and analyze with Gemini (structured JSON)
+ * 3) Analyze manually curated reference videos
+ * 4) Aggregate all analyses into a style guide
+ * 5) Write style_guide profile to Supabase trend_profiles
  */
 
-const { Storage } = require('@google-cloud/storage');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const { ApifyClient } = require('apify-client');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const https = require('https');
-const http = require('http');
+const fetch = require('node-fetch');
 
-const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'promptly-trend-videos';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const APIFY_TOKEN = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN;
 
 if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY or GOOGLE_AI_API_KEY is required');
 if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required');
 if (!APIFY_TOKEN) throw new Error('APIFY_TOKEN or APIFY_API_TOKEN is required');
-if (!process.env.GCS_CREDENTIALS_JSON) throw new Error('GCS_CREDENTIALS_JSON is required');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-let gcsCredentials;
+let GoogleAIFileManager = null;
 try {
-  gcsCredentials = JSON.parse(process.env.GCS_CREDENTIALS_JSON);
-} catch (err) {
-  console.error('[trend] Failed to parse GCS_CREDENTIALS_JSON');
-  throw err;
+  ({ GoogleAIFileManager } = require('@google/generative-ai/server'));
+} catch (_) {
+  GoogleAIFileManager = null;
 }
 
-const storage = new Storage({ credentials: gcsCredentials });
-const bucket = storage.bucket(GCS_BUCKET);
-const genai = new GoogleGenerativeAI(GEMINI_API_KEY);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getFileManager() {
+  if (typeof genAI.getFileManager === 'function') {
+    return genAI.getFileManager();
+  }
+  if (GoogleAIFileManager) {
+    return new GoogleAIFileManager(GEMINI_API_KEY);
+  }
+  throw new Error('Gemini file manager is unavailable in current SDK version');
+}
 
 async function scrapeVideos() {
   console.log('[trend] Step 1: Scraping TikTok videos via Apify...');
@@ -69,12 +71,16 @@ async function scrapeVideos() {
 
       const { items } = await client.dataset(run.defaultDatasetId).listItems();
       for (const item of items) {
-        if (item.videoUrl && (item.playCount || 0) >= 500000) {
+        const videoUrl = item.videoUrl || item.webVideoUrl || item.url;
+        const views = item.playCount || item.viewCount || 0;
+        if (videoUrl && views >= 500000) {
           allVideos.push({
-            url: item.videoUrl,
-            views: item.playCount || 0,
+            videoUrl,
+            views,
+            likes: item.diggCount || item.likesCount || 0,
+            author: item.authorMeta?.name || item.author || null,
             hashtag: tag,
-            description: (item.text || '').slice(0, 200),
+            description: (item.desc || item.text || '').slice(0, 200),
           });
         }
       }
@@ -87,8 +93,8 @@ async function scrapeVideos() {
   const unique = [];
   const seenUrls = new Set();
   for (const video of allVideos) {
-    if (seenUrls.has(video.url)) continue;
-    seenUrls.add(video.url);
+    if (!video.videoUrl || seenUrls.has(video.videoUrl)) continue;
+    seenUrls.add(video.videoUrl);
     unique.push(video);
     if (unique.length === 50) break;
   }
@@ -97,236 +103,282 @@ async function scrapeVideos() {
   return unique;
 }
 
-function downloadVideo(url, destPath) {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http;
-    const file = fs.createWriteStream(destPath);
-
-    protocol
-      .get(url, (response) => {
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          file.close(() => {
-            fs.rm(destPath, { force: true }, () => {});
-            downloadVideo(response.headers.location, destPath).then(resolve).catch(reject);
-          });
-          return;
-        }
-
-        if (response.statusCode !== 200) {
-          file.close(() => fs.rm(destPath, { force: true }, () => {}));
-          reject(new Error(`Unexpected status ${response.statusCode}`));
-          return;
-        }
-
-        response.pipe(file);
-        file.on('finish', () => file.close(resolve));
-      })
-      .on('error', (err) => {
-        file.close(() => fs.rm(destPath, { force: true }, () => {}));
-        reject(err);
-      });
-  });
+async function downloadVideo(url, outputPath) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+  const buffer = await response.buffer();
+  fs.writeFileSync(outputPath, buffer);
+  return outputPath;
 }
 
-async function downloadAll(videos) {
-  console.log(`[trend] Step 2: Downloading ${videos.length} videos...`);
-  const tmpDir = path.join(os.tmpdir(), `trend-videos-${Date.now()}`);
-  fs.mkdirSync(tmpDir, { recursive: true });
+async function analyzeVideoWithGemini(videoPath, videoMetadata) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro-preview' });
+  const fileManager = getFileManager();
 
-  const downloaded = [];
-  for (let i = 0; i < videos.length; i += 1) {
-    const dest = path.join(tmpDir, `trend_${i}.mp4`);
-    try {
-      await downloadVideo(videos[i].url, dest);
-      const stat = fs.statSync(dest);
-      if (stat.size > 100000) {
-        downloaded.push({ ...videos[i], localPath: dest, index: i });
-        console.log(`[trend] Downloaded ${i + 1}/${videos.length}: ${(stat.size / 1024 / 1024).toFixed(1)}MB`);
-      } else {
-        console.log(`[trend] Skipping ${i + 1}: too small (${stat.size} bytes)`);
-        fs.rmSync(dest, { force: true });
-      }
-    } catch (err) {
-      console.log(`[trend] Failed to download ${i + 1}: ${err.message}`);
-    }
+  const uploadResult = await fileManager.uploadFile(videoPath, {
+    mimeType: 'video/mp4',
+    displayName: path.basename(videoPath),
+  });
+
+  let file = uploadResult.file;
+  while (file && file.state === 'PROCESSING') {
+    await sleep(3000);
+    file = await fileManager.getFile(file.name);
   }
 
-  console.log(`[trend] Downloaded ${downloaded.length}/${videos.length} videos`);
-  return { downloaded, tmpDir };
+  if (!file || file.state !== 'ACTIVE') {
+    console.log(`[trend] Video ${videoPath} failed to process, skipping`);
+    return null;
+  }
+
+  const prompt = `You are analyzing a high-performing TikTok video (${videoMetadata.views || '500K+'} views) to extract editing patterns that make it successful.
+
+Watch the entire video carefully and analyze these specific editing elements:
+
+1. HOOK (first 1-3 seconds):
+   - How does it grab attention? (text on screen, direct address, visual surprise, action already happening)
+   - Is there text/caption in the first frame?
+   - How quickly does the speaker/content start?
+
+2. CUT PATTERNS:
+   - How many cuts total?
+   - Average time between cuts (seconds)
+   - Are cuts getting faster toward the end?
+   - Are there any jump cuts? How are they used?
+
+3. SPEED RAMPING (if present):
+   - Does the video use speed changes?
+   - WHERE in the video do speed changes happen? (setup, punchline, transition, ending)
+   - What gets sped up? What gets slowed down?
+   - How dramatic are the speed changes? (subtle 1.1-1.2x or dramatic 1.3-1.5x)
+   - What's the rhythm? (fast→slow→fast or slow→fast→slow)
+   - Does the pitch shift on the audio? (TikTok style)
+
+4. CAPTIONS/TEXT:
+   - What caption style? (word-by-word highlight, single word pop, two-line, boxed, minimal, hormozi-style bold)
+   - Font size and position?
+   - Any keyword highlighting? What color?
+   - Do captions have animation?
+
+5. SOUND EFFECTS:
+   - Are there any sound effects? What kind? (ching, pop, swoosh, ding, thud)
+   - When do they play? (on specific words, on cuts, on visual changes)
+   - How many total?
+
+6. TEXT OVERLAYS (separate from captions):
+   - Are there text overlays on screen? (titles, CTAs, labels)
+   - Where are they positioned?
+   - When do they appear/disappear?
+   - What do they say?
+
+7. PACING/ENERGY:
+   - Does the video start fast and stay fast, or does it build?
+   - Are there any pauses for emphasis?
+   - How does the ending feel? (abrupt cut, fade, CTA, loop)
+
+8. COLOR/LOOK:
+   - Is the footage color graded? How? (warm, cool, punchy, moody, clean)
+   - Is there a filter or LUT applied?
+
+9. ZOOM/CAMERA:
+   - Are there zoom effects? (slow zoom in, cut zoom on emphasis)
+   - Is the framing dynamic or static?
+
+Respond with a structured analysis in this EXACT JSON format:
+{
+  "hook_type": "text_hook|direct_address|visual_surprise|action_in_progress|pattern_interrupt",
+  "hook_description": "brief description of how the hook works",
+  "total_cuts": <number>,
+  "avg_cut_interval": <seconds>,
+  "cuts_accelerate": true|false,
+  "has_speed_ramping": true|false,
+  "speed_ramp_details": "description of speed ramping patterns, or null if none",
+  "speed_ramp_moments": [
+    {"time_description": "on the punchline about X", "type": "slowdown|speedup", "estimated_speed": 0.8}
+  ],
+  "caption_style": "word_highlight|single_word|two_line|boxed|minimal|hormozi|none",
+  "caption_details": "description of caption styling",
+  "sound_effects": [
+    {"type": "ching|pop|swoosh|ding|thud", "trigger": "what moment it plays on"}
+  ],
+  "text_overlays": true|false,
+  "text_overlay_details": "description or null",
+  "pacing": "fast_throughout|builds|peaks_and_valleys|slow_deliberate",
+  "energy_curve": "description of how energy flows through the video",
+  "color_look": "warm|cool|punchy|moody|clean|natural|cinematic",
+  "has_zoom": true|false,
+  "zoom_details": "description or null",
+  "what_makes_it_work": "1-2 sentence summary of why this video performs well from an editing perspective"
 }
 
-async function uploadToGCS(downloaded) {
-  console.log('[trend] Step 3: Uploading to Google Cloud Storage...');
-  console.log("[trend] Deleting last week's videos from GCS...");
+Respond ONLY with the JSON. No markdown, no backticks, no explanation.`;
+
+  const result = await model.generateContent([
+    { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
+    { text: prompt },
+  ]);
+
+  const text = result.response.text().trim();
 
   try {
-    const [files] = await bucket.getFiles({ prefix: 'trend_' });
-    if (files.length > 0) {
-      await Promise.all(files.map((file) => file.delete()));
-      console.log(`[trend] Deleted ${files.length} old files from GCS`);
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.log(`[trend] Failed to parse Gemini analysis: ${e.message}`);
+    console.log(`[trend] Raw response: ${text.substring(0, 500)}`);
+    return null;
+  }
+}
+
+async function analyzeScrapedVideos(scrapedVideos) {
+  const analyses = [];
+  const tempDir = path.join(os.tmpdir(), `temp_trend_videos_${Date.now()}`);
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    for (let i = 0; i < scrapedVideos.length; i++) {
+      const video = scrapedVideos[i];
+      const videoUrl = video.videoUrl || video.url;
+      if (!videoUrl) continue;
+
+      console.log(`[trend] Analyzing video ${i + 1}/${scrapedVideos.length}: ${videoUrl.substring(0, 60)}...`);
+
+      try {
+        const tempPath = path.join(tempDir, `trend_${i}.mp4`);
+        await downloadVideo(videoUrl, tempPath);
+
+        const analysis = await analyzeVideoWithGemini(tempPath, {
+          views: video.playCount || video.views,
+          likes: video.diggCount || video.likes,
+          author: video.authorMeta?.name || video.author,
+        });
+
+        if (analysis) {
+          analyses.push(analysis);
+          console.log(`[trend] Video ${i + 1}: ${analysis.what_makes_it_work || 'analyzed'}`);
+        }
+
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        await sleep(2000);
+      } catch (err) {
+        console.log(`[trend] Failed to analyze video ${i + 1}: ${err.message}`);
+      }
     }
-  } catch (err) {
-    console.log(`[trend] Error deleting old files: ${err.message}`);
+  } finally {
+    if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
   }
 
-  const gcsUris = [];
-  for (const video of downloaded) {
-    const gcsName = `trend_${video.index}.mp4`;
+  console.log(`[trend] Successfully analyzed ${analyses.length}/${scrapedVideos.length} videos`);
+  return analyses;
+}
+
+async function analyzeManualReferenceVideos() {
+  const manifestPath = path.join(__dirname, '..', 'reference-videos', 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    console.log('[trend] No reference-videos/manifest.json found, skipping manual videos');
+    return [];
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  const analyses = [];
+
+  for (const entry of manifest.videos || []) {
+    const videoPath = path.join(__dirname, '..', 'reference-videos', entry.filename);
+    if (!fs.existsSync(videoPath)) {
+      console.log(`[trend] Reference video not found: ${entry.filename}, skipping`);
+      continue;
+    }
+
+    console.log(`[trend] Analyzing manual reference: ${entry.filename} (${entry.why_included})`);
+
     try {
-      await bucket.upload(video.localPath, {
-        destination: gcsName,
-        metadata: {
-          contentType: 'video/mp4',
-          metadata: {
-            views: String(video.views),
-            hashtag: video.hashtag,
-          },
-        },
+      const analysis = await analyzeVideoWithGemini(videoPath, {
+        views: entry.views,
+        description: entry.description,
+        tags: entry.tags,
       });
-      const gcsUri = `gs://${GCS_BUCKET}/${gcsName}`;
-      gcsUris.push(gcsUri);
-      console.log(`[trend] Uploaded ${gcsName} to GCS`);
+
+      if (analysis) {
+        analysis._manual_reference = true;
+        analysis._why_included = entry.why_included;
+        analysis._tags = entry.tags;
+        analyses.push(analysis);
+        console.log(`[trend] Reference ${entry.filename}: ${analysis.what_makes_it_work || 'analyzed'}`);
+      }
+
+      await sleep(2000);
     } catch (err) {
-      console.log(`[trend] Failed to upload ${gcsName}: ${err.message}`);
+      console.log(`[trend] Failed to analyze reference ${entry.filename}: ${err.message}`);
     }
   }
 
-  console.log(`[trend] Uploaded ${gcsUris.length} videos to GCS`);
-  return gcsUris;
+  console.log(`[trend] Analyzed ${analyses.length} manual reference videos`);
+  return analyses;
 }
 
-async function generateStyleGuide(gcsUris) {
-  console.log(`[trend] Step 4: Sending ${gcsUris.length} videos to Gemini for style guide generation...`);
+async function aggregateIntoStyleGuide(analyses) {
+  if (!analyses.length) return null;
 
-  const content = [];
-  for (const uri of gcsUris) {
-    content.push({
-      fileData: {
-        mimeType: 'video/mp4',
-        fileUri: uri,
-      },
-    });
-  }
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro-preview' });
 
-  content.push({
-    text: `You just watched ${gcsUris.length} of the highest-performing TikTok videos from this week — each with over 500,000 views. These are the videos the algorithm is actively distributing to millions of people right now.
+  const scraped = analyses.filter((a) => !a._manual_reference);
+  const manual = analyses.filter((a) => a._manual_reference);
 
-Write a comprehensive EDITING STYLE GUIDE based on what you observed across all of these videos. This guide will be given to an AI video editor to inform how it edits user-uploaded footage. The guide should be specific, actionable, and based on actual patterns you observed — not generic advice.
+  const prompt = `You are a senior short-form video editor. Below are structured analyses of ${analyses.length} high-performing TikTok videos (${scraped.length} from trending content, ${manual.length} manually curated reference videos).
 
-Cover ALL of these areas with specific observations:
+Your job: synthesize these into a concise, actionable EDITING STYLE GUIDE that another AI editor can follow when editing new videos.
 
-CUTTING AND PACING:
-- How fast is the first cut? How many cuts happen in the first 3 seconds?
-- What's the typical cut density (cuts per 10 seconds)?
-- Do cuts land on speech boundaries, beats, or visual moments?
-- How does pacing vary across the video — where does it speed up and slow down?
-- Are there any pauses or moments of stillness, and how are they used?
+The guide should cover:
+1. HOOKS — what hook styles are working and how to execute them
+2. CUT PACING — how fast to cut, whether to accelerate, average intervals
+3. SPEED RAMPING — when to use it, what to speed up, what to slow down, specific speed values that work
+4. CAPTIONS — which styles are dominant, positioning, highlighting patterns
+5. SOUND EFFECTS — when and how to use them, which types work
+6. TEXT OVERLAYS — when to use them, what they say, where to position them
+7. PACING/ENERGY — how energy should flow through the video
+8. COLOR — what looks are trending
+9. KEY INSIGHT — the single most important editing principle these videos share
 
-HOOKS AND OPENINGS:
-- What happens in the first 2 seconds across these videos?
-- Is there text on screen immediately? What kind?
-- Is the framing different in the opening vs the rest?
-- What makes the hook work — curiosity, shock, pattern interrupt, direct address?
+Be specific. Use actual numbers (cut every 2.3 seconds, speed up to 1.3x on setup). Reference specific patterns you see across multiple videos. If manual reference videos show specific techniques (like speed ramping), give those extra weight and detail.
 
-TRANSITIONS:
-- What percentage of cuts are hard cuts vs visual transitions?
-- When visual transitions ARE used, what type and at what moments?
-- How do the videos handle the transition between different types of content (speaker to screen recording, speaker to b-roll)?
+Here are the individual analyses:
 
-SOUND DESIGN:
-- Do the videos use transition sounds? How frequently?
-- What types of sounds (swooshes, thuds, pops, dings)?
-- When are sounds placed vs when are cuts silent?
-- How does sound design relate to text overlay appearances?
+=== SCRAPED TRENDING VIDEOS ===
+${scraped.map((a, i) => `Video ${i + 1}:\n${JSON.stringify(a, null, 2)}`).join('\n\n')}
 
-SPEED AND PACING:
-- Do the videos use visible speed changes?
-- Where do speed ramps appear — on what type of moments?
-- What's the contrast between the fastest and slowest sections?
-- Does the base speed feel accelerated (slightly faster than natural speech)?
+=== MANUALLY CURATED REFERENCE VIDEOS ===
+${manual.map((a, i) => `Reference ${i + 1} (${a._why_included}):\n${JSON.stringify(a, null, 2)}`).join('\n\n')}
 
-TEXT OVERLAYS:
-- How many text overlays per video on average?
-- When does the first text appear?
-- What kind of text (hooks, labels, CTAs, emphasis)?
-- Where is text positioned on screen?
-- How does text relate to what's being said?
+Write the style guide as clear, direct prose. No JSON. No bullet points. Write it like you're briefing a junior editor before they cut a video. Keep it under 2000 words.`;
 
-B-ROLL AND VISUAL VARIETY:
-- Do the talking-head videos use b-roll cutaways?
-- How long are b-roll clips typically?
-- What kind of b-roll is used (close-ups, actions, screens)?
-- How does the video transition into and out of b-roll?
-
-COLOR AND PRODUCTION:
-- Do the videos look color graded? How would you describe the typical grade?
-- Is the footage warm, cool, neutral?
-- Do they use vignette, grain, or other stylistic treatments?
-- What's the overall production quality feel?
-
-FRAMING AND CAMERA:
-- Do the videos use zoom movements?
-- Do they use the cut-zoom multi-camera simulation?
-- Is the framing mostly static or dynamic?
-
-ENDINGS:
-- How do the videos end? Abruptly, with a CTA, with a fade?
-- Do they loop cleanly back to the beginning?
-
-Write the style guide as direct, confident observations — not hedged or academic. Write it as if you're briefing a professional editor: "The top videos this week do X. They avoid Y. The pattern is Z."
-
-The style guide should be 800-1200 words. Be specific enough that an editor reading this could replicate the style.`,
-  });
-
-  const model = genai.getGenerativeModel({ model: 'gemini-3.1-pro-preview' });
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: content }],
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 4000,
-    },
-  });
-
-  const styleGuide = result.response.text();
-  console.log(`[trend] Style guide generated: ${styleGuide.length} chars`);
-  return styleGuide;
+  const result = await model.generateContent([{ text: prompt }]);
+  return result.response.text().trim();
 }
 
-async function storeStyleGuide(styleGuide, videoCount) {
-  console.log('[trend] Step 5: Storing style guide in Supabase...');
-
+async function writeTrendProfile(styleGuide, sampleSize) {
   const now = new Date();
-  const validUntil = new Date(now);
-  validUntil.setDate(validUntil.getDate() + 8);
+  const validUntil = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const { error } = await supabase.from('trend_profiles').insert({
     profile_type: 'general',
+    sample_size: sampleSize,
+    computed_at: now.toISOString(),
+    valid_until: validUntil.toISOString(),
     profile_json: {
       type: 'style_guide',
       style_guide: styleGuide,
-      sample_size: videoCount,
-      generated_at: now.toISOString(),
+      sample_size: sampleSize,
+      computed_at: now.toISOString(),
     },
-    sample_size: videoCount,
-    computed_at: now.toISOString(),
-    valid_until: validUntil.toISOString(),
   });
 
   if (error) {
-    console.error(`[trend] Failed to store style guide: ${error.message}`);
-    throw error;
+    console.log(`[trend] Failed to write trend profile: ${error.message}`);
+    return false;
   }
 
-  console.log(`[trend] Style guide stored, valid until ${validUntil.toISOString()}`);
-}
-
-function cleanup(tmpDir) {
-  try {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    console.log('[trend] Cleaned up temp files');
-  } catch (err) {
-    console.log(`[trend] Cleanup warning: ${err.message}`);
-  }
+  console.log(`[trend] Trend profile written: ${sampleSize} videos, valid until ${validUntil.toISOString()}`);
+  return true;
 }
 
 async function main() {
@@ -336,41 +388,33 @@ async function main() {
   console.log('========================================');
 
   const startTime = Date.now();
-  let tmpDir = null;
 
   try {
-    const videos = await scrapeVideos();
-    if (videos.length === 0) {
+    const scrapedVideos = await scrapeVideos();
+    if (scrapedVideos.length === 0) {
       throw new Error('No videos scraped');
     }
 
-    const downloadResult = await downloadAll(videos);
-    tmpDir = downloadResult.tmpDir;
-    if (downloadResult.downloaded.length < 10) {
-      throw new Error(`Only ${downloadResult.downloaded.length} videos downloaded — need at least 10`);
-    }
+    const scrapedAnalyses = await analyzeScrapedVideos(scrapedVideos);
+    const manualAnalyses = await analyzeManualReferenceVideos();
+    const allAnalyses = [...scrapedAnalyses, ...manualAnalyses];
 
-    const gcsUris = await uploadToGCS(downloadResult.downloaded);
-    if (gcsUris.length < 10) {
-      throw new Error(`Only ${gcsUris.length} videos uploaded to GCS — need at least 10`);
-    }
+    console.log(`[trend] Total analyses: ${allAnalyses.length} (${scrapedAnalyses.length} scraped + ${manualAnalyses.length} manual)`);
 
-    const styleGuide = await generateStyleGuide(gcsUris);
-    if (!styleGuide || styleGuide.length < 500) {
-      throw new Error('Style guide too short or empty');
+    if (allAnalyses.length > 0) {
+      const styleGuide = await aggregateIntoStyleGuide(allAnalyses);
+      if (styleGuide) {
+        console.log(`[trend] Style guide generated: ${styleGuide.length} chars`);
+        await writeTrendProfile(styleGuide, allAnalyses.length);
+      }
     }
-
-    await storeStyleGuide(styleGuide, gcsUris.length);
-    cleanup(tmpDir);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log('========================================');
     console.log(`PIPELINE COMPLETE in ${elapsed}s`);
-    console.log(`Videos analyzed: ${gcsUris.length}`);
-    console.log(`Style guide: ${styleGuide.length} chars`);
+    console.log(`Videos analyzed: ${allAnalyses.length}`);
     console.log('========================================');
   } catch (err) {
-    if (tmpDir) cleanup(tmpDir);
     console.error(`[trend] Pipeline failed: ${err.message}`);
     console.error(err.stack);
     process.exit(1);
