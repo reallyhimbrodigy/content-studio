@@ -4,3 +4,6 @@ node_modules/
 .env
 .env.local
 data/
+reference-videos/*.mp4
+reference-videos/_last_analyses.json
+reference-videos/_last_style_guide.txt

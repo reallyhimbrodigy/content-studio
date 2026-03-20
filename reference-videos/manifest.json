@@ -1,25 +1,39 @@
 {
   "videos": [
     {
-      "filename": "speed-ramp-example-1.mp4",
-      "description": "Talking head with aggressive speed ramping on punchlines",
+      "filename": "snaptik_7314389270217723178_v3.mp4",
+      "description": "Perfectly edited talking head video with tight cuts, engaging pacing, and professional feel. No speed ramping.",
+      "tags": ["talking_head", "perfect_editing", "engaging", "captivating"],
+      "views": "viral",
+      "why_included": "This is the GOLD STANDARD for how Promptly should edit talking head videos. Study the cut timing, the pacing between sentences, how dead air is removed, how the energy flows. Every talking head video Promptly edits should feel like this."
+    },
+    {
+      "filename": "snaptik_7498120394243738926_v3.mp4",
+      "description": "Perfectly edited talking head video with tight cuts, engaging pacing, and professional feel. No speed ramping.",
+      "tags": ["talking_head", "perfect_editing", "engaging", "captivating"],
+      "views": "viral",
+      "why_included": "Another perfect example of talking head editing. Pay attention to how cuts are placed, how the speaker's rhythm is preserved while dead air is removed, and how the overall video feels polished and watchable. This is the quality bar."
+    },
+    {
+      "filename": "snaptik_7605136323871083789_v3.mp4",
+      "description": "Talking head video showcasing excellent speed ramping technique.",
       "tags": ["speed_ramping", "talking_head"],
-      "views": "2M+",
-      "why_included": "Excellent example of speed ramping on talking head content"
+      "views": "viral",
+      "why_included": "Focus ONLY on the speed ramping in this video. Study exactly when speed changes happen — what words or phrases get sped up, what gets slowed down, how dramatic the speed changes are, and how the pitch shift sounds. This is how speed ramping should be done when a user requests it."
     },
     {
-      "filename": "speed-ramp-example-2.mp4",
-      "description": "Business advice video with fast-slow-fast pacing",
-      "tags": ["speed_ramping", "business"],
-      "views": "1.5M+",
-      "why_included": "Shows how speed ramping creates comedy timing"
+      "filename": "snaptik_7611180844715101470_hd.mp4",
+      "description": "Talking head video showcasing excellent speed ramping technique.",
+      "tags": ["speed_ramping", "talking_head"],
+      "views": "viral",
+      "why_included": "Focus ONLY on the speed ramping in this video. Analyze the exact rhythm pattern — where do fast sections happen, where do slow sections happen, how does the contrast between fast and slow create impact. This is the speed ramping feel we want."
     },
     {
-      "filename": "speed-ramp-example-3.mp4",
-      "description": "Product review with speed ramping during demo sections",
-      "tags": ["speed_ramping", "product_review"],
-      "views": "800K+",
-      "why_included": "Speed ramping on non-talking-head content"
+      "filename": "snaptik_7613975395074870559_v3.mp4",
+      "description": "Talking head video showcasing excellent speed ramping technique.",
+      "tags": ["speed_ramping", "talking_head"],
+      "views": "viral",
+      "why_included": "Focus ONLY on the speed ramping in this video. Pay attention to comedy timing — how speed changes land on punchlines and key phrases. The speed ramping in this video makes the content hit harder. That is what we want to replicate."
     }
   ]
 }
