@@ -1,5 +1,5 @@
 const { supabaseAdmin } = require('./services/supabase-admin');
-const { dispatchJobToRunPod } = require('./lib/video-processor/dispatch-to-runpod');
+const { dispatchJobToModal } = require('./lib/video-processor/dispatch-to-modal');
 
 const POLL_INTERVAL_MS = Number(process.env.VIDEO_WORKER_POLL_MS || 1000);
 let workerRunning = false;
@@ -114,9 +114,9 @@ async function cleanupStaleJobs() {
 }
 
 async function processOneJob(job) {
-  console.log(`[worker] Dispatching job ${job.id} to RunPod`);
+  console.log(`[worker] Dispatching job ${job.id} to Modal`);
   try {
-    const { result, publicUrl } = await dispatchJobToRunPod({
+    const { result, publicUrl } = await dispatchJobToModal({
       jobId: job.id,
       videoUrl: job.video_url,
       vibe: job.vibe_input,

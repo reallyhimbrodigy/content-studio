@@ -48,7 +48,7 @@ const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const { dispatchJobToModal } = require('./lib/video-processor/dispatch-to-modal');
-const { settlePendingRunpodJob } = require('./lib/video-processor/runpod-webhook');
+const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 
 // SSE client registry — maps jobId -> Set of response objects
 const sseClients = new Map();
@@ -10012,7 +10012,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (parsed.pathname === '/api/runpod-progress' && req.method === 'POST') {
+  if (parsed.pathname === '/api/modal-progress' && req.method === 'POST') {
     (async () => {
       try {
         const body = await readJsonBody(req);
@@ -10066,14 +10066,14 @@ const server = http.createServer((req, res) => {
 
         return sendJson(res, 200, { ok: true });
       } catch (err) {
-        console.error('[runpod-progress] error:', err.message);
+        console.error('[modal-progress] error:', err.message);
         return sendJson(res, 200, { ok: false });
       }
     })();
     return;
   }
 
-  if (parsed.pathname === '/api/runpod-webhook' && req.method === 'POST') {
+  if (parsed.pathname === '/api/modal-webhook' && req.method === 'POST') {
     (async () => {
       try {
         const body = await readJsonBody(req);
@@ -10081,11 +10081,11 @@ const server = http.createServer((req, res) => {
         const status = body?.status;
         const output = body?.output;
         const error = body?.error || body?.message || null;
-        console.log(`[runpod] Webhook received: ${id || 'unknown'} status=${status || 'UNKNOWN'}`);
-        settlePendingRunpodJob({ id, status, output, error });
+        console.log(`[modal] Webhook received: ${id || 'unknown'} status=${status || 'UNKNOWN'}`);
+        settlePendingModalJob({ id, status, output, error });
         return sendJson(res, 200, { ok: true });
       } catch (err) {
-        console.error('[runpod] Webhook handler failed:', err.message);
+        console.error('[modal] Webhook handler failed:', err.message);
         return sendJson(res, 200, { ok: false });
       }
     })();
