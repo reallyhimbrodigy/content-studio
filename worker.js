@@ -116,37 +116,17 @@ async function cleanupStaleJobs() {
 async function processOneJob(job) {
   console.log(`[worker] Dispatching job ${job.id} to Modal`);
   try {
-    const { result, publicUrl } = await dispatchJobToModal({
+    const { jobId: modalJobId, publicUrl } = await dispatchJobToModal({
       jobId: job.id,
       videoUrl: job.video_url,
       vibe: job.vibe_input,
       userId: job.user_id,
     });
-
-    if (result?.error) {
-      throw new Error(result.error);
+    if (!publicUrl) {
+      console.log(`[VideoWorker] Modal dispatch acknowledged for job ${modalJobId}; completion will be handled asynchronously`);
+      return;
     }
-
-    const finalResult = {
-      rendered_video_url: publicUrl,
-      edit_recipe: result?.edit_recipe || null,
-      metadata: {
-        total_time: result?.total_time,
-        render_time: result?.render_time,
-        output_size_mb: result?.output_size_mb,
-      },
-    };
-
-    console.log(`[VideoWorker] Uploading complete, saving result for job ${job.id}...`);
-    console.log(`[VideoWorker] Result keys: ${Object.keys(finalResult || {}).join(', ')}`);
-    console.log(`[VideoWorker] result_url: ${finalResult.rendered_video_url ? 'present' : 'missing'}`);
-    console.log(`[VideoWorker] edit_recipe: ${finalResult.edit_recipe ? `${JSON.stringify(finalResult.edit_recipe).length} chars` : 'missing'}`);
-
-    const completed = await markJobCompleted(job.id, finalResult, 3);
-    if (!completed) {
-      throw new Error(`Failed to mark job ${job.id} as completed`);
-    }
-    console.log(`[VideoWorker] Completed job ${job.id}`);
+    console.log(`[VideoWorker] Modal dispatch started for job ${modalJobId} with publicUrl: ${publicUrl}`);
   } catch (error) {
     console.error(`[VideoWorker] Failed job ${job.id}:`, error?.message || error);
     const { data: failResult, error: failError } = await supabaseAdmin
