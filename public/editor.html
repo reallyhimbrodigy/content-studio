@@ -250,6 +250,30 @@
         color: #ffffff;
       }
 
+      .attached-file-action {
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+        padding: 8px 10px;
+        border-radius: 8px;
+        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      }
+
+      .attached-file-action:hover:not(:disabled) {
+        color: var(--text-primary);
+        border-color: var(--border-color-strong);
+        background: var(--bg-surface-hover);
+      }
+
+      .attached-file-action:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+
       /* ===== VIBE INPUT V2 ===== */
 
       .vibe-input-wrap {
@@ -1524,6 +1548,7 @@
                 <span class="file-icon">📎</span>
                 <span id="file-name" class="file-name"></span>
                 <span id="file-size" class="file-size"></span>
+                <button id="copy-upload-link" type="button" class="attached-file-action" aria-label="Copy uploaded video link">Copy Link</button>
                 <button id="remove-file" type="button" class="remove-file" aria-label="Remove file">×</button>
               </div>
 
@@ -1612,6 +1637,7 @@
         const attachedFile = document.getElementById('attached-file');
         const fileNameEl = document.getElementById('file-name');
         const fileSizeEl = document.getElementById('file-size');
+        const copyUploadLinkBtn = document.getElementById('copy-upload-link');
         const removeFileBtn = document.getElementById('remove-file');
         const vibeSuggestCards = Array.from(root.querySelectorAll('.vibe-suggest-card'));
         const vibeClearBtn = document.getElementById('vibe-clear-btn');
@@ -1633,6 +1659,31 @@
           const value = Number(bytes || 0);
           if (!Number.isFinite(value) || value <= 0) return '';
           return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+        };
+
+        const resetCopyUploadLinkButton = () => {
+          if (!copyUploadLinkBtn) return;
+          copyUploadLinkBtn.textContent = 'Copy Link';
+        };
+
+        const copyToClipboard = async (text) => {
+          const value = String(text || '').trim();
+          if (!value) throw new Error('No link available to copy');
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+            return;
+          }
+
+          const textArea = document.createElement('textarea');
+          textArea.value = value;
+          textArea.setAttribute('readonly', '');
+          textArea.style.position = 'absolute';
+          textArea.style.left = '-9999px';
+          document.body.appendChild(textArea);
+          textArea.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          if (!ok) throw new Error('Copy failed');
         };
 
         const syncGenerateState = () => {
@@ -1667,6 +1718,7 @@
           attachedFile.style.display = state.videoUrl ? 'flex' : 'none';
           fileNameEl.textContent = state.videoFileName || '';
           fileSizeEl.textContent = state.videoFileSize ? formatFileSize(state.videoFileSize) : '';
+          if (copyUploadLinkBtn) copyUploadLinkBtn.disabled = !state.videoUrl;
 
           uploadProgressWrap.style.display = state.isUploading ? 'block' : 'none';
           uploadProgressLabel.textContent = `Uploading... ${state.uploadProgress}%`;
@@ -1725,6 +1777,7 @@
           state.isUploading = false;
           state.uploadProgress = 0;
           state.submitting = false;
+          resetCopyUploadLinkButton();
           render();
         };
 
@@ -2098,8 +2151,31 @@
           state.videoUrl = null;
           state.videoFileName = '';
           state.videoFileSize = 0;
+          resetCopyUploadLinkButton();
           render();
         });
+
+        if (copyUploadLinkBtn) {
+          copyUploadLinkBtn.addEventListener('click', async () => {
+            if (!state.videoUrl) return;
+            try {
+              await copyToClipboard(state.videoUrl);
+              copyUploadLinkBtn.textContent = 'Copied';
+              window.setTimeout(() => {
+                if (copyUploadLinkBtn && copyUploadLinkBtn.textContent === 'Copied') {
+                  copyUploadLinkBtn.textContent = 'Copy Link';
+                }
+              }, 1600);
+            } catch (error) {
+              copyUploadLinkBtn.textContent = 'Copy Failed';
+              window.setTimeout(() => {
+                if (copyUploadLinkBtn && copyUploadLinkBtn.textContent === 'Copy Failed') {
+                  copyUploadLinkBtn.textContent = 'Copy Link';
+                }
+              }, 1600);
+            }
+          });
+        }
 
         generateBtn.addEventListener('click', handleGenerate);
         editAnotherBtn.addEventListener('click', reset);
