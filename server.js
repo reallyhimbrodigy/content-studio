@@ -9976,7 +9976,7 @@ const server = http.createServer((req, res) => {
     if (supabaseAdmin) {
       supabaseAdmin
         .from('video_jobs')
-        .select('status, progress, current_step, step_message, rendered_video_url, error_message')
+        .select('status, progress, current_step, step_message, rendered_video_url, thumbnail_url, error_message')
         .eq('id', jobId)
         .maybeSingle()
         .then(({ data }) => {
@@ -9988,6 +9988,7 @@ const server = http.createServer((req, res) => {
                 step: data.current_step || '',
                 message: data.step_message || '',
                 videoUrl: data.rendered_video_url || null,
+                thumbnailUrl: data.thumbnail_url || null,
                 error: data.error_message || null,
               })}\n\n`);
             } catch (e) {}
@@ -10041,7 +10042,7 @@ const server = http.createServer((req, res) => {
           // Worker never sends videoUrl — fetch it from DB
           const { data: jobRow } = await supabaseAdmin
             .from('video_jobs')
-            .select('rendered_video_url')
+            .select('rendered_video_url, thumbnail_url')
             .eq('id', job_id)
             .maybeSingle();
           const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
@@ -10051,6 +10052,7 @@ const server = http.createServer((req, res) => {
             step: 'complete',
             message: message || 'Your video is ready!',
             videoUrl: finalVideoUrl,
+            thumbnailUrl: jobRow?.thumbnail_url || null,
             error: null,
           });
         } else {
@@ -10208,7 +10210,7 @@ const server = http.createServer((req, res) => {
 
         const { data, error } = await supabaseAdmin
           .from('video_jobs')
-          .select('id, user_id, status, progress, current_step, step_message, rendered_video_url, result_url, error_message, created_at, completed_at, updated_at')
+          .select('id, user_id, status, progress, current_step, step_message, rendered_video_url, thumbnail_url, result_url, error_message, created_at, completed_at, updated_at')
           .eq('id', jobId)
           .eq('user_id', authUser.id)
           .order('updated_at', { ascending: false })
@@ -10235,6 +10237,7 @@ const server = http.createServer((req, res) => {
           current_step: data.current_step || '',
           step_message: data.step_message || '',
           rendered_video_url: data.rendered_video_url || data.result_url || null,
+          thumbnail_url: data.thumbnail_url || null,
           result_url: data.result_url || null,
           error: data.error_message || null,
           error_message: data.error_message || null,

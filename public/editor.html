@@ -1514,6 +1514,7 @@
           progress: 0,
           currentStep: '',
           renderedVideoUrl: null,
+          thumbnailUrl: null,
           error: null,
           isUploading: false,
           uploadProgress: 0,
@@ -1734,6 +1735,7 @@
 
           if (showComplete) {
             videoPreview.src = state.renderedVideoUrl;
+            videoPreview.poster = state.thumbnailUrl || '';
             downloadLink.href = state.renderedVideoUrl;
           }
           if (copyFinishedLinkBtn) copyFinishedLinkBtn.disabled = !state.renderedVideoUrl;
@@ -1773,6 +1775,7 @@
           state.progress = 0;
           state.currentStep = '';
           state.renderedVideoUrl = null;
+          state.thumbnailUrl = null;
           state.error = null;
           state.isUploading = false;
           state.uploadProgress = 0;
@@ -1943,6 +1946,7 @@
                   animateStepMessage('Getting your worker ready...');
                 }
                 if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
+                if (data.thumbnailUrl) state.thumbnailUrl = data.thumbnailUrl;
                 if (data.error) state.error = data.error;
 
                 const queueHint = document.getElementById('queue-hint');
@@ -1952,6 +1956,7 @@
 
                 if (data.status === 'completed' || data.status === 'complete') {
                   state.status = 'completed';
+                  if (data.thumbnailUrl) state.thumbnailUrl = data.thumbnailUrl;
                   if (data.videoUrl) {
                     state.renderedVideoUrl = data.videoUrl;
                     es.close();
