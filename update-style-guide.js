@@ -10,13 +10,13 @@ async function update() {
 
   const { error } = await supabase.from("trend_profiles").insert({
     profile_type: "general",
-    sample_size: 5,
+    sample_size: 20,
     computed_at: now.toISOString(),
     valid_until: validUntil.toISOString(),
     profile_json: {
       type: "style_guide",
       style_guide: styleGuide,
-      sample_size: 5,
+      sample_size: 20,
       computed_at: now.toISOString(),
       source: "manual_reference_videos",
     },

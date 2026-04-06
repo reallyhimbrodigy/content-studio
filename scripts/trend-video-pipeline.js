@@ -65,7 +65,7 @@ async function scrapeVideos() {
     try {
       const run = await client.actor('clockworks/tiktok-scraper').call({
         hashtags: [tag],
-        resultsPerPage: 10,
+        resultsPerPage: 20,
         shouldDownloadVideos: true,
       });
 
