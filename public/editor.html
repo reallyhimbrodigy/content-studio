@@ -1957,12 +1957,16 @@
                 if (data.status === 'completed' || data.status === 'complete') {
                   state.status = 'completed';
                   if (data.thumbnailUrl) state.thumbnailUrl = data.thumbnailUrl;
-                  if (data.videoUrl) {
-                    state.renderedVideoUrl = data.videoUrl;
+                  if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
+                  // Only close the SSE connection on the dispatcher's final
+                  // event (final:true), which is the one that carries the
+                  // authoritative thumbnail URL. The earlier worker-emitted
+                  // completion event has final:false so the UI flips fast,
+                  // but the connection stays open until thumbnailUrl arrives.
+                  if (data.final === true) {
                     es.close();
                     sseConnection = null;
                   }
-                  // If no videoUrl yet, keep SSE open — server will push it in the next event
                 }
 
                 if (data.status === 'failed' || data.status === 'error') {

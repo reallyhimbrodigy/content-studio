@@ -10039,10 +10039,26 @@ const server = http.createServer((req, res) => {
           .eq('id', job_id);
 
         if (step === 'complete') {
-          // Do NOT emit a completion SSE event here — dispatchJobToModal is the
-          // sole source of the 'completed' event. This prevents a race where
-          // the frontend closes its SSE connection on a videoUrl before the
-          // dispatcher has written thumbnail_url to the DB.
+          // Fast-path: tell the UI the video is ready as soon as the worker
+          // says so. The thumbnail will arrive in a later 'final' event from
+          // dispatchJobToModal, which is the only event with final:true.
+          // The frontend keeps the SSE open until that final event arrives.
+          const { data: jobRow } = await supabaseAdmin
+            .from('video_jobs')
+            .select('rendered_video_url')
+            .eq('id', job_id)
+            .maybeSingle();
+          const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
+          pushProgressToSSE(job_id, {
+            status: 'completed',
+            progress: 100,
+            step: 'complete',
+            message: message || 'Your video is ready!',
+            videoUrl: finalVideoUrl,
+            thumbnailUrl: null,
+            final: false,
+            error: null,
+          });
         } else {
           pushProgressToSSE(job_id, {
             status,
