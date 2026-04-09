@@ -10039,22 +10039,10 @@ const server = http.createServer((req, res) => {
           .eq('id', job_id);
 
         if (step === 'complete') {
-          // Worker never sends videoUrl — fetch it from DB
-          const { data: jobRow } = await supabaseAdmin
-            .from('video_jobs')
-            .select('rendered_video_url, thumbnail_url')
-            .eq('id', job_id)
-            .maybeSingle();
-          const finalVideoUrl = jobRow?.rendered_video_url || completionVideoUrl || null;
-          pushProgressToSSE(job_id, {
-            status: 'completed',
-            progress: 100,
-            step: 'complete',
-            message: message || 'Your video is ready!',
-            videoUrl: finalVideoUrl,
-            thumbnailUrl: jobRow?.thumbnail_url || null,
-            error: null,
-          });
+          // Do NOT emit a completion SSE event here — dispatchJobToModal is the
+          // sole source of the 'completed' event. This prevents a race where
+          // the frontend closes its SSE connection on a videoUrl before the
+          // dispatcher has written thumbnail_url to the DB.
         } else {
           pushProgressToSSE(job_id, {
             status,
