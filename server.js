@@ -47,6 +47,7 @@ const { getFeatureUsageCount, incrementFeatureUsage } = require('./services/feat
 const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
+const s3 = require('./services/s3');
 const { dispatchJobToModal } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 
@@ -9889,8 +9890,8 @@ const server = http.createServer((req, res) => {
   if (parsed.pathname === '/api/upload' && req.method === 'POST') {
     (async () => {
       try {
-        if (!supabaseAdmin) {
-          return sendJson(res, 500, { error: 'supabase_not_configured' });
+        if (!s3.isConfigured() && !supabaseAdmin) {
+          return sendJson(res, 500, { error: 'storage_not_configured' });
         }
 
         const rawBody = await readRawBodyWithLimit(req, MAX_UPLOAD_BODY);
@@ -9913,31 +9914,50 @@ const server = http.createServer((req, res) => {
         const sanitizedFilename = String(file.name || 'video.mp4')
           .replace(/[^a-zA-Z0-9.-]/g, '_')
           .replace(/_{2,}/g, '_');
-        const storagePath = `${userId}/${timestamp}-${sanitizedFilename}`;
 
-        const { error: uploadError } = await supabaseAdmin.storage
-          .from('videos')
-          .upload(storagePath, file.buffer, {
-            contentType: file.type,
-            upsert: false,
-          });
+        let publicUrl = null;
+        let storagePath = null;
 
-        if (uploadError) {
-          console.error('[VideoEditor][Upload] Supabase upload error:', uploadError);
+        if (s3.isConfigured()) {
+          // Primary: upload to S3 (colocated with Modal worker)
+          storagePath = `sources/${userId}/${timestamp}-${sanitizedFilename}`;
+          try {
+            publicUrl = await s3.upload(storagePath, file.buffer, file.type);
+            console.log(`[upload] S3 upload success: ${storagePath}`);
+          } catch (err) {
+            console.error('[upload] S3 upload failed, falling back to Supabase:', err.message);
+            publicUrl = null;
+          }
+        }
+
+        if (!publicUrl && supabaseAdmin) {
+          // Fallback: upload to Supabase Storage
+          storagePath = `${userId}/${timestamp}-${sanitizedFilename}`;
+          const { error: uploadError } = await supabaseAdmin.storage
+            .from('videos')
+            .upload(storagePath, file.buffer, {
+              contentType: file.type,
+              upsert: false,
+            });
+          if (uploadError) {
+            console.error('[VideoEditor][Upload] Supabase upload error:', uploadError);
+            return sendJson(res, 500, { error: 'Failed to upload video to storage' });
+          }
+          const { data: urlData } = supabaseAdmin.storage
+            .from('videos')
+            .getPublicUrl(storagePath);
+          publicUrl = urlData?.publicUrl;
+        }
+
+        if (!publicUrl) {
           return sendJson(res, 500, { error: 'Failed to upload video to storage' });
         }
 
-        const { data: urlData } = supabaseAdmin.storage
-          .from('videos')
-          .getPublicUrl(storagePath);
-        const publicUrl = urlData?.publicUrl;
-        if (publicUrl) {
-          console.log('[upload] Calling triggerPreAnalysis for:', publicUrl);
-          try {
-            triggerPreAnalysis(publicUrl);
-          } catch (err) {
-            console.error('[upload] triggerPreAnalysis threw synchronously:', err.message, err.stack);
-          }
+        console.log('[upload] Calling triggerPreAnalysis for:', publicUrl);
+        try {
+          triggerPreAnalysis(publicUrl);
+        } catch (err) {
+          console.error('[upload] triggerPreAnalysis threw synchronously:', err.message, err.stack);
         }
 
         return sendJson(res, 200, {

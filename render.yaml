@@ -33,6 +33,17 @@ services:
         sync: false
       - key: STRIPE_PRICE_LOOKUP_KEY
         sync: false
+      # AWS S3 (video storage colocated with Modal worker)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: CLOUDFRONT_DOMAIN
+        sync: false
       - key: NODE_VERSION
         value: 20
     healthCheckPath: /healthz
