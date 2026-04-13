@@ -6281,7 +6281,6 @@ const REELSCRIPT_LABELS = [
   'BEAT_3',
   'CTA',
   'ON_SCREEN_TEXT',
-  'BROLL_NOTES',
 ];
 const REELSCRIPT_BEAT_LABELS = ['BEAT_1', 'BEAT_2', 'BEAT_3'];
 const REELSCRIPT_MIN_HOOK_WORDS = 8;
@@ -6289,8 +6288,6 @@ const REELSCRIPT_MIN_BEAT_WORDS = 8;
 const REELSCRIPT_MIN_CTA_WORDS = 10;
 const REELSCRIPT_ONSCREEN_MIN_WORDS = 2;
 const REELSCRIPT_ONSCREEN_MAX_WORDS = 6;
-const REELSCRIPT_BROLL_MIN_WORDS = 2;
-const REELSCRIPT_BROLL_MAX_WORDS = 6;
 const ENGAGEMENT_ITEM_MIN_WORDS = 6;
 const ENGAGEMENT_ITEM_MAX_WORDS = 18;
 const ENGAGEMENT_COMMENT_MIN_ITEMS = 4;
@@ -6328,7 +6325,6 @@ function renderReelScriptFromParts(parts = {}, markers = null) {
   const beat3 = toPlainString(parts.beat3 || '');
   const cta = toPlainString(parts.cta || '');
   const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
-  const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
   const lines = [
     `HOOK: ${hook}`,
     `BEAT_1: ${beat1}`,
@@ -6336,7 +6332,6 @@ function renderReelScriptFromParts(parts = {}, markers = null) {
     `BEAT_3: ${beat3}`,
     `CTA: ${cta}`,
     `ON_SCREEN_TEXT: ${onScreen.join(' | ')}`,
-    `BROLL_NOTES: ${broll.join(', ')}`,
   ];
   if (markers && typeof markers === 'object' && !Array.isArray(markers)) {
     const belief = toPlainString(markers.beliefTeardown || '');
@@ -6390,14 +6385,13 @@ function normalizeEngagementLines(text = '') {
 function stripAdLabels(text = '') {
   let out = toPlainString(text || '');
   if (!out) return out;
-  const leadingLabel = /^\s*(Reel Script|Hook|Body|CTA|On[- ]screen text|Broll notes)\s*:\s*/i;
+  const leadingLabel = /^\s*(Reel Script|Hook|Body|CTA|On[- ]screen text)\s*:\s*/i;
   while (leadingLabel.test(out)) {
     out = out.replace(leadingLabel, '');
   }
   out = out
     .replace(/BEAT[_\s-]*\d+\s*:\s*/gi, '')
     .replace(/ON_SCREEN_TEXT\s*:\s*/gi, '')
-    .replace(/BROLL_NOTES\s*:\s*/gi, '')
     .replace(/HOOK\s*:\s*/gi, '')
     .replace(/CTA\s*:\s*/gi, '')
     .replace(/BODY\s*:\s*/gi, '');
@@ -6466,9 +6460,6 @@ function normalizeAdFields(post, ctx = {}) {
     });
     if (Array.isArray(reel.onScreenText)) {
       reel.onScreenText = reel.onScreenText.map((item) => stripAdLabels(item));
-    }
-    if (Array.isArray(reel.brollNotes)) {
-      reel.brollNotes = reel.brollNotes.map((item) => stripAdLabels(item));
     }
   }
 
@@ -6571,65 +6562,6 @@ function normalizeEngagementScripts(post, ctx = {}) {
   }
 }
 
-function normalizeReelScriptBroll(post, ctx = {}) {
-  try {
-    if (!post || typeof post !== 'object') return false;
-    const reel = post.reelScript;
-    if (!reel || typeof reel !== 'object' || Array.isArray(reel)) return false;
-    const raw = reel.brollNotes;
-    if (!Array.isArray(raw)) return false;
-    const normalized = [];
-    let changed = false;
-    raw.forEach((item, idx) => {
-      const beforeRaw = item === null || item === undefined ? '' : String(item);
-      let text = beforeRaw.trim().replace(/\s+/g, ' ');
-      text = text.replace(/[.,!?]+$/g, '');
-      const beforeWords = text ? text.split(/\s+/).filter(Boolean) : [];
-      const beforeWordCount = beforeWords.length;
-      let afterWords = beforeWords;
-      if (beforeWordCount > REELSCRIPT_BROLL_MAX_WORDS) {
-        afterWords = beforeWords.slice(0, REELSCRIPT_BROLL_MAX_WORDS);
-      }
-      const after = afterWords.join(' ');
-      const afterWordCount = afterWords.length;
-      if (!after) {
-        if (beforeRaw.trim()) changed = true;
-        if (changed) {
-          console.log('[Calendar][ReelScript][BrollNormalize]', {
-            requestId: ctx?.requestId || null,
-            post_key: ctx?.post_key || null,
-            itemIndex: idx,
-            beforeWordCount,
-            afterWordCount,
-          });
-        }
-        return;
-      }
-      if (beforeRaw.trim() !== after) {
-        changed = true;
-        console.log('[Calendar][ReelScript][BrollNormalize]', {
-          requestId: ctx?.requestId || null,
-          post_key: ctx?.post_key || null,
-          itemIndex: idx,
-          beforeWordCount,
-          afterWordCount,
-        });
-      }
-      normalized.push(after);
-    });
-    if (changed) {
-      post.reelScript.brollNotes = normalized;
-    }
-    return changed;
-  } catch (err) {
-    console.warn('[Calendar][ReelScript][BrollNormalizeError]', {
-      requestId: ctx?.requestId || null,
-      post_key: ctx?.post_key || null,
-      message: err?.message || err,
-    });
-    return false;
-  }
-}
 
 function validateReelScriptParts(parts = {}, mode = 'regular') {
   if (!parts || typeof parts !== 'object' || Array.isArray(parts)) {
@@ -6641,7 +6573,6 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
   const beat3 = toPlainString(parts.beat3 || '');
   const cta = toPlainString(parts.cta || '');
   const onScreen = Array.isArray(parts.onScreenText) ? parts.onScreenText.map((item) => toPlainString(item)).filter(Boolean) : [];
-  const broll = Array.isArray(parts.brollNotes) ? parts.brollNotes.map((item) => toPlainString(item)).filter(Boolean) : [];
   const beats = [
     { label: 'beat1', value: beat1 },
     { label: 'beat2', value: beat2 },
@@ -6662,28 +6593,6 @@ function validateReelScriptParts(parts = {}, mode = 'regular') {
     const wc = countWords(phrase);
     if (wc < REELSCRIPT_ONSCREEN_MIN_WORDS || wc > REELSCRIPT_ONSCREEN_MAX_WORDS) {
       return { ok: false, reason: 'REELSCRIPT_ON_SCREEN_FORMAT', field: 'reelScript', snippet: phrase.slice(0, 120), extra: { wordCount: wc } };
-    }
-  }
-  if (broll.length < 4 || broll.length > 8) {
-    return { ok: false, reason: 'REELSCRIPT_BROLL_COUNT', field: 'reelScript', snippet: broll.join(', ').slice(0, 120), extra: { count: broll.length } };
-  }
-  for (let i = 0; i < broll.length; i += 1) {
-    const item = broll[i];
-    const wc = countWords(item);
-    const cc = String(item || '').length;
-    if (wc < REELSCRIPT_BROLL_MIN_WORDS || wc > REELSCRIPT_BROLL_MAX_WORDS) {
-      console.log('[Calendar][ReelScript][BrollItemLength]', {
-        reason: 'REELSCRIPT_BROLL_ITEM_LENGTH',
-        expected: {
-          minWords: REELSCRIPT_BROLL_MIN_WORDS,
-          maxWords: REELSCRIPT_BROLL_MAX_WORDS,
-          minChars: null,
-          maxChars: null,
-        },
-        actual: { itemIndex: i, wordCount: wc, charCount: cc },
-        sample: String(item || '').slice(0, 200),
-      });
-      return { ok: false, reason: 'REELSCRIPT_BROLL_ITEM_LENGTH', field: 'reelScript', snippet: item.slice(0, 120), extra: { wordCount: wc, itemIndex: i } };
     }
   }
   if (String(mode || '') === 'brand_brain') {
