@@ -2418,28 +2418,23 @@
         const uploadBtn = e.target.closest('.chat-empty-upload-btn');
         if (uploadBtn) { fileInput.click(); return; }
 
-        // Play button on completed video — replace placeholder with real video
-        const playIcon = e.target.closest('.chat-video-play-icon');
-        const placeholder = e.target.closest('.chat-video-placeholder');
-        if (playIcon || placeholder) {
-          const result = (playIcon || placeholder).closest('.chat-video-result');
-          if (!result) return;
-          const url = decodeURIComponent(result.dataset.videoUrl || '');
-          const poster = decodeURIComponent(result.dataset.posterUrl || '');
+        // Tap on completed video — replace placeholder with real video player
+        const videoResult = e.target.closest('.chat-video-result');
+        if (videoResult && videoResult.dataset.videoUrl) {
+          const url = decodeURIComponent(videoResult.dataset.videoUrl);
+          const poster = decodeURIComponent(videoResult.dataset.posterUrl || '');
           if (!url) return;
           const vid = document.createElement('video');
           vid.controls = true;
           vid.playsInline = true;
           vid.setAttribute('webkit-playsinline', '');
-          vid.preload = 'auto';
-          vid.style.width = '100%';
-          vid.style.display = 'block';
-          vid.style.borderRadius = '16px';
-          vid.style.background = '#111';
+          vid.setAttribute('preload', 'auto');
+          vid.style.cssText = 'width:100%;display:block;border-radius:16px;background:#111;';
           if (poster) vid.poster = poster;
           vid.src = url;
-          result.innerHTML = '';
-          result.appendChild(vid);
+          videoResult.innerHTML = '';
+          videoResult.removeAttribute('data-video-url');
+          videoResult.appendChild(vid);
           vid.play().catch(() => {});
           return;
         }
@@ -2631,7 +2626,12 @@
       async function handleSend() {
         const text = inputEl.value.trim();
         if (chat.pendingFile && !chat.pendingVideoUrl && chat.isUploading) {
+          // Show user that upload is finishing
+          addSystemMessage('Finishing upload...');
           await new Promise(r => { const c = setInterval(() => { if (!chat.isUploading) { clearInterval(c); r(); } }, 200); });
+          // Remove the "finishing upload" message
+          const last = chat.messages[chat.messages.length - 1];
+          if (last?.role === 'system' && last?.content === 'Finishing upload...') chat.messages.pop();
         }
         const videoReady = Boolean(chat.pendingVideoUrl);
         if (!text && !videoReady) return;

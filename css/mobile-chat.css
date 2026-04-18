@@ -51,10 +51,15 @@
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
     gap: 8px;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+  }
+
+  /* Spacer pushes messages to bottom when few messages, but doesn't create scrollable empty space */
+  .chat-messages::before {
+    content: '';
+    flex: 1;
   }
 
   /* ── Bubbles ── */
