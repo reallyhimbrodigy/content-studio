@@ -2781,14 +2781,7 @@
               ? `<img style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:#111;display:block;flex-shrink:0;" src="${edit.thumbnail_url}" alt="" loading="lazy" />`
               : `<div style="width:56px;height:56px;border-radius:10px;background:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>`;
 
-            const actionsHtml = isComplete && edit.rendered_video_url ? `
-              <div style="display:flex;gap:8px;margin-top:10px;padding-left:68px;">
-                <button data-share-edit="${encodeURIComponent(edit.rendered_video_url)}" style="flex:1;padding:8px;background:#1a1a1a;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Share</button>
-                <button data-delete-edit="${edit.id}" style="padding:8px 12px;background:none;border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:rgba(255,255,255,0.4);font-size:13px;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Delete</button>
-              </div>` : isFailed ? `
-              <div style="display:flex;gap:8px;margin-top:10px;padding-left:68px;">
-                <button data-delete-edit="${edit.id}" style="padding:8px 12px;background:none;border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:rgba(255,255,255,0.4);font-size:13px;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Delete</button>
-              </div>` : '';
+            const menuData = encodeURIComponent(JSON.stringify({ id: edit.id, url: edit.rendered_video_url || '', status: edit.status }));
 
             return `<div style="padding:14px 0;border-bottom:0.5px solid rgba(255,255,255,0.06);">
               <div style="display:flex;gap:12px;align-items:flex-start;">
@@ -2802,35 +2795,61 @@
                     <span style="font-size:12px;color:rgba(255,255,255,0.3);">${formatDate(edit.created_at)}</span>
                   </div>
                 </div>
-              </div>${actionsHtml}
+                <button data-edit-menu="${menuData}" style="background:none;border:none;color:rgba(255,255,255,0.35);padding:4px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
+                </button>
+              </div>
             </div>`;
           }).join('');
 
-          // Wire up share and delete buttons
-          content.addEventListener('click', async (e) => {
-            const shareBtn = e.target.closest('[data-share-edit]');
-            if (shareBtn) {
-              const url = decodeURIComponent(shareBtn.dataset.shareEdit);
-              if (navigator.share) {
-                navigator.share({ url, title: 'My Promptly Edit' }).catch(() => {});
-              } else if (window.Capacitor?.Plugins?.Share) {
-                window.Capacitor.Plugins.Share.share({ url, title: 'My Promptly Edit' }).catch(() => {});
-              } else {
-                window.open(url, '_blank');
+          // Wire up three-dot menu
+          content.addEventListener('click', (e) => {
+            const menuBtn = e.target.closest('[data-edit-menu]');
+            if (!menuBtn) return;
+
+            const data = JSON.parse(decodeURIComponent(menuBtn.dataset.editMenu));
+            const isComplete = data.status === 'completed' && data.url;
+
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1100;display:flex;align-items:flex-end;justify-content:center;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);';
+
+            let items = '';
+            if (isComplete) {
+              items += `<button data-action="share" style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:none;border:none;color:#fff;font-size:16px;width:100%;text-align:left;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>Share</button>`;
+              items += `<button data-action="open" style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:none;border:none;color:#fff;font-size:16px;width:100%;text-align:left;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Open Video</button>`;
+            }
+            items += `<button data-action="delete" style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:none;border:none;color:#ef4444;font-size:16px;width:100%;text-align:left;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>Delete</button>`;
+
+            overlay.innerHTML = `<div style="background:#1a1a1a;border-radius:14px 14px 0 0;width:100%;max-width:420px;padding:6px 0;padding-bottom:max(6px,env(safe-area-inset-bottom,6px));animation:mobile-slide-up 0.3s cubic-bezier(0.32,0.72,0,1);">
+              ${items}
+              <button data-action="cancel" style="display:block;width:calc(100% - 16px);margin:8px auto 0;padding:14px;background:#111;border:none;border-radius:12px;color:#3b82f6;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">Cancel</button>
+            </div>`;
+
+            document.body.appendChild(overlay);
+
+            overlay.addEventListener('click', async (ev) => {
+              const action = ev.target.closest('[data-action]')?.dataset.action;
+              if (!action) return;
+              overlay.remove();
+
+              if (action === 'share' && data.url) {
+                if (navigator.share) navigator.share({ url: data.url, title: 'My Promptly Edit' }).catch(() => {});
+                else if (window.Capacitor?.Plugins?.Share) window.Capacitor.Plugins.Share.share({ url: data.url, title: 'My Promptly Edit' }).catch(() => {});
+                else window.open(data.url, '_blank');
+              } else if (action === 'open' && data.url) {
+                window.open(data.url, '_blank');
+              } else if (action === 'delete') {
+                if (!confirm('Delete this edit?')) return;
+                try {
+                  const sb = getSupabaseClient();
+                  const { data: { user } } = await sb.auth.getUser();
+                  await sb.from('video_jobs').delete().eq('id', data.id).eq('user_id', user.id);
+                  window.loadMobileLibrary();
+                } catch (_) { alert('Failed to delete.'); }
+              } else if (action === 'cancel') {
+                // already removed
               }
-              return;
-            }
-            const deleteBtn = e.target.closest('[data-delete-edit]');
-            if (deleteBtn) {
-              if (!confirm('Delete this edit?')) return;
-              const editId = deleteBtn.dataset.deleteEdit;
-              try {
-                const sb = getSupabaseClient();
-                const { data: { user } } = await sb.auth.getUser();
-                await sb.from('video_jobs').delete().eq('id', editId).eq('user_id', user.id);
-                window.loadMobileLibrary();
-              } catch (_) { alert('Failed to delete.'); }
-            }
+            });
           });
         } catch (err) {
           content.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.4);padding:48px;">Failed to load edits.</p>';
