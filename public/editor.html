@@ -970,7 +970,9 @@
 
       <div id="chat-pending-attach" class="chat-pending-attach" style="display:none;">
         <div class="chat-pending-attach-inner">
-          <img id="chat-pending-thumb" class="chat-pending-attach-thumb" alt="" />
+          <div id="chat-pending-thumb" class="chat-pending-attach-thumb">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </div>
           <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
         </div>
       </div>
@@ -2549,34 +2551,13 @@
         if (file.size > 500 * 1024 * 1024) { addSystemMessage('File too large. Max 500MB.'); return; }
         if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) { addSystemMessage('Use MP4, MOV, or AVI.'); return; }
 
-        const url = URL.createObjectURL(file);
-        const vid = document.createElement('video');
-        vid.preload = 'metadata';
-        vid.muted = true;
-        vid.playsInline = true;
-        vid.onloadeddata = () => {
-          const w = vid.videoWidth || 0, h = vid.videoHeight || 0;
-          if (w && h && w > h) { URL.revokeObjectURL(url); addSystemMessage('Please use a vertical or square video.'); return; }
-          // Capture first frame as image
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = vid.videoWidth;
-            canvas.height = vid.videoHeight;
-            canvas.getContext('2d').drawImage(vid, 0, 0);
-            chat.pendingThumbDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            pendingThumb.src = chat.pendingThumbDataUrl;
-          } catch (_) {
-            pendingThumb.src = '';
-          }
-          chat.pendingFile = file;
-          chat.pendingFileName = file.name;
-          chat.pendingFileSize = file.size;
-          chat.pendingLocalUrl = url;
-          pendingEl.style.display = 'flex';
-          syncSendBtn();
-        };
-        vid.onerror = () => { URL.revokeObjectURL(url); addSystemMessage('Could not read video.'); };
-        vid.src = url;
+        // Attach file immediately — no video decoding needed
+        chat.pendingFile = file;
+        chat.pendingFileName = file.name;
+        chat.pendingFileSize = file.size;
+        chat.pendingLocalUrl = URL.createObjectURL(file);
+        pendingEl.style.display = 'flex';
+        syncSendBtn();
       });
 
       pendingRemove.addEventListener('click', () => clearPendingAttachment());
