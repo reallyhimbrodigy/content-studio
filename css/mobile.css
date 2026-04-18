@@ -51,22 +51,33 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     height: 52px;
     background: none;
     border: none;
     color: rgba(255, 255, 255, 0.35);
-    font-size: 11px;
-    font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    padding: 0;
   }
 
   .mobile-tab-bar .mobile-tab.active { color: #fff; }
   .mobile-tab-bar .mobile-tab:active { opacity: 0.6; }
-  .mobile-tab-bar .mobile-tab svg { width: 22px; height: 22px; }
+
+  .mobile-tab-bar .mobile-tab svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
+
+  .mobile-tab-bar .tab-label {
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1;
+    display: block;
+  }
 
   /* ── Mobile page wrapper ── */
   .mobile-page.active {
