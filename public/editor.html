@@ -969,12 +969,10 @@
       <div id="chat-messages" class="chat-messages"></div>
 
       <div id="chat-pending-attach" class="chat-pending-attach" style="display:none;">
-        <video id="chat-pending-thumb" class="chat-pending-attach-thumb" muted playsinline></video>
-        <div class="chat-pending-attach-info">
-          <div id="chat-pending-name" class="chat-pending-attach-name"></div>
-          <div id="chat-pending-size" class="chat-pending-attach-size"></div>
+        <div class="chat-pending-attach-inner">
+          <video id="chat-pending-thumb" class="chat-pending-attach-thumb" muted playsinline></video>
+          <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
         </div>
-        <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
       </div>
 
       <div class="chat-input-bar">
@@ -2355,8 +2353,6 @@
       const fileInput = document.getElementById('chat-file-input');
       const pendingEl = document.getElementById('chat-pending-attach');
       const pendingThumb = document.getElementById('chat-pending-thumb');
-      const pendingName = document.getElementById('chat-pending-name');
-      const pendingSize = document.getElementById('chat-pending-size');
       const pendingRemove = document.getElementById('chat-pending-remove');
 
       const chat = {
@@ -2576,8 +2572,6 @@
           chat.pendingFileSize = file.size;
           chat.pendingLocalUrl = url;
           pendingThumb.src = url;
-          pendingName.textContent = file.name;
-          pendingSize.textContent = formatSize(file.size);
           pendingEl.style.display = 'flex';
           syncSendBtn();
         };
