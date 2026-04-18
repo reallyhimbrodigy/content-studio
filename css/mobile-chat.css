@@ -17,6 +17,21 @@
     z-index: 900;
   }
 
+  .mobile-view {
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0));
+    background: #000;
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+  }
+
+  .mobile-view.active {
+    display: flex !important;
+  }
+
   /* When keyboard is open, remove bottom padding for tab bar */
   body.keyboard-open .mobile-chat {
     padding-bottom: 0;

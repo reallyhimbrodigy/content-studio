@@ -45,7 +45,7 @@
     display: none !important;
   }
 
-  .mobile-tab-bar a {
+  .mobile-tab-bar .mobile-tab {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -53,17 +53,20 @@
     justify-content: center;
     gap: 2px;
     height: 52px;
-    text-decoration: none;
+    background: none;
+    border: none;
     color: rgba(255, 255, 255, 0.35);
     font-size: 11px;
     font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
 
-  .mobile-tab-bar a.active { color: #fff; }
-  .mobile-tab-bar a:active { opacity: 0.6; }
-  .mobile-tab-bar a svg { width: 22px; height: 22px; }
+  .mobile-tab-bar .mobile-tab.active { color: #fff; }
+  .mobile-tab-bar .mobile-tab:active { opacity: 0.6; }
+  .mobile-tab-bar .mobile-tab svg { width: 22px; height: 22px; }
 
   /* ── Mobile page wrapper ── */
   .mobile-page.active {

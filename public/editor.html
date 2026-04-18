@@ -984,6 +984,18 @@
       <input type="file" id="chat-file-input" accept="video/mp4,video/quicktime,video/x-msvideo" style="display:none" />
     </div>
 
+    <!-- ═══ Mobile Library View (embedded) ═══ -->
+    <div id="mobile-library-view" class="mobile-view" style="display:none;">
+      <header class="chat-header"><span class="chat-header-title">Library</span></header>
+      <div id="mobile-lib-content" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px;"></div>
+    </div>
+
+    <!-- ═══ Mobile Account View (embedded) ═══ -->
+    <div id="mobile-account-view" class="mobile-view" style="display:none;">
+      <header class="chat-header"><span class="chat-header-title">Account</span></header>
+      <div id="mobile-acct-content" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 16px;"></div>
+    </div>
+
     <div id="account-modal" class="acct-modal-overlay" style="display:none" hidden aria-hidden="true">
       <div class="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
         <div class="acct-modal-content">
@@ -2723,6 +2735,150 @@
       syncSendBtn();
     })();
     </script>
+
+    <!-- ═══ Library & Account logic (loaded on tab tap) ═══ -->
+    <script>
+    (function() {
+      if (window.matchMedia('(min-width: 769px)').matches) return;
+
+      const getSupabaseClient = () => window.supabaseClient || window.supabase || null;
+
+      const getAuthContext = async () => {
+        const sb = getSupabaseClient();
+        if (!sb?.auth?.getSession || !sb?.auth?.getUser) throw new Error('Auth unavailable');
+        const [{ data: sd }, { data: ud }] = await Promise.all([sb.auth.getSession(), sb.auth.getUser()]);
+        if (!sd?.session?.access_token || !ud?.user?.id) throw new Error('Please sign in');
+        return { token: sd.session.access_token, user: ud.user };
+      };
+
+      function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+
+      function formatDate(d) {
+        if (!d) return '';
+        const date = new Date(d);
+        const diff = Date.now() - date;
+        if (diff < 60000) return 'Just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      // ── Library ──
+      window.loadMobileLibrary = async function() {
+        const content = document.getElementById('mobile-lib-content');
+        if (!content) return;
+        content.innerHTML = '<div style="display:flex;justify-content:center;padding:64px 0;"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.1);border-top-color:rgba(255,255,255,0.5);border-radius:50%;animation:spin 0.8s linear infinite;"></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+
+        try {
+          const sb = getSupabaseClient();
+          if (!sb) throw new Error('Not connected');
+          const { data: { user } } = await sb.auth.getUser();
+          if (!user) { window.location.href = '/auth.html'; return; }
+
+          const { data: edits } = await sb
+            .from('video_jobs')
+            .select('id, status, vibe_input, rendered_video_url, thumbnail_url, created_at')
+            .eq('user_id', user.id)
+            .in('status', ['completed', 'processing', 'queued', 'failed'])
+            .order('created_at', { ascending: false });
+
+          if (!edits || edits.length === 0) {
+            content.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 32px;gap:16px;text-align:center;flex:1;"><div style="font-size:20px;font-weight:600;color:#fff;">No edits yet</div><div style="font-size:15px;color:rgba(255,255,255,0.4);max-width:260px;">Create your first edit and it will show up here.</div></div>';
+            return;
+          }
+
+          content.innerHTML = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">' + edits.map((edit) => {
+            const vibe = escapeHtml((edit.vibe_input || '').slice(0, 60));
+            const badge = edit.status || 'queued';
+            const badgeColors = { completed: 'rgba(34,197,94,0.12)', processing: 'rgba(59,130,246,0.12)', queued: 'rgba(250,204,21,0.12)', failed: 'rgba(239,68,68,0.12)' };
+            const badgeText = { completed: '#4ade80', processing: '#60a5fa', queued: '#facc15', failed: '#f87171' };
+            const thumbHtml = edit.thumbnail_url
+              ? `<img style="width:100%;aspect-ratio:9/16;object-fit:cover;background:#111;display:block;" src="${edit.thumbnail_url}" alt="" loading="lazy" />`
+              : '<div style="width:100%;aspect-ratio:9/16;background:#111;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.15);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>';
+            return `<div style="background:#111;border-radius:12px;overflow:hidden;">${thumbHtml}<div style="padding:10px 10px 12px;"><div style="font-size:13px;font-weight:500;color:rgba(255,255,255,0.9);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${vibe || 'Video edit'}</div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;"><span style="font-size:11px;color:rgba(255,255,255,0.35);">${formatDate(edit.created_at)}</span><span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;background:${badgeColors[badge] || badgeColors.queued};color:${badgeText[badge] || badgeText.queued};">${badge === 'completed' ? 'Done' : badge}</span></div></div></div>`;
+          }).join('') + '</div>';
+        } catch (err) {
+          content.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.4);padding:48px;">Failed to load edits.</p>';
+        }
+      };
+
+      // ── Account ──
+      window.loadMobileAccount = async function() {
+        const content = document.getElementById('mobile-acct-content');
+        if (!content) return;
+        content.innerHTML = '<div style="display:flex;justify-content:center;padding:64px 0;"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.1);border-top-color:rgba(255,255,255,0.5);border-radius:50%;animation:spin 0.8s linear infinite;"></div></div>';
+
+        try {
+          const sb = getSupabaseClient();
+          if (!sb) throw new Error('Not connected');
+          const { data: { user } } = await sb.auth.getUser();
+          if (!user) { window.location.href = '/auth.html'; return; }
+
+          const meta = user.user_metadata || {};
+          const fullName = meta.full_name || meta.name || '';
+          const email = user.email || '';
+          const initial = (fullName || email || 'U').charAt(0).toUpperCase();
+
+          let tier = 'free';
+          try {
+            const { data: profile } = await sb.from('profiles').select('tier').eq('id', user.id).single();
+            if (profile?.tier) tier = String(profile.tier).toLowerCase();
+          } catch (_) {}
+
+          const isPro = tier === 'pro';
+          const chevron = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+
+          content.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 0 4px;">
+              <div style="width:80px;height:80px;border-radius:50%;background:#1a1a1a;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                <span style="font-size:30px;font-weight:600;color:rgba(255,255,255,0.6);">${initial}</span>
+              </div>
+              <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.02em;margin-top:4px;">${escapeHtml(fullName || 'User')}</div>
+              <div style="font-size:14px;color:rgba(255,255,255,0.4);">${escapeHtml(email)}</div>
+            </div>
+
+            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:24px;">
+              <button onclick="var n=prompt('Enter your name');if(n&&n.length<=32){(window.supabaseClient||window.supabase).auth.updateUser({data:{full_name:n}}).then(()=>window.loadMobileAccount())}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;border-bottom:0.5px solid rgba(255,255,255,0.1);background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                <span style="font-size:16px;color:#fff;">Name</span>
+                <span style="font-size:15px;color:rgba(255,255,255,0.35);display:flex;align-items:center;gap:4px;">${escapeHtml(fullName || 'Not set')} ${chevron}</span>
+              </button>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;">
+                <span style="font-size:16px;color:#fff;">Email</span>
+                <span style="font-size:15px;color:rgba(255,255,255,0.35);">${escapeHtml(email)}</span>
+              </div>
+            </div>
+
+            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;">
+                <span style="font-size:16px;color:#fff;">Plan</span>
+                <span style="font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;${isPro ? 'background:rgba(59,130,246,0.15);color:#60a5fa;' : 'background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);'}">${isPro ? 'PRO' : 'FREE'}</span>
+              </div>
+            </div>
+
+            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:16px;">
+              <button onclick="window.location.href='/help.html'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;border-bottom:0.5px solid rgba(255,255,255,0.1);background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                <span style="font-size:16px;color:#fff;">Help & Support</span>
+                <span style="color:rgba(255,255,255,0.2);">${chevron}</span>
+              </button>
+              <button onclick="window.location.href='/reset-password.html'" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+                <span style="font-size:16px;color:#fff;">Change Password</span>
+                <span style="color:rgba(255,255,255,0.2);">${chevron}</span>
+              </button>
+            </div>
+
+            <button onclick="(window.supabaseClient||window.supabase).auth.signOut().then(()=>{localStorage.removeItem('promptly_current_user');window.location.href='/auth.html';})" style="display:block;width:100%;padding:14px;background:#1a1a1a;border:none;border-radius:12px;color:#ef4444;font-size:16px;cursor:pointer;text-align:center;font-family:inherit;margin-top:16px;-webkit-tap-highlight-color:transparent;">Sign Out</button>
+            <div style="text-align:center;font-size:12px;color:rgba(255,255,255,0.2);padding:16px 0;">Promptly v1.0</div>`;
+        } catch (err) {
+          content.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.4);padding:48px;">Failed to load account.</p>';
+        }
+      };
+
+      // Auto-load library on first render so it's ready
+      setTimeout(() => { if (typeof window.loadMobileLibrary === 'function') window.loadMobileLibrary(); }, 1000);
+    })();
+    </script>
+
     <script src="/components/mobile-nav.js"></script>
   </body>
 </html>
