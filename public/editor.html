@@ -983,7 +983,7 @@
         <button id="chat-send-btn" class="chat-send-btn" disabled aria-label="Send">&#8593;</button>
       </div>
 
-      <input type="file" id="chat-file-input" accept="video/mp4,video/quicktime,video/x-msvideo" style="display:none" />
+      <input type="file" id="chat-file-input" accept="video/*" style="display:none" />
     </div>
 
     <!-- ═══ Mobile Library View (embedded) ═══ -->
@@ -2549,7 +2549,7 @@
         e.target.value = '';
         if (!file) return;
         if (file.size > 500 * 1024 * 1024) { addSystemMessage('File too large. Max 500MB.'); return; }
-        if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) { addSystemMessage('Use MP4, MOV, or AVI.'); return; }
+        if (!file.type.startsWith('video/')) { addSystemMessage('Please select a video file.'); return; }
 
         // Attach file immediately — no video decoding needed
         chat.pendingFile = file;
