@@ -390,7 +390,19 @@
     touch-action: manipulation;
   }
 
+  .chat-empty-upload-btn svg {
+    display: block;
+    flex-shrink: 0;
+  }
+
   .chat-empty-upload-btn:active { opacity: 0.8; }
+
+  /* ── Error message ── */
+  .chat-error {
+    color: #ef4444;
+    font-size: 13px;
+    margin-top: 4px;
+  }
 
   /* ── Video error fallback ── */
   .chat-video-fallback {
