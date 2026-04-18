@@ -41,18 +41,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'No queued jobs', processed: 0 });
     }
 
-    const results = [];
-    for (const job of jobs) {
-      try {
-        console.log(`[cron/process-jobs] Processing job ${job.id}...`);
-        const finalVideoUrl = await processEditJob(job);
-        results.push({ jobId: job.id, success: true, videoUrl: finalVideoUrl });
-        console.log(`[cron/process-jobs] Job ${job.id} completed: ${finalVideoUrl}`);
-      } catch (jobError) {
-        console.error(`[cron/process-jobs] Job ${job.id} failed:`, jobError?.message || jobError);
-        results.push({ jobId: job.id, success: false, error: jobError?.message || 'Unknown job error' });
-      }
-    }
+    const results = await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          console.log(`[cron/process-jobs] Processing job ${job.id}...`);
+          const finalVideoUrl = await processEditJob(job);
+          console.log(`[cron/process-jobs] Job ${job.id} completed: ${finalVideoUrl}`);
+          return { jobId: job.id, success: true, videoUrl: finalVideoUrl };
+        } catch (jobError) {
+          console.error(`[cron/process-jobs] Job ${job.id} failed:`, jobError?.message || jobError);
+          return { jobId: job.id, success: false, error: jobError?.message || 'Unknown job error' };
+        }
+      })
+    );
 
     return res.status(200).json({
       message: 'Cron job completed',

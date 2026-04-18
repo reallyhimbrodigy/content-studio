@@ -10063,6 +10063,72 @@ const server = http.createServer((req, res) => {
     return Number(count || 0);
   }
 
+  // ── Gemini Chat Proxy ──
+  if (parsed.pathname === '/api/chat' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const message = String(body?.message || '').trim();
+        if (!message) return sendJson(res, 400, { error: 'Message is required' });
+
+        const history = Array.isArray(body?.history) ? body.history : [];
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) return sendJson(res, 500, { error: 'Chat not configured' });
+
+        // Build Gemini request
+        const contents = [];
+
+        // System instruction via first user turn
+        const systemPrompt = 'You are Promptly, an AI video editing assistant. You help users create short-form video edits for TikTok, Reels, and YouTube Shorts. You can answer questions about video editing, suggest vibes and styles, and help users get the most out of their edits. Keep responses concise and friendly — this is a mobile chat.';
+
+        // Add conversation history
+        for (const h of history.slice(-18)) {
+          if (h.role === 'user' || h.role === 'assistant') {
+            contents.push({
+              role: h.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: h.content }],
+            });
+          }
+        }
+
+        // Add current message
+        contents.push({ role: 'user', parts: [{ text: message }] });
+
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: systemPrompt }] },
+              contents,
+              generationConfig: {
+                maxOutputTokens: 512,
+                temperature: 0.8,
+              },
+            }),
+          }
+        );
+
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text().catch(() => '');
+          console.error('[Chat] Gemini error:', geminiRes.status, errText);
+          return sendJson(res, 502, { error: 'AI service error' });
+        }
+
+        const geminiData = await geminiRes.json();
+        const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        return sendJson(res, 200, { reply });
+      } catch (error) {
+        console.error('[Chat] Error:', error);
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Chat error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
     (async () => {
       try {
@@ -10288,19 +10354,20 @@ const server = http.createServer((req, res) => {
         }
 
         const { processEditJob } = require('./lib/video-processor/process-job');
-        const results = [];
 
-        for (const job of jobs) {
-          try {
-            console.log(`[VideoEditor][Cron] Processing job ${job.id}...`);
-            const finalVideoUrl = await processEditJob(job);
-            results.push({ jobId: job.id, success: true, videoUrl: finalVideoUrl });
-            console.log(`[VideoEditor][Cron] Job ${job.id} complete`);
-          } catch (jobError) {
-            console.error(`[VideoEditor][Cron] Job ${job.id} failed:`, jobError?.message || jobError);
-            results.push({ jobId: job.id, success: false, error: jobError?.message || 'Unknown error' });
-          }
-        }
+        const results = await Promise.all(
+          jobs.map(async (job) => {
+            try {
+              console.log(`[VideoEditor][Cron] Processing job ${job.id}...`);
+              const finalVideoUrl = await processEditJob(job);
+              console.log(`[VideoEditor][Cron] Job ${job.id} complete`);
+              return { jobId: job.id, success: true, videoUrl: finalVideoUrl };
+            } catch (jobError) {
+              console.error(`[VideoEditor][Cron] Job ${job.id} failed:`, jobError?.message || jobError);
+              return { jobId: job.id, success: false, error: jobError?.message || 'Unknown error' };
+            }
+          })
+        );
 
         return sendJson(res, 200, {
           message: 'Cron job completed',

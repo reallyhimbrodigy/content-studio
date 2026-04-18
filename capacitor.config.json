@@ -1,0 +1,16 @@
+{
+  "appId": "app.usepromptly.ios",
+  "appName": "Promptly",
+  "webDir": "www",
+  "server": {
+    "url": "https://usepromptly.app/editor",
+    "cleartext": false
+  },
+  "ios": {
+    "scheme": "Promptly",
+    "backgroundColor": "#000000",
+    "contentInset": "always",
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false
+  }
+}

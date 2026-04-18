@@ -31,6 +31,7 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <link rel="stylesheet" href="/css/theme.css" />
   <link rel="stylesheet" href="/css/sidebar.css" />
+  <link rel="stylesheet" href="/css/mobile.css" />
   <link rel="manifest" href="manifest.json" />
     <style>
       body.auth-pending {
@@ -451,6 +452,151 @@
       </div>
     </div>
 
+    <!-- ═══ Mobile Library View ═══ -->
+    <div id="mobile-library-page" class="mobile-page">
+      <header class="mobile-header">
+        <span class="mobile-header-title">Library</span>
+      </header>
+      <div id="mobile-library" class="mobile-library">
+        <div id="mobile-library-content"></div>
+      </div>
+    </div>
+
+    <script>
+    (function initMobileLibrary() {
+      if (window.matchMedia('(min-width: 769px)').matches) return;
+
+      const page = document.getElementById('mobile-library-page');
+      const content = document.getElementById('mobile-library-content');
+      if (!page || !content) return;
+      page.classList.add('active');
+
+      const getSupabaseClient = () => window.supabaseClient || window.supabase || null;
+
+      const formatDate = (d) => {
+        if (!d) return '';
+        const date = new Date(d);
+        const now = new Date();
+        const diff = now - date;
+        if (diff < 60000) return 'Just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      };
+
+      const escapeHtml = (str) => {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+      };
+
+      async function loadEdits() {
+        const sb = getSupabaseClient();
+        if (!sb) return;
+
+        try {
+          const { data: { user } } = await sb.auth.getUser();
+          if (!user) { window.location.href = '/auth.html'; return; }
+
+          const { data: edits } = await sb
+            .from('video_jobs')
+            .select('id, status, vibe_input, rendered_video_url, thumbnail_url, created_at, error_message')
+            .eq('user_id', user.id)
+            .in('status', ['completed', 'processing', 'queued', 'failed'])
+            .order('created_at', { ascending: false });
+
+          if (!edits || edits.length === 0) {
+            content.innerHTML = `
+              <div class="mobile-library-empty">
+                <div class="mobile-library-empty-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </div>
+                <div class="mobile-library-empty-title">No edits yet</div>
+                <div class="mobile-library-empty-desc">Create your first edit in the chat and it will show up here.</div>
+                <a href="/editor" class="mobile-library-empty-btn">Create Edit</a>
+              </div>`;
+            return;
+          }
+
+          content.innerHTML = `<div class="mobile-library-grid">${edits.map((edit) => {
+            const vibe = escapeHtml((edit.vibe_input || '').slice(0, 60));
+            const badge = edit.status || 'queued';
+            const thumbHtml = edit.thumbnail_url
+              ? `<img class="mobile-edit-thumb" src="${edit.thumbnail_url}" alt="" loading="lazy" />`
+              : `<div class="mobile-edit-thumb-placeholder"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>`;
+
+            return `
+              <div class="mobile-edit-card" data-edit-id="${edit.id}" data-video-url="${edit.rendered_video_url || ''}" data-thumb-url="${edit.thumbnail_url || ''}" data-vibe="${escapeHtml(edit.vibe_input || '')}" data-date="${edit.created_at || ''}" data-status="${badge}">
+                ${thumbHtml}
+                <div class="mobile-edit-info">
+                  <div class="mobile-edit-vibe">${vibe || 'Video edit'}</div>
+                  <div class="mobile-edit-meta">
+                    <span class="mobile-edit-date">${formatDate(edit.created_at)}</span>
+                    <span class="mobile-edit-badge ${badge}">${badge === 'completed' ? 'Done' : badge}</span>
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}</div>`;
+
+          // Wire up card taps
+          content.querySelectorAll('.mobile-edit-card').forEach((card) => {
+            card.addEventListener('click', () => openVideoDetail(card.dataset));
+          });
+        } catch (err) {
+          console.error('[MobileLibrary]', err);
+          content.innerHTML = '<p style="text-align:center;color:#71717a;padding:48px;">Failed to load edits.</p>';
+        }
+      }
+
+      function openVideoDetail(data) {
+        if (!data.videoUrl && data.status !== 'completed') return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'mobile-video-detail';
+
+        const videoHtml = data.videoUrl
+          ? `<video controls src="${data.videoUrl}" ${data.thumbUrl ? `poster="${data.thumbUrl}"` : ''} playsinline></video>`
+          : '<p style="color:#71717a;text-align:center;padding:24px;">Video not available yet.</p>';
+
+        const actionsHtml = data.videoUrl ? `
+          <div class="mobile-video-detail-actions">
+            <a href="${data.videoUrl}" download>
+              <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Download
+            </a>
+          </div>` : '';
+
+        overlay.innerHTML = `
+          <div class="mobile-video-detail-header">
+            <button class="mobile-video-detail-back" id="detail-back">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+          </div>
+          <div class="mobile-video-detail-body">
+            ${videoHtml}
+            ${actionsHtml}
+            <div class="mobile-video-detail-info">
+              <div class="mobile-video-detail-vibe">${escapeHtml(data.vibe)}</div>
+              <div class="mobile-video-detail-date">${formatDate(data.date)}</div>
+            </div>
+          </div>`;
+
+        document.body.appendChild(overlay);
+        overlay.querySelector('#detail-back').addEventListener('click', () => overlay.remove());
+      }
+
+      // Wait for Supabase to be ready, then load
+      function waitForSupabase() {
+        const sb = getSupabaseClient();
+        if (sb) { loadEdits(); return; }
+        setTimeout(waitForSupabase, 100);
+      }
+      waitForSupabase();
+    })();
+    </script>
+
   <script type="application/ld+json" src="/assets/schema-website.json"></script>
   <script type="application/ld+json" src="/assets/schema-organization.json"></script>
   <script type="application/ld+json" src="/assets/schema-product.json"></script>
@@ -462,5 +608,6 @@
       initSidebar();
     </script>
     <script type="module" src="./library.js?t=1771556488"></script>
+    <script src="/components/mobile-nav.js"></script>
   </body>
 </html>

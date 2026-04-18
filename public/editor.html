@@ -15,6 +15,8 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <link rel="stylesheet" href="/css/theme.css" />
     <link rel="stylesheet" href="/css/sidebar.css" />
+    <link rel="stylesheet" href="/css/mobile.css" />
+    <link rel="stylesheet" href="/css/mobile-chat.css" />
     <script src="assets/vendor/supabase.js?t=1771556488"></script>
     <style>
       body.auth-pending {
@@ -708,6 +710,168 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0; }
       }
+
+      /* ── Jobs list (multi-job support) ── */
+      .jobs-list {
+        margin-top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .jobs-list-heading {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 4px;
+      }
+
+      .job-card {
+        background: var(--bg-surface, #18181b);
+        border: 1px solid var(--border-color, #27272a);
+        border-radius: 12px;
+        padding: 16px 18px;
+        transition: border-color 0.2s;
+      }
+
+      .job-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .job-card-filename {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+      }
+
+      .job-card-vibe {
+        font-size: 12px;
+        color: var(--text-muted, #a1a1aa);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+      }
+
+      .job-card-status-badge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        flex-shrink: 0;
+      }
+
+      .job-card-status-badge.processing {
+        background: rgba(59, 130, 246, 0.15);
+        color: #60a5fa;
+      }
+
+      .job-card-status-badge.queued {
+        background: rgba(234, 179, 8, 0.15);
+        color: #facc15;
+      }
+
+      .job-card-status-badge.completed {
+        background: rgba(34, 197, 94, 0.15);
+        color: #4ade80;
+      }
+
+      .job-card-status-badge.failed {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
+      }
+
+      .job-card-progress {
+        margin-top: 8px;
+      }
+
+      .job-card-step {
+        font-size: 12px;
+        color: var(--text-muted, #a1a1aa);
+        margin-bottom: 6px;
+        min-height: 16px;
+      }
+
+      .job-card-step::after {
+        content: '';
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        background: currentColor;
+        margin-left: 2px;
+        vertical-align: middle;
+        opacity: 0;
+      }
+
+      .job-card-step.typing::after {
+        opacity: 1;
+        animation: blink-cursor 0.7s step-end infinite;
+      }
+
+      .job-card .progress-track {
+        height: 4px;
+      }
+
+      .job-card-percent {
+        font-size: 11px;
+        color: var(--text-muted, #a1a1aa);
+        margin-top: 4px;
+      }
+
+      .job-card-result {
+        margin-top: 12px;
+      }
+
+      .job-card-result video {
+        width: 100%;
+        max-height: 300px;
+        border-radius: 8px;
+        background: #000;
+      }
+
+      .job-card-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      .job-card-actions a,
+      .job-card-actions button {
+        font-size: 12px;
+        padding: 6px 12px;
+      }
+
+      .job-card-error {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #f87171;
+      }
+
+      .job-card-dismiss {
+        background: none;
+        border: none;
+        color: var(--text-muted, #a1a1aa);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0 2px;
+        margin-left: auto;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+
+      .job-card-dismiss:hover {
+        color: var(--text-primary);
+      }
     </style>
   </head>
   <body class="page-editor auth-pending">
@@ -795,6 +959,47 @@
     </div>
 
     <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+    <!-- ═══ Mobile Chat UI ═══ -->
+    <div id="mobile-chat" class="mobile-chat">
+      <header class="chat-header">
+        <button class="chat-header-btn" id="chat-back-btn" aria-label="Back">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <span class="chat-header-title">Chat</span>
+        <button class="chat-header-btn" id="chat-menu-btn" aria-label="Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
+        </button>
+      </header>
+
+      <div id="chat-messages" class="chat-messages"></div>
+
+      <div id="chat-pending-attach" class="chat-pending-attach" style="display:none;">
+        <video id="chat-pending-thumb" class="chat-pending-attach-thumb" muted></video>
+        <div class="chat-pending-attach-info">
+          <div id="chat-pending-name" class="chat-pending-attach-name"></div>
+          <div id="chat-pending-size" class="chat-pending-attach-size"></div>
+        </div>
+        <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
+      </div>
+
+      <div id="chat-upload-progress" class="chat-upload-progress" style="display:none;">
+        <div class="chat-upload-progress-track">
+          <div id="chat-upload-fill" class="chat-upload-progress-fill" style="width:0%"></div>
+        </div>
+        <span id="chat-upload-label" class="chat-upload-progress-label">0%</span>
+      </div>
+
+      <div class="chat-input-bar">
+        <button id="chat-attach-btn" class="chat-attach-btn" aria-label="Attach video">+</button>
+        <textarea id="chat-text-input" class="chat-text-input" rows="1" placeholder="Chat to edit"></textarea>
+        <button id="chat-send-btn" class="chat-send-btn" disabled aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+
+      <input type="file" id="chat-file-input" accept="video/mp4,video/quicktime,video/x-msvideo" style="display:none" />
+    </div>
 
     <div id="account-modal" class="acct-modal-overlay" style="display:none" hidden aria-hidden="true">
       <div class="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
@@ -1509,21 +1714,16 @@
           videoFileName: '',
           videoFileSize: 0,
           vibe: '',
-          jobId: null,
-          status: 'idle',
-          progress: 0,
-          currentStep: '',
-          renderedVideoUrl: null,
-          thumbnailUrl: null,
           error: null,
           isUploading: false,
           uploadProgress: 0,
           submitting: false,
+          // Multiple concurrent jobs
+          jobs: [],
         };
-        let pollInterval = null;
-        let sseConnection = null;
-        let typingInterval = null;
-        let currentAnimatedMessage = '';
+        const sseConnections = new Map();
+        const jobTypingIntervals = new Map();
+        const jobAnimatedMessages = new Map();
 
         root.innerHTML = `
           <section id="upload-section" class="editor-card">
@@ -1587,38 +1787,7 @@
             </div>
           </section>
 
-          <section id="processing-section" class="state-card" style="display:none;">
-            <h2 class="state-title">Creating your video...</h2>
-            <p id="status-text" class="state-muted">Getting started...</p>
-            <div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%;"></div></div>
-            <p id="progress-text" class="state-muted" style="margin-top:10px;">0%</p>
-            <p id="queue-hint" class="state-muted" style="margin-top:6px; font-size:12px; opacity:0.5; display:none;">
-              Waiting for an available GPU...
-            </p>
-          </section>
-
-          <section id="complete-section" class="state-card" style="display:none;">
-            <h2 class="state-title">Your video is ready</h2>
-            <video id="video-preview" controls class="video-preview"></video>
-            <div class="state-actions">
-              <a id="download-link" href="#" download class="editor-action-primary">
-                <svg viewBox="0 0 24 24" fill="none" width="16" height="16" aria-hidden="true">
-                  <path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Download Video
-              </a>
-              <button id="copy-finished-link" class="editor-action-ghost" type="button">Copy Video Link</button>
-              <button id="edit-another-btn" class="editor-action-ghost" type="button">Edit Another Video</button>
-              <!-- TODO: Wire this button to return to prompt step while preserving uploaded video. -->
-              <button id="try-different-vibe-btn" class="editor-action-ghost" type="button">Try Different Vibe</button>
-            </div>
-          </section>
-
-          <section id="error-section" class="state-card" style="display:none;">
-            <h2 class="state-title">Something went wrong</h2>
-            <p id="error-text" class="state-muted" style="margin-bottom:18px;">Failed to process your video.</p>
-            <button id="retry-btn" class="editor-action-ghost" type="button">Try Again</button>
-          </section>
+          <section id="jobs-list" class="jobs-list" style="display:none;"></section>
         `;
 
         const fileInput = document.createElement('input');
@@ -1642,29 +1811,13 @@
         const vibeSuggestCards = Array.from(root.querySelectorAll('.vibe-suggest-card'));
         const vibeClearBtn = document.getElementById('vibe-clear-btn');
         const composerError = document.getElementById('composer-error');
-        const processingSection = document.getElementById('processing-section');
-        const statusText = document.getElementById('status-text');
-        const progressFill = document.getElementById('progress-fill');
-        const progressText = document.getElementById('progress-text');
-        const completeSection = document.getElementById('complete-section');
-        const videoPreview = document.getElementById('video-preview');
-        const downloadLink = document.getElementById('download-link');
-        const copyFinishedLinkBtn = document.getElementById('copy-finished-link');
-        const editAnotherBtn = document.getElementById('edit-another-btn');
-        const errorSection = document.getElementById('error-section');
-        const errorText = document.getElementById('error-text');
-        const retryBtn = document.getElementById('retry-btn');
+        const jobsList = document.getElementById('jobs-list');
         const trustBadge = document.getElementById('trust-badge');
 
         const formatFileSize = (bytes) => {
           const value = Number(bytes || 0);
           if (!Number.isFinite(value) || value <= 0) return '';
           return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-        };
-
-        const resetCopyFinishedLinkButton = () => {
-          if (!copyFinishedLinkBtn) return;
-          copyFinishedLinkBtn.textContent = 'Copy Video Link';
         };
 
         const copyToClipboard = async (text) => {
@@ -1692,17 +1845,58 @@
           generateBtn.disabled = !canGenerate;
         };
 
-        const render = () => {
-          const showWorkflow = !state.jobId;
-          const showProcessing = state.jobId && !['complete', 'completed', 'error', 'failed'].includes(state.status);
-          const showComplete = ['complete', 'completed'].includes(state.status) && state.renderedVideoUrl;
-          const showError = ['error', 'failed'].includes(state.status);
+        const renderJobCard = (job) => {
+          const isProcessing = job.status && !['complete', 'completed', 'error', 'failed'].includes(job.status);
+          const isComplete = ['complete', 'completed'].includes(job.status) && job.renderedVideoUrl;
+          const isError = ['error', 'failed'].includes(job.status);
 
-          uploadSection.style.display = showWorkflow ? 'block' : 'none';
-          processingSection.style.display = showProcessing ? 'block' : 'none';
-          completeSection.style.display = showComplete ? 'block' : 'none';
-          errorSection.style.display = showError ? 'block' : 'none';
-          trustBadge.style.display = showWorkflow ? 'block' : 'none';
+          const statusClass = isComplete ? 'completed' : isError ? 'failed' : job.status === 'queued' ? 'queued' : 'processing';
+          const statusLabel = isComplete ? 'Done' : isError ? 'Failed' : job.status === 'queued' ? 'Queued' : 'Processing';
+
+          let body = '';
+          if (isProcessing) {
+            const stepMsg = job.stepMessage || job.currentStep || 'Getting started...';
+            body = `
+              <div class="job-card-progress">
+                <p class="job-card-step" id="job-step-${job.id}">${stepMsg}</p>
+                <div class="progress-track"><div class="progress-fill" style="width:${job.progress || 0}%;"></div></div>
+                <p class="job-card-percent">${job.progress || 0}%</p>
+                ${job.status === 'queued' || (job.progress || 0) === 0 ? '<p class="job-card-percent" style="opacity:0.5;">Waiting for an available GPU...</p>' : ''}
+              </div>`;
+          } else if (isComplete) {
+            body = `
+              <div class="job-card-result">
+                <video controls class="video-preview" src="${job.renderedVideoUrl}" ${job.thumbnailUrl ? `poster="${job.thumbnailUrl}"` : ''}></video>
+                <div class="job-card-actions">
+                  <a href="${job.renderedVideoUrl}" download class="editor-action-primary" style="font-size:12px;padding:6px 12px;">
+                    <svg viewBox="0 0 24 24" fill="none" width="14" height="14" aria-hidden="true">
+                      <path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Download
+                  </a>
+                  <button class="editor-action-ghost job-copy-link" data-url="${job.renderedVideoUrl}" type="button">Copy Link</button>
+                </div>
+              </div>`;
+          } else if (isError) {
+            body = `<p class="job-card-error">${job.error || 'Something went wrong. Please try again.'}</p>`;
+          }
+
+          return `
+            <div class="job-card" data-job-id="${job.id}">
+              <div class="job-card-header">
+                <span class="job-card-filename">${job.videoFileName || 'Video'}</span>
+                <span class="job-card-vibe">${job.vibe || ''}</span>
+                <span class="job-card-status-badge ${statusClass}">${statusLabel}</span>
+                ${isComplete || isError ? `<button class="job-card-dismiss" data-dismiss-job="${job.id}" title="Dismiss">&times;</button>` : ''}
+              </div>
+              ${body}
+            </div>`;
+        };
+
+        const render = () => {
+          // Upload form is always visible
+          uploadSection.style.display = 'block';
+          trustBadge.style.display = 'block';
 
           vibeTextarea.value = state.vibe;
           vibeTextarea.style.height = 'auto';
@@ -1724,63 +1918,70 @@
           uploadProgressLabel.textContent = `Uploading... ${state.uploadProgress}%`;
           uploadProgressFill.style.width = `${state.uploadProgress}%`;
 
-          composerError.style.display = state.error && showWorkflow ? 'block' : 'none';
+          composerError.style.display = state.error ? 'block' : 'none';
           composerError.textContent = state.error || '';
 
-          if (showProcessing) {
-            progressFill.style.width = `${state.progress || 0}%`;
-            progressText.textContent = `${state.progress || 0}%`;
-            // statusText is updated by SSE handler — do not overwrite it here
-          }
+          // Render jobs list
+          if (state.jobs.length > 0) {
+            jobsList.style.display = 'flex';
+            jobsList.innerHTML = `<h3 class="jobs-list-heading">Your Edits</h3>` +
+              state.jobs.map(renderJobCard).join('');
 
-          if (showComplete) {
-            videoPreview.src = state.renderedVideoUrl;
-            videoPreview.poster = state.thumbnailUrl || '';
-            downloadLink.href = state.renderedVideoUrl;
-          }
-          if (copyFinishedLinkBtn) copyFinishedLinkBtn.disabled = !state.renderedVideoUrl;
+            // Wire up copy link buttons
+            jobsList.querySelectorAll('.job-copy-link').forEach((btn) => {
+              btn.addEventListener('click', async () => {
+                const url = btn.dataset.url;
+                if (!url) return;
+                try {
+                  await copyToClipboard(url);
+                  btn.textContent = 'Copied';
+                  setTimeout(() => { btn.textContent = 'Copy Link'; }, 1600);
+                } catch (_) {
+                  btn.textContent = 'Copy Failed';
+                  setTimeout(() => { btn.textContent = 'Copy Link'; }, 1600);
+                }
+              });
+            });
 
-          if (showError) {
-            errorText.textContent = state.error || 'Failed to process your video.';
+            // Wire up dismiss buttons
+            jobsList.querySelectorAll('[data-dismiss-job]').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                const jobId = btn.dataset.dismissJob;
+                state.jobs = state.jobs.filter((j) => j.id !== jobId);
+                cleanupJobSSE(jobId);
+                render();
+              });
+            });
+          } else {
+            jobsList.style.display = 'none';
           }
 
           syncGenerateState();
         };
 
-        const reset = () => {
-          if (pollInterval) {
-            clearTimeout(pollInterval);
-            pollInterval = null;
+        const cleanupJobSSE = (jobId) => {
+          const conn = sseConnections.get(jobId);
+          if (conn) {
+            conn.close();
+            sseConnections.delete(jobId);
           }
-          if (sseConnection) {
-            sseConnection.close();
-            sseConnection = null;
+          const ti = jobTypingIntervals.get(jobId);
+          if (ti) {
+            clearInterval(ti);
+            jobTypingIntervals.delete(jobId);
           }
-          if (typingInterval) {
-            clearInterval(typingInterval);
-            typingInterval = null;
-          }
-          currentAnimatedMessage = '';
-          if (statusText) {
-            statusText.textContent = '';
-            statusText.classList.remove('typing');
-            statusText.classList.remove('waiting');
-          }
+          jobAnimatedMessages.delete(jobId);
+        };
+
+        const resetUploadForm = () => {
           state.videoUrl = null;
           state.videoFileName = '';
           state.videoFileSize = 0;
           state.vibe = '';
-          state.jobId = null;
-          state.status = 'idle';
-          state.progress = 0;
-          state.currentStep = '';
-          state.renderedVideoUrl = null;
-          state.thumbnailUrl = null;
           state.error = null;
           state.isUploading = false;
           state.uploadProgress = 0;
           state.submitting = false;
-          resetCopyFinishedLinkButton();
           render();
         };
 
@@ -1913,69 +2114,48 @@
         };
 
         function startSSE(jobId) {
-          if (sseConnection) {
-            sseConnection.close();
-            sseConnection = null;
-          }
-          currentAnimatedMessage = '';
-          if (statusText) statusText.textContent = 'Getting started...';
-          if (pollInterval) {
-            clearTimeout(pollInterval);
-            pollInterval = null;
-          }
+          // Close any existing SSE for this specific job
+          cleanupJobSSE(jobId);
 
           const sb = getSupabaseClient();
-          let token = '';
           const sessionPromise = sb?.auth?.getSession ? sb.auth.getSession() : Promise.resolve(null);
 
           sessionPromise.then((result) => {
-            token = result?.data?.session?.access_token || '';
             const url = `/api/video-jobs/${jobId}/stream`;
             const es = new EventSource(url);
-            sseConnection = es;
+            sseConnections.set(jobId, es);
 
             es.onmessage = async (event) => {
               try {
                 const data = JSON.parse(event.data);
-                if (data.status) state.status = data.status;
-                if (typeof data.progress === 'number') state.progress = data.progress;
-                if (data.step) state.currentStep = data.step;
-                if (data.message) {
-                  animateStepMessage(data.message);
-                } else if (data.status === 'queued' || (data.status === 'processing' && data.progress === 0)) {
-                  animateStepMessage('Getting your worker ready...');
-                }
-                if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
-                if (data.thumbnailUrl) state.thumbnailUrl = data.thumbnailUrl;
-                if (data.error) state.error = data.error;
+                const job = state.jobs.find((j) => j.id === jobId);
+                if (!job) { es.close(); sseConnections.delete(jobId); return; }
 
-                const queueHint = document.getElementById('queue-hint');
-                if (queueHint) {
-                  queueHint.style.display = (data.status === 'queued' || (data.progress || 0) === 0) ? 'block' : 'none';
+                if (data.status) job.status = data.status;
+                if (typeof data.progress === 'number') job.progress = data.progress;
+                if (data.step) job.currentStep = data.step;
+                if (data.message) {
+                  animateJobStepMessage(jobId, data.message);
+                } else if (data.status === 'queued' || (data.status === 'processing' && data.progress === 0)) {
+                  animateJobStepMessage(jobId, 'Getting your worker ready...');
                 }
+                if (data.videoUrl) job.renderedVideoUrl = data.videoUrl;
+                if (data.thumbnailUrl) job.thumbnailUrl = data.thumbnailUrl;
+                if (data.error) job.error = data.error;
 
                 if (data.status === 'completed' || data.status === 'complete') {
-                  state.status = 'completed';
-                  if (data.thumbnailUrl) state.thumbnailUrl = data.thumbnailUrl;
-                  if (data.videoUrl) state.renderedVideoUrl = data.videoUrl;
-                  // Only close the SSE connection on the dispatcher's final
-                  // event (final:true), which is the one that carries the
-                  // authoritative thumbnail URL. The earlier worker-emitted
-                  // completion event has final:false so the UI flips fast,
-                  // but the connection stays open until thumbnailUrl arrives.
+                  job.status = 'completed';
+                  if (data.thumbnailUrl) job.thumbnailUrl = data.thumbnailUrl;
+                  if (data.videoUrl) job.renderedVideoUrl = data.videoUrl;
                   if (data.final === true) {
-                    es.close();
-                    sseConnection = null;
+                    cleanupJobSSE(jobId);
                   }
                 }
 
                 if (data.status === 'failed' || data.status === 'error') {
-                  state.status = 'failed';
-                  state.error = data.error || 'Something went wrong. Please try again.';
-                  if (sseConnection) {
-                    sseConnection.close();
-                    sseConnection = null;
-                  }
+                  job.status = 'failed';
+                  job.error = data.error || 'Something went wrong. Please try again.';
+                  cleanupJobSSE(jobId);
                 }
 
                 render();
@@ -1990,66 +2170,68 @@
           });
         }
 
-        function animateStepMessage(message) {
-          if (message === currentAnimatedMessage) return;
-          currentAnimatedMessage = message;
+        function animateJobStepMessage(jobId, message) {
+          if (message === jobAnimatedMessages.get(jobId)) return;
+          jobAnimatedMessages.set(jobId, message);
 
-          if (typingInterval) {
-            clearInterval(typingInterval);
-            typingInterval = null;
+          const existing = jobTypingIntervals.get(jobId);
+          if (existing) {
+            clearInterval(existing);
+            jobTypingIntervals.delete(jobId);
           }
 
-          if (!statusText) return;
+          // Update the job's stepMessage so render() picks it up
+          const job = state.jobs.find((j) => j.id === jobId);
+          if (job) job.stepMessage = message;
+
+          const el = document.getElementById(`job-step-${jobId}`);
+          if (!el) return;
 
           let i = 0;
-          statusText.textContent = '';
-          statusText.classList.remove('waiting');
-          statusText.classList.add('typing');
+          el.textContent = '';
+          el.classList.remove('waiting');
+          el.classList.add('typing');
 
-          typingInterval = setInterval(() => {
+          const interval = setInterval(() => {
             i++;
-            statusText.textContent = message.slice(0, i);
+            el.textContent = message.slice(0, i);
             if (i >= message.length) {
-              clearInterval(typingInterval);
-              typingInterval = null;
-              statusText.classList.remove('typing');
-              statusText.classList.add('waiting');
-              setTimeout(() => statusText.classList.remove('waiting'), 100);
+              clearInterval(interval);
+              jobTypingIntervals.delete(jobId);
+              el.classList.remove('typing');
+              el.classList.add('waiting');
+              setTimeout(() => el.classList.remove('waiting'), 100);
             }
           }, 22);
+          jobTypingIntervals.set(jobId, interval);
         }
 
         const handleGenerate = async () => {
           console.log('🎬 GENERATE BUTTON CLICKED');
-          
+
           if (!state.videoUrl || !state.vibe.trim()) {
             console.log('❌ Missing video URL or vibe');
-            console.log('  Video URL:', state.videoUrl);
-            console.log('  Vibe:', state.vibe);
             return;
           }
-          
+
           state.submitting = true;
           state.error = null;
           render();
-          
+
+          // Capture upload form values before resetting
+          const videoUrl = state.videoUrl;
+          const videoFileName = state.videoFileName;
+          const vibe = state.vibe.trim();
+
           try {
-            console.log('Step 1: Getting auth context...');
             const auth = await getAuthContext();
-            console.log('  User ID:', auth.user?.id);
-            console.log('  Token exists:', !!auth.token);
-            
-            console.log('Step 2: Preparing request...');
+
             const payload = {
-              video_url: state.videoUrl,
-              vibe_input: state.vibe.trim(),
+              video_url: videoUrl,
+              vibe_input: vibe,
               user_id: auth.user.id,
             };
-            console.log('  Payload:', payload);
-            console.log('  URL: /api/video-jobs');
-            console.log('  Method: POST');
-            
-            console.log('Step 3: Making fetch request...');
+
             const response = await fetch('/api/video-jobs', {
               method: 'POST',
               headers: {
@@ -2058,36 +2240,41 @@
               },
               body: JSON.stringify(payload),
             });
-            
-            console.log('Step 4: Response received');
-            console.log('  Status:', response.status);
-            console.log('  Status Text:', response.statusText);
-            console.log('  OK:', response.ok);
-            console.log('  URL:', response.url);
-            
+
             const data = await response.json();
-            console.log('  Response data:', data);
-            
+
             if (!response.ok) {
-              console.error('❌ Response not OK');
               throw new Error(data?.error || 'Failed to create job');
             }
-            
-            console.log('✅ Job created successfully');
-            console.log('  Job ID:', data.job_id || data.jobId);
-            
-            state.jobId = data.job_id || data.jobId;
-            state.status = 'queued';
-            state.progress = 0;
-            state.currentStep = 'Queued';
+
+            const jobId = data.job_id || data.jobId;
+            console.log('✅ Job created:', jobId);
+
+            // Add the new job to the jobs list
+            state.jobs.unshift({
+              id: jobId,
+              videoFileName,
+              vibe,
+              status: 'queued',
+              progress: 0,
+              currentStep: 'Queued',
+              stepMessage: '',
+              renderedVideoUrl: null,
+              thumbnailUrl: null,
+              error: null,
+            });
+
+            // Reset the upload form so user can start another edit immediately
+            state.videoUrl = null;
+            state.videoFileName = '';
+            state.videoFileSize = 0;
+            state.vibe = '';
             state.error = null;
-            startSSE(state.jobId);
-            
+
+            startSSE(jobId);
+
           } catch (err) {
-            console.error('❌ ERROR in handleGenerate:');
-            console.error('  Message:', err.message);
-            console.error('  Stack:', err.stack);
-            console.error('  Full error:', err);
+            console.error('❌ ERROR in handleGenerate:', err.message);
             state.error = err?.message || 'Failed to create job';
           } finally {
             state.submitting = false;
@@ -2163,34 +2350,546 @@
           render();
         });
 
-        if (copyFinishedLinkBtn) {
-          copyFinishedLinkBtn.addEventListener('click', async () => {
-            if (!state.renderedVideoUrl) return;
-            try {
-              await copyToClipboard(state.renderedVideoUrl);
-              copyFinishedLinkBtn.textContent = 'Copied';
-              window.setTimeout(() => {
-                if (copyFinishedLinkBtn && copyFinishedLinkBtn.textContent === 'Copied') {
-                  copyFinishedLinkBtn.textContent = 'Copy Video Link';
-                }
-              }, 1600);
-            } catch (error) {
-              copyFinishedLinkBtn.textContent = 'Copy Failed';
-              window.setTimeout(() => {
-                if (copyFinishedLinkBtn && copyFinishedLinkBtn.textContent === 'Copy Failed') {
-                  copyFinishedLinkBtn.textContent = 'Copy Video Link';
-                }
-              }, 1600);
-            }
-          });
-        }
-
         generateBtn.addEventListener('click', handleGenerate);
-        editAnotherBtn.addEventListener('click', reset);
-        retryBtn.addEventListener('click', reset);
 
         render();
       })();
     </script>
+
+    <!-- ═══ Mobile Chat Logic ═══ -->
+    <script>
+    (function initMobileChat() {
+      const chatEl = document.getElementById('mobile-chat');
+      if (!chatEl) return;
+
+      // Only run on mobile-width screens
+      const mql = window.matchMedia('(max-width: 768px)');
+      if (!mql.matches) return;
+
+      // ── Elements ──
+      const messagesEl = document.getElementById('chat-messages');
+      const inputEl = document.getElementById('chat-text-input');
+      const sendBtn = document.getElementById('chat-send-btn');
+      const attachBtn = document.getElementById('chat-attach-btn');
+      const fileInput = document.getElementById('chat-file-input');
+      const pendingEl = document.getElementById('chat-pending-attach');
+      const pendingThumb = document.getElementById('chat-pending-thumb');
+      const pendingName = document.getElementById('chat-pending-name');
+      const pendingSize = document.getElementById('chat-pending-size');
+      const pendingRemove = document.getElementById('chat-pending-remove');
+      const uploadProgressEl = document.getElementById('chat-upload-progress');
+      const uploadFill = document.getElementById('chat-upload-fill');
+      const uploadLabel = document.getElementById('chat-upload-label');
+      const menuBtn = document.getElementById('chat-menu-btn');
+      const backBtn = document.getElementById('chat-back-btn');
+
+      // ── State ──
+      const chat = {
+        messages: [],
+        pendingFile: null,
+        pendingVideoUrl: null,       // After upload — server URL
+        pendingFileName: '',
+        pendingFileSize: 0,
+        pendingLocalUrl: null,       // Local blob for thumbnail
+        isUploading: false,
+        sending: false,
+        sseConnections: new Map(),
+        conversationHistory: [],     // For Gemini context
+      };
+
+      // ── Helpers ──
+      const getSupabaseClient = () => window.supabaseClient || window.supabase || null;
+
+      const getAuthContext = async () => {
+        const sb = getSupabaseClient();
+        if (!sb?.auth?.getSession || !sb?.auth?.getUser) throw new Error('Auth unavailable');
+        const [{ data: sd }, { data: ud }] = await Promise.all([sb.auth.getSession(), sb.auth.getUser()]);
+        if (!sd?.session?.access_token || !ud?.user?.id) throw new Error('Please sign in');
+        return { token: sd.session.access_token, user: ud.user };
+      };
+
+      const formatSize = (bytes) => {
+        const v = Number(bytes || 0);
+        if (!Number.isFinite(v) || v <= 0) return '';
+        if (v < 1024 * 1024) return `${(v / 1024).toFixed(0)} KB`;
+        return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+      };
+
+      const scrollToBottom = () => {
+        requestAnimationFrame(() => {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+      };
+
+      // ── Render messages ──
+      function renderMessages() {
+        if (chat.messages.length === 0) {
+          messagesEl.innerHTML = `
+            <div class="chat-empty">
+              <div class="chat-empty-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </div>
+              <div class="chat-empty-title">Welcome to Promptly</div>
+              <div class="chat-empty-desc">Attach a video and describe your vibe to create an edit, or just chat with the AI.</div>
+            </div>`;
+          return;
+        }
+
+        messagesEl.innerHTML = chat.messages.map((msg, i) => {
+          const cls = `chat-msg ${msg.role}`;
+
+          // Video attachment
+          let attachHtml = '';
+          if (msg.videoAttachment) {
+            attachHtml = `
+              <div class="chat-video-attachment">
+                <video class="chat-video-thumb" src="${msg.videoAttachment.localUrl || ''}" muted preload="metadata"></video>
+                ${msg.videoAttachment.duration ? `<span class="chat-video-duration">${msg.videoAttachment.duration}</span>` : ''}
+              </div>`;
+          }
+
+          // Completed video result
+          let resultHtml = '';
+          if (msg.renderedVideoUrl) {
+            resultHtml = `
+              <div class="chat-video-result">
+                <video controls src="${msg.renderedVideoUrl}" ${msg.thumbnailUrl ? `poster="${msg.thumbnailUrl}"` : ''}></video>
+              </div>
+              <div class="chat-result-actions">
+                <a href="${msg.renderedVideoUrl}" download>
+                  <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Download
+                </a>
+              </div>`;
+          }
+
+          // Progress
+          let progressHtml = '';
+          if (msg.jobId && msg.jobStatus && !['completed', 'complete', 'failed', 'error'].includes(msg.jobStatus)) {
+            progressHtml = `
+              <div class="chat-progress-wrap">
+                <div class="chat-progress-step">${msg.stepMessage || msg.currentStep || 'Getting started...'}</div>
+                <div class="chat-progress-track"><div class="chat-progress-fill" style="width:${msg.jobProgress || 0}%"></div></div>
+                <div class="chat-progress-pct">${msg.jobProgress || 0}%</div>
+              </div>`;
+          }
+
+          // Error
+          let errorHtml = '';
+          if (msg.jobStatus === 'failed' || msg.jobStatus === 'error') {
+            errorHtml = `<div style="color:#f87171;font-size:13px;margin-top:4px;">${msg.error || 'Something went wrong.'}</div>`;
+          }
+
+          // Thinking indicator
+          let thinkingHtml = '';
+          if (msg.thinking) {
+            thinkingHtml = `
+              <div class="chat-thinking">
+                <span class="chat-thinking-dots"><span></span><span></span><span></span></span>
+                Thinking...
+              </div>`;
+          }
+
+          const bubbleContent = msg.content ? `<div class="chat-bubble">${escapeHtml(msg.content)}</div>` : '';
+
+          return `<div class="${cls}">${attachHtml}${bubbleContent}${thinkingHtml}${progressHtml}${resultHtml}${errorHtml}</div>`;
+        }).join('');
+
+        scrollToBottom();
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // ── Sync send button ──
+      function syncSendBtn() {
+        const hasText = inputEl.value.trim().length > 0;
+        const hasAttachment = chat.pendingVideoUrl || chat.pendingFile;
+        sendBtn.disabled = (!hasText && !hasAttachment) || chat.sending || chat.isUploading;
+      }
+
+      // ── Auto-resize textarea ──
+      inputEl.addEventListener('input', () => {
+        inputEl.style.height = 'auto';
+        inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+        syncSendBtn();
+      });
+
+      // ── Attach video ──
+      attachBtn.addEventListener('click', () => {
+        if (chat.isUploading || chat.sending) return;
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+
+        if (file.size > 500 * 1024 * 1024) {
+          addSystemMessage('File too large. Max 500MB.');
+          return;
+        }
+        if (!['video/mp4', 'video/quicktime', 'video/x-msvideo'].includes(file.type)) {
+          addSystemMessage('Invalid file type. Use MP4, MOV, or AVI.');
+          return;
+        }
+
+        // Check orientation
+        const url = URL.createObjectURL(file);
+        const vid = document.createElement('video');
+        vid.preload = 'metadata';
+        vid.onloadedmetadata = () => {
+          const w = vid.videoWidth || 0;
+          const h = vid.videoHeight || 0;
+          if (w && h && w > h) {
+            URL.revokeObjectURL(url);
+            addSystemMessage('Please upload a vertical or square video for TikTok, Reels, and Shorts.');
+            return;
+          }
+
+          chat.pendingFile = file;
+          chat.pendingFileName = file.name;
+          chat.pendingFileSize = file.size;
+          chat.pendingLocalUrl = url;
+
+          // Show pending preview
+          pendingThumb.src = url;
+          pendingName.textContent = file.name;
+          pendingSize.textContent = formatSize(file.size);
+          pendingEl.style.display = 'flex';
+          syncSendBtn();
+
+          // Start upload immediately
+          uploadVideo(file);
+        };
+        vid.onerror = () => {
+          URL.revokeObjectURL(url);
+          addSystemMessage('Could not read video file.');
+        };
+        vid.src = url;
+      });
+
+      pendingRemove.addEventListener('click', () => {
+        clearPendingAttachment();
+      });
+
+      function clearPendingAttachment() {
+        if (chat.pendingLocalUrl) URL.revokeObjectURL(chat.pendingLocalUrl);
+        chat.pendingFile = null;
+        chat.pendingVideoUrl = null;
+        chat.pendingFileName = '';
+        chat.pendingFileSize = 0;
+        chat.pendingLocalUrl = null;
+        pendingEl.style.display = 'none';
+        uploadProgressEl.style.display = 'none';
+        syncSendBtn();
+      }
+
+      // ── Upload video ──
+      async function uploadVideo(file) {
+        chat.isUploading = true;
+        uploadProgressEl.style.display = 'flex';
+        uploadFill.style.width = '0%';
+        uploadLabel.textContent = '0%';
+        syncSendBtn();
+
+        try {
+          const auth = await getAuthContext();
+          const formData = new FormData();
+          formData.append('video', file);
+          formData.append('userId', auth.user.id);
+
+          await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                uploadFill.style.width = pct + '%';
+                uploadLabel.textContent = pct + '%';
+              }
+            });
+            xhr.addEventListener('load', () => {
+              if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                chat.pendingVideoUrl = data.videoUrl;
+                chat.pendingFileName = data.fileName || file.name;
+                uploadProgressEl.style.display = 'none';
+                resolve();
+              } else {
+                let msg = 'Upload failed';
+                try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch (_) {}
+                reject(new Error(msg));
+              }
+            });
+            xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+            xhr.open('POST', '/api/upload');
+            xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`);
+            xhr.send(formData);
+          });
+        } catch (err) {
+          addSystemMessage(err.message || 'Upload failed');
+          clearPendingAttachment();
+        } finally {
+          chat.isUploading = false;
+          syncSendBtn();
+        }
+      }
+
+      // ── Add messages ──
+      function addSystemMessage(text) {
+        chat.messages.push({ role: 'system', content: text });
+        renderMessages();
+      }
+
+      function addUserMessage(text, videoAttachment) {
+        const msg = { role: 'user', content: text };
+        if (videoAttachment) msg.videoAttachment = videoAttachment;
+        chat.messages.push(msg);
+        chat.conversationHistory.push({ role: 'user', content: text });
+        renderMessages();
+        return msg;
+      }
+
+      function addAssistantMessage(text, extra) {
+        const msg = { role: 'assistant', content: text, ...extra };
+        chat.messages.push(msg);
+        chat.conversationHistory.push({ role: 'assistant', content: text });
+        renderMessages();
+        return msg;
+      }
+
+      // ── Send message ──
+      async function handleSend() {
+        const text = inputEl.value.trim();
+        const hasVideo = Boolean(chat.pendingVideoUrl);
+
+        if (!text && !hasVideo) return;
+        if (chat.sending) return;
+
+        chat.sending = true;
+        syncSendBtn();
+
+        const videoAttachment = hasVideo ? {
+          url: chat.pendingVideoUrl,
+          localUrl: chat.pendingLocalUrl,
+          filename: chat.pendingFileName,
+          size: chat.pendingFileSize,
+        } : null;
+
+        // Add user message
+        addUserMessage(text || 'Edit this video', videoAttachment);
+
+        // Clear input
+        inputEl.value = '';
+        inputEl.style.height = 'auto';
+
+        // Clear pending attachment (don't revoke URL — it's in the message now)
+        chat.pendingFile = null;
+        chat.pendingVideoUrl = null;
+        chat.pendingFileName = '';
+        chat.pendingFileSize = 0;
+        chat.pendingLocalUrl = null;
+        pendingEl.style.display = 'none';
+        uploadProgressEl.style.display = 'none';
+
+        if (hasVideo && text) {
+          // Video + vibe → create edit job
+          await createEditJob(videoAttachment.url, text);
+        } else if (hasVideo) {
+          // Video only → create edit job with default vibe
+          await createEditJob(videoAttachment.url, 'Create a clean, engaging edit');
+        } else {
+          // Text only → chat with AI
+          await chatWithAI(text);
+        }
+
+        chat.sending = false;
+        syncSendBtn();
+      }
+
+      sendBtn.addEventListener('click', handleSend);
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      });
+
+      // ── Create edit job ──
+      async function createEditJob(videoUrl, vibe) {
+        try {
+          const auth = await getAuthContext();
+          const response = await fetch('/api/video-jobs', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${auth.token}`,
+            },
+            body: JSON.stringify({ video_url: videoUrl, vibe_input: vibe }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data?.error || 'Failed to create job');
+
+          const jobId = data.job_id || data.jobId;
+
+          // Add assistant message that will track progress
+          const msg = addAssistantMessage('Working on your edit...', {
+            jobId,
+            jobStatus: 'queued',
+            jobProgress: 0,
+            currentStep: 'Queued',
+            stepMessage: '',
+          });
+
+          startJobSSE(jobId, msg);
+        } catch (err) {
+          if (err.message === 'free_limit_reached') {
+            addAssistantMessage('You\'ve used all 5 free edits. Upgrade to Promptly Pro for unlimited edits.');
+          } else {
+            addAssistantMessage(err.message || 'Failed to start editing. Please try again.');
+          }
+        }
+      }
+
+      // ── Job SSE ──
+      function startJobSSE(jobId, msg) {
+        const existing = chat.sseConnections.get(jobId);
+        if (existing) existing.close();
+
+        const sb = getSupabaseClient();
+        const sessionPromise = sb?.auth?.getSession ? sb.auth.getSession() : Promise.resolve(null);
+
+        sessionPromise.then(() => {
+          const es = new EventSource(`/api/video-jobs/${jobId}/stream`);
+          chat.sseConnections.set(jobId, es);
+
+          es.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.status) msg.jobStatus = data.status;
+              if (typeof data.progress === 'number') msg.jobProgress = data.progress;
+              if (data.step) msg.currentStep = data.step;
+              if (data.message) msg.stepMessage = data.message;
+              if (data.error) msg.error = data.error;
+
+              if (data.status === 'completed' || data.status === 'complete') {
+                msg.jobStatus = 'completed';
+                msg.content = 'Your video is ready!';
+                if (data.videoUrl) msg.renderedVideoUrl = data.videoUrl;
+                if (data.thumbnailUrl) msg.thumbnailUrl = data.thumbnailUrl;
+                if (data.final === true) {
+                  es.close();
+                  chat.sseConnections.delete(jobId);
+                }
+              }
+
+              if (data.status === 'failed' || data.status === 'error') {
+                msg.jobStatus = 'failed';
+                msg.content = '';
+                msg.error = data.error || 'Something went wrong.';
+                es.close();
+                chat.sseConnections.delete(jobId);
+              }
+
+              renderMessages();
+            } catch (e) {
+              console.error('[MobileChat SSE] parse error', e);
+            }
+          };
+
+          es.onerror = () => { /* auto-reconnects */ };
+        });
+      }
+
+      // ── Chat with Gemini AI ──
+      async function chatWithAI(text) {
+        // Add thinking indicator
+        const thinkingMsg = { role: 'assistant', content: '', thinking: true };
+        chat.messages.push(thinkingMsg);
+        renderMessages();
+
+        try {
+          const auth = await getAuthContext();
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${auth.token}`,
+            },
+            body: JSON.stringify({
+              message: text,
+              history: chat.conversationHistory.slice(-20),
+            }),
+          });
+
+          const data = await response.json();
+
+          // Remove thinking indicator
+          const idx = chat.messages.indexOf(thinkingMsg);
+          if (idx !== -1) chat.messages.splice(idx, 1);
+
+          if (!response.ok) throw new Error(data?.error || 'Chat failed');
+
+          addAssistantMessage(data.reply || 'I didn\'t get a response. Try again?');
+        } catch (err) {
+          // Remove thinking indicator
+          const idx = chat.messages.indexOf(thinkingMsg);
+          if (idx !== -1) chat.messages.splice(idx, 1);
+          addAssistantMessage('Sorry, I couldn\'t respond right now. Try again.');
+        }
+      }
+
+      // ── Menu ──
+      menuBtn.addEventListener('click', () => {
+        const overlay = document.createElement('div');
+        overlay.className = 'chat-menu-overlay';
+        overlay.innerHTML = `
+          <div class="chat-menu-sheet">
+            <button class="chat-menu-item" data-action="library">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              Library
+            </button>
+            <button class="chat-menu-item danger" data-action="clear">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Clear Chat
+            </button>
+            <button class="chat-menu-cancel">Cancel</button>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', (e) => {
+          const action = e.target.closest('[data-action]')?.dataset.action;
+          if (action === 'library') {
+            window.location.href = '/library.html';
+          } else if (action === 'clear') {
+            chat.messages = [];
+            chat.conversationHistory = [];
+            renderMessages();
+          }
+          overlay.remove();
+        });
+
+        overlay.querySelector('.chat-menu-cancel').addEventListener('click', () => overlay.remove());
+      });
+
+      // ── Back button ──
+      backBtn.addEventListener('click', () => {
+        window.location.href = '/library.html';
+      });
+
+      // ── Init ──
+      renderMessages();
+      syncSendBtn();
+    })();
+    </script>
+    <script src="/components/mobile-nav.js"></script>
   </body>
 </html>
