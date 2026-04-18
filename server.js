@@ -9444,7 +9444,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   // Basic CSP (allow self + needed CDNs). Removed unsafe-inline for scripts; add nonce for inline JSON-LD if present.
   // Note: We still allow 'unsafe-inline' for styles until all inline styles are refactored.
-  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com https://*.s3.amazonaws.com https://*.s3-ap-southeast-2.amazonaws.com https://html.tailus.io https://lh3.googleusercontent.com https://*.supabase.co https://*.supabase.com; media-src 'self' blob: https://*.s3.amazonaws.com https://*.s3-ap-southeast-2.amazonaws.com https://*.backblazeb2.com https://*.supabase.co https://ik.imagekit.io; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://api.anthropic.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
+  const baseCsp = `default-src 'self'; script-src 'self' 'nonce-${cspNonce}' https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm/@supabase https://cdn.getphyllo.com https://t.contentsquare.net https://*.contentsquare.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://usepromptly.app https://res.asset-store.com https://*.contentsquare.net https://*.contentsquare.com https://*.s3.amazonaws.com https://*.s3-ap-southeast-2.amazonaws.com https://html.tailus.io https://lh3.googleusercontent.com https://*.supabase.co https://*.supabase.com; media-src 'self' blob: https://*.s3.amazonaws.com https://*.s3-ap-southeast-2.amazonaws.com https://*.backblazeb2.com https://*.supabase.co https://ik.imagekit.io; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.openai.com https://api.anthropic.com https://*.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.insightiq.ai https://api.getphyllo.com https://*.contentsquare.net https://*.contentsquare.com https://*.s3.amazonaws.com https://*.s3.us-west-1.amazonaws.com; frame-src 'self' https://connect.getphyllo.com; frame-ancestors 'none'; worker-src 'self' blob: https://t.contentsquare.net https://*.contentsquare.net; child-src 'self' blob:;`;
   res.setHeader('Content-Security-Policy', baseCsp);
   // Asset service is allowed in img-src so asset previews work.
   // HSTS only if behind HTTPS (skip for localhost dev)
@@ -10061,6 +10061,28 @@ const server = http.createServer((req, res) => {
       throw Object.assign(new Error(error.message || 'Failed to count completed edits'), { statusCode: 500 });
     }
     return Number(count || 0);
+  }
+
+  // ── Presigned S3 upload URL ──
+  if (parsed.pathname === '/api/upload-url' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const s3 = require('./services/s3');
+        if (!s3.isConfigured()) {
+          return sendJson(res, 500, { error: 'Storage not configured' });
+        }
+        const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
+        const uploadUrl = await s3.createPresignedPutUrl(key, 600);
+        const publicUrl = s3.getPublicUrl(key);
+        return sendJson(res, 200, { uploadUrl, publicUrl, key });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to generate upload URL' });
+      }
+    })();
+    return;
   }
 
   // ── Gemini Chat Proxy ──

@@ -2560,27 +2560,34 @@
         pendingEl.style.display = 'flex';
         syncSendBtn();
 
-        // Silent background upload — no UI, no waiting
+        // Silent background upload direct to S3 — no server middleman
         (async () => {
           try {
             const auth = await getAuthContext();
-            const fd = new FormData();
-            fd.append('video', file);
-            fd.append('userId', auth.user.id);
-            const res = await new Promise((resolve, reject) => {
-              const xhr = new XMLHttpRequest();
-              xhr.onload = () => xhr.status === 200 ? resolve(JSON.parse(xhr.responseText)) : reject();
-              xhr.onerror = () => reject();
-              xhr.open('POST', '/api/upload');
-              xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`);
-              xhr.send(fd);
+            // Get presigned URL from server
+            const urlRes = await fetch('/api/upload-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+              body: JSON.stringify({ fileName: file.name }),
             });
-            // Only set if file is still the same one (user didn't remove it)
+            const { uploadUrl, publicUrl } = await urlRes.json();
+            if (!uploadUrl) throw new Error('No upload URL');
+
+            // Upload directly to S3
+            await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject();
+              xhr.onerror = () => reject();
+              xhr.open('PUT', uploadUrl);
+              xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+              xhr.send(file);
+            });
+
             if (chat.pendingFile === file) {
-              chat.pendingVideoUrl = res.videoUrl;
+              chat.pendingVideoUrl = publicUrl;
             }
           } catch (_) {
-            // Upload failed silently — will retry when user hits send
+            // Failed silently — will fall back to server upload when user hits send
           }
         })();
       });
@@ -2625,22 +2632,25 @@
             const auth = await getAuthContext();
             let videoUrl = preUploadedUrl;
 
-            // If background upload didn't finish, upload now
+            // If background upload didn't finish, upload direct to S3 now
             if (!videoUrl) {
               msg.stepMessage = 'Analyzing your video...';
               updateProgress(msg);
-              const fd = new FormData();
-              fd.append('video', videoFile);
-              fd.append('userId', auth.user.id);
-              const uploadRes = await new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.onload = () => xhr.status === 200 ? resolve(JSON.parse(xhr.responseText)) : reject(new Error('Upload failed'));
-                xhr.onerror = () => reject(new Error('Upload failed'));
-                xhr.open('POST', '/api/upload');
-                xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`);
-                xhr.send(fd);
+              const urlRes = await fetch('/api/upload-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+                body: JSON.stringify({ fileName: fileName }),
               });
-              videoUrl = uploadRes.videoUrl;
+              const urlData = await urlRes.json();
+              await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error('Upload failed'));
+                xhr.onerror = () => reject(new Error('Upload failed'));
+                xhr.open('PUT', urlData.uploadUrl);
+                xhr.setRequestHeader('Content-Type', videoFile.type || 'video/mp4');
+                xhr.send(videoFile);
+              });
+              videoUrl = urlData.publicUrl;
             }
             msg.stepMessage = 'Creating your edit...';
             updateProgress(msg);
