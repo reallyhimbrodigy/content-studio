@@ -1,53 +1,26 @@
 /* ═══════════════════════════════════════════════════════
    Promptly Mobile — Shared styles for all mobile pages
-   Bottom nav, page layouts, library, account
-   Spacing: 8px rhythm · Touch: 44px min · OLED dark
    ═══════════════════════════════════════════════════════ */
 
-/* ── Hidden on desktop ── */
 .mobile-tab-bar { display: none; }
 .mobile-page { display: none; }
 
 @media (max-width: 768px) {
-  /* ── Kill desktop chrome ── */
+  /* ── Hide ALL desktop content on mobile — no exceptions ── */
+  .app-shell,
+  .app-layout,
   .app-sidebar,
   .sidebar-toggle,
   .sidebar-backdrop,
   .editor-topbar,
-  .landing-nav {
+  .landing-nav,
+  #app-experience,
+  #account-modal,
+  #upgrade-modal {
     display: none !important;
   }
 
-  .app-layout { display: block !important; }
-
-  .app-main {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-  }
-
-  /* Hide entire desktop app shell when mobile page is active */
-  .app-shell,
-  #app-experience {
-    display: none !important;
-  }
-
-  .mobile-page.active ~ .app-shell,
-  .mobile-page.active ~ #app-experience {
-    display: none !important;
-  }
-
-  /* Body-level: hide desktop content when mobile page exists */
-  body:has(.mobile-page.active) .app-shell,
-  body:has(.mobile-page.active) #app-experience,
-  body:has(.mobile-page.active) .landing-nav,
-  body:has(.mobile-page.active) .app-layout {
-    display: none !important;
-  }
-
-  /* ══════════════════════════════════════
-     Bottom Tab Bar
-     ══════════════════════════════════════ */
+  /* ── Bottom Tab Bar ── */
   .mobile-tab-bar {
     display: flex;
     position: fixed;
@@ -55,13 +28,16 @@
     left: 0;
     right: 0;
     z-index: 999;
-    background: rgba(10, 10, 10, 0.82);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
-    border-top: 0.5px solid rgba(255, 255, 255, 0.08);
+    background: #000;
+    border-top: 0.5px solid rgba(255, 255, 255, 0.1);
     padding-bottom: env(safe-area-inset-bottom, 0);
     height: calc(52px + env(safe-area-inset-bottom, 0));
     align-items: flex-start;
+  }
+
+  /* Hide tab bar when keyboard is open */
+  body.keyboard-open .mobile-tab-bar {
+    display: none !important;
   }
 
   .mobile-tab-bar a {
@@ -76,37 +52,15 @@
     color: rgba(255, 255, 255, 0.35);
     font-size: 10px;
     font-weight: 500;
-    letter-spacing: 0.01em;
     -webkit-tap-highlight-color: transparent;
-    transition: color 0.2s ease;
-    position: relative;
     touch-action: manipulation;
   }
 
-  .mobile-tab-bar a.active {
-    color: #fff;
-  }
+  .mobile-tab-bar a.active { color: #fff; }
+  .mobile-tab-bar a:active { opacity: 0.6; }
+  .mobile-tab-bar a svg { width: 22px; height: 22px; }
 
-  .mobile-tab-bar a:active {
-    transform: scale(0.9);
-    transition: transform 0.08s ease;
-  }
-
-  .mobile-tab-bar a svg {
-    width: 22px;
-    height: 22px;
-    flex-shrink: 0;
-    transition: transform 0.15s ease;
-  }
-
-  .mobile-tab-bar .tab-label {
-    font-size: 10px;
-    line-height: 1;
-  }
-
-  /* ══════════════════════════════════════
-     Page wrapper
-     ══════════════════════════════════════ */
+  /* ── Mobile page wrapper ── */
   .mobile-page.active {
     display: flex;
     flex-direction: column;
@@ -123,12 +77,9 @@
     justify-content: center;
     padding: 0 16px;
     height: calc(48px + env(safe-area-inset-top, 0));
-    min-height: calc(48px + env(safe-area-inset-top, 0));
     padding-top: env(safe-area-inset-top, 0);
-    background: rgba(0, 0, 0, 0.82);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
+    background: #000;
+    border-bottom: 0.5px solid rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
     position: sticky;
     top: 0;
@@ -142,30 +93,11 @@
     letter-spacing: -0.02em;
   }
 
-  .mobile-header-action {
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    color: #3b82f6;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 8px;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
-
-  /* ══════════════════════════════════════
-     Library
-     ══════════════════════════════════════ */
+  /* ═══ Library ═══ */
   .mobile-library {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
     padding: 12px;
   }
 
@@ -180,14 +112,10 @@
     border-radius: 12px;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.12s ease, opacity 0.12s ease;
     touch-action: manipulation;
   }
 
-  .mobile-edit-card:active {
-    transform: scale(0.96);
-    opacity: 0.85;
-  }
+  .mobile-edit-card:active { opacity: 0.8; }
 
   .mobile-edit-thumb {
     width: 100%;
@@ -207,9 +135,7 @@
     color: rgba(255, 255, 255, 0.15);
   }
 
-  .mobile-edit-info {
-    padding: 10px 10px 12px;
-  }
+  .mobile-edit-info { padding: 10px 10px 12px; }
 
   .mobile-edit-vibe {
     font-size: 13px;
@@ -229,10 +155,7 @@
     margin-top: 6px;
   }
 
-  .mobile-edit-date {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
-  }
+  .mobile-edit-date { font-size: 11px; color: rgba(255, 255, 255, 0.35); }
 
   .mobile-edit-badge {
     font-size: 10px;
@@ -240,30 +163,13 @@
     padding: 2px 6px;
     border-radius: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
-  .mobile-edit-badge.completed {
-    background: rgba(34, 197, 94, 0.12);
-    color: #4ade80;
-  }
+  .mobile-edit-badge.completed { background: rgba(34, 197, 94, 0.12); color: #4ade80; }
+  .mobile-edit-badge.processing { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
+  .mobile-edit-badge.queued { background: rgba(250, 204, 21, 0.12); color: #facc15; }
+  .mobile-edit-badge.failed { background: rgba(239, 68, 68, 0.12); color: #f87171; }
 
-  .mobile-edit-badge.processing {
-    background: rgba(59, 130, 246, 0.12);
-    color: #60a5fa;
-  }
-
-  .mobile-edit-badge.queued {
-    background: rgba(250, 204, 21, 0.12);
-    color: #facc15;
-  }
-
-  .mobile-edit-badge.failed {
-    background: rgba(239, 68, 68, 0.12);
-    color: #f87171;
-  }
-
-  /* Library empty */
   .mobile-library-empty {
     display: flex;
     flex-direction: column;
@@ -284,22 +190,10 @@
     align-items: center;
     justify-content: center;
     color: rgba(255, 255, 255, 0.2);
-    margin-bottom: 4px;
   }
 
-  .mobile-library-empty-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #fff;
-    letter-spacing: -0.02em;
-  }
-
-  .mobile-library-empty-desc {
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.4);
-    line-height: 1.5;
-    max-width: 260px;
-  }
+  .mobile-library-empty-title { font-size: 20px; font-weight: 600; color: #fff; }
+  .mobile-library-empty-desc { font-size: 15px; color: rgba(255, 255, 255, 0.4); line-height: 1.5; max-width: 260px; }
 
   .mobile-library-empty-btn {
     margin-top: 8px;
@@ -310,19 +204,12 @@
     padding: 14px 28px;
     font-size: 15px;
     font-weight: 600;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
     text-decoration: none;
     display: inline-block;
-    transition: transform 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .mobile-library-empty-btn:active {
-    transform: scale(0.96);
-  }
-
-  /* ── Video detail overlay ── */
+  /* Video detail overlay */
   .mobile-video-detail {
     position: fixed;
     inset: 0;
@@ -345,7 +232,6 @@
     height: calc(48px + env(safe-area-inset-top, 0));
     padding-top: env(safe-area-inset-top, 0);
     border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
   }
 
   .mobile-video-detail-back {
@@ -354,13 +240,11 @@
     color: #3b82f6;
     font-size: 15px;
     font-weight: 500;
-    cursor: pointer;
     padding: 12px 8px;
     display: flex;
     align-items: center;
     gap: 2px;
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
   }
 
   .mobile-video-detail-body {
@@ -379,10 +263,7 @@
     max-height: 55vh;
   }
 
-  .mobile-video-detail-actions {
-    display: flex;
-    gap: 8px;
-  }
+  .mobile-video-detail-actions { display: flex; gap: 8px; }
 
   .mobile-video-detail-actions a,
   .mobile-video-detail-actions button {
@@ -392,16 +273,8 @@
     font-size: 15px;
     font-weight: 600;
     text-align: center;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
     border: none;
-    transition: transform 0.1s ease;
-  }
-
-  .mobile-video-detail-actions a:active,
-  .mobile-video-detail-actions button:active {
-    transform: scale(0.97);
+    -webkit-tap-highlight-color: transparent;
   }
 
   .mobile-video-detail-actions a {
@@ -414,48 +287,16 @@
     gap: 6px;
   }
 
-  .mobile-video-detail-actions button {
-    background: #1a1a1a;
-    color: #fff;
-  }
+  .mobile-video-detail-actions button { background: #1a1a1a; color: #fff; }
 
-  .mobile-video-detail-info { padding: 8px 0; }
+  .mobile-video-detail-vibe { font-size: 15px; color: rgba(255, 255, 255, 0.9); line-height: 1.5; }
+  .mobile-video-detail-date { font-size: 13px; color: rgba(255, 255, 255, 0.35); margin-top: 4px; }
 
-  .mobile-video-detail-vibe {
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.9);
-    line-height: 1.5;
-    margin-bottom: 8px;
-  }
-
-  .mobile-video-detail-date {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  .mobile-video-detail-delete {
-    margin-top: auto;
-    background: none;
-    border: none;
-    color: #ef4444;
-    font-size: 15px;
-    font-weight: 500;
-    padding: 16px;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    text-align: center;
-    width: 100%;
-    touch-action: manipulation;
-  }
-
-  /* ══════════════════════════════════════
-     Account
-     ══════════════════════════════════════ */
+  /* ═══ Account ═══ */
   .mobile-account {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
     padding: 0 16px 16px;
     display: flex;
     flex-direction: column;
@@ -481,11 +322,7 @@
     overflow: hidden;
   }
 
-  .mobile-account-avatar-ring img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
+  .mobile-account-avatar-ring img { width: 100%; height: 100%; object-fit: cover; }
 
   .mobile-account-avatar-letter {
     font-size: 30px;
@@ -508,7 +345,6 @@
     text-align: center;
   }
 
-  /* Account sections — iOS settings style */
   .mobile-account-section {
     background: #1a1a1a;
     border-radius: 12px;
@@ -534,7 +370,6 @@
     border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
     background: none;
     border-left: none;
     border-right: none;
@@ -543,22 +378,11 @@
     text-align: left;
     font-family: inherit;
     color: inherit;
-    font-size: inherit;
-    transition: background 0.1s ease;
   }
 
-  .mobile-account-row:last-child {
-    border-bottom: none;
-  }
-
-  .mobile-account-row:active {
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .mobile-account-row-label {
-    font-size: 16px;
-    color: #fff;
-  }
+  .mobile-account-row:last-child { border-bottom: none; }
+  .mobile-account-row:active { background: rgba(255, 255, 255, 0.04); }
+  .mobile-account-row-label { font-size: 16px; color: #fff; }
 
   .mobile-account-row-value {
     font-size: 15px;
@@ -568,27 +392,11 @@
     gap: 4px;
   }
 
-  .mobile-account-row-value svg {
-    color: rgba(255, 255, 255, 0.2);
-    flex-shrink: 0;
-  }
+  .mobile-account-row-value svg { color: rgba(255, 255, 255, 0.2); }
 
-  .mobile-account-plan-badge {
-    font-size: 12px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 6px;
-  }
-
-  .mobile-account-plan-badge.free {
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .mobile-account-plan-badge.pro {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-  }
+  .mobile-account-plan-badge { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+  .mobile-account-plan-badge.free { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.5); }
+  .mobile-account-plan-badge.pro { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
 
   .mobile-account-signout {
     display: block;
@@ -599,17 +407,10 @@
     border-radius: 12px;
     color: #ef4444;
     font-size: 16px;
-    font-weight: 400;
     cursor: pointer;
     text-align: center;
     -webkit-tap-highlight-color: transparent;
     font-family: inherit;
-    touch-action: manipulation;
-    transition: background 0.1s ease;
-  }
-
-  .mobile-account-signout:active {
-    background: rgba(239, 68, 68, 0.1);
   }
 
   .mobile-account-version {
@@ -620,17 +421,6 @@
   }
 }
 
-/* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  .mobile-edit-card,
-  .mobile-tab-bar a,
-  .mobile-library-empty-btn,
-  .mobile-video-detail-actions a,
-  .mobile-video-detail-actions button,
-  .mobile-account-signout {
-    transition: none !important;
-  }
-  .mobile-video-detail {
-    animation: none !important;
-  }
+  .mobile-video-detail { animation: none !important; }
 }
