@@ -2619,7 +2619,7 @@
         chat.pendingFile = null; chat.pendingVideoUrl = null; chat.pendingFileName = ''; chat.pendingFileSize = 0; chat.pendingLocalUrl = null; pendingEl.style.display = 'none';
 
         if (videoFile) {
-          const msg = addAssistantMessage('', { jobId: 'pending', jobStatus: 'processing', stepMessage: 'Starting your edit...' });
+          const msg = addAssistantMessage('', { jobId: 'pending', jobStatus: 'processing', stepMessage: 'Analyzing your video...' });
 
           try {
             const auth = await getAuthContext();
@@ -2627,7 +2627,7 @@
 
             // If background upload didn't finish, upload now
             if (!videoUrl) {
-              msg.stepMessage = 'Preparing your video...';
+              msg.stepMessage = 'Analyzing your video...';
               updateProgress(msg);
               const fd = new FormData();
               fd.append('video', videoFile);
@@ -2642,7 +2642,7 @@
               });
               videoUrl = uploadRes.videoUrl;
             }
-            msg.stepMessage = 'Starting your edit...';
+            msg.stepMessage = 'Creating your edit...';
             updateProgress(msg);
 
             const res = await fetch('/api/video-jobs', {
