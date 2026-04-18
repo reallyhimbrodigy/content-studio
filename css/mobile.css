@@ -6,6 +6,11 @@
 .mobile-page { display: none; }
 
 @media (max-width: 768px) {
+  /* Force body visible on mobile — overrides auth-pending */
+  body.auth-pending {
+    visibility: visible !important;
+  }
+
   /* ── Hide ALL desktop content on mobile — no exceptions ── */
   .app-shell,
   .app-layout,
