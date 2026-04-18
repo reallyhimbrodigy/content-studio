@@ -2418,8 +2418,54 @@
 
       // ── Event delegation for dynamic buttons ──
       messagesEl.addEventListener('click', (e) => {
+        // Upload button in empty state
         const uploadBtn = e.target.closest('.chat-empty-upload-btn');
-        if (uploadBtn) fileInput.click();
+        if (uploadBtn) { fileInput.click(); return; }
+
+        // Play button on completed video — replace placeholder with real video
+        const playIcon = e.target.closest('.chat-video-play-icon');
+        const placeholder = e.target.closest('.chat-video-placeholder');
+        if (playIcon || placeholder) {
+          const result = (playIcon || placeholder).closest('.chat-video-result');
+          if (!result) return;
+          const url = decodeURIComponent(result.dataset.videoUrl || '');
+          const poster = decodeURIComponent(result.dataset.posterUrl || '');
+          if (!url) return;
+          const vid = document.createElement('video');
+          vid.controls = true;
+          vid.playsInline = true;
+          vid.setAttribute('webkit-playsinline', '');
+          vid.preload = 'auto';
+          vid.style.width = '100%';
+          vid.style.display = 'block';
+          vid.style.borderRadius = '16px';
+          vid.style.background = '#111';
+          if (poster) vid.poster = poster;
+          vid.src = url;
+          result.innerHTML = '';
+          result.appendChild(vid);
+          vid.play().catch(() => {});
+          return;
+        }
+
+        // Share button — use native share sheet or fallback
+        const shareBtn = e.target.closest('.chat-share-btn');
+        if (shareBtn) {
+          const url = decodeURIComponent(shareBtn.dataset.shareUrl || '');
+          if (!url) return;
+          if (window.Capacitor?.Plugins?.Share) {
+            window.Capacitor.Plugins.Share.share({ url: url, title: 'My Promptly Edit' }).catch(() => {
+              window.open(url, '_blank');
+            });
+          } else if (navigator.share) {
+            navigator.share({ url: url, title: 'My Promptly Edit' }).catch(() => {
+              window.open(url, '_blank');
+            });
+          } else {
+            window.open(url, '_blank');
+          }
+          return;
+        }
       });
 
       // ── Render ──
@@ -2450,12 +2496,18 @@
 
           let resultHtml = '';
           if (msg.renderedVideoUrl) {
+            const vidId = 'vid-' + (msg.jobId || Math.random().toString(36).slice(2));
             resultHtml = `
-              <div class="chat-video-result">
-                <video controls playsinline webkit-playsinline preload="auto" src="${msg.renderedVideoUrl}" ${msg.thumbnailUrl ? `poster="${msg.thumbnailUrl}"` : ''}></video>
+              <div class="chat-video-result" data-video-url="${encodeURIComponent(msg.renderedVideoUrl)}" data-poster-url="${encodeURIComponent(msg.thumbnailUrl || '')}" data-vid-id="${vidId}">
+                <div id="${vidId}" class="chat-video-placeholder">
+                  ${msg.thumbnailUrl ? `<img src="${msg.thumbnailUrl}" class="chat-video-poster" alt=""/>` : ''}
+                  <div class="chat-video-play-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                </div>
               </div>
               <div class="chat-result-actions">
-                <a href="${msg.renderedVideoUrl}" target="_self">Open Video</a>
+                <button class="chat-share-btn" data-share-url="${encodeURIComponent(msg.renderedVideoUrl)}">Share</button>
               </div>`;
           }
 

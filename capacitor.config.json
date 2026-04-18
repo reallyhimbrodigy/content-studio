@@ -11,6 +11,10 @@
     "backgroundColor": "#000000",
     "contentInset": "always",
     "preferredContentMode": "mobile",
-    "allowsLinkPreview": false
+    "allowsLinkPreview": false,
+    "allowsInlineMediaPlayback": true
+  },
+  "plugins": {
+    "Share": {}
   }
 }

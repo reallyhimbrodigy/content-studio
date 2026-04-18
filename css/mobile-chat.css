@@ -131,13 +131,54 @@
     background: #111;
   }
 
+  .chat-video-placeholder {
+    position: relative;
+    width: 100%;
+    min-height: 200px;
+    background: #111;
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .chat-video-poster {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    inset: 0;
+  }
+
+  .chat-video-play-icon {
+    position: relative;
+    z-index: 1;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chat-video-placeholder:active .chat-video-play-icon {
+    transform: scale(0.92);
+  }
+
   .chat-result-actions {
     display: flex;
     gap: 8px;
     margin-top: 8px;
   }
 
-  .chat-result-actions a {
+  .chat-result-actions a,
+  .chat-result-actions button {
     font-size: 14px;
     padding: 10px 20px;
     border-radius: 10px;
@@ -145,7 +186,16 @@
     color: #fff;
     text-decoration: none;
     font-weight: 600;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .chat-result-actions a:active,
+  .chat-result-actions button:active {
+    opacity: 0.8;
   }
 
   /* ── Thinking / Processing — Claude/ChatGPT style ── */
