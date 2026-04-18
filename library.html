@@ -466,6 +466,9 @@
     (function initMobileLibrary() {
       if (window.matchMedia('(min-width: 769px)').matches) return;
 
+      // Remove auth-pending visibility:hidden so mobile page shows
+      document.body.classList.remove('auth-pending');
+
       const page = document.getElementById('mobile-library-page');
       const content = document.getElementById('mobile-library-content');
       if (!page || !content) return;

@@ -35,6 +35,9 @@
     window.supabaseClient = window.supabaseClient || supabase;
 
     (async function initAccountPage() {
+      // Remove auth-pending so page is visible
+      document.body.classList.remove('auth-pending');
+
       const page = document.getElementById('mobile-account-page');
       const container = document.getElementById('mobile-account');
       if (!page || !container) return;
