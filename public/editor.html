@@ -2782,7 +2782,7 @@
       window.loadMobileLibrary = async function() {
         const content = document.getElementById('mobile-lib-content');
         if (!content) return;
-        content.innerHTML = '<div style="display:flex;justify-content:center;padding:64px 0;"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.1);border-top-color:rgba(255,255,255,0.5);border-radius:50%;animation:spin 0.8s linear infinite;"></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+        content.innerHTML = '<div style="display:flex;justify-content:center;padding:64px 0;"><div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.08);border-top-color:rgba(255,255,255,0.4);border-radius:50%;animation:spin 0.8s linear infinite;"></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
 
         try {
           const sb = getSupabaseClient();
@@ -2798,39 +2798,25 @@
             .order('created_at', { ascending: false });
 
           if (!edits || edits.length === 0) {
-            content.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 32px;gap:16px;text-align:center;flex:1;"><div style="width:64px;height:64px;border-radius:20px;background:#111;display:flex;align-items:center;justify-content:center;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div><div style="font-size:20px;font-weight:600;color:#fff;">No edits yet</div><div style="font-size:15px;color:rgba(255,255,255,0.4);max-width:260px;line-height:1.5;">Create your first edit and it will show up here.</div></div>';
+            content.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 32px;gap:16px;text-align:center;flex:1;"><div style="width:72px;height:72px;border-radius:20px;background:#1C1C1E;display:flex;align-items:center;justify-content:center;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div><div style="font-size:20px;font-weight:600;color:#E0E0E0;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;">No edits yet</div><div style="font-size:15px;color:rgba(255,255,255,0.4);max-width:260px;line-height:1.5;">Create your first edit and it will show up here.</div></div>';
             return;
           }
 
-          content.innerHTML = edits.map((edit) => {
-            const vibe = escapeHtml((edit.vibe_input || '').slice(0, 80));
+          content.innerHTML = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">' + edits.map((edit) => {
+            const vibe = escapeHtml((edit.vibe_input || '').slice(0, 50));
             const isComplete = edit.status === 'completed';
             const isProcessing = edit.status === 'processing' || edit.status === 'queued';
             const isFailed = edit.status === 'failed';
-            const statusDot = isComplete ? '#4ade80' : isProcessing ? '#3b82f6' : isFailed ? '#ef4444' : '#71717a';
-            const statusText = isComplete ? 'Completed' : isProcessing ? 'Processing' : isFailed ? 'Failed' : edit.status;
-
-            const thumbHtml = edit.thumbnail_url
-              ? `<img style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:#111;display:block;flex-shrink:0;" src="${edit.thumbnail_url}" alt="" loading="lazy" />`
-              : `<div style="width:56px;height:56px;border-radius:10px;background:#111;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>`;
-
             const menuData = encodeURIComponent(JSON.stringify({ id: edit.id, url: edit.rendered_video_url || '', status: edit.status }));
 
-            return `<div style="padding:14px 0;border-bottom:0.5px solid rgba(255,255,255,0.06);">
-              <div style="display:flex;gap:12px;align-items:flex-start;">
-                ${thumbHtml}
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:15px;font-weight:500;color:#fff;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${vibe || 'Video edit'}</div>
-                  <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-                    <span style="width:6px;height:6px;border-radius:50%;background:${statusDot};flex-shrink:0;"></span>
-                    <span style="font-size:12px;color:rgba(255,255,255,0.4);">${statusText}</span>
-                    <span style="font-size:12px;color:rgba(255,255,255,0.2);">&middot;</span>
-                    <span style="font-size:12px;color:rgba(255,255,255,0.3);">${formatDate(edit.created_at)}</span>
-                  </div>
-                </div>
-                <button data-edit-menu="${menuData}" style="background:none;border:none;color:rgba(255,255,255,0.35);padding:4px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
-                </button>
+            const thumbHtml = edit.thumbnail_url
+              ? `<div style="position:relative;"><img style="width:100%;aspect-ratio:9/16;object-fit:cover;display:block;background:#1C1C1E;" src="${edit.thumbnail_url}" alt="" loading="lazy" /><div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);padding:2px 6px;border-radius:4px;font-size:11px;color:#fff;font-weight:500;">${formatDate(edit.created_at)}</div>${!isComplete ? `<div style="position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600;text-transform:uppercase;background:${isProcessing ? 'rgba(59,130,246,0.8)' : 'rgba(239,68,68,0.8)'};color:#fff;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);">${isProcessing ? 'Processing' : 'Failed'}</div>` : ''}<button data-edit-menu="${menuData}" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.5);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);border:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg></button></div>`
+              : `<div style="position:relative;width:100%;aspect-ratio:9/16;background:#1C1C1E;display:flex;align-items:center;justify-content:center;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg><button data-edit-menu="${menuData}" style="position:absolute;top:6px;right:6px;background:rgba(255,255,255,0.08);border:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;"><svg width="16" height="16" viewBox="0 0 24 24" fill="rgba(255,255,255,0.4)"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg></button></div>`;
+
+            return `<div style="background:#1C1C1E;border-radius:12px;overflow:hidden;">
+              ${thumbHtml}
+              <div style="padding:10px 10px 12px;">
+                <div style="font-size:13px;font-weight:500;color:#E0E0E0;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;">${vibe || 'Video edit'}</div>
               </div>
             </div>`;
           }).join('');
@@ -2918,52 +2904,56 @@
 
           const avatarInner = avatarUrl
             ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;" />`
-            : `<span style="font-size:32px;font-weight:600;color:rgba(255,255,255,0.5);">${initial}</span>`;
+            : `<span style="font-size:32px;font-weight:600;color:rgba(255,255,255,0.4);">${initial}</span>`;
+
+          const f = '-apple-system,BlinkMacSystemFont,system-ui,sans-serif';
+          const row = 'display:flex;align-items:center;justify-content:space-between;padding:14px 16px;min-height:44px;border:none;background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;';
+          const divider = 'border-bottom:0.5px solid rgba(255,255,255,0.06);';
 
           content.innerHTML = `
-            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:28px 0 4px;">
-              <div id="acct-avatar-wrap" style="width:88px;height:88px;border-radius:50%;background:#1a1a1a;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px 0 8px;">
+              <div id="acct-avatar-wrap" style="width:88px;height:88px;border-radius:50%;background:#2C2C2E;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent;">
                 ${avatarInner}
-                <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);padding:4px 0;text-align:center;">
-                  <span style="font-size:10px;color:#fff;font-weight:500;">Edit</span>
+                <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);padding:5px 0;text-align:center;">
+                  <span style="font-size:10px;color:#fff;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;">Edit</span>
                 </div>
               </div>
               <input type="file" id="mobile-avatar-input" accept="image/*" style="display:none" />
-              <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.02em;margin-top:4px;">${escapeHtml(fullName || 'User')}</div>
-              <div style="font-size:14px;color:rgba(255,255,255,0.4);">${escapeHtml(email)}</div>
+              <div style="font-size:22px;font-weight:700;color:#E0E0E0;letter-spacing:-0.02em;margin-top:4px;font-family:${f};">${escapeHtml(fullName || 'User')}</div>
+              <div style="font-size:14px;color:rgba(255,255,255,0.4);font-family:${f};">${escapeHtml(email)}</div>
             </div>
 
-            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:24px;">
-              <button id="acct-edit-name" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;border-bottom:0.5px solid rgba(255,255,255,0.1);background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-                <span style="font-size:16px;color:#fff;">Name</span>
-                <span style="font-size:15px;color:rgba(255,255,255,0.35);display:flex;align-items:center;gap:4px;">${escapeHtml(fullName || 'Not set')} ${chevron}</span>
+            <div style="background:#1C1C1E;border-radius:12px;overflow:hidden;margin-top:24px;">
+              <button id="acct-edit-name" style="${row}${divider}">
+                <span style="font-size:16px;color:#E0E0E0;font-family:${f};">Name</span>
+                <span style="font-size:15px;color:rgba(255,255,255,0.35);display:flex;align-items:center;gap:4px;font-family:${f};">${escapeHtml(fullName || 'Not set')} ${chevron}</span>
               </button>
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;">
-                <span style="font-size:16px;color:#fff;">Email</span>
-                <span style="font-size:15px;color:rgba(255,255,255,0.35);">${escapeHtml(email)}</span>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;min-height:44px;">
+                <span style="font-size:16px;color:#E0E0E0;font-family:${f};">Email</span>
+                <span style="font-size:15px;color:rgba(255,255,255,0.35);font-family:${f};">${escapeHtml(email)}</span>
               </div>
             </div>
 
-            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:16px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;">
-                <span style="font-size:16px;color:#fff;">Plan</span>
-                <span style="font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;${isPro ? 'background:rgba(59,130,246,0.15);color:#60a5fa;' : 'background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);'}">${isPro ? 'PRO' : 'FREE'}</span>
+            <div style="background:#1C1C1E;border-radius:12px;overflow:hidden;margin-top:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;min-height:44px;">
+                <span style="font-size:16px;color:#E0E0E0;font-family:${f};">Plan</span>
+                <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;font-family:${f};${isPro ? 'background:rgba(59,130,246,0.15);color:#60a5fa;' : 'background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);'}">${isPro ? 'PRO' : 'FREE'}</span>
               </div>
             </div>
 
-            <div style="background:#1a1a1a;border-radius:12px;overflow:hidden;margin-top:16px;">
-              <button id="acct-help" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;border-bottom:0.5px solid rgba(255,255,255,0.1);background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-                <span style="font-size:16px;color:#fff;">Help & Support</span>
-                <span style="color:rgba(255,255,255,0.2);">${chevron}</span>
+            <div style="background:#1C1C1E;border-radius:12px;overflow:hidden;margin-top:16px;">
+              <button id="acct-help" style="${row}${divider}">
+                <span style="font-size:16px;color:#E0E0E0;font-family:${f};">Help & Support</span>
+                <span style="color:rgba(255,255,255,0.15);">${chevron}</span>
               </button>
-              <button id="acct-password" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:44px;border:none;background:none;width:100%;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-                <span style="font-size:16px;color:#fff;">Change Password</span>
-                <span style="color:rgba(255,255,255,0.2);">${chevron}</span>
+              <button id="acct-password" style="${row}">
+                <span style="font-size:16px;color:#E0E0E0;font-family:${f};">Change Password</span>
+                <span style="color:rgba(255,255,255,0.15);">${chevron}</span>
               </button>
             </div>
 
-            <button id="acct-signout" style="display:block;width:100%;padding:14px;background:#1a1a1a;border:none;border-radius:12px;color:#ef4444;font-size:16px;cursor:pointer;text-align:center;font-family:inherit;margin-top:16px;-webkit-tap-highlight-color:transparent;">Sign Out</button>
-            <div style="text-align:center;font-size:12px;color:rgba(255,255,255,0.2);padding:16px 0;">Promptly v1.0</div>`;
+            <button id="acct-signout" style="display:block;width:100%;padding:14px;background:#1C1C1E;border:none;border-radius:12px;color:#EF4444;font-size:16px;cursor:pointer;text-align:center;font-family:${f};margin-top:16px;-webkit-tap-highlight-color:transparent;">Sign Out</button>
+            <div style="text-align:center;font-size:12px;color:rgba(255,255,255,0.15);padding:16px 0;font-family:${f};">Promptly v1.0</div>`;
 
           // Wire up account buttons
           document.getElementById('acct-edit-name')?.addEventListener('click', async () => {
