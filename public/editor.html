@@ -2366,7 +2366,6 @@
         pendingFileName: '',
         pendingFileSize: 0,
         pendingLocalUrl: null,
-        isUploading: false,
         sending: false,
         sseConnections: new Map(),
         conversationHistory: [],
@@ -2543,8 +2542,8 @@
 
       function syncSendBtn() {
         const hasText = inputEl.value.trim().length > 0;
-        const hasAttachment = chat.pendingVideoUrl || chat.pendingFile;
-        sendBtn.disabled = (!hasText && !hasAttachment) || chat.sending;
+        const hasFile = Boolean(chat.pendingFile);
+        sendBtn.disabled = (!hasText && !hasFile) || chat.sending;
       }
 
       inputEl.addEventListener('input', () => {
@@ -2581,7 +2580,6 @@
           pendingSize.textContent = formatSize(file.size);
           pendingEl.style.display = 'flex';
           syncSendBtn();
-          uploadVideo(file);
         };
         vid.onerror = () => { URL.revokeObjectURL(url); addSystemMessage('Could not read video.'); };
         vid.src = url;
@@ -2597,27 +2595,6 @@
         syncSendBtn();
       }
 
-      async function uploadVideo(file) {
-        chat.isUploading = true;
-        try {
-          const auth = await getAuthContext();
-          const fd = new FormData();
-          fd.append('video', file);
-          fd.append('userId', auth.user.id);
-          await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.addEventListener('load', () => {
-              if (xhr.status === 200) { const d = JSON.parse(xhr.responseText); chat.pendingVideoUrl = d.videoUrl; chat.pendingFileName = d.fileName || file.name; resolve(); }
-              else { let m = 'Upload failed'; try { m = JSON.parse(xhr.responseText)?.error || m; } catch (_) {} reject(new Error(m)); }
-            });
-            xhr.addEventListener('error', () => reject(new Error('Upload failed')));
-            xhr.open('POST', '/api/upload');
-            xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`);
-            xhr.send(fd);
-          });
-        } catch (err) { addSystemMessage(err.message || 'Upload failed'); clearPendingAttachment(); }
-        finally { chat.isUploading = false; syncSendBtn(); }
-      }
 
       function addSystemMessage(t) { chat.messages.push({ role: 'system', content: t }); renderMessages(); }
       function addUserMessage(t, va) { const m = { role: 'user', content: t }; if (va) m.videoAttachment = va; chat.messages.push(m); chat.conversationHistory.push({ role: 'user', content: t }); renderMessages(); return m; }
@@ -2625,24 +2602,75 @@
 
       async function handleSend() {
         const text = inputEl.value.trim();
-        if (chat.pendingFile && !chat.pendingVideoUrl && chat.isUploading) {
-          // Show user that upload is finishing
-          addSystemMessage('Finishing upload...');
-          await new Promise(r => { const c = setInterval(() => { if (!chat.isUploading) { clearInterval(c); r(); } }, 200); });
-          // Remove the "finishing upload" message
-          const last = chat.messages[chat.messages.length - 1];
-          if (last?.role === 'system' && last?.content === 'Finishing upload...') chat.messages.pop();
-        }
-        const videoReady = Boolean(chat.pendingVideoUrl);
-        if (!text && !videoReady) return;
+        const hasFile = Boolean(chat.pendingFile);
+        if (!text && !hasFile) return;
         if (chat.sending) return;
         chat.sending = true; syncSendBtn();
-        const va = videoReady ? { url: chat.pendingVideoUrl, localUrl: chat.pendingLocalUrl, filename: chat.pendingFileName, size: chat.pendingFileSize } : null;
-        addUserMessage(text || 'Edit this video', va);
+
+        const videoAttachment = hasFile ? {
+          file: chat.pendingFile,
+          localUrl: chat.pendingLocalUrl,
+          filename: chat.pendingFileName,
+          size: chat.pendingFileSize,
+        } : null;
+
+        addUserMessage(text || 'Edit this video', videoAttachment ? { localUrl: videoAttachment.localUrl, filename: videoAttachment.filename } : null);
         inputEl.value = ''; inputEl.style.height = 'auto';
+
+        // Clear pending attachment
         chat.pendingFile = null; chat.pendingVideoUrl = null; chat.pendingFileName = ''; chat.pendingFileSize = 0; chat.pendingLocalUrl = null; pendingEl.style.display = 'none';
-        if (va) { await createEditJob(va.url, text || 'Create a clean, engaging edit'); }
-        else { await chatWithAI(text); }
+
+        if (videoAttachment) {
+          // Show processing immediately — upload is hidden inside it
+          const msg = addAssistantMessage('', { jobId: 'pending', jobStatus: 'processing', stepMessage: 'Preparing your video...' });
+
+          // Upload the file (user sees "Preparing your video..." shimmer)
+          try {
+            const auth = await getAuthContext();
+            const fd = new FormData();
+            fd.append('video', videoAttachment.file);
+            fd.append('userId', auth.user.id);
+            const uploadRes = await new Promise((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.addEventListener('load', () => {
+                if (xhr.status === 200) resolve(JSON.parse(xhr.responseText));
+                else { let m = 'Upload failed'; try { m = JSON.parse(xhr.responseText)?.error || m; } catch (_) {} reject(new Error(m)); }
+              });
+              xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+              xhr.open('POST', '/api/upload');
+              xhr.setRequestHeader('Authorization', `Bearer ${auth.token}`);
+              xhr.send(fd);
+            });
+
+            // Upload done — now create the edit job
+            const videoUrl = uploadRes.videoUrl;
+            msg.stepMessage = 'Starting your edit...';
+            updateProgress(msg);
+
+            const res = await fetch('/api/video-jobs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+              body: JSON.stringify({ video_url: videoUrl, vibe_input: text || 'Create a clean, engaging edit' }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Failed to create job');
+
+            const jobId = data.job_id || data.jobId;
+            msg.jobId = jobId;
+            msg.jobStatus = 'processing';
+            // Update the progress element ID so SSE can target it
+            const oldWrap = document.getElementById('progress-pending');
+            if (oldWrap) oldWrap.id = `progress-${jobId}`;
+            startJobSSE(jobId, msg);
+          } catch (err) {
+            // Remove the shimmer message and show error
+            const idx = chat.messages.indexOf(msg);
+            if (idx !== -1) chat.messages.splice(idx, 1);
+            addAssistantMessage(err.message || 'Failed to start editing.');
+          }
+        } else {
+          await chatWithAI(text);
+        }
         chat.sending = false; syncSendBtn();
       }
 
