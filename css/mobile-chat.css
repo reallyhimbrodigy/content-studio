@@ -209,7 +209,7 @@
   .chat-shimmer-bar {
     height: 12px;
     border-radius: 6px;
-    background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+    background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.06) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s linear infinite;
   }

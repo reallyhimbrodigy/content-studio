@@ -518,7 +518,7 @@
             content.innerHTML = `
               <div class="mobile-library-empty">
                 <div class="mobile-library-empty-icon">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                 </div>
                 <div class="mobile-library-empty-title">No edits yet</div>
                 <div class="mobile-library-empty-desc">Create your first edit in the chat and it will show up here.</div>
@@ -558,7 +558,7 @@
       }
 
       function openVideoDetail(data) {
-        if (!data.videoUrl && data.status !== 'completed') return;
+        if ((!data.videoUrl || data.videoUrl === '') && data.status !== 'completed') return;
 
         const overlay = document.createElement('div');
         overlay.className = 'mobile-video-detail';
@@ -595,10 +595,16 @@
         overlay.querySelector('#detail-back').addEventListener('click', () => overlay.remove());
       }
 
-      // Wait for Supabase to be ready, then load
+      // Wait for Supabase to be ready, then load (max 5 seconds)
+      let supabaseRetries = 0;
       function waitForSupabase() {
         const sb = getSupabaseClient();
         if (sb) { loadEdits(); return; }
+        supabaseRetries++;
+        if (supabaseRetries > 50) {
+          content.innerHTML = '<div class="mobile-library-empty"><div class="mobile-library-empty-title">Connection error</div><div class="mobile-library-empty-desc">Could not connect. Pull down to retry.</div></div>';
+          return;
+        }
         setTimeout(waitForSupabase, 100);
       }
       waitForSupabase();

@@ -354,13 +354,18 @@ button.primary:active {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 700px) {
-  body { padding: 1rem; }
-  .auth-shell { max-width: 100%; }
+  body { padding: 0; background: #000; }
+  .auth-shell { max-width: 100%; align-items: flex-start; padding-top: env(safe-area-inset-top, 48px); }
   .auth-card {
-    padding: 1.75rem;
-    border-radius: 1rem;
+    padding: 2rem 1.5rem;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background: #000;
   }
-  .auth-card h2 { font-size: 1.45rem; }
+  .auth-card h2 { font-size: 1.6rem; }
+  .auth-wordmark { font-size: 1.3rem; margin-bottom: 1.5rem; }
+  .auth-footer { padding-bottom: env(safe-area-inset-bottom, 16px); }
 }
 
 /* ===== DARK MODE ENHANCEMENTS ===== */
@@ -427,10 +432,10 @@ button.primary:active {
           <!-- Password Strength Indicator (only shown during Sign Up) -->
           <div id="password-strength" style="display: none; margin-top: 0.5rem;">
             <div style="display: flex; gap: 0.25rem; height: 4px; margin-bottom: 0.25rem;">
-              <div id="strength-bar-1" style="flex: 1; background: color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 2px; transition: background 0.3s;"></div>
-              <div id="strength-bar-2" style="flex: 1; background: color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 2px; transition: background 0.3s;"></div>
-              <div id="strength-bar-3" style="flex: 1; background: color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 2px; transition: background 0.3s;"></div>
-              <div id="strength-bar-4" style="flex: 1; background: color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 2px; transition: background 0.3s;"></div>
+              <div id="strength-bar-1" style="flex: 1; background: rgba(255, 255, 255, 0.12); border-radius: 2px; transition: background 0.3s;"></div>
+              <div id="strength-bar-2" style="flex: 1; background: rgba(255, 255, 255, 0.12); border-radius: 2px; transition: background 0.3s;"></div>
+              <div id="strength-bar-3" style="flex: 1; background: rgba(255, 255, 255, 0.12); border-radius: 2px; transition: background 0.3s;"></div>
+              <div id="strength-bar-4" style="flex: 1; background: rgba(255, 255, 255, 0.12); border-radius: 2px; transition: background 0.3s;"></div>
             </div>
             <p id="strength-text" style="margin: 0; font-size: 0.8rem; color: var(--text-tertiary);"></p>
           </div>
