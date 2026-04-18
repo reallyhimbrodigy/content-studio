@@ -13,7 +13,8 @@
   .app-sidebar,
   .sidebar-toggle,
   .sidebar-backdrop,
-  .editor-topbar {
+  .editor-topbar,
+  .landing-nav {
     display: none !important;
   }
 
@@ -23,6 +24,25 @@
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
+  }
+
+  /* Hide entire desktop app shell when mobile page is active */
+  .app-shell,
+  #app-experience {
+    display: none !important;
+  }
+
+  .mobile-page.active ~ .app-shell,
+  .mobile-page.active ~ #app-experience {
+    display: none !important;
+  }
+
+  /* Body-level: hide desktop content when mobile page exists */
+  body:has(.mobile-page.active) .app-shell,
+  body:has(.mobile-page.active) #app-experience,
+  body:has(.mobile-page.active) .landing-nav,
+  body:has(.mobile-page.active) .app-layout {
+    display: none !important;
   }
 
   /* ══════════════════════════════════════

@@ -495,6 +495,30 @@
     color: rgba(255, 255, 255, 0.4);
   }
 
+  .chat-empty-upload-btn {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 16px 32px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: transform 0.1s ease;
+  }
+
+  .chat-empty-upload-btn:active {
+    transform: scale(0.96);
+  }
+
   /* ── Menu overlay ── */
   .chat-menu-overlay {
     position: fixed;

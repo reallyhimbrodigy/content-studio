@@ -963,13 +963,9 @@
     <!-- ═══ Mobile Chat UI ═══ -->
     <div id="mobile-chat" class="mobile-chat">
       <header class="chat-header">
-        <button class="chat-header-btn" id="chat-back-btn" aria-label="Back">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <span class="chat-header-title">Chat</span>
-        <button class="chat-header-btn" id="chat-menu-btn" aria-label="Menu">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
-        </button>
+        <div style="width:40px"></div>
+        <span class="chat-header-title">Edit</span>
+        <div style="width:40px"></div>
       </header>
 
       <div id="chat-messages" class="chat-messages"></div>
@@ -983,18 +979,13 @@
         <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
       </div>
 
-      <div id="chat-upload-progress" class="chat-upload-progress" style="display:none;">
-        <div class="chat-upload-progress-track">
-          <div id="chat-upload-fill" class="chat-upload-progress-fill" style="width:0%"></div>
-        </div>
-        <span id="chat-upload-label" class="chat-upload-progress-label">0%</span>
-      </div>
-
       <div class="chat-input-bar">
-        <button id="chat-attach-btn" class="chat-attach-btn" aria-label="Attach video">+</button>
-        <textarea id="chat-text-input" class="chat-text-input" rows="1" placeholder="Chat to edit"></textarea>
+        <button id="chat-attach-btn" class="chat-attach-btn" aria-label="Attach video">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <textarea id="chat-text-input" class="chat-text-input" rows="1" placeholder="Describe your edit..."></textarea>
         <button id="chat-send-btn" class="chat-send-btn" disabled aria-label="Send">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
         </button>
       </div>
 
@@ -2362,7 +2353,6 @@
       const chatEl = document.getElementById('mobile-chat');
       if (!chatEl) return;
 
-      // Only run on mobile-width screens
       const mql = window.matchMedia('(max-width: 768px)');
       if (!mql.matches) return;
 
@@ -2377,24 +2367,19 @@
       const pendingName = document.getElementById('chat-pending-name');
       const pendingSize = document.getElementById('chat-pending-size');
       const pendingRemove = document.getElementById('chat-pending-remove');
-      const uploadProgressEl = document.getElementById('chat-upload-progress');
-      const uploadFill = document.getElementById('chat-upload-fill');
-      const uploadLabel = document.getElementById('chat-upload-label');
-      const menuBtn = document.getElementById('chat-menu-btn');
-      const backBtn = document.getElementById('chat-back-btn');
 
       // ── State ──
       const chat = {
         messages: [],
         pendingFile: null,
-        pendingVideoUrl: null,       // After upload — server URL
+        pendingVideoUrl: null,
         pendingFileName: '',
         pendingFileSize: 0,
-        pendingLocalUrl: null,       // Local blob for thumbnail
+        pendingLocalUrl: null,
         isUploading: false,
         sending: false,
         sseConnections: new Map(),
-        conversationHistory: [],     // For Gemini context
+        conversationHistory: [],
       };
 
       // ── Helpers ──
@@ -2416,12 +2401,21 @@
       };
 
       const scrollToBottom = () => {
-        requestAnimationFrame(() => {
-          messagesEl.scrollTop = messagesEl.scrollHeight;
-        });
+        requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
       };
 
-      // ── Render messages ──
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      function openFilePicker() {
+        if (chat.isUploading || chat.sending) return;
+        fileInput.click();
+      }
+
+      // ── Render — only update what changed to prevent flashing ──
       function renderMessages() {
         if (chat.messages.length === 0) {
           messagesEl.innerHTML = `
@@ -2432,79 +2426,78 @@
                   <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                 </svg>
               </div>
-              <div class="chat-empty-title">Welcome to Promptly</div>
-              <div class="chat-empty-desc">Attach a video and describe your vibe to create an edit, or just chat with the AI.</div>
+              <div class="chat-empty-title">Create your edit</div>
+              <div class="chat-empty-desc">Upload a video and describe the vibe you want.</div>
+              <button class="chat-empty-upload-btn" id="chat-empty-upload">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                Upload Video
+              </button>
             </div>`;
+          document.getElementById('chat-empty-upload')?.addEventListener('click', openFilePicker);
           return;
         }
 
-        messagesEl.innerHTML = chat.messages.map((msg, i) => {
+        // Build new HTML but only swap if structure changed
+        const newHtml = chat.messages.map((msg) => {
           const cls = `chat-msg ${msg.role}`;
+          const id = msg.jobId ? `data-job-id="${msg.jobId}"` : '';
 
-          // Video attachment
           let attachHtml = '';
           if (msg.videoAttachment) {
-            attachHtml = `
-              <div class="chat-video-attachment">
-                <video class="chat-video-thumb" src="${msg.videoAttachment.localUrl || ''}" muted preload="metadata"></video>
-                ${msg.videoAttachment.duration ? `<span class="chat-video-duration">${msg.videoAttachment.duration}</span>` : ''}
-              </div>`;
+            attachHtml = `<div class="chat-video-attachment"><video class="chat-video-thumb" src="${msg.videoAttachment.localUrl || ''}" muted preload="metadata" playsinline></video></div>`;
           }
 
-          // Completed video result
           let resultHtml = '';
           if (msg.renderedVideoUrl) {
             resultHtml = `
               <div class="chat-video-result">
-                <video controls src="${msg.renderedVideoUrl}" ${msg.thumbnailUrl ? `poster="${msg.thumbnailUrl}"` : ''}></video>
+                <video controls playsinline preload="metadata" src="${msg.renderedVideoUrl}" ${msg.thumbnailUrl ? `poster="${msg.thumbnailUrl}"` : ''}></video>
               </div>
               <div class="chat-result-actions">
-                <a href="${msg.renderedVideoUrl}" download>
-                  <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2h16v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  Download
-                </a>
+                <a href="${msg.renderedVideoUrl}" download>Download</a>
               </div>`;
           }
 
-          // Progress
           let progressHtml = '';
           if (msg.jobId && msg.jobStatus && !['completed', 'complete', 'failed', 'error'].includes(msg.jobStatus)) {
             progressHtml = `
-              <div class="chat-progress-wrap">
-                <div class="chat-progress-step">${msg.stepMessage || msg.currentStep || 'Getting started...'}</div>
+              <div class="chat-progress-wrap" id="progress-${msg.jobId}">
+                <div class="chat-progress-step">${msg.stepMessage || 'Getting started...'}</div>
                 <div class="chat-progress-track"><div class="chat-progress-fill" style="width:${msg.jobProgress || 0}%"></div></div>
-                <div class="chat-progress-pct">${msg.jobProgress || 0}%</div>
               </div>`;
           }
 
-          // Error
           let errorHtml = '';
           if (msg.jobStatus === 'failed' || msg.jobStatus === 'error') {
-            errorHtml = `<div style="color:#f87171;font-size:13px;margin-top:4px;">${msg.error || 'Something went wrong.'}</div>`;
+            errorHtml = `<div style="color:#ef4444;font-size:13px;margin-top:4px;">${msg.error || 'Something went wrong.'}</div>`;
           }
 
-          // Thinking indicator
           let thinkingHtml = '';
           if (msg.thinking) {
-            thinkingHtml = `
-              <div class="chat-thinking">
-                <span class="chat-thinking-dots"><span></span><span></span><span></span></span>
-                Thinking...
-              </div>`;
+            thinkingHtml = `<div class="chat-thinking"><span class="chat-thinking-dots"><span></span><span></span><span></span></span></div>`;
           }
 
           const bubbleContent = msg.content ? `<div class="chat-bubble">${escapeHtml(msg.content)}</div>` : '';
 
-          return `<div class="${cls}">${attachHtml}${bubbleContent}${thinkingHtml}${progressHtml}${resultHtml}${errorHtml}</div>`;
+          return `<div class="${cls}" ${id}>${attachHtml}${bubbleContent}${thinkingHtml}${progressHtml}${resultHtml}${errorHtml}</div>`;
         }).join('');
 
+        messagesEl.innerHTML = newHtml;
         scrollToBottom();
       }
 
-      function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+      // ── Targeted progress update (no full re-render = no flash) ──
+      function updateProgress(msg) {
+        if (!msg.jobId) return;
+        const wrap = document.getElementById(`progress-${msg.jobId}`);
+        if (wrap) {
+          const step = wrap.querySelector('.chat-progress-step');
+          const fill = wrap.querySelector('.chat-progress-fill');
+          if (step) step.textContent = msg.stepMessage || 'Getting started...';
+          if (fill) fill.style.width = (msg.jobProgress || 0) + '%';
+        } else {
+          renderMessages();
+        }
       }
 
       // ── Sync send button ──
@@ -2522,10 +2515,7 @@
       });
 
       // ── Attach video ──
-      attachBtn.addEventListener('click', () => {
-        if (chat.isUploading || chat.sending) return;
-        fileInput.click();
-      });
+      attachBtn.addEventListener('click', openFilePicker);
 
       fileInput.addEventListener('change', (e) => {
         const file = e.target.files?.[0];
@@ -2541,7 +2531,6 @@
           return;
         }
 
-        // Check orientation
         const url = URL.createObjectURL(file);
         const vid = document.createElement('video');
         vid.preload = 'metadata';
@@ -2550,23 +2539,23 @@
           const h = vid.videoHeight || 0;
           if (w && h && w > h) {
             URL.revokeObjectURL(url);
-            addSystemMessage('Please upload a vertical or square video for TikTok, Reels, and Shorts.');
+            addSystemMessage('Please use a vertical or square video.');
             return;
           }
 
+          // Attach instantly — show in preview bar, upload in background
           chat.pendingFile = file;
           chat.pendingFileName = file.name;
           chat.pendingFileSize = file.size;
           chat.pendingLocalUrl = url;
 
-          // Show pending preview
           pendingThumb.src = url;
           pendingName.textContent = file.name;
           pendingSize.textContent = formatSize(file.size);
           pendingEl.style.display = 'flex';
           syncSendBtn();
 
-          // Start upload immediately
+          // Upload silently in background — user doesn't wait
           uploadVideo(file);
         };
         vid.onerror = () => {
@@ -2576,9 +2565,7 @@
         vid.src = url;
       });
 
-      pendingRemove.addEventListener('click', () => {
-        clearPendingAttachment();
-      });
+      pendingRemove.addEventListener('click', () => clearPendingAttachment());
 
       function clearPendingAttachment() {
         if (chat.pendingLocalUrl) URL.revokeObjectURL(chat.pendingLocalUrl);
@@ -2588,17 +2575,13 @@
         chat.pendingFileSize = 0;
         chat.pendingLocalUrl = null;
         pendingEl.style.display = 'none';
-        uploadProgressEl.style.display = 'none';
         syncSendBtn();
       }
 
-      // ── Upload video ──
+      // ── Upload video silently in background ──
       async function uploadVideo(file) {
         chat.isUploading = true;
-        uploadProgressEl.style.display = 'flex';
-        uploadFill.style.width = '0%';
-        uploadLabel.textContent = '0%';
-        syncSendBtn();
+        // Don't show any upload UI — it happens silently
 
         try {
           const auth = await getAuthContext();
@@ -2608,19 +2591,11 @@
 
           await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.upload.addEventListener('progress', (e) => {
-              if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100);
-                uploadFill.style.width = pct + '%';
-                uploadLabel.textContent = pct + '%';
-              }
-            });
             xhr.addEventListener('load', () => {
               if (xhr.status === 200) {
                 const data = JSON.parse(xhr.responseText);
                 chat.pendingVideoUrl = data.videoUrl;
                 chat.pendingFileName = data.fileName || file.name;
-                uploadProgressEl.style.display = 'none';
                 resolve();
               } else {
                 let msg = 'Upload failed';
@@ -2665,48 +2640,51 @@
         return msg;
       }
 
-      // ── Send message ──
+      // ── Send ──
       async function handleSend() {
         const text = inputEl.value.trim();
         const hasVideo = Boolean(chat.pendingVideoUrl);
 
-        if (!text && !hasVideo) return;
+        // If video is still uploading, wait for it
+        if (chat.pendingFile && !chat.pendingVideoUrl && chat.isUploading) {
+          // Wait for upload to complete before sending
+          const waitForUpload = () => new Promise((resolve) => {
+            const check = setInterval(() => {
+              if (!chat.isUploading) { clearInterval(check); resolve(); }
+            }, 200);
+          });
+          await waitForUpload();
+        }
+
+        const videoReady = Boolean(chat.pendingVideoUrl);
+        if (!text && !videoReady) return;
         if (chat.sending) return;
 
         chat.sending = true;
         syncSendBtn();
 
-        const videoAttachment = hasVideo ? {
+        const videoAttachment = videoReady ? {
           url: chat.pendingVideoUrl,
           localUrl: chat.pendingLocalUrl,
           filename: chat.pendingFileName,
           size: chat.pendingFileSize,
         } : null;
 
-        // Add user message
         addUserMessage(text || 'Edit this video', videoAttachment);
 
-        // Clear input
         inputEl.value = '';
         inputEl.style.height = 'auto';
 
-        // Clear pending attachment (don't revoke URL — it's in the message now)
         chat.pendingFile = null;
         chat.pendingVideoUrl = null;
         chat.pendingFileName = '';
         chat.pendingFileSize = 0;
         chat.pendingLocalUrl = null;
         pendingEl.style.display = 'none';
-        uploadProgressEl.style.display = 'none';
 
-        if (hasVideo && text) {
-          // Video + vibe → create edit job
-          await createEditJob(videoAttachment.url, text);
-        } else if (hasVideo) {
-          // Video only → create edit job with default vibe
-          await createEditJob(videoAttachment.url, 'Create a clean, engaging edit');
+        if (videoAttachment) {
+          await createEditJob(videoAttachment.url, text || 'Create a clean, engaging edit');
         } else {
-          // Text only → chat with AI
           await chatWithAI(text);
         }
 
@@ -2716,10 +2694,7 @@
 
       sendBtn.addEventListener('click', handleSend);
       inputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          handleSend();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
       });
 
       // ── Create edit job ──
@@ -2728,46 +2703,29 @@
           const auth = await getAuthContext();
           const response = await fetch('/api/video-jobs', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${auth.token}`,
-            },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
             body: JSON.stringify({ video_url: videoUrl, vibe_input: vibe }),
           });
-
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error || 'Failed to create job');
 
           const jobId = data.job_id || data.jobId;
-
-          // Add assistant message that will track progress
           const msg = addAssistantMessage('Working on your edit...', {
-            jobId,
-            jobStatus: 'queued',
-            jobProgress: 0,
-            currentStep: 'Queued',
-            stepMessage: '',
+            jobId, jobStatus: 'queued', jobProgress: 0, currentStep: 'Queued', stepMessage: '',
           });
-
           startJobSSE(jobId, msg);
         } catch (err) {
-          if (err.message === 'free_limit_reached') {
-            addAssistantMessage('You\'ve used all 5 free edits. Upgrade to Promptly Pro for unlimited edits.');
-          } else {
-            addAssistantMessage(err.message || 'Failed to start editing. Please try again.');
-          }
+          addAssistantMessage(err.message || 'Failed to start editing.');
         }
       }
 
-      // ── Job SSE ──
+      // ── Job SSE — targeted updates, no full re-render ──
       function startJobSSE(jobId, msg) {
         const existing = chat.sseConnections.get(jobId);
         if (existing) existing.close();
 
         const sb = getSupabaseClient();
-        const sessionPromise = sb?.auth?.getSession ? sb.auth.getSession() : Promise.resolve(null);
-
-        sessionPromise.then(() => {
+        (sb?.auth?.getSession ? sb.auth.getSession() : Promise.resolve(null)).then(() => {
           const es = new EventSource(`/api/video-jobs/${jobId}/stream`);
           chat.sseConnections.set(jobId, es);
 
@@ -2785,10 +2743,9 @@
                 msg.content = 'Your video is ready!';
                 if (data.videoUrl) msg.renderedVideoUrl = data.videoUrl;
                 if (data.thumbnailUrl) msg.thumbnailUrl = data.thumbnailUrl;
-                if (data.final === true) {
-                  es.close();
-                  chat.sseConnections.delete(jobId);
-                }
+                if (data.final === true) { es.close(); chat.sseConnections.delete(jobId); }
+                renderMessages(); // Full re-render for completed state
+                return;
               }
 
               if (data.status === 'failed' || data.status === 'error') {
@@ -2797,21 +2754,23 @@
                 msg.error = data.error || 'Something went wrong.';
                 es.close();
                 chat.sseConnections.delete(jobId);
+                renderMessages();
+                return;
               }
 
-              renderMessages();
+              // Progress updates — targeted, no flash
+              updateProgress(msg);
             } catch (e) {
               console.error('[MobileChat SSE] parse error', e);
             }
           };
 
-          es.onerror = () => { /* auto-reconnects */ };
+          es.onerror = () => {};
         });
       }
 
-      // ── Chat with Gemini AI ──
+      // ── Chat with Gemini ──
       async function chatWithAI(text) {
-        // Add thinking indicator
         const thinkingMsg = { role: 'assistant', content: '', thinking: true };
         chat.messages.push(thinkingMsg);
         renderMessages();
@@ -2820,70 +2779,20 @@
           const auth = await getAuthContext();
           const response = await fetch('/api/chat', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${auth.token}`,
-            },
-            body: JSON.stringify({
-              message: text,
-              history: chat.conversationHistory.slice(-20),
-            }),
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+            body: JSON.stringify({ message: text, history: chat.conversationHistory.slice(-20) }),
           });
-
           const data = await response.json();
-
-          // Remove thinking indicator
           const idx = chat.messages.indexOf(thinkingMsg);
           if (idx !== -1) chat.messages.splice(idx, 1);
-
           if (!response.ok) throw new Error(data?.error || 'Chat failed');
-
-          addAssistantMessage(data.reply || 'I didn\'t get a response. Try again?');
+          addAssistantMessage(data.reply || 'Try again?');
         } catch (err) {
-          // Remove thinking indicator
           const idx = chat.messages.indexOf(thinkingMsg);
           if (idx !== -1) chat.messages.splice(idx, 1);
-          addAssistantMessage('Sorry, I couldn\'t respond right now. Try again.');
+          addAssistantMessage('Sorry, I couldn\'t respond right now.');
         }
       }
-
-      // ── Menu ──
-      menuBtn.addEventListener('click', () => {
-        const overlay = document.createElement('div');
-        overlay.className = 'chat-menu-overlay';
-        overlay.innerHTML = `
-          <div class="chat-menu-sheet">
-            <button class="chat-menu-item" data-action="library">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-              Library
-            </button>
-            <button class="chat-menu-item danger" data-action="clear">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-              Clear Chat
-            </button>
-            <button class="chat-menu-cancel">Cancel</button>
-          </div>`;
-        document.body.appendChild(overlay);
-
-        overlay.addEventListener('click', (e) => {
-          const action = e.target.closest('[data-action]')?.dataset.action;
-          if (action === 'library') {
-            window.location.href = '/library.html';
-          } else if (action === 'clear') {
-            chat.messages = [];
-            chat.conversationHistory = [];
-            renderMessages();
-          }
-          overlay.remove();
-        });
-
-        overlay.querySelector('.chat-menu-cancel').addEventListener('click', () => overlay.remove());
-      });
-
-      // ── Back button ──
-      backBtn.addEventListener('click', () => {
-        window.location.href = '/library.html';
-      });
 
       // ── Init ──
       renderMessages();
