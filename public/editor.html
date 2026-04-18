@@ -970,7 +970,7 @@
 
       <div id="chat-pending-attach" class="chat-pending-attach" style="display:none;">
         <div class="chat-pending-attach-inner">
-          <video id="chat-pending-thumb" class="chat-pending-attach-thumb" muted playsinline></video>
+          <img id="chat-pending-thumb" class="chat-pending-attach-thumb" alt="" />
           <button id="chat-pending-remove" class="chat-pending-attach-remove" aria-label="Remove">&times;</button>
         </div>
       </div>
@@ -2413,27 +2413,6 @@
         const uploadBtn = e.target.closest('.chat-empty-upload-btn');
         if (uploadBtn) { fileInput.click(); return; }
 
-        // Tap on completed video — replace placeholder with real video player
-        const videoResult = e.target.closest('.chat-video-result');
-        if (videoResult && videoResult.dataset.videoUrl) {
-          const url = decodeURIComponent(videoResult.dataset.videoUrl);
-          const poster = decodeURIComponent(videoResult.dataset.posterUrl || '');
-          if (!url) return;
-          const vid = document.createElement('video');
-          vid.controls = true;
-          vid.playsInline = true;
-          vid.setAttribute('webkit-playsinline', '');
-          vid.setAttribute('preload', 'auto');
-          vid.style.cssText = 'width:100%;display:block;border-radius:16px;background:#111;';
-          if (poster) vid.poster = poster;
-          vid.src = url;
-          videoResult.innerHTML = '';
-          videoResult.removeAttribute('data-video-url');
-          videoResult.appendChild(vid);
-          vid.play().catch(() => {});
-          return;
-        }
-
         // Share button — use native share sheet or fallback
         const shareBtn = e.target.closest('.chat-share-btn');
         if (shareBtn) {
@@ -2482,15 +2461,11 @@
 
           let resultHtml = '';
           if (msg.renderedVideoUrl) {
-            const vidId = 'vid-' + (msg.jobId || Math.random().toString(36).slice(2));
             resultHtml = `
-              <div class="chat-video-result" data-video-url="${encodeURIComponent(msg.renderedVideoUrl)}" data-poster-url="${encodeURIComponent(msg.thumbnailUrl || '')}" data-vid-id="${vidId}">
-                <div id="${vidId}" class="chat-video-placeholder">
-                  ${msg.thumbnailUrl ? `<img src="${msg.thumbnailUrl}" class="chat-video-poster" alt=""/>` : ''}
-                  <div class="chat-video-play-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"/></svg>
-                  </div>
-                </div>
+              <div class="chat-video-result">
+                <video controls playsinline webkit-playsinline preload="none" ${msg.thumbnailUrl ? `poster="${msg.thumbnailUrl}"` : ''}>
+                  <source src="${msg.renderedVideoUrl}" type="video/mp4">
+                </video>
               </div>
               <div class="chat-result-actions">
                 <button class="chat-share-btn" data-share-url="${encodeURIComponent(msg.renderedVideoUrl)}">Share</button>
@@ -2502,8 +2477,7 @@
             progressHtml = `
               <div class="chat-thinking-wrap" id="progress-${msg.jobId}">
                 <div class="chat-step-text"><span class="chat-step-dot"></span><span class="chat-step-label">${escapeHtml(msg.stepMessage || 'Getting started...')}</span></div>
-                <div class="chat-shimmer-bar"></div>
-                <div class="chat-shimmer-bar"></div>
+                <div class="chat-progress-bar"><div class="chat-progress-fill" style="width:${msg.jobProgress || 0}%"></div></div>
               </div>`;
           }
 
@@ -2530,7 +2504,9 @@
         const wrap = document.getElementById(`progress-${msg.jobId}`);
         if (wrap) {
           const label = wrap.querySelector('.chat-step-label');
+          const fill = wrap.querySelector('.chat-progress-fill');
           if (label) label.textContent = msg.stepMessage || 'Getting started...';
+          if (fill) fill.style.width = (msg.jobProgress || 0) + '%';
         } else {
           renderMessages();
         }
@@ -2564,14 +2540,26 @@
         const url = URL.createObjectURL(file);
         const vid = document.createElement('video');
         vid.preload = 'metadata';
-        vid.onloadedmetadata = () => {
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.onloadeddata = () => {
           const w = vid.videoWidth || 0, h = vid.videoHeight || 0;
           if (w && h && w > h) { URL.revokeObjectURL(url); addSystemMessage('Please use a vertical or square video.'); return; }
+          // Capture first frame as image
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = vid.videoWidth;
+            canvas.height = vid.videoHeight;
+            canvas.getContext('2d').drawImage(vid, 0, 0);
+            chat.pendingThumbDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            pendingThumb.src = chat.pendingThumbDataUrl;
+          } catch (_) {
+            pendingThumb.src = '';
+          }
           chat.pendingFile = file;
           chat.pendingFileName = file.name;
           chat.pendingFileSize = file.size;
           chat.pendingLocalUrl = url;
-          pendingThumb.src = url;
           pendingEl.style.display = 'flex';
           syncSendBtn();
         };

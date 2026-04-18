@@ -15,7 +15,9 @@
     <link rel="stylesheet" href="/css/sidebar.css" />
     <link rel="stylesheet" href="/css/mobile.css" />
     <style>
-      body.auth-pending { visibility: hidden; }
+      @media (min-width: 769px) {
+        body.auth-pending { visibility: hidden; }
+      }
     </style>
     <script src="assets/vendor/supabase.js"></script>
   </head>

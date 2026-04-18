@@ -56,12 +56,6 @@
     overscroll-behavior: contain;
   }
 
-  /* Spacer pushes messages to bottom when few messages, but doesn't create scrollable empty space */
-  .chat-messages::before {
-    content: '';
-    flex: 1;
-  }
-
   /* ── Bubbles ── */
   .chat-msg {
     max-width: 82%;
@@ -136,46 +130,6 @@
     background: #111;
   }
 
-  .chat-video-placeholder {
-    position: relative;
-    width: 100%;
-    min-height: 200px;
-    background: #111;
-    border-radius: 16px;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .chat-video-poster {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    position: absolute;
-    inset: 0;
-  }
-
-  .chat-video-play-icon {
-    position: relative;
-    z-index: 1;
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .chat-video-placeholder:active .chat-video-play-icon {
-    transform: scale(0.92);
-  }
-
   .chat-result-actions {
     display: flex;
     gap: 8px;
@@ -203,50 +157,52 @@
     opacity: 0.8;
   }
 
-  /* ── Thinking / Processing — Claude/ChatGPT style ── */
+  /* ── Processing indicator ── */
   .chat-thinking-wrap {
+    padding: 12px 16px;
+    background: #1a1a1a;
+    border-radius: 18px;
+    border-bottom-left-radius: 4px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 4px 0;
-  }
-
-  .chat-shimmer-bar {
-    height: 12px;
-    border-radius: 6px;
-    background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.06) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s linear infinite;
-  }
-
-  .chat-shimmer-bar:nth-child(1) { width: 80%; }
-  .chat-shimmer-bar:nth-child(2) { width: 60%; }
-  .chat-shimmer-bar:nth-child(3) { width: 40%; }
-
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    gap: 10px;
   }
 
   .chat-step-text {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
 
   .chat-step-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #3b82f6;
-    animation: pulse-dot 1.5s ease-in-out infinite;
+    animation: pulse-dot 1.2s ease-in-out infinite;
+    flex-shrink: 0;
   }
 
   @keyframes pulse-dot {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
+    0%, 100% { transform: scale(0.8); opacity: 0.4; }
+    50% { transform: scale(1.1); opacity: 1; }
+  }
+
+  .chat-progress-bar {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .chat-progress-fill {
+    height: 100%;
+    background: #3b82f6;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+    width: 0%;
   }
 
   /* Thinking dots (for AI chat) */
@@ -482,7 +438,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-shimmer-bar { animation: none !important; }
   .chat-step-dot { animation: none !important; }
   .chat-thinking-dots span { animation: none !important; }
 }
