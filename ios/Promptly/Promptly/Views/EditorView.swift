@@ -55,45 +55,48 @@ struct EditorView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer(minLength: 80)
 
-            Image(systemName: "video.fill")
-                .font(.system(size: 40))
-                .foregroundColor(.white.opacity(0.12))
-                .frame(width: 88, height: 88)
-                .background(Color(hex: "1C1C1E"))
-                .clipShape(RoundedRectangle(cornerRadius: 24))
+                Image(systemName: "video.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(.white.opacity(0.12))
+                    .frame(width: 88, height: 88)
+                    .background(Color(hex: "1C1C1E"))
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
 
-            Text("Create your edit")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundColor(Color(hex: "E0E0E0"))
+                Text("Create your edit")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(Color(hex: "E0E0E0"))
 
-            Text("Upload a video and describe\nthe vibe you want.")
-                .font(.system(size: 15))
-                .foregroundColor(.white.opacity(0.4))
-                .multilineTextAlignment(.center)
+                Text("Upload a video and describe\nthe vibe you want.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
 
-            Button {
-                showVideoPicker = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Upload Video")
-                        .font(.system(size: 17, weight: .semibold))
+                Button {
+                    showVideoPicker = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Upload Video")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .frame(height: 52)
+                    .frame(maxWidth: 240)
+                    .background(Color(hex: "3B82F6"))
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
                 }
-                .frame(height: 52)
-                .frame(maxWidth: 240)
-                .background(Color(hex: "3B82F6"))
-                .foregroundColor(.white)
-                .cornerRadius(14)
-            }
-            .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
+                .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
 
-            Spacer()
+                Spacer(minLength: 80)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(32)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - Messages

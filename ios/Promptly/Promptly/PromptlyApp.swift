@@ -13,21 +13,7 @@ struct PromptlyApp: App {
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
 
-        // Classic full-width iOS tab bar (like Instagram) — NOT the iOS 18 floating pill.
-        // configureWithOpaqueBackground forces the classic full-width opaque style.
-        let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithOpaqueBackground()
-        tabAppearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1.0)
-        tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
-        // Unselected: gray, Selected: white
-        tabAppearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white.withAlphaComponent(0.4)]
-        tabAppearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor.white]
-        tabAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.4)
-        tabAppearance.stackedLayoutAppearance.selected.iconColor = UIColor.white
-        UITabBar.appearance().standardAppearance = tabAppearance
-        UITabBar.appearance().scrollEdgeAppearance = tabAppearance
-        // Prevent iOS 18 from floating/morphing the tab bar
-        UITabBar.appearance().isTranslucent = false
+        // Tab bar is custom (not SwiftUI TabView) — no UITabBarAppearance needed
 
         // Keyboard dismiss on scroll globally — native iOS behavior
         UIScrollView.appearance().keyboardDismissMode = .interactive
