@@ -13,20 +13,21 @@ struct PromptlyApp: App {
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
 
-        // Native iOS tab bar — dark translucent background like Instagram/native apps
+        // Classic full-width iOS tab bar (like Instagram) — NOT the iOS 18 floating pill.
+        // configureWithOpaqueBackground forces the classic full-width opaque style.
         let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithDefaultBackground()
-        tabAppearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 0.94)
-        tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
-        // Unselected: gray, Selected: white (native iOS standard)
-        let normalAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white.withAlphaComponent(0.4)]
-        let selectedAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
-        tabAppearance.stackedLayoutAppearance.normal.titleTextAttributes = normalAttrs
-        tabAppearance.stackedLayoutAppearance.selected.titleTextAttributes = selectedAttrs
+        tabAppearance.configureWithOpaqueBackground()
+        tabAppearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1.0)
+        tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
+        // Unselected: gray, Selected: white
+        tabAppearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white.withAlphaComponent(0.4)]
+        tabAppearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor.white]
         tabAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.4)
         tabAppearance.stackedLayoutAppearance.selected.iconColor = UIColor.white
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+        // Prevent iOS 18 from floating/morphing the tab bar
+        UITabBar.appearance().isTranslucent = false
 
         // Keyboard dismiss on scroll globally — native iOS behavior
         UIScrollView.appearance().keyboardDismissMode = .interactive
