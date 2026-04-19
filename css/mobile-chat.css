@@ -150,19 +150,14 @@
   }
   .chat-progress-fill {
     height: 100%; border-radius: 4px;
-    background: linear-gradient(90deg, #3B82F6, #60A5FA);
+    background: linear-gradient(90deg, #3B82F6, #60A5FA, #3B82F6);
+    background-size: 200% 100%;
+    animation: progress-flow 2s linear infinite;
     transition: width 0.5s ease;
-    position: relative;
   }
-  .chat-progress-fill::after {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-    animation: progress-shimmer 1.5s linear infinite;
-  }
-  @keyframes progress-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+  @keyframes progress-flow {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 
   /* ── Thinking dots ── */

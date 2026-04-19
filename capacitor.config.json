@@ -4,17 +4,19 @@
   "webDir": "www",
   "server": {
     "url": "https://usepromptly.app/editor",
-    "cleartext": false
+    "cleartext": false,
+    "allowNavigation": ["usepromptly.app", "*.usepromptly.app", "*.s3.amazonaws.com", "*.s3.us-west-1.amazonaws.com"]
   },
   "ios": {
     "scheme": "Promptly",
-    "backgroundColor": "#000000",
+    "backgroundColor": "#121212",
     "contentInset": "always",
     "preferredContentMode": "mobile",
     "allowsLinkPreview": false,
     "allowsInlineMediaPlayback": true
   },
   "plugins": {
-    "Share": {}
+    "Share": {},
+    "FilePicker": {}
   }
 }

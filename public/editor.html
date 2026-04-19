@@ -2583,17 +2583,26 @@
         if (!file) return;
         if (file.size > 500 * 1024 * 1024) { addSystemMessage('File too large. Max 500MB.'); return; }
 
-        // Generate thumbnail from video
+        // Generate thumbnail — seek to 0.1s then capture (more reliable than onloadeddata)
         if (!thumbDataUrl) {
           try {
             const url = URL.createObjectURL(file);
             const vid = document.createElement('video');
-            vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.setAttribute('webkit-playsinline', '');
+            vid.preload = 'auto';
+            vid.crossOrigin = 'anonymous';
             vid.src = url;
-            await new Promise((r, j) => { vid.onloadeddata = r; vid.onerror = j; setTimeout(j, 3000); });
+            // Wait for metadata first
+            await new Promise((r, j) => { vid.onloadedmetadata = r; vid.onerror = j; setTimeout(j, 4000); });
+            // Seek to 0.1s to force frame decode
+            vid.currentTime = 0.1;
+            await new Promise((r, j) => { vid.onseeked = r; vid.onerror = j; setTimeout(j, 4000); });
             const c = document.createElement('canvas');
-            c.width = vid.videoWidth; c.height = vid.videoHeight;
-            c.getContext('2d').drawImage(vid, 0, 0);
+            c.width = vid.videoWidth || 360;
+            c.height = vid.videoHeight || 640;
+            c.getContext('2d').drawImage(vid, 0, 0, c.width, c.height);
             thumbDataUrl = c.toDataURL('image/jpeg', 0.6);
             URL.revokeObjectURL(url);
           } catch (_) {}
