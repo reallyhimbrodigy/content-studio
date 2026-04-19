@@ -10,6 +10,7 @@ struct EditorView: View {
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -29,7 +30,7 @@ struct EditorView: View {
             .background(Color(hex: "121212"))
             // Tap anywhere outside TextField to dismiss keyboard
             .onTapGesture {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                isInputFocused = false
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
@@ -41,6 +42,12 @@ struct EditorView: View {
                     handlePickedVideos(videos)
                 }
                 .ignoresSafeArea()
+            }
+            .onAppear {
+                // Open keyboard immediately when editor appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isInputFocused = true
+                }
             }
         }
     }
@@ -149,6 +156,7 @@ struct EditorView: View {
             .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
 
             TextField("Describe your edit...", text: $inputText, axis: .vertical)
+                .focused($isInputFocused)
                 .lineLimit(1...5)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
