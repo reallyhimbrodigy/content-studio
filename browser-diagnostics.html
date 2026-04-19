@@ -175,8 +175,6 @@
       // Check 4: Script files load
       try {
         const authJs = await fetch('http://localhost:8000/auth.js');
-        const scriptJs = await fetch('http://localhost:8000/script.js');
-        addLog(`✓ JavaScript files loading (auth.js: ${authJs.ok}, script.js: ${scriptJs.ok})`, 'success');
         addStatus('JavaScript Files', authJs.ok && scriptJs.ok);
       } catch (e) {
         addLog(`✗ JavaScript loading failed: ${e.message}`, 'error');
@@ -207,6 +205,5 @@
     window.addEventListener('load', runDiag);
     addLog('Diagnostics page loaded. Checking system...', 'info');
   </script>
-  <script type="module" src="./auth-visibility.js"></script>
 </body>
 </html>

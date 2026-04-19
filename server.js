@@ -10451,17 +10451,10 @@ const server = http.createServer((req, res) => {
         return serveFile(landingScript, res);
       }
     }
-    if (parsed.pathname === '/editor') {
-      const editorPage = path.join(__dirname, 'public', 'editor.html');
-      if (fs.existsSync(editorPage)) {
-        return serveFile(editorPage, res);
-      }
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end('Editor not found');
-    }
-    if (parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html') {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: 'not_found' }));
+    // Editor and calendar removed — mobile-only app. Redirect to landing.
+    if (parsed.pathname === '/editor' || parsed.pathname === '/calendar' || parsed.pathname === '/calendar.html' || parsed.pathname === '/library.html') {
+      res.writeHead(302, { 'Location': '/' });
+      return res.end();
     }
   }
 

@@ -29,12 +29,11 @@
     <link rel="icon" type="image/svg+xml" href="assets/promptly-mark-white.png" />
     <link rel="mask-icon" href="assets/promptly-mark-white.png" color="#ffffff" />
     <link rel="apple-touch-icon" href="assets/promptly-mark-white.png" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/css/landing.css" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 <link rel="stylesheet" href="/css/theme.css" />
     <link rel="stylesheet" href="/css/landing.css" />
-    <link rel="stylesheet" href="/css/sparkles-theme.css" />
     <link rel="manifest" href="manifest.json" />
     <script src="assets/vendor/supabase.js"></script>
     <script src="https://t.contentsquare.net/uxa/9aea871ffd8c7.js"></script>
@@ -42,7 +41,6 @@
   <body class="view-landing landing-page landing is-landing">
     <div class="app-shell">
       <!-- Sparkles particle background -->
-      <canvas id="sparklesCanvas" class="sparkles-canvas"></canvas>
       <!-- Navigation -->
       <nav class="nav-v3" id="mainNav">
         <div class="nav-v3__inner">
@@ -460,7 +458,6 @@
         </div>
       </section>
 
-      <!-- Footer is preserved via existing footer.js injection -->
     </div>
 
     <!-- Upgrade Modal -->
@@ -507,10 +504,6 @@
     <script type="application/ld+json" src="/assets/schema-product.json"></script>
     <script src="/js/pricing-toggle.js"></script>
     <script src="/js/upgrade-modal.js"></script>
-    <script type="module" src="./footer.js?t=1771552754"></script>
-    <script src="/sw-register.js" defer></script>
-    <script src="/pwa-install.js" defer></script>
-    <script src="/js/sparkles.js" defer></script>
     <script>
       (function () {
         const canvas = document.getElementById('hero-flow-canvas');
