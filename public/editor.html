@@ -2425,7 +2425,7 @@
       messagesEl.addEventListener('click', (e) => {
         // Upload button in empty state
         const uploadBtn = e.target.closest('.chat-empty-upload-btn');
-        if (uploadBtn) { fileInput.click(); return; }
+        if (uploadBtn) { attachVideo(); return; }
 
         // Share button — use native share sheet or fallback
         const shareBtn = e.target.closest('.chat-share-btn');
@@ -2538,33 +2538,88 @@
         syncSendBtn();
       });
 
-      // ── Attach ──
-      attachBtn.addEventListener('click', () => {
+      // ── Attach video ──
+      async function attachVideo() {
         if (chat.sending) return;
-        fileInput.click();
-      });
 
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = '';
+        let file = null;
+        let thumbDataUrl = null;
+
+        // Try native picker first (Capacitor)
+        if (window.Capacitor?.Plugins?.FilePicker) {
+          try {
+            const result = await window.Capacitor.Plugins.FilePicker.pickVideos({ multiple: false });
+            if (result?.files?.length > 0) {
+              const picked = result.files[0];
+              // Convert to File object from the native path
+              const response = await fetch(picked.path || picked.data);
+              const blob = await response.blob();
+              file = new File([blob], picked.name || 'video.mp4', { type: picked.mimeType || 'video/mp4' });
+              // Use thumbnail if provided by native picker
+              if (picked.thumbnailPath) {
+                thumbDataUrl = picked.thumbnailPath;
+              }
+            }
+          } catch (e) {
+            if (e.message?.includes('cancel') || e.message?.includes('Cancel')) return;
+            // Fall through to HTML picker
+          }
+        }
+
+        // Fallback to HTML file input
+        if (!file) {
+          file = await new Promise((resolve) => {
+            const handler = (e) => {
+              fileInput.removeEventListener('change', handler);
+              const f = e.target.files?.[0];
+              fileInput.value = '';
+              resolve(f || null);
+            };
+            fileInput.addEventListener('change', handler);
+            fileInput.click();
+          });
+        }
+
         if (!file) return;
         if (file.size > 500 * 1024 * 1024) { addSystemMessage('File too large. Max 500MB.'); return; }
-        if (!file.type.startsWith('video/')) { addSystemMessage('Please select a video file.'); return; }
 
-        // Attach file and start uploading immediately in background
+        // Generate thumbnail from video
+        if (!thumbDataUrl) {
+          try {
+            const url = URL.createObjectURL(file);
+            const vid = document.createElement('video');
+            vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+            vid.src = url;
+            await new Promise((r, j) => { vid.onloadeddata = r; vid.onerror = j; setTimeout(j, 3000); });
+            const c = document.createElement('canvas');
+            c.width = vid.videoWidth; c.height = vid.videoHeight;
+            c.getContext('2d').drawImage(vid, 0, 0);
+            thumbDataUrl = c.toDataURL('image/jpeg', 0.6);
+            URL.revokeObjectURL(url);
+          } catch (_) {}
+        }
+
+        // Set pending state
         chat.pendingFile = file;
         chat.pendingFileName = file.name;
         chat.pendingFileSize = file.size;
         chat.pendingLocalUrl = URL.createObjectURL(file);
         chat.pendingVideoUrl = null;
+
+        // Show thumbnail if we got one
+        const thumbEl = document.getElementById('chat-pending-thumb');
+        if (thumbDataUrl && thumbEl) {
+          thumbEl.innerHTML = `<img src="${thumbDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" />`;
+        } else if (thumbEl) {
+          thumbEl.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+        }
         pendingEl.style.display = 'flex';
         syncSendBtn();
 
-        // Silent background upload direct to S3 — no server middleman
+        // Silent background upload to S3
         (async () => {
           try {
             const auth = await getAuthContext();
-            // Get presigned URL from server
             const urlRes = await fetch('/api/upload-url', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
@@ -2572,8 +2627,6 @@
             });
             const { uploadUrl, publicUrl } = await urlRes.json();
             if (!uploadUrl) throw new Error('No upload URL');
-
-            // Upload directly to S3
             await new Promise((resolve, reject) => {
               const xhr = new XMLHttpRequest();
               xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject();
@@ -2582,15 +2635,10 @@
               xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
               xhr.send(file);
             });
-
-            if (chat.pendingFile === file) {
-              chat.pendingVideoUrl = publicUrl;
-            }
-          } catch (_) {
-            // Failed silently — will fall back to server upload when user hits send
-          }
+            if (chat.pendingFile === file) chat.pendingVideoUrl = publicUrl;
+          } catch (_) {}
         })();
-      });
+      attachBtn.addEventListener('click', () => attachVideo());
 
       pendingRemove.addEventListener('click', () => clearPendingAttachment());
 

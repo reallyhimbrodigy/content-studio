@@ -120,36 +120,49 @@
 
   /* ── Processing ── */
   .chat-thinking-wrap {
-    padding: 12px 16px;
+    padding: 14px 16px;
     background: #2C2C2E;
     border-radius: 18px;
     border-bottom-left-radius: 4px;
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex; flex-direction: column; gap: 12px;
   }
 
   .chat-step-text {
-    font-size: 14px; color: rgba(255,255,255,0.6);
-    display: flex; align-items: center; gap: 8px;
+    font-size: 15px; color: #E0E0E0;
+    display: flex; align-items: center; gap: 10px;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   }
 
   .chat-step-dot {
-    width: 8px; height: 8px; border-radius: 50%;
+    width: 10px; height: 10px; border-radius: 50%;
     background: #3B82F6; flex-shrink: 0;
     animation: pulse-dot 1.2s ease-in-out infinite;
+    box-shadow: 0 0 8px rgba(59,130,246,0.4);
   }
   @keyframes pulse-dot {
-    0%, 100% { transform: scale(0.8); opacity: 0.4; }
-    50% { transform: scale(1.1); opacity: 1; }
+    0%, 100% { transform: scale(0.85); opacity: 0.5; box-shadow: 0 0 4px rgba(59,130,246,0.2); }
+    50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px rgba(59,130,246,0.6); }
   }
 
   .chat-progress-bar {
-    height: 3px; background: rgba(255,255,255,0.06);
-    border-radius: 2px; overflow: hidden;
+    height: 4px; background: rgba(255,255,255,0.06);
+    border-radius: 4px; overflow: hidden;
   }
   .chat-progress-fill {
-    height: 100%; background: #3B82F6;
-    border-radius: 2px; transition: width 0.5s ease;
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #3B82F6, #60A5FA);
+    transition: width 0.5s ease;
+    position: relative;
+  }
+  .chat-progress-fill::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: progress-shimmer 1.5s linear infinite;
+  }
+  @keyframes progress-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 
   /* ── Thinking dots ── */
