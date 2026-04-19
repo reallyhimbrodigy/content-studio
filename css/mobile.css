@@ -1,30 +1,45 @@
 /* ═══════════════════════════════════════════════════════
-   Promptly Mobile — Design System
-   Background: #121212 | Surface: #1C1C1E | Elevated: #2C2C2E
-   Text: #E0E0E0 | Muted: rgba(255,255,255,0.5) | Accent: #3B82F6
-   Spacing: 8pt grid | Radius: 12px | Font: system
+   Promptly Mobile — iOS Native Design System
+   BG: #121212 | Surface: #1C1C1E | Elevated: #2C2C2E
+   Text: #E0E0E0 | Muted: 0.4 | Accent: #3B82F6
+   Grid: 8pt | Radius: 12px | Font: SF Pro (system)
    ═══════════════════════════════════════════════════════ */
 
+/* ── Global native feel ── */
 .mobile-tab-bar { display: none; }
 .mobile-page { display: none; }
 
 @media (max-width: 768px) {
   body.auth-pending { visibility: visible !important; }
 
+  /* Kill all desktop chrome */
   .app-shell, .app-layout, .app-sidebar, .sidebar-toggle,
   .sidebar-backdrop, .editor-topbar, .landing-nav,
   #app-experience, #account-modal, #upgrade-modal {
     display: none !important;
   }
 
-  /* ── Tab Bar ── */
+  /* Disable text selection on non-inputs (native apps don't select UI text) */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* ── Tab Bar (UITabBar) ── */
   .mobile-tab-bar {
     display: flex;
     position: fixed;
     bottom: 0; left: 0; right: 0;
     z-index: 999;
-    background: #1C1C1E;
-    border-top: 0.5px solid rgba(255,255,255,0.08);
+    background: rgba(28, 28, 30, 0.92);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-top: 0.5px solid rgba(255,255,255,0.1);
     padding-bottom: env(safe-area-inset-bottom, 0);
     height: calc(52px + env(safe-area-inset-bottom, 0));
     align-items: flex-start;
@@ -38,22 +53,23 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     height: 52px;
     background: none;
     border: none;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.4);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
     cursor: pointer;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    transition: color 0.2s ease, opacity 0.15s ease;
   }
 
-  .mobile-tab-bar .mobile-tab.active { color: #fff; }
-  .mobile-tab-bar .mobile-tab:active { opacity: 0.6; }
+  .mobile-tab-bar .mobile-tab.active { color: #3B82F6; }
+  .mobile-tab-bar .mobile-tab:active { opacity: 0.5; }
   .mobile-tab-bar .mobile-tab svg { width: 24px; height: 24px; display: block; }
-  .mobile-tab-bar .tab-label { font-size: 10px; font-weight: 500; line-height: 1; display: block; }
+  .mobile-tab-bar .tab-label { font-size: 11px; font-weight: 500; line-height: 1; }
 
   /* ── Page wrapper ── */
   .mobile-page.active {
@@ -64,7 +80,7 @@
     background: #121212;
   }
 
-  /* ── Header ── */
+  /* ── Header (UINavigationBar) ── */
   .mobile-header {
     display: flex;
     align-items: center;
@@ -72,8 +88,10 @@
     padding: 0 16px;
     height: calc(48px + env(safe-area-inset-top, 0));
     padding-top: env(safe-area-inset-top, 0);
-    background: #1C1C1E;
-    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+    background: rgba(28, 28, 30, 0.85);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid rgba(255,255,255,0.1);
     flex-shrink: 0;
     position: sticky; top: 0; z-index: 100;
   }
@@ -85,8 +103,13 @@
     letter-spacing: -0.02em;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   }
+
+  /* ── View transitions ── */
+  .mobile-view, .mobile-chat {
+    transition: opacity 0.2s ease;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mobile-video-detail { animation: none !important; }
+  .mobile-view, .mobile-chat { transition: none !important; }
 }

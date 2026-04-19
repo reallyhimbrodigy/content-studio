@@ -45,6 +45,9 @@
 
     const viewId = btn.dataset.view;
 
+    // Haptic feedback on tab switch
+    try { window.Capacitor?.Plugins?.Haptics?.selectionChanged(); } catch (_) {}
+
     // Update active tab
     nav.querySelectorAll('.mobile-tab').forEach((t) => t.classList.remove('active'));
     btn.classList.add('active');

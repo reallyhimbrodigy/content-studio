@@ -12,6 +12,18 @@
   },
   "plugins": {
     "Share": {},
-    "FilePicker": {}
+    "FilePicker": {},
+    "Keyboard": {
+      "resize": "native",
+      "style": "dark"
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 0,
+      "backgroundColor": "#121212"
+    },
+    "StatusBar": {
+      "style": "Dark"
+    }
   }
 }

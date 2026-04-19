@@ -2360,6 +2360,13 @@
       if (!chatEl) return;
       if (window.matchMedia('(min-width: 769px)').matches) return;
 
+      // ── Initialize native plugins ──
+      const haptic = (style) => {
+        try { window.Capacitor?.Plugins?.Haptics?.impact({ style: style || 'Light' }); } catch (_) {}
+      };
+      try { window.Capacitor?.Plugins?.StatusBar?.setStyle({ style: 'Dark' }); } catch (_) {}
+      try { window.Capacitor?.Plugins?.SplashScreen?.hide(); } catch (_) {}
+
       const messagesEl = document.getElementById('chat-messages');
       const inputEl = document.getElementById('chat-text-input');
       const sendBtn = document.getElementById('chat-send-btn');
@@ -2405,21 +2412,14 @@
         return d.innerHTML;
       }
 
-      // ── Keyboard handling — hide tab bar, adjust layout ──
-      if (window.visualViewport) {
-        let prevHeight = window.visualViewport.height;
-        window.visualViewport.addEventListener('resize', () => {
-          const diff = prevHeight - window.visualViewport.height;
-          if (diff > 100) {
-            document.body.classList.add('keyboard-open');
-          } else {
-            document.body.classList.remove('keyboard-open');
-          }
-          prevHeight = window.visualViewport.height;
-        });
+      // ── Keyboard handling — native plugin or fallback ──
+      if (window.Capacitor?.Plugins?.Keyboard) {
+        window.Capacitor.Plugins.Keyboard.addListener('keyboardWillShow', () => document.body.classList.add('keyboard-open'));
+        window.Capacitor.Plugins.Keyboard.addListener('keyboardWillHide', () => document.body.classList.remove('keyboard-open'));
+      } else {
+        inputEl.addEventListener('focus', () => document.body.classList.add('keyboard-open'));
+        inputEl.addEventListener('blur', () => setTimeout(() => document.body.classList.remove('keyboard-open'), 100));
       }
-      inputEl.addEventListener('focus', () => document.body.classList.add('keyboard-open'));
-      inputEl.addEventListener('blur', () => setTimeout(() => document.body.classList.remove('keyboard-open'), 100));
 
       // ── Event delegation for dynamic buttons ──
       messagesEl.addEventListener('click', (e) => {
@@ -2670,6 +2670,7 @@
         if (!text && !hasFile) return;
         if (chat.sending) return;
         chat.sending = true; syncSendBtn();
+        haptic('Medium');
 
         const videoFile = hasFile ? chat.pendingFile : null;
         const preUploadedUrl = hasFile ? chat.pendingVideoUrl : null;
