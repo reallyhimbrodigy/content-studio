@@ -10,6 +10,7 @@
     "export-logos": "node tools/export-logos.js",
     "test:e2e": "npx playwright test tests/e2e.spec.js",
     "build:css": "node build.js",
+    "build:mobile": "node scripts/build-mobile.js",
     "test:analysis": "node test-analysis.js",
     "analyze-references": "node analyze-reference-videos.js"
   },

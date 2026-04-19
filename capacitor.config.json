@@ -2,11 +2,6 @@
   "appId": "app.usepromptly.ios",
   "appName": "Promptly",
   "webDir": "www",
-  "server": {
-    "url": "https://usepromptly.app/editor",
-    "cleartext": false,
-    "allowNavigation": ["usepromptly.app", "*.usepromptly.app", "*.s3.amazonaws.com", "*.s3.us-west-1.amazonaws.com"]
-  },
   "ios": {
     "scheme": "Promptly",
     "backgroundColor": "#121212",
