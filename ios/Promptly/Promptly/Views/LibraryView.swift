@@ -11,7 +11,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "121212").ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
                 if isLoading {
                     ProgressView().tint(.white)
@@ -23,7 +23,7 @@ struct LibraryView: View {
             }
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(hex: "1C1C1E"), for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable { await loadEdits() }
@@ -48,7 +48,7 @@ struct LibraryView: View {
 
             Text("No edits yet")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(Color(hex: "E0E0E0"))
+                .foregroundColor(.white)
 
             Text("Create your first edit and\nit will show up here.")
                 .font(.system(size: 15))
@@ -75,7 +75,7 @@ struct LibraryView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(hex: "121212"))
+        .background(Color.black)
     }
 
     private func loadEdits() async {
@@ -129,7 +129,7 @@ struct EditRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(edit.vibe_input ?? "Video edit")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color(hex: "E0E0E0"))
+                        .foregroundColor(.white)
                         .lineLimit(2)
 
                     HStack(spacing: 6) {
@@ -185,7 +185,7 @@ struct EditRow: View {
     private var statusColor: Color {
         switch edit.status {
         case "completed": return Color(hex: "4ADE80")
-        case "processing", "queued": return Color(hex: "3B82F6")
+        case "processing", "queued": return Color.white
         case "failed": return Color(hex: "EF4444")
         default: return .gray
         }
@@ -229,7 +229,7 @@ struct VideoDetailSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "121212").ignoresSafeArea()
+                Color.black.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -253,8 +253,8 @@ struct VideoDetailSheet: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 48)
-                                    .background(Color(hex: "3B82F6"))
-                                    .foregroundColor(.white)
+                                    .background(Color.white)
+                                    .foregroundColor(.black)
                                     .cornerRadius(12)
                                 }
 
@@ -282,7 +282,7 @@ struct VideoDetailSheet: View {
                         if let vibe = edit.vibe_input, !vibe.isEmpty {
                             Text(vibe)
                                 .font(.system(size: 15))
-                                .foregroundColor(Color(hex: "E0E0E0"))
+                                .foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -291,7 +291,7 @@ struct VideoDetailSheet: View {
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(hex: "1C1C1E"), for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {

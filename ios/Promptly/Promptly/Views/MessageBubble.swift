@@ -22,7 +22,7 @@ struct MessageBubble: View {
                 if !message.content.isEmpty {
                     Text(message.content)
                         .font(.system(size: 16))
-                        .foregroundColor(message.role == .user ? .white : Color(hex: "E0E0E0"))
+                        .foregroundColor(message.role == .user ? .black : .white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(bubbleColor)
@@ -65,7 +65,7 @@ struct MessageBubble: View {
 
     private var bubbleColor: Color {
         switch message.role {
-        case .user: return Color(hex: "3B82F6")
+        case .user: return Color.white
         case .assistant: return Color(hex: "2C2C2E")
         case .system: return Color.white.opacity(0.04)
         }
@@ -119,20 +119,20 @@ struct ProcessingBubble: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Circle()
-                    .fill(Color(hex: "3B82F6"))
+                    .fill(Color.white)
                     .frame(width: 10, height: 10)
-                    .shadow(color: Color(hex: "3B82F6").opacity(0.5), radius: dotPulsing ? 8 : 3)
+                    .shadow(color: Color.white.opacity(0.5), radius: dotPulsing ? 8 : 3)
                     .scaleEffect(dotPulsing ? 1.15 : 0.85)
                     .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: dotPulsing)
 
                 Text(stepMessage)
                     .font(.system(size: 15))
-                    .foregroundColor(Color(hex: "E0E0E0"))
+                    .foregroundColor(.white)
                     .lineLimit(2)
             }
 
             ProgressView(value: max(0.02, Double(progress) / 100.0))
-                .tint(Color(hex: "3B82F6"))
+                .tint(Color.white)
                 .animation(.easeInOut(duration: 0.5), value: progress)
         }
         .padding(16)
@@ -202,8 +202,8 @@ struct CompletedVideoView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
-                    .background(Color(hex: "3B82F6"))
-                    .foregroundColor(.white)
+                    .background(Color.white)
+                    .foregroundColor(.black)
                     .cornerRadius(12)
                 }
             }

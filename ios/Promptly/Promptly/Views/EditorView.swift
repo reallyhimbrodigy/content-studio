@@ -27,14 +27,14 @@ struct EditorView: View {
 
                 inputBar
             }
-            .background(Color(hex: "121212"))
-            // Tap anywhere outside TextField to dismiss keyboard
+            .background(Color.black)
+            .contentShape(Rectangle())
             .onTapGesture {
                 isInputFocused = false
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(hex: "1C1C1E"), for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showVideoPicker) {
@@ -63,12 +63,12 @@ struct EditorView: View {
                     .font(.system(size: 40))
                     .foregroundColor(.white.opacity(0.12))
                     .frame(width: 88, height: 88)
-                    .background(Color(hex: "1C1C1E"))
+                    .background(Color.white.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 24))
 
                 Text("Create your edit")
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(Color(hex: "E0E0E0"))
+                    .foregroundColor(.white)
 
                 Text("Upload a video and describe\nthe vibe you want.")
                     .font(.system(size: 15))
@@ -86,8 +86,8 @@ struct EditorView: View {
                     }
                     .frame(height: 52)
                     .frame(maxWidth: 240)
-                    .background(Color(hex: "3B82F6"))
-                    .foregroundColor(.white)
+                    .background(Color.white)
+                    .foregroundColor(.black)
                     .cornerRadius(14)
                 }
                 .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
@@ -113,12 +113,11 @@ struct EditorView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity)
             }
+            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: messages.count) { _, _ in
-                if let lastId = messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastId, anchor: .bottom)
-                    }
+            .onChange(of: messages.count) { oldCount, newCount in
+                if newCount > oldCount, let lastId = messages.last?.id {
+                    proxy.scrollTo(lastId, anchor: .bottom)
                 }
             }
         }
@@ -140,7 +139,7 @@ struct EditorView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .background(Color(hex: "1C1C1E"))
+        .background(Color.black)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -151,7 +150,7 @@ struct EditorView: View {
             Button { showVideoPicker = true } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 22, weight: .light))
-                    .foregroundColor(Color(hex: "E0E0E0"))
+                    .foregroundColor(.white)
                     .frame(width: 44, height: 44)
                     .background(Color(hex: "2C2C2E"))
                     .clipShape(Circle())
@@ -165,18 +164,18 @@ struct EditorView: View {
                 .padding(.vertical, 10)
                 .background(Color(hex: "2C2C2E"))
                 .cornerRadius(20)
-                .foregroundColor(Color(hex: "E0E0E0"))
+                .foregroundColor(.white)
                 .font(.system(size: 16))
-                .tint(Color(hex: "3B82F6"))
+                .tint(Color.white)
                 .submitLabel(.send)
                 .onSubmit { send() }
 
             Button(action: send) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .frame(width: 44, height: 44)
-                    .background(canSend ? Color(hex: "3B82F6") : Color(hex: "3B82F6").opacity(0.3))
+                    .background(canSend ? Color.white : Color.white.opacity(0.15))
                     .clipShape(Circle())
             }
             .disabled(!canSend)
@@ -184,7 +183,7 @@ struct EditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(hex: "1C1C1E"))
+        .background(Color.black)
     }
 
     private var canSend: Bool {
@@ -373,7 +372,7 @@ struct PendingVideoThumb: View {
                         VStack {
                             Spacer()
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(Color(hex: "3B82F6"))
+                                .fill(Color.white)
                                 .frame(width: geo.size.width * video.uploadProgress, height: 3)
                                 .animation(.easeInOut(duration: 0.2), value: video.uploadProgress)
                         }

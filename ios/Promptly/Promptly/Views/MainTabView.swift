@@ -30,7 +30,7 @@ struct MainTabView: View {
             }
             .padding(.top, 8)
             .padding(.bottom, 2)
-            .background(Color(hex: "1C1C1E"))
+            .background(Color.black)
             .overlay(alignment: .top) {
                 Rectangle()
                     .fill(Color.white.opacity(0.06))
@@ -38,7 +38,7 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.keyboard)
-        .background(Color(hex: "121212"))
+        .background(Color.black)
     }
 }
 

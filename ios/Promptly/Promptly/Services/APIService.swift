@@ -6,13 +6,16 @@ class APIService {
 
     private init() {}
 
-    private var token: String? { AuthService.shared.accessToken }
+    /// Get a valid token, auto-refreshing if expired
+    private func validToken() async -> String? {
+        await AuthService.shared.getValidToken()
+    }
 
-    private func authorizedRequest(_ path: String, method: String = "GET") -> URLRequest {
+    private func authorizedRequest(_ path: String, method: String = "GET") async -> URLRequest {
         var request = URLRequest(url: URL(string: "\(baseUrl)\(path)")!)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = token {
+        if let token = await validToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return request
@@ -21,7 +24,7 @@ class APIService {
     // MARK: - Video Jobs
 
     func createVideoJob(videoUrl: String, vibe: String) async throws -> String {
-        var request = authorizedRequest("/api/video-jobs", method: "POST")
+        var request = await authorizedRequest("/api/video-jobs", method: "POST")
         request.httpBody = try JSONEncoder().encode([
             "video_url": videoUrl,
             "vibe_input": vibe
@@ -42,7 +45,7 @@ class APIService {
 
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
-              let token = token else { throw APIError.notAuthenticated }
+              let token = await validToken() else { throw APIError.notAuthenticated }
 
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
@@ -58,7 +61,7 @@ class APIService {
 
     func deleteEdit(id: String) async throws {
         guard let userId = AuthService.shared.currentUser?.id,
-              let token = token else { throw APIError.notAuthenticated }
+              let token = await validToken() else { throw APIError.notAuthenticated }
 
         let supabaseUrl = "https://ejxkzsfruykvgeouymfy.supabase.co"
         let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
@@ -78,7 +81,7 @@ class APIService {
     // MARK: - Upload
 
     func getUploadUrl(fileName: String) async throws -> UploadUrlResponse {
-        var request = authorizedRequest("/api/upload-url", method: "POST")
+        var request = await authorizedRequest("/api/upload-url", method: "POST")
         request.httpBody = try JSONEncoder().encode(["fileName": fileName])
 
         let (data, _) = try await URLSession.shared.data(for: request)
@@ -111,7 +114,7 @@ class APIService {
     }
 
     func uploadVideo(data: Data, fileName: String) async throws -> String {
-        var request = authorizedRequest("/api/upload", method: "POST")
+        var request = await authorizedRequest("/api/upload", method: "POST")
 
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -148,7 +151,7 @@ class APIService {
     // MARK: - Chat
 
     func chat(message: String, history: [[String: String]]) async throws -> String {
-        var request = authorizedRequest("/api/chat", method: "POST")
+        var request = await authorizedRequest("/api/chat", method: "POST")
         let payload: [String: Any] = ["message": message, "history": history]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 

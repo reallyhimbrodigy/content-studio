@@ -41,7 +41,7 @@ struct AccountView: View {
 
                                     Image(systemName: "camera.circle.fill")
                                         .font(.system(size: 24))
-                                        .foregroundStyle(.white, Color(hex: "3B82F6"))
+                                        .foregroundStyle(.white, Color.white)
                                         .shadow(radius: 2)
                                         .offset(x: 4, y: 4)
                                 }
@@ -52,7 +52,7 @@ struct AccountView: View {
 
                             Text(userName.isEmpty ? "User" : userName)
                                 .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(Color(hex: "E0E0E0"))
+                                .foregroundColor(.white)
                             Text(userEmail)
                                 .font(.system(size: 14))
                                 .foregroundColor(.white.opacity(0.4))
@@ -92,13 +92,13 @@ struct AccountView: View {
                     } label: {
                         HStack {
                             Text("Plan")
-                                .foregroundColor(Color(hex: "E0E0E0"))
+                                .foregroundColor(.white)
                             Spacer()
                             Text(tier == "pro" ? "PRO" : "FREE")
                                 .font(.system(size: 12, weight: .bold))
                                 .padding(.horizontal, 10).padding(.vertical, 3)
-                                .background(tier == "pro" ? Color(hex: "3B82F6").opacity(0.15) : Color.white.opacity(0.06))
-                                .foregroundColor(tier == "pro" ? Color(hex: "60A5FA") : .white.opacity(0.5))
+                                .background(tier == "pro" ? Color.white.opacity(0.15) : Color.white.opacity(0.06))
+                                .foregroundColor(tier == "pro" ? Color.white : .white.opacity(0.5))
                                 .cornerRadius(6)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 12, weight: .semibold))
@@ -159,10 +159,10 @@ struct AccountView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Color(hex: "121212"))
+            .background(Color.black)
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(hex: "1C1C1E"), for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await loadProfile() }
@@ -211,7 +211,7 @@ struct AccountView: View {
     private func settingsRow(_ label: String, value: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
-                Text(label).foregroundColor(Color(hex: "E0E0E0"))
+                Text(label).foregroundColor(.white)
                 Spacer()
                 if let v = value {
                     Text(v).foregroundColor(.white.opacity(0.35))
@@ -226,7 +226,7 @@ struct AccountView: View {
     private func externalRow(_ label: String, url: String) -> some View {
         Link(destination: URL(string: url)!) {
             HStack {
-                Text(label).foregroundColor(Color(hex: "E0E0E0"))
+                Text(label).foregroundColor(.white)
                 Spacer()
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 12))
