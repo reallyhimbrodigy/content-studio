@@ -148,65 +148,110 @@ struct ProcessingBubble: View {
 struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
-    @State private var player: AVPlayer?
-    @State private var isPlaying = false
+    @State private var showFullscreen = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                if let player = player {
-                    VideoPlayer(player: player)
-                        .frame(height: 340)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                } else {
-                    // Thumbnail or placeholder
-                    ZStack {
-                        if let thumbUrl = thumbnailUrlStr, let url = URL(string: thumbUrl) {
-                            AsyncImage(url: url) { phase in
-                                if let image = phase.image {
-                                    image.resizable().aspectRatio(contentMode: .fill)
-                                } else {
-                                    Color(hex: "1C1C1E")
-                                }
+        VStack(alignment: .leading, spacing: 10) {
+            // Thumbnail with play button — tap opens fullscreen player
+            Button {
+                showFullscreen = true
+            } label: {
+                ZStack {
+                    if let thumbUrl = thumbnailUrlStr, let url = URL(string: thumbUrl) {
+                        AsyncImage(url: url) { phase in
+                            if let image = phase.image {
+                                image.resizable().aspectRatio(contentMode: .fit)
+                            } else {
+                                Color(hex: "1C1C1E")
+                                    .frame(height: 240)
                             }
-                        } else {
-                            Color(hex: "1C1C1E")
                         }
+                    } else {
+                        Color(hex: "1C1C1E")
+                            .frame(height: 240)
+                    }
 
-                        // Play button overlay
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.white.opacity(0.9))
-                            .shadow(color: .black.opacity(0.3), radius: 8)
-                    }
-                    .frame(height: 340)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .onTapGesture {
-                        guard let url = URL(string: videoUrlStr) else { return }
-                        let p = AVPlayer(url: url)
-                        player = p
-                        p.play()
-                        isPlaying = true
-                    }
+                    // Play button
+                    Circle()
+                        .fill(.black.opacity(0.4))
+                        .frame(width: 56, height: 56)
+                        .overlay {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                                .offset(x: 2)
+                        }
                 }
+                .frame(maxWidth: 240)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
+            .buttonStyle(.plain)
 
-            // Share button
+            // Share
             if let url = URL(string: videoUrlStr) {
                 ShareLink(item: url) {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .medium))
                         Text("Share")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .medium))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .foregroundColor(.black)
-                    .cornerRadius(12)
+                    .foregroundColor(.white.opacity(0.5))
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showFullscreen) {
+            FullscreenVideoPlayer(urlStr: videoUrlStr)
+        }
+    }
+}
+
+// MARK: - Fullscreen Player
+
+struct FullscreenVideoPlayer: View {
+    let urlStr: String
+    @State private var player: AVPlayer?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player = player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+            }
+
+            // Close button
+            VStack {
+                HStack {
+                    Button {
+                        player?.pause()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, 8)
+
+                    Spacer()
+                }
+                Spacer()
+            }
+        }
+        .onAppear {
+            guard let url = URL(string: urlStr) else { return }
+            player = AVPlayer(url: url)
+            player?.play()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
         }
     }
 }

@@ -227,80 +227,94 @@ struct VideoDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                            VideoPlayer(player: player ?? AVPlayer(url: url))
-                                .frame(height: 500)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .onAppear {
-                                    if player == nil {
-                                        player = AVPlayer(url: url)
-                                        player?.play()
-                                    }
-                                }
-
-                            HStack(spacing: 12) {
-                                ShareLink(item: url) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "square.and.arrow.up")
-                                        Text("Share")
-                                    }
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 48)
-                                    .background(Color.white)
-                                    .foregroundColor(.black)
-                                    .cornerRadius(12)
-                                }
-
-                                Button(role: .destructive) {
-                                    dismiss()
-                                    Task {
-                                        try? await APIService.shared.deleteEdit(id: edit.id)
-                                        onDelete()
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "trash")
-                                        Text("Delete")
-                                    }
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 48)
-                                    .background(Color(hex: "2C2C2E"))
-                                    .foregroundColor(Color(hex: "FF453A"))
-                                    .cornerRadius(12)
-                                }
+            VStack(spacing: 0) {
+                // Video player — fills most of the screen
+                if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                    VideoPlayer(player: player ?? AVPlayer(url: url))
+                        .onAppear {
+                            if player == nil {
+                                player = AVPlayer(url: url)
+                                player?.play()
                             }
                         }
+                        .onDisappear {
+                            player?.pause()
+                        }
+                }
 
-                        if let vibe = edit.vibe_input, !vibe.isEmpty {
-                            Text(vibe)
-                                .font(.system(size: 15))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                // Bottom bar with actions and info
+                VStack(spacing: 16) {
+                    // Vibe text
+                    if let vibe = edit.vibe_input, !vibe.isEmpty {
+                        Text(vibe)
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.6))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(2)
+                    }
+
+                    // Action buttons
+                    if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
+                        HStack(spacing: 12) {
+                            ShareLink(item: url) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("Share")
+                                }
+                                .font(.system(size: 15, weight: .medium))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(Color.white)
+                                .foregroundColor(.black)
+                                .cornerRadius(10)
+                            }
+
+                            Button {
+                                player?.pause()
+                                dismiss()
+                                Task {
+                                    try? await APIService.shared.deleteEdit(id: edit.id)
+                                    onDelete()
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15))
+                                    .frame(width: 44, height: 44)
+                                    .background(Color(hex: "2C2C2E"))
+                                    .foregroundColor(Color(hex: "FF453A"))
+                                    .cornerRadius(10)
+                            }
                         }
                     }
-                    .padding(16)
                 }
+                .padding(16)
+                .background(Color.black)
             }
-            .navigationTitle("Edit")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+
+            // Close button — top left
+            VStack {
+                HStack {
+                    Button {
+                        player?.pause()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                    }
+                    .padding(.leading, 16)
+                    .padding(.top, 8)
+                    Spacer()
                 }
+                Spacer()
             }
         }
-        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
 }
