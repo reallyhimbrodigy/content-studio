@@ -11,7 +11,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
 
                 if isLoading {
                     ProgressView().tint(.white)
@@ -23,7 +23,7 @@ struct LibraryView: View {
             }
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable { await loadEdits() }
@@ -44,7 +44,7 @@ struct LibraryView: View {
         VStack(spacing: 20) {
             Image(systemName: "video.fill")
                 .font(.system(size: 40))
-                .foregroundColor(.white.opacity(0.1))
+                .foregroundColor(Color(.separator))
 
             Text("No edits yet")
                 .font(.system(size: 20, weight: .semibold))
@@ -52,7 +52,7 @@ struct LibraryView: View {
 
             Text("Create your first edit and\nit will show up here.")
                 .font(.system(size: 15))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
     }
@@ -70,12 +70,12 @@ struct LibraryView: View {
                 })
                 .listRowBackground(Color(.secondarySystemBackground))
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowSeparatorTint(Color.white.opacity(0.06))
+                .listRowSeparatorTint(Color(.separator))
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color.black)
+        .background(Color(.systemBackground))
     }
 
     private func loadEdits() async {
@@ -121,7 +121,7 @@ struct EditRow: View {
                         .frame(width: 64, height: 80)
                         .overlay {
                             Image(systemName: "video.fill")
-                                .foregroundColor(.white.opacity(0.1))
+                                .foregroundColor(Color(.separator))
                         }
                 }
 
@@ -139,14 +139,14 @@ struct EditRow: View {
 
                         Text(statusText)
                             .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(.secondary)
 
                         Text("·")
-                            .foregroundColor(.white.opacity(0.2))
+                            .foregroundColor(Color(.separator))
 
                         Text(formatDate(edit.created_at ?? ""))
                             .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(Color(.tertiaryLabel))
                     }
                 }
 
@@ -172,7 +172,7 @@ struct EditRow: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.secondary)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -228,7 +228,7 @@ struct VideoDetailSheet: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Video player — fills most of the screen
@@ -251,7 +251,7 @@ struct VideoDetailSheet: View {
                     if let vibe = edit.vibe_input, !vibe.isEmpty {
                         Text(vibe)
                             .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(Color(.secondaryLabel))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .lineLimit(2)
                     }
@@ -291,7 +291,7 @@ struct VideoDetailSheet: View {
                     }
                 }
                 .padding(16)
-                .background(Color.black)
+                .background(Color(.systemBackground))
             }
 
             // Close button — top left

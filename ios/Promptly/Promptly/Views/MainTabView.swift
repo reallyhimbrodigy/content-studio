@@ -30,15 +30,15 @@ struct MainTabView: View {
             }
             .padding(.top, 8)
             .padding(.bottom, 2)
-            .background(Color.black)
+            .background(Color(.systemBackground))
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color(.separator))
                     .frame(height: 0.5)
             }
         }
         .ignoresSafeArea(.keyboard)
-        .background(Color.black)
+        .background(Color(.systemBackground))
     }
 }
 
@@ -59,7 +59,7 @@ struct TabBarButton: View {
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
             }
-            .foregroundColor(isSelected ? .white : .white.opacity(0.4))
+            .foregroundColor(isSelected ? .white : .secondary)
             .frame(maxWidth: .infinity)
             .frame(height: 44)
         }

@@ -10,7 +10,7 @@ struct AuthView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 28) {
@@ -29,7 +29,7 @@ struct AuthView: View {
 
                         Text("AI-powered video editing")
                             .font(.system(size: 15))
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(.secondary)
                     }
 
                     // Social sign-in buttons
@@ -64,9 +64,9 @@ struct AuthView: View {
 
                     // Divider
                     HStack {
-                        Rectangle().fill(Color.white.opacity(0.1)).frame(height: 0.5)
-                        Text("OR").font(.system(size: 12, weight: .medium)).foregroundColor(.white.opacity(0.3))
-                        Rectangle().fill(Color.white.opacity(0.1)).frame(height: 0.5)
+                        Rectangle().fill(Color(.separator)).frame(height: 0.5)
+                        Text("OR").font(.system(size: 12, weight: .medium)).foregroundColor(Color(.tertiaryLabel))
+                        Rectangle().fill(Color(.separator)).frame(height: 0.5)
                     }
 
                     // Email/Password form
@@ -74,9 +74,9 @@ struct AuthView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Email")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.secondary)
 
-                            TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(.white.opacity(0.25)))
+                            TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(Color(.placeholderText)))
                                 .textContentType(.emailAddress)
                                 .keyboardType(.emailAddress)
                                 .autocapitalization(.none)
@@ -91,9 +91,9 @@ struct AuthView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Password")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.secondary)
 
-                            SecureField("", text: $password, prompt: Text("••••••••").foregroundColor(.white.opacity(0.25)))
+                            SecureField("", text: $password, prompt: Text("••••••••").foregroundColor(Color(.placeholderText)))
                                 .textContentType(isSignUp ? .newPassword : .password)
                                 .padding(14)
                                 .background(Color(.tertiarySystemBackground))
@@ -135,7 +135,7 @@ struct AuthView: View {
                     Button(action: { withAnimation { isSignUp.toggle(); errorMessage = nil } }) {
                         Text(isSignUp ? "Already have an account? **Sign in**" : "Don't have an account? **Sign up**")
                             .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(.secondary)
                     }
 
                     Spacer(minLength: 40)

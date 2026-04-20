@@ -67,7 +67,7 @@ struct MessageBubble: View {
         switch message.role {
         case .user: return Color.white
         case .assistant: return Color(.tertiarySystemBackground)
-        case .system: return Color.white.opacity(0.04)
+        case .system: return Color(.separator).opacity(0.5)
         }
     }
 }
@@ -95,7 +95,7 @@ struct ThinkingDots: View {
         HStack(spacing: 5) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(Color.white.opacity(0.35))
+                    .fill(Color(.secondaryLabel))
                     .frame(width: 8, height: 8)
                     .offset(y: animating ? -8 : 0)
                     .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(Double(i) * 0.15), value: animating)
@@ -121,7 +121,7 @@ struct ProcessingBubble: View {
                 Circle()
                     .fill(Color.white)
                     .frame(width: 10, height: 10)
-                    .shadow(color: Color.white.opacity(0.5), radius: dotPulsing ? 8 : 3)
+                    .shadow(color: Color(.secondaryLabel), radius: dotPulsing ? 8 : 3)
                     .scaleEffect(dotPulsing ? 1.15 : 0.85)
                     .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: dotPulsing)
 
@@ -196,7 +196,7 @@ struct CompletedVideoView: View {
                         Text("Share")
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.secondary)
                 }
             }
         }
@@ -215,7 +215,7 @@ struct FullscreenVideoPlayer: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
 
             if let player = player {
                 VideoPlayer(player: player)

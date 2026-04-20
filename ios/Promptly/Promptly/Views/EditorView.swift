@@ -27,14 +27,14 @@ struct EditorView: View {
 
                 inputBar
             }
-            .background(Color.black)
+            .background(Color(.systemBackground))
             .contentShape(Rectangle())
             .onTapGesture {
                 isInputFocused = false
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showVideoPicker) {
@@ -55,9 +55,9 @@ struct EditorView: View {
 
                 Image(systemName: "video.fill")
                     .font(.system(size: 40))
-                    .foregroundColor(.white.opacity(0.12))
+                    .foregroundColor(Color(.tertiaryLabel))
                     .frame(width: 88, height: 88)
-                    .background(Color.white.opacity(0.06))
+                    .background(Color(.separator))
                     .clipShape(RoundedRectangle(cornerRadius: 24))
 
                 Text("Create your edit")
@@ -66,7 +66,7 @@ struct EditorView: View {
 
                 Text("Upload a video and describe\nthe vibe you want.")
                     .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
 
                 Button {
@@ -133,7 +133,7 @@ struct EditorView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
-        .background(Color.black)
+        .background(Color(.systemBackground))
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -169,7 +169,7 @@ struct EditorView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.black)
                     .frame(width: 44, height: 44)
-                    .background(canSend ? Color.white : Color.white.opacity(0.15))
+                    .background(canSend ? Color.white : Color(.quaternaryLabel))
                     .clipShape(Circle())
             }
             .disabled(!canSend)
@@ -177,7 +177,7 @@ struct EditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.black)
+        .background(Color(.systemBackground))
     }
 
     private var canSend: Bool {
@@ -368,7 +368,7 @@ struct PendingVideoThumb: View {
                         .frame(width: 72, height: 96)
                         .overlay {
                             ProgressView()
-                                .tint(.white.opacity(0.4))
+                                .tint(.secondary)
                                 .scaleEffect(0.8)
                         }
                 }

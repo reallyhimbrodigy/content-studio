@@ -55,7 +55,7 @@ struct AccountView: View {
                                 .foregroundColor(.white)
                             Text(userEmail)
                                 .font(.system(size: 14))
-                                .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(.secondary)
                         }
                         Spacer()
                     }
@@ -97,12 +97,12 @@ struct AccountView: View {
                             Text(tier == "pro" ? "PRO" : "FREE")
                                 .font(.system(size: 12, weight: .bold))
                                 .padding(.horizontal, 10).padding(.vertical, 3)
-                                .background(tier == "pro" ? Color.white.opacity(0.15) : Color.white.opacity(0.06))
-                                .foregroundColor(tier == "pro" ? Color.white : .white.opacity(0.5))
+                                .background(tier == "pro" ? Color(.quaternaryLabel) : Color(.separator))
+                                .foregroundColor(tier == "pro" ? Color.white : .secondary)
                                 .cornerRadius(6)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.2))
+                                .foregroundColor(Color(.separator))
                         }
                     }
                 }
@@ -152,17 +152,17 @@ struct AccountView: View {
                 Section {
                     Text("Promptly v1.0")
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.15))
+                        .foregroundColor(Color(.quaternaryLabel))
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .listRowBackground(Color.clear)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background(Color(.systemBackground))
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await loadProfile() }
@@ -204,7 +204,7 @@ struct AccountView: View {
             .overlay {
                 Text(userInitial)
                     .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.secondary)
             }
     }
 
@@ -214,11 +214,11 @@ struct AccountView: View {
                 Text(label).foregroundColor(.white)
                 Spacer()
                 if let v = value {
-                    Text(v).foregroundColor(.white.opacity(0.35))
+                    Text(v).foregroundColor(Color(.secondaryLabel))
                 }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.2))
+                    .foregroundColor(Color(.separator))
             }
         }
     }
@@ -230,7 +230,7 @@ struct AccountView: View {
                 Spacer()
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.2))
+                    .foregroundColor(Color(.separator))
             }
         }
     }

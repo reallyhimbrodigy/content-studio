@@ -8,7 +8,7 @@ struct PromptlyApp: App {
         // Configure nav bar appearance
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
-        navAppearance.backgroundColor = UIColor.black
+        navAppearance.backgroundColor = UIColor.systemBackground
         navAppearance.titleTextAttributes = [.foregroundColor: UIColor.white]
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
@@ -41,7 +41,7 @@ struct PromptlyApp: App {
 struct LaunchView: View {
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             ProgressView()
                 .tint(.white)
         }
