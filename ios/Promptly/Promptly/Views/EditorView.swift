@@ -43,12 +43,6 @@ struct EditorView: View {
                 }
                 .ignoresSafeArea()
             }
-            .onAppear {
-                // Open keyboard immediately when editor appears
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    isInputFocused = true
-                }
-            }
         }
     }
 
@@ -263,15 +257,16 @@ struct EditorView: View {
                             var videoUrl = video.uploadedUrl
 
                             if videoUrl == nil, let fileUrl = video.fileUrl {
-                                // Compress first if not already compressed
+                                await MainActor.run { messages[msgIndex].stepMessage = "Preparing your video..." }
+
                                 let compressedUrl = (try? await VideoCompressor.compress(sourceUrl: fileUrl)) ?? fileUrl
 
+                                await MainActor.run { messages[msgIndex].stepMessage = "Uploading..." }
                                 let urlResponse = try await APIService.shared.getUploadUrl(fileName: video.fileName)
                                 if let uploadUrlStr = urlResponse.uploadUrl, let publicUrl = urlResponse.publicUrl {
                                     try await APIService.shared.uploadFileToS3(url: uploadUrlStr, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
                                         let pct = Int(progress * 30)
                                         messages[msgIndex].jobProgress = pct
-                                        messages[msgIndex].stepMessage = "Preparing your video..."
                                     }
                                     videoUrl = publicUrl
                                 }
@@ -279,6 +274,10 @@ struct EditorView: View {
                             }
 
                             guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
+                            await MainActor.run {
+                                messages[msgIndex].stepMessage = "Starting your edit..."
+                                messages[msgIndex].jobProgress = 35
+                            }
                             let jobId = try await APIService.shared.createVideoJob(videoUrl: finalUrl, vibe: vibe)
                             await MainActor.run {
                                 messages[msgIndex].jobId = jobId
@@ -389,13 +388,6 @@ struct PendingVideoThumb: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
-                // Checkmark when upload done
-                if video.uploadedUrl != nil {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.white, Color.green)
-                        .padding(4)
-                }
             }
 
             Button(action: onRemove) {
