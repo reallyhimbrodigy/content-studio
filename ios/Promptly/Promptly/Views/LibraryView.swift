@@ -68,7 +68,7 @@ struct LibraryView: View {
                     editToDelete = edit
                     showDeleteConfirm = true
                 })
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowSeparatorTint(Color.white.opacity(0.06))
             }
@@ -110,14 +110,14 @@ struct EditRow: View {
                         case .success(let image):
                             image.resizable().aspectRatio(contentMode: .fill)
                         default:
-                            Color(hex: "2C2C2E")
+                            Color(.tertiarySystemBackground)
                         }
                     }
                     .frame(width: 64, height: 80)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(hex: "2C2C2E"))
+                        .fill(Color(.tertiarySystemBackground))
                         .frame(width: 64, height: 80)
                         .overlay {
                             Image(systemName: "video.fill")
@@ -184,9 +184,9 @@ struct EditRow: View {
 
     private var statusColor: Color {
         switch edit.status {
-        case "completed": return Color(hex: "4ADE80")
+        case "completed": return .green
         case "processing", "queued": return Color.white
-        case "failed": return Color(hex: "EF4444")
+        case "failed": return .red
         default: return .gray
         }
     }
@@ -283,8 +283,8 @@ struct VideoDetailSheet: View {
                                 Image(systemName: "trash")
                                     .font(.system(size: 15))
                                     .frame(width: 44, height: 44)
-                                    .background(Color(hex: "2C2C2E"))
-                                    .foregroundColor(Color(hex: "FF453A"))
+                                    .background(Color(.tertiarySystemBackground))
+                                    .foregroundColor(.red)
                                     .cornerRadius(10)
                             }
                         }

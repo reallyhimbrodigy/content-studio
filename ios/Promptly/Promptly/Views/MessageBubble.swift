@@ -50,10 +50,10 @@ struct MessageBubble: View {
                 if message.jobStatus == "failed" || message.jobStatus == "error" {
                     Text(message.error ?? "Something went wrong.")
                         .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "FF453A"))
+                        .foregroundColor(.red)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Color(hex: "2C2C2E"))
+                        .background(Color(.tertiarySystemBackground))
                         .clipShape(BubbleShape(isUser: false))
                 }
             }
@@ -66,7 +66,7 @@ struct MessageBubble: View {
     private var bubbleColor: Color {
         switch message.role {
         case .user: return Color.white
-        case .assistant: return Color(hex: "2C2C2E")
+        case .assistant: return Color(.tertiarySystemBackground)
         case .system: return Color.white.opacity(0.04)
         }
     }
@@ -102,7 +102,7 @@ struct ThinkingDots: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(Color(hex: "2C2C2E"))
+        .background(Color(.tertiarySystemBackground))
         .clipShape(BubbleShape(isUser: false))
         .onAppear { animating = true }
     }
@@ -137,7 +137,7 @@ struct ProcessingBubble: View {
         }
         .padding(16)
         .frame(maxWidth: 280, alignment: .leading)
-        .background(Color(hex: "2C2C2E"))
+        .background(Color(.tertiarySystemBackground))
         .clipShape(BubbleShape(isUser: false))
         .onAppear { dotPulsing = true }
     }
@@ -162,12 +162,12 @@ struct CompletedVideoView: View {
                             if let image = phase.image {
                                 image.resizable().aspectRatio(contentMode: .fit)
                             } else {
-                                Color(hex: "1C1C1E")
+                                Color(.secondarySystemBackground)
                                     .frame(height: 240)
                             }
                         }
                     } else {
-                        Color(hex: "1C1C1E")
+                        Color(.secondarySystemBackground)
                             .frame(height: 240)
                     }
 

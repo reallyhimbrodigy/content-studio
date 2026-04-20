@@ -146,7 +146,7 @@ struct EditorView: View {
                     .font(.system(size: 22, weight: .light))
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(Color(hex: "2C2C2E"))
+                    .background(Color(.tertiarySystemBackground))
                     .clipShape(Circle())
             }
             .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
@@ -156,7 +156,7 @@ struct EditorView: View {
                 .lineLimit(1...5)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(Color(hex: "2C2C2E"))
+                .background(Color(.tertiarySystemBackground))
                 .cornerRadius(20)
                 .foregroundColor(.white)
                 .font(.system(size: 16))
@@ -364,7 +364,7 @@ struct PendingVideoThumb: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } else {
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(hex: "2C2C2E"))
+                        .fill(Color(.tertiarySystemBackground))
                         .frame(width: 72, height: 96)
                         .overlay {
                             ProgressView()
@@ -393,7 +393,7 @@ struct PendingVideoThumb: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 20))
-                    .foregroundStyle(.white, Color(hex: "48484A"))
+                    .foregroundStyle(.white, Color(.systemGray3))
                     .shadow(radius: 2)
             }
             .offset(x: 6, y: -6)

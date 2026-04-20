@@ -41,7 +41,7 @@ struct PromptlyApp: App {
 struct LaunchView: View {
     var body: some View {
         ZStack {
-            Color(hex: "121212").ignoresSafeArea()
+            Color.black.ignoresSafeArea()
             ProgressView()
                 .tint(.white)
         }

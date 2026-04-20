@@ -82,7 +82,7 @@ struct AuthView: View {
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .padding(14)
-                                .background(Color(hex: "2C2C2E"))
+                                .background(Color(.tertiarySystemBackground))
                                 .cornerRadius(12)
                                 .foregroundColor(.white)
                                 .font(.system(size: 16))
@@ -96,7 +96,7 @@ struct AuthView: View {
                             SecureField("", text: $password, prompt: Text("••••••••").foregroundColor(.white.opacity(0.25)))
                                 .textContentType(isSignUp ? .newPassword : .password)
                                 .padding(14)
-                                .background(Color(hex: "2C2C2E"))
+                                .background(Color(.tertiarySystemBackground))
                                 .cornerRadius(12)
                                 .foregroundColor(.white)
                                 .font(.system(size: 16))
@@ -107,7 +107,7 @@ struct AuthView: View {
                     if let error = errorMessage {
                         Text(error)
                             .font(.system(size: 14))
-                            .foregroundColor(Color(hex: "FF453A"))
+                            .foregroundColor(.red)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }

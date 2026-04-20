@@ -61,7 +61,7 @@ struct AccountView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Profile
                 Section("Profile") {
@@ -74,7 +74,7 @@ struct AccountView: View {
                         showEmailEdit = true
                     }
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Subscription
                 Section("Subscription") {
@@ -106,7 +106,7 @@ struct AccountView: View {
                         }
                     }
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Support
                 Section("Support") {
@@ -119,31 +119,31 @@ struct AccountView: View {
                         showPasswordReset = true
                     }
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Legal
                 Section("Legal") {
                     externalRow("Privacy Policy", url: "https://usepromptly.app/privacy.html")
                     externalRow("Terms of Service", url: "https://usepromptly.app/terms.html")
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Sign out
                 Section {
                     Button { AuthService.shared.signOut() } label: {
                         Text("Sign Out")
-                            .foregroundColor(Color(hex: "FF453A"))
+                            .foregroundColor(.red)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
-                .listRowBackground(Color(hex: "1C1C1E"))
+                .listRowBackground(Color(.secondarySystemBackground))
 
                 // Delete account
                 Section {
                     Button { showDeleteAccount = true } label: {
                         Text("Delete Account")
                             .font(.system(size: 14))
-                            .foregroundColor(Color(hex: "FF453A").opacity(0.6))
+                            .foregroundColor(.red.opacity(0.6))
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
@@ -199,7 +199,7 @@ struct AccountView: View {
 
     private var initialAvatar: some View {
         Circle()
-            .fill(Color(hex: "2C2C2E"))
+            .fill(Color(.tertiarySystemBackground))
             .frame(width: 80, height: 80)
             .overlay {
                 Text(userInitial)
