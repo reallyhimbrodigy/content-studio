@@ -336,6 +336,14 @@ struct EditorView: View {
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
         }
+        client.onError = { errorMsg in
+            guard messageIndex < messages.count else { return }
+            messages[messageIndex].jobStatus = "failed"
+            messages[messageIndex].error = errorMsg
+            messages[messageIndex].content = ""
+            sseClients.removeValue(forKey: jobId)
+        }
+
         client.connect()
     }
 }
