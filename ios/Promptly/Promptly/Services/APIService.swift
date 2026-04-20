@@ -100,17 +100,41 @@ class APIService {
         }
     }
 
-    /// Upload directly from a file URL with progress tracking
+    /// Upload directly from a file URL with progress tracking and retry
     func uploadFileToS3(url: String, fileUrl: URL, mimeType: String, onProgress: ((Double) -> Void)? = nil) async throws {
+        // Configure session with generous timeouts for cellular
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 300
+        config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "PUT"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
 
         let delegate = UploadProgressDelegate(onProgress: onProgress)
-        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileUrl, delegate: delegate)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.uploadFailed
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+
+        // Retry up to 2 times on failure
+        var lastError: Error?
+        for attempt in 1...2 {
+            do {
+                let (_, response) = try await session.upload(for: request, fromFile: fileUrl, delegate: delegate)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw APIError.uploadFailed
+                }
+                return // Success
+            } catch {
+                lastError = error
+                if attempt < 2 {
+                    try? await Task.sleep(for: .seconds(2))
+                    onProgress?(0) // Reset progress for retry
+                }
+            }
         }
+        throw lastError ?? APIError.uploadFailed
     }
 
     func uploadVideo(data: Data, fileName: String) async throws -> String {
