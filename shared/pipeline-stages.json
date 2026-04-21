@@ -1,0 +1,27 @@
+{
+  "$comment": "Shared stage catalog for the Promptly pipeline. iOS and the Modal worker both agree on these tokens + modes. Stages not declared in a mode's filter never appear in the UI for that mode; stages declared but never emitted get marked 'skipped' when a later stage starts. Authoritative=true stages are fired by the worker via send_progress(); authoritative=false are client-narrated during their parent's in_progress window (used for the long monolithic render phase).",
+
+  "modes": ["full", "reinterpret", "tweak"],
+
+  "stages": [
+    { "id": "download",      "title": "Loading your footage",          "icon": "arrow.down.circle",         "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "transcribe",    "title": "Transcribing every word",       "icon": "waveform",                  "authoritative": true,  "parent": null,     "modes": ["full"] },
+    { "id": "face_detect",   "title": "Tracking faces frame-by-frame", "icon": "face.smiling",              "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "beats",         "title": "Detecting beat and rhythm",     "icon": "metronome",                 "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "trend",         "title": "Matching viral style patterns", "icon": "chart.line.uptrend.xyaxis", "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "plan_diff",     "title": "Figuring out what to change",   "icon": "wand.and.stars",            "authoritative": true,  "parent": null,     "modes": ["tweak"] },
+    { "id": "plan",          "title": "Writing your edit recipe",      "icon": "pencil.and.outline",        "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "hook",          "title": "Finding the perfect hook",      "icon": "bolt.circle",               "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "broll_search",  "title": "Sourcing B-roll cutaways",      "icon": "film.stack",                "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret"] },
+    { "id": "render",        "title": "Rendering your edit",           "icon": "sparkles",                  "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "timing",        "title": "Timing cuts to the beat",       "icon": "timer",                     "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "color",         "title": "Applying your color grade",     "icon": "paintpalette",              "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "speed",         "title": "Composing speed ramps",         "icon": "speedometer",               "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "captions",      "title": "Placing captions word-by-word", "icon": "text.bubble",               "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "sfx",           "title": "Layering sound effects",        "icon": "speaker.wave.2",            "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "transitions",   "title": "Stitching transitions",         "icon": "arrow.triangle.swap",       "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "encode",        "title": "Final encode",                  "icon": "film",                      "authoritative": false, "parent": "render", "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "thumbnail",     "title": "Picking your cover frame",      "icon": "photo.on.rectangle",        "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret", "tweak"] },
+    { "id": "upload",        "title": "Publishing to your library",    "icon": "square.and.arrow.up",       "authoritative": true,  "parent": null,     "modes": ["full", "reinterpret", "tweak"] }
+  ]
+}

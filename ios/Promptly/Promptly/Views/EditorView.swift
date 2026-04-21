@@ -346,7 +346,11 @@ struct EditorView: View {
             )
             messages.append(userMsg)
 
-            let processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
+            // Re-edit defaults to tweak mode catalog; if the server downgrades to
+            // reinterpret mid-pipeline, incoming tokens outside the tweak filter
+            // are gracefully ignored by StageTimeline (forward-compat).
+            var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
+            processingMsg.stageTimeline = StageTimeline(mode: "tweak")
             messages.append(processingMsg)
             let msgIndex = messages.count - 1
 
@@ -386,7 +390,8 @@ struct EditorView: View {
                     messages.append(userMsg)
                     conversationHistory.append(["role": "user", "content": vibe])
 
-                    let processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
+                    var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
+                    processingMsg.stageTimeline = StageTimeline(mode: "full")
                     messages.append(processingMsg)
                     let msgIndex = messages.count - 1
 
@@ -490,17 +495,27 @@ struct EditorView: View {
             if let msg = event.message { messages[messageIndex].stepMessage = msg }
             if let err = event.error { messages[messageIndex].error = err }
 
+            // Feed the authoritative step token into the stage timeline. Unknown
+            // or missing tokens are silently ignored — the timeline stays on the
+            // previous stage and the old dumb ProcessingIndicator fallback kicks
+            // in only when no timeline exists at all.
+            if let step = event.step, !step.isEmpty {
+                messages[messageIndex].stageTimeline?.receive(stepToken: step)
+            }
+
             if event.status == "completed" || event.status == "complete" {
                 messages[messageIndex].jobStatus = "completed"
                 messages[messageIndex].content = "Your video is ready!"
                 if let url = event.videoUrl { messages[messageIndex].renderedVideoUrl = url }
                 if let thumb = event.thumbnailUrl { messages[messageIndex].thumbnailUrl = thumb }
+                messages[messageIndex].stageTimeline?.finish()
                 if event.final == true { client.disconnect(); sseClients.removeValue(forKey: jobId) }
             }
 
             if event.status == "failed" || event.status == "error" {
                 messages[messageIndex].jobStatus = "failed"
                 messages[messageIndex].error = event.error ?? "Something went wrong."
+                messages[messageIndex].stageTimeline?.finish()
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
 
@@ -512,6 +527,7 @@ struct EditorView: View {
                 messages[messageIndex].jobStatus = "completed"
                 messages[messageIndex].content = q
                 messages[messageIndex].renderedVideoUrl = nil
+                messages[messageIndex].stageTimeline?.finish()
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
         }

@@ -64,10 +64,14 @@ struct MessageBubble: View {
 
             if let status = message.jobStatus,
                !["completed", "complete", "failed", "error"].contains(status) {
-                ProcessingIndicator(
-                    stepMessage: message.stepMessage ?? "Getting started...",
-                    progress: message.jobProgress ?? 0
-                )
+                if let timeline = message.stageTimeline {
+                    PipelineProgressView(timeline: timeline, progress: message.jobProgress ?? 0)
+                } else {
+                    ProcessingIndicator(
+                        stepMessage: message.stepMessage ?? "Getting started...",
+                        progress: message.jobProgress ?? 0
+                    )
+                }
             }
 
             if !message.content.isEmpty {
@@ -179,6 +183,209 @@ struct ProcessingIndicator: View {
                     displayed = min(target, displayed + step)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Pipeline Progress (stage-aware, skip-tolerant, expandable)
+//
+// Replaces ProcessingIndicator for jobs that have a StageTimeline. Shows:
+//   - Active stage row: SF Symbol (pulsing) + stage title + smoothed percent
+//   - Progress bar (same ticker smoothing as before, drives the numeric %)
+//   - Completed trail: last two finished stages as a compact subtitle
+//   - Expandable "View all steps" disclosure: per-stage status glyphs
+//     (completed / in-progress / upcoming / skipped) with the skipped ones
+//     struck-through + captioned "not needed"
+//
+// The display is driven by the observable StageTimeline on the message. All
+// skip inference happens inside the timeline; this view is purely
+// presentational.
+
+struct PipelineProgressView: View {
+    @ObservedObject var timeline: StageTimeline
+    let progress: Int
+    @State private var displayed: Int = 0
+    @State private var target: Int = 0
+    @State private var expanded: Bool = false
+
+    private var activeStage: PipelineStage? {
+        if let did = timeline.currentDerivedId, let s = timeline.stages.first(where: { $0.id == did }) {
+            return s
+        }
+        if let cid = timeline.currentStageId, let s = timeline.stages.first(where: { $0.id == cid }) {
+            return s
+        }
+        return timeline.stages.first
+    }
+
+    /// Last two completed stages, in order of completion.
+    private var completedTrail: [PipelineStage] {
+        let completedIds = Set(timeline.states.filter { $0.value == .completed }.map { $0.key })
+        let completed = timeline.stages.filter { completedIds.contains($0.id) }
+        return Array(completed.suffix(2))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Active stage header
+            HStack(alignment: .center, spacing: 10) {
+                stageIcon
+                Text(activeStage?.title ?? "Getting started")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .transition(.opacity)
+                Spacer(minLength: 8)
+                Text("\(max(displayed, 1))%")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .animation(.easeInOut(duration: 0.25), value: activeStage?.id)
+
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(.separator).opacity(0.5))
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(displayed) / 100.0))))
+                }
+            }
+            .frame(height: 3)
+
+            // Completed trail — last two finished stages, compact
+            if !completedTrail.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(completedTrail) { stage in
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(stage.title)
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .foregroundColor(Color(.secondaryLabel))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .transition(.opacity)
+            }
+
+            // Expandable steps list
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(expanded ? "Hide steps" : "View all steps")
+                        .font(.system(size: 12, weight: .medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .foregroundColor(Color(.secondaryLabel))
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(timeline.stages) { stage in
+                        stageRow(stage)
+                    }
+                }
+                .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: 340, alignment: .leading)
+        .animation(.easeOut(duration: 0.18), value: displayed)
+        .onChange(of: progress, initial: true) { _, new in
+            if new > target { target = new }
+        }
+        .task {
+            // Smoothed creep toward target — same pattern as ProcessingIndicator.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                if Task.isCancelled { break }
+                let delta = target - displayed
+                if delta > 0 {
+                    let step = max(1, delta / 5)
+                    displayed = min(target, displayed + step)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stageIcon: some View {
+        if let stage = activeStage {
+            Image(systemName: stage.icon)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.white)
+                .symbolEffect(.pulse.byLayer, options: .repeating)
+                .frame(width: 20, height: 20)
+                .transition(.scale.combined(with: .opacity))
+        } else {
+            Circle()
+                .fill(Color.white.opacity(0.5))
+                .frame(width: 8, height: 8)
+                .frame(width: 20, height: 20)
+        }
+    }
+
+    @ViewBuilder
+    private func stageRow(_ stage: PipelineStage) -> some View {
+        let state = timeline.states[stage.id] ?? .upcoming
+        HStack(spacing: 10) {
+            Group {
+                switch state {
+                case .completed:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.white)
+                case .inProgress:
+                    Image(systemName: stage.icon)
+                        .foregroundColor(.white)
+                        .symbolEffect(.pulse.byLayer, options: .repeating)
+                case .upcoming:
+                    Image(systemName: "circle")
+                        .foregroundColor(Color(.tertiaryLabel))
+                case .skipped:
+                    Image(systemName: "minus.circle")
+                        .foregroundColor(Color(.tertiaryLabel))
+                }
+            }
+            .font(.system(size: 14))
+            .frame(width: 18, height: 18)
+
+            Text(stage.title)
+                .font(.system(size: 13))
+                .foregroundColor(rowTextColor(state))
+                .strikethrough(state == .skipped, color: Color(.tertiaryLabel))
+                .lineLimit(1)
+
+            if state == .skipped {
+                Text("not needed")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(.tertiaryLabel))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(.tertiarySystemBackground).opacity(0.6))
+                    .clipShape(Capsule())
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, stage.parent != nil ? 20 : 0)
+    }
+
+    private func rowTextColor(_ state: StageState) -> Color {
+        switch state {
+        case .completed, .inProgress: return .white
+        case .upcoming:               return Color(.secondaryLabel)
+        case .skipped:                return Color(.tertiaryLabel)
         }
     }
 }
