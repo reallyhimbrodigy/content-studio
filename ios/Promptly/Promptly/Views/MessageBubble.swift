@@ -1,5 +1,10 @@
 import SwiftUI
 import AVKit
+import Photos
+
+#if canImport(TikTokOpenShareSDK)
+import TikTokOpenShareSDK
+#endif
 
 struct MessageBubble: View {
     let message: ChatMessage
@@ -82,7 +87,11 @@ struct MessageBubble: View {
             }
 
             if let videoUrlStr = message.renderedVideoUrl {
-                CompletedVideoView(videoUrlStr: videoUrlStr, thumbnailUrlStr: message.thumbnailUrl)
+                CompletedVideoView(
+                    videoUrlStr: videoUrlStr,
+                    thumbnailUrlStr: message.thumbnailUrl,
+                    onReedit: buildReeditHandler(for: message)
+                )
             }
 
             if message.jobStatus == "failed" || message.jobStatus == "error" {
@@ -90,6 +99,25 @@ struct MessageBubble: View {
                     .font(.system(size: 14))
                     .foregroundColor(.red)
             }
+        }
+    }
+
+    /// Produce the Re-edit closure for a completed video message. Requires a
+    /// jobId (the server needs it as original_job_id to load the parent's
+    /// saved edit_recipe / transcript / resolved B-roll). Nil when the message
+    /// has no jobId — button is then hidden from the action row.
+    private func buildReeditHandler(for message: ChatMessage) -> (() -> Void)? {
+        guard let jobId = message.jobId else { return nil }
+        let vibe = message.originalVibe ?? ""
+        let thumb = message.thumbnailUrl
+        return {
+            AppState.shared.pendingReedit = ReeditSession(
+                originalJobId: jobId,
+                oldVibe: vibe,
+                thumbnailUrl: thumb
+            )
+            AppState.shared.selectedTab = 0  // no-op if already on Edit
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
     }
 }
@@ -390,62 +418,454 @@ struct PipelineProgressView: View {
     }
 }
 
-// MARK: - Completed Video (iOS-native card — clean thumbnail, contextMenu for actions)
+// MARK: - Video Exporter (Save to Photos + TikTok + Instagram)
+//
+// One VideoExporter per completed video message (via @StateObject on the
+// VideoActionRow). Manages:
+//   - Single download of the remote MP4 to a temp file (cached for the
+//     session so re-taps don't re-download).
+//   - Single save to Photos (cached PHAsset localIdentifier so repeated
+//     TikTok/Instagram shares reuse the same asset).
+//   - Per-action state machines (idle / loading / success / error) so each
+//     button can animate independently.
+//
+// TikTok path: if TikTokOpenShareSDK is linked, uses TikTokShareRequest to
+// hand off directly to TikTok's upload composer. Without the SDK the code
+// falls back to opening TikTok via URL scheme (still useful — the video
+// is pre-saved in Photos so the user just taps + in TikTok).
+//
+// Instagram path: uses URL schemes officially documented by Meta. There is
+// no Instagram SDK for third-party share on iOS — URL schemes + pasteboard
+// IS the production approach (same method used by Canva, Adobe Express,
+// etc.). Feed/Reel flow is instagram://library?LocalIdentifier=... and
+// drops the user into Instagram's media picker with the asset preselected.
+
+@MainActor
+final class VideoExporter: ObservableObject {
+    let videoUrlStr: String
+    let thumbnailUrlStr: String?
+
+    @Published var saveState: ActionState = .idle
+    @Published var tiktokState: ActionState = .idle
+    @Published var instagramState: ActionState = .idle
+
+    private var cachedLocalUrl: URL?
+    private var cachedAssetId: String?
+
+    enum ActionState: Equatable {
+        case idle, loading, success
+        case error(String)
+    }
+
+    enum ExportError: LocalizedError {
+        case invalidUrl
+        case photosDenied
+        case saveFailed(String)
+        case appNotInstalled(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidUrl:        return "Invalid video URL"
+            case .photosDenied:      return "Photos access was denied"
+            case .saveFailed(let m): return "Couldn't save: \(m)"
+            case .appNotInstalled(let app): return "\(app) isn't installed"
+            }
+        }
+    }
+
+    init(videoUrlStr: String, thumbnailUrlStr: String?) {
+        self.videoUrlStr = videoUrlStr
+        self.thumbnailUrlStr = thumbnailUrlStr
+    }
+
+    // MARK: - Private helpers
+
+    private func ensureLocalFile() async throws -> URL {
+        if let cached = cachedLocalUrl, FileManager.default.fileExists(atPath: cached.path) {
+            return cached
+        }
+        guard let remoteUrl = URL(string: videoUrlStr) else { throw ExportError.invalidUrl }
+        let (tempUrl, _) = try await URLSession.shared.download(from: remoteUrl)
+        let finalUrl = FileManager.default.temporaryDirectory
+            .appendingPathComponent("promptly-export-\(UUID().uuidString).mp4")
+        try? FileManager.default.removeItem(at: finalUrl)
+        try FileManager.default.moveItem(at: tempUrl, to: finalUrl)
+        cachedLocalUrl = finalUrl
+        return finalUrl
+    }
+
+    private func ensureSavedToPhotos() async throws -> String {
+        if let cached = cachedAssetId { return cached }
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            throw ExportError.photosDenied
+        }
+
+        let localFile = try await ensureLocalFile()
+
+        var placeholderId: String?
+        try await PHPhotoLibrary.shared().performChanges {
+            if let req = PHAssetCreationRequest.creationRequestForAssetFromVideo(atFileURL: localFile) {
+                placeholderId = req.placeholderForCreatedAsset?.localIdentifier
+            }
+        }
+        guard let id = placeholderId else { throw ExportError.saveFailed("no asset id") }
+        cachedAssetId = id
+        return id
+    }
+
+    // MARK: - Public actions
+
+    func save() {
+        Task {
+            saveState = .loading
+            do {
+                _ = try await ensureSavedToPhotos()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                saveState = .success
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if saveState == .success { saveState = .idle }
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                saveState = .error(error.localizedDescription)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if case .error = saveState { saveState = .idle }
+            }
+        }
+    }
+
+    func shareToTikTok() {
+        Task {
+            tiktokState = .loading
+            do {
+                let assetId = try await ensureSavedToPhotos()
+
+                #if canImport(TikTokOpenShareSDK)
+                // Production SDK path — direct-to-composer handoff.
+                let request = TikTokShareRequest(
+                    localIdentifiers: [assetId],
+                    mediaType: .video,
+                    redirectURI: "app.usepromptly.ios://tiktok-share-callback"
+                )
+                _ = request.send { _ in }
+                tiktokState = .success
+                #else
+                // SDK not linked — fall back to opening TikTok app. The video is
+                // already saved to Photos above, so the user just has to tap +
+                // once inside TikTok and pick the fresh clip from their library.
+                guard let url = URL(string: "snssdk1233://") else {
+                    throw ExportError.invalidUrl
+                }
+                if await UIApplication.shared.canOpenURL(url) {
+                    await UIApplication.shared.open(url)
+                    tiktokState = .success
+                } else if let storeUrl = URL(string: "https://apps.apple.com/app/id835599320") {
+                    await UIApplication.shared.open(storeUrl)
+                    throw ExportError.appNotInstalled("TikTok")
+                }
+                #endif
+
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if tiktokState == .success { tiktokState = .idle }
+                _ = assetId  // keep capture live
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                tiktokState = .error(error.localizedDescription)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if case .error = tiktokState { tiktokState = .idle }
+            }
+        }
+    }
+
+    func shareToInstagram() {
+        Task {
+            instagramState = .loading
+            do {
+                let assetId = try await ensureSavedToPhotos()
+                // Instagram's library deep link opens its picker with the
+                // specific video preselected — user picks Feed / Reel / Story.
+                guard let url = URL(string: "instagram://library?LocalIdentifier=\(assetId)") else {
+                    throw ExportError.invalidUrl
+                }
+                if await UIApplication.shared.canOpenURL(url) {
+                    await UIApplication.shared.open(url)
+                    instagramState = .success
+                } else if let storeUrl = URL(string: "https://apps.apple.com/app/id389801252") {
+                    await UIApplication.shared.open(storeUrl)
+                    throw ExportError.appNotInstalled("Instagram")
+                }
+
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if instagramState == .success { instagramState = .idle }
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                instagramState = .error(error.localizedDescription)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if case .error = instagramState { instagramState = .idle }
+            }
+        }
+    }
+}
+
+// MARK: - Video Action Row (iOS Share Sheet aesthetic — circle icon + label)
+
+struct VideoActionRow: View {
+    let videoUrlStr: String
+    let thumbnailUrlStr: String?
+    let onReedit: (() -> Void)?
+    @StateObject private var exporter: VideoExporter
+
+    init(videoUrlStr: String, thumbnailUrlStr: String?, onReedit: (() -> Void)?) {
+        self.videoUrlStr = videoUrlStr
+        self.thumbnailUrlStr = thumbnailUrlStr
+        self.onReedit = onReedit
+        _exporter = StateObject(wrappedValue: VideoExporter(videoUrlStr: videoUrlStr, thumbnailUrlStr: thumbnailUrlStr))
+    }
+
+    // Brand gradients — pulled from Instagram + TikTok brand kits
+    private static let instagramGradient = LinearGradient(
+        colors: [
+            Color(red: 0.996, green: 0.855, blue: 0.459),  // #FEDA75
+            Color(red: 0.980, green: 0.494, blue: 0.118),  // #FA7E1E
+            Color(red: 0.839, green: 0.161, blue: 0.463),  // #D62976
+            Color(red: 0.588, green: 0.184, blue: 0.749),  // #962FBF
+            Color(red: 0.310, green: 0.357, blue: 0.835)   // #4F5BD5
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+    private static let tiktokBlack = Color.black
+    private static let tiktokAccent = Color(red: 0.996, green: 0.173, blue: 0.333)  // #FE2C55
+
+    var body: some View {
+        HStack(spacing: 14) {
+            if let onReedit {
+                pill(
+                    icon: "wand.and.stars",
+                    label: "Re-edit",
+                    state: .idle,
+                    fill: .neutral,
+                    action: onReedit
+                )
+            }
+
+            pill(
+                icon: "square.and.arrow.down",
+                label: "Save",
+                state: exporter.saveState,
+                fill: .neutral,
+                action: exporter.save
+            )
+
+            pill(
+                icon: "music.note",
+                label: "TikTok",
+                state: exporter.tiktokState,
+                fill: .tiktok,
+                action: exporter.shareToTikTok
+            )
+
+            pill(
+                icon: "camera",
+                label: "Instagram",
+                state: exporter.instagramState,
+                fill: .instagram,
+                action: exporter.shareToInstagram
+            )
+
+            shareLinkPill
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+    }
+
+    // MARK: - Pill subviews
+
+    private enum PillFill {
+        case neutral
+        case tiktok
+        case instagram
+    }
+
+    @ViewBuilder
+    private func pill(
+        icon: String,
+        label: String,
+        state: VideoExporter.ActionState,
+        fill: PillFill,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    pillBackground(fill: fill)
+                    pillSymbol(icon: icon, state: state, fill: fill)
+                }
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+
+                Text(labelText(state: state, defaultLabel: label))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(.secondaryLabel))
+                    .lineLimit(1)
+                    .contentTransition(.identity)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(state == .loading)
+    }
+
+    @ViewBuilder
+    private func pillBackground(fill: PillFill) -> some View {
+        switch fill {
+        case .neutral:
+            Circle().fill(Color(.tertiarySystemBackground))
+        case .tiktok:
+            Circle().fill(Self.tiktokBlack)
+        case .instagram:
+            Circle().fill(Self.instagramGradient)
+        }
+    }
+
+    @ViewBuilder
+    private func pillSymbol(
+        icon: String,
+        state: VideoExporter.ActionState,
+        fill: PillFill
+    ) -> some View {
+        let color: Color = fill == .neutral ? .white : .white
+        switch state {
+        case .idle:
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(color)
+                .symbolRenderingMode(.hierarchical)
+        case .loading:
+            ProgressView()
+                .controlSize(.small)
+                .tint(color)
+        case .success:
+            Image(systemName: "checkmark")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(color)
+                .transition(.scale.combined(with: .opacity))
+        case .error:
+            Image(systemName: "exclamationmark")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+        }
+    }
+
+    private func labelText(state: VideoExporter.ActionState, defaultLabel: String) -> String {
+        switch state {
+        case .success: return "Done"
+        case .error:   return "Error"
+        default:       return defaultLabel
+        }
+    }
+
+    @ViewBuilder
+    private var shareLinkPill: some View {
+        if let url = URL(string: videoUrlStr) {
+            ShareLink(item: url) {
+                VStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(.tertiarySystemBackground))
+                        .frame(width: 48, height: 48)
+                        .overlay {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.white)
+                                .symbolRenderingMode(.hierarchical)
+                        }
+                    Text("Share")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(.secondaryLabel))
+                }
+            }
+            .simultaneousGesture(TapGesture().onEnded {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            })
+        }
+    }
+}
+
+// MARK: - Completed Video (iOS-native card — clean thumbnail + in-chat quick actions)
 //
 // Tapping the thumbnail presents AVPlayerViewController as a true UIKit modal
 // via UIWindowScene — no SwiftUI fullScreenCover wrapper, no custom X button,
 // no NativeVideoPlayer representable. This uses iOS's standard video-modal
 // presentation style (the same one Apple's own apps use): swipe-down to
 // dismiss, native scrubber + PiP + AirPlay + Done button, nothing layered on top.
+//
+// Below the thumbnail: VideoActionRow — Re-edit / Save / TikTok / Instagram /
+// Share pill buttons so the user never has to leave the chat for common tasks.
 
 struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    let onReedit: (() -> Void)?
 
     var body: some View {
-        Button {
-            VideoPlayerPresenter.present(urlString: videoUrlStr)
-        } label: {
-            thumbnailContent
-                .frame(maxWidth: 240)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    LinearGradient(
-                        colors: [.black.opacity(0.0), .black.opacity(0.25)],
-                        startPoint: .center, endPoint: .bottom
-                    )
-                    .allowsHitTesting(false)
-                }
-                .overlay {
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 62, height: 62)
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(.white)
-                            .offset(x: 2)
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                VideoPlayerPresenter.present(urlString: videoUrlStr)
+            } label: {
+                thumbnailContent
+                    .frame(maxWidth: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay {
+                        LinearGradient(
+                            colors: [.black.opacity(0.0), .black.opacity(0.25)],
+                            startPoint: .center, endPoint: .bottom
+                        )
+                        .allowsHitTesting(false)
+                    }
+                    .overlay {
+                        ZStack {
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .frame(width: 62, height: 62)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
+                                .offset(x: 2)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                if let url = URL(string: videoUrlStr) {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        UIApplication.shared.open(url)
+                    } label: {
+                        Label("Open in Safari", systemImage: "safari")
+                    }
+                    Button {
+                        UIPasteboard.general.string = videoUrlStr
+                    } label: {
+                        Label("Copy Link", systemImage: "link")
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            if let url = URL(string: videoUrlStr) {
-                ShareLink(item: url) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                Button {
-                    UIApplication.shared.open(url)
-                } label: {
-                    Label("Open in Safari", systemImage: "safari")
-                }
-                Button {
-                    UIPasteboard.general.string = videoUrlStr
-                } label: {
-                    Label("Copy Link", systemImage: "link")
-                }
             }
+
+            VideoActionRow(
+                videoUrlStr: videoUrlStr,
+                thumbnailUrlStr: thumbnailUrlStr,
+                onReedit: onReedit
+            )
         }
     }
 

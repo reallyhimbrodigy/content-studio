@@ -351,6 +351,9 @@ struct EditorView: View {
             // are gracefully ignored by StageTimeline (forward-compat).
             var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
             processingMsg.stageTimeline = StageTimeline(mode: "tweak")
+            // Keep the original vibe around so the completed-video ActionRow's
+            // Re-edit button can populate the chip context.
+            processingMsg.originalVibe = activeSession.oldVibe.isEmpty ? changeRequest : activeSession.oldVibe
             messages.append(processingMsg)
             let msgIndex = messages.count - 1
 
@@ -392,6 +395,7 @@ struct EditorView: View {
 
                     var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Getting started...")
                     processingMsg.stageTimeline = StageTimeline(mode: "full")
+                    processingMsg.originalVibe = vibe
                     messages.append(processingMsg)
                     let msgIndex = messages.count - 1
 

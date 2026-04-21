@@ -35,6 +35,7 @@ struct ChatMessage: Identifiable {
     var error: String?
     var isThinking: Bool = false
     var stageTimeline: StageTimeline?  // Pipeline stage narrative (reference type so mutations propagate)
+    var originalVibe: String?          // For in-chat Re-edit: the vibe that produced this video
 }
 
 enum MessageRole {

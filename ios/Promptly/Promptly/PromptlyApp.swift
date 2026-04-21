@@ -1,8 +1,35 @@
 import SwiftUI
+import UIKit
+
+#if canImport(TikTokOpenShareSDK)
+import TikTokOpenShareSDK
+#endif
+
+/// App delegate stub for SDKs that require AppDelegate hooks (TikTok Open SDK
+/// in particular wants application(_:open:options:) to route share-completion
+/// URLs back to the SDK). Guarded by canImport so the project compiles fine
+/// without the TikTok SDK linked.
+final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        #if canImport(TikTokOpenShareSDK)
+        // TikTok's share-result callback comes back as tiktoksharesdk{ClientKey}://
+        if let scheme = url.scheme, scheme.hasPrefix("tiktoksharesdk") {
+            TikTokURLHandler.handle(url: url)
+            return true
+        }
+        #endif
+        return false
+    }
+}
 
 @main
 struct PromptlyApp: App {
     @State private var auth = AuthService.shared
+    @UIApplicationDelegateAdaptor(PromptlyAppDelegate.self) private var appDelegate
 
     init() {
         // Configure nav bar appearance
