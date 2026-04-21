@@ -19,159 +19,106 @@ struct AccountView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                // Avatar
-                Section {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                                ZStack(alignment: .bottomTrailing) {
-                                    if let urlStr = avatarUrl, let url = URL(string: urlStr) {
-                                        AsyncImage(url: url) { phase in
-                                            if let image = phase.image {
-                                                image.resizable().scaledToFill()
-                                            } else { initialAvatar }
-                                        }
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(Circle())
-                                    } else {
-                                        initialAvatar
-                                    }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Large title
+                    Text("Account")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                        .padding(.bottom, 24)
 
-                                    Image(systemName: "camera.circle.fill")
-                                        .font(.system(size: 24))
-                                        .foregroundStyle(.white, Color.white)
-                                        .shadow(radius: 2)
-                                        .offset(x: 4, y: 4)
-                                }
-                            }
-                            .onChange(of: selectedPhoto) { _, item in
-                                uploadAvatar(item)
-                            }
+                    profileRow
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
 
-                            Text(userName.isEmpty ? "User" : userName)
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text(userEmail)
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    divider
 
-                // Profile
-                Section("Profile") {
-                    settingsRow("Name", value: userName.isEmpty ? "Not set" : userName) {
+                    row("Name", value: userName.isEmpty ? "Not set" : userName) {
                         newName = userName
                         showNameEdit = true
                     }
-                    settingsRow("Email", value: userEmail) {
+                    divider
+
+                    row("Email", value: userEmail) {
                         newEmail = userEmail
                         showEmailEdit = true
                     }
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    divider
 
-                // Subscription
-                Section("Subscription") {
-                    Button {
-                        if tier == "pro" {
-                            // Open billing portal
-                            if let url = URL(string: "https://usepromptly.app/#pricing") {
-                                UIApplication.shared.open(url)
-                            }
-                        } else {
-                            if let url = URL(string: "https://usepromptly.app/#pricing") {
-                                UIApplication.shared.open(url)
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text("Plan")
-                                .foregroundColor(.white)
-                            Spacer()
-                            Text(tier == "pro" ? "PRO" : "FREE")
-                                .font(.system(size: 12, weight: .bold))
-                                .padding(.horizontal, 10).padding(.vertical, 3)
-                                .background(tier == "pro" ? Color(.quaternaryLabel) : Color(.separator))
-                                .foregroundColor(tier == "pro" ? Color.white : .secondary)
-                                .cornerRadius(6)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Color(.separator))
+                    row("Subscription", badge: tier == "pro" ? "PRO" : "FREE") {
+                        if let url = URL(string: "https://usepromptly.app/#pricing") {
+                            UIApplication.shared.open(url)
                         }
                     }
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    divider
 
-                // Support
-                Section("Support") {
-                    settingsRow("Help & Support") {
+                    row("Change password") {
+                        showPasswordReset = true
+                    }
+                    divider
+
+                    row("Help & support") {
                         if let url = URL(string: "https://usepromptly.app/help.html") {
                             UIApplication.shared.open(url)
                         }
                     }
-                    settingsRow("Change Password") {
-                        showPasswordReset = true
+                    divider
+
+                    row("Privacy policy") {
+                        if let url = URL(string: "https://usepromptly.app/privacy.html") {
+                            UIApplication.shared.open(url)
+                        }
                     }
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    divider
 
-                // Legal
-                Section("Legal") {
-                    externalRow("Privacy Policy", url: "https://usepromptly.app/privacy.html")
-                    externalRow("Terms of Service", url: "https://usepromptly.app/terms.html")
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    row("Terms of service") {
+                        if let url = URL(string: "https://usepromptly.app/terms.html") {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    divider
 
-                // Sign out
-                Section {
+                    // Log out button
                     Button { AuthService.shared.signOut() } label: {
-                        Text("Sign Out")
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        Text("Log out")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color.white)
+                            .clipShape(Capsule())
                     }
-                }
-                .listRowBackground(Color(.secondarySystemBackground))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 32)
 
-                // Delete account
-                Section {
-                    Button { showDeleteAccount = true } label: {
-                        Text("Delete Account")
-                            .font(.system(size: 14))
-                            .foregroundColor(.red.opacity(0.6))
-                            .frame(maxWidth: .infinity, alignment: .center)
+                    // Delete + version
+                    VStack(spacing: 14) {
+                        Button { showDeleteAccount = true } label: {
+                            Text("Delete account")
+                                .font(.system(size: 13))
+                                .foregroundColor(.red.opacity(0.75))
+                        }
+
+                        Text(versionString)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(.tertiaryLabel))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 40)
                 }
-                .listRowBackground(Color.clear)
-
-                Section {
-                    Text("Promptly v1.0")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(.quaternaryLabel))
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .listRowBackground(Color.clear)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
             .background(Color(.systemBackground))
-            .navigationTitle("Account")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .task { await loadProfile() }
-            .alert("Edit Name", isPresented: $showNameEdit) {
+            .alert("Edit name", isPresented: $showNameEdit) {
                 TextField("Name", text: $newName)
                 Button("Save") { saveName() }
                 Button("Cancel", role: .cancel) {}
             }
-            .alert("Edit Email", isPresented: $showEmailEdit) {
+            .alert("Edit email", isPresented: $showEmailEdit) {
                 TextField("Email", text: $newEmail)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -180,14 +127,14 @@ struct AccountView: View {
             } message: {
                 Text("You'll receive a confirmation email at your new address.")
             }
-            .alert("Reset Password", isPresented: $showPasswordReset) {
-                Button("Send Reset Email") { sendPasswordReset() }
+            .alert("Reset password", isPresented: $showPasswordReset) {
+                Button("Send reset email") { sendPasswordReset() }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text(passwordResetSent ? "Reset email sent to \(userEmail)" : "We'll send a password reset link to \(userEmail)")
             }
-            .alert("Delete Account", isPresented: $showDeleteAccount) {
-                Button("Delete My Account", role: .destructive) { deleteAccount() }
+            .alert("Delete account", isPresented: $showDeleteAccount) {
+                Button("Delete my account", role: .destructive) { deleteAccount() }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently delete your account and all your data. This cannot be undone.")
@@ -195,44 +142,115 @@ struct AccountView: View {
         }
     }
 
-    // MARK: - Components
+    // MARK: - Profile row
 
-    private var initialAvatar: some View {
+    private var profileRow: some View {
+        HStack(spacing: 14) {
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    avatarCircle
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 20, height: 20)
+                        .overlay {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.black)
+                        }
+                        .overlay(
+                            Circle().stroke(Color(.systemBackground), lineWidth: 2)
+                        )
+                }
+            }
+            .onChange(of: selectedPhoto) { _, item in uploadAvatar(item) }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(userName.isEmpty ? "User" : userName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(userEmail)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var avatarCircle: some View {
+        if let urlStr = avatarUrl, let url = URL(string: urlStr) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    initialCircle
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(Circle())
+        } else {
+            initialCircle
+        }
+    }
+
+    private var initialCircle: some View {
         Circle()
             .fill(Color(.tertiarySystemBackground))
-            .frame(width: 80, height: 80)
+            .frame(width: 56, height: 56)
             .overlay {
                 Text(userInitial)
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.secondary)
             }
     }
 
-    private func settingsRow(_ label: String, value: String? = nil, action: @escaping () -> Void) -> some View {
+    // MARK: - Row
+
+    private func row(_ label: String, value: String? = nil, badge: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
-                Text(label).foregroundColor(.white)
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.system(size: 17))
+                    .foregroundColor(.white)
                 Spacer()
-                if let v = value {
-                    Text(v).foregroundColor(Color(.secondaryLabel))
+                if let badge = badge {
+                    Text(badge)
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(badge == "PRO" ? Color.white : Color(.tertiarySystemBackground))
+                        .foregroundColor(badge == "PRO" ? .black : .secondary)
+                        .clipShape(Capsule())
+                } else if let v = value {
+                    Text(v)
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(.separator))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
             }
+            .padding(.horizontal, 20)
+            .frame(height: 56)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
-    private func externalRow(_ label: String, url: String) -> some View {
-        Link(destination: URL(string: url)!) {
-            HStack {
-                Text(label).foregroundColor(.white)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(.separator))
-            }
-        }
+    private var divider: some View {
+        Rectangle()
+            .fill(Color(.separator).opacity(0.5))
+            .frame(height: 0.5)
+            .padding(.horizontal, 20)
+    }
+
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
+        return "Promptly v\(version) (\(build))"
     }
 
     // MARK: - Actions
@@ -257,7 +275,6 @@ struct AccountView: View {
 
     private func saveEmail() {
         Task {
-            // Supabase email change requires updateUser
             guard let token = AuthService.shared.accessToken else { return }
             let url = URL(string: "https://ejxkzsfruykvgeouymfy.supabase.co/auth/v1/user")!
             var request = URLRequest(url: url)
@@ -294,7 +311,6 @@ struct AccountView: View {
             let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqeGt6c2ZydXlrdmdlb3V5bWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMjE5ODgsImV4cCI6MjA3ODg5Nzk4OH0.KSH6xO3bPv9aK36zGZKCtnNCa1z7xI_H-VKx5ZRaTOE"
             let filePath = "\(userId).jpg"
 
-            // Upload to Supabase Storage
             var uploadReq = URLRequest(url: URL(string: "\(supabaseUrl)/storage/v1/object/avatars/\(filePath)")!)
             uploadReq.httpMethod = "POST"
             uploadReq.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -304,10 +320,8 @@ struct AccountView: View {
             uploadReq.httpBody = data
             _ = try? await URLSession.shared.data(for: uploadReq)
 
-            // Get public URL
             let publicUrl = "\(supabaseUrl)/storage/v1/object/public/avatars/\(filePath)?t=\(Int(Date().timeIntervalSince1970))"
 
-            // Update user metadata
             var updateReq = URLRequest(url: URL(string: "\(supabaseUrl)/auth/v1/user")!)
             updateReq.httpMethod = "PUT"
             updateReq.setValue("application/json", forHTTPHeaderField: "Content-Type")

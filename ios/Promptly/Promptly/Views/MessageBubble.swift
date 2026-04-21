@@ -98,10 +98,14 @@ struct ThinkingDots: View {
 }
 
 // MARK: - Processing Indicator (ChatGPT-style — inline, thin progress line)
+// Displays a smoothed percent that creeps forward one-by-one toward the target,
+// so the bar never bounces even if the server sends a lower value on its first event.
 
 struct ProcessingIndicator: View {
     let stepMessage: String
-    let progress: Int
+    let progress: Int              // target value set by upload/SSE
+    @State private var displayed: Int = 0
+    @State private var ticker: Timer?
     @State private var pulse = false
 
     var body: some View {
@@ -120,10 +124,11 @@ struct ProcessingIndicator: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(max(progress, 1))%")
+                Text("\(max(displayed, 1))%")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
             }
 
             GeometryReader { geo in
@@ -132,14 +137,35 @@ struct ProcessingIndicator: View {
                         .fill(Color(.separator).opacity(0.5))
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(progress) / 100.0))))
-                        .animation(.easeOut(duration: 0.4), value: progress)
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(displayed) / 100.0))))
                 }
             }
             .frame(height: 3)
         }
         .frame(maxWidth: 320, alignment: .leading)
-        .onAppear { pulse = true }
+        .animation(.easeOut(duration: 0.18), value: displayed)
+        .onAppear {
+            pulse = true
+            startTicker()
+        }
+        .onDisappear { stopTicker() }
+    }
+
+    private func startTicker() {
+        stopTicker()
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
+            let delta = progress - displayed
+            guard delta > 0 else { return }
+            // Creep one per tick normally; accelerate when far behind so we
+            // catch up to a big jump (e.g. 0 → 35 after upload) in <1s.
+            let step = max(1, delta / 5)
+            displayed = min(progress, displayed + step)
+        }
+    }
+
+    private func stopTicker() {
+        ticker?.invalidate()
+        ticker = nil
     }
 }
 
