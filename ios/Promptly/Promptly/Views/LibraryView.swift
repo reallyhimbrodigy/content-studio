@@ -249,9 +249,46 @@ struct VideoDetailSheet: View {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Large thumbnail + tap-to-play card — the actual video opens in
+                // iOS's native fullscreen video modal via VideoPlayerPresenter
+                // (no embedded AVPlayerViewController = no overlapping UI).
                 if let urlStr = edit.rendered_video_url {
-                    NativeVideoPlayer(urlStr: urlStr)
-                        .ignoresSafeArea(edges: .top)
+                    Button {
+                        VideoPlayerPresenter.present(urlString: urlStr)
+                    } label: {
+                        ZStack {
+                            if let thumbStr = edit.thumbnail_url, let thumbUrl = URL(string: thumbStr) {
+                                AsyncImage(url: thumbUrl) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().aspectRatio(contentMode: .fit)
+                                    } else {
+                                        Color(.secondarySystemBackground)
+                                    }
+                                }
+                            } else {
+                                Color(.secondarySystemBackground)
+                            }
+
+                            LinearGradient(
+                                colors: [.black.opacity(0.0), .black.opacity(0.35)],
+                                startPoint: .center, endPoint: .bottom
+                            )
+                            .allowsHitTesting(false)
+
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .frame(width: 72, height: 72)
+                                .overlay {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 26, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .offset(x: 2)
+                                }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: .infinity)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 VStack(spacing: 14) {

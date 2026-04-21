@@ -335,8 +335,15 @@ struct EditorView: View {
             isSending = true
 
             var userMsg = ChatMessage(role: .user, content: changeRequest)
-            // Use nil thumbnail here — the server's Library already shows the thumbnail,
-            // and fetching the remote URL inline here adds visual noise without info.
+            // Show the prior rendered thumbnail as an attachment on the user's
+            // side of the re-edit message so the chat clearly reflects that a
+            // video is being modified (not a hallucinated edit on nothing).
+            userMsg.videoAttachment = VideoAttachment(
+                localUrl: URL(fileURLWithPath: ""),
+                fileName: "",
+                thumbnail: nil,
+                remoteThumbnailUrl: activeSession.thumbnailUrl
+            )
             messages.append(userMsg)
 
             let processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")

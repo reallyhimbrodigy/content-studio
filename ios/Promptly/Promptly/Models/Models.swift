@@ -44,6 +44,9 @@ struct VideoAttachment {
     let localUrl: URL
     let fileName: String
     var thumbnail: UIImage?
+    // Remote thumbnail for re-edit flows where we don't have a local UIImage —
+    // MessageBubble falls back to this AsyncImage URL when `thumbnail` is nil.
+    var remoteThumbnailUrl: String?
 }
 
 class PendingVideo: Identifiable, ObservableObject {

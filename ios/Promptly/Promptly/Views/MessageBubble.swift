@@ -21,12 +21,24 @@ struct MessageBubble: View {
     @ViewBuilder
     private var userContent: some View {
         VStack(alignment: .trailing, spacing: 8) {
-            if let attachment = message.videoAttachment, let thumb = attachment.thumbnail {
-                Image(uiImage: thumb)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+            if let attachment = message.videoAttachment {
+                if let thumb = attachment.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 172, height: 229)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                } else if let thumbUrlStr = attachment.remoteThumbnailUrl, let thumbUrl = URL(string: thumbUrlStr) {
+                    AsyncImage(url: thumbUrl) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Color(.tertiarySystemBackground)
+                        }
+                    }
                     .frame(width: 172, height: 229)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
             }
 
             if !message.content.isEmpty {
@@ -98,14 +110,20 @@ struct ThinkingDots: View {
 }
 
 // MARK: - Processing Indicator (ChatGPT-style — inline, thin progress line)
-// Displays a smoothed percent that creeps forward one-by-one toward the target,
-// so the bar never bounces even if the server sends a lower value on its first event.
+//
+// Smoothly creeps displayed toward the target each tick. Past bug: we used
+// Timer.scheduledTimer whose closure captured `progress` from a value-type
+// View struct, freezing the target at whatever it was at ticker creation
+// time (usually 0). Result: bar stuck at 1% forever on re-edit because there
+// was no pre-SSE upload phase to update it. Fix: mirror `progress` into a
+// @State var via .onChange(initial: true); .task reads the @State through
+// the property wrapper so it always sees the live value.
 
 struct ProcessingIndicator: View {
     let stepMessage: String
-    let progress: Int              // target value set by upload/SSE
+    let progress: Int              // target from upload/SSE
     @State private var displayed: Int = 0
-    @State private var ticker: Timer?
+    @State private var target: Int = 0
     @State private var pulse = false
 
     var body: some View {
@@ -144,41 +162,42 @@ struct ProcessingIndicator: View {
         }
         .frame(maxWidth: 320, alignment: .leading)
         .animation(.easeOut(duration: 0.18), value: displayed)
-        .onAppear {
-            pulse = true
-            startTicker()
+        .onAppear { pulse = true }
+        .onChange(of: progress, initial: true) { _, new in
+            if new > target { target = new }
         }
-        .onDisappear { stopTicker() }
-    }
-
-    private func startTicker() {
-        stopTicker()
-        ticker = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { _ in
-            let delta = progress - displayed
-            guard delta > 0 else { return }
-            // Creep one per tick normally; accelerate when far behind so we
-            // catch up to a big jump (e.g. 0 → 35 after upload) in <1s.
-            let step = max(1, delta / 5)
-            displayed = min(progress, displayed + step)
+        .task {
+            // One task per view identity. Reads @State `target` + `displayed`
+            // through the property wrapper so it always sees the latest values
+            // even though the enclosing struct is value-typed.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                if Task.isCancelled { break }
+                let delta = target - displayed
+                if delta > 0 {
+                    let step = max(1, delta / 5)
+                    displayed = min(target, displayed + step)
+                }
+            }
         }
-    }
-
-    private func stopTicker() {
-        ticker?.invalidate()
-        ticker = nil
     }
 }
 
 // MARK: - Completed Video (iOS-native card — clean thumbnail, contextMenu for actions)
+//
+// Tapping the thumbnail presents AVPlayerViewController as a true UIKit modal
+// via UIWindowScene — no SwiftUI fullScreenCover wrapper, no custom X button,
+// no NativeVideoPlayer representable. This uses iOS's standard video-modal
+// presentation style (the same one Apple's own apps use): swipe-down to
+// dismiss, native scrubber + PiP + AirPlay + Done button, nothing layered on top.
 
 struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
-    @State private var showFullscreen = false
 
     var body: some View {
         Button {
-            showFullscreen = true
+            VideoPlayerPresenter.present(urlString: videoUrlStr)
         } label: {
             thumbnailContent
                 .frame(maxWidth: 240)
@@ -221,9 +240,6 @@ struct CompletedVideoView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showFullscreen) {
-            FullscreenVideoPlayer(urlStr: videoUrlStr)
-        }
     }
 
     @ViewBuilder
@@ -244,72 +260,57 @@ struct CompletedVideoView: View {
     }
 }
 
-// MARK: - Fullscreen Player (native AVPlayerViewController)
+// MARK: - Video Player Presenter (UIKit-native fullscreen)
+//
+// AVPlayerViewController presented directly via the key window's topmost
+// controller, giving iOS's built-in "immersive video" modal — the same style
+// Safari + Photos + Messages use. No SwiftUI wrapping means no overlapping or
+// conflicting UI layers. Audio session is configured for .playback so the
+// silent switch and interruptions don't kill audio.
 
-struct FullscreenVideoPlayer: View {
-    let urlStr: String
-    @Environment(\.dismiss) private var dismiss
+enum VideoPlayerPresenter {
+    @MainActor
+    static func present(urlString: String) {
+        guard let url = URL(string: urlString) else { return }
 
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-
-            NativeVideoPlayer(urlStr: urlStr)
-                .ignoresSafeArea()
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-            }
-            .padding(.leading, 16)
-            .padding(.top, 8)
-        }
-        .statusBarHidden(true)
-    }
-}
-
-struct NativeVideoPlayer: UIViewControllerRepresentable {
-    let urlStr: String
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        // Default category (.soloAmbient) mutes on silent switch and drops audio
-        // during interruptions. .playback is the standard for video apps —
-        // survives the ring switch and handles route changes cleanly.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        let vc = AVPlayerViewController()
-        vc.showsPlaybackControls = true
-        vc.allowsPictureInPicturePlayback = true
-        vc.videoGravity = .resizeAspect
-        vc.entersFullScreenWhenPlaybackBegins = false
-        vc.view.backgroundColor = .black
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 10
 
-        if let url = URL(string: urlStr) {
-            let item = AVPlayerItem(url: url)
-            // Keep a generous forward buffer so audio doesn't starve during streaming.
-            item.preferredForwardBufferDuration = 10
+        let player = AVPlayer(playerItem: item)
+        player.automaticallyWaitsToMinimizeStalling = true
+        player.actionAtItemEnd = .pause
 
-            let player = AVPlayer(playerItem: item)
-            player.automaticallyWaitsToMinimizeStalling = true
-            player.actionAtItemEnd = .pause
-            vc.player = player
+        let playerVC = AVPlayerViewController()
+        playerVC.player = player
+        playerVC.allowsPictureInPicturePlayback = true
+        playerVC.videoGravity = .resizeAspect
+        playerVC.entersFullScreenWhenPlaybackBegins = false
+        playerVC.modalPresentationStyle = .overFullScreen
+        playerVC.modalTransitionStyle = .crossDissolve
+
+        guard let topVC = topmostViewController() else { return }
+        topVC.present(playerVC, animated: true) {
             player.play()
         }
-        return vc
     }
 
-    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
+    @MainActor
+    private static func topmostViewController() -> UIViewController? {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? (UIApplication.shared.connectedScenes.first as? UIWindowScene),
+              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+              let root = window.rootViewController
+        else { return nil }
 
-    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
-        uiViewController.player?.pause()
-        uiViewController.player = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        var current = root
+        while let presented = current.presentedViewController {
+            current = presented
+        }
+        return current
     }
 }
