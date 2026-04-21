@@ -12,30 +12,29 @@
 			<key>CFBundleURLName</key>
 			<string>app.usepromptly.ios</string>
 		</dict>
-		<!--
-			TikTok Open SDK callback URL types. The SDK requires TWO schemes:
-			tiktokopensdk{ClientKey} — OAuth callback
-			tiktoksharesdk{ClientKey} — share result callback
-			Fill in TikTokClientKey below after registering at
-			https://developers.tiktok.com/ then replace the placeholder strings.
-		-->
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>tiktok-opensdk</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>tiktokopensdkREPLACE_WITH_CLIENT_KEY</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>tiktok-sharesdk</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>tiktoksharesdkREPLACE_WITH_CLIENT_KEY</string>
-			</array>
-		</dict>
 	</array>
+	<!--
+		TIKTOK OPEN SDK SETUP:
+		After registering at https://developers.tiktok.com/ and obtaining a
+		Client Key, add TWO more entries to CFBundleURLTypes above:
+
+			<dict>
+				<key>CFBundleURLName</key><string>tiktok-opensdk</string>
+				<key>CFBundleURLSchemes</key>
+				<array><string>tiktokopensdk{CLIENT_KEY}</string></array>
+			</dict>
+			<dict>
+				<key>CFBundleURLName</key><string>tiktok-sharesdk</string>
+				<key>CFBundleURLSchemes</key>
+				<array><string>tiktoksharesdk{CLIENT_KEY}</string></array>
+			</dict>
+
+		Replace {CLIENT_KEY} with the raw client key (letters and digits only,
+		no braces). App Store Connect validates URL schemes against RFC 1738
+		so these entries cannot exist with placeholder text; they must be
+		added only after you have the real key.
+	-->
+
 	<!--
 		Schemes this app needs to canOpenURL against. Without these,
 		UIApplication.canOpenURL returns false for the target app and the
