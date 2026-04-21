@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://usepromptly.app/schemas/plandiff.schema.json",
+  "title": "PromptlyPlanDiffResponse",
+  "description": "Response shape from the plan-diff Gemini call. The model self-classifies the re-edit as tweak (surgical preservation), reinterpret (fresh direction), or needs_clarification. When classification=tweak a full echo of the plan is returned under new_plan with minimal changes. When reinterpret, fused_vibe contains the merged creative direction. When needs_clarification, only clarification_question is populated and no render should start.",
+  "type": "object",
+  "required": ["classification", "human_summary", "changed_fields"],
+  "properties": {
+    "classification": {
+      "enum": ["tweak", "reinterpret", "needs_clarification"]
+    },
+    "clarification_question": {
+      "type": ["string", "null"],
+      "description": "When classification=needs_clarification, the exact question to show the user."
+    },
+    "new_plan": {
+      "description": "Populated only when classification=tweak. Must echo every field from the old plan except what the user explicitly changed.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "editplan.schema.json" }
+      ]
+    },
+    "fused_vibe": {
+      "type": ["string", "null"],
+      "description": "Populated only when classification=reinterpret. The merged vibe_input to feed the full pipeline."
+    },
+    "changed_fields": {
+      "type": "array",
+      "description": "Dotted paths of fields that differ from the old plan, e.g. ['caption_style', 'cuts[3].speed']. Empty array for reinterpret.",
+      "items": { "type": "string" }
+    },
+    "human_summary": {
+      "type": "string",
+      "description": "One-sentence human-readable description of what changed and what was preserved. Shown in the result message."
+    }
+  }
+}

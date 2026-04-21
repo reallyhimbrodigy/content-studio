@@ -3,6 +3,7 @@ import PhotosUI
 import UIKit
 
 struct EditorView: View {
+    @EnvironmentObject private var appState: AppState
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -10,6 +11,7 @@ struct EditorView: View {
     @State private var isSending = false
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
+    @State private var reeditSession: ReeditSession?
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -24,6 +26,8 @@ struct EditorView: View {
                 if !pendingVideos.isEmpty {
                     pendingAttachments
                 }
+
+                reeditChip
 
                 inputBar
             }
@@ -44,10 +48,80 @@ struct EditorView: View {
                 .ignoresSafeArea()
             }
             .onAppear {
+                // Pick up any pending re-edit session posted by Library and consume it.
+                if let pending = appState.pendingReedit {
+                    reeditSession = pending
+                    appState.pendingReedit = nil
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     isInputFocused = true
                 }
             }
+            .onChange(of: appState.pendingReedit) { _, newSession in
+                if let s = newSession {
+                    reeditSession = s
+                    appState.pendingReedit = nil
+                    isInputFocused = true
+                }
+            }
+        }
+    }
+
+    // MARK: - Re-edit context chip
+
+    @ViewBuilder
+    private var reeditChip: some View {
+        if let session = reeditSession {
+            HStack(spacing: 10) {
+                if let thumbUrl = session.thumbnailUrl, let url = URL(string: thumbUrl) {
+                    AsyncImage(url: url) { phase in
+                        if let img = phase.image {
+                            img.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Color(.tertiarySystemBackground)
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Re-editing")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Text(session.oldVibe.isEmpty ? "Previous edit" : session.oldVibe)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { reeditSession = nil }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(.tertiarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -249,7 +323,46 @@ struct EditorView: View {
     private func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideos = !pendingVideos.isEmpty
+        let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
+
+        // ── Re-edit path — no upload; server loads source from DB
+        if reeditActive, let session = reeditSession {
+            let changeRequest = text.isEmpty ? "Apply the requested changes." : text
+            inputText = ""
+            let activeSession = session
+            reeditSession = nil
+            isSending = true
+
+            var userMsg = ChatMessage(role: .user, content: changeRequest)
+            // Use nil thumbnail here — the server's Library already shows the thumbnail,
+            // and fetching the remote URL inline here adds visual noise without info.
+            messages.append(userMsg)
+
+            let processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
+            messages.append(processingMsg)
+            let msgIndex = messages.count - 1
+
+            Task {
+                do {
+                    let newJobId = try await APIService.shared.reeditFromJob(
+                        originalJobId: activeSession.originalJobId,
+                        changeRequest: changeRequest
+                    )
+                    await MainActor.run {
+                        messages[msgIndex].jobId = newJobId
+                        startSSE(jobId: newJobId, messageIndex: msgIndex)
+                    }
+                } catch {
+                    await MainActor.run {
+                        messages[msgIndex].jobStatus = "failed"
+                        messages[msgIndex].error = error.localizedDescription
+                    }
+                }
+                await MainActor.run { isSending = false }
+            }
+            return
+        }
 
         isSending = true
         let videos = pendingVideos
@@ -381,6 +494,17 @@ struct EditorView: View {
             if event.status == "failed" || event.status == "error" {
                 messages[messageIndex].jobStatus = "failed"
                 messages[messageIndex].error = event.error ?? "Something went wrong."
+                client.disconnect(); sseClients.removeValue(forKey: jobId)
+            }
+
+            // Re-edit plan-diff asked for clarification — surface the question as a
+            // regular assistant message and stop the spinner. User can start over
+            // from Library with a clearer description.
+            if event.status == "needs_clarification" {
+                let q = (event.message ?? "").isEmpty ? "Can you describe the change in more detail?" : (event.message ?? "")
+                messages[messageIndex].jobStatus = "completed"
+                messages[messageIndex].content = q
+                messages[messageIndex].renderedVideoUrl = nil
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
         }

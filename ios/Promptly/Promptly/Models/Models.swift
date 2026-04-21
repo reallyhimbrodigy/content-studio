@@ -98,6 +98,22 @@ struct JobCreateResponse: Codable {
     var resolvedJobId: String? { job_id ?? jobId }
 }
 
+struct ReeditSession: Identifiable, Equatable {
+    let id = UUID()
+    let originalJobId: String
+    let oldVibe: String
+    let thumbnailUrl: String?
+}
+
+/// Shared cross-tab state. Library sets `pendingReedit` + switches `selectedTab`
+/// to 0; EditorView consumes the session, shows the context chip, and clears it
+/// once the re-edit job dispatches.
+final class AppState: ObservableObject {
+    static let shared = AppState()
+    @Published var selectedTab: Int = 0
+    @Published var pendingReedit: ReeditSession?
+}
+
 struct ChatResponse: Codable {
     let reply: String?
     let error: String?

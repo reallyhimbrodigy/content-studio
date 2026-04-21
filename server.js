@@ -10214,6 +10214,108 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Re-edit: create a derivative job from an existing completed edit ──
+  // Body: { original_job_id: string, change_request: string }
+  // Behavior:
+  //   • Verifies caller owns the original job and it completed successfully.
+  //   • If the original job has a persisted edit_recipe, runs in "tweak" mode
+  //     (Gemini plan-diff → surgical render preserving everything not explicitly
+  //     changed). If plan-diff classifies as reinterpret, worker auto-fuses the
+  //     old vibe with the change_request and re-renders from source.
+  //   • If the original is a legacy job missing edit_recipe, falls back to
+  //     "reinterpret" mode: worker treats change_request as fresh creative
+  //     direction combined with the old vibe, full pipeline from source.
+  //   • Free-tier users consume one of their 5 edits per re-edit.
+  if (parsed.pathname === '/api/video-jobs/re-edit' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const originalJobId = String(body?.original_job_id || body?.originalJobId || '').trim();
+        const changeRequest = String(body?.change_request || body?.changeRequest || '').trim();
+        if (!originalJobId) return sendJson(res, 400, { error: 'original_job_id is required' });
+        if (!changeRequest) return sendJson(res, 400, { error: 'change_request is required' });
+
+        // Load the original job — must exist, belong to this user, and have a source URL
+        const { data: orig, error: origErr } = await supabaseAdmin
+          .from('video_jobs')
+          .select('id, user_id, status, video_url, vibe_input, edit_recipe, transcript, analysis_data, resolved_broll, trend_snapshot')
+          .eq('id', originalJobId)
+          .single();
+        if (origErr || !orig) {
+          return sendJson(res, 404, { error: 'Original edit not found' });
+        }
+        if (orig.user_id !== authUser.id) {
+          return sendJson(res, 403, { error: 'Not authorized to re-edit this video' });
+        }
+        if (!orig.video_url) {
+          return sendJson(res, 400, { error: 'Original job has no source video — cannot re-edit' });
+        }
+        if (orig.status !== 'completed') {
+          return sendJson(res, 400, { error: 'Only completed edits can be re-edited' });
+        }
+
+        const entitlement = await assertProEntitled(authUser.id);
+        if (!entitlement.isPro) {
+          const completedCount = await countCompletedVideoEdits(authUser.id);
+          if (completedCount >= 5) {
+            return sendJson(res, 403, {
+              error: 'free_limit_reached',
+              message: 'You have used all 5 free edits. Upgrade to Promptly Pro for unlimited edits without watermarks.',
+            });
+          }
+        }
+
+        // Mode resolution: tweak requires a saved edit_recipe; otherwise reinterpret.
+        const hasSavedPlan = orig.edit_recipe && typeof orig.edit_recipe === 'object';
+        const mode = hasSavedPlan ? 'tweak' : 'reinterpret';
+        console.log(`[re-edit] originalJobId=${originalJobId} mode=${mode} changeRequest="${changeRequest.slice(0, 120)}"`);
+
+        // Create the derivative job. vibe_input stays as the ORIGINAL vibe for the
+        // dispatch call; the worker's plan-diff fuses it with change_request for
+        // reinterpret, or uses it as the "prior vibe" grounding for tweak.
+        const newJob = await createQueuedVideoJob({
+          userId: authUser.id,
+          videoUrl: orig.video_url,
+          vibeInput: orig.vibe_input || 'Re-edit',
+        });
+        console.log(`[re-edit] New job ${newJob.id} created (parent=${originalJobId})`);
+
+        await dispatchJobToModal({
+          pushProgressToSSE,
+          jobId: newJob.id,
+          videoUrl: orig.video_url,
+          vibe: orig.vibe_input || '',
+          userId: authUser.id,
+          // Re-edit payload
+          mode,
+          editPlan: hasSavedPlan ? orig.edit_recipe : null,
+          transcript: orig.transcript || null,
+          analysisData: orig.analysis_data || null,
+          resolvedBroll: Array.isArray(orig.resolved_broll) ? orig.resolved_broll : null,
+          trendSnapshot: orig.trend_snapshot || null,
+          changeRequest,
+          oldVibe: orig.vibe_input || '',
+          parentJobId: originalJobId,
+        });
+
+        return sendJson(res, 200, {
+          success: true,
+          job_id: newJob.id,
+          status: newJob.status || 'queued',
+          mode,
+          parent_job_id: originalJobId,
+        });
+      } catch (error) {
+        console.error('[re-edit] Error:', error);
+        const status = error?.statusCode || 500;
+        return sendJson(res, status, { error: error?.message || 'Re-edit failed' });
+      }
+    })();
+    return;
+  }
+
   const videoJobsStatusMatch = parsed.pathname && parsed.pathname.match(/^\/api\/video-jobs\/([^/]+)$/i);
   if (videoJobsStatusMatch && req.method === 'GET') {
     (async () => {

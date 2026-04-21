@@ -2,6 +2,7 @@ import SwiftUI
 import AVKit
 
 struct LibraryView: View {
+    @EnvironmentObject private var appState: AppState
     @State private var edits: [VideoJob] = []
     @State private var isLoading = true
     @State private var editToDelete: VideoJob?
@@ -67,6 +68,8 @@ struct LibraryView: View {
                 }, onDelete: {
                     editToDelete = edit
                     showDeleteConfirm = true
+                }, onReedit: {
+                    startReedit(edit)
                 })
                 .listRowBackground(Color(.secondarySystemBackground))
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -76,6 +79,16 @@ struct LibraryView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
+    }
+
+    private func startReedit(_ edit: VideoJob) {
+        guard edit.status == "completed" else { return }
+        appState.pendingReedit = ReeditSession(
+            originalJobId: edit.id,
+            oldVibe: edit.vibe_input ?? "",
+            thumbnailUrl: edit.thumbnail_url
+        )
+        appState.selectedTab = 0  // jump to Edit tab
     }
 
     private func loadEdits() async {
@@ -98,6 +111,7 @@ struct EditRow: View {
     let onTap: () -> Void
     let onShare: () -> Void
     let onDelete: () -> Void
+    let onReedit: () -> Void
     @State private var showMenu = false
 
     var body: some View {
@@ -154,6 +168,11 @@ struct EditRow: View {
 
                 // Three-dot menu
                 Menu {
+                    if edit.status == "completed" {
+                        Button(action: onReedit) {
+                            Label("Re-edit", systemImage: "wand.and.stars")
+                        }
+                    }
                     if edit.status == "completed", let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
                         ShareLink(item: url) {
                             Label("Share", systemImage: "square.and.arrow.up")

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://usepromptly.app/schemas/editplan.schema.json",
+  "title": "PromptlyEditPlan",
+  "description": "Canonical project-file for a Promptly render. Given this plan + source video + transcript + resolved_broll, the worker render is deterministic (pixel-level). The shape mirrors the sanitized edit_recipe returned by handler.py.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["cuts", "caption_style", "aspect_ratio"],
+  "properties": {
+    "notes": {
+      "type": "string",
+      "description": "<=50w rationale from the plan generator"
+    },
+    "hook_clip": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["source_start", "source_end"],
+          "properties": {
+            "source_start": { "type": "number", "minimum": 0 },
+            "source_end": { "type": "number", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "thumbnail_timestamp": { "type": ["number", "null"], "minimum": 0 },
+    "caption_style": {
+      "enum": ["none", "volt", "clarity", "impact", "ember", "velocity", "archive", "lumen", "rebel"]
+    },
+    "caption_position": {
+      "enum": ["lower-third", "top", "center", "bottom"],
+      "default": "lower-third"
+    },
+    "caption_keywords": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "audio_denoise": { "type": "boolean" },
+    "outro": {
+      "enum": ["none", "fade_black", "fade_white"],
+      "default": "none"
+    },
+    "aspect_ratio": {
+      "enum": ["9:16"]
+    },
+    "pacing": {
+      "enum": ["fast", "medium", "slow"],
+      "default": "medium"
+    },
+    "opening_zoom": {
+      "enum": ["none", "slow_in", "slow_out", "punch_in", "punch_out", "cut_zoom"]
+    },
+    "speed_curve": {
+      "oneOf": [
+        { "const": "none" },
+        {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["t", "speed"],
+            "properties": {
+              "t": { "type": "number", "minimum": 0 },
+              "speed": { "type": "number", "minimum": 0.25, "maximum": 2.0 }
+            }
+          }
+        }
+      ]
+    },
+    "emphasis_moments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["t", "word_indices", "type", "intensity"],
+        "properties": {
+          "t": { "type": "number", "minimum": 0 },
+          "word_indices": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 1
+          },
+          "type": {
+            "enum": ["punchline", "revelation", "statement", "reaction", "question", "transition"]
+          },
+          "intensity": { "enum": ["high", "medium"] },
+          "duration": { "type": "number", "minimum": 0.5, "maximum": 4.0, "default": 2.5 }
+        }
+      }
+    },
+    "text_overlays": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["text", "position", "appear_at_clip", "style"],
+        "properties": {
+          "text": { "type": "string", "maxLength": 32 },
+          "position": { "enum": ["top", "bottom", "center"] },
+          "appear_at_clip": { "type": "integer", "minimum": -1 },
+          "style": { "enum": ["title", "callout", "cta"] }
+        }
+      }
+    },
+    "sound_effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["t", "sound", "word"],
+        "properties": {
+          "t": { "type": "number", "minimum": 0 },
+          "sound": {
+            "enum": [
+              "boom", "hit", "drum_roll", "reverse", "ching", "ding", "click",
+              "camera_shutter", "sad_trombone", "typing", "whoosh_slow",
+              "transition_smooth", "thunder", "pop"
+            ]
+          },
+          "word": { "type": "string" }
+        }
+      }
+    },
+    "broll_clips": {
+      "type": "array",
+      "description": "B-roll entries. Planner emits keyword + word index range; the worker writes back persistence fields (pexels_video_id, pexels_file_url, clip_in, clip_out, width, height) after the first render. When persistence fields are present the worker skips Pexels search + Gemini pick entirely and downloads the exact same asset.",
+      "items": {
+        "type": "object",
+        "required": ["keyword", "start_word_index", "end_word_index"],
+        "properties": {
+          "keyword": { "type": "string" },
+          "start_word_index": { "type": "integer", "minimum": 0 },
+          "end_word_index": { "type": "integer", "minimum": 0 },
+          "reason": { "type": "string" },
+          "pexels_video_id": { "type": ["integer", "null"] },
+          "pexels_file_url": { "type": ["string", "null"] },
+          "clip_in": { "type": ["number", "null"], "minimum": 0 },
+          "clip_out": { "type": ["number", "null"], "minimum": 0 },
+          "width": { "type": ["integer", "null"] },
+          "height": { "type": ["integer", "null"] },
+          "duration": { "type": ["number", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "visual_effects": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["type", "t"],
+        "properties": {
+          "type": { "enum": ["white_flash"] },
+          "t": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["after_word_index", "type"],
+        "properties": {
+          "after_word_index": { "type": "integer", "minimum": 0 },
+          "type": {
+            "enum": [
+              "fadewhite", "fadeblack", "dissolve",
+              "whip_left", "whip_right",
+              "smoothleft", "smoothright", "smoothup", "smoothdown",
+              "wipeleft", "wiperight", "wipeup", "wipedown",
+              "flash", "glitch", "zoomin"
+            ]
+          }
+        }
+      }
+    },
+    "remove_words": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["word_index", "reason"],
+            "properties": {
+              "word_index": { "type": "integer", "minimum": 0 },
+              "reason": { "enum": ["stutter", "false_start", "filler"] }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["start", "end", "reason"],
+            "properties": {
+              "start": { "type": "number", "minimum": 0 },
+              "end": { "type": "number", "minimum": 0 },
+              "reason": { "enum": ["dead_air", "section_skip", "non_speech_gap"] }
+            }
+          }
+        ]
+      }
+    },
+    "cuts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source_start", "source_end", "transition_out", "zoom", "speed"],
+        "properties": {
+          "source_start": { "type": "number", "minimum": 0 },
+          "source_end": { "type": "number", "minimum": 0 },
+          "transition_out": {
+            "enum": [
+              "none", "fade", "fadeblack", "fadewhite", "dissolve",
+              "wipeleft", "wiperight", "wipeup", "wipedown",
+              "smoothleft", "smoothright", "smoothup", "smoothdown",
+              "whip_left", "whip_right", "flash", "glitch", "zoomin"
+            ]
+          },
+          "zoom": {
+            "enum": ["none", "slow_in", "slow_out", "punch_in", "punch_out", "cut_zoom"]
+          },
+          "cut_zoom": { "type": "boolean" },
+          "speed": { "type": "number", "minimum": 0.25, "maximum": 4.0 }
+        }
+      }
+    }
+  }
+}

@@ -43,6 +43,30 @@ class APIService {
         return jobId
     }
 
+    /// Kick off a re-edit derived from an existing completed job. Server loads
+    /// the original job's saved edit_recipe + transcript + analysis + resolved
+    /// B-roll and routes through Modal in either tweak or reinterpret mode.
+    /// Returns the new job id; progress is watched via SSE just like a fresh edit.
+    func reeditFromJob(originalJobId: String, changeRequest: String) async throws -> String {
+        var request = await authorizedRequest("/api/video-jobs/re-edit", method: "POST")
+        request.httpBody = try JSONEncoder().encode([
+            "original_job_id": originalJobId,
+            "change_request": changeRequest,
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let body = try? JSONDecoder().decode(JobCreateResponse.self, from: data)
+            throw APIError.jobCreationFailed(body?.error ?? "Re-edit failed")
+        }
+
+        let result = try JSONDecoder().decode(JobCreateResponse.self, from: data)
+        guard let jobId = result.resolvedJobId else {
+            throw APIError.jobCreationFailed("No job ID returned")
+        }
+        return jobId
+    }
+
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
               let token = await validToken() else { throw APIError.notAuthenticated }

@@ -19,6 +19,8 @@ struct PromptlyApp: App {
         UIScrollView.appearance().keyboardDismissMode = .interactive
     }
 
+    @StateObject private var appState = AppState.shared
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -30,6 +32,7 @@ struct PromptlyApp: App {
                     AuthView()
                 }
             }
+            .environmentObject(appState)
             .preferredColorScheme(.dark)
             .task {
                 await auth.checkSession()
