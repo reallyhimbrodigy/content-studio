@@ -54,6 +54,7 @@ class PendingVideo: Identifiable, ObservableObject {
     @Published var uploadProgress: Double = 0
     @Published var isLoading = true
     var fileName: String = "video.mp4"
+    var uploadTask: Task<Void, Never>?
 }
 
 struct VideoJob: Identifiable, Codable {

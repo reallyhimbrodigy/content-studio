@@ -2,8 +2,9 @@ import AVFoundation
 import UIKit
 
 enum VideoCompressor {
-    /// Compress video for upload — hardware-accelerated, ~2 seconds
-    /// Reduces 100MB+ camera videos to ~15-20MB
+    /// Compress video for upload — hardware-accelerated.
+    /// Uses HEVC highest quality: visually pristine at ~30-50% the file size of H.264 highest.
+    /// Falls back to H.264 highest quality on older devices.
     static func compress(sourceUrl: URL) async throws -> URL {
         let asset = AVURLAsset(url: sourceUrl)
 
@@ -13,7 +14,15 @@ enum VideoCompressor {
         // Remove existing file if any
         try? FileManager.default.removeItem(at: outputUrl)
 
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetMediumQuality) else {
+        let preset: String = {
+            let compatible = AVAssetExportSession.allExportPresets()
+            if compatible.contains(AVAssetExportPresetHEVCHighestQuality) {
+                return AVAssetExportPresetHEVCHighestQuality
+            }
+            return AVAssetExportPresetHighestQuality
+        }()
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw CompressorError.sessionFailed
         }
 

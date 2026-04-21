@@ -43,6 +43,11 @@ struct EditorView: View {
                 }
                 .ignoresSafeArea()
             }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isInputFocused = true
+                }
+            }
         }
     }
 
@@ -140,44 +145,55 @@ struct EditorView: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 0) {
             Button { showVideoPicker = true } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .light))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(Circle())
+                    .frame(width: 36, height: 36)
             }
             .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
 
             TextField("Describe your edit...", text: $inputText, axis: .vertical)
                 .focused($isInputFocused)
-                .lineLimit(1...5)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color(.tertiarySystemBackground))
-                .cornerRadius(20)
+                .lineLimit(1...6)
                 .foregroundColor(.white)
                 .font(.system(size: 16))
-                .tint(Color.white)
+                .tint(.white)
                 .submitLabel(.send)
                 .onSubmit { send() }
+                .padding(.vertical, 9)
+                .padding(.trailing, 4)
 
             Button(action: send) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.black)
-                    .frame(width: 44, height: 44)
-                    .background(canSend ? Color.white : Color(.quaternaryLabel))
+                    .frame(width: 30, height: 30)
+                    .background(Color.white)
                     .clipShape(Circle())
             }
+            .padding(.trailing, 5)
+            .padding(.bottom, 5)
+            .opacity(canSend ? 1 : 0)
+            .scaleEffect(canSend ? 1 : 0.5)
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: canSend)
             .disabled(!canSend)
             .sensoryFeedback(.impact(weight: .medium), trigger: isSending)
         }
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(.tertiarySystemBackground))
+        )
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
         .background(Color(.systemBackground))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(.separator))
+                .frame(height: 0.5)
+        }
     }
 
     private var canSend: Bool {
@@ -203,23 +219,25 @@ struct EditorView: View {
                 pendingVideos.append(pending)
             }
 
-            // Compress → upload pipeline (runs in background)
-            Task {
+            // Compress → upload pipeline (runs in background, task stored so send() can await it)
+            pending.uploadTask = Task {
                 do {
-                    // Step 1: Compress (hardware accelerated, ~2s)
+                    // Step 1: Compress (hardware accelerated)
                     let compressedUrl = try await VideoCompressor.compress(sourceUrl: video.fileUrl)
                     await MainActor.run { pending.fileUrl = compressedUrl }
 
-                    // Step 2: Upload compressed file (much smaller = much faster)
+                    // Step 2: Upload compressed file
                     let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
                     if let uploadUrl = urlResponse.uploadUrl, let publicUrl = urlResponse.publicUrl {
                         try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
                             pending.uploadProgress = progress
                         }
-                        await MainActor.run { pending.uploadedUrl = publicUrl }
+                        await MainActor.run {
+                            pending.uploadProgress = 1.0
+                            pending.uploadedUrl = publicUrl
+                        }
                     }
 
-                    // Clean up temp compressed file
                     try? FileManager.default.removeItem(at: compressedUrl)
                 } catch {}
             }
@@ -256,17 +274,39 @@ struct EditorView: View {
                         do {
                             var videoUrl = video.uploadedUrl
 
-                            if videoUrl == nil, let fileUrl = video.fileUrl {
-                                await MainActor.run { messages[msgIndex].stepMessage = "Preparing your video..." }
-
-                                let compressedUrl = (try? await VideoCompressor.compress(sourceUrl: fileUrl)) ?? fileUrl
-
+                            // Wait for the background upload (started when user attached the video)
+                            // instead of starting a new one. Mirror its progress into the message.
+                            if videoUrl == nil, let task = video.uploadTask {
                                 await MainActor.run { messages[msgIndex].stepMessage = "Uploading..." }
+
+                                let mirror = Task { @MainActor in
+                                    while !Task.isCancelled {
+                                        let pct = max(1, Int(video.uploadProgress * 30))
+                                        if pct > (messages[msgIndex].jobProgress ?? 0) {
+                                            messages[msgIndex].jobProgress = pct
+                                        }
+                                        try? await Task.sleep(nanoseconds: 100_000_000)
+                                    }
+                                }
+
+                                await task.value
+                                mirror.cancel()
+                                videoUrl = video.uploadedUrl
+                            }
+
+                            // Fallback: no background task or it failed — do a fresh upload.
+                            if videoUrl == nil, let fileUrl = video.fileUrl {
+                                await MainActor.run { messages[msgIndex].stepMessage = "Uploading..." }
+                                let compressedUrl = (try? await VideoCompressor.compress(sourceUrl: fileUrl)) ?? fileUrl
                                 let urlResponse = try await APIService.shared.getUploadUrl(fileName: video.fileName)
                                 if let uploadUrlStr = urlResponse.uploadUrl, let publicUrl = urlResponse.publicUrl {
                                     try await APIService.shared.uploadFileToS3(url: uploadUrlStr, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
-                                        let pct = Int(progress * 30)
-                                        messages[msgIndex].jobProgress = pct
+                                        let pct = max(1, Int(progress * 30))
+                                        Task { @MainActor in
+                                            if pct > (messages[msgIndex].jobProgress ?? 0) {
+                                                messages[msgIndex].jobProgress = pct
+                                            }
+                                        }
                                     }
                                     videoUrl = publicUrl
                                 }
@@ -276,7 +316,9 @@ struct EditorView: View {
                             guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
                             await MainActor.run {
                                 messages[msgIndex].stepMessage = "Starting your edit..."
-                                messages[msgIndex].jobProgress = 35
+                                if (messages[msgIndex].jobProgress ?? 0) < 35 {
+                                    messages[msgIndex].jobProgress = 35
+                                }
                             }
                             let jobId = try await APIService.shared.createVideoJob(videoUrl: finalUrl, vibe: vibe)
                             await MainActor.run {
@@ -317,7 +359,14 @@ struct EditorView: View {
         client.onEvent = { event in
             guard messageIndex < messages.count else { return }
             if let status = event.status { messages[messageIndex].jobStatus = status }
-            if let progress = event.progress { messages[messageIndex].jobProgress = progress }
+            if let progress = event.progress {
+                // Server reports render progress 0-100. Upload takes 0-35 client-side,
+                // so map render into the 35-100 band and never go backwards.
+                let mapped = 35 + Int(Double(progress) * 0.65)
+                if mapped > (messages[messageIndex].jobProgress ?? 0) {
+                    messages[messageIndex].jobProgress = mapped
+                }
+            }
             if let msg = event.message { messages[messageIndex].stepMessage = msg }
             if let err = event.error { messages[messageIndex].error = err }
 
@@ -347,56 +396,69 @@ struct EditorView: View {
     }
 }
 
-// MARK: - Pending Video Thumbnail
+// MARK: - Pending Video Thumbnail (Claude-style: small square with subtle progress ring)
 
 struct PendingVideoThumb: View {
     @ObservedObject var video: PendingVideo
     let onRemove: () -> Void
 
+    private var isUploading: Bool {
+        video.uploadedUrl == nil && video.uploadProgress > 0 && video.uploadProgress < 1
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 if let thumb = video.thumbnail {
                     Image(uiImage: thumb)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 72, height: 96)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color(.tertiarySystemBackground))
-                        .frame(width: 72, height: 96)
-                        .overlay {
-                            ProgressView()
-                                .tint(.secondary)
-                                .scaleEffect(0.8)
-                        }
+                        .frame(width: 56, height: 56)
                 }
 
-                // Upload progress bar at bottom of thumbnail
-                if video.uploadedUrl == nil && video.uploadProgress > 0 && video.uploadProgress < 1 {
-                    GeometryReader { geo in
-                        VStack {
-                            Spacer()
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(Color.white)
-                                .frame(width: geo.size.width * video.uploadProgress, height: 3)
-                                .animation(.easeInOut(duration: 0.2), value: video.uploadProgress)
-                        }
-                    }
-                    .frame(width: 72, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
+                if isUploading {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 56, height: 56)
 
+                    CircularProgressRing(progress: video.uploadProgress)
+                        .frame(width: 22, height: 22)
+                } else if video.thumbnail == nil {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.7)
+                }
             }
 
             Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.white, Color(.systemGray3))
-                    .shadow(radius: 2)
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 18, height: 18)
+                    .background(Color.black.opacity(0.7))
+                    .clipShape(Circle())
             }
-            .offset(x: 6, y: -6)
+            .offset(x: 5, y: -5)
+        }
+    }
+}
+
+struct CircularProgressRing: View {
+    let progress: Double
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.25), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: max(0.02, progress))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeOut(duration: 0.2), value: progress)
         }
     }
 }

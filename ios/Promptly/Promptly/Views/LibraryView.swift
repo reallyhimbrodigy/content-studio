@@ -223,31 +223,19 @@ struct EditRow: View {
 struct VideoDetailSheet: View {
     let edit: VideoJob
     let onDelete: () -> Void
-    @State private var player: AVPlayer?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Video player — fills most of the screen
-                if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
-                    VideoPlayer(player: player ?? AVPlayer(url: url))
-                        .onAppear {
-                            if player == nil {
-                                player = AVPlayer(url: url)
-                                player?.play()
-                            }
-                        }
-                        .onDisappear {
-                            player?.pause()
-                        }
+                if let urlStr = edit.rendered_video_url {
+                    NativeVideoPlayer(urlStr: urlStr)
+                        .ignoresSafeArea(edges: .top)
                 }
 
-                // Bottom bar with actions and info
-                VStack(spacing: 16) {
-                    // Vibe text
+                VStack(spacing: 14) {
                     if let vibe = edit.vibe_input, !vibe.isEmpty {
                         Text(vibe)
                             .font(.system(size: 14))
@@ -256,7 +244,6 @@ struct VideoDetailSheet: View {
                             .lineLimit(2)
                     }
 
-                    // Action buttons
                     if let urlStr = edit.rendered_video_url, let url = URL(string: urlStr) {
                         HStack(spacing: 12) {
                             ShareLink(item: url) {
@@ -264,16 +251,15 @@ struct VideoDetailSheet: View {
                                     Image(systemName: "square.and.arrow.up")
                                     Text("Share")
                                 }
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.system(size: 15, weight: .semibold))
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
+                                .frame(height: 46)
                                 .background(Color.white)
                                 .foregroundColor(.black)
-                                .cornerRadius(10)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
 
                             Button {
-                                player?.pause()
                                 dismiss()
                                 Task {
                                     try? await APIService.shared.deleteEdit(id: edit.id)
@@ -281,11 +267,11 @@ struct VideoDetailSheet: View {
                                 }
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 15))
-                                    .frame(width: 44, height: 44)
+                                    .font(.system(size: 16))
+                                    .frame(width: 46, height: 46)
                                     .background(Color(.tertiarySystemBackground))
                                     .foregroundColor(.red)
-                                    .cornerRadius(10)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
                     }
@@ -294,26 +280,18 @@ struct VideoDetailSheet: View {
                 .background(Color(.systemBackground))
             }
 
-            // Close button — top left
-            VStack {
-                HStack {
-                    Button {
-                        player?.pause()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 32, height: 32)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                    }
-                    .padding(.leading, 16)
-                    .padding(.top, 8)
-                    Spacer()
-                }
-                Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
             }
+            .padding(.leading, 16)
+            .padding(.top, 8)
         }
         .presentationDragIndicator(.visible)
     }

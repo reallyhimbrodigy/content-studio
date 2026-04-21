@@ -5,89 +5,80 @@ struct MessageBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 60) }
-
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-                // Video attachment thumbnail
-                if let attachment = message.videoAttachment, let thumb = attachment.thumbnail {
-                    Image(uiImage: thumb)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 180, height: 240)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
-
-                // Text bubble
-                if !message.content.isEmpty {
-                    Text(message.content)
-                        .font(.system(size: 16))
-                        .foregroundColor(message.role == .user ? .black : .white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(bubbleColor)
-                        .clipShape(BubbleShape(isUser: message.role == .user))
-                }
-
-                // Thinking dots
-                if message.isThinking { ThinkingDots() }
-
-                // Processing state
-                if let status = message.jobStatus,
-                   !["completed", "complete", "failed", "error"].contains(status) {
-                    ProcessingBubble(
-                        stepMessage: message.stepMessage ?? "Getting started...",
-                        progress: message.jobProgress ?? 0
-                    )
-                }
-
-                // Completed video
-                if let videoUrlStr = message.renderedVideoUrl {
-                    CompletedVideoView(videoUrlStr: videoUrlStr, thumbnailUrlStr: message.thumbnailUrl)
-                }
-
-                // Error
-                if message.jobStatus == "failed" || message.jobStatus == "error" {
-                    Text(message.error ?? "Something went wrong.")
-                        .font(.system(size: 13))
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color(.tertiarySystemBackground))
-                        .clipShape(BubbleShape(isUser: false))
-                }
+        HStack(alignment: .top, spacing: 0) {
+            if message.role == .user {
+                Spacer(minLength: 48)
+                userContent
+            } else {
+                assistantContent
+                Spacer(minLength: 48)
             }
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.82, alignment: message.role == .user ? .trailing : .leading)
-
-            if message.role == .assistant { Spacer(minLength: 60) }
         }
     }
 
-    private var bubbleColor: Color {
-        switch message.role {
-        case .user: return Color.white
-        case .assistant: return Color(.tertiarySystemBackground)
-        case .system: return Color(.separator).opacity(0.5)
+    // MARK: - User (right-aligned, subtle gray container)
+
+    @ViewBuilder
+    private var userContent: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            if let attachment = message.videoAttachment, let thumb = attachment.thumbnail {
+                Image(uiImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 172, height: 229)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+
+            if !message.content.isEmpty {
+                Text(message.content)
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+    }
+
+    // MARK: - Assistant (flat, no bubble)
+
+    @ViewBuilder
+    private var assistantContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if message.isThinking {
+                ThinkingDots()
+            }
+
+            if let status = message.jobStatus,
+               !["completed", "complete", "failed", "error"].contains(status) {
+                ProcessingIndicator(
+                    stepMessage: message.stepMessage ?? "Getting started...",
+                    progress: message.jobProgress ?? 0
+                )
+            }
+
+            if !message.content.isEmpty {
+                Text(message.content)
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let videoUrlStr = message.renderedVideoUrl {
+                CompletedVideoView(videoUrlStr: videoUrlStr, thumbnailUrlStr: message.thumbnailUrl)
+            }
+
+            if message.jobStatus == "failed" || message.jobStatus == "error" {
+                Text(message.error ?? "Something went wrong.")
+                    .font(.system(size: 14))
+                    .foregroundColor(.red)
+            }
         }
     }
 }
 
-// MARK: - Bubble Shape
-
-struct BubbleShape: Shape {
-    let isUser: Bool
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        if isUser {
-            path.addRoundedRect(in: rect, cornerRadii: .init(topLeading: 18, bottomLeading: 18, bottomTrailing: 4, topTrailing: 18))
-        } else {
-            path.addRoundedRect(in: rect, cornerRadii: .init(topLeading: 18, bottomLeading: 4, bottomTrailing: 18, topTrailing: 18))
-        }
-        return path
-    }
-}
-
-// MARK: - Thinking Dots
+// MARK: - Thinking Dots (minimal, inline — no bubble)
 
 struct ThinkingDots: View {
     @State private var animating = false
@@ -96,54 +87,63 @@ struct ThinkingDots: View {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
                     .fill(Color(.secondaryLabel))
-                    .frame(width: 8, height: 8)
-                    .offset(y: animating ? -8 : 0)
-                    .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true).delay(Double(i) * 0.15), value: animating)
+                    .frame(width: 7, height: 7)
+                    .opacity(animating ? 1 : 0.3)
+                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(Double(i) * 0.15), value: animating)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(Color(.tertiarySystemBackground))
-        .clipShape(BubbleShape(isUser: false))
+        .padding(.vertical, 4)
         .onAppear { animating = true }
     }
 }
 
-// MARK: - Processing Bubble (native iOS style)
+// MARK: - Processing Indicator (ChatGPT-style — inline, thin progress line)
 
-struct ProcessingBubble: View {
+struct ProcessingIndicator: View {
     let stepMessage: String
     let progress: Int
-    @State private var dotPulsing = false
+    @State private var pulse = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 10, height: 10)
-                    .shadow(color: Color(.secondaryLabel), radius: dotPulsing ? 8 : 3)
-                    .scaleEffect(dotPulsing ? 1.15 : 0.85)
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: dotPulsing)
+                    .frame(width: 6, height: 6)
+                    .opacity(pulse ? 1 : 0.35)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
 
                 Text(stepMessage)
                     .font(.system(size: 15))
                     .foregroundColor(.white)
                     .lineLimit(2)
+
+                Spacer(minLength: 8)
+
+                Text("\(max(progress, 1))%")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
             }
 
-            ProgressView(value: max(0.02, Double(progress) / 100.0))
-                .tint(Color.white)
-                .animation(.easeInOut(duration: 0.5), value: progress)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(.separator).opacity(0.5))
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0.02, Double(progress) / 100.0))))
+                        .animation(.easeOut(duration: 0.4), value: progress)
+                }
+            }
+            .frame(height: 3)
         }
-        .padding(16)
-        .frame(maxWidth: 280, alignment: .leading)
-        .background(Color(.tertiarySystemBackground))
-        .clipShape(BubbleShape(isUser: false))
-        .onAppear { dotPulsing = true }
+        .frame(maxWidth: 320, alignment: .leading)
+        .onAppear { pulse = true }
     }
 }
 
-// MARK: - Completed Video
+// MARK: - Completed Video (iOS-native card — clean thumbnail, contextMenu for actions)
 
 struct CompletedVideoView: View {
     let videoUrlStr: String
@@ -151,52 +151,47 @@ struct CompletedVideoView: View {
     @State private var showFullscreen = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Thumbnail with play button — tap opens fullscreen player
-            Button {
-                showFullscreen = true
-            } label: {
-                ZStack {
-                    if let thumbUrl = thumbnailUrlStr, let url = URL(string: thumbUrl) {
-                        AsyncImage(url: url) { phase in
-                            if let image = phase.image {
-                                image.resizable().aspectRatio(contentMode: .fit)
-                            } else {
-                                Color(.secondarySystemBackground)
-                                    .frame(height: 240)
-                            }
-                        }
-                    } else {
-                        Color(.secondarySystemBackground)
-                            .frame(height: 240)
-                    }
-
-                    // Play button
-                    Circle()
-                        .fill(.black.opacity(0.4))
-                        .frame(width: 56, height: 56)
-                        .overlay {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(.white)
-                                .offset(x: 2)
-                        }
-                }
+        Button {
+            showFullscreen = true
+        } label: {
+            thumbnailContent
                 .frame(maxWidth: 240)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-            }
-            .buttonStyle(.plain)
-
-            // Share
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    LinearGradient(
+                        colors: [.black.opacity(0.0), .black.opacity(0.25)],
+                        startPoint: .center, endPoint: .bottom
+                    )
+                    .allowsHitTesting(false)
+                }
+                .overlay {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 62, height: 62)
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.white)
+                            .offset(x: 2)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
             if let url = URL(string: videoUrlStr) {
                 ShareLink(item: url) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Share")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .foregroundColor(.secondary)
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                Button {
+                    UIApplication.shared.open(url)
+                } label: {
+                    Label("Open in Safari", systemImage: "safari")
+                }
+                Button {
+                    UIPasteboard.general.string = videoUrlStr
+                } label: {
+                    Label("Copy Link", systemImage: "link")
                 }
             }
         }
@@ -204,54 +199,91 @@ struct CompletedVideoView: View {
             FullscreenVideoPlayer(urlStr: videoUrlStr)
         }
     }
+
+    @ViewBuilder
+    private var thumbnailContent: some View {
+        if let thumbUrl = thumbnailUrlStr, let url = URL(string: thumbUrl) {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: .fit)
+                } else {
+                    Color(.tertiarySystemBackground)
+                        .aspectRatio(9/16, contentMode: .fit)
+                }
+            }
+        } else {
+            Color(.tertiarySystemBackground)
+                .aspectRatio(9/16, contentMode: .fit)
+        }
+    }
 }
 
-// MARK: - Fullscreen Player
+// MARK: - Fullscreen Player (native AVPlayerViewController)
 
 struct FullscreenVideoPlayer: View {
     let urlStr: String
-    @State private var player: AVPlayer?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+        ZStack(alignment: .topLeading) {
+            Color.black.ignoresSafeArea()
 
-            if let player = player {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
+            NativeVideoPlayer(urlStr: urlStr)
+                .ignoresSafeArea()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
             }
+            .padding(.leading, 16)
+            .padding(.top, 8)
+        }
+        .statusBarHidden(true)
+    }
+}
 
-            // Close button
-            VStack {
-                HStack {
-                    Button {
-                        player?.pause()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                    }
-                    .padding(.leading, 16)
-                    .padding(.top, 8)
+struct NativeVideoPlayer: UIViewControllerRepresentable {
+    let urlStr: String
 
-                    Spacer()
-                }
-                Spacer()
-            }
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        // Default category (.soloAmbient) mutes on silent switch and drops audio
+        // during interruptions. .playback is the standard for video apps —
+        // survives the ring switch and handles route changes cleanly.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        let vc = AVPlayerViewController()
+        vc.showsPlaybackControls = true
+        vc.allowsPictureInPicturePlayback = true
+        vc.videoGravity = .resizeAspect
+        vc.entersFullScreenWhenPlaybackBegins = false
+        vc.view.backgroundColor = .black
+
+        if let url = URL(string: urlStr) {
+            let item = AVPlayerItem(url: url)
+            // Keep a generous forward buffer so audio doesn't starve during streaming.
+            item.preferredForwardBufferDuration = 10
+
+            let player = AVPlayer(playerItem: item)
+            player.automaticallyWaitsToMinimizeStalling = true
+            player.actionAtItemEnd = .pause
+            vc.player = player
+            player.play()
         }
-        .onAppear {
-            guard let url = URL(string: urlStr) else { return }
-            player = AVPlayer(url: url)
-            player?.play()
-        }
-        .onDisappear {
-            player?.pause()
-            player = nil
-        }
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
+
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
+        uiViewController.player?.pause()
+        uiViewController.player = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }
