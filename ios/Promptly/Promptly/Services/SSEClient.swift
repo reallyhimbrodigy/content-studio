@@ -74,17 +74,27 @@ class SSEClient {
 
     private func startTimeoutChecker() {
         timeoutTimer?.invalidate()
-        timeoutTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // Check every 10s; poll the DB the moment no event has arrived for 45s.
+        // The render phase legitimately sends periodic progress, so 45s of pure
+        // silence means something went wrong (worker crashed, Modal container
+        // lost, SSE connection dropped without us noticing). Polling the DB
+        // surfaces the failure fast instead of leaving the UI frozen.
+        timeoutTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let elapsed = Date().timeIntervalSince(self.lastEventTime)
-            if elapsed > 120 {
-                // No events for 2 minutes — check job status
+            if elapsed > 45 {
                 Task { await self.pollJobStatus() }
             }
         }
     }
 
     private func pollJobStatus() async {
+        // Reset the staleness clock regardless of outcome so the 10s ticker
+        // doesn't re-poll immediately on the next tick when the job is still
+        // genuinely processing. Successful poll → we learned something; no-op
+        // poll → we checked in, wait another 45s before checking again.
+        lastEventTime = Date()
+
         guard let token = await AuthService.shared.getValidToken() else {
             DispatchQueue.main.async { [weak self] in
                 self?.onError?("Session expired. Please sign in again.")
