@@ -48,7 +48,7 @@ const { isUserPro: isProfilePro } = require('./lib/entitlement');
 const { ENABLE_DESIGN_LAB } = require('./config/flags');
 const { triggerPreAnalysis } = require('./lib/video-processor/pre-analyze');
 const s3 = require('./services/s3');
-const { dispatchJobToModal } = require('./lib/video-processor/dispatch-to-modal');
+const { dispatchJobToModal, registerPrewarm } = require('./lib/video-processor/dispatch-to-modal');
 const { settlePendingModalJob } = require('./lib/video-processor/modal-webhook');
 
 // SSE client registry — maps jobId -> Set of response objects
@@ -10183,18 +10183,43 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 202, { status: 'skipped', reason: 'prewarm endpoint not configured' });
         }
 
-        // Fire-and-forget — do not await. Prewarm is a latency hedge; if it
-        // fails or is slow, the render pipeline still works the old way.
-        fetch(modalPrewarmUrl, {
+        // Fire-and-forget — but register the promise so /api/video-jobs can
+        // await it briefly when the real render dispatch arrives and pass the
+        // confirmation as a hint to the Modal worker (for race detection).
+        const prewarmStart = Date.now();
+        const prewarmPromise = fetch(modalPrewarmUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ video_url: videoUrl }),
         }).then(async (r) => {
           const text = await r.text().catch(() => '');
-          console.log(`[prewarm] ${r.status} for ${videoUrl.slice(0, 80)}: ${text.slice(0, 160)}`);
+          let parsed = {};
+          try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text.slice(0, 300) }; }
+          const durationMs = Date.now() - prewarmStart;
+          console.log(JSON.stringify({
+            event: 'prewarm.result',
+            status: parsed.status || `http_${r.status}`,
+            cache_key: parsed.cache_key || null,
+            cached: parsed.status === 'cached',
+            transcript_cached: Boolean(parsed.transcript_cached),
+            size_mb: parsed.size_mb || null,
+            download_time: parsed.download_time || null,
+            duration_ms: durationMs,
+            video_url: videoUrl.slice(0, 100),
+          }));
+          return parsed;
         }).catch((err) => {
-          console.warn(`[prewarm] fire-and-forget error: ${err.message}`);
+          const durationMs = Date.now() - prewarmStart;
+          console.warn(JSON.stringify({
+            event: 'prewarm.error',
+            message: err.message,
+            duration_ms: durationMs,
+            video_url: videoUrl.slice(0, 100),
+          }));
+          return { error: err.message };
         });
+
+        registerPrewarm(videoUrl, prewarmPromise);
 
         return sendJson(res, 202, { status: 'dispatched' });
       } catch (error) {
