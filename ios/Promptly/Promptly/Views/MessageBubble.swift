@@ -323,12 +323,19 @@ struct PipelineProgressView: View {
             .buttonStyle(.plain)
 
             if expanded {
+                // Only reveal stages that have actually begun (in_progress /
+                // completed / skipped). Upcoming ones stay hidden until the
+                // server fires their event — the list grows as the pipeline
+                // progresses instead of dumping the whole roadmap on the
+                // user at once.
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(timeline.stages) { stage in
+                    ForEach(timeline.stages.filter { (timeline.states[$0.id] ?? .upcoming) != .upcoming }) { stage in
                         stageRow(stage)
+                            .transition(.opacity.combined(with: .move(edge: .leading)))
                     }
                 }
                 .padding(.top, 2)
+                .animation(.easeOut(duration: 0.25), value: timeline.currentStageId)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
