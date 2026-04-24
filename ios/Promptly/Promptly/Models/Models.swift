@@ -147,8 +147,17 @@ enum StageState: String {
 
 enum PipelineCatalog {
     // Baked-in snapshot of shared/pipeline-stages.json — keep in sync.
+    //
+    // `download` is intentionally absent from this client-side catalog even
+    // though the worker still emits it — the step is either sub-second
+    // (boto3[crt] + same-region) or a no-op (prewarm Volume cache hit), and
+    // showing "Loading your footage" for 0-1s looks like a regression vs.
+    // the production apps Promptly competes with. StageTimeline.receive()
+    // gracefully ignores unknown tokens, so worker-emitted `download` events
+    // fall on the floor without side effects. First stage the user ever sees
+    // is whatever lands after download — transcribe, face_detect, or (for
+    // prewarm-cached jobs) straight to plan.
     static let all: [PipelineStage] = [
-        PipelineStage(id: "download",     title: "Loading your footage",          icon: "arrow.down.circle",         authoritative: true,  parent: nil,      modes: ["full", "reinterpret", "tweak"]),
         PipelineStage(id: "transcribe",   title: "Transcribing every word",       icon: "waveform",                  authoritative: true,  parent: nil,      modes: ["full"]),
         PipelineStage(id: "face_detect",  title: "Tracking faces frame-by-frame", icon: "face.smiling",              authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),
         PipelineStage(id: "beats",        title: "Detecting beat and rhythm",     icon: "metronome",                 authoritative: true,  parent: nil,      modes: ["full", "reinterpret"]),

@@ -243,7 +243,11 @@ struct PipelineProgressView: View {
         if let cid = timeline.currentStageId, let s = timeline.stages.first(where: { $0.id == cid }) {
             return s
         }
-        return timeline.stages.first
+        // No stage has fired yet — show a neutral starting state instead of
+        // pre-rendering the first catalog entry. The first server event lands
+        // within a few hundred ms; during that window we don't want to
+        // mislead the user about which specific stage is in progress.
+        return nil
     }
 
     /// Last two completed stages, in order of completion.
@@ -258,7 +262,7 @@ struct PipelineProgressView: View {
             // Active stage header
             HStack(alignment: .center, spacing: 10) {
                 stageIcon
-                Text(activeStage?.title ?? "Getting started")
+                Text(activeStage?.title ?? "Starting")
                     .font(.system(size: 15))
                     .foregroundColor(.white)
                     .lineLimit(2)
@@ -357,9 +361,13 @@ struct PipelineProgressView: View {
                 .frame(width: 20, height: 20)
                 .transition(.scale.combined(with: .opacity))
         } else {
-            Circle()
-                .fill(Color.white.opacity(0.5))
-                .frame(width: 8, height: 8)
+            // Neutral "Starting…" glyph shown during the brief window between
+            // user tapping Send and the first stage event arriving. Avoids
+            // leading with a specific stage label before the worker confirms it.
+            Image(systemName: "sparkles")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.white)
+                .symbolEffect(.pulse.byLayer, options: .repeating)
                 .frame(width: 20, height: 20)
         }
     }
