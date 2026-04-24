@@ -43,6 +43,26 @@ class APIService {
         return jobId
     }
 
+    /// Fire-and-forget: tell the backend a video has been uploaded and ready
+    /// for pre-processing. The server forwards to Modal's /prewarm endpoint
+    /// which downloads the source into its persistent cache volume — so when
+    /// the real render job fires later, the "Loading your footage" step is
+    /// a no-op cache hit. Non-blocking: errors are logged and swallowed.
+    func prewarmRender(videoUrl: String) async {
+        do {
+            var request = await authorizedRequest("/api/prewarm", method: "POST")
+            request.httpBody = try JSONEncoder().encode(["video_url": videoUrl])
+            // 5s timeout — if the backend is slow we don't want to stall the UI thread.
+            request.timeoutInterval = 5
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            // Intentionally swallowed — prewarm is a latency hedge, not a
+            // correctness requirement. A failed prewarm just means the render
+            // will do a normal S3 download.
+            print("[prewarm] dispatch failed (non-fatal): \(error.localizedDescription)")
+        }
+    }
+
     /// Kick off a re-edit derived from an existing completed job. Server loads
     /// the original job's saved edit_recipe + transcript + analysis + resolved
     /// B-roll and routes through Modal in either tweak or reinterpret mode.

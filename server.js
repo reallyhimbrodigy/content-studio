@@ -10151,6 +10151,60 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Prewarm ─────────────────────────────────────────────────────────
+  // iOS calls this the instant a client-side S3 upload completes (well
+  // before the user taps Send). Fire-and-forget to Modal's /prewarm
+  // endpoint, which pulls the source video into its persistent Volume
+  // cache. When the real /api/video-jobs arrives, the Modal worker
+  // finds the file already present and skips the S3 download step
+  // entirely — eliminating the "Loading your footage" latency.
+  //
+  // Returns 202 immediately without waiting for the Modal prewarm to
+  // finish. The prewarm is a latency hedge; if it fails, the real job
+  // just does the normal S3 download. Zero regression vs the old flow.
+  if (parsed.pathname === '/api/prewarm' && req.method === 'POST') {
+    (async () => {
+      try {
+        await requireSupabaseUser(req);  // auth check, don't care about the user object
+        const body = await readJsonBody(req);
+        const videoUrl = String(body?.video_url || body?.videoUrl || '').trim();
+        if (!videoUrl) return sendJson(res, 400, { error: 'video_url is required' });
+
+        // Derive the prewarm endpoint URL from the main run-job URL unless
+        // overridden. Modal URLs follow the pattern:
+        //   https://{org}--{app}-{class}-{method}.modal.run
+        // so run_job → prewarm is a substring swap.
+        const modalRunUrl = process.env.MODAL_ENDPOINT_URL || '';
+        const modalPrewarmUrl = process.env.MODAL_PREWARM_URL
+          || modalRunUrl.replace(/-run-job(\.|$)/, '-prewarm$1');
+
+        if (!modalPrewarmUrl) {
+          console.warn('[prewarm] no MODAL_PREWARM_URL and no MODAL_ENDPOINT_URL to derive from — skipping');
+          return sendJson(res, 202, { status: 'skipped', reason: 'prewarm endpoint not configured' });
+        }
+
+        // Fire-and-forget — do not await. Prewarm is a latency hedge; if it
+        // fails or is slow, the render pipeline still works the old way.
+        fetch(modalPrewarmUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_url: videoUrl }),
+        }).then(async (r) => {
+          const text = await r.text().catch(() => '');
+          console.log(`[prewarm] ${r.status} for ${videoUrl.slice(0, 80)}: ${text.slice(0, 160)}`);
+        }).catch((err) => {
+          console.warn(`[prewarm] fire-and-forget error: ${err.message}`);
+        });
+
+        return sendJson(res, 202, { status: 'dispatched' });
+      } catch (error) {
+        console.error('[prewarm] route error:', error?.message);
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'prewarm failed' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/video-jobs' && req.method === 'POST') {
     (async () => {
       try {

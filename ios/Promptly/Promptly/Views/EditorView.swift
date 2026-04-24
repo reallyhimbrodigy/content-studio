@@ -310,6 +310,12 @@ struct EditorView: View {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
                         }
+                        // Prewarm Modal's volume cache with the newly-uploaded source
+                        // so the eventual /api/video-jobs render call skips the S3
+                        // download step entirely. Fire-and-forget; non-blocking.
+                        Task.detached(priority: .utility) {
+                            await APIService.shared.prewarmRender(videoUrl: publicUrl)
+                        }
                     }
 
                     try? FileManager.default.removeItem(at: compressedUrl)
