@@ -48,19 +48,34 @@ class APIService {
     /// which downloads the source into its persistent cache volume — so when
     /// the real render job fires later, the "Loading your footage" step is
     /// a no-op cache hit. Non-blocking: errors are logged and swallowed.
+    ///
+    /// Retries once after 2s on transient network failure. Cellular upload
+    /// paths drop requests silently more often than people realize, and
+    /// losing the prewarm silently means the user gets the slow path with
+    /// no trace. Server-side idempotency via the in-flight registry handles
+    /// duplicate firing if both succeed.
     func prewarmRender(videoUrl: String) async {
-        do {
-            var request = await authorizedRequest("/api/prewarm", method: "POST")
-            request.httpBody = try JSONEncoder().encode(["video_url": videoUrl])
-            // 5s timeout — if the backend is slow we don't want to stall the UI thread.
-            request.timeoutInterval = 5
-            _ = try await URLSession.shared.data(for: request)
-        } catch {
-            // Intentionally swallowed — prewarm is a latency hedge, not a
-            // correctness requirement. A failed prewarm just means the render
-            // will do a normal S3 download.
-            print("[prewarm] dispatch failed (non-fatal): \(error.localizedDescription)")
+        var lastError: Error?
+        for attempt in 0..<2 {
+            do {
+                var request = await authorizedRequest("/api/prewarm", method: "POST")
+                request.httpBody = try JSONEncoder().encode(["video_url": videoUrl])
+                request.timeoutInterval = 5
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    print("[prewarm] dispatched (attempt \(attempt + 1))")
+                    return
+                }
+                // Non-2xx — treat as failure, retry once
+                lastError = NSError(domain: "prewarm", code: (response as? HTTPURLResponse)?.statusCode ?? -1)
+            } catch {
+                lastError = error
+            }
+            if attempt == 0 {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s backoff
+            }
         }
+        print("[prewarm] dispatch failed after retry (non-fatal): \(lastError?.localizedDescription ?? "unknown")")
     }
 
     /// Kick off a re-edit derived from an existing completed job. Server loads
