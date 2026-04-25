@@ -61,11 +61,71 @@ struct PickedVideo {
     var id: String { asset.localIdentifier }
 }
 
+/// Two possible resolution strategies for a picked video:
+///   - `.local`: asset is already on disk, we have a file URL, upload it directly
+///   - `.stream`: asset is iCloud-only, we have a PHAssetResource + file size,
+///     stream bytes directly from iCloud into the S3 multipart upload so the
+///     two transfers happen in parallel (total time = max(dl, ul) instead of
+///     dl + ul)
+enum VideoResolution {
+    case local(URL)
+    case stream(resource: PHAssetResource, fileSize: Int64)
+}
+
 /// Resolves a PHAsset to a local file URL. Downloads from iCloud if needed
 /// (progress is not surfaced — UI should already be in "uploading" state by
 /// the time this runs). For slow-mo / edited AVComposition assets, exports
 /// to a temp mp4 losslessly before returning.
 enum PHAssetResolver {
+    /// Determine the fastest upload strategy for this asset.
+    /// Tries local-only first (no iCloud fetch); if that fails and we have
+    /// a video resource with a known file size, returns .stream so the
+    /// caller can pipeline iCloud download + S3 upload. Falls back to
+    /// downloading via resolveFileUrl only if streaming isn't viable.
+    static func resolveStrategy(asset: PHAsset) async -> VideoResolution? {
+        // 1. Can we get the file locally, without any iCloud round trip?
+        if let localUrl = await tryResolveLocalOnly(asset: asset) {
+            return .local(localUrl)
+        }
+        // 2. iCloud-only. Find the best resource to stream.
+        let resources = PHAssetResource.assetResources(for: asset)
+        let preferredTypes: [PHAssetResourceType] = [.fullSizeVideo, .video, .pairedVideo]
+        let resource = preferredTypes.compactMap { t in
+            resources.first(where: { $0.type == t })
+        }.first
+        guard let resource = resource else { return nil }
+        // PhotoKit exposes the underlying byte size via KVC. Several shipping
+        // apps rely on this key; it has been stable across iOS versions.
+        let fileSize: Int64 = {
+            if let n = resource.value(forKey: "fileSize") as? Int64 { return n }
+            if let n = resource.value(forKey: "fileSize") as? NSNumber { return n.int64Value }
+            return 0
+        }()
+        guard fileSize > 0 else { return nil }
+        return .stream(resource: resource, fileSize: fileSize)
+    }
+
+    /// Try to get the file URL WITHOUT touching iCloud. Returns nil for
+    /// iCloud-only assets or edited/composition assets that need rendering.
+    private static func tryResolveLocalOnly(asset: PHAsset) async -> URL? {
+        await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let options = PHVideoRequestOptions()
+            options.version = .current
+            options.isNetworkAccessAllowed = false
+            options.deliveryMode = .automatic
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+                guard !hasResumed else { return }
+                hasResumed = true
+                if let urlAsset = avAsset as? AVURLAsset {
+                    continuation.resume(returning: urlAsset.url)
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     static func resolveFileUrl(asset: PHAsset) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false

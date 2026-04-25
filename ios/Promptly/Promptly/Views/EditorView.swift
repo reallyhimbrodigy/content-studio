@@ -301,94 +301,126 @@ struct EditorView: View {
                 do {
                     let t0 = Date()
 
-                    // Step 0: Resolve PHAsset → local file URL. On-device
-                    // footage is ~instant; iCloud downloads run here.
+                    // Step 0: Pick the fastest resolution strategy. Local-
+                    // only videos upload straight from the Photos file URL;
+                    // iCloud-only videos stream download→upload in parallel
+                    // so the two transfers overlap instead of serialising.
                     let resolveStart = Date()
-                    let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
-                    await MainActor.run { pending.fileUrl = sourceUrl }
-                    let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
-                    print(String(format: "[perf] resolve %.2fs size=%.1fMB path=%@",
-                                 Date().timeIntervalSince(resolveStart),
-                                 Double(sourceSize) / 1_048_576.0,
-                                 sourceUrl.pathExtension.lowercased()))
+                    let strategy = await PHAssetResolver.resolveStrategy(asset: video.asset)
+                    print(String(format: "[perf] strategy-probe %.2fs", Date().timeIntervalSince(resolveStart)))
 
-                    // Replace the PHAsset cached thumbnail with a sharp
-                    // frame grabbed directly from the resolved video file.
-                    // The PHImageManager thumbnail is a low-res cached
-                    // thumb that often looks soft when scaled on Retina —
-                    // AVAssetImageGenerator gives us a real frame at the
-                    // resolution we ask for.
-                    Task {
-                        if let sharp = await ThumbnailGenerator.generate(from: sourceUrl) {
-                            await MainActor.run { pending.thumbnail = sharp }
-                        }
-                    }
-
-                    // Step 1: Compression is SKIPPED for typical camera-roll
-                    // videos (mp4/mov under 300MB). Those are already
-                    // H.264/HEVC in a container S3 accepts as-is — running
-                    // them through AVAssetExportPresetPassthrough burns 1-5s
-                    // rewriting the container for zero transport benefit.
-                    // We only compress when the source is truly oversized
-                    // (>300MB) or an exotic extension that the pipeline
-                    // might not grok.
-                    let uploadSourceUrl: URL
-                    let compressStart = Date()
-                    if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
-                        uploadSourceUrl = sourceUrl
-                        print("[perf] compress skipped (direct upload from camera roll)")
-                    } else {
-                        uploadSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
-                        await MainActor.run { pending.fileUrl = uploadSourceUrl }
-                        print(String(format: "[perf] compress %.2fs", Date().timeIntervalSince(compressStart)))
-                    }
-
-                    // Step 2: Upload — single PUT up to 100MB, multipart above.
-                    let uploadStart = Date()
                     var publicUrl: String?
-                    if APIService.shouldUseMultipart(fileUrl: uploadSourceUrl) {
+
+                    switch strategy {
+                    case .local(let sourceUrl):
+                        print("[perf] path=local")
+                        await MainActor.run { pending.fileUrl = sourceUrl }
+                        let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
+
+                        // Sharp thumbnail from the real video frames.
+                        Task {
+                            if let sharp = await ThumbnailGenerator.generate(from: sourceUrl) {
+                                await MainActor.run { pending.thumbnail = sharp }
+                            }
+                        }
+
+                        // Compression skip for typical camera-roll sources
+                        // (see shouldSkipCompression). Keeps quality byte-
+                        // identical for the 99% case.
+                        let uploadSourceUrl: URL
+                        let compressStart = Date()
+                        if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
+                            uploadSourceUrl = sourceUrl
+                            print("[perf] compress skipped")
+                        } else {
+                            uploadSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
+                            await MainActor.run { pending.fileUrl = uploadSourceUrl }
+                            print(String(format: "[perf] compress %.2fs", Date().timeIntervalSince(compressStart)))
+                        }
+
+                        let uploadStart = Date()
+                        if APIService.shouldUseMultipart(fileUrl: uploadSourceUrl) {
+                            do {
+                                publicUrl = try await APIService.shared.uploadFileToS3Multipart(
+                                    fileName: pending.fileName,
+                                    fileUrl: uploadSourceUrl
+                                ) { progress in
+                                    pending.uploadProgress = progress
+                                }
+                            } catch {
+                                print("[perf] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
+                            }
+                        }
+                        if publicUrl == nil {
+                            let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
+                            if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
+                                try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
+                                    pending.uploadProgress = progress
+                                }
+                                publicUrl = pub
+                            }
+                        }
+                        print(String(format: "[perf] upload-step %.2fs", Date().timeIntervalSince(uploadStart)))
+
+                        if uploadSourceUrl != sourceUrl {
+                            try? FileManager.default.removeItem(at: uploadSourceUrl)
+                        }
+
+                    case .stream(let resource, let fileSize):
+                        // iCloud-only. Skip the "download fully then
+                        // upload" serial flow — stream the bytes straight
+                        // through. Total time drops to roughly max(dl, ul)
+                        // instead of dl + ul.
+                        print(String(format: "[perf] path=stream fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
+                        let uploadStart = Date()
                         do {
-                            let url = try await APIService.shared.uploadFileToS3Multipart(
-                                fileName: pending.fileName,
-                                fileUrl: uploadSourceUrl
+                            publicUrl = try await APIService.shared.streamUploadFromICloud(
+                                resource: resource,
+                                fileSize: fileSize,
+                                fileName: pending.fileName
                             ) { progress in
                                 pending.uploadProgress = progress
                             }
-                            publicUrl = url
                         } catch {
-                            print("[perf] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
+                            print("[perf] stream failed (\(error.localizedDescription)) — falling back to download-then-upload")
+                            // Last-resort fallback: drain iCloud to a local
+                            // file and use the normal path.
+                            let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
+                            await MainActor.run { pending.fileUrl = sourceUrl }
+                            let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
+                            if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
+                                try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: sourceUrl, mimeType: "video/mp4") { progress in
+                                    pending.uploadProgress = progress
+                                }
+                                publicUrl = pub
+                            }
                         }
-                    }
-                    if publicUrl == nil {
+                        print(String(format: "[perf] stream-step %.2fs", Date().timeIntervalSince(uploadStart)))
+
+                    case .none:
+                        print("[perf] strategy unresolved — falling back to download path")
+                        let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
+                        await MainActor.run { pending.fileUrl = sourceUrl }
                         let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
                         if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
-                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
+                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: sourceUrl, mimeType: "video/mp4") { progress in
                                 pending.uploadProgress = progress
                             }
                             publicUrl = pub
                         }
                     }
-                    print(String(format: "[perf] upload-step %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     if let publicUrl = publicUrl {
                         await MainActor.run {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
                         }
-                        // Prewarm Modal's volume cache so the eventual render call
-                        // skips the S3 download step entirely.
                         Task.detached(priority: .utility) {
                             await APIService.shared.prewarmRender(videoUrl: publicUrl)
                         }
                     }
 
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
-
-                    // Only delete the compressed intermediate — never the
-                    // original PHAsset-backed file.
-                    if uploadSourceUrl != sourceUrl {
-                        try? FileManager.default.removeItem(at: uploadSourceUrl)
-                    }
                 } catch {}
             }
         }
