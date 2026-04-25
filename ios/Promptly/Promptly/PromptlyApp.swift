@@ -54,7 +54,7 @@ struct PromptlyApp: App {
                 if auth.isLoading {
                     LaunchView()
                 } else if auth.isAuthenticated {
-                    MainTabView()
+                    AppShell()
                 } else {
                     AuthView()
                 }

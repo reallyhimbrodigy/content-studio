@@ -4,6 +4,7 @@ import UIKit
 
 struct EditorView: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var chatStore = ChatStore.shared
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var showVideoPicker = false
@@ -12,6 +13,7 @@ struct EditorView: View {
     @State private var conversationHistory: [[String: String]] = []
     @State private var sseClients: [String: SSEClient] = [:]
     @State private var reeditSession: ReeditSession?
+    @State private var loadedChatId: String? = nil
     @FocusState private var isInputFocused: Bool
 
     var body: some View {
@@ -36,11 +38,38 @@ struct EditorView: View {
             .onTapGesture {
                 isInputFocused = false
             }
-            .navigationTitle("Edit")
+            .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        isInputFocused = false
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                            appState.sidebarOpen = true
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.leading")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    .accessibilityLabel("Show chats")
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task { await startNewChat() }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    .accessibilityLabel("New chat")
+                }
+            }
             .sheet(isPresented: $showVideoPicker) {
                 NativeVideoPicker(maxSelection: 10) { videos in
                     handlePickedVideos(videos)
@@ -57,6 +86,13 @@ struct EditorView: View {
                     isInputFocused = true
                 }
             }
+            .task {
+                // Pull chat history once per session so the sidebar populates
+                // even if the user never opens it. Idempotent in ChatStore.
+                if chatStore.chats.isEmpty {
+                    await chatStore.loadChats()
+                }
+            }
             .onChange(of: appState.pendingReedit) { _, newSession in
                 if let s = newSession {
                     reeditSession = s
@@ -64,7 +100,96 @@ struct EditorView: View {
                     isInputFocused = true
                 }
             }
+            .onChange(of: chatStore.activeChatId) { oldId, newId in
+                handleActiveChatChange(oldId: oldId, newId: newId)
+            }
         }
+    }
+
+    // MARK: - Chat persistence wiring
+
+    /// Called whenever the user picks a different chat in the sidebar (or
+    /// the sidebar's "+" creates one). Saves the current chat's messages
+    /// before swapping, then loads the new chat's history into the local
+    /// `messages` state and rebuilds conversationHistory for chat-API calls.
+    private func handleActiveChatChange(oldId: String?, newId: String?) {
+        // Persist whatever was on screen for the old chat before switching.
+        if let oldId = oldId, oldId != newId {
+            persistMessagesNow(chatId: oldId)
+        }
+        // Tear down any in-flight SSE connections — they belonged to the old chat.
+        sseClients.values.forEach { $0.disconnect() }
+        sseClients.removeAll()
+
+        guard let newId = newId, let chat = chatStore.chats.first(where: { $0.id == newId }) else {
+            messages = []
+            conversationHistory = []
+            loadedChatId = nil
+            return
+        }
+        let restored = chat.messages.map { $0.toChatMessage() }
+        messages = restored
+        conversationHistory = restored.compactMap { msg in
+            if msg.role == .user, !msg.content.isEmpty {
+                return ["role": "user", "content": msg.content]
+            }
+            if msg.role == .assistant, !msg.content.isEmpty {
+                return ["role": "assistant", "content": msg.content]
+            }
+            return nil
+        }
+        loadedChatId = newId
+        reeditSession = nil
+    }
+
+    /// Snapshot the on-screen messages → SerializedMessage and hand them
+    /// to ChatStore for debounced PATCH. Called at every meaningful
+    /// mutation point (send, job complete, fail).
+    private func persistMessagesNow(chatId: String) {
+        let serialized = messages.compactMap { msg in
+            SerializedMessage.shouldPersist(msg) ? SerializedMessage(from: msg) : nil
+        }
+        chatStore.scheduleSave(chatId: chatId, messages: serialized)
+    }
+
+    /// Persist into the currently active chat. No-op if there isn't one yet.
+    private func persistMessages() {
+        if let id = chatStore.activeChatId {
+            persistMessagesNow(chatId: id)
+        }
+    }
+
+    /// Lazily create a chat on first send. Returns the chat id we're now
+    /// targeting (the existing active chat, or a freshly-created one).
+    /// Returns nil only on auth/network failure during creation.
+    private func ensureActiveChat() async -> String? {
+        if let id = chatStore.activeChatId {
+            return id
+        }
+        guard let chat = await chatStore.createChat() else { return nil }
+        loadedChatId = chat.id
+        return chat.id
+    }
+
+    /// Start a fresh chat. Persists the current chat first, clears local
+    /// state, then creates a new chat and activates it. Triggered by the
+    /// new-chat toolbar button and by sidebar.
+    @MainActor
+    private func startNewChat() async {
+        if let id = chatStore.activeChatId {
+            persistMessagesNow(chatId: id)
+        }
+        sseClients.values.forEach { $0.disconnect() }
+        sseClients.removeAll()
+        messages = []
+        conversationHistory = []
+        reeditSession = nil
+        inputText = ""
+        pendingVideos.forEach { $0.uploadTask?.cancel() }
+        pendingVideos = []
+        guard let chat = await chatStore.createChat() else { return }
+        loadedChatId = chat.id
+        isInputFocused = true
     }
 
     // MARK: - Re-edit context chip
@@ -492,9 +617,6 @@ struct EditorView: View {
             isSending = true
 
             var userMsg = ChatMessage(role: .user, content: changeRequest)
-            // Show the prior rendered thumbnail as an attachment on the user's
-            // side of the re-edit message so the chat clearly reflects that a
-            // video is being modified (not a hallucinated edit on nothing).
             userMsg.videoAttachment = VideoAttachment(
                 localUrl: URL(fileURLWithPath: ""),
                 fileName: "",
@@ -503,18 +625,19 @@ struct EditorView: View {
             )
             messages.append(userMsg)
 
-            // Re-edit defaults to tweak mode catalog; if the server downgrades to
-            // reinterpret mid-pipeline, incoming tokens outside the tweak filter
-            // are gracefully ignored by StageTimeline (forward-compat).
             var processingMsg = ChatMessage(role: .assistant, content: "", jobStatus: "processing", stepMessage: "Figuring out exactly what to change...")
             processingMsg.stageTimeline = StageTimeline(mode: "tweak")
-            // Keep the original vibe around so the completed-video ActionRow's
-            // Re-edit button can populate the chip context.
             processingMsg.originalVibe = activeSession.oldVibe.isEmpty ? changeRequest : activeSession.oldVibe
             messages.append(processingMsg)
             let msgIndex = messages.count - 1
 
             Task {
+                // Make sure this re-edit lives inside an active chat so the
+                // user can find it again. If they triggered re-edit from the
+                // Library tab (no chat selected), this lazy-creates one.
+                _ = await ensureActiveChat()
+                await MainActor.run { persistMessages() }
+
                 do {
                     let newJobId = try await APIService.shared.reeditFromJob(
                         originalJobId: activeSession.originalJobId,
@@ -523,11 +646,13 @@ struct EditorView: View {
                     await MainActor.run {
                         messages[msgIndex].jobId = newJobId
                         startSSE(jobId: newJobId, messageIndex: msgIndex)
+                        persistMessages()
                     }
                 } catch {
                     await MainActor.run {
                         messages[msgIndex].jobStatus = "failed"
                         messages[msgIndex].error = error.localizedDescription
+                        persistMessages()
                     }
                 }
                 await MainActor.run { isSending = false }
@@ -543,6 +668,10 @@ struct EditorView: View {
         withAnimation { pendingVideos = [] }
 
         Task {
+            // Lazy-create a chat the first time the user sends. After this,
+            // every message in this session lives in that chat.
+            _ = await ensureActiveChat()
+
             if hasVideos {
                 for video in videos {
                     var userMsg = ChatMessage(role: .user, content: vibe)
@@ -555,6 +684,11 @@ struct EditorView: View {
                     processingMsg.originalVibe = vibe
                     messages.append(processingMsg)
                     let msgIndex = messages.count - 1
+
+                    // Persist the user's message + placeholder right away so
+                    // the chat shows up correctly in the sidebar even if the
+                    // upload takes 30s and the user backgrounds the app.
+                    persistMessages()
 
                     Task {
                         do {
@@ -610,11 +744,13 @@ struct EditorView: View {
                             await MainActor.run {
                                 messages[msgIndex].jobId = jobId
                                 startSSE(jobId: jobId, messageIndex: msgIndex)
+                                persistMessages()
                             }
                         } catch {
                             await MainActor.run {
                                 messages[msgIndex].jobStatus = "failed"
                                 messages[msgIndex].error = error.localizedDescription
+                                persistMessages()
                             }
                         }
                     }
@@ -628,8 +764,10 @@ struct EditorView: View {
                     let reply = try await APIService.shared.chat(message: text, history: Array(conversationHistory.suffix(20)))
                     messages[msgIndex] = ChatMessage(role: .assistant, content: reply)
                     conversationHistory.append(["role": "assistant", "content": reply])
+                    persistMessages()
                 } catch {
                     messages[msgIndex] = ChatMessage(role: .assistant, content: "Sorry, I couldn't respond right now.")
+                    persistMessages()
                 }
             }
             isSending = false
@@ -670,6 +808,7 @@ struct EditorView: View {
                 if let url = event.videoUrl { messages[messageIndex].renderedVideoUrl = url }
                 if let thumb = event.thumbnailUrl { messages[messageIndex].thumbnailUrl = thumb }
                 messages[messageIndex].stageTimeline?.finish()
+                persistMessages()
                 if event.final == true { client.disconnect(); sseClients.removeValue(forKey: jobId) }
             }
 
@@ -677,6 +816,7 @@ struct EditorView: View {
                 messages[messageIndex].jobStatus = "failed"
                 messages[messageIndex].error = event.error ?? "Something went wrong."
                 messages[messageIndex].stageTimeline?.finish()
+                persistMessages()
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
 
@@ -689,6 +829,7 @@ struct EditorView: View {
                 messages[messageIndex].content = q
                 messages[messageIndex].renderedVideoUrl = nil
                 messages[messageIndex].stageTimeline?.finish()
+                persistMessages()
                 client.disconnect(); sseClients.removeValue(forKey: jobId)
             }
         }
@@ -697,6 +838,7 @@ struct EditorView: View {
             messages[messageIndex].jobStatus = "failed"
             messages[messageIndex].error = errorMsg
             messages[messageIndex].content = ""
+            persistMessages()
             sseClients.removeValue(forKey: jobId)
         }
 

@@ -62,6 +62,126 @@ class PendingVideo: Identifiable, ObservableObject {
     var uploadTask: Task<Void, Never>?
 }
 
+// MARK: - Persisted Chat Threads
+//
+// A chat is a serialized conversation thread that survives app restarts
+// and is synced across devices via Supabase. Each chat owns an ordered
+// list of `SerializedMessage` records — the at-rest shape of ChatMessage,
+// stripped of transient render state (jobProgress, stepMessage,
+// stageTimeline, isThinking) so we never persist mid-flight progress
+// values that would look stale on reload.
+
+struct Chat: Codable, Identifiable, Hashable {
+    let id: String
+    var title: String
+    var messages: [SerializedMessage]
+    var createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case messages
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct SerializedMessage: Codable, Hashable {
+    var id: String
+    var role: String              // "user" | "assistant" | "system"
+    var content: String
+    var jobId: String?
+    var jobStatus: String?        // final state only ("completed" / "failed" / "needs_clarification")
+    var renderedVideoUrl: String?
+    var thumbnailUrl: String?
+    var attachmentThumbnailUrl: String?  // for re-edit / "you sent a video" rows
+    var attachmentFileName: String?
+    var error: String?
+    var originalVibe: String?
+
+    /// Decide whether a live ChatMessage is worth persisting at all.
+    /// Mid-render assistant placeholders ("processing", isThinking, no
+    /// renderedVideoUrl yet) are dropped — they'd look broken on reload
+    /// because the SSE stream that drives them is gone.
+    static func shouldPersist(_ message: ChatMessage) -> Bool {
+        if message.role == .user { return true }
+        // Assistant rows: only keep if there's something concrete to show
+        // (final job state, rendered video, or surfaced error). Drop
+        // in-flight placeholders.
+        if let status = message.jobStatus, ["completed", "failed", "needs_clarification"].contains(status) {
+            return true
+        }
+        if message.renderedVideoUrl != nil || message.error != nil {
+            return true
+        }
+        // Everything else (isThinking, processing without final state) — drop.
+        return !message.isThinking && message.jobStatus == nil && !message.content.isEmpty
+    }
+
+    init(from message: ChatMessage) {
+        self.id = message.id.uuidString
+        switch message.role {
+        case .user: self.role = "user"
+        case .assistant: self.role = "assistant"
+        case .system: self.role = "system"
+        }
+        self.content = message.content
+        self.jobId = message.jobId
+        self.jobStatus = message.jobStatus
+        self.renderedVideoUrl = message.renderedVideoUrl
+        self.thumbnailUrl = message.thumbnailUrl
+        self.attachmentThumbnailUrl = message.videoAttachment?.remoteThumbnailUrl
+        self.attachmentFileName = message.videoAttachment?.fileName
+        self.error = message.error
+        self.originalVibe = message.originalVibe
+    }
+
+    func toChatMessage() -> ChatMessage {
+        let parsedRole: MessageRole = {
+            switch role {
+            case "user": return .user
+            case "system": return .system
+            default: return .assistant
+            }
+        }()
+        var msg = ChatMessage(role: parsedRole, content: content)
+        msg.jobId = jobId
+        msg.jobStatus = jobStatus
+        msg.renderedVideoUrl = renderedVideoUrl
+        msg.thumbnailUrl = thumbnailUrl
+        msg.error = error
+        msg.originalVibe = originalVibe
+        if attachmentThumbnailUrl != nil || attachmentFileName != nil {
+            msg.videoAttachment = VideoAttachment(
+                localUrl: URL(fileURLWithPath: ""),
+                fileName: attachmentFileName ?? "",
+                thumbnail: nil,
+                remoteThumbnailUrl: attachmentThumbnailUrl
+            )
+        }
+        return msg
+    }
+}
+
+extension Chat {
+    /// Pull a one-line title out of the first user message. Mirrors
+    /// ChatGPT's auto-titling: trim, take the leading content, cap at
+    /// ~40 chars without breaking mid-word.
+    static func deriveTitle(from messages: [SerializedMessage]) -> String {
+        guard let first = messages.first(where: { $0.role == "user" && !$0.content.isEmpty }) else {
+            return "New Chat"
+        }
+        let raw = first.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.count <= 42 { return raw.isEmpty ? "New Chat" : raw }
+        let cap = raw.prefix(42)
+        if let lastSpace = cap.lastIndex(of: " ") {
+            return String(raw[..<lastSpace]) + "…"
+        }
+        return String(cap) + "…"
+    }
+}
+
 struct VideoJob: Identifiable, Codable {
     let id: String
     let status: String
@@ -117,6 +237,11 @@ final class AppState: ObservableObject {
     static let shared = AppState()
     @Published var selectedTab: Int = 0
     @Published var pendingReedit: ReeditSession?
+    /// Drives the ChatGPT-style sidebar drawer in AppShell. EditorView's
+    /// hamburger button toggles this; the drawer overlay listens for the
+    /// transition. Lives on AppState so any view can dismiss it without
+    /// having to plumb a binding through the hierarchy.
+    @Published var sidebarOpen: Bool = false
 }
 
 // MARK: - Pipeline stages (render progress narrative)
