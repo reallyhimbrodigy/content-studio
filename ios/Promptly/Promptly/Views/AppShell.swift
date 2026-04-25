@@ -3,17 +3,16 @@ import SwiftUI
 /// Top-level shell that wraps MainTabView in a ChatGPT-style sidebar
 /// drawer.
 ///
-/// Layout decisions tuned to match ChatGPT iOS:
-///   - drawer width = (screen - 56), so a thin 56pt strip of the main
-///     content peeks on the right when open. The peek strip is the
-///     visual cue that the rest of the app is still there + acts as
-///     a tap-to-close target.
-///   - main content shrinks to 0.94× anchored leading and offsets
-///     right by drawerWidth. The combined effect feels like the chat
-///     is being "pushed aside", not slid out from under the sidebar.
+/// Visual treatment matches ChatGPT iOS:
+///   - drawer width = (screen − 56), so a thin 56pt strip of the main
+///     content peeks on the right when open.
+///   - main content scales to 0.94 anchored leading, clips to 18pt
+///     rounded corners, and is desaturated + heavily dimmed while the
+///     drawer is open. The desaturation + dim pair is what makes the
+///     peek read as "inactive" rather than "competing for attention".
 ///   - tab bar (inside MainTabView) gets pushed off-screen along with
-///     the content because the offset/scale apply to the whole
-///     MainTabView, not just its inner content.
+///     the content because the offset/scale apply to MainTabView, not
+///     just its inner content.
 ///
 /// Gestures:
 ///   - Edge-swipe to open: a thin invisible strip pinned to the
@@ -35,42 +34,38 @@ struct AppShell: View {
             let drawerWidth = max(280, geo.size.width - Self.edgePeek)
 
             ZStack(alignment: .leading) {
-                // Sidebar — always laid out at the leading edge. Hidden
-                // behind the main content when the drawer is closed.
-                ChatListView(store: chatStore) {
-                    closeSidebar()
-                }
-                .frame(width: drawerWidth)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
+                // Sidebar — always laid out at the leading edge.
+                ChatListView(store: chatStore) { closeSidebar() }
+                    .frame(width: drawerWidth)
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
 
-                // Main content. Offsets right + scales when drawer opens.
+                // Main content. Offsets right + scales + desaturates +
+                // dims when the drawer opens.
                 ZStack(alignment: .leading) {
                     MainTabView()
                         .frame(width: geo.size.width)
                         .background(Color(.systemBackground))
+                        .saturation(appState.sidebarOpen ? 0.0 : 1.0)
+                        .allowsHitTesting(!appState.sidebarOpen)
 
-                    // Dim overlay catches taps + indicates "tap to dismiss".
+                    // Layered dim: dark scrim + ultra-thin material so
+                    // the peek reads as fully inactive. Catches taps
+                    // (close on tap) and gates drag-to-close.
                     if appState.sidebarOpen {
-                        Color.black.opacity(0.32)
-                            .ignoresSafeArea()
-                            .contentShape(Rectangle())
-                            .onTapGesture { closeSidebar() }
-                            .transition(.opacity)
-                    }
-
-                    // Drag-to-close gesture while open. Captures swipes on
-                    // the visible peek strip and the dim overlay.
-                    if appState.sidebarOpen {
-                        Color.clear
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 12)
-                                    .onEnded { value in
-                                        let dx = value.translation.width
-                                        if dx < -60 { closeSidebar() }
-                                    }
-                            )
+                        ZStack {
+                            Color.black.opacity(0.55)
+                            Rectangle().fill(.ultraThinMaterial).opacity(0.35)
+                        }
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { closeSidebar() }
+                        .gesture(
+                            DragGesture(minimumDistance: 12)
+                                .onEnded { value in
+                                    if value.translation.width < -60 { closeSidebar() }
+                                }
+                        )
+                        .transition(.opacity)
                     }
                 }
                 .frame(width: geo.size.width)
@@ -80,7 +75,7 @@ struct AppShell: View {
                 .shadow(color: .black.opacity(appState.sidebarOpen ? 0.25 : 0), radius: 24, x: -6, y: 0)
 
                 // Edge-swipe-to-open. Only listening while drawer is closed
-                // to avoid stealing scroll gestures inside the chat.
+                // so we don't fight scroll gestures inside the chat.
                 if !appState.sidebarOpen {
                     Color.clear
                         .frame(width: 22)
@@ -101,6 +96,16 @@ struct AppShell: View {
             .background(Color(.systemBackground))
         }
         .ignoresSafeArea(.keyboard)
+        .onChange(of: appState.sidebarOpen) { _, isOpen in
+            // Keyboard always dismisses on drawer open. We dismiss on
+            // close too so a stale focus from the sidebar's search
+            // field doesn't pop the keyboard back when the user lands
+            // on the editor.
+            EditorView.dismissKeyboard()
+            if isOpen {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+        }
         .task {
             if chatStore.chats.isEmpty {
                 await chatStore.loadChats()
@@ -109,7 +114,6 @@ struct AppShell: View {
     }
 
     private func openSidebar() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(Self.openSpring) { appState.sidebarOpen = true }
     }
 

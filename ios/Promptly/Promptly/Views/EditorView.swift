@@ -34,39 +34,39 @@ struct EditorView: View {
                 inputBar
             }
             .background(Color(.systemBackground))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isInputFocused = false
-            }
             .navigationTitle(chatStore.activeChat?.title ?? "Edit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Self.dismissKeyboard()
                         isInputFocused = false
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                            appState.sidebarOpen = true
+                            appState.sidebarOpen.toggle()
                         }
                     } label: {
                         Image(systemName: "sidebar.leading")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.white)
+                            .font(.system(size: 17, weight: .semibold))
                     }
+                    .tint(.white)
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Show chats")
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Self.dismissKeyboard()
                         Task { await startNewChat() }
                     } label: {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.white)
+                            .font(.system(size: 17, weight: .semibold))
                     }
+                    .tint(.white)
+                    .buttonStyle(.plain)
                     .accessibilityLabel("New chat")
                 }
             }
@@ -104,6 +104,20 @@ struct EditorView: View {
                 handleActiveChatChange(oldId: oldId, newId: newId)
             }
         }
+    }
+
+    // MARK: - Keyboard
+
+    /// Force-resign whatever responder currently owns the keyboard.
+    /// `@FocusState` mutations inside `withAnimation` are unreliable
+    /// because the animation transaction defers the state write —
+    /// dropping straight to UIKit guarantees the keyboard hides
+    /// synchronously regardless of SwiftUI's focus bookkeeping.
+    static func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
     }
 
     // MARK: - Chat persistence wiring
@@ -252,49 +266,25 @@ struct EditorView: View {
 
     // MARK: - Empty State
 
+    /// Minimal centered greeting. The "+" attach button in the input
+    /// bar is the CTA for picking video — same pattern ChatGPT / Claude
+    /// / Gemini iOS use. No big hero CTA competing with the input.
     private var emptyState: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                Spacer(minLength: 80)
-
-                Image(systemName: "video.fill")
-                    .font(.system(size: 40))
-                    .foregroundColor(Color(.tertiaryLabel))
-                    .frame(width: 88, height: 88)
-                    .background(Color(.separator))
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-
-                Text("Create your edit")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.white)
-
-                Text("Upload a video and describe\nthe vibe you want.")
-                    .font(.system(size: 15))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-
-                Button {
-                    showVideoPicker = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Upload Video")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .frame(height: 52)
-                    .frame(maxWidth: 240)
-                    .background(Color.white)
-                    .foregroundColor(.black)
-                    .cornerRadius(14)
-                }
-                .sensoryFeedback(.impact(weight: .light), trigger: showVideoPicker)
-
-                Spacer(minLength: 80)
-            }
-            .frame(maxWidth: .infinity)
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "sparkles")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.white)
+                .opacity(0.85)
+            Text("What do you want to edit?")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+            Spacer()
         }
-        .scrollDismissesKeyboard(.interactively)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { Self.dismissKeyboard() }
     }
 
     // MARK: - Messages
@@ -313,6 +303,12 @@ struct EditorView: View {
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
+            // Tap on empty area between input + messages dismisses the
+            // keyboard. simultaneousGesture so it doesn't steal taps from
+            // the message bubbles.
+            .simultaneousGesture(
+                TapGesture().onEnded { Self.dismissKeyboard() }
+            )
             .onChange(of: messages.count) { oldCount, newCount in
                 if newCount > oldCount, let lastId = messages.last?.id {
                     proxy.scrollTo(lastId, anchor: .bottom)

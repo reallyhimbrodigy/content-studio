@@ -32,6 +32,8 @@ struct ChatListView: View {
             ZStack {
                 if store.isLoading && store.chats.isEmpty {
                     loadingView
+                } else if let err = store.loadError, store.chats.isEmpty {
+                    errorState(err)
                 } else if filtered.isEmpty {
                     if search.isEmpty {
                         emptyView
@@ -43,6 +45,11 @@ struct ChatListView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Tapping anywhere in the chat-list area dismisses the
+            // search keyboard (mirrors ChatGPT's "tap to dismiss" feel).
+            .simultaneousGesture(
+                TapGesture().onEnded { searchFocused = false }
+            )
 
             Divider()
                 .background(Color(.separator).opacity(0.5))
@@ -129,7 +136,7 @@ struct ChatListView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.tertiarySystemFill))
         )
     }
 
@@ -153,6 +160,38 @@ struct ChatListView: View {
         }
         .padding(.horizontal, 24)
         .multilineTextAlignment(.center)
+    }
+
+    /// Backend-error state. Shown when ChatStore.loadChats() failed
+    /// (typically: the Supabase `chats` table doesn't exist yet, or
+    /// the network is down). Inline + recoverable, matching the
+    /// pattern Apple's Mail / Messages use for CloudKit failures.
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28))
+                .foregroundColor(.orange)
+            Text("Can't load chats")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.primary)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(4)
+                .padding(.horizontal, 12)
+            Button {
+                Task { await store.loadChats() }
+            } label: {
+                Text("Try again")
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 24)
     }
 
     private var noMatchesView: some View {
@@ -283,17 +322,17 @@ struct ChatListView: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(displayName)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     Text(emailDisplay)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(Color(.tertiaryLabel))
             }
             .padding(.horizontal, 16)
