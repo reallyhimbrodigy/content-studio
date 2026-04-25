@@ -512,42 +512,53 @@ class APIService {
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> String {
         let t0 = Date()
-        let partSize = Self.multipartChunkSize
+        // 5MB parts — S3's non-final minimum. Smaller parts = first part
+        // ships after just 5MB of iCloud bytes have arrived (vs 16MB),
+        // starting the pipeline overlap 3× sooner. Tradeoff: more server
+        // roundtrips on init, more part-complete overhead. Worth it for
+        // the faster pipeline warmup on iCloud-sourced uploads.
+        let partSize: Int64 = 5 * 1024 * 1024
         let partCount = Int((fileSize + partSize - 1) / partSize)
         print("[perf] stream upload fileSize=\(fileSize) parts=\(partCount) chunkSize=\(partSize)")
 
-        // 1. Init: request presigned URLs for every part upfront.
+        // 1. Init: request presigned URLs for every part upfront. Fired
+        //    as a background task so the first PhotoKit bytes don't wait
+        //    on this HTTPS roundtrip.
         let initStart = Date()
-        var initRequest = await authorizedRequest("/api/upload-multipart-init", method: "POST")
-        initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        initRequest.httpBody = try JSONSerialization.data(withJSONObject: [
-            "fileName": fileName,
-            "partCount": partCount,
-        ])
-        let (initData, initResp) = try await URLSession.shared.data(for: initRequest)
-        guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
-            throw APIError.uploadFailed
+        let initTask = Task { () -> MultipartInitResponse in
+            var initRequest = await self.authorizedRequest("/api/upload-multipart-init", method: "POST")
+            initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            initRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                "fileName": fileName,
+                "partCount": partCount,
+            ])
+            let (initData, initResp) = try await URLSession.shared.data(for: initRequest)
+            guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
+                throw APIError.uploadFailed
+            }
+            let r = try JSONDecoder().decode(MultipartInitResponse.self, from: initData)
+            guard r.partUrls.count == partCount else { throw APIError.uploadFailed }
+            print(String(format: "[perf] stream init %.2fs", Date().timeIntervalSince(initStart)))
+            return r
         }
-        let initResponse = try JSONDecoder().decode(MultipartInitResponse.self, from: initData)
-        guard initResponse.partUrls.count == partCount else {
-            throw APIError.uploadFailed
-        }
-        print(String(format: "[perf] stream init %.2fs", Date().timeIntervalSince(initStart)))
 
         let tracker = MultipartProgressTracker()
         let netStart = Date()
 
         do {
-            // 2. Drive PhotoKit streaming. Accumulate bytes in a buffer and
-            //    whenever we cross a 16MB boundary, spawn a detached task
-            //    to upload that chunk to its presigned URL in parallel.
-            //    PhotoKit invokes `dataReceivedHandler` serially so the
-            //    buffer/index mutation is race-free without locking.
+            // 2. Drive PhotoKit streaming. Keep incoming chunks as a list
+            //    of Data refs (NOT a concatenated buffer with removeFirst,
+            //    which is O(N) per chunk and blocks the serial PhotoKit
+            //    delivery queue). When we have >= partSize bytes queued,
+            //    slice out the next part's chunks and detach a Task that
+            //    assembles + uploads them. The assembly happens OFF the
+            //    PhotoKit queue so delivery never stalls.
             var partTasks: [Task<MultipartPart, Error>] = []
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
                 let options = PHAssetResourceRequestOptions()
                 options.isNetworkAccessAllowed = true
-                var buffer = Data()
+                var queue: [Data] = []
+                var queuedBytes: Int64 = 0
                 var nextPartIndex = 0
                 var resumed = false
 
@@ -557,23 +568,50 @@ class APIService {
                     }
                 }
 
+                /// Pull `size` bytes off the head of the chunk queue as a
+                /// list of Data slices. Splits the head chunk if needed.
+                /// Keeps O(1) work on the PhotoKit queue — no large
+                /// memcpy, no buffer reallocation.
+                func sliceFront(size: Int64) -> [Data] {
+                    var remaining = size
+                    var out: [Data] = []
+                    while remaining > 0 && !queue.isEmpty {
+                        let head = queue[0]
+                        if Int64(head.count) <= remaining {
+                            out.append(head)
+                            remaining -= Int64(head.count)
+                            queue.removeFirst()
+                        } else {
+                            let take = Int(remaining)
+                            out.append(head.prefix(take))
+                            queue[0] = head.suffix(head.count - take)
+                            remaining = 0
+                        }
+                    }
+                    queuedBytes -= size
+                    return out
+                }
+
                 PHAssetResourceManager.default().requestData(
                     for: resource,
                     options: options,
                     dataReceivedHandler: { chunk in
-                        buffer.append(chunk)
-                        // Ship every complete 16MB boundary, but leave
-                        // enough behind for the final part — S3 requires
-                        // non-final parts to be >= 5MB, so we keep going
-                        // until we hit the last part which gets whatever
-                        // trails behind.
-                        while buffer.count >= Int(partSize) && nextPartIndex < partCount - 1 {
-                            let partData = Data(buffer.prefix(Int(partSize)))
-                            buffer.removeFirst(Int(partSize))
+                        queue.append(chunk)
+                        queuedBytes += Int64(chunk.count)
+                        // Ship every complete 5MB boundary. Leave the
+                        // final part for completionHandler since S3
+                        // allows the last part to be any size but non-
+                        // final parts must be >= 5MB.
+                        while queuedBytes >= partSize && nextPartIndex < partCount - 1 {
+                            let partChunks = sliceFront(size: partSize)
                             let partNumber = nextPartIndex + 1
-                            let partUrl = initResponse.partUrls[nextPartIndex]
                             nextPartIndex += 1
                             let task = Task.detached(priority: .userInitiated) {
+                                // Assemble the part Data HERE, off the
+                                // PhotoKit delivery queue.
+                                var partData = Data(capacity: Int(partSize))
+                                for c in partChunks { partData.append(c) }
+                                let partUrl = try await initTask.value.partUrls[partNumber - 1]
                                 return try await APIService.uploadOnePartData(
                                     data: partData,
                                     partNumber: partNumber,
@@ -592,15 +630,15 @@ class APIService {
                             if !resumed { resumed = true; cont.resume(throwing: error) }
                             return
                         }
-                        // Flush the tail as the final part (any size >= 1
-                        // byte is fine since it's the last part).
-                        if !buffer.isEmpty && nextPartIndex < partCount {
-                            let partData = buffer
-                            buffer.removeAll()
+                        // Flush anything left as the final part.
+                        if queuedBytes > 0 && nextPartIndex < partCount {
+                            let partChunks = sliceFront(size: queuedBytes)
                             let partNumber = nextPartIndex + 1
-                            let partUrl = initResponse.partUrls[nextPartIndex]
                             nextPartIndex += 1
                             let task = Task.detached(priority: .userInitiated) {
+                                var partData = Data()
+                                for c in partChunks { partData.append(c) }
+                                let partUrl = try await initTask.value.partUrls[partNumber - 1]
                                 return try await APIService.uploadOnePartData(
                                     data: partData,
                                     partNumber: partNumber,
@@ -617,6 +655,8 @@ class APIService {
                     }
                 )
             }
+
+            let initResponse = try await initTask.value
 
             // 3. Wait for every part upload to finish.
             var parts: [MultipartPart] = []
@@ -649,13 +689,16 @@ class APIService {
             print(String(format: "[perf] stream TOTAL elapsed=%.2fs throughput=%.1fMbps", total, totalMbps))
             return completeResponse.publicUrl
         } catch {
-            // Abort so S3 doesn't orphan-bill the in-progress parts.
-            Task.detached(priority: .utility) { [initResponse] in
+            // Abort so S3 doesn't orphan-bill the in-progress parts. Need
+            // to recover the init response — it may have succeeded even
+            // if a part failed later.
+            Task.detached(priority: .utility) {
+                guard let init_ = try? await initTask.value else { return }
                 var abortRequest = await APIService.shared.authorizedRequest("/api/upload-multipart-abort", method: "POST")
                 abortRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 abortRequest.httpBody = try? JSONSerialization.data(withJSONObject: [
-                    "key": initResponse.key,
-                    "uploadId": initResponse.uploadId,
+                    "key": init_.key,
+                    "uploadId": init_.uploadId,
                 ])
                 _ = try? await URLSession.shared.data(for: abortRequest)
             }
