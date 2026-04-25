@@ -79,11 +79,13 @@ enum PHAssetResolver {
             let options = PHVideoRequestOptions()
             options.version = .current
             options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
+            // `.automatic` returns the original asset file URL without
+            // transcoding for on-device assets (free), and downloads the
+            // original bytes from iCloud when needed. `.highQualityFormat`
+            // would potentially re-transcode to a "higher quality" format,
+            // burning time for zero benefit.
+            options.deliveryMode = .automatic
             options.progressHandler = { progress, _, _, _ in
-                // If iCloud is downloading this, the first callback typically
-                // arrives well before completion — use it to surface the
-                // download path in logs.
                 if progress > 0 && progress < 1 {
                     print(String(format: "[perf] resolve iCloud progress=%.0f%% elapsed=%.2fs", progress * 100, Date().timeIntervalSince(start)))
                 }
@@ -124,33 +126,30 @@ enum PHAssetResolver {
         }
     }
 
-    /// Fast local thumbnail via PHImageManager — serves from the Photos cache
-    /// without touching the video bytes. No iCloud download required.
-    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 400, height: 400)) async -> UIImage? {
+    /// Fast LOCAL-ONLY thumbnail via PHImageManager. Critical:
+    /// `isNetworkAccessAllowed = false`. With network allowed, PhotoKit
+    /// can decide to download the full source from iCloud just to generate
+    /// a sharper thumbnail — for a 100MB video that's 1-2 minutes of
+    /// spinning UI. Photos always keeps a local thumbnail cached even for
+    /// iCloud-only assets, so local-only is correct here. For sharp final
+    /// thumbnails we regenerate from the actual video file via
+    /// AVAssetImageGenerator once it's resolved.
+    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 480, height: 480)) async -> UIImage? {
         await withCheckedContinuation { continuation in
             var hasResumed = false
             let options = PHImageRequestOptions()
-            options.deliveryMode = .opportunistic
-            options.isNetworkAccessAllowed = true
-            options.resizeMode = .fast
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = false
+            options.resizeMode = .exact
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: size,
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
-                // opportunistic delivery fires the handler twice (degraded +
-                // final). Resume on whichever comes first that has an image.
                 guard !hasResumed else { return }
-                if let image = image {
-                    hasResumed = true
-                    continuation.resume(returning: image)
-                }
-                let isFinal = (info?[PHImageResultIsDegradedKey] as? Bool) == false
-                if isFinal && !hasResumed {
-                    hasResumed = true
-                    continuation.resume(returning: nil)
-                }
+                hasResumed = true
+                continuation.resume(returning: image)
             }
         }
     }

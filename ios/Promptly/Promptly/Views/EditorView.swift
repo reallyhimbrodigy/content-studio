@@ -312,6 +312,18 @@ struct EditorView: View {
                                  Double(sourceSize) / 1_048_576.0,
                                  sourceUrl.pathExtension.lowercased()))
 
+                    // Replace the PHAsset cached thumbnail with a sharp
+                    // frame grabbed directly from the resolved video file.
+                    // The PHImageManager thumbnail is a low-res cached
+                    // thumb that often looks soft when scaled on Retina —
+                    // AVAssetImageGenerator gives us a real frame at the
+                    // resolution we ask for.
+                    Task {
+                        if let sharp = await ThumbnailGenerator.generate(from: sourceUrl) {
+                            await MainActor.run { pending.thumbnail = sharp }
+                        }
+                    }
+
                     // Step 1: Compression is SKIPPED for typical camera-roll
                     // videos (mp4/mov under 300MB). Those are already
                     // H.264/HEVC in a container S3 accepts as-is — running
