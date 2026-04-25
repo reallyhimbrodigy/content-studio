@@ -193,16 +193,24 @@ async function abortMultipartUpload(key, uploadId) {
 
 /**
  * Generate a presigned GET URL for reading a private object.
+ *
+ * AWS SigV4 caps presigned-URL expiration at 7 days (604800s). Anything
+ * higher is rejected with "Signature version 4 presigned URLs must have
+ * an expiration date less than one week in the future." Default to the
+ * SigV4 ceiling so callers can ask for "as long as possible" without
+ * triggering the validation error and falling back to the public URL.
  * @param {string} key
- * @param {number} expiresIn - Seconds (default 1 year)
+ * @param {number} expiresIn - Seconds (default 7 days, AWS hard cap)
  * @returns {Promise<string>}
  */
-async function createPresignedGetUrl(key, expiresIn = 60 * 60 * 24 * 365) {
+const SIGV4_MAX_EXPIRES = 60 * 60 * 24 * 7;
+async function createPresignedGetUrl(key, expiresIn = SIGV4_MAX_EXPIRES) {
   if (!s3Client) throw new Error('S3 client not configured');
+  const safeExpires = Math.min(Math.max(1, expiresIn), SIGV4_MAX_EXPIRES);
   return getSignedUrl(s3Client, new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
-  }), { expiresIn });
+  }), { expiresIn: safeExpires });
 }
 
 /**
