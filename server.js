@@ -10085,6 +10085,81 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Multipart upload: init ────────────────────────────────────────────
+  // Client POSTs {fileName, partCount}. Server creates an S3 multipart
+  // upload, presigns N part URLs (accelerate endpoint), returns them.
+  // Client uploads parts in parallel, then calls /api/upload-multipart-complete.
+  // Dramatically faster than single-stream PUT — 2-3× on typical networks.
+  if (parsed.pathname === '/api/upload-multipart-init' && req.method === 'POST') {
+    (async () => {
+      try {
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const fileName = String(body?.fileName || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
+        const partCount = Math.max(1, Math.min(1000, parseInt(body?.partCount, 10) || 0));
+        if (partCount === 0) return sendJson(res, 400, { error: 'partCount is required (1-1000)' });
+
+        const s3 = require('./services/s3');
+        if (!s3.isConfigured()) {
+          return sendJson(res, 500, { error: 'Storage not configured' });
+        }
+
+        const key = `sources/${authUser.id}/${Date.now()}-${fileName}`;
+        const { uploadId, partUrls } = await s3.initMultipartUpload(key, partCount, 3600);
+        const publicUrl = s3.getPublicUrl(key);
+        return sendJson(res, 200, { uploadId, partUrls, key, publicUrl });
+      } catch (error) {
+        console.error('[upload-multipart-init] error:', error?.message);
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to init multipart upload' });
+      }
+    })();
+    return;
+  }
+
+  // ── Multipart upload: complete ────────────────────────────────────────
+  // Body: {key, uploadId, parts: [{PartNumber, ETag}]}
+  if (parsed.pathname === '/api/upload-multipart-complete' && req.method === 'POST') {
+    (async () => {
+      try {
+        await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const key = String(body?.key || '').trim();
+        const uploadId = String(body?.uploadId || '').trim();
+        const parts = Array.isArray(body?.parts) ? body.parts : null;
+        if (!key || !uploadId || !parts) {
+          return sendJson(res, 400, { error: 'key, uploadId, and parts are required' });
+        }
+
+        const s3 = require('./services/s3');
+        await s3.completeMultipartUpload(key, uploadId, parts);
+        return sendJson(res, 200, { publicUrl: s3.getPublicUrl(key), key });
+      } catch (error) {
+        console.error('[upload-multipart-complete] error:', error?.message);
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Failed to complete multipart upload' });
+      }
+    })();
+    return;
+  }
+
+  // ── Multipart upload: abort (cleanup on client give-up) ──────────────
+  if (parsed.pathname === '/api/upload-multipart-abort' && req.method === 'POST') {
+    (async () => {
+      try {
+        await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const key = String(body?.key || '').trim();
+        const uploadId = String(body?.uploadId || '').trim();
+        if (!key || !uploadId) return sendJson(res, 400, { error: 'key + uploadId required' });
+        const s3 = require('./services/s3');
+        await s3.abortMultipartUpload(key, uploadId);
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        return sendJson(res, error?.statusCode || 500, { error: error?.message || 'Abort failed' });
+      }
+    })();
+    return;
+  }
+
   // ── Gemini Chat Proxy ──
   if (parsed.pathname === '/api/chat' && req.method === 'POST') {
     (async () => {

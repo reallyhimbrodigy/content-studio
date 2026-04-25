@@ -1,11 +1,28 @@
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const AWS_REGION = process.env.AWS_REGION || 'us-west-1';
 const S3_BUCKET = process.env.S3_BUCKET_NAME || '';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || '';
+// Transfer Acceleration routes uploads through the nearest CloudFront edge
+// POP and then AWS backbone to the target bucket. Lossless: same bytes,
+// shorter path. Enabled on the bucket via put-bucket-accelerate-configuration.
+// Flag here toggles whether presigned URLs use the accelerate endpoint.
+const S3_USE_ACCELERATE = String(process.env.S3_USE_ACCELERATE || 'true').toLowerCase() === 'true';
 
 let s3Client = null;
+// Separate client instance for presigning URLs that target the accelerate
+// endpoint. The host format is {bucket}.s3-accelerate.amazonaws.com.
+let s3SigningClient = null;
 
 if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUCKET) {
   s3Client = new S3Client({
@@ -15,7 +32,19 @@ if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUC
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
     },
   });
-  console.log(`[s3] Configured: bucket=${S3_BUCKET} region=${AWS_REGION}`);
+
+  s3SigningClient = S3_USE_ACCELERATE
+    ? new S3Client({
+        region: AWS_REGION,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        },
+        useAccelerateEndpoint: true,
+      })
+    : s3Client;
+
+  console.log(`[s3] Configured: bucket=${S3_BUCKET} region=${AWS_REGION} accelerate=${S3_USE_ACCELERATE}`);
 } else {
   console.warn('[s3] AWS credentials or S3_BUCKET_NAME not set — S3 storage disabled');
 }
@@ -43,17 +72,98 @@ async function upload(key, buffer, contentType) {
 }
 
 /**
- * Generate a presigned PUT URL for the worker to upload directly.
+ * Generate a presigned PUT URL for the worker to upload directly. Uses the
+ * accelerate endpoint when enabled — 1.5-2× upload throughput for clients
+ * far from the bucket region, routed through CloudFront edge POPs. Bytes
+ * are byte-identical; only the transit path is different.
  * @param {string} key
  * @param {number} expiresIn - Seconds (default 1 hour)
  * @returns {Promise<string>}
  */
 async function createPresignedPutUrl(key, expiresIn = 3600) {
-  if (!s3Client) throw new Error('S3 client not configured');
-  return getSignedUrl(s3Client, new PutObjectCommand({
+  if (!s3SigningClient) throw new Error('S3 client not configured');
+  return getSignedUrl(s3SigningClient, new PutObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   }), { expiresIn });
+}
+
+/**
+ * Initialize a multipart upload and return presigned URLs for each part.
+ * The client uploads parts in parallel against these URLs (each hitting the
+ * accelerate endpoint when enabled), then calls completeMultipartUpload to
+ * finalize. Massively faster than a single-stream PUT on larger files by
+ * saturating multiple TCP connections.
+ * @param {string} key - S3 object key
+ * @param {number} partCount - Number of parts client will upload
+ * @param {number} expiresIn - Seconds (default 1 hour)
+ * @returns {Promise<{uploadId: string, partUrls: string[]}>}
+ */
+async function initMultipartUpload(key, partCount, expiresIn = 3600) {
+  if (!s3Client || !s3SigningClient) throw new Error('S3 client not configured');
+
+  const initResp = await s3Client.send(new CreateMultipartUploadCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    ContentType: 'video/mp4',
+  }));
+  const uploadId = initResp.UploadId;
+  if (!uploadId) throw new Error('S3 CreateMultipartUpload returned no UploadId');
+
+  // Presign each UploadPart URL. Must be done in-order since part numbers
+  // are embedded in the signed URL. UploadPart commands are idempotent —
+  // the client can retry a specific part without corrupting the overall upload.
+  const partUrls = [];
+  for (let partNumber = 1; partNumber <= partCount; partNumber++) {
+    const url = await getSignedUrl(
+      s3SigningClient,
+      new UploadPartCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        UploadId: uploadId,
+        PartNumber: partNumber,
+      }),
+      { expiresIn }
+    );
+    partUrls.push(url);
+  }
+  return { uploadId, partUrls };
+}
+
+/**
+ * Complete a multipart upload with the ETags returned from each part PUT.
+ * @param {string} key
+ * @param {string} uploadId
+ * @param {Array<{PartNumber: number, ETag: string}>} parts - Sorted ascending
+ */
+async function completeMultipartUpload(key, uploadId, parts) {
+  if (!s3Client) throw new Error('S3 client not configured');
+  // S3 requires parts sorted by PartNumber ascending.
+  const sortedParts = [...parts].sort((a, b) => a.PartNumber - b.PartNumber);
+  await s3Client.send(new CompleteMultipartUploadCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    MultipartUpload: { Parts: sortedParts },
+  }));
+}
+
+/**
+ * Abort a multipart upload to free the in-progress parts. Safe no-op if
+ * already completed or never initialized. Called when client retries fail
+ * or gives up — prevents orphaned parts from billing forever.
+ */
+async function abortMultipartUpload(key, uploadId) {
+  if (!s3Client) return;
+  try {
+    await s3Client.send(new AbortMultipartUploadCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      UploadId: uploadId,
+    }));
+  } catch (e) {
+    console.warn(`[s3] abort multipart failed for ${key}: ${e.message}`);
+  }
 }
 
 /**
@@ -91,6 +201,9 @@ module.exports = {
   createPresignedPutUrl,
   createPresignedGetUrl,
   getPublicUrl,
+  initMultipartUpload,
+  completeMultipartUpload,
+  abortMultipartUpload,
   S3_BUCKET,
   AWS_REGION,
 };

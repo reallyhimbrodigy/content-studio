@@ -300,19 +300,40 @@ struct EditorView: View {
                     let compressedUrl = try await VideoCompressor.compress(sourceUrl: video.fileUrl)
                     await MainActor.run { pending.fileUrl = compressedUrl }
 
-                    // Step 2: Upload compressed file
-                    let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
-                    if let uploadUrl = urlResponse.uploadUrl, let publicUrl = urlResponse.publicUrl {
-                        try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
-                            pending.uploadProgress = progress
+                    // Step 2: Upload compressed file — multipart w/ Transfer Acceleration
+                    // when the file is big enough to benefit; single PUT for tiny files.
+                    var publicUrl: String?
+                    if APIService.shouldUseMultipart(fileUrl: compressedUrl) {
+                        do {
+                            let url = try await APIService.shared.uploadFileToS3Multipart(
+                                fileName: pending.fileName,
+                                fileUrl: compressedUrl
+                            ) { progress in
+                                pending.uploadProgress = progress
+                            }
+                            publicUrl = url
+                        } catch {
+                            print("[upload] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
+                            // Fall through to single PUT below
                         }
+                    }
+                    if publicUrl == nil {
+                        let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
+                        if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
+                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
+                                pending.uploadProgress = progress
+                            }
+                            publicUrl = pub
+                        }
+                    }
+
+                    if let publicUrl = publicUrl {
                         await MainActor.run {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
                         }
-                        // Prewarm Modal's volume cache with the newly-uploaded source
-                        // so the eventual /api/video-jobs render call skips the S3
-                        // download step entirely. Fire-and-forget; non-blocking.
+                        // Prewarm Modal's volume cache so the eventual render call
+                        // skips the S3 download step entirely.
                         Task.detached(priority: .utility) {
                             await APIService.shared.prewarmRender(videoUrl: publicUrl)
                         }

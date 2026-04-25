@@ -196,6 +196,217 @@ class APIService {
         throw lastError ?? APIError.uploadFailed
     }
 
+    // MARK: - Multipart Upload (parallel chunks, lossless)
+    //
+    // Splits the file into 8MB chunks and uploads them in parallel against
+    // presigned URLs served by the server. 2-3× throughput of single-stream
+    // PUT on any multi-path network. Bytes are byte-identical — multipart
+    // is a TRANSPORT optimization, pixels are not touched.
+    //
+    // Flow:
+    //   1. POST /api/upload-multipart-init { fileName, partCount } →
+    //      { uploadId, partUrls[], key, publicUrl }
+    //   2. Upload each part to its presigned URL in parallel (max 4 at once)
+    //   3. POST /api/upload-multipart-complete { key, uploadId, parts[] } →
+    //      { publicUrl }
+    // On any unrecoverable error, POST /api/upload-multipart-abort so the
+    // S3-side in-progress parts don't sit around billing.
+
+    private static let multipartChunkSize: Int64 = 8 * 1024 * 1024    // 8MB — S3 min for a non-final part is 5MB
+    private static let multipartConcurrency = 4                        // parallel part uploads
+    private static let multipartThreshold: Int64 = 16 * 1024 * 1024    // <16MB stays on single PUT path
+
+    struct MultipartInitResponse: Codable {
+        let uploadId: String
+        let partUrls: [String]
+        let key: String
+        let publicUrl: String
+    }
+
+    struct MultipartCompleteResponse: Codable {
+        let publicUrl: String
+        let key: String
+    }
+
+    struct MultipartPart: Codable {
+        let PartNumber: Int
+        let ETag: String
+    }
+
+    /// Upload a file using S3 multipart + Transfer Acceleration. Returns the
+    /// public URL on success. Falls back internally to nothing — caller is
+    /// responsible for falling back to `uploadFileToS3` on thrown errors.
+    func uploadFileToS3Multipart(
+        fileName: String,
+        fileUrl: URL,
+        onProgress: ((Double) -> Void)? = nil
+    ) async throws -> String {
+        let attrs = try FileManager.default.attributesOfItem(atPath: fileUrl.path)
+        let fileSize = (attrs[.size] as? Int64) ?? 0
+        guard fileSize > 0 else { throw APIError.uploadFailed }
+
+        let chunkSize = Self.multipartChunkSize
+        let partCount = Int((fileSize + chunkSize - 1) / chunkSize)
+
+        // 1. Init: get presigned part URLs
+        var initRequest = await authorizedRequest("/api/upload-multipart-init", method: "POST")
+        initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        initRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "fileName": fileName,
+            "partCount": partCount,
+        ])
+        let (initData, initResp) = try await URLSession.shared.data(for: initRequest)
+        guard let initHttp = initResp as? HTTPURLResponse, (200...299).contains(initHttp.statusCode) else {
+            throw APIError.uploadFailed
+        }
+        let initResponse = try JSONDecoder().decode(MultipartInitResponse.self, from: initData)
+        guard initResponse.partUrls.count == partCount else {
+            throw APIError.uploadFailed
+        }
+
+        // 2. Upload parts in parallel with bounded concurrency
+        let session = URLSession(configuration: {
+            let c = URLSessionConfiguration.default
+            c.timeoutIntervalForRequest = 120
+            c.timeoutIntervalForResource = 300
+            c.waitsForConnectivity = true
+            c.allowsCellularAccess = true
+            c.httpMaximumConnectionsPerHost = Self.multipartConcurrency
+            return c
+        }())
+
+        let uploadedBytes = MultipartProgressTracker()
+        let totalBytes = fileSize
+
+        do {
+            let parts: [MultipartPart] = try await withThrowingTaskGroup(of: MultipartPart.self) { group in
+                var next = 0
+                var collected: [MultipartPart] = []
+                collected.reserveCapacity(partCount)
+
+                func scheduleNext() {
+                    guard next < partCount else { return }
+                    let partIndex = next
+                    next += 1
+                    let start = Int64(partIndex) * chunkSize
+                    let end = min(start + chunkSize, fileSize)
+                    let partSize = end - start
+                    let partUrlStr = initResponse.partUrls[partIndex]
+                    group.addTask {
+                        return try await Self.uploadOnePart(
+                            fileUrl: fileUrl,
+                            offset: start,
+                            length: partSize,
+                            partNumber: partIndex + 1,
+                            url: partUrlStr,
+                            session: session,
+                            tracker: uploadedBytes,
+                            totalBytes: totalBytes,
+                            onProgress: onProgress
+                        )
+                    }
+                }
+
+                // Seed with concurrency slots
+                for _ in 0..<min(Self.multipartConcurrency, partCount) {
+                    scheduleNext()
+                }
+                // Drain + schedule replacements
+                for try await part in group {
+                    collected.append(part)
+                    scheduleNext()
+                }
+                return collected
+            }
+
+            // 3. Complete
+            var completeRequest = await authorizedRequest("/api/upload-multipart-complete", method: "POST")
+            completeRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            completeRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                "key": initResponse.key,
+                "uploadId": initResponse.uploadId,
+                "parts": parts.map { ["PartNumber": $0.PartNumber, "ETag": $0.ETag] },
+            ])
+            let (completeData, completeResp) = try await URLSession.shared.data(for: completeRequest)
+            guard let http = completeResp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                throw APIError.uploadFailed
+            }
+            let completeResponse = try JSONDecoder().decode(MultipartCompleteResponse.self, from: completeData)
+            return completeResponse.publicUrl
+        } catch {
+            // Abort the in-progress multipart so parts don't orphan-bill.
+            Task.detached(priority: .utility) { [initResponse] in
+                var abortRequest = await APIService.shared.authorizedRequest("/api/upload-multipart-abort", method: "POST")
+                abortRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                abortRequest.httpBody = try? JSONSerialization.data(withJSONObject: [
+                    "key": initResponse.key,
+                    "uploadId": initResponse.uploadId,
+                ])
+                _ = try? await URLSession.shared.data(for: abortRequest)
+            }
+            throw error
+        }
+    }
+
+    private static func uploadOnePart(
+        fileUrl: URL,
+        offset: Int64,
+        length: Int64,
+        partNumber: Int,
+        url: String,
+        session: URLSession,
+        tracker: MultipartProgressTracker,
+        totalBytes: Int64,
+        onProgress: ((Double) -> Void)?
+    ) async throws -> MultipartPart {
+        guard let u = URL(string: url) else { throw APIError.uploadFailed }
+        // Read just this chunk off disk — avoids loading the full file into RAM.
+        let handle = try FileHandle(forReadingFrom: fileUrl)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(offset))
+        guard let data = try handle.read(upToCount: Int(length)), data.count == Int(length) else {
+            throw APIError.uploadFailed
+        }
+
+        var request = URLRequest(url: u)
+        request.httpMethod = "PUT"
+        // No Content-Type header — presigned URL was signed without it.
+
+        var attemptsRemaining = 2
+        var lastError: Error?
+        while attemptsRemaining > 0 {
+            do {
+                let (_, resp) = try await session.upload(for: request, from: data)
+                guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw APIError.uploadFailed
+                }
+                guard let etag = http.value(forHTTPHeaderField: "ETag") ?? http.value(forHTTPHeaderField: "Etag") else {
+                    throw APIError.uploadFailed
+                }
+                await tracker.add(Int64(data.count))
+                let progress = min(1.0, Double(await tracker.total()) / Double(totalBytes))
+                await MainActor.run { onProgress?(progress) }
+                return MultipartPart(PartNumber: partNumber, ETag: etag.replacingOccurrences(of: "\"", with: ""))
+            } catch {
+                lastError = error
+                attemptsRemaining -= 1
+                if attemptsRemaining > 0 {
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+        }
+        throw lastError ?? APIError.uploadFailed
+    }
+
+    /// Decide whether a file should use multipart based on size. Caller uses
+    /// single PUT for tiny files where multipart overhead isn't worth it.
+    static func shouldUseMultipart(fileUrl: URL) -> Bool {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) else {
+            return false
+        }
+        return size >= multipartThreshold
+    }
+
     func uploadVideo(data: Data, fileName: String) async throws -> String {
         var request = await authorizedRequest("/api/upload", method: "POST")
 
@@ -258,6 +469,14 @@ enum APIError: LocalizedError {
         case .deleteFailed: return "Delete failed"
         }
     }
+}
+
+// Thread-safe counter for multipart upload progress aggregation across
+// parallel part uploads. Swift actors give us race-free increment + read.
+actor MultipartProgressTracker {
+    private var bytesUploaded: Int64 = 0
+    func add(_ delta: Int64) { bytesUploaded += delta }
+    func total() -> Int64 { bytesUploaded }
 }
 
 class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
