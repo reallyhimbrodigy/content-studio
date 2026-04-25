@@ -1,32 +1,53 @@
 import SwiftUI
 
-/// Sidebar content — the ChatGPT-style list of past chats with a "New
-/// Chat" button at the top. Tapping a row activates that chat in the
-/// editor; long-pressing a row opens a delete confirmation. Chats live
-/// in Supabase; nothing here is destroyed unless the user hits delete.
+/// Sidebar UI. Tuned to feel like ChatGPT's iOS sidebar:
+///   - rounded search field at the top, native-feeling placeholder
+///   - chat rows with title + one-line preview
+///   - subtle selected-state (light tinted background, no heavy fill)
+///   - swipe-to-delete on rows + context-menu fallback
+///   - sticky profile chip pinned to the bottom of the drawer
 struct ChatListView: View {
     @ObservedObject var store: ChatStore
-    let onSelect: () -> Void  // dismiss the drawer after selection
+    let onSelect: () -> Void
 
     @State private var pendingDelete: Chat?
+    @State private var search: String = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             header
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+
+            searchField
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
 
             Divider()
-                .background(Color(.separator))
+                .background(Color(.separator).opacity(0.5))
 
-            if store.isLoading && store.chats.isEmpty {
-                loading
-            } else if store.chats.isEmpty {
-                empty
-            } else {
-                list
+            // Body
+            ZStack {
+                if store.isLoading && store.chats.isEmpty {
+                    loadingView
+                } else if filtered.isEmpty {
+                    if search.isEmpty {
+                        emptyView
+                    } else {
+                        noMatchesView
+                    }
+                } else {
+                    chatScroll
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+                .background(Color(.separator).opacity(0.5))
+
+            profileChip
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.systemBackground))
@@ -40,16 +61,19 @@ struct ChatListView: View {
             Button("Cancel", role: .cancel) { pendingDelete = nil }
             Button("Delete", role: .destructive) {
                 if let chat = pendingDelete {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     Task { await store.deleteChat(id: chat.id) }
                 }
                 pendingDelete = nil
             }
         } message: {
             if let chat = pendingDelete {
-                Text("\"\(chat.title)\" will be permanently removed.")
+                Text("\"\(chat.title)\" will be permanently removed. This can't be undone.")
             }
         }
     }
+
+    // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 10) {
@@ -76,47 +100,83 @@ struct ChatListView: View {
         }
     }
 
-    private var loading: some View {
-        VStack {
-            Spacer()
-            ProgressView().tint(.secondary)
-            Spacer()
+    // MARK: - Search field
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Color(.tertiaryLabel))
+            TextField("Search chats", text: $search)
+                .focused($searchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.search)
+                .foregroundColor(.primary)
+                .font(.system(size: 15))
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                    searchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(.tertiaryLabel))
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
     }
 
-    private var empty: some View {
-        VStack(spacing: 12) {
-            Spacer()
+    // MARK: - Body states
+
+    private var loadingView: some View {
+        ProgressView().tint(.secondary)
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 10) {
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 32))
-                .foregroundColor(.secondary)
+                .font(.system(size: 30))
+                .foregroundColor(Color(.tertiaryLabel))
             Text("No chats yet")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(.secondary)
             Text("Tap the new chat icon to start.")
                 .font(.system(size: 13))
                 .foregroundColor(Color(.tertiaryLabel))
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
         .multilineTextAlignment(.center)
     }
 
-    @ViewBuilder
-    private var list: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
-                ForEach(grouped, id: \.0) { (sectionTitle, chatsInSection) in
-                    Text(sectionTitle)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(.tertiaryLabel))
-                        .textCase(.uppercase)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 14)
-                        .padding(.bottom, 6)
+    private var noMatchesView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 26))
+                .foregroundColor(Color(.tertiaryLabel))
+            Text("No results")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+            Text("No chats match \"\(search)\".")
+                .font(.system(size: 12))
+                .foregroundColor(Color(.tertiaryLabel))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 24)
+    }
 
+    // MARK: - Chat list
+
+    private var chatScroll: some View {
+        List {
+            ForEach(grouped, id: \.0) { (sectionTitle, chatsInSection) in
+                Section {
                     ForEach(chatsInSection) { chat in
                         ChatRow(
                             chat: chat,
@@ -126,6 +186,19 @@ struct ChatListView: View {
                             store.activeChatId = chat.id
                             onSelect()
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        // swipeActions only fires inside a List — that's
+                        // why we converted away from LazyVStack. Outside
+                        // List it compiles but is a no-op.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingDelete = chat
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                         .contextMenu {
                             Button(role: .destructive) {
                                 pendingDelete = chat
@@ -134,15 +207,35 @@ struct ChatListView: View {
                             }
                         }
                     }
+                } header: {
+                    Text(sectionTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(.tertiaryLabel))
+                        .tracking(0.4)
+                        .padding(.leading, 10)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
-                Color.clear.frame(height: 24)
+                .textCase(nil)
             }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        .animation(.spring(response: 0.35, dampingFraction: 0.86), value: store.chats.map(\.id))
+    }
+
+    // Filter + group
+    private var filtered: [Chat] {
+        guard !search.isEmpty else { return store.chats }
+        let q = search.lowercased()
+        return store.chats.filter {
+            $0.title.lowercased().contains(q) || $0.preview.lowercased().contains(q)
         }
     }
 
-    /// Group chats into "Today" / "Yesterday" / "Previous 7 Days" /
-    /// "Earlier" buckets — the same mental model ChatGPT uses so users
-    /// can scan recent activity at a glance.
     private var grouped: [(String, [Chat])] {
         let cal = Calendar.current
         let now = Date()
@@ -150,8 +243,7 @@ struct ChatListView: View {
         var yesterday: [Chat] = []
         var lastWeek: [Chat] = []
         var earlier: [Chat] = []
-
-        for chat in store.chats {
+        for chat in filtered {
             if cal.isDateInToday(chat.updatedAt) {
                 today.append(chat)
             } else if cal.isDateInYesterday(chat.updatedAt) {
@@ -162,15 +254,77 @@ struct ChatListView: View {
                 earlier.append(chat)
             }
         }
-
         var result: [(String, [Chat])] = []
-        if !today.isEmpty       { result.append(("Today", today)) }
-        if !yesterday.isEmpty   { result.append(("Yesterday", yesterday)) }
-        if !lastWeek.isEmpty    { result.append(("Previous 7 Days", lastWeek)) }
-        if !earlier.isEmpty     { result.append(("Earlier", earlier)) }
+        if !today.isEmpty     { result.append(("Today", today)) }
+        if !yesterday.isEmpty { result.append(("Yesterday", yesterday)) }
+        if !lastWeek.isEmpty  { result.append(("Previous 7 Days", lastWeek)) }
+        if !earlier.isEmpty   { result.append(("Earlier", earlier)) }
         return result
     }
+
+    // MARK: - Profile chip
+
+    private var profileChip: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Bounce to Account tab. Sidebar dismisses via onSelect callback
+            // so the user lands on the destination.
+            AppState.shared.selectedTab = 2
+            onSelect()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color(.tertiarySystemBackground))
+                        .frame(width: 36, height: 36)
+                    Text(initial)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(displayName)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text(emailDisplay)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var emailDisplay: String {
+        AuthService.shared.currentUser?.email ?? "Signed in"
+    }
+
+    private var displayName: String {
+        if let name = AuthService.shared.currentUser?.user_metadata?.full_name, !name.isEmpty {
+            return name
+        }
+        if let email = AuthService.shared.currentUser?.email {
+            return String(email.split(separator: "@").first ?? "")
+        }
+        return "Account"
+    }
+
+    private var initial: String {
+        let name = displayName
+        guard let first = name.first else { return "?" }
+        return String(first).uppercased()
+    }
 }
+
+// MARK: - Row
 
 private struct ChatRow: View {
     let chat: Chat
@@ -179,22 +333,30 @@ private struct ChatRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(chat.title)
                     .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(isSelected ? .primary : Color(.label))
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Spacer()
+                if !chat.preview.isEmpty && chat.preview != chat.title {
+                    Text(chat.preview)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(.tertiaryLabel))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color(.tertiarySystemBackground) : Color.clear)
+                    .fill(isSelected
+                          ? Color.primary.opacity(0.08)
+                          : Color.clear)
             )
-            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

@@ -180,6 +180,21 @@ extension Chat {
         }
         return String(cap) + "…"
     }
+
+    /// One-line preview of the chat for the sidebar row's secondary text.
+    /// Walks backwards from the latest message and surfaces the first
+    /// non-empty content. Skips title-redundant content (the first user
+    /// message is already the title).
+    var preview: String {
+        let title = self.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        for msg in messages.reversed() {
+            let content = msg.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if content.isEmpty { continue }
+            if content == title && messages.count == 1 { continue }
+            return content
+        }
+        return ""
+    }
 }
 
 struct VideoJob: Identifiable, Codable {
