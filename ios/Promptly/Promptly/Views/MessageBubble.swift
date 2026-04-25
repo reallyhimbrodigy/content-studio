@@ -911,15 +911,72 @@ struct CompletedVideoView: View {
 // silent switch and interruptions don't kill audio.
 
 enum VideoPlayerPresenter {
+    // Holding box for the KVO observer — without this, the observation is
+    // deallocated the moment present() returns and we lose all status
+    // callbacks. Keyed by ObjectIdentifier(item) so multiple presentations
+    // don't trample each other.
+    private static var observers: [ObjectIdentifier: NSKeyValueObservation] = [:]
+
     @MainActor
     static func present(urlString: String) {
-        guard let url = URL(string: urlString) else { return }
+        print("[player] present url=\(urlString)")
+        guard let url = URL(string: urlString) else {
+            print("[player] FAILED: invalid URL")
+            return
+        }
 
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
         let item = AVPlayerItem(url: url)
         item.preferredForwardBufferDuration = 10
+
+        // Observe status and surface any decode/network failure. AVPlayer
+        // silently swallows playback errors otherwise — modal opens with a
+        // black frame and the user has no idea what went wrong.
+        let token = item.observe(\.status, options: [.new, .initial]) { item, _ in
+            switch item.status {
+            case .readyToPlay:
+                print("[player] readyToPlay")
+            case .failed:
+                let err = item.error?.localizedDescription ?? "unknown"
+                let underlying = (item.error as NSError?)?.userInfo[NSUnderlyingErrorKey] as? NSError
+                let code = (item.error as NSError?)?.code ?? 0
+                print("[player] FAILED code=\(code) error=\(err) underlying=\(underlying?.localizedDescription ?? "none")")
+            case .unknown:
+                print("[player] status=unknown (still loading)")
+            @unknown default:
+                break
+            }
+        }
+        observers[ObjectIdentifier(item)] = token
+
+        // Also surface stall + access-log info. Stalls explain a black frame
+        // that "almost" plays, while errorLog catches network 403/404s.
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { _ in
+            print("[player] stalled")
+        }
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemNewErrorLogEntry,
+            object: item,
+            queue: .main
+        ) { _ in
+            if let log = item.errorLog(), let last = log.events.last {
+                print("[player] errorLog code=\(last.errorStatusCode) domain=\(last.errorDomain) comment=\(last.errorComment ?? "")")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { note in
+            let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            print("[player] failedToPlayToEnd error=\(err?.localizedDescription ?? "unknown")")
+        }
 
         let player = AVPlayer(playerItem: item)
         player.automaticallyWaitsToMinimizeStalling = true
@@ -933,7 +990,10 @@ enum VideoPlayerPresenter {
         playerVC.modalPresentationStyle = .overFullScreen
         playerVC.modalTransitionStyle = .crossDissolve
 
-        guard let topVC = topmostViewController() else { return }
+        guard let topVC = topmostViewController() else {
+            print("[player] FAILED: no topmost view controller")
+            return
+        }
         topVC.present(playerVC, animated: true) {
             player.play()
         }
