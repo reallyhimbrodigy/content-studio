@@ -7,6 +7,7 @@ const {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  HeadBucketCommand,
 } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
@@ -45,6 +46,30 @@ if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && S3_BUC
     : s3Client;
 
   console.log(`[s3] Configured: bucket=${S3_BUCKET} region=${AWS_REGION} accelerate=${S3_USE_ACCELERATE}`);
+
+  // Verify the configured region actually matches the bucket's region.
+  // A mismatch doesn't break uploads (S3 307-redirects to the correct region)
+  // but it adds a round-trip per presigned URL use and silently cancels
+  // transfer-acceleration gains, since clients end up talking to the wrong
+  // edge. This is the sort of thing that causes "upload is mysteriously slow"
+  // for months — fail loud at boot instead.
+  (async () => {
+    try {
+      const resp = await s3Client.send(new HeadBucketCommand({ Bucket: S3_BUCKET }));
+      const actualRegion = resp.BucketRegion || resp.$metadata?.headers?.['x-amz-bucket-region'];
+      if (actualRegion && actualRegion !== AWS_REGION) {
+        console.error(
+          `[s3] ⚠️  REGION MISMATCH: AWS_REGION=${AWS_REGION} but bucket ${S3_BUCKET} is in ${actualRegion}. ` +
+          `Uploads will be 307-redirected and Transfer Acceleration benefits will be lost. ` +
+          `Set AWS_REGION=${actualRegion} in the environment to fix.`
+        );
+      } else {
+        console.log(`[s3] Region verified: bucket is in ${actualRegion || AWS_REGION}`);
+      }
+    } catch (e) {
+      console.warn(`[s3] Region verification failed (non-fatal): ${e.message}`);
+    }
+  })();
 } else {
   console.warn('[s3] AWS credentials or S3_BUCKET_NAME not set — S3 storage disabled');
 }

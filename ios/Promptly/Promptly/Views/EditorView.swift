@@ -279,13 +279,14 @@ struct EditorView: View {
     private func handlePickedVideos(_ videos: [PickedVideo]) {
         for video in videos {
             let pending = PendingVideo()
-            pending.fileUrl = video.fileUrl
-            pending.fileName = video.fileUrl.lastPathComponent
+            pending.fileName = "\(video.id).mp4"
             pending.isLoading = false
 
-            // Thumbnail instantly from direct file URL
+            // Thumbnail comes from the Photos cache immediately — local, no
+            // iCloud bytes needed. Tile shows up the instant the picker
+            // dismisses.
             Task {
-                let thumb = await ThumbnailGenerator.generate(from: video.fileUrl)
+                let thumb = await PHAssetResolver.thumbnail(for: video.asset)
                 await MainActor.run { pending.thumbnail = thumb }
             }
 
@@ -293,11 +294,19 @@ struct EditorView: View {
                 pendingVideos.append(pending)
             }
 
-            // Compress → upload pipeline (runs in background, task stored so send() can await it)
+            // Resolve → compress → upload pipeline. The iCloud download (if
+            // any) happens here in the background instead of blocking the
+            // picker's onPick callback, so the user sees the pending tile
+            // and upload progress appear immediately.
             pending.uploadTask = Task {
                 do {
-                    // Step 1: Compress (hardware accelerated)
-                    let compressedUrl = try await VideoCompressor.compress(sourceUrl: video.fileUrl)
+                    // Step 0: Resolve PHAsset → local file URL. Downloads from
+                    // iCloud if needed. On-device footage returns synchronously.
+                    let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
+                    await MainActor.run { pending.fileUrl = sourceUrl }
+
+                    // Step 1: Compress (hardware accelerated, lossless fast-path)
+                    let compressedUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
                     await MainActor.run { pending.fileUrl = compressedUrl }
 
                     // Step 2: Upload compressed file — multipart w/ Transfer Acceleration
