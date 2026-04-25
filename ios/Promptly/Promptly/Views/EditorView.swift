@@ -294,47 +294,69 @@ struct EditorView: View {
                 pendingVideos.append(pending)
             }
 
-            // Resolve → compress → upload pipeline. The iCloud download (if
-            // any) happens here in the background instead of blocking the
-            // picker's onPick callback, so the user sees the pending tile
-            // and upload progress appear immediately.
+            // Resolve → (maybe compress) → upload pipeline. Heavy lifting
+            // runs in the background; the pending tile and upload progress
+            // appear immediately on the main thread.
             pending.uploadTask = Task {
                 do {
-                    // Step 0: Resolve PHAsset → local file URL. Downloads from
-                    // iCloud if needed. On-device footage returns synchronously.
+                    let t0 = Date()
+
+                    // Step 0: Resolve PHAsset → local file URL. On-device
+                    // footage is ~instant; iCloud downloads run here.
+                    let resolveStart = Date()
                     let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
                     await MainActor.run { pending.fileUrl = sourceUrl }
+                    let sourceSize = (try? FileManager.default.attributesOfItem(atPath: sourceUrl.path)[.size] as? Int64) ?? 0
+                    print(String(format: "[perf] resolve %.2fs size=%.1fMB path=%@",
+                                 Date().timeIntervalSince(resolveStart),
+                                 Double(sourceSize) / 1_048_576.0,
+                                 sourceUrl.pathExtension.lowercased()))
 
-                    // Step 1: Compress (hardware accelerated, lossless fast-path)
-                    let compressedUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
-                    await MainActor.run { pending.fileUrl = compressedUrl }
+                    // Step 1: Compression is SKIPPED for typical camera-roll
+                    // videos (mp4/mov under 300MB). Those are already
+                    // H.264/HEVC in a container S3 accepts as-is — running
+                    // them through AVAssetExportPresetPassthrough burns 1-5s
+                    // rewriting the container for zero transport benefit.
+                    // We only compress when the source is truly oversized
+                    // (>300MB) or an exotic extension that the pipeline
+                    // might not grok.
+                    let uploadSourceUrl: URL
+                    let compressStart = Date()
+                    if Self.shouldSkipCompression(url: sourceUrl, size: sourceSize) {
+                        uploadSourceUrl = sourceUrl
+                        print("[perf] compress skipped (direct upload from camera roll)")
+                    } else {
+                        uploadSourceUrl = try await VideoCompressor.compress(sourceUrl: sourceUrl)
+                        await MainActor.run { pending.fileUrl = uploadSourceUrl }
+                        print(String(format: "[perf] compress %.2fs", Date().timeIntervalSince(compressStart)))
+                    }
 
-                    // Step 2: Upload compressed file — multipart w/ Transfer Acceleration
-                    // when the file is big enough to benefit; single PUT for tiny files.
+                    // Step 2: Upload — single PUT up to 100MB, multipart above.
+                    let uploadStart = Date()
                     var publicUrl: String?
-                    if APIService.shouldUseMultipart(fileUrl: compressedUrl) {
+                    if APIService.shouldUseMultipart(fileUrl: uploadSourceUrl) {
                         do {
                             let url = try await APIService.shared.uploadFileToS3Multipart(
                                 fileName: pending.fileName,
-                                fileUrl: compressedUrl
+                                fileUrl: uploadSourceUrl
                             ) { progress in
                                 pending.uploadProgress = progress
                             }
                             publicUrl = url
                         } catch {
-                            print("[upload] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
-                            // Fall through to single PUT below
+                            print("[perf] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
                         }
                     }
                     if publicUrl == nil {
                         let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
                         if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
-                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
+                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
                                 pending.uploadProgress = progress
                             }
                             publicUrl = pub
                         }
                     }
+                    print(String(format: "[perf] upload-step %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     if let publicUrl = publicUrl {
                         await MainActor.run {
@@ -348,10 +370,30 @@ struct EditorView: View {
                         }
                     }
 
-                    try? FileManager.default.removeItem(at: compressedUrl)
+                    print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
+
+                    // Only delete the compressed intermediate — never the
+                    // original PHAsset-backed file.
+                    if uploadSourceUrl != sourceUrl {
+                        try? FileManager.default.removeItem(at: uploadSourceUrl)
+                    }
                 } catch {}
             }
         }
+    }
+
+    /// Camera-roll footage is already in a container S3 and our server
+    /// pipeline accept (mp4 / mov / m4v), typically H.264 or HEVC. Running
+    /// it back through an AVAssetExportSession just to get "MP4-with-moov-
+    /// at-front" costs 1-5s for zero render benefit. Only fall through to
+    /// compression for exotic extensions or files so large that transport
+    /// cost matters.
+    private static func shouldSkipCompression(url: URL, size: Int64) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        let acceptableExtensions: Set<String> = ["mp4", "mov", "m4v"]
+        guard acceptableExtensions.contains(ext) else { return false }
+        let maxSkippableBytes: Int64 = 300 * 1024 * 1024
+        return size > 0 && size <= maxSkippableBytes
     }
 
     // MARK: - Send

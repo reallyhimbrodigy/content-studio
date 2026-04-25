@@ -69,6 +69,7 @@ enum PHAssetResolver {
     static func resolveFileUrl(asset: PHAsset) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false
+            let start = Date()
             let resume: (Result<URL, Error>) -> Void = { result in
                 guard !hasResumed else { return }
                 hasResumed = true
@@ -79,6 +80,14 @@ enum PHAssetResolver {
             options.version = .current
             options.isNetworkAccessAllowed = true
             options.deliveryMode = .highQualityFormat
+            options.progressHandler = { progress, _, _, _ in
+                // If iCloud is downloading this, the first callback typically
+                // arrives well before completion — use it to surface the
+                // download path in logs.
+                if progress > 0 && progress < 1 {
+                    print(String(format: "[perf] resolve iCloud progress=%.0f%% elapsed=%.2fs", progress * 100, Date().timeIntervalSince(start)))
+                }
+            }
 
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
                 if let error = info?[PHImageErrorKey] as? Error {

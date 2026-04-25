@@ -6,6 +6,23 @@ class APIService {
 
     private init() {}
 
+    /// Single long-lived URLSession shared across ALL S3 uploads — single
+    /// PUT and every multipart part. One warm connection pool, no per-request
+    /// TLS handshake, no per-request TCP slow-start. HTTP/2 multiplexing +
+    /// connection reuse here beats spraying ephemeral sessions across parts
+    /// (which was build 62's regression — each fresh session paid its own
+    /// handshake + slow-start tax, tanking aggregate throughput).
+    lazy var s3UploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 600
+        config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.httpMaximumConnectionsPerHost = 6  // iOS default; lets parallel parts open new TCPs when beneficial
+        return URLSession(configuration: config)
+    }()
+
     /// Get a valid token, auto-refreshing if expired
     private func validToken() async -> String? {
         await AuthService.shared.getValidToken()
@@ -163,30 +180,29 @@ class APIService {
     func uploadFileToS3(url: String, fileUrl: URL, mimeType: String, onProgress: ((Double) -> Void)? = nil) async throws {
         let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
         let host = URL(string: url)?.host ?? "unknown"
-        print("[upload] path=single fileSize=\(size) endpoint=\(host)")
-        // Configure session with generous timeouts for cellular
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 300
-        config.waitsForConnectivity = true
-        config.allowsCellularAccess = true
-        config.allowsExpensiveNetworkAccess = true
+        print("[perf] upload path=single fileSize=\(size) endpoint=\(host)")
+        let uploadStart = Date()
 
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "PUT"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
 
+        // Shared session — reuses warm TCP + HTTP/2 multiplexing. No per-call
+        // handshake tax. `fromFile:` streams directly off disk without
+        // loading the whole file into RAM.
         let delegate = UploadProgressDelegate(onProgress: onProgress)
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         // Retry up to 2 times on failure
         var lastError: Error?
         for attempt in 1...2 {
             do {
-                let (_, response) = try await session.upload(for: request, fromFile: fileUrl, delegate: delegate)
+                let (_, response) = try await s3UploadSession.upload(for: request, fromFile: fileUrl, delegate: delegate)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     throw APIError.uploadFailed
                 }
+                let elapsed = Date().timeIntervalSince(uploadStart)
+                let mbps = (Double(size) / 1_048_576.0) / max(elapsed, 0.001) * 8
+                print(String(format: "[perf] upload single success elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
                 return // Success
             } catch {
                 lastError = error
@@ -215,9 +231,13 @@ class APIService {
     // On any unrecoverable error, POST /api/upload-multipart-abort so the
     // S3-side in-progress parts don't sit around billing.
 
-    private static let multipartChunkSize: Int64 = 8 * 1024 * 1024    // 8MB — S3 min for a non-final part is 5MB
+    private static let multipartChunkSize: Int64 = 16 * 1024 * 1024   // 16MB chunks — bigger chunks amortize per-part overhead
     private static let multipartConcurrency = 4                        // parallel part uploads
-    private static let multipartThreshold: Int64 = 16 * 1024 * 1024    // <16MB stays on single PUT path
+    // Single PUT is faster than multipart for sub-~100MB files on a warm
+    // connection because it skips the init + complete server roundtrips
+    // and the per-part overhead. Only switch to multipart when the file
+    // is big enough that parallel parts actually outrun a single stream.
+    private static let multipartThreshold: Int64 = 100 * 1024 * 1024
 
     struct MultipartInitResponse: Codable {
         let uploadId: String
@@ -251,9 +271,10 @@ class APIService {
         let chunkSize = Self.multipartChunkSize
         let partCount = Int((fileSize + chunkSize - 1) / chunkSize)
         let uploadStart = Date()
-        print("[upload] path=multipart fileSize=\(fileSize) parts=\(partCount) chunkSize=\(chunkSize)")
+        print("[perf] upload path=multipart fileSize=\(fileSize) parts=\(partCount) chunkSize=\(chunkSize)")
 
         // 1. Init: get presigned part URLs
+        let initStart = Date()
         var initRequest = await authorizedRequest("/api/upload-multipart-init", method: "POST")
         initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         initRequest.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -268,12 +289,14 @@ class APIService {
         guard initResponse.partUrls.count == partCount else {
             throw APIError.uploadFailed
         }
+        print(String(format: "[perf] multipart init %.2fs", Date().timeIntervalSince(initStart)))
         if let host = URL(string: initResponse.partUrls.first ?? "")?.host {
-            print("[upload] endpoint=\(host)")
+            print("[perf] endpoint=\(host)")
         }
 
         let uploadedBytes = MultipartProgressTracker()
         let totalBytes = fileSize
+        let netStart = Date()
 
         do {
             let parts: [MultipartPart] = try await withThrowingTaskGroup(of: MultipartPart.self) { group in
@@ -290,18 +313,21 @@ class APIService {
                     let partSize = end - start
                     let partUrlStr = initResponse.partUrls[partIndex]
                     group.addTask {
-                        // Each part gets its OWN URLSession. Without this, the
-                        // parallel TaskGroup collapses onto a single HTTP/2
-                        // multiplexed TCP connection to s3-accelerate — one
-                        // socket, no parallel bandwidth. A dedicated session
-                        // per part guarantees separate TCP connections and
-                        // actual wire-level concurrency.
+                        // All parts share the process-wide s3UploadSession.
+                        // HTTP/2 multiplexes concurrent part PUTs over a warm
+                        // connection pool — handshake cost amortized once,
+                        // slow-start paid once, and iOS's connection manager
+                        // opens additional TCPs when it detects bandwidth
+                        // benefits. Build 62's per-part ephemeral sessions
+                        // forced 8 cold handshakes + 8 slow-starts, which
+                        // tanked throughput.
                         return try await Self.uploadOnePart(
                             fileUrl: fileUrl,
                             offset: start,
                             length: partSize,
                             partNumber: partIndex + 1,
                             url: partUrlStr,
+                            session: APIService.shared.s3UploadSession,
                             tracker: uploadedBytes,
                             totalBytes: totalBytes,
                             onProgress: onProgress
@@ -321,7 +347,12 @@ class APIService {
                 return collected
             }
 
+            let netElapsed = Date().timeIntervalSince(netStart)
+            let netMbps = (Double(fileSize) / 1_048_576.0) / max(netElapsed, 0.001) * 8
+            print(String(format: "[perf] multipart parts-only elapsed=%.2fs throughput=%.1fMbps", netElapsed, netMbps))
+
             // 3. Complete
+            let completeStart = Date()
             var completeRequest = await authorizedRequest("/api/upload-multipart-complete", method: "POST")
             completeRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             completeRequest.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -334,9 +365,10 @@ class APIService {
                 throw APIError.uploadFailed
             }
             let completeResponse = try JSONDecoder().decode(MultipartCompleteResponse.self, from: completeData)
+            print(String(format: "[perf] multipart complete %.2fs", Date().timeIntervalSince(completeStart)))
             let elapsed = Date().timeIntervalSince(uploadStart)
             let mbps = (Double(fileSize) / 1_048_576.0) / max(elapsed, 0.001) * 8
-            print(String(format: "[upload] multipart success elapsed=%.1fs throughput=%.1fMbps", elapsed, mbps))
+            print(String(format: "[perf] upload multipart TOTAL elapsed=%.2fs throughput=%.1fMbps", elapsed, mbps))
             return completeResponse.publicUrl
         } catch {
             // Abort the in-progress multipart so parts don't orphan-bill.
@@ -359,56 +391,35 @@ class APIService {
         length: Int64,
         partNumber: Int,
         url: String,
+        session: URLSession,
         tracker: MultipartProgressTracker,
         totalBytes: Int64,
         onProgress: ((Double) -> Void)?
     ) async throws -> MultipartPart {
         guard let u = URL(string: url) else { throw APIError.uploadFailed }
+        let partStart = Date()
 
-        // Slice this chunk to its own temp file on disk. Two reasons:
-        //   1. `URLSession.upload(for:fromFile:)` streams from disk without
-        //      loading the whole body into RAM — Apple's guidance for large
-        //      uploads. `upload(for:from: Data)` copies the Data into an
-        //      internal buffer and has measurably worse throughput.
-        //   2. Lets us use fromFile even though each part is a disjoint
-        //      byte range of the source — presigned URLs can't use Range.
-        let chunkUrl = FileManager.default.temporaryDirectory
-            .appendingPathComponent("part-\(partNumber)-\(UUID().uuidString).bin")
-        do {
-            let handle = try FileHandle(forReadingFrom: fileUrl)
-            defer { try? handle.close() }
-            try handle.seek(toOffset: UInt64(offset))
-            guard let data = try handle.read(upToCount: Int(length)), data.count == Int(length) else {
-                throw APIError.uploadFailed
-            }
-            try data.write(to: chunkUrl)
+        // Read just this chunk off disk into Data. For 16MB chunks this is
+        // 16MB of RAM transient per in-flight part (64MB total at 4 parallel)
+        // — trivial on modern iPhones. The previous temp-file-per-chunk
+        // approach cost 60MB+ of extra sequential disk write per upload for
+        // no measurable network-throughput gain.
+        let handle = try FileHandle(forReadingFrom: fileUrl)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(offset))
+        guard let data = try handle.read(upToCount: Int(length)), data.count == Int(length) else {
+            throw APIError.uploadFailed
         }
-        defer { try? FileManager.default.removeItem(at: chunkUrl) }
 
         var request = URLRequest(url: u)
         request.httpMethod = "PUT"
         // No Content-Type header — presigned URL was signed without it.
 
-        // Dedicated URLSession per part. Prevents HTTP/2 from multiplexing all
-        // parallel part uploads onto a single TCP connection to the
-        // s3-accelerate endpoint, which would defeat the whole point of
-        // parallel multipart. Each session gets its own connection pool →
-        // genuine parallel wire-level bandwidth.
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 600
-        config.waitsForConnectivity = true
-        config.allowsCellularAccess = true
-        config.allowsExpensiveNetworkAccess = true
-        config.httpMaximumConnectionsPerHost = 1
-        let session = URLSession(configuration: config)
-        defer { session.finishTasksAndInvalidate() }
-
         var attemptsRemaining = 2
         var lastError: Error?
         while attemptsRemaining > 0 {
             do {
-                let (_, resp) = try await session.upload(for: request, fromFile: chunkUrl)
+                let (_, resp) = try await session.upload(for: request, from: data)
                 guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     throw APIError.uploadFailed
                 }
@@ -418,6 +429,9 @@ class APIService {
                 await tracker.add(length)
                 let progress = min(1.0, Double(await tracker.total()) / Double(totalBytes))
                 await MainActor.run { onProgress?(progress) }
+                let partElapsed = Date().timeIntervalSince(partStart)
+                let partMbps = (Double(length) / 1_048_576.0) / max(partElapsed, 0.001) * 8
+                print(String(format: "[perf] part %d done elapsed=%.2fs throughput=%.1fMbps", partNumber, partElapsed, partMbps))
                 return MultipartPart(PartNumber: partNumber, ETag: etag.replacingOccurrences(of: "\"", with: ""))
             } catch {
                 lastError = error
