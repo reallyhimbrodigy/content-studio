@@ -194,22 +194,42 @@ enum PHAssetResolver {
     /// iCloud-only assets, so local-only is correct here. For sharp final
     /// thumbnails we regenerate from the actual video file via
     /// AVAssetImageGenerator once it's resolved.
-    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 480, height: 480)) async -> UIImage? {
+    static func thumbnail(for asset: PHAsset, size: CGSize = CGSize(width: 320, height: 320)) async -> UIImage? {
         await withCheckedContinuation { continuation in
             var hasResumed = false
             let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
+            // `.opportunistic` + `.fast` resize + `.isNetworkAccessAllowed = false`
+            // is the fastest possible local path: delivers whichever cached
+            // thumbnail Photos has on disk (every video always has at least
+            // one), never triggers an iCloud download just to sharpen the
+            // tile. Tile gets a thumbnail within a single frame of the
+            // picker dismissing. Sharper regen happens later via
+            // AVAssetImageGenerator once the full video bytes are local.
+            options.deliveryMode = .opportunistic
             options.isNetworkAccessAllowed = false
-            options.resizeMode = .exact
+            options.resizeMode = .fast
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: size,
                 contentMode: .aspectFill,
                 options: options
             ) { image, info in
+                // Opportunistic delivery can fire the handler multiple
+                // times (first degraded, then final). Resume on the first
+                // callback that carries an image so the tile shows up
+                // instantly; if that very first callback has no image,
+                // wait for the next one instead of returning nil.
                 guard !hasResumed else { return }
-                hasResumed = true
-                continuation.resume(returning: image)
+                if image != nil {
+                    hasResumed = true
+                    continuation.resume(returning: image)
+                    return
+                }
+                let isFinal = (info?[PHImageResultIsDegradedKey] as? Bool) == false
+                if isFinal {
+                    hasResumed = true
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }

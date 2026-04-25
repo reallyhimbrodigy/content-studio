@@ -311,6 +311,13 @@ struct EditorView: View {
 
                     var publicUrl: String?
 
+                    // Fire prewarm the moment we know the eventual S3 URL.
+                    // That's before the upload bytes have landed — Modal's
+                    // prewarm handler polls for the object to appear and
+                    // kicks off source download + Deepgram the instant it
+                    // does, shaving most of the post-send latency.
+                    let firePrewarmOnce = PrewarmOnce()
+
                     switch strategy {
                     case .local(let sourceUrl):
                         print("[perf] path=local")
@@ -343,7 +350,8 @@ struct EditorView: View {
                             do {
                                 publicUrl = try await APIService.shared.uploadFileToS3Multipart(
                                     fileName: pending.fileName,
-                                    fileUrl: uploadSourceUrl
+                                    fileUrl: uploadSourceUrl,
+                                    onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
                                 ) { progress in
                                     pending.uploadProgress = progress
                                 }
@@ -354,6 +362,7 @@ struct EditorView: View {
                         if publicUrl == nil {
                             let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
                             if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
+                                firePrewarmOnce.fire(pub)
                                 try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
                                     pending.uploadProgress = progress
                                 }
@@ -377,7 +386,8 @@ struct EditorView: View {
                             publicUrl = try await APIService.shared.streamUploadFromICloud(
                                 resource: resource,
                                 fileSize: fileSize,
-                                fileName: pending.fileName
+                                fileName: pending.fileName,
+                                onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
                             ) { progress in
                                 pending.uploadProgress = progress
                             }
@@ -415,13 +425,38 @@ struct EditorView: View {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
                         }
-                        Task.detached(priority: .utility) {
-                            await APIService.shared.prewarmRender(videoUrl: publicUrl)
-                        }
+                        // Prewarm was fired the moment the URL was known
+                        // (onPublicUrlKnown). If for some reason that
+                        // didn't fire (legacy fallback path), still fire
+                        // here as a safety net.
+                        firePrewarmOnce.fire(publicUrl)
                     }
 
                     print(String(format: "[perf] TOTAL tap-to-uploaded %.2fs", Date().timeIntervalSince(t0)))
                 } catch {}
+            }
+        }
+    }
+
+    // MARK: - Prewarm One-Shot
+    //
+    // Guarantees prewarmRender is dispatched at most once per upload, no
+    // matter how many code paths call it. Called eagerly from
+    // `onPublicUrlKnown` (before upload completes) AND defensively after
+    // upload completes. The class is needed because we want call-site
+    // semantics like "fire from any closure" — a plain Bool captured by
+    // reference in Task closures would need to be an actor.
+    final class PrewarmOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var fired = false
+        func fire(_ videoUrl: String) {
+            lock.lock()
+            let already = fired
+            fired = true
+            lock.unlock()
+            guard !already else { return }
+            Task.detached(priority: .utility) {
+                await APIService.shared.prewarmRender(videoUrl: videoUrl)
             }
         }
     }

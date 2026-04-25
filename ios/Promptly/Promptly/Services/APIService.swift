@@ -260,9 +260,14 @@ class APIService {
     /// Upload a file using S3 multipart + Transfer Acceleration. Returns the
     /// public URL on success. Falls back internally to nothing — caller is
     /// responsible for falling back to `uploadFileToS3` on thrown errors.
+    ///
+    /// `onPublicUrlKnown` fires as soon as multipart-init returns (well
+    /// before the actual byte transfer finishes) so the caller can kick
+    /// off downstream work like prewarm in parallel with the upload.
     func uploadFileToS3Multipart(
         fileName: String,
         fileUrl: URL,
+        onPublicUrlKnown: ((String) -> Void)? = nil,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> String {
         let attrs = try FileManager.default.attributesOfItem(atPath: fileUrl.path)
@@ -291,6 +296,11 @@ class APIService {
             throw APIError.uploadFailed
         }
         print(String(format: "[perf] multipart init %.2fs", Date().timeIntervalSince(initStart)))
+        // Eagerly share the public URL with the caller so prewarm can fire
+        // in parallel with the actual byte transfer. The S3 object doesn't
+        // exist until multipart-complete lands, but the prewarm handler on
+        // Modal polls for it.
+        onPublicUrlKnown?(initResponse.publicUrl)
         if let host = URL(string: initResponse.partUrls.first ?? "")?.host {
             print("[perf] endpoint=\(host)")
         }
@@ -505,10 +515,14 @@ class APIService {
 
     /// Stream an iCloud video directly into an S3 multipart upload.
     /// Returns the public URL of the finalized object.
+    ///
+    /// `onPublicUrlKnown` fires as soon as multipart-init returns so the
+    /// caller can kick off prewarm in parallel with the iCloud → S3 pipe.
     func streamUploadFromICloud(
         resource: PHAssetResource,
         fileSize: Int64,
         fileName: String,
+        onPublicUrlKnown: ((String) -> Void)? = nil,
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> String {
         let t0 = Date()
@@ -539,6 +553,9 @@ class APIService {
             let r = try JSONDecoder().decode(MultipartInitResponse.self, from: initData)
             guard r.partUrls.count == partCount else { throw APIError.uploadFailed }
             print(String(format: "[perf] stream init %.2fs", Date().timeIntervalSince(initStart)))
+            // Hand the public URL back immediately — caller can fire
+            // prewarm now instead of after every part has landed.
+            onPublicUrlKnown?(r.publicUrl)
             return r
         }
 
