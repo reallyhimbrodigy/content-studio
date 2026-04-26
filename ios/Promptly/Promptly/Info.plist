@@ -133,6 +133,6 @@
 		to disable crash reporting (init is skipped when string is empty).
 	-->
 	<key>SENTRY_DSN</key>
-	<string></string>
+	<string>https://5d5e022e40e57f46cd40efc9286941d9@o4511288242667520.ingest.us.sentry.io/4511288247320576</string>
 </dict>
 </plist>
