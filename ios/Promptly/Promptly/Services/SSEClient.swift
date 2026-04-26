@@ -9,12 +9,26 @@ class SSEClient {
     private var lastEventTime = Date()
     private var timeoutTimer: Timer?
 
+    /// Whether the caller has explicitly disconnected. We don't auto-
+    /// reconnect after a deliberate disconnect (job complete, view dismissed).
+    private var isClosed = false
+
+    /// Exponential-backoff state for transparent reconnect.
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 6
+    private var reconnectTask: Task<Void, Never>?
+
+    /// Set to true once the server has sent a terminal event
+    /// (completed/failed/needs_clarification). Suppresses reconnects.
+    private var receivedFinalEvent = false
+
     init(jobId: String) {
         self.jobId = jobId
         self.url = URL(string: "https://usepromptly.app/api/video-jobs/\(jobId)/stream")!
     }
 
     func connect() {
+        guard !isClosed else { return }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
@@ -36,19 +50,26 @@ class SSEClient {
         task?.resume()
         lastEventTime = Date()
 
-        // Start a timeout checker — if no events for 2 minutes, poll the job status
+        // Start a timeout checker — if no events for 45s, poll the job status
         startTimeoutChecker()
     }
 
     func disconnect() {
+        isClosed = true
         timeoutTimer?.invalidate()
         timeoutTimer = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
         task?.cancel()
         task = nil
     }
 
     private func handleData(_ data: Data) {
         lastEventTime = Date()
+        // Any successful data resets the reconnect counter — we're back
+        // in business, future drops should also be retried from scratch.
+        reconnectAttempts = 0
+
         guard let text = String(data: data, encoding: .utf8) else { return }
         let lines = text.components(separatedBy: "\n")
         for line in lines {
@@ -56,6 +77,7 @@ class SSEClient {
                 let jsonStr = String(line.dropFirst(6))
                 if let jsonData = jsonStr.data(using: .utf8),
                    let event = try? JSONDecoder().decode(SSEEvent.self, from: jsonData) {
+                    if event.final == true { receivedFinalEvent = true }
                     DispatchQueue.main.async { [weak self] in
                         self?.onEvent?(event)
                     }
@@ -65,10 +87,46 @@ class SSEClient {
     }
 
     private func handleConnectionEnd(error: Error?) {
-        // Connection closed or errored — check the job status via REST
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            await pollJobStatus()
+        // Caller closed us (job completed, view dismissed) — no reconnect.
+        if isClosed { return }
+
+        // Server told us this was the last event. Don't reconnect just to
+        // immediately get told it's done. Poll once for safety.
+        if receivedFinalEvent {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                await self?.pollJobStatus()
+            }
+            return
+        }
+
+        // Try to reconnect with exponential backoff. Each attempt waits
+        // 2s, 4s, 8s, 16s, 32s, 60s. Total ~2 minutes of recovery before
+        // we fall back to one-shot DB poll. During the backoff window
+        // the periodic timeout check still polls every 45s of silence,
+        // so the user isn't completely blind.
+        scheduleReconnect()
+    }
+
+    private func scheduleReconnect() {
+        if isClosed { return }
+        if reconnectAttempts >= maxReconnectAttempts {
+            // Give up reconnecting; fall back to a single poll.
+            Task { [weak self] in await self?.pollJobStatus() }
+            return
+        }
+        let attempt = reconnectAttempts
+        reconnectAttempts += 1
+        let backoffSeconds = min(pow(2.0, Double(attempt + 1)), 60.0)
+        print("[sse] reconnect attempt=\(attempt + 1)/\(maxReconnectAttempts) in \(backoffSeconds)s")
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Int(backoffSeconds)))
+            guard let self, !self.isClosed else { return }
+            // Tear down stale task before reconnect.
+            self.task?.cancel()
+            self.task = nil
+            self.connect()
         }
     }
 

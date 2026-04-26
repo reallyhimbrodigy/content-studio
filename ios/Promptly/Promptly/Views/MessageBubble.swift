@@ -90,6 +90,7 @@ struct MessageBubble: View {
                 CompletedVideoView(
                     videoUrlStr: videoUrlStr,
                     thumbnailUrlStr: message.thumbnailUrl,
+                    jobId: message.jobId,
                     onReedit: buildReeditHandler(for: message)
                 )
             }
@@ -827,12 +828,27 @@ struct VideoActionRow: View {
 struct CompletedVideoView: View {
     let videoUrlStr: String
     let thumbnailUrlStr: String?
+    let jobId: String?
     let onReedit: (() -> Void)?
+
+    /// When AsyncImage hits a 403 (signed URL expired past 7 days),
+    /// we ask the server for fresh URLs and stash them here. Future
+    /// renders of this view use the live URLs in preference to the
+    /// stale stored ones.
+    @State private var liveVideoUrl: String?
+    @State private var liveThumbnailUrl: String?
+    @State private var refreshAttempted = false
+
+    private var effectiveVideoUrl: String { liveVideoUrl ?? videoUrlStr }
+    private var effectiveThumbnailUrl: String? { liveThumbnailUrl ?? thumbnailUrlStr }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
-                VideoPlayerPresenter.present(urlString: videoUrlStr)
+                VideoPlayerPresenter.present(
+                    urlString: effectiveVideoUrl,
+                    onRefreshNeeded: { await self.refreshAndReturnVideoUrl() }
+                )
             } label: {
                 thumbnailContent
                     .frame(maxWidth: 240)
@@ -886,10 +902,17 @@ struct CompletedVideoView: View {
 
     @ViewBuilder
     private var thumbnailContent: some View {
-        if let thumbUrl = thumbnailUrlStr, let url = URL(string: thumbUrl) {
+        if let thumbUrl = effectiveThumbnailUrl, let url = URL(string: thumbUrl) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image.resizable().aspectRatio(contentMode: .fit)
+                } else if phase.error != nil {
+                    // Stored signed URL expired (or otherwise rejected).
+                    // Ask the server for a fresh one; on success the
+                    // @State change re-renders with the new URL.
+                    Color(.tertiarySystemBackground)
+                        .aspectRatio(9/16, contentMode: .fit)
+                        .task { await refreshIfNeeded() }
                 } else {
                     Color(.tertiarySystemBackground)
                         .aspectRatio(9/16, contentMode: .fit)
@@ -899,6 +922,32 @@ struct CompletedVideoView: View {
             Color(.tertiarySystemBackground)
                 .aspectRatio(9/16, contentMode: .fit)
         }
+    }
+
+    /// Fire one refresh attempt per view lifetime. AsyncImage retries
+    /// the load automatically when the URL changes, so once we set
+    /// `liveThumbnailUrl` the image either renders or stays placeholder.
+    private func refreshIfNeeded() async {
+        guard !refreshAttempted, let jobId = jobId else { return }
+        refreshAttempted = true
+        guard let fresh = await APIService.shared.refreshUrls(jobId: jobId) else { return }
+        await MainActor.run {
+            if let v = fresh.videoUrl { liveVideoUrl = v }
+            if let t = fresh.thumbnailUrl { liveThumbnailUrl = t }
+        }
+    }
+
+    /// Synchronous-from-the-call-site refresh helper used by the play
+    /// button. Returns the freshly-signed video URL (or nil on failure)
+    /// so VideoPlayerPresenter can present immediately with the new URL.
+    private func refreshAndReturnVideoUrl() async -> String? {
+        guard let jobId = jobId else { return nil }
+        guard let fresh = await APIService.shared.refreshUrls(jobId: jobId) else { return nil }
+        await MainActor.run {
+            if let v = fresh.videoUrl { liveVideoUrl = v }
+            if let t = fresh.thumbnailUrl { liveThumbnailUrl = t }
+        }
+        return fresh.videoUrl
     }
 }
 
@@ -968,10 +1017,17 @@ final class PromptlyPlayerVC: AVPlayerViewController {
 }
 
 enum VideoPlayerPresenter {
+    /// Present the player. Optional `onRefreshNeeded` is called when
+    /// the URL fails a pre-flight HEAD check (or AVPlayer reports a
+    /// 403/expired error during load) so the caller can return a
+    /// freshly-signed URL and we present with that instead.
     @MainActor
-    static func present(urlString: String) {
+    static func present(
+        urlString: String,
+        onRefreshNeeded: (() async -> String?)? = nil
+    ) {
         print("[player] present url=\(urlString)")
-        guard let url = URL(string: urlString) else {
+        guard URL(string: urlString) != nil else {
             print("[player] FAILED: invalid URL")
             return
         }
@@ -979,13 +1035,28 @@ enum VideoPlayerPresenter {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        // Let AVPlayer auto-tune its buffer based on network conditions.
-        // The previous `preferredForwardBufferDuration = 10` forced
-        // AVPlayer to wait until at least 10s of video was buffered
-        // before each play decision — which on flaky networks
-        // manifested as frequent stalls / freezing mid-playback.
-        let item = AVPlayerItem(url: url)
+        // Pre-flight HEAD to verify the URL is still valid before
+        // committing to AVPlayer. If we get 4xx (most commonly 403 on
+        // an expired SigV4 URL), call the refresh callback and use the
+        // returned fresh URL. This costs 100-300ms on the happy path
+        // but eliminates the "tap → modal opens to a black frame and
+        // stays there" failure mode.
+        Task { @MainActor in
+            let resolvedUrl = await preflightOrRefresh(
+                urlString: urlString,
+                onRefreshNeeded: onRefreshNeeded
+            )
+            doPresent(urlString: resolvedUrl)
+        }
+    }
 
+    @MainActor
+    private static func doPresent(urlString: String) {
+        guard let url = URL(string: urlString) else {
+            print("[player] FAILED: invalid URL after refresh")
+            return
+        }
+        let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         player.automaticallyWaitsToMinimizeStalling = true
         player.actionAtItemEnd = .pause
@@ -994,12 +1065,6 @@ enum VideoPlayerPresenter {
         playerVC.player = player
         playerVC.allowsPictureInPicturePlayback = true
         playerVC.videoGravity = .resizeAspect
-        // Use the native fullscreen presentation. `.fullScreen` triggers
-        // AVPlayerViewController's built-in immersive chrome (Done
-        // button, native scrubber, AirPlay, PiP) and the slide-up
-        // animation Apple's own apps use. The earlier `.overFullScreen`
-        // + `.crossDissolve` override killed the native chrome and the
-        // animation, which is why the player felt off.
         playerVC.modalPresentationStyle = .fullScreen
         playerVC.attachDiagnostics(item: item)
 
@@ -1010,6 +1075,37 @@ enum VideoPlayerPresenter {
         topVC.present(playerVC, animated: true) {
             player.play()
         }
+    }
+
+    /// HEAD the URL with a tight 5s timeout. On any 4xx response (or a
+    /// network error), try the refresh callback and return whatever it
+    /// gives us. If refresh isn't provided or also fails, falls back to
+    /// the original URL — the player will surface its own error UI.
+    private static func preflightOrRefresh(
+        urlString: String,
+        onRefreshNeeded: (() async -> String?)?
+    ) async -> String {
+        guard let url = URL(string: urlString) else { return urlString }
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        req.timeoutInterval = 5
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, (200..<400).contains(http.statusCode) {
+                return urlString
+            }
+            print("[player] preflight \( (resp as? HTTPURLResponse)?.statusCode ?? -1) — refreshing")
+        } catch {
+            print("[player] preflight network error — refreshing: \(error.localizedDescription)")
+        }
+        if let refresh = onRefreshNeeded, let fresh = await refresh() {
+            print("[player] refreshed url")
+            return fresh
+        }
+        // No refresh available — fall back to original URL. Player will
+        // surface its own native error chrome rather than us showing
+        // nothing.
+        return urlString
     }
 
     @MainActor

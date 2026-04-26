@@ -120,6 +120,32 @@ class APIService {
         return jobId
     }
 
+    /// Ask the server for fresh signed URLs for a job. Used when the
+    /// client detects a 403/expired video or thumbnail URL — the server
+    /// has the underlying S3 keys and can re-sign for another 7 days.
+    /// Returns nil on auth/permission/network failure; the caller is
+    /// expected to leave the existing (broken) URL in place and just
+    /// show the placeholder.
+    struct RefreshUrlsResponse: Codable {
+        let videoUrl: String?
+        let thumbnailUrl: String?
+    }
+
+    func refreshUrls(jobId: String) async -> RefreshUrlsResponse? {
+        do {
+            let request = await authorizedRequest("/api/video-jobs/\(jobId)/refresh-urls", method: "POST")
+            let (data, resp) = try await URLSession.shared.data(for: request)
+            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                print("[refresh] failed status=\((resp as? HTTPURLResponse)?.statusCode ?? -1)")
+                return nil
+            }
+            return try JSONDecoder().decode(RefreshUrlsResponse.self, from: data)
+        } catch {
+            print("[refresh] error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     func getUserEdits() async throws -> [VideoJob] {
         guard let userId = AuthService.shared.currentUser?.id,
               let token = await validToken() else { throw APIError.notAuthenticated }

@@ -119,6 +119,7 @@ struct SerializedMessage: Codable, Hashable {
         return !message.isThinking && message.jobStatus == nil && !message.content.isEmpty
     }
 
+    @MainActor
     init(from message: ChatMessage) {
         self.id = message.id.uuidString
         switch message.role {
@@ -135,8 +136,16 @@ struct SerializedMessage: Codable, Hashable {
         self.attachmentFileName = message.videoAttachment?.fileName
         self.error = message.error
         self.originalVibe = message.originalVibe
+
+        // Persist the local UIImage to disk so chat reload can restore
+        // the user-side video tile. UIImage doesn't survive JSON
+        // serialization, so without this the bubble re-renders empty.
+        if message.role == .user, let thumb = message.videoAttachment?.thumbnail {
+            ThumbnailCache.shared.save(thumb, for: message.id.uuidString)
+        }
     }
 
+    @MainActor
     func toChatMessage() -> ChatMessage {
         let parsedRole: MessageRole = {
             switch role {
@@ -153,10 +162,14 @@ struct SerializedMessage: Codable, Hashable {
         msg.error = error
         msg.originalVibe = originalVibe
         if attachmentThumbnailUrl != nil || attachmentFileName != nil {
+            // Restore the local UIImage from disk if we cached it during
+            // the original send. id is the SerializedMessage.id which
+            // matches the original ChatMessage.id.uuidString.
+            let restoredThumb = ThumbnailCache.shared.load(for: id)
             msg.videoAttachment = VideoAttachment(
                 localUrl: URL(fileURLWithPath: ""),
                 fileName: attachmentFileName ?? "",
-                thumbnail: nil,
+                thumbnail: restoredThumb,
                 remoteThumbnailUrl: attachmentThumbnailUrl
             )
         }

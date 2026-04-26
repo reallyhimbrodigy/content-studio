@@ -131,13 +131,18 @@ final class ChatStore: ObservableObject {
     // MARK: - Delete
 
     /// Permanent, user-initiated delete. Optimistically removes locally
-    /// then commits server-side; rolls back if the server rejects.
+    /// then commits server-side; rolls back if the server rejects. Also
+    /// clears any locally-cached thumbnails for this chat's messages so
+    /// we don't leak disk space.
     func deleteChat(id: String) async {
         let prior = chats
+        let messageIdsToCleanup: [String] = chats.first(where: { $0.id == id })?.messages.map(\.id) ?? []
         chats.removeAll { $0.id == id }
         if activeChatId == id { activeChatId = nil }
         do {
             try await ChatService.shared.deleteChat(id: id)
+            // Server delete succeeded — purge the thumbnail disk cache too.
+            ThumbnailCache.shared.delete(forMessageIds: messageIdsToCleanup)
         } catch {
             print("[chats] deleteChat \(id) failed: \(error.localizedDescription)")
             self.chats = prior
