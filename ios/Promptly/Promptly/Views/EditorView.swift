@@ -859,8 +859,18 @@ struct EditorView: View {
             if event.status == "completed" || event.status == "complete" {
                 messages[messageIndex].jobStatus = "completed"
                 messages[messageIndex].content = "Your video is ready!"
-                if let url = event.videoUrl { messages[messageIndex].renderedVideoUrl = url }
-                if let thumb = event.thumbnailUrl { messages[messageIndex].thumbnailUrl = thumb }
+                if let url = event.videoUrl {
+                    messages[messageIndex].renderedVideoUrl = url
+                    print("[sse] videoUrl=\(url)")
+                } else {
+                    print("[sse] WARNING: completion event missing videoUrl")
+                }
+                if let thumb = event.thumbnailUrl {
+                    messages[messageIndex].thumbnailUrl = thumb
+                    print("[sse] thumbnailUrl=\(thumb)")
+                } else {
+                    print("[sse] WARNING: completion event missing thumbnailUrl")
+                }
                 messages[messageIndex].stageTimeline?.finish()
                 persistMessages()
                 if event.final == true { client.disconnect(); sseClients.removeValue(forKey: jobId) }
