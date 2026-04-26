@@ -194,20 +194,26 @@ async function abortMultipartUpload(key, uploadId) {
 /**
  * Generate a presigned GET URL for reading a private object.
  *
- * AWS SigV4 caps presigned-URL expiration at 7 days (604800s). Anything
- * higher is rejected with "Signature version 4 presigned URLs must have
- * an expiration date less than one week in the future." Default to the
- * SigV4 ceiling so callers can ask for "as long as possible" without
- * triggering the validation error and falling back to the public URL.
+ * Uses the accelerate-enabled s3SigningClient (when accelerate is on)
+ * so the URL targets `BUCKET.s3-accelerate.amazonaws.com` rather than
+ * `BUCKET.s3.{region}.amazonaws.com`. The accelerate hostname is
+ * region-agnostic — works regardless of whether AWS_REGION env var
+ * matches the bucket's actual region. This eliminates a category of
+ * silent breakage where Modal's accelerate-PUT works (signed for any
+ * region) but iOS's standard-endpoint GET fails (wrong region in the
+ * signature → S3 redirects → AVPlayer chokes on redirect mid-stream).
+ *
+ * AWS SigV4 caps presigned-URL expiration at 7 days (604800s).
  * @param {string} key
  * @param {number} expiresIn - Seconds (default 7 days, AWS hard cap)
  * @returns {Promise<string>}
  */
 const SIGV4_MAX_EXPIRES = 60 * 60 * 24 * 7;
 async function createPresignedGetUrl(key, expiresIn = SIGV4_MAX_EXPIRES) {
-  if (!s3Client) throw new Error('S3 client not configured');
+  const client = s3SigningClient || s3Client;
+  if (!client) throw new Error('S3 client not configured');
   const safeExpires = Math.min(Math.max(1, expiresIn), SIGV4_MAX_EXPIRES);
-  return getSignedUrl(s3Client, new GetObjectCommand({
+  return getSignedUrl(client, new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   }), { expiresIn: safeExpires });
