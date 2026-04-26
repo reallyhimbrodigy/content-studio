@@ -155,6 +155,13 @@ class AuthService {
     }
 
     func signOut() {
+        // Tell the server to drop our APNs token before we toss our auth
+        // token — once the auth token is gone we can't authenticate the
+        // unregister call. Fire-and-forget; we don't want sign-out to hang
+        // on a flaky network.
+        Task { @MainActor in
+            await PushService.shared.unregisterCurrentDevice()
+        }
         refreshTask?.cancel()
         refreshTask = nil
         UserDefaults.standard.removeObject(forKey: tokenKey)

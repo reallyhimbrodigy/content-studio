@@ -690,6 +690,16 @@ struct EditorView: View {
         let reeditActive = reeditSession != nil
         guard !text.isEmpty || hasVideos else { return }
 
+        // First-edit moment is the ideal time to ask for notification
+        // permission — the user is about to wait 30–90s for a render and
+        // the value of the prompt ("Get notified when your edit is ready")
+        // is felt right now, not in the abstract.
+        if !PushService.shared.hasAskedForPermission {
+            Task { @MainActor in
+                await PushService.shared.requestPermissionIfNeeded()
+            }
+        }
+
         // ── Re-edit path — no upload; server loads source from DB
         if reeditActive, let session = reeditSession {
             let changeRequest = text.isEmpty ? "Apply the requested changes." : text

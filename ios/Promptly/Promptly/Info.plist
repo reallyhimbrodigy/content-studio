@@ -112,6 +112,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -126,5 +127,12 @@
 	<string>Promptly needs permission to save edited videos to your photo library.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!--
+		Sentry DSN. Create a project at https://sentry.io/, copy the DSN
+		from Settings → Client Keys (DSN), and paste below. Leave empty
+		to disable crash reporting (init is skipped when string is empty).
+	-->
+	<key>SENTRY_DSN</key>
+	<string></string>
 </dict>
 </plist>

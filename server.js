@@ -10734,6 +10734,76 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Register an APNs device token for the current user. Idempotent —
+  // upserts on the unique token column. Bumps last_seen_at on every call so
+  // we can prune long-dead tokens with a cron job later if needed.
+  if (parsed.pathname === '/api/devices/register' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        if (!checkRateLimit(res, 'devices-register', authUser.id, 30, 60)) return;
+
+        const body = await readJsonBody(req);
+        const token = (body?.token || '').trim();
+        const platform = (body?.platform || 'ios').trim();
+        const bundleId = (body?.bundle_id || '').trim();
+        const appVersion = body?.app_version ? String(body.app_version).slice(0, 32) : null;
+
+        if (!token || token.length < 32 || token.length > 256) {
+          return sendJson(res, 400, { error: 'invalid_token' });
+        }
+        if (platform !== 'ios') return sendJson(res, 400, { error: 'invalid_platform' });
+        if (!bundleId) return sendJson(res, 400, { error: 'bundle_id_required' });
+
+        const { error } = await supabaseAdmin
+          .from('device_tokens')
+          .upsert({
+            user_id: authUser.id,
+            token,
+            platform,
+            bundle_id: bundleId,
+            app_version: appVersion,
+            last_seen_at: new Date().toISOString(),
+          }, { onConflict: 'token' });
+
+        if (error) {
+          console.error('[devices-register] DB error:', error);
+          return sendJson(res, 500, { error: 'register_failed' });
+        }
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        console.error('[devices-register] error:', error?.message);
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
+  // Unregister a token (called on sign-out). Best-effort.
+  if (parsed.pathname === '/api/devices/unregister' && req.method === 'POST') {
+    (async () => {
+      try {
+        if (!supabaseAdmin) return sendJson(res, 500, { error: 'supabase_not_configured' });
+        const authUser = await requireSupabaseUser(req);
+        const body = await readJsonBody(req);
+        const token = (body?.token || '').trim();
+        if (!token) return sendJson(res, 400, { error: 'token_required' });
+        await supabaseAdmin
+          .from('device_tokens')
+          .delete()
+          .eq('user_id', authUser.id)
+          .eq('token', token);
+        return sendJson(res, 200, { ok: true });
+      } catch (error) {
+        const status = error?.statusCode || 500;
+        return sendJson(res, status, { error: error?.message || 'Internal server error' });
+      }
+    })();
+    return;
+  }
+
   if (parsed.pathname === '/api/cron/process-jobs' && req.method === 'GET') {
     (async () => {
       try {

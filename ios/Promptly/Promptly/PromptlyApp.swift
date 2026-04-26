@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import Sentry
+import UserNotifications
 
 #if canImport(TikTokOpenShareSDK)
 import TikTokOpenShareSDK
@@ -43,6 +45,58 @@ final class PromptlyAppDelegate: NSObject, UIApplicationDelegate {
             BackgroundUploadManager.shared.savedCompletionHandler = completionHandler
         }
     }
+
+    /// APNs delivered a fresh device token. iOS rotates these periodically,
+    /// so registering on every launch keeps the server in sync.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Task { @MainActor in
+            PushService.shared.setDeviceToken(deviceToken)
+        }
+    }
+
+    /// APNs registration failed. Most common cause is missing entitlements
+    /// or no internet — log and move on, the next launch will retry.
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        print("[Push] APNs registration failed: \(error.localizedDescription)")
+    }
+}
+
+/// Foreground-presentation behavior for incoming pushes. By default iOS
+/// suppresses the banner when the app is in the foreground — we want it
+/// to show like a normal notification (matches iMessage / ChatGPT).
+final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationDelegate()
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
+    }
+
+    /// User tapped the notification. For render-complete pushes, jump to
+    /// the Library tab and (later, if we want) auto-open the matching edit.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        let type = userInfo["type"] as? String
+        Task { @MainActor in
+            if type == "render-complete" || type == "render-failed" {
+                AppState.shared.selectedTab = 1  // Library
+            }
+            completionHandler()
+        }
+    }
 }
 
 @main
@@ -51,6 +105,33 @@ struct PromptlyApp: App {
     @UIApplicationDelegateAdaptor(PromptlyAppDelegate.self) private var appDelegate
 
     init() {
+        // Crash + error reporting. DSN comes from Info.plist (SENTRY_DSN).
+        // If absent, init is skipped — no-op in dev or if the user hasn't
+        // wired up a Sentry project yet.
+        if let dsn = Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String,
+           !dsn.isEmpty,
+           dsn != "$(SENTRY_DSN)" {
+            SentrySDK.start { options in
+                options.dsn = dsn
+                #if DEBUG
+                options.environment = "debug"
+                options.debug = true
+                #else
+                options.environment = "production"
+                #endif
+                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+                options.releaseName = "promptly-ios@\(version)+\(build)"
+                options.tracesSampleRate = 0.1
+                options.attachStacktrace = true
+                options.enableAutoPerformanceTracing = true
+                options.enableNetworkTracking = true
+                options.enableUIViewControllerTracing = true
+                options.enableAppHangTracking = true
+                options.enableWatchdogTerminationTracking = true
+            }
+        }
+
         // Configure nav bar appearance
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
@@ -63,6 +144,11 @@ struct PromptlyApp: App {
 
         // Keyboard dismiss on scroll globally — native iOS behavior
         UIScrollView.appearance().keyboardDismissMode = .interactive
+
+        // Foreground-presentation + tap-handling for APNs pushes. Set the
+        // delegate before the first push arrives — iOS only delivers
+        // callbacks if a delegate is set at the time of delivery.
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
 
     @StateObject private var appState = AppState.shared
@@ -82,6 +168,13 @@ struct PromptlyApp: App {
             .preferredColorScheme(.dark)
             .task {
                 await auth.checkSession()
+                // If we already have permission from a prior install, kick
+                // off remote-registration so the server learns this run's
+                // (potentially rotated) token. No prompt — that comes after
+                // the first send.
+                if PushService.shared.hasAskedForPermission && auth.isAuthenticated {
+                    await PushService.shared.requestPermissionIfNeeded()
+                }
             }
         }
     }
