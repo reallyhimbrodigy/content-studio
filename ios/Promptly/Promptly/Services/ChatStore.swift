@@ -57,15 +57,17 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    /// Create a brand new chat, mark it active, return it. Optimistically
-    /// inserts into the local list before the server round-trips so the
-    /// UI feels instantaneous; if the server insert fails we roll back.
+    /// Create a brand new chat. Inserts into the local list but does NOT
+    /// automatically set it as the active chat. Caller is responsible for
+    /// the activation step — separating creation from activation lets
+    /// EditorView's `ensureActiveChat()` set its `loadedChatId` BEFORE the
+    /// onChange-of-activeChatId handler fires, which otherwise would
+    /// clobber the in-memory messages that send() is about to populate.
     @discardableResult
     func createChat() async -> Chat? {
         do {
             let chat = try await ChatService.shared.createChat()
             self.chats.insert(chat, at: 0)
-            self.activeChatId = chat.id
             return chat
         } catch {
             print("[chats] createChat failed: \(error.localizedDescription)")

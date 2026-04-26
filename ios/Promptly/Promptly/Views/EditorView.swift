@@ -129,6 +129,14 @@ struct EditorView: View {
     /// before swapping, then loads the new chat's history into the local
     /// `messages` state and rebuilds conversationHistory for chat-API calls.
     private func handleActiveChatChange(oldId: String?, newId: String?) {
+        // Skip the load when we've already loaded this chat — `ensureActiveChat`
+        // and `startNewChat` set `loadedChatId` before flipping
+        // `chatStore.activeChatId`, so the onChange firing is purely
+        // cosmetic in those paths. Without this guard, lazy-creating a
+        // chat during send() would clobber the in-flight `messages`
+        // (the user-message + processing-message we just appended).
+        if let newId, newId == loadedChatId { return }
+
         // Persist whatever was on screen for the old chat before switching.
         if let oldId = oldId, oldId != newId {
             persistMessagesNow(chatId: oldId)
@@ -178,12 +186,18 @@ struct EditorView: View {
     /// Lazily create a chat on first send. Returns the chat id we're now
     /// targeting (the existing active chat, or a freshly-created one).
     /// Returns nil only on auth/network failure during creation.
+    ///
+    /// Order matters: `loadedChatId` must be set BEFORE
+    /// `chatStore.activeChatId` so the `onChange` handler skips the load
+    /// (which would otherwise wipe the in-memory `messages` we're about to
+    /// populate).
     private func ensureActiveChat() async -> String? {
         if let id = chatStore.activeChatId {
             return id
         }
         guard let chat = await chatStore.createChat() else { return nil }
         loadedChatId = chat.id
+        chatStore.activeChatId = chat.id
         return chat.id
     }
 
@@ -205,6 +219,7 @@ struct EditorView: View {
         pendingVideos = []
         guard let chat = await chatStore.createChat() else { return }
         loadedChatId = chat.id
+        chatStore.activeChatId = chat.id
         isInputFocused = true
     }
 
