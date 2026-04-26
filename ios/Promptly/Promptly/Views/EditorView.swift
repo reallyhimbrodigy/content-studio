@@ -492,29 +492,30 @@ struct EditorView: View {
                             print(String(format: "[perf] compress %.2fs", Date().timeIntervalSince(compressStart)))
                         }
 
+                        // Single deterministic upload path per file size. No
+                        // multipart-fail → single-PUT fallback: if multipart
+                        // fails, the upload fails. Same for sub-threshold
+                        // files: single PUT only, no recovery.
                         let uploadStart = Date()
                         if APIService.shouldUseMultipart(fileUrl: uploadSourceUrl) {
-                            do {
-                                publicUrl = try await APIService.shared.uploadFileToS3Multipart(
-                                    fileName: pending.fileName,
-                                    fileUrl: uploadSourceUrl,
-                                    onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
-                                ) { progress in
-                                    pending.uploadProgress = progress
-                                }
-                            } catch {
-                                print("[perf] multipart failed (\(error.localizedDescription)) — falling back to single PUT")
+                            publicUrl = try await APIService.shared.uploadFileToS3Multipart(
+                                fileName: pending.fileName,
+                                fileUrl: uploadSourceUrl,
+                                onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
+                            ) { progress in
+                                pending.uploadProgress = progress
                             }
-                        }
-                        if publicUrl == nil {
+                        } else {
                             let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
-                            if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
-                                firePrewarmOnce.fire(pub)
-                                try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
-                                    pending.uploadProgress = progress
-                                }
-                                publicUrl = pub
+                            guard let uploadUrl = urlResponse.uploadUrl,
+                                  let pub = urlResponse.publicUrl else {
+                                throw APIError.uploadFailed
                             }
+                            firePrewarmOnce.fire(pub)
+                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: uploadSourceUrl, mimeType: "video/mp4") { progress in
+                                pending.uploadProgress = progress
+                            }
+                            publicUrl = pub
                         }
                         print(String(format: "[perf] upload-step %.2fs", Date().timeIntervalSince(uploadStart)))
 
@@ -523,48 +524,24 @@ struct EditorView: View {
                         }
 
                     case .stream(let resource, let fileSize):
-                        // iCloud-only. Skip the "download fully then
-                        // upload" serial flow — stream the bytes straight
-                        // through. Total time drops to roughly max(dl, ul)
-                        // instead of dl + ul.
+                        // iCloud-only path. Streams iCloud → S3 in parallel.
+                        // No fallback: if streaming fails, the upload fails.
                         print(String(format: "[perf] path=stream fileSize=%.1fMB", Double(fileSize) / 1_048_576.0))
                         let uploadStart = Date()
-                        do {
-                            publicUrl = try await APIService.shared.streamUploadFromICloud(
-                                resource: resource,
-                                fileSize: fileSize,
-                                fileName: pending.fileName,
-                                onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
-                            ) { progress in
-                                pending.uploadProgress = progress
-                            }
-                        } catch {
-                            print("[perf] stream failed (\(error.localizedDescription)) — falling back to download-then-upload")
-                            // Last-resort fallback: drain iCloud to a local
-                            // file and use the normal path.
-                            let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
-                            await MainActor.run { pending.fileUrl = sourceUrl }
-                            let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
-                            if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
-                                try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: sourceUrl, mimeType: "video/mp4") { progress in
-                                    pending.uploadProgress = progress
-                                }
-                                publicUrl = pub
-                            }
+                        publicUrl = try await APIService.shared.streamUploadFromICloud(
+                            resource: resource,
+                            fileSize: fileSize,
+                            fileName: pending.fileName,
+                            onPublicUrlKnown: { url in firePrewarmOnce.fire(url) }
+                        ) { progress in
+                            pending.uploadProgress = progress
                         }
                         print(String(format: "[perf] stream-step %.2fs", Date().timeIntervalSince(uploadStart)))
 
                     case .none:
-                        print("[perf] strategy unresolved — falling back to download path")
-                        let sourceUrl = try await PHAssetResolver.resolveFileUrl(asset: video.asset)
-                        await MainActor.run { pending.fileUrl = sourceUrl }
-                        let urlResponse = try await APIService.shared.getUploadUrl(fileName: pending.fileName)
-                        if let uploadUrl = urlResponse.uploadUrl, let pub = urlResponse.publicUrl {
-                            try await APIService.shared.uploadFileToS3(url: uploadUrl, fileUrl: sourceUrl, mimeType: "video/mp4") { progress in
-                                pending.uploadProgress = progress
-                            }
-                            publicUrl = pub
-                        }
+                        // Strategy probe couldn't resolve the asset — fail.
+                        print("[perf] strategy unresolved — failing")
+                        throw APIError.uploadFailed
                     }
 
                     if let publicUrl = publicUrl {
@@ -572,10 +549,6 @@ struct EditorView: View {
                             pending.uploadProgress = 1.0
                             pending.uploadedUrl = publicUrl
                         }
-                        // Prewarm was fired the moment the URL was known
-                        // (onPublicUrlKnown). If for some reason that
-                        // didn't fire (legacy fallback path), still fire
-                        // here as a safety net.
                         firePrewarmOnce.fire(publicUrl)
                     }
 
@@ -790,25 +763,11 @@ struct EditorView: View {
                                 videoUrl = video.uploadedUrl
                             }
 
-                            // Fallback: no background task or it failed — do a fresh upload.
-                            if videoUrl == nil, let fileUrl = video.fileUrl {
-                                await MainActor.run { messages[msgIndex].stepMessage = "Uploading..." }
-                                let compressedUrl = (try? await VideoCompressor.compress(sourceUrl: fileUrl)) ?? fileUrl
-                                let urlResponse = try await APIService.shared.getUploadUrl(fileName: video.fileName)
-                                if let uploadUrlStr = urlResponse.uploadUrl, let publicUrl = urlResponse.publicUrl {
-                                    try await APIService.shared.uploadFileToS3(url: uploadUrlStr, fileUrl: compressedUrl, mimeType: "video/mp4") { progress in
-                                        let pct = max(1, Int(progress * 30))
-                                        Task { @MainActor in
-                                            if pct > (messages[msgIndex].jobProgress ?? 0) {
-                                                messages[msgIndex].jobProgress = pct
-                                            }
-                                        }
-                                    }
-                                    videoUrl = publicUrl
-                                }
-                                if compressedUrl != fileUrl { try? FileManager.default.removeItem(at: compressedUrl) }
-                            }
-
+                            // No fallback path. The upload was started when
+                            // the user attached the video; if it didn't
+                            // produce a public URL by send time, the upload
+                            // task failed. Surface the failure rather than
+                            // silently kicking off a fresh attempt.
                             guard let finalUrl = videoUrl else { throw APIError.uploadFailed }
                             await MainActor.run {
                                 messages[msgIndex].stepMessage = "Starting your edit..."

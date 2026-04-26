@@ -829,8 +829,6 @@ struct CompletedVideoView: View {
     let thumbnailUrlStr: String?
     let onReedit: (() -> Void)?
 
-    @State private var fallbackThumb: UIImage?
-
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button {
@@ -892,38 +890,14 @@ struct CompletedVideoView: View {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image.resizable().aspectRatio(contentMode: .fit)
-                } else if phase.error != nil {
-                    // Server thumbnail URL failed (CDN miss, expired, deleted) —
-                    // fall back to grabbing a frame from the rendered video URL
-                    // and cache it on this view's lifetime.
-                    fallbackThumbView
                 } else {
                     Color(.tertiarySystemBackground)
                         .aspectRatio(9/16, contentMode: .fit)
                 }
             }
         } else {
-            // No thumbnail URL was ever set (server didn't deliver one in
-            // the SSE complete event, or the message was restored from a
-            // pre-thumbnail-era chat). Generate from the video file.
-            fallbackThumbView
-        }
-    }
-
-    @ViewBuilder
-    private var fallbackThumbView: some View {
-        if let img = fallbackThumb {
-            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
-        } else {
             Color(.tertiarySystemBackground)
                 .aspectRatio(9/16, contentMode: .fit)
-                .task(id: videoUrlStr) {
-                    guard fallbackThumb == nil,
-                          let url = URL(string: videoUrlStr) else { return }
-                    if let img = await ThumbnailGenerator.generate(from: url) {
-                        await MainActor.run { fallbackThumb = img }
-                    }
-                }
         }
     }
 }
