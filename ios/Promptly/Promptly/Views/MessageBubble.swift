@@ -979,8 +979,12 @@ enum VideoPlayerPresenter {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
 
+        // Let AVPlayer auto-tune its buffer based on network conditions.
+        // The previous `preferredForwardBufferDuration = 10` forced
+        // AVPlayer to wait until at least 10s of video was buffered
+        // before each play decision — which on flaky networks
+        // manifested as frequent stalls / freezing mid-playback.
         let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 10
 
         let player = AVPlayer(playerItem: item)
         player.automaticallyWaitsToMinimizeStalling = true
@@ -990,9 +994,13 @@ enum VideoPlayerPresenter {
         playerVC.player = player
         playerVC.allowsPictureInPicturePlayback = true
         playerVC.videoGravity = .resizeAspect
-        playerVC.entersFullScreenWhenPlaybackBegins = false
-        playerVC.modalPresentationStyle = .overFullScreen
-        playerVC.modalTransitionStyle = .crossDissolve
+        // Use the native fullscreen presentation. `.fullScreen` triggers
+        // AVPlayerViewController's built-in immersive chrome (Done
+        // button, native scrubber, AirPlay, PiP) and the slide-up
+        // animation Apple's own apps use. The earlier `.overFullScreen`
+        // + `.crossDissolve` override killed the native chrome and the
+        // animation, which is why the player felt off.
+        playerVC.modalPresentationStyle = .fullScreen
         playerVC.attachDiagnostics(item: item)
 
         guard let topVC = topmostViewController() else {
